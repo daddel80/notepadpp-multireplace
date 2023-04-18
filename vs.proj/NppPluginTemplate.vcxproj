@@ -49,6 +49,8 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\DockingFeature\goLine.rc" />
+    <ResourceCompile Include="..\src\DockingFeature\resource.rc" />
+    <ResourceCompile Include="..\src\NppPluginMultireplace.rc" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{9D04DBD5-E12E-44E0-A683-6F43F21D533B}</ProjectGuid>

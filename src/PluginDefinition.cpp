@@ -72,9 +72,9 @@ void commandMenuInit()
     //            bool check0nInit                // optional. Make this menu item be checked visually
     //            );
     setCommand(0, TEXT("Hello Notepad++"), hello, NULL, false);
-    setCommand(1, TEXT("Hello (with dialog)"), helloDlg, NULL, false);
-    //setCommand(2, TEXT("Find and Replace"), showReplaceDialog, NULL, false);
-    setCommand(3, TEXT("Hello Notepad++"), hello, NULL, false);
+    //setCommand(1, TEXT("Hello (with dialog)"), helloDlg, NULL, false);
+    setCommand(1, TEXT("Find and Replace"), showReplaceDialog, NULL, false);
+    //setCommand(3, TEXT("Hello Notepad++"), hello, NULL, false);
 }
 
 //
@@ -213,9 +213,13 @@ void findAndReplace(const TCHAR* findText, const TCHAR* replaceText) {
     delete[] replaceTextA;
 }
 
-
 void showReplaceDialog() {
     hDlg = CreateDialog(g_hInst, MAKEINTRESOURCE(IDD_REPLACE_DIALOG), nppData._nppHandle, DialogProc);
+    DWORD errCode = GetLastError();
+    TCHAR errMsg[256];
+    wsprintf(errMsg, TEXT("Error code: %d"), errCode);
+    MessageBox(NULL, errMsg, TEXT("Debug"), MB_OK);
+
     if (hDlg) {
         ShowWindow(hDlg, SW_SHOW);
     }
