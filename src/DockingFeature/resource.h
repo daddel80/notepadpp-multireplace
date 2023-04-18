@@ -27,5 +27,11 @@
 #define	ID_GOLINE_EDIT	(IDD_PLUGINGOLINE_DEMO + 1)
 #define	ID_UGO_STATIC  (IDD_PLUGINGOLINE_DEMO + 5)
 
+#define IDD_REPLACE_DIALOG     5000
+#define IDC_FIND_EDIT          5001
+#define IDC_REPLACE_EDIT       5002
+#define IDC_OK_BUTTON          5003
+#define IDC_CANCEL_BUTTON      5004
+
 #endif // RESOURCE_H
 

@@ -21,7 +21,7 @@ extern FuncItem funcItem[nbFunc];
 extern NppData nppData;
 
 
-BOOL APIENTRY DllMain(HANDLE hModule, DWORD  reasonForCall, LPVOID /*lpReserved*/)
+BOOL APIENTRY DllMain(HINSTANCE hModule, DWORD  reasonForCall, LPVOID /*lpReserved*/)
 {
 	try {
 
