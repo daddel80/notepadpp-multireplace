@@ -74,4 +74,8 @@ protected:
 
     void alignWith(HWND handle, HWND handle2Align, PosAlign pos, POINT & point);
 	HGLOBAL makeRTLResource(int dialogID, DLGTEMPLATE **ppMyDlgTemplate);
+	// In the constructor of StaticDialog class
+	StaticDialog() : _rc{ 0, 0, 0, 0 } // or any other appropriate default values
+	{
+	}
 };

@@ -30,8 +30,8 @@
 #define IDD_REPLACE_DIALOG     5000
 #define IDC_FIND_EDIT          5001
 #define IDC_REPLACE_EDIT       5002
-#define IDC_OK_BUTTON          5003
-#define IDC_CANCEL_BUTTON      5004
+#define IDC_REPLACE_ALL_BUTTON   5003
+#define IDC_WHOLE_WORD_CHECKBOX 1103
 
 #endif // RESOURCE_H
 
