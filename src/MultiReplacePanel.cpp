@@ -16,6 +16,8 @@
 
 #include "MultiReplacePanel.h"
 #include "PluginDefinition.h"
+#include <codecvt>
+#include <locale>
 
 extern NppData nppData;
 
@@ -27,48 +29,58 @@ extern NppData nppData;
 #define generic_sprintf sprintf
 #endif
 
-#define BCKGRD_COLOR (RGB(255,102,102))
-#define TXT_COLOR    (RGB(255,255,255))
 
-// The findAndReplace function
-void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord)
+void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch)
 {
-    // Get the current Scintilla view
     int which = -1;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, (WPARAM)0, (LPARAM)&which);
     if (which == -1)
         return;
     HWND curScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
 
-    // Set the search flags
     int searchFlags = 0;
     if (wholeWord)
         searchFlags |= SCFIND_WHOLEWORD;
+    if (matchCase)
+        searchFlags |= SCFIND_MATCHCASE;
+    if (regexSearch)
+        searchFlags |= SCFIND_REGEXP;
 
-    // Start searching from the beginning of the document
+    std::wstring_convert<std::codecvt_utf8_utf16<TCHAR>> converter;
+    std::string findTextUtf8 = converter.to_bytes(findText);
+    std::string replaceTextUtf8 = converter.to_bytes(replaceText);
+
+    int findTextLength = static_cast<int>(findTextUtf8.length());
+    int replaceTextLength = static_cast<int>(replaceTextUtf8.length());
+
     LRESULT pos = 0;
     while (pos >= 0)
     {
-        // Set the search target
         ::SendMessage(curScintilla, SCI_SETTARGETSTART, pos, 0);
         ::SendMessage(curScintilla, SCI_SETTARGETEND, ::SendMessage(curScintilla, SCI_GETLENGTH, 0, 0), 0);
         ::SendMessage(curScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
 
-        // Find the text
-        pos = ::SendMessage(curScintilla, SCI_SEARCHINTARGET, lstrlen(findText), (LPARAM)findText);
+        pos = ::SendMessage(curScintilla, SCI_SEARCHINTARGET, findTextLength, reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
         if (pos >= 0)
         {
-            // Select the text
-            ::SendMessage(curScintilla, SCI_SETSEL, pos, pos + lstrlen(findText));
-
-            // Replace the selected text
-            ::SendMessage(curScintilla, SCI_REPLACESEL, 0, (LPARAM)replaceText);
-
-            // Update the search position
-            pos += lstrlen(replaceText);
+            if (regexSearch) {
+                ::SendMessage(curScintilla, SCI_SETSEL, pos, pos + ::SendMessage(curScintilla, SCI_GETTARGETEND, 0, 0));
+                ::SendMessage(curScintilla, SCI_REPLACETARGETRE, (WPARAM)-1, (LPARAM)replaceTextUtf8.c_str());
+            }
+            else {
+                ::SendMessage(curScintilla, SCI_SETSEL, pos, pos + findTextLength);
+                ::SendMessage(curScintilla, SCI_REPLACESEL, 0, (LPARAM)replaceTextUtf8.c_str());
+            }
+            pos += replaceTextLength;
         }
     }
 }
+
+
+
+
+
+
 
 INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPARAM /*lParam*/)
 {
@@ -95,8 +107,14 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             // Get the state of the Whole word checkbox
             bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
 
+            // Get the state of the Match case checkbox
+            bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+
+            // Get the state of the Regex checkbox
+            bool regexSearch = (IsDlgButtonChecked(_hSelf, IDC_REGEX_CHECKBOX) == BST_CHECKED);
+
             // Perform the Find and Replace operation
-            ::findAndReplace(findText, replaceText, wholeWord);
+            ::findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch);
 
             // Add the entered text to the combo box history
             addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
