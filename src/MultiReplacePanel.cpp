@@ -19,6 +19,7 @@
 #include <codecvt>
 #include <locale>
 
+
 extern NppData nppData;
 
 #ifdef UNICODE
@@ -77,9 +78,97 @@ void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeW
 }
 
 
+void markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch)
+{
+    int which = -1;
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
+    if (which == -1)
+        return;
+    HWND curScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
 
+    int searchFlags = 0;
+    if (wholeWord)
+        searchFlags |= SCFIND_WHOLEWORD;
+    if (matchCase)
+        searchFlags |= SCFIND_MATCHCASE;
+    if (regexSearch)
+        searchFlags |= SCFIND_REGEXP;
 
+    std::wstring_convert<std::codecvt_utf8_utf16<TCHAR>> converter;
+    std::string findTextUtf8 = converter.to_bytes(findText);
 
+    int findTextLength = static_cast<int>(findTextUtf8.length());
+
+    LRESULT pos = 0;
+    ::SendMessage(curScintilla, SCI_SETINDICATORCURRENT, 0, 0);
+    ::SendMessage(curScintilla, SCI_INDICSETSTYLE, 0, INDIC_STRAIGHTBOX);
+    ::SendMessage(curScintilla, SCI_INDICSETFORE, 0, 0x007F00);
+    ::SendMessage(curScintilla, SCI_INDICSETALPHA, 0, 100);
+
+    while (pos >= 0)
+    {
+        ::SendMessage(curScintilla, SCI_SETTARGETSTART, pos, 0);
+        ::SendMessage(curScintilla, SCI_SETTARGETEND, ::SendMessage(curScintilla, SCI_GETLENGTH, 0, 0), 0);
+        ::SendMessage(curScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
+
+        pos = ::SendMessage(curScintilla, SCI_SEARCHINTARGET, findTextLength, reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
+        if (pos >= 0)
+        {
+            ::SendMessage(curScintilla, SCI_SETINDICATORVALUE, 1, 0);
+            ::SendMessage(curScintilla, SCI_INDICATORFILLRANGE, pos, findTextLength);
+            pos += findTextLength;
+        }
+    }
+}
+
+void clearAllMarks()
+{
+    int which = -1;
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
+    if (which == -1)
+        return;
+    HWND curScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+    ::SendMessage(curScintilla, SCI_SETINDICATORCURRENT, 0, 0);
+    ::SendMessage(curScintilla, SCI_INDICATORCLEARRANGE, 0, ::SendMessage(curScintilla, SCI_GETLENGTH, 0, 0));
+}
+
+void copyMarkedTextToClipboard()
+{
+    int which = -1;
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
+    if (which == -1)
+        return;
+    HWND curScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+
+    LRESULT length = ::SendMessage(curScintilla, SCI_GETLENGTH, 0, 0);
+    std::string markedText;
+
+    ::SendMessage(curScintilla, SCI_SETINDICATORCURRENT, 0, 0);
+    for (int i = 0; i < length; ++i)
+    {
+        if (::SendMessage(curScintilla, SCI_INDICATORVALUEAT, 0, i))
+        {
+            char ch = static_cast<char>(::SendMessage(curScintilla, SCI_GETCHARAT, i, 0));
+            markedText += ch;
+        }
+    }
+
+    if (!markedText.empty())
+    {
+        const char* output = markedText.c_str();
+        size_t outputLength = markedText.length();
+        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, outputLength + 1);
+        if (hMem)
+        {
+            memcpy(GlobalLock(hMem), output, outputLength + 1);
+            GlobalUnlock(hMem);
+            OpenClipboard(0);
+            EmptyClipboard();
+            SetClipboardData(CF_TEXT, hMem);
+            CloseClipboard();
+        }
+    }
+}
 
 
 INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPARAM /*lParam*/)
@@ -121,14 +210,51 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceText);
         }
         break;
+
+        case IDC_MARK_MATCHES_BUTTON:
+        {
+            TCHAR findText[256];
+            GetDlgItemText(_hSelf, IDC_FIND_EDIT, findText, 256);
+
+            // Get the state of the Whole word checkbox
+            bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+
+            // Get the state of the Match case checkbox
+            bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+
+            // Get the state of the Regex checkbox
+            bool regexSearch = (IsDlgButtonChecked(_hSelf, IDC_REGEX_CHECKBOX) == BST_CHECKED);
+
+            // Perform the Mark Matching Strings operation
+            ::markMatchingStrings(findText, wholeWord, matchCase, regexSearch);
+
+            // Add the entered text to the combo box history
+            addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+        }
+        break;
+
+        case IDC_CLEAR_MARKS_BUTTON:
+        {
+            clearAllMarks();
+        }
+        break;
+
+        case IDC_COPY_MARKED_TEXT_BUTTON:
+        {
+            copyMarkedTextToClipboard();
+        }
+        break;
+
         }
     }
     break;
+
 
     }
 
     return FALSE;
 }
+
 
 void MultiReplacePanel::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems)
 {
