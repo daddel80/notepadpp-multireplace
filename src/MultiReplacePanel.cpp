@@ -18,6 +18,8 @@
 #include "PluginDefinition.h"
 #include <codecvt>
 #include <locale>
+#include <regex>
+
 
 
 extern NppData nppData;
@@ -30,8 +32,136 @@ extern NppData nppData;
 #define generic_sprintf sprintf
 #endif
 
+#include <windows.h>
+#include <sstream>
 
-void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch)
+int convertExtendedToString(const TCHAR* query, TCHAR* result, int length)
+{
+    auto readBase = [](const TCHAR* str, int* value, int base, int size) -> bool
+    {
+        int i = 0, temp = 0;
+        *value = 0;
+        TCHAR max = '0' + static_cast<TCHAR>(base) - 1;
+        TCHAR current;
+        while (i < size)
+        {
+            current = str[i];
+            if (current >= 'A')
+            {
+                current &= 0xdf;
+                current -= ('A' - '0' - 10);
+            }
+            else if (current > '9')
+                return false;
+
+            if (current >= '0' && current <= max)
+            {
+                temp *= base;
+                temp += (current - '0');
+            }
+            else
+            {
+                return false;
+            }
+            ++i;
+        }
+        *value = temp;
+        return true;
+    };
+    int resultLength = 0;
+
+    for (int i = 0; i < length; ++i)
+    {
+        if (query[i] == '\\' && (i + 1) < length)
+        {
+            ++i;
+            TCHAR current = query[i];
+            switch (current)
+            {
+            case 'n':
+                result[resultLength++] = '\n';
+                break;
+            case 't':
+                result[resultLength++] = '\t';
+                break;
+            case 'r':
+                result[resultLength++] = '\r';
+                break;
+            case '0':
+                result[resultLength++] = '\0';
+                break;
+            case '\\':
+                result[resultLength++] = '\\';
+                break;
+            case 'b':
+            case 'd':
+            case 'o':
+            case 'x':
+            case 'u':
+            {
+                int size = 0, base = 0;
+                if (current == 'b')
+                {
+                    size = 8, base = 2;
+                }
+                else if (current == 'o')
+                {
+                    size = 3, base = 8;
+                }
+                else if (current == 'd')
+                {
+                    size = 3, base = 10;
+                }
+                else if (current == 'x')
+                {
+                    size = 2, base = 16;
+                }
+                else if (current == 'u')
+                {
+                    size = 4, base = 16;
+                }
+
+                if (length - i >= size)
+                {
+                    int res = 0;
+                    if (readBase(query + (i + 1), &res, base, size))
+                    {
+                        result[resultLength++] = static_cast<TCHAR>(res);
+                        i += size;
+                        break;
+                    }
+                }
+                // not enough chars to make parameter, use default method as fallback
+                /* fallthrough */
+            }
+
+            default:
+                // unknown sequence, treat as regular text
+                result[resultLength++] = '\\';
+                result[resultLength++] = current;
+                break;
+            }
+        }
+        else
+        {
+            result[resultLength++] = query[i];
+        }
+    }
+
+    result[resultLength] = 0;
+
+    // Convert TCHAR string to UTF-8 string
+    std::wstring_convert<std::codecvt_utf8_utf16<TCHAR>> converter;
+    std::string utf8Result = converter.to_bytes(result);
+
+    // Return the length of the UTF-8 string
+    return static_cast<int>(utf8Result.length());
+
+}
+
+
+
+void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
     int which = -1;
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, (WPARAM)0, (LPARAM)&which);
@@ -53,32 +183,47 @@ void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeW
 
     int findTextLength = static_cast<int>(findTextUtf8.length());
     int replaceTextLength = static_cast<int>(replaceTextUtf8.length());
+    TCHAR findTextExtended[256];
+    TCHAR replaceTextExtended[256];
+    if (extended)
+    {
 
-    LRESULT pos = 0;
+        int findTextExtendedLength = convertExtendedToString(findText, findTextExtended, findTextLength);
+        int replaceTextExtendedLength = convertExtendedToString(replaceText, replaceTextExtended, replaceTextLength);
+
+        findTextLength = findTextExtendedLength;
+        replaceTextLength = replaceTextExtendedLength;
+
+        findTextUtf8 = converter.to_bytes(findTextExtended);
+        replaceTextUtf8 = converter.to_bytes(replaceTextExtended);
+
+    }
+
+    Sci_Position pos = 0;
+    Sci_Position matchLen = 0;
+
     while (pos >= 0)
     {
         ::SendMessage(curScintilla, SCI_SETTARGETSTART, pos, 0);
         ::SendMessage(curScintilla, SCI_SETTARGETEND, ::SendMessage(curScintilla, SCI_GETLENGTH, 0, 0), 0);
         ::SendMessage(curScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
-
         pos = ::SendMessage(curScintilla, SCI_SEARCHINTARGET, findTextLength, reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
+
         if (pos >= 0)
         {
-            if (regexSearch) {
-                ::SendMessage(curScintilla, SCI_SETSEL, pos, pos + ::SendMessage(curScintilla, SCI_GETTARGETEND, 0, 0));
-                ::SendMessage(curScintilla, SCI_REPLACETARGETRE, (WPARAM)-1, (LPARAM)replaceTextUtf8.c_str());
-            }
-            else {
-                ::SendMessage(curScintilla, SCI_SETSEL, pos, pos + findTextLength);
-                ::SendMessage(curScintilla, SCI_REPLACESEL, 0, (LPARAM)replaceTextUtf8.c_str());
-            }
+            matchLen = ::SendMessage(curScintilla, SCI_GETTARGETEND, 0, 0) - pos;
+            ::SendMessage(curScintilla, SCI_SETSEL, pos, pos + matchLen);
+            ::SendMessage(curScintilla, SCI_REPLACESEL, 0, (LPARAM)replaceTextUtf8.c_str());
+            //pos = ::SendMessage(curScintilla, SCI_POSITIONAFTER, pos + matchLen, 0);
             pos += replaceTextLength;
         }
     }
 }
 
 
-void markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch)
+
+
+void markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
     int which = -1;
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
@@ -99,7 +244,16 @@ void markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, 
 
     int findTextLength = static_cast<int>(findTextUtf8.length());
 
+    if (extended)
+    {
+        TCHAR findTextExtended[256];
+        int findTextExtendedLength = convertExtendedToString(findText, findTextExtended, findTextLength);
+        findTextLength = findTextExtendedLength;
+        findTextUtf8 = converter.to_bytes(findTextExtended);
+    }
+
     LRESULT pos = 0;
+    LRESULT matchLen = 0;
     ::SendMessage(curScintilla, SCI_SETINDICATORCURRENT, 0, 0);
     ::SendMessage(curScintilla, SCI_INDICSETSTYLE, 0, INDIC_STRAIGHTBOX);
     ::SendMessage(curScintilla, SCI_INDICSETFORE, 0, 0x007F00);
@@ -114,12 +268,14 @@ void markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, 
         pos = ::SendMessage(curScintilla, SCI_SEARCHINTARGET, findTextLength, reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
         if (pos >= 0)
         {
+            matchLen = ::SendMessage(curScintilla, SCI_GETTARGETEND, 0, 0) - pos;
             ::SendMessage(curScintilla, SCI_SETINDICATORVALUE, 1, 0);
-            ::SendMessage(curScintilla, SCI_INDICATORFILLRANGE, pos, findTextLength);
+            ::SendMessage(curScintilla, SCI_INDICATORFILLRANGE, pos, matchLen);
             pos += findTextLength;
         }
     }
 }
+
 
 void clearAllMarks()
 {
@@ -202,8 +358,11 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             // Get the state of the Regex checkbox
             bool regexSearch = (IsDlgButtonChecked(_hSelf, IDC_REGEX_CHECKBOX) == BST_CHECKED);
 
+            // Get the state of the Extended checkbox
+            bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_CHECKBOX) == BST_CHECKED);
+
             // Perform the Find and Replace operation
-            ::findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch);
+            ::findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
 
             // Add the entered text to the combo box history
             addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
@@ -225,8 +384,11 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             // Get the state of the Regex checkbox
             bool regexSearch = (IsDlgButtonChecked(_hSelf, IDC_REGEX_CHECKBOX) == BST_CHECKED);
 
+            // Get the state of the Extended checkbox
+            bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_CHECKBOX) == BST_CHECKED);
+
             // Perform the Mark Matching Strings operation
-            ::markMatchingStrings(findText, wholeWord, matchCase, regexSearch);
+            ::markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
 
             // Add the entered text to the combo box history
             addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
