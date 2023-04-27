@@ -334,6 +334,8 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     case WM_INITDIALOG:
     {
         // ... [Set focus and return] ...
+        CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_NORMAL_RADIO);
+
         return TRUE;
     }
     break;
@@ -342,12 +344,39 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     {
         switch (wParam)
         {
+        case IDC_REGEX_RADIO:
+        {
+            // Check if the Regular expression radio button is checked
+            bool regexChecked = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+
+            // Enable or disable the Whole word checkbox accordingly
+            EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), !regexChecked);
+
+            // If the Regular expression radio button is checked, uncheck the Whole word checkbox
+            if (regexChecked)
+            {
+                CheckDlgButton(_hSelf, IDC_WHOLE_WORD_CHECKBOX, BST_UNCHECKED);
+            }
+        }
+        break;
+
+        // Add these case blocks for IDC_NORMAL_RADIO and IDC_EXTENDED_RADIO
+        case IDC_NORMAL_RADIO:
+        case IDC_EXTENDED_RADIO:
+        {
+            // Enable the Whole word checkbox
+            EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), TRUE);
+        }
+        break;
+
         case IDC_REPLACE_ALL_BUTTON:
         {
             TCHAR findText[256];
             TCHAR replaceText[256];
             GetDlgItemText(_hSelf, IDC_FIND_EDIT, findText, 256);
             GetDlgItemText(_hSelf, IDC_REPLACE_EDIT, replaceText, 256);
+            bool regexSearch = false;
+            bool extended = false;
 
             // Get the state of the Whole word checkbox
             bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
@@ -355,11 +384,12 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             // Get the state of the Match case checkbox
             bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
 
-            // Get the state of the Regex checkbox
-            bool regexSearch = (IsDlgButtonChecked(_hSelf, IDC_REGEX_CHECKBOX) == BST_CHECKED);
-
-            // Get the state of the Extended checkbox
-            bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_CHECKBOX) == BST_CHECKED);
+            if (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED) {
+                regexSearch = true;
+            }
+            else if (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED) {
+                extended = true;
+            }
 
             // Perform the Find and Replace operation
             ::findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
@@ -374,6 +404,8 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         {
             TCHAR findText[256];
             GetDlgItemText(_hSelf, IDC_FIND_EDIT, findText, 256);
+            bool regexSearch = false;
+            bool extended = false;
 
             // Get the state of the Whole word checkbox
             bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
@@ -381,11 +413,12 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             // Get the state of the Match case checkbox
             bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
 
-            // Get the state of the Regex checkbox
-            bool regexSearch = (IsDlgButtonChecked(_hSelf, IDC_REGEX_CHECKBOX) == BST_CHECKED);
-
-            // Get the state of the Extended checkbox
-            bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_CHECKBOX) == BST_CHECKED);
+            if (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED) {
+                regexSearch = true;
+            }
+            else if (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED) {
+                extended = true;
+            }
 
             // Perform the Mark Matching Strings operation
             ::markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
