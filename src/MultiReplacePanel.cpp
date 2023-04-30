@@ -19,6 +19,10 @@
 #include <codecvt>
 #include <locale>
 #include <regex>
+#include <windows.h>
+#include <sstream>
+#include <commctrl.h>
+#include <vector>
 
 
 
@@ -32,8 +36,6 @@ extern NppData nppData;
 #define generic_sprintf sprintf
 #endif
 
-#include <windows.h>
-#include <sstream>
 
 int convertExtendedToString(const TCHAR* query, TCHAR* result, int length)
 {
@@ -160,7 +162,6 @@ int convertExtendedToString(const TCHAR* query, TCHAR* result, int length)
 }
 
 
-
 void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
     int which = -1;
@@ -219,8 +220,6 @@ void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeW
         }
     }
 }
-
-
 
 
 void markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
@@ -326,19 +325,212 @@ void copyMarkedTextToClipboard()
     }
 }
 
-
-INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPARAM /*lParam*/)
+// insert ListView items with the specified data
+void MultiReplacePanel::insertReplaceListItem(const ReplaceItemData& itemData)
 {
+
+    _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+
+    // Add the data to the vector
+    replaceListData.push_back(itemData);
+
+    // Update the item count in the ListView
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+
+    InvalidateRect(_replaceListView, NULL, TRUE);
+}
+
+// handle the Copy button click
+void MultiReplacePanel::onCopyToListButtonClick() {
+    ReplaceItemData itemData;
+
+    TCHAR findText[256];
+    TCHAR replaceText[256];
+    GetDlgItemText(_hSelf, IDC_FIND_EDIT, findText, 256);
+    GetDlgItemText(_hSelf, IDC_REPLACE_EDIT, replaceText, 256);
+    itemData.findText = findText;
+    itemData.replaceText = replaceText;
+
+    itemData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+    itemData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+    itemData.regexSearch = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+    itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+
+    insertReplaceListItem(itemData);
+}
+
+
+// handle the Replace all in List button click
+void MultiReplacePanel::onReplaceAllInListButtonClick() {
+    // Add code to loop through the ListView items and perform Find and Replace operations using the stored options for each item
+
+}
+
+void MultiReplacePanel::createListViewColumns(HWND listView) {
+    LVCOLUMN lvc;
+
+    lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
+    lvc.fmt = LVCFMT_LEFT;
+
+    // Spalte für "Find" Text
+    lvc.iSubItem = 0;
+    lvc.pszText = L"Find";
+    lvc.cx = 100; // Spaltenbreite
+    ListView_InsertColumn(listView, 0, &lvc);
+
+    // Spalte für "Replace" Text
+    lvc.iSubItem = 1;
+    lvc.pszText = L"Replace";
+    lvc.cx = 100; // Spaltenbreite
+    ListView_InsertColumn(listView, 1, &lvc);
+
+    // Spalte für Optionen
+    lvc.iSubItem = 2;
+    lvc.pszText = L"Options";
+    lvc.cx = 100; // Spaltenbreite
+    ListView_InsertColumn(listView, 2, &lvc);
+}
+
+
+INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
+{
+    static HFONT hFont = NULL;
+
     switch (message)
     {
     case WM_INITDIALOG:
     {
-        // ... [Set focus and return] ...
+        // Create the font
+        hFont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, TEXT("MS Shell Dlg"));
+
         CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_NORMAL_RADIO);
+
+        // Set the font for the controls
+        SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), WM_SETFONT, (WPARAM)hFont, TRUE);
+        SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), WM_SETFONT, (WPARAM)hFont, TRUE);
+
+        // Check if the ListView is created correctly
+        _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+        if (_replaceListView) {
+            MessageBox(_hSelf, L"ListView wurde erfolgreich erstellt.", L"Debug", MB_OK);
+            createListViewColumns(_replaceListView); // Spalten erstellen
+
+            /*
+            // Manuell einen Eintrag zur Liste hinzufügen
+            ReplaceItemData testData;
+            testData.findText = L"Find";
+            testData.replaceText = L"Replace";
+            testData.wholeWord = true;
+            testData.matchCase = false;
+            testData.regexSearch = false;
+            testData.extended = false;
+            replaceListData.push_back(testData);
+            */
+
+            // Update the item count in the ListView
+            ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+
+            // Set the ListView style to LVS_REPORT
+            LONG_PTR dwStyle = GetWindowLongPtr(_replaceListView, GWL_STYLE);
+            SetWindowLongPtr(_replaceListView, GWL_STYLE, dwStyle | LVS_REPORT | LVS_SHOWSELALWAYS);
+
+            // Enable full row selection
+            ListView_SetExtendedListViewStyle(_replaceListView, LVS_EX_FULLROWSELECT);
+
+        }
+        else {
+            MessageBox(_hSelf, L"ListView-Erstellung ist fehlgeschlagen.", L"Debug", MB_OK);
+        }
 
         return TRUE;
     }
     break;
+    ;
+
+    case WM_DESTROY:
+    {
+        DeleteObject(hFont);
+    }
+    break;
+
+    case WM_GETMINMAXINFO:
+    {
+        MessageBox(_hSelf, TEXT("WM_GETMINMAXINFO erhalten"), TEXT("Debug"), MB_OK);
+
+        MINMAXINFO* minMaxInfo = (MINMAXINFO*)lParam;
+        minMaxInfo->ptMinTrackSize.x = 400; // Minimum width
+        minMaxInfo->ptMinTrackSize.y = 300; // Minimum height
+        minMaxInfo->ptMaxTrackSize.x = 800; // Maximum width
+        minMaxInfo->ptMaxTrackSize.y = 600; // Maximum height
+        return 0;
+    }
+    break;
+
+    case WM_SIZE:
+    {
+        int newWidth = LOWORD(lParam);
+        int newHeight = HIWORD(lParam);
+
+        // Move and resize Find and Replace text boxes
+        MoveWindow(GetDlgItem(_hSelf, IDC_FIND_EDIT), 120, 14, newWidth - 360, 200, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), 120, 58, newWidth - 360, 200, TRUE);
+
+        // Move and resize the List
+        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 250, newWidth - 255, newHeight - 270, TRUE);
+
+        // Move buttons
+        int buttonGap = 40;
+        int buttonX = newWidth - buttonGap - 160;
+
+        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), buttonX, 14, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), buttonX, 80, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), buttonX, 120, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), buttonX, 160, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), buttonX, 215, 160, 60, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_IN_LIST_BUTTON), buttonX, 300, 160, 30, TRUE);
+
+        return 0;
+    }
+
+    case WM_NOTIFY:
+    {
+        NMHDR* pnmh = (NMHDR*)lParam;
+        if (static_cast<UINT>(pnmh->idFrom) == static_cast<UINT>(IDC_REPLACE_LIST) && static_cast<UINT>(pnmh->code) == static_cast<UINT>(LVN_GETDISPINFO))
+
+        {
+            
+            NMLVDISPINFO* plvdi = (NMLVDISPINFO*)lParam;
+
+            // Get the data from the vector
+            ReplaceItemData& itemData = replaceListData[plvdi->item.iItem];
+
+            // Display the data based on the subitem
+            switch (plvdi->item.iSubItem)
+            {
+            case 0:
+                plvdi->item.pszText = const_cast<LPWSTR>(itemData.findText.c_str());
+                break;
+
+            case 1:
+                plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceText.c_str());
+                break;
+
+            case 2:
+                _optionsText.clear();
+                if (itemData.wholeWord) _optionsText += L"W";
+                if (itemData.matchCase) _optionsText += L"C";
+                if (itemData.regexSearch) _optionsText += L"R";
+                else if (itemData.extended) _optionsText += L"E";
+                else _optionsText += L"N";
+
+                plvdi->item.pszText = const_cast<LPWSTR>(_optionsText.c_str());;
+                break;
+
+            }
+        }
+    }
+    break;
+
 
     case WM_COMMAND:
     {
@@ -440,15 +632,33 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         }
         break;
 
+        case IDC_COPY_TO_LIST_BUTTON:
+        {
+            onCopyToListButtonClick();
+
         }
+        break;
+
+        case IDC_REPLACE_ALL_IN_LIST_BUTTON:
+        {
+            onReplaceAllInListButtonClick();
+        }
+        break;
+
+        default:
+            return FALSE;
+        }
+
     }
     break;
 
-
+    default:
+        return DockingDlgInterface::run_dlgProc(message, wParam, lParam);
     }
 
     return FALSE;
 }
+
 
 
 void MultiReplacePanel::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems)

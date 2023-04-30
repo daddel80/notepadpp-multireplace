@@ -20,13 +20,25 @@
 #include "DockingFeature\DockingDlgInterface.h"
 #include "resource.h"
 #include <string>
+#include <vector>
+
+struct ReplaceItemData
+{
+    std::wstring findText;
+    std::wstring replaceText;
+    bool wholeWord = false;
+    bool regexSearch = false;
+    bool matchCase = false;
+    bool extended = false;
+};
+
 
 typedef std::basic_string<TCHAR> generic_string;
 
 class MultiReplacePanel : public DockingDlgInterface
 {
 public:
-    MultiReplacePanel() : DockingDlgInterface(IDD_REPLACE_DIALOG) {};
+    MultiReplacePanel() : DockingDlgInterface(IDD_REPLACE_DIALOG), _replaceListView(NULL) {};
 
     virtual void display(bool toShow = true) const {
         DockingDlgInterface::display(toShow);
@@ -41,6 +53,15 @@ protected:
 
 private:
     static void addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems = 10);
+private:
+    HWND _replaceListView;
+    std::vector<ReplaceItemData> replaceListData;
+    std::wstring _optionsText;
+
+    void insertReplaceListItem(const ReplaceItemData& itemData);
+    void onCopyToListButtonClick();
+    void onReplaceAllInListButtonClick();
+    void createListViewColumns(HWND listView);
 };
 
 #endif // MULTI_REPLACE_PANEL_H
