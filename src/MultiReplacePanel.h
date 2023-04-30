@@ -30,6 +30,7 @@ struct ReplaceItemData
     bool regexSearch = false;
     bool matchCase = false;
     bool extended = false;
+    std::wstring deleteText;
 };
 
 

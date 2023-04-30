@@ -1,4 +1,4 @@
-// This file is part of Notepad++ project
+ï»¿// This file is part of Notepad++ project
 // Copyright (C)2022 Don HO <don.h@free.fr>
 
 // This program is free software: you can redistribute it and/or modify
@@ -325,20 +325,21 @@ void copyMarkedTextToClipboard()
     }
 }
 
-// insert ListView items with the specified data
 void MultiReplacePanel::insertReplaceListItem(const ReplaceItemData& itemData)
 {
-
     _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
 
     // Add the data to the vector
-    replaceListData.push_back(itemData);
+    ReplaceItemData newItemData = itemData;
+    newItemData.deleteText = L"Delete"; // Add the Delete button text
+    replaceListData.push_back(newItemData);
 
     // Update the item count in the ListView
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
     InvalidateRect(_replaceListView, NULL, TRUE);
 }
+
 
 // handle the Copy button click
 void MultiReplacePanel::onCopyToListButtonClick() {
@@ -372,23 +373,29 @@ void MultiReplacePanel::createListViewColumns(HWND listView) {
     lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
     lvc.fmt = LVCFMT_LEFT;
 
-    // Spalte für "Find" Text
+    // Spalte fï¿½r "Find" Text
     lvc.iSubItem = 0;
     lvc.pszText = L"Find";
     lvc.cx = 100; // Spaltenbreite
     ListView_InsertColumn(listView, 0, &lvc);
 
-    // Spalte für "Replace" Text
+    // Spalte fï¿½r "Replace" Text
     lvc.iSubItem = 1;
     lvc.pszText = L"Replace";
     lvc.cx = 100; // Spaltenbreite
     ListView_InsertColumn(listView, 1, &lvc);
 
-    // Spalte für Optionen
+    // Spalte fï¿½r Optionen
     lvc.iSubItem = 2;
     lvc.pszText = L"Options";
     lvc.cx = 100; // Spaltenbreite
     ListView_InsertColumn(listView, 2, &lvc);
+
+    // Spalte fÃ¼r Delete Button
+    lvc.iSubItem = 3;
+    lvc.pszText = L"Delete";
+    lvc.cx = 80; // Spaltenbreite
+    ListView_InsertColumn(listView, 3, &lvc);
 }
 
 
@@ -411,36 +418,16 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
 
         // Check if the ListView is created correctly
         _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
-        if (_replaceListView) {
-            MessageBox(_hSelf, L"ListView wurde erfolgreich erstellt.", L"Debug", MB_OK);
-            createListViewColumns(_replaceListView); // Spalten erstellen
 
-            /*
-            // Manuell einen Eintrag zur Liste hinzufügen
-            ReplaceItemData testData;
-            testData.findText = L"Find";
-            testData.replaceText = L"Replace";
-            testData.wholeWord = true;
-            testData.matchCase = false;
-            testData.regexSearch = false;
-            testData.extended = false;
-            replaceListData.push_back(testData);
-            */
+        // Create columns first
+        createListViewColumns(_replaceListView);
 
-            // Update the item count in the ListView
-            ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        // Update the item count in the ListView
+        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
-            // Set the ListView style to LVS_REPORT
-            LONG_PTR dwStyle = GetWindowLongPtr(_replaceListView, GWL_STYLE);
-            SetWindowLongPtr(_replaceListView, GWL_STYLE, dwStyle | LVS_REPORT | LVS_SHOWSELALWAYS);
+        // Enable full row selection
+        ListView_SetExtendedListViewStyle(_replaceListView, LVS_EX_FULLROWSELECT);
 
-            // Enable full row selection
-            ListView_SetExtendedListViewStyle(_replaceListView, LVS_EX_FULLROWSELECT);
-
-        }
-        else {
-            MessageBox(_hSelf, L"ListView-Erstellung ist fehlgeschlagen.", L"Debug", MB_OK);
-        }
 
         return TRUE;
     }
@@ -495,10 +482,28 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     case WM_NOTIFY:
     {
         NMHDR* pnmh = (NMHDR*)lParam;
+        
+        // Handle clicks on the Delete button
+        if (static_cast<UINT>(pnmh->idFrom) == static_cast<UINT>(IDC_REPLACE_LIST) && static_cast<UINT>(pnmh->code) == static_cast<UINT>(NM_CLICK)) {
+            NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
+            if (pnmia->iSubItem == 3) { // Delete button column
+                // Remove the item from the ListView
+                ListView_DeleteItem(_replaceListView, pnmia->iItem);
+
+                // Remove the item from the replaceListData vector
+                replaceListData.erase(replaceListData.begin() + pnmia->iItem);
+
+                // Update the item count in the ListView
+                ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+
+                InvalidateRect(_replaceListView, NULL, TRUE);
+            }
+        }
+        
         if (static_cast<UINT>(pnmh->idFrom) == static_cast<UINT>(IDC_REPLACE_LIST) && static_cast<UINT>(pnmh->code) == static_cast<UINT>(LVN_GETDISPINFO))
 
         {
-            
+
             NMLVDISPINFO* plvdi = (NMLVDISPINFO*)lParam;
 
             // Get the data from the vector
@@ -524,6 +529,9 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
                 else _optionsText += L"N";
 
                 plvdi->item.pszText = const_cast<LPWSTR>(_optionsText.c_str());;
+                break;
+            case 3:
+                plvdi->item.pszText = const_cast<LPWSTR>(itemData.deleteText.c_str());
                 break;
 
             }
