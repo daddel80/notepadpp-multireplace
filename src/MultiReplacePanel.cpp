@@ -331,7 +331,8 @@ void MultiReplacePanel::insertReplaceListItem(const ReplaceItemData& itemData)
 
     // Add the data to the vector
     ReplaceItemData newItemData = itemData;
-    newItemData.deleteText = L"Delete"; // Add the Delete button text
+    //newItemData.deleteText = L"Delete"; // Add the Delete button text
+    newItemData.deleteImageIndex = ImageList_AddIcon(_himl, _hDeleteIcon);
     replaceListData.push_back(newItemData);
 
     // Update the item count in the ListView
@@ -393,8 +394,9 @@ void MultiReplacePanel::createListViewColumns(HWND listView) {
 
     // Spalte für Delete Button
     lvc.iSubItem = 3;
-    lvc.pszText = L"Delete";
-    lvc.cx = 80; // Spaltenbreite
+    lvc.pszText = L"";
+    lvc.cx = 20; // Spaltenbreite
+    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 3, &lvc);
 }
 
@@ -419,6 +421,30 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         // Check if the ListView is created correctly
         _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
 
+        // Creating ImageList
+        _himl = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK, 1, 1);
+
+        // Load Delete Button
+        //_hDeleteBitmap = (HBITMAP)LoadImage(_hInst, MAKEINTRESOURCE(DELETE_ICON), IMAGE_BITMAP, 0, 0, LR_LOADMAP3DCOLORS );
+        //_hDeleteBitmap = LoadBitmap(_hInst, MAKEINTRESOURCE(DELETE_ICON));
+        _hDeleteIcon = LoadIcon(_hInst, MAKEINTRESOURCE(DELETE_ICON));
+
+        if (!_hDeleteIcon)
+        {
+            DWORD error = GetLastError();
+            TCHAR buffer[256];
+            wsprintf(buffer, TEXT("Failed to load delete button image. Error code: %u"), error);
+            MessageBox(_hSelf, buffer, TEXT("Error"), MB_OK | MB_ICONERROR);
+
+            // Zum Testen: Erstellen Sie ein einfaches Icon
+            _hDeleteIcon = CreateIcon(_hInst, 16, 16, 1, 1, NULL, NULL);
+
+        }
+
+
+        // Assign the ImageList object to the ListView control
+        ListView_SetImageList(_replaceListView, _himl, LVSIL_SMALL);
+
         // Create columns first
         createListViewColumns(_replaceListView);
 
@@ -426,17 +452,19 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
         // Enable full row selection
-        ListView_SetExtendedListViewStyle(_replaceListView, LVS_EX_FULLROWSELECT);
+        ListView_SetExtendedListViewStyle(_replaceListView, LVS_EX_FULLROWSELECT | LVS_EX_SUBITEMIMAGES);
 
 
         return TRUE;
     }
     break;
+
     ;
 
     case WM_DESTROY:
     {
-        DeleteObject(hFont);
+        DestroyIcon(_hDeleteIcon);
+        ImageList_Destroy(_himl);
     }
     break;
 
@@ -482,7 +510,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     case WM_NOTIFY:
     {
         NMHDR* pnmh = (NMHDR*)lParam;
-        
+
         // Handle clicks on the Delete button
         if (static_cast<UINT>(pnmh->idFrom) == static_cast<UINT>(IDC_REPLACE_LIST) && static_cast<UINT>(pnmh->code) == static_cast<UINT>(NM_CLICK)) {
             NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
@@ -499,7 +527,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
                 InvalidateRect(_replaceListView, NULL, TRUE);
             }
         }
-        
+
         if (static_cast<UINT>(pnmh->idFrom) == static_cast<UINT>(IDC_REPLACE_LIST) && static_cast<UINT>(pnmh->code) == static_cast<UINT>(LVN_GETDISPINFO))
 
         {
@@ -531,7 +559,8 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
                 plvdi->item.pszText = const_cast<LPWSTR>(_optionsText.c_str());;
                 break;
             case 3:
-                plvdi->item.pszText = const_cast<LPWSTR>(itemData.deleteText.c_str());
+                plvdi->item.mask |= LVIF_IMAGE;
+                plvdi->item.iImage = itemData.deleteImageIndex;
                 break;
 
             }

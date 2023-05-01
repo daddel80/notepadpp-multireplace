@@ -13,7 +13,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 #ifndef MULTI_REPLACE_PANEL_H
 #define MULTI_REPLACE_PANEL_H
 
@@ -21,6 +20,8 @@
 #include "resource.h"
 #include <string>
 #include <vector>
+#include <commctrl.h>
+
 
 struct ReplaceItemData
 {
@@ -31,8 +32,8 @@ struct ReplaceItemData
     bool matchCase = false;
     bool extended = false;
     std::wstring deleteText;
+    int deleteImageIndex; 
 };
-
 
 typedef std::basic_string<TCHAR> generic_string;
 
@@ -56,6 +57,9 @@ private:
     static void addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems = 10);
 private:
     HWND _replaceListView;
+    HICON _hDeleteIcon;
+
+    HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
     std::wstring _optionsText;
 
