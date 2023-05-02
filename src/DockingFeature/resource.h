@@ -1,5 +1,5 @@
 //this file is part of notepad++
-//Copyright (C)2022 Don HO <don.h@free.fr>
+// Copyright (C)2023 Thomas Knoefel
 //
 //This program is free software; you can redistribute it and/or
 //modify it under the terms of the GNU General Public License
@@ -51,6 +51,7 @@
 #define IDC_DELETE_REPLACE_ITEM_BUTTON 5010
 
 #define DELETE_ICON 1000
+#define ENABLED_ICON 1001
 
 
 #endif // RESOURCE_H

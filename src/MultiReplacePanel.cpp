@@ -1,5 +1,5 @@
 ﻿// This file is part of Notepad++ project
-// Copyright (C)2022 Don HO <don.h@free.fr>
+// Copyright (C)2023 Thomas Knoefel
 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -37,7 +37,7 @@ extern NppData nppData;
 #endif
 
 
-int convertExtendedToString(const TCHAR* query, TCHAR* result, int length)
+int MultiReplacePanel::convertExtendedToString(const TCHAR* query, TCHAR* result, int length)
 {
     auto readBase = [](const TCHAR* str, int* value, int base, int size) -> bool
     {
@@ -162,7 +162,7 @@ int convertExtendedToString(const TCHAR* query, TCHAR* result, int length)
 }
 
 
-void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
+void MultiReplacePanel::findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
     int which = -1;
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, (WPARAM)0, (LPARAM)&which);
@@ -222,7 +222,7 @@ void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeW
 }
 
 
-void markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
+void MultiReplacePanel::markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
     int which = -1;
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
@@ -276,7 +276,7 @@ void markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, 
 }
 
 
-void clearAllMarks()
+void MultiReplacePanel::clearAllMarks()
 {
     int which = -1;
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
@@ -287,7 +287,7 @@ void clearAllMarks()
     ::SendMessage(curScintilla, SCI_INDICATORCLEARRANGE, 0, ::SendMessage(curScintilla, SCI_GETLENGTH, 0, 0));
 }
 
-void copyMarkedTextToClipboard()
+void MultiReplacePanel::copyMarkedTextToClipboard()
 {
     int which = -1;
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
@@ -331,8 +331,10 @@ void MultiReplacePanel::insertReplaceListItem(const ReplaceItemData& itemData)
 
     // Add the data to the vector
     ReplaceItemData newItemData = itemData;
-    //newItemData.deleteText = L"Delete"; // Add the Delete button text
-    newItemData.deleteImageIndex = ImageList_AddIcon(_himl, _hDeleteIcon);
+
+
+    deleteIconIndex = ImageList_AddIcon(_himl, _hDeleteIcon);
+    enabledIconIndex = ImageList_AddIcon(_himl, _hEnabledIcon);
     replaceListData.push_back(newItemData);
 
     // Update the item count in the ListView
@@ -374,49 +376,49 @@ void MultiReplacePanel::createListViewColumns(HWND listView) {
     lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
     lvc.fmt = LVCFMT_LEFT;
 
-    // Spalte f�r "Find" Text
+    // Column for "Find" Text
     lvc.iSubItem = 0;
     lvc.pszText = L"Find";
     lvc.cx = 347; // Spaltenbreite
     ListView_InsertColumn(listView, 0, &lvc);
 
-    // Spalte f�r "Replace" Text
+    // Column for "Replace" Text
     lvc.iSubItem = 1;
     lvc.pszText = L"Replace";
     lvc.cx = 346; // Spaltenbreite
     ListView_InsertColumn(listView, 1, &lvc);
 
-    // Spalte für Optionen: Whole Word
+    // Column for Option: Whole Word
     lvc.iSubItem = 2;
     lvc.pszText = L"W";
     lvc.cx = 30; // Spaltenbreite
     ListView_InsertColumn(listView, 2, &lvc);
 
-    // Spalte für Optionen: Match Case
+    // Column for Option: Match Case
     lvc.iSubItem = 3;
     lvc.pszText = L"C";
     lvc.cx = 30; // Spaltenbreite
     ListView_InsertColumn(listView, 3, &lvc);
 
-    // Spalte für Optionen: Normal
+    // Column for Option: Normal
     lvc.iSubItem = 4;
     lvc.pszText = L"N";
     lvc.cx = 30; // Spaltenbreite
     ListView_InsertColumn(listView, 4, &lvc);
 
-    // Spalte für Optionen: Regex
+    // Column for Option: Regex
     lvc.iSubItem = 5;
     lvc.pszText = L"R";
     lvc.cx = 30; // Spaltenbreite
     ListView_InsertColumn(listView, 5, &lvc);
 
-    // Spalte für Optionen: Extended
+    // Column for Option: Extended
     lvc.iSubItem = 6;
     lvc.pszText = L"E";
     lvc.cx = 30; // Spaltenbreite
     ListView_InsertColumn(listView, 6, &lvc);
 
-    // Spalte für Delete Button
+    // Column for Delete Button
     lvc.iSubItem = 7;
     lvc.pszText = L"";
     lvc.cx = 20; // Spaltenbreite
@@ -433,6 +435,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     {
     case WM_INITDIALOG:
     {
+
         // Create the font
         hFont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, TEXT("MS Shell Dlg"));
 
@@ -449,24 +452,15 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         _himl = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK, 1, 1);
 
         // Load Delete Button
-        //_hDeleteBitmap = (HBITMAP)LoadImage(_hInst, MAKEINTRESOURCE(DELETE_ICON), IMAGE_BITMAP, 0, 0, LR_LOADMAP3DCOLORS );
-        //_hDeleteBitmap = LoadBitmap(_hInst, MAKEINTRESOURCE(DELETE_ICON));
         _hDeleteIcon = LoadIcon(_hInst, MAKEINTRESOURCE(DELETE_ICON));
 
-        if (!_hDeleteIcon)
-        {
-            DWORD error = GetLastError();
-            TCHAR buffer[256];
-            wsprintf(buffer, TEXT("Failed to load delete button image. Error code: %u"), error);
-            MessageBox(_hSelf, buffer, TEXT("Error"), MB_OK | MB_ICONERROR);
+        // Load Enabled Icon
+        _hEnabledIcon = LoadIcon(_hInst, MAKEINTRESOURCE(ENABLED_ICON));
 
-            // Zum Testen: Erstellen Sie ein einfaches Icon
-            _hDeleteIcon = CreateIcon(_hInst, 16, 16, 1, 1, NULL, NULL);
+        // Add the Set Icon to the ImageList
+        enabledIconIndex = ImageList_AddIcon(_himl, _hEnabledIcon);
 
-        }
-
-
-        // Assign the ImageList object to the ListView control
+        // Assign the IconList object to the ListView control
         ListView_SetImageList(_replaceListView, _himl, LVSIL_SMALL);
 
         // Create columns first
@@ -488,7 +482,9 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     case WM_DESTROY:
     {
         DestroyIcon(_hDeleteIcon);
+        DestroyIcon(_hEnabledIcon);
         ImageList_Destroy(_himl);
+        DestroyWindow(_hSelf);
     }
     break;
 
@@ -535,65 +531,85 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     {
         NMHDR* pnmh = (NMHDR*)lParam;
 
-        // Handle clicks on the Delete button
-        if (static_cast<UINT>(pnmh->idFrom) == static_cast<UINT>(IDC_REPLACE_LIST) && static_cast<UINT>(pnmh->code) == static_cast<UINT>(NM_CLICK)) {
-            NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
-            if (pnmia->iSubItem == 7) { // Delete button column
-                // Remove the item from the ListView
-                ListView_DeleteItem(_replaceListView, pnmia->iItem);
-
-                // Remove the item from the replaceListData vector
-                replaceListData.erase(replaceListData.begin() + pnmia->iItem);
-
-                // Update the item count in the ListView
-                ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-
-                InvalidateRect(_replaceListView, NULL, TRUE);
-            }
-        }
-
-        if (static_cast<UINT>(pnmh->idFrom) == static_cast<UINT>(IDC_REPLACE_LIST) && static_cast<UINT>(pnmh->code) == static_cast<UINT>(LVN_GETDISPINFO))
-
-        {
-
-            NMLVDISPINFO* plvdi = (NMLVDISPINFO*)lParam;
-
-            // Get the data from the vector
-            ReplaceItemData& itemData = replaceListData[plvdi->item.iItem];
-
-            // Display the data based on the subitem
-            switch (plvdi->item.iSubItem)
+        if (pnmh->idFrom == IDC_REPLACE_LIST) {
+            switch (pnmh->code) {
+            case NM_CLICK:
             {
-            case 0:
-                plvdi->item.pszText = const_cast<LPWSTR>(itemData.findText.c_str());
-                break;
-            case 1:
-                plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceText.c_str());
-                break;
-            case 2:
-                plvdi->item.pszText = itemData.wholeWord ? L"W" : L"";
-                break;
-            case 3:
-                plvdi->item.pszText = itemData.matchCase ? L"C" : L"";
-                break;
-            case 4:
-                plvdi->item.pszText = (!itemData.regexSearch && !itemData.extended) ? L"N" : L"";
-                break;
-            case 5:
-                plvdi->item.pszText = itemData.regexSearch ? L"R" : L"";
-                break;
-            case 6:
-                plvdi->item.pszText = itemData.extended ? L"E" : L"";
-                break;
-            case 7:
-                plvdi->item.mask |= LVIF_IMAGE;
-                plvdi->item.iImage = itemData.deleteImageIndex;
-                break;
+                NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
+                if (pnmia->iSubItem == 7) { // Delete button column
+                    // Remove the item from the ListView
+                    ListView_DeleteItem(_replaceListView, pnmia->iItem);
 
+                    // Remove the item from the replaceListData vector
+                    replaceListData.erase(replaceListData.begin() + pnmia->iItem);
+
+                    // Update the item count in the ListView
+                    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+
+                    InvalidateRect(_replaceListView, NULL, TRUE);
+                }
+            }
+            break;
+
+            case LVN_GETDISPINFO:
+            {
+                NMLVDISPINFO* plvdi = (NMLVDISPINFO*)lParam;
+
+                // Get the data from the vector
+                ReplaceItemData& itemData = replaceListData[plvdi->item.iItem];
+
+                // Display the data based on the subitem
+                switch (plvdi->item.iSubItem)
+                {
+                case 0:
+                    plvdi->item.pszText = const_cast<LPWSTR>(itemData.findText.c_str());
+                    break;
+                case 1:
+                    plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceText.c_str());
+                    break;
+                case 2:
+                    if (itemData.wholeWord) {
+                        plvdi->item.mask |= LVIF_IMAGE;
+                        plvdi->item.iImage = enabledIconIndex;
+                    }
+                    break;
+                case 3:
+                    if (itemData.matchCase) {
+                        plvdi->item.mask |= LVIF_IMAGE;
+                        plvdi->item.iImage = enabledIconIndex;
+                    }
+                    break;
+                case 4:
+                    if (!itemData.regexSearch && !itemData.extended) {
+                        plvdi->item.mask |= LVIF_IMAGE;
+                        plvdi->item.iImage = enabledIconIndex;
+                    }
+                    break;
+                case 5:
+                    if (itemData.regexSearch) {
+                        plvdi->item.mask |= LVIF_IMAGE;
+                        plvdi->item.iImage = enabledIconIndex;
+                    }
+                    break;
+                case 6:
+                    if (itemData.extended) {
+                        plvdi->item.mask |= LVIF_IMAGE;
+                        plvdi->item.iImage = enabledIconIndex;
+                    }
+                    break;
+                case 7:
+                    plvdi->item.mask |= LVIF_IMAGE;
+                    plvdi->item.iImage = deleteIconIndex;
+                    break;
+
+                }
+            }
+            break;
             }
         }
     }
     break;
+
 
 
     case WM_COMMAND:
@@ -648,7 +664,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             }
 
             // Perform the Find and Replace operation
-            ::findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
+            findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
 
             // Add the entered text to the combo box history
             addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
@@ -677,7 +693,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             }
 
             // Perform the Mark Matching Strings operation
-            ::markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
+            markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
 
             // Add the entered text to the combo box history
             addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
@@ -751,3 +767,4 @@ void MultiReplacePanel::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* 
     // Select the newly added string
     SendMessage(hComboBox, CB_SETCURSEL, 0, 0);
 }
+
