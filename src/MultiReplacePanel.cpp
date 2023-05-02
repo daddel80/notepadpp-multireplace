@@ -377,27 +377,51 @@ void MultiReplacePanel::createListViewColumns(HWND listView) {
     // Spalte f�r "Find" Text
     lvc.iSubItem = 0;
     lvc.pszText = L"Find";
-    lvc.cx = 100; // Spaltenbreite
+    lvc.cx = 347; // Spaltenbreite
     ListView_InsertColumn(listView, 0, &lvc);
 
     // Spalte f�r "Replace" Text
     lvc.iSubItem = 1;
     lvc.pszText = L"Replace";
-    lvc.cx = 100; // Spaltenbreite
+    lvc.cx = 346; // Spaltenbreite
     ListView_InsertColumn(listView, 1, &lvc);
 
-    // Spalte f�r Optionen
+    // Spalte für Optionen: Whole Word
     lvc.iSubItem = 2;
-    lvc.pszText = L"Options";
-    lvc.cx = 100; // Spaltenbreite
+    lvc.pszText = L"W";
+    lvc.cx = 30; // Spaltenbreite
     ListView_InsertColumn(listView, 2, &lvc);
 
-    // Spalte für Delete Button
+    // Spalte für Optionen: Match Case
     lvc.iSubItem = 3;
+    lvc.pszText = L"C";
+    lvc.cx = 30; // Spaltenbreite
+    ListView_InsertColumn(listView, 3, &lvc);
+
+    // Spalte für Optionen: Normal
+    lvc.iSubItem = 4;
+    lvc.pszText = L"N";
+    lvc.cx = 30; // Spaltenbreite
+    ListView_InsertColumn(listView, 4, &lvc);
+
+    // Spalte für Optionen: Regex
+    lvc.iSubItem = 5;
+    lvc.pszText = L"R";
+    lvc.cx = 30; // Spaltenbreite
+    ListView_InsertColumn(listView, 5, &lvc);
+
+    // Spalte für Optionen: Extended
+    lvc.iSubItem = 6;
+    lvc.pszText = L"E";
+    lvc.cx = 30; // Spaltenbreite
+    ListView_InsertColumn(listView, 6, &lvc);
+
+    // Spalte für Delete Button
+    lvc.iSubItem = 7;
     lvc.pszText = L"";
     lvc.cx = 20; // Spaltenbreite
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
-    ListView_InsertColumn(listView, 3, &lvc);
+    ListView_InsertColumn(listView, 7, &lvc);
 }
 
 
@@ -514,7 +538,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         // Handle clicks on the Delete button
         if (static_cast<UINT>(pnmh->idFrom) == static_cast<UINT>(IDC_REPLACE_LIST) && static_cast<UINT>(pnmh->code) == static_cast<UINT>(NM_CLICK)) {
             NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
-            if (pnmia->iSubItem == 3) { // Delete button column
+            if (pnmia->iSubItem == 7) { // Delete button column
                 // Remove the item from the ListView
                 ListView_DeleteItem(_replaceListView, pnmia->iItem);
 
@@ -543,22 +567,25 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             case 0:
                 plvdi->item.pszText = const_cast<LPWSTR>(itemData.findText.c_str());
                 break;
-
             case 1:
                 plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceText.c_str());
                 break;
-
             case 2:
-                _optionsText.clear();
-                if (itemData.wholeWord) _optionsText += L"W";
-                if (itemData.matchCase) _optionsText += L"C";
-                if (itemData.regexSearch) _optionsText += L"R";
-                else if (itemData.extended) _optionsText += L"E";
-                else _optionsText += L"N";
-
-                plvdi->item.pszText = const_cast<LPWSTR>(_optionsText.c_str());;
+                plvdi->item.pszText = itemData.wholeWord ? L"W" : L"";
                 break;
             case 3:
+                plvdi->item.pszText = itemData.matchCase ? L"C" : L"";
+                break;
+            case 4:
+                plvdi->item.pszText = (!itemData.regexSearch && !itemData.extended) ? L"N" : L"";
+                break;
+            case 5:
+                plvdi->item.pszText = itemData.regexSearch ? L"R" : L"";
+                break;
+            case 6:
+                plvdi->item.pszText = itemData.extended ? L"E" : L"";
+                break;
+            case 7:
                 plvdi->item.mask |= LVIF_IMAGE;
                 plvdi->item.iImage = itemData.deleteImageIndex;
                 break;
