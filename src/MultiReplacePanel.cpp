@@ -21,12 +21,15 @@
 #include <regex>
 #include <windows.h>
 #include <sstream>
-#include <commctrl.h>
+#include <Commctrl.h>
 #include <vector>
 
 
 
 extern NppData nppData;
+
+#define RESIZE_TIMER_ID 1
+
 
 #ifdef UNICODE
 #define generic_strtoul wcstoul
@@ -392,30 +395,35 @@ void MultiReplacePanel::createListViewColumns(HWND listView) {
     lvc.iSubItem = 2;
     lvc.pszText = L"W";
     lvc.cx = 30; // Spaltenbreite
+    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 2, &lvc);
 
     // Column for Option: Match Case
     lvc.iSubItem = 3;
     lvc.pszText = L"C";
     lvc.cx = 30; // Spaltenbreite
+    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 3, &lvc);
 
     // Column for Option: Normal
     lvc.iSubItem = 4;
     lvc.pszText = L"N";
     lvc.cx = 30; // Spaltenbreite
+    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 4, &lvc);
 
     // Column for Option: Regex
     lvc.iSubItem = 5;
     lvc.pszText = L"R";
     lvc.cx = 30; // Spaltenbreite
+    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 5, &lvc);
 
     // Column for Option: Extended
     lvc.iSubItem = 6;
     lvc.pszText = L"E";
     lvc.cx = 30; // Spaltenbreite
+    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 6, &lvc);
 
     // Column for Delete Button
@@ -472,12 +480,9 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         // Enable full row selection
         ListView_SetExtendedListViewStyle(_replaceListView, LVS_EX_FULLROWSELECT | LVS_EX_SUBITEMIMAGES);
 
-
         return TRUE;
     }
     break;
-
-    ;
 
     case WM_DESTROY:
     {
@@ -524,8 +529,23 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         MoveWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), buttonX, 215, 160, 60, TRUE);
         MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_IN_LIST_BUTTON), buttonX, 300, 160, 30, TRUE);
 
+        // Set a timer to delay column resizing
+        SetTimer(_hSelf, RESIZE_TIMER_ID, 100, NULL); // 100 ms delay
+
         return 0;
     }
+    break;
+
+    case WM_TIMER:
+    {
+        if (wParam == RESIZE_TIMER_ID) {
+            // Resize columns after timer expires
+            KillTimer(_hSelf, RESIZE_TIMER_ID);
+            updateColumnWidths(_replaceListView);
+        }
+        return 0;
+    }
+    break;
 
     case WM_NOTIFY:
     {
@@ -735,8 +755,30 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     default:
         return DockingDlgInterface::run_dlgProc(message, wParam, lParam);
     }
-
     return FALSE;
+}
+
+
+void MultiReplacePanel::updateColumnWidths(HWND listView)
+{
+    // Get the current ListView client area width
+    RECT listViewRect;
+    GetClientRect(listView, &listViewRect);
+    int listViewWidth = listViewRect.right - listViewRect.left;
+
+    // Calculate the total width of columns 3 to 7
+    int columns3to7Width = 0;
+    for (int i = 2; i < 8; i++)
+    {
+        columns3to7Width += ListView_GetColumnWidth(listView, i);
+    }
+
+    // Calculate the remaining width for the first two columns
+    int remainingWidth = listViewWidth - columns3to7Width;
+
+    // Set the width of the first two columns
+    ListView_SetColumnWidth(listView, 0, remainingWidth / 2);
+    ListView_SetColumnWidth(listView, 1, remainingWidth / 2);
 }
 
 
@@ -767,4 +809,3 @@ void MultiReplacePanel::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* 
     // Select the newly added string
     SendMessage(hComboBox, CB_SETCURSEL, 0, 0);
 }
-

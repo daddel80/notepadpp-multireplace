@@ -62,6 +62,7 @@ protected:
 private:
     static void addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems = 10);
 private:
+    static const int RESIZE_TIMER_ID = 1;
     HWND _replaceListView;
     HICON _hDeleteIcon;
     HICON _hEnabledIcon;
@@ -80,6 +81,7 @@ private:
     void onCopyToListButtonClick();
     void onReplaceAllInListButtonClick();
     void createListViewColumns(HWND listView);
+    void updateColumnWidths(HWND listView);
 };
 
 #endif // MULTI_REPLACE_PANEL_H
