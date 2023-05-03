@@ -52,6 +52,7 @@
 
 #define DELETE_ICON 1000
 #define ENABLED_ICON 1001
+#define COPYBACK_ICON 1002
 
 
 #endif // RESOURCE_H

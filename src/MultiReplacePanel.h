@@ -64,8 +64,10 @@ private:
 private:
     static const int RESIZE_TIMER_ID = 1;
     HWND _replaceListView;
+    HICON _hCopyBackIcon;
     HICON _hDeleteIcon;
     HICON _hEnabledIcon;
+    int copyBackIconIndex;
     int deleteIconIndex;
     int enabledIconIndex;
 

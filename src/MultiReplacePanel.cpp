@@ -328,24 +328,6 @@ void MultiReplacePanel::copyMarkedTextToClipboard()
     }
 }
 
-void MultiReplacePanel::insertReplaceListItem(const ReplaceItemData& itemData)
-{
-    _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
-
-    // Add the data to the vector
-    ReplaceItemData newItemData = itemData;
-
-
-    deleteIconIndex = ImageList_AddIcon(_himl, _hDeleteIcon);
-    enabledIconIndex = ImageList_AddIcon(_himl, _hEnabledIcon);
-    replaceListData.push_back(newItemData);
-
-    // Update the item count in the ListView
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-
-    InvalidateRect(_replaceListView, NULL, TRUE);
-}
-
 
 // handle the Copy button click
 void MultiReplacePanel::onCopyToListButtonClick() {
@@ -372,6 +354,25 @@ void MultiReplacePanel::onReplaceAllInListButtonClick() {
     // Add code to loop through the ListView items and perform Find and Replace operations using the stored options for each item
 
 }
+
+void MultiReplacePanel::insertReplaceListItem(const ReplaceItemData& itemData)
+{
+    _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+
+    // Add the data to the vector
+    ReplaceItemData newItemData = itemData;
+
+
+    deleteIconIndex = ImageList_AddIcon(_himl, _hDeleteIcon);
+    enabledIconIndex = ImageList_AddIcon(_himl, _hEnabledIcon);
+    replaceListData.push_back(newItemData);
+
+    // Update the item count in the ListView
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+
+    InvalidateRect(_replaceListView, NULL, TRUE);
+}
+
 
 void MultiReplacePanel::createListViewColumns(HWND listView) {
     LVCOLUMN lvc;
@@ -426,12 +427,19 @@ void MultiReplacePanel::createListViewColumns(HWND listView) {
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 6, &lvc);
 
-    // Column for Delete Button
+    // Column for Copy Back Button
     lvc.iSubItem = 7;
     lvc.pszText = L"";
     lvc.cx = 20; // Spaltenbreite
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
-    ListView_InsertColumn(listView, 7, &lvc);
+    ListView_InsertColumn(listView, 7, &lvc); 
+
+    // Column for Delete Button
+    lvc.iSubItem = 8;
+    lvc.pszText = L"";
+    lvc.cx = 20; // Spaltenbreite
+    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
+    ListView_InsertColumn(listView, 8, &lvc);
 }
 
 
@@ -465,6 +473,12 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         // Load Enabled Icon
         _hEnabledIcon = LoadIcon(_hInst, MAKEINTRESOURCE(ENABLED_ICON));
 
+        // Load Copy Back Icon
+        _hCopyBackIcon = LoadIcon(_hInst, MAKEINTRESOURCE(COPYBACK_ICON));
+
+        // Add the Copy Back Icon to the ImageList
+        copyBackIconIndex = ImageList_AddIcon(_himl, _hCopyBackIcon);
+
         // Add the Set Icon to the ImageList
         enabledIconIndex = ImageList_AddIcon(_himl, _hEnabledIcon);
 
@@ -488,6 +502,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     {
         DestroyIcon(_hDeleteIcon);
         DestroyIcon(_hEnabledIcon);
+        DestroyIcon(_hCopyBackIcon);
         ImageList_Destroy(_himl);
         DestroyWindow(_hSelf);
     }
@@ -556,7 +571,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             case NM_CLICK:
             {
                 NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
-                if (pnmia->iSubItem == 7) { // Delete button column
+                if (pnmia->iSubItem == 8) { // Delete button column
                     // Remove the item from the ListView
                     ListView_DeleteItem(_replaceListView, pnmia->iItem);
 
@@ -567,6 +582,18 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
                     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
                     InvalidateRect(_replaceListView, NULL, TRUE);
+                }
+                else if (pnmia->iSubItem == 7) { // Copy Back button column
+                    // Copy the data from the selected item back to the source interfaces
+                    ReplaceItemData& itemData = replaceListData[pnmia->iItem];
+                    // Update the controls directly
+                    SetWindowTextW(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText.c_str());
+                    SetWindowTextW(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText.c_str());
+                    SendMessageW(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), BM_SETCHECK, itemData.wholeWord ? BST_CHECKED : BST_UNCHECKED, 0);
+                    SendMessageW(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), BM_SETCHECK, itemData.matchCase ? BST_CHECKED : BST_UNCHECKED, 0);
+                    SendMessageW(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), BM_SETCHECK, (!itemData.regexSearch && !itemData.extended) ? BST_CHECKED : BST_UNCHECKED, 0);
+                    SendMessageW(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_SETCHECK, itemData.regexSearch ? BST_CHECKED : BST_UNCHECKED, 0);
+                    SendMessageW(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), BM_SETCHECK, itemData.extended ? BST_CHECKED : BST_UNCHECKED, 0);
                 }
             }
             break;
@@ -618,6 +645,10 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
                     }
                     break;
                 case 7:
+                    plvdi->item.mask |= LVIF_IMAGE;
+                    plvdi->item.iImage = copyBackIconIndex;
+                    break;
+                case 8:
                     plvdi->item.mask |= LVIF_IMAGE;
                     plvdi->item.iImage = deleteIconIndex;
                     break;
@@ -766,9 +797,9 @@ void MultiReplacePanel::updateColumnWidths(HWND listView)
     GetClientRect(listView, &listViewRect);
     int listViewWidth = listViewRect.right - listViewRect.left;
 
-    // Calculate the total width of columns 3 to 7
+    // Calculate the total width of columns 3 to 8
     int columns3to7Width = 0;
-    for (int i = 2; i < 8; i++)
+    for (int i = 2; i < 9; i++)
     {
         columns3to7Width += ListView_GetColumnWidth(listView, i);
     }
