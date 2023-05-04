@@ -167,12 +167,6 @@ int MultiReplacePanel::convertExtendedToString(const TCHAR* query, TCHAR* result
 
 void MultiReplacePanel::findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
-    int which = -1;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, (WPARAM)0, (LPARAM)&which);
-    if (which == -1)
-        return;
-    HWND curScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
-
     int searchFlags = 0;
     if (wholeWord)
         searchFlags |= SCFIND_WHOLEWORD;
@@ -208,16 +202,16 @@ void MultiReplacePanel::findAndReplace(const TCHAR* findText, const TCHAR* repla
 
     while (pos >= 0)
     {
-        ::SendMessage(curScintilla, SCI_SETTARGETSTART, pos, 0);
-        ::SendMessage(curScintilla, SCI_SETTARGETEND, ::SendMessage(curScintilla, SCI_GETLENGTH, 0, 0), 0);
-        ::SendMessage(curScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
-        pos = ::SendMessage(curScintilla, SCI_SEARCHINTARGET, findTextLength, reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
+        ::SendMessage(_curScintilla, SCI_SETTARGETSTART, pos, 0);
+        ::SendMessage(_curScintilla, SCI_SETTARGETEND, ::SendMessage(_curScintilla, SCI_GETLENGTH, 0, 0), 0);
+        ::SendMessage(_curScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
+        pos = ::SendMessage(_curScintilla, SCI_SEARCHINTARGET, findTextLength, reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
 
         if (pos >= 0)
         {
-            matchLen = ::SendMessage(curScintilla, SCI_GETTARGETEND, 0, 0) - pos;
-            ::SendMessage(curScintilla, SCI_SETSEL, pos, pos + matchLen);
-            ::SendMessage(curScintilla, SCI_REPLACESEL, 0, (LPARAM)replaceTextUtf8.c_str());
+            matchLen = ::SendMessage(_curScintilla, SCI_GETTARGETEND, 0, 0) - pos;
+            ::SendMessage(_curScintilla, SCI_SETSEL, pos, pos + matchLen);
+            ::SendMessage(_curScintilla, SCI_REPLACESEL, 0, (LPARAM)replaceTextUtf8.c_str());
             //pos = ::SendMessage(curScintilla, SCI_POSITIONAFTER, pos + matchLen, 0);
             pos += replaceTextLength;
         }
@@ -227,11 +221,6 @@ void MultiReplacePanel::findAndReplace(const TCHAR* findText, const TCHAR* repla
 
 void MultiReplacePanel::markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
-    int which = -1;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
-    if (which == -1)
-        return;
-    HWND curScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
 
     int searchFlags = 0;
     if (wholeWord)
@@ -256,23 +245,23 @@ void MultiReplacePanel::markMatchingStrings(const TCHAR* findText, bool wholeWor
 
     LRESULT pos = 0;
     LRESULT matchLen = 0;
-    ::SendMessage(curScintilla, SCI_SETINDICATORCURRENT, 0, 0);
-    ::SendMessage(curScintilla, SCI_INDICSETSTYLE, 0, INDIC_STRAIGHTBOX);
-    ::SendMessage(curScintilla, SCI_INDICSETFORE, 0, 0x007F00);
-    ::SendMessage(curScintilla, SCI_INDICSETALPHA, 0, 100);
+    ::SendMessage(_curScintilla, SCI_SETINDICATORCURRENT, 0, 0);
+    ::SendMessage(_curScintilla, SCI_INDICSETSTYLE, 0, INDIC_STRAIGHTBOX);
+    ::SendMessage(_curScintilla, SCI_INDICSETFORE, 0, 0x007F00);
+    ::SendMessage(_curScintilla, SCI_INDICSETALPHA, 0, 100);
 
     while (pos >= 0)
     {
-        ::SendMessage(curScintilla, SCI_SETTARGETSTART, pos, 0);
-        ::SendMessage(curScintilla, SCI_SETTARGETEND, ::SendMessage(curScintilla, SCI_GETLENGTH, 0, 0), 0);
-        ::SendMessage(curScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
+        ::SendMessage(_curScintilla, SCI_SETTARGETSTART, pos, 0);
+        ::SendMessage(_curScintilla, SCI_SETTARGETEND, ::SendMessage(_curScintilla, SCI_GETLENGTH, 0, 0), 0);
+        ::SendMessage(_curScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
 
-        pos = ::SendMessage(curScintilla, SCI_SEARCHINTARGET, findTextLength, reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
+        pos = ::SendMessage(_curScintilla, SCI_SEARCHINTARGET, findTextLength, reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
         if (pos >= 0)
         {
-            matchLen = ::SendMessage(curScintilla, SCI_GETTARGETEND, 0, 0) - pos;
-            ::SendMessage(curScintilla, SCI_SETINDICATORVALUE, 1, 0);
-            ::SendMessage(curScintilla, SCI_INDICATORFILLRANGE, pos, matchLen);
+            matchLen = ::SendMessage(_curScintilla, SCI_GETTARGETEND, 0, 0) - pos;
+            ::SendMessage(_curScintilla, SCI_SETINDICATORVALUE, 1, 0);
+            ::SendMessage(_curScintilla, SCI_INDICATORFILLRANGE, pos, matchLen);
             pos += findTextLength;
         }
     }
@@ -281,32 +270,22 @@ void MultiReplacePanel::markMatchingStrings(const TCHAR* findText, bool wholeWor
 
 void MultiReplacePanel::clearAllMarks()
 {
-    int which = -1;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
-    if (which == -1)
-        return;
-    HWND curScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
-    ::SendMessage(curScintilla, SCI_SETINDICATORCURRENT, 0, 0);
-    ::SendMessage(curScintilla, SCI_INDICATORCLEARRANGE, 0, ::SendMessage(curScintilla, SCI_GETLENGTH, 0, 0));
+    ::SendMessage(_curScintilla, SCI_SETINDICATORCURRENT, 0, 0);
+    ::SendMessage(_curScintilla, SCI_INDICATORCLEARRANGE, 0, ::SendMessage(_curScintilla, SCI_GETLENGTH, 0, 0));
 }
 
 void MultiReplacePanel::copyMarkedTextToClipboard()
 {
-    int which = -1;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
-    if (which == -1)
-        return;
-    HWND curScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
 
-    LRESULT length = ::SendMessage(curScintilla, SCI_GETLENGTH, 0, 0);
+    LRESULT length = ::SendMessage(_curScintilla, SCI_GETLENGTH, 0, 0);
     std::string markedText;
 
-    ::SendMessage(curScintilla, SCI_SETINDICATORCURRENT, 0, 0);
+    ::SendMessage(_curScintilla, SCI_SETINDICATORCURRENT, 0, 0);
     for (int i = 0; i < length; ++i)
     {
-        if (::SendMessage(curScintilla, SCI_INDICATORVALUEAT, 0, i))
+        if (::SendMessage(_curScintilla, SCI_INDICATORVALUEAT, 0, i))
         {
-            char ch = static_cast<char>(::SendMessage(curScintilla, SCI_GETCHARAT, i, 0));
+            char ch = static_cast<char>(::SendMessage(_curScintilla, SCI_GETCHARAT, i, 0));
             markedText += ch;
         }
     }
@@ -453,13 +432,20 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     {
 
         // Create the font
-        hFont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, TEXT("MS Shell Dlg"));
+        hFont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("MS Shell Dlg"));
 
         CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_NORMAL_RADIO);
 
         // Set the font for the controls
         SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), WM_SETFONT, (WPARAM)hFont, TRUE);
+
+        // Initialize curScintilla
+        int which = -1;
+        ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
+        if (which != -1) {
+            _curScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+        }
 
         // Check if the ListView is created correctly
         _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
@@ -714,8 +700,12 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
                 extended = true;
             }
 
-            // Perform the Find and Replace operation
-            findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
+            // Perform the Find and Replace operation if Find field has a value
+            if (findText[0] != '\0') {
+                ::SendMessage(_curScintilla, SCI_BEGINUNDOACTION, 0, 0);
+                findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
+                ::SendMessage(_curScintilla, SCI_ENDUNDOACTION, 0, 0);
+            }
 
             // Add the entered text to the combo box history
             addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
@@ -743,8 +733,10 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
                 extended = true;
             }
 
-            // Perform the Mark Matching Strings operation
-            markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
+            // Perform the Mark Matching Strings operation if Find field has a value
+            if (findText[0] != '\0') {
+                markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
+            }
 
             // Add the entered text to the combo box history
             addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);

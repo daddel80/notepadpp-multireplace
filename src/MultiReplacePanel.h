@@ -63,6 +63,7 @@ private:
     static void addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems = 10);
 private:
     static const int RESIZE_TIMER_ID = 1;
+    HWND _curScintilla;
     HWND _replaceListView;
     HICON _hCopyBackIcon;
     HICON _hDeleteIcon;
