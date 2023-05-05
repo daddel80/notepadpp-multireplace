@@ -39,6 +39,14 @@ class MultiReplacePanel : public DockingDlgInterface
 {
 public:
     MultiReplacePanel() :
+        _curScintilla(0),
+        _hClearMarksButton(nullptr),
+        _hCopyBackIcon(nullptr),
+        _hCopyMarkedTextButton(nullptr),
+        _hInListCheckbox(nullptr),
+        _hMarkMatchesButton(nullptr),
+        _hReplaceAllButton(nullptr),
+        copyBackIconIndex(0),
         DockingDlgInterface(IDD_REPLACE_DIALOG),
         _replaceListView(NULL),
         _hDeleteIcon(NULL),
@@ -65,6 +73,13 @@ private:
     static const int RESIZE_TIMER_ID = 1;
     HWND _curScintilla;
     HWND _replaceListView;
+
+    HWND _hInListCheckbox;
+    HWND _hReplaceAllButton;
+    HWND _hMarkMatchesButton;
+    HWND _hClearMarksButton;
+    HWND _hCopyMarkedTextButton;
+
     HICON _hCopyBackIcon;
     HICON _hDeleteIcon;
     HICON _hEnabledIcon;

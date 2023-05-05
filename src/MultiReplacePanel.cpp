@@ -297,12 +297,16 @@ void MultiReplacePanel::copyMarkedTextToClipboard()
         HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, outputLength + 1);
         if (hMem)
         {
-            memcpy(GlobalLock(hMem), output, outputLength + 1);
-            GlobalUnlock(hMem);
-            OpenClipboard(0);
-            EmptyClipboard();
-            SetClipboardData(CF_TEXT, hMem);
-            CloseClipboard();
+            LPVOID lockedMem = GlobalLock(hMem);
+            if (lockedMem) 
+            {
+                memcpy(lockedMem, output, outputLength + 1);
+                GlobalUnlock(hMem);
+                OpenClipboard(0);
+                EmptyClipboard();
+                SetClipboardData(CF_TEXT, hMem);
+                CloseClipboard();
+            }
         }
     }
 }
@@ -439,6 +443,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         // Set the font for the controls
         SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), WM_SETFONT, (WPARAM)hFont, TRUE);
+        SendMessage(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), WM_SETFONT, (WPARAM)hFont, TRUE);
 
         // Initialize curScintilla
         int which = -1;
@@ -446,6 +451,37 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         if (which != -1) {
             _curScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
         }
+
+        //Create Buttons and "In List" Checkbox
+        HWND hGroupBox = GetDlgItem(_hSelf, IDC_STATIC_FRAME);
+
+        /*_hInListCheckbox = CreateWindowEx(0, L"BUTTON", L"In List",
+            WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+            20, 60, 100, 20,
+            hGroupBox, (HMENU)IDC_IN_LIST_CHECKBOX, _hInst, NULL);*/
+
+
+        _hReplaceAllButton = CreateWindowEx(0, L"BUTTON", L"Replace All",
+            WS_CHILD | WS_VISIBLE,
+            140, 14, 160, 30,
+            hGroupBox, (HMENU)IDC_REPLACE_ALL_BUTTON, _hInst, NULL);
+
+        _hMarkMatchesButton = CreateWindowEx(0, L"BUTTON", L"Mark Matches",
+            WS_CHILD | WS_VISIBLE,
+            140, 54, 160, 30,
+            hGroupBox, (HMENU)IDC_MARK_MATCHES_BUTTON, _hInst, NULL);
+
+        _hClearMarksButton = CreateWindowEx(0, L"BUTTON", L"Clear Marks",
+            WS_CHILD | WS_VISIBLE,
+            140, 94, 160, 30,
+            hGroupBox, (HMENU)IDC_CLEAR_MARKS_BUTTON, _hInst, NULL);
+
+        _hCopyMarkedTextButton = CreateWindowEx(0, L"BUTTON", L"Copy Marked Text",
+            WS_CHILD | WS_VISIBLE,
+            140, 134, 160, 30,
+            hGroupBox, (HMENU)IDC_COPY_MARKED_TEXT_BUTTON, _hInst, NULL);
+        
+
 
         // Check if the ListView is created correctly
         _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
@@ -483,6 +519,18 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         return TRUE;
     }
     break;
+    case WM_GETMINMAXINFO:
+    {
+        MessageBox(_hSelf, TEXT("WM_GETMINMAXINFO received"), TEXT("Debug"), MB_OK);
+
+        MINMAXINFO* minMaxInfo = (MINMAXINFO*)lParam;
+        minMaxInfo->ptMinTrackSize.x = 400; // Minimum width
+        minMaxInfo->ptMinTrackSize.y = 300; // Minimum height
+        minMaxInfo->ptMaxTrackSize.x = 800; // Maximum width
+        minMaxInfo->ptMaxTrackSize.y = 600; // Maximum height
+        return 0;
+    }
+
 
     case WM_DESTROY:
     {
@@ -494,41 +542,43 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     }
     break;
 
-    case WM_GETMINMAXINFO:
-    {
-        MessageBox(_hSelf, TEXT("WM_GETMINMAXINFO erhalten"), TEXT("Debug"), MB_OK);
-
-        MINMAXINFO* minMaxInfo = (MINMAXINFO*)lParam;
-        minMaxInfo->ptMinTrackSize.x = 400; // Minimum width
-        minMaxInfo->ptMinTrackSize.y = 300; // Minimum height
-        minMaxInfo->ptMaxTrackSize.x = 800; // Maximum width
-        minMaxInfo->ptMaxTrackSize.y = 600; // Maximum height
-        return 0;
-    }
-    break;
 
     case WM_SIZE:
     {
         int newWidth = LOWORD(lParam);
         int newHeight = HIWORD(lParam);
 
+
+
         // Move and resize Find and Replace text boxes
         MoveWindow(GetDlgItem(_hSelf, IDC_FIND_EDIT), 120, 14, newWidth - 360, 200, TRUE);
         MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), 120, 58, newWidth - 360, 200, TRUE);
 
         // Move and resize the List
-        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 250, newWidth - 255, newHeight - 270, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 270, newWidth - 255, newHeight - 300, TRUE);
 
         // Move buttons
         int buttonGap = 40;
         int buttonX = newWidth - buttonGap - 160;
 
-        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), buttonX, 14, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), buttonX, 80, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), buttonX, 120, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), buttonX, 160, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), buttonX, 215, 160, 60, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_IN_LIST_BUTTON), buttonX, 300, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), buttonX, 14, 160, 60, TRUE);
+        /*MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), buttonX, 100, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), buttonX, 140, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), buttonX, 180, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), buttonX, 220, 160, 30, TRUE);*/
+
+        // Move "In List" checkbox
+        int checkboxX = buttonX - 20 - 100; // 20 is the desired gap between the buttons and the checkbox, and 50 is the width of the checkbox
+        int checkboxY = 163;
+        MoveWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), checkboxX, checkboxY, 100, 20, TRUE);
+
+        // Move the frame around the "In List" checkbox
+        int frameX = checkboxX - 20;
+        int frameY = checkboxY - 75;
+        int frameWidth = 310;
+        int frameHeight = 170;
+        HWND hFrameOnly = GetDlgItem(_hSelf, IDC_STATIC_FRAME);
+        MoveWindow(hFrameOnly, frameX, frameY, frameWidth, frameHeight, TRUE);
 
         // Set a timer to delay column resizing
         SetTimer(_hSelf, RESIZE_TIMER_ID, 100, NULL); // 100 ms delay
@@ -536,6 +586,8 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         return 0;
     }
     break;
+
+
 
     case WM_TIMER:
     {
@@ -680,36 +732,58 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
 
         case IDC_REPLACE_ALL_BUTTON:
         {
-            TCHAR findText[256];
-            TCHAR replaceText[256];
-            GetDlgItemText(_hSelf, IDC_FIND_EDIT, findText, 256);
-            GetDlgItemText(_hSelf, IDC_REPLACE_EDIT, replaceText, 256);
-            bool regexSearch = false;
-            bool extended = false;
 
-            // Get the state of the Whole word checkbox
-            bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+            // Check if the "In List" option is enabled
+            bool inListEnabled = (IsDlgButtonChecked(_hSelf, IDC_IN_LIST_CHECKBOX) == BST_CHECKED);
 
-            // Get the state of the Match case checkbox
-            bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-
-            if (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED) {
-                regexSearch = true;
+            if (inListEnabled)
+            {
+                // Iterate through the list of items
+                for (size_t i = 0; i < replaceListData.size(); i++)
+                {
+                    ReplaceItemData& itemData = replaceListData[i];
+                    ::SendMessage(_curScintilla, SCI_BEGINUNDOACTION, 0, 0);
+                    findAndReplace(
+                        itemData.findText.c_str(), itemData.replaceText.c_str(),
+                        itemData.wholeWord, itemData.matchCase,
+                        itemData.regexSearch, itemData.extended
+                    );
+                    ::SendMessage(_curScintilla, SCI_ENDUNDOACTION, 0, 0);
+                }
             }
-            else if (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED) {
-                extended = true;
-            }
+            else
+            {
+                TCHAR findText[256];
+                TCHAR replaceText[256];
+                GetDlgItemText(_hSelf, IDC_FIND_EDIT, findText, 256);
+                GetDlgItemText(_hSelf, IDC_REPLACE_EDIT, replaceText, 256);
+                bool regexSearch = false;
+                bool extended = false;
 
-            // Perform the Find and Replace operation if Find field has a value
-            if (findText[0] != '\0') {
-                ::SendMessage(_curScintilla, SCI_BEGINUNDOACTION, 0, 0);
-                findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
-                ::SendMessage(_curScintilla, SCI_ENDUNDOACTION, 0, 0);
-            }
+                // Get the state of the Whole word checkbox
+                bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
 
-            // Add the entered text to the combo box history
-            addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
-            addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceText);
+                // Get the state of the Match case checkbox
+                bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+
+                if (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED) {
+                    regexSearch = true;
+                }
+                else if (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED) {
+                    extended = true;
+                }
+
+                // Perform the Find and Replace operation if Find field has a value
+                if (findText[0] != '\0') {
+                    ::SendMessage(_curScintilla, SCI_BEGINUNDOACTION, 0, 0);
+                    findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
+                    ::SendMessage(_curScintilla, SCI_ENDUNDOACTION, 0, 0);
+                }
+
+                // Add the entered text to the combo box history
+                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceText);
+            }
         }
         break;
 
@@ -759,12 +833,6 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         {
             onCopyToListButtonClick();
 
-        }
-        break;
-
-        case IDC_REPLACE_ALL_IN_LIST_BUTTON:
-        {
-            onReplaceAllInListButtonClick();
         }
         break;
 
@@ -832,3 +900,4 @@ void MultiReplacePanel::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* 
     // Select the newly added string
     SendMessage(hComboBox, CB_SETCURSEL, 0, 0);
 }
+
