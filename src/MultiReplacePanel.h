@@ -97,9 +97,13 @@ private:
     void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
     void insertReplaceListItem(const ReplaceItemData& itemData);
     void onCopyToListButtonClick();
-    void onReplaceAllInListButtonClick();
     void createListViewColumns(HWND listView);
     void updateColumnWidths(HWND listView);
+    void updateUIVisibility();
+    std::wstring openSaveFileDialog();
+    std::wstring openOpenFileDialog();
+    void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
+    void loadListFromCsv(const std::wstring& filePath, std::vector<ReplaceItemData>& list, HWND listViewHandle);
 };
 
 #endif // MULTI_REPLACE_PANEL_H

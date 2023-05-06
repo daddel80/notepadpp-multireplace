@@ -23,6 +23,8 @@
 #include <sstream>
 #include <Commctrl.h>
 #include <vector>
+#include <fstream>
+#include <iostream>
 
 
 
@@ -332,28 +334,18 @@ void MultiReplacePanel::onCopyToListButtonClick() {
 }
 
 
-// handle the Replace all in List button click
-void MultiReplacePanel::onReplaceAllInListButtonClick() {
-    // Add code to loop through the ListView items and perform Find and Replace operations using the stored options for each item
-
-}
-
 void MultiReplacePanel::insertReplaceListItem(const ReplaceItemData& itemData)
 {
     _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
 
     // Add the data to the vector
     ReplaceItemData newItemData = itemData;
-
-
-    deleteIconIndex = ImageList_AddIcon(_himl, _hDeleteIcon);
-    enabledIconIndex = ImageList_AddIcon(_himl, _hEnabledIcon);
     replaceListData.push_back(newItemData);
 
     // Update the item count in the ListView
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
-    InvalidateRect(_replaceListView, NULL, TRUE);
+    //InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
 
@@ -434,7 +426,6 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     {
     case WM_INITDIALOG:
     {
-
         // Create the font
         hFont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("MS Shell Dlg"));
 
@@ -453,12 +444,12 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         }
 
         //Create Buttons and "In List" Checkbox
-        HWND hGroupBox = GetDlgItem(_hSelf, IDC_STATIC_FRAME);
+        /*HWND hGroupBox = GetDlgItem(_hSelf, IDC_STATIC_FRAME);
 
-        /*_hInListCheckbox = CreateWindowEx(0, L"BUTTON", L"In List",
+        _hInListCheckbox = CreateWindowEx(0, L"BUTTON", L"In List",
             WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             20, 60, 100, 20,
-            hGroupBox, (HMENU)IDC_IN_LIST_CHECKBOX, _hInst, NULL);*/
+            hGroupBox, (HMENU)IDC_IN_LIST_CHECKBOX, _hInst, NULL);
 
 
         _hReplaceAllButton = CreateWindowEx(0, L"BUTTON", L"Replace All",
@@ -479,9 +470,8 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         _hCopyMarkedTextButton = CreateWindowEx(0, L"BUTTON", L"Copy Marked Text",
             WS_CHILD | WS_VISIBLE,
             140, 134, 160, 30,
-            hGroupBox, (HMENU)IDC_COPY_MARKED_TEXT_BUTTON, _hInst, NULL);
+            hGroupBox, (HMENU)IDC_COPY_MARKED_TEXT_BUTTON, _hInst, NULL);*/
         
-
 
         // Check if the ListView is created correctly
         _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
@@ -504,6 +494,9 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         // Add the Set Icon to the ImageList
         enabledIconIndex = ImageList_AddIcon(_himl, _hEnabledIcon);
 
+        // Add the Delete Icon to the ImageList
+        deleteIconIndex = ImageList_AddIcon(_himl, _hDeleteIcon);
+
         // Assign the IconList object to the ListView control
         ListView_SetImageList(_replaceListView, _himl, LVSIL_SMALL);
 
@@ -519,18 +512,6 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         return TRUE;
     }
     break;
-    case WM_GETMINMAXINFO:
-    {
-        MessageBox(_hSelf, TEXT("WM_GETMINMAXINFO received"), TEXT("Debug"), MB_OK);
-
-        MINMAXINFO* minMaxInfo = (MINMAXINFO*)lParam;
-        minMaxInfo->ptMinTrackSize.x = 400; // Minimum width
-        minMaxInfo->ptMinTrackSize.y = 300; // Minimum height
-        minMaxInfo->ptMaxTrackSize.x = 800; // Maximum width
-        minMaxInfo->ptMaxTrackSize.y = 600; // Maximum height
-        return 0;
-    }
-
 
     case WM_DESTROY:
     {
@@ -548,7 +529,9 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         int newWidth = LOWORD(lParam);
         int newHeight = HIWORD(lParam);
 
-
+        // Show Hint Massage or not releted to the Window Size
+        updateUIVisibility();
+        //ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_HIDE);
 
         // Move and resize Find and Replace text boxes
         MoveWindow(GetDlgItem(_hSelf, IDC_FIND_EDIT), 120, 14, newWidth - 360, 200, TRUE);
@@ -562,32 +545,36 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         int buttonX = newWidth - buttonGap - 160;
 
         MoveWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), buttonX, 14, 160, 60, TRUE);
-        /*MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), buttonX, 100, 160, 30, TRUE);
+        
+        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), buttonX, 100, 160, 30, TRUE);
         MoveWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), buttonX, 140, 160, 30, TRUE);
         MoveWindow(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), buttonX, 180, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), buttonX, 220, 160, 30, TRUE);*/
+        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), buttonX, 220, 160, 30, TRUE);
+
+        MoveWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), buttonX, 280, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), buttonX, 320, 160, 30, TRUE);
 
         // Move "In List" checkbox
         int checkboxX = buttonX - 20 - 100; // 20 is the desired gap between the buttons and the checkbox, and 50 is the width of the checkbox
         int checkboxY = 163;
-        MoveWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), checkboxX, checkboxY, 100, 20, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), checkboxX, checkboxY, 70, 20, TRUE);
 
         // Move the frame around the "In List" checkbox
-        int frameX = checkboxX - 20;
+        /*int frameX = checkboxX - 20;
         int frameY = checkboxY - 75;
         int frameWidth = 310;
         int frameHeight = 170;
         HWND hFrameOnly = GetDlgItem(_hSelf, IDC_STATIC_FRAME);
-        MoveWindow(hFrameOnly, frameX, frameY, frameWidth, frameHeight, TRUE);
+        MoveWindow(hFrameOnly, frameX, frameY, frameWidth, frameHeight, TRUE);*/
 
         // Set a timer to delay column resizing
         SetTimer(_hSelf, RESIZE_TIMER_ID, 100, NULL); // 100 ms delay
 
+        
+
         return 0;
     }
     break;
-
-
 
     case WM_TIMER:
     {
@@ -595,6 +582,9 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             // Resize columns after timer expires
             KillTimer(_hSelf, RESIZE_TIMER_ID);
             updateColumnWidths(_replaceListView);
+
+            // Show or hide elements based on the window size
+            updateUIVisibility();
         }
         return 0;
     }
@@ -635,6 +625,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
                 }
             }
             break;
+
 
             case LVN_GETDISPINFO:
             {
@@ -696,6 +687,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             break;
             }
         }
+        
     }
     break;
 
@@ -703,6 +695,9 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
 
     case WM_COMMAND:
     {
+
+     
+
         switch (wParam)
         {
         case IDC_REGEX_RADIO:
@@ -789,33 +784,58 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
 
         case IDC_MARK_MATCHES_BUTTON:
         {
-            TCHAR findText[256];
-            GetDlgItemText(_hSelf, IDC_FIND_EDIT, findText, 256);
-            bool regexSearch = false;
-            bool extended = false;
+            // Check if the "In List" option is enabled
+            bool inListEnabled = (IsDlgButtonChecked(_hSelf, IDC_IN_LIST_CHECKBOX) == BST_CHECKED);
 
-            // Get the state of the Whole word checkbox
-            bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+            if (inListEnabled)
+            {
+                // Iterate through the list of items
+                for (size_t i = 0; i < replaceListData.size(); i++)
+                {
+                    ReplaceItemData& itemData = replaceListData[i];
+                    bool regexSearch = itemData.regexSearch;
+                    bool extended = itemData.extended;
 
-            // Get the state of the Match case checkbox
-            bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-
-            if (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED) {
-                regexSearch = true;
+                    // Perform the Mark Matching Strings operation if Find field has a value
+                    if (!itemData.findText.empty()) {
+                        markMatchingStrings(
+                            itemData.findText.c_str(), itemData.wholeWord,
+                            itemData.matchCase, regexSearch, extended
+                        );
+                    }
+                }
             }
-            else if (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED) {
-                extended = true;
-            }
+            else
+            {
+                TCHAR findText[256];
+                GetDlgItemText(_hSelf, IDC_FIND_EDIT, findText, 256);
+                bool regexSearch = false;
+                bool extended = false;
 
-            // Perform the Mark Matching Strings operation if Find field has a value
-            if (findText[0] != '\0') {
-                markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
-            }
+                // Get the state of the Whole word checkbox
+                bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
 
-            // Add the entered text to the combo box history
-            addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+                // Get the state of the Match case checkbox
+                bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+
+                if (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED) {
+                    regexSearch = true;
+                }
+                else if (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED) {
+                    extended = true;
+                }
+
+                // Perform the Mark Matching Strings operation if Find field has a value
+                if (findText[0] != '\0') {
+                    markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
+                }
+
+                // Add the entered text to the combo box history
+                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+            }
         }
         break;
+
 
         case IDC_CLEAR_MARKS_BUTTON:
         {
@@ -833,6 +853,29 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         {
             onCopyToListButtonClick();
 
+        }
+        break;
+
+        case IDC_SAVE_TO_CSV_BUTTON:
+        {
+            std::wstring filePath = openSaveFileDialog();
+            if (!filePath.empty()) {
+                saveListToCsv(filePath, replaceListData);
+            }
+        }
+        break;
+
+        case IDC_LOAD_FROM_CSV_BUTTON:
+        {
+            // Code zum Laden der Liste aus einer CSV-Datei
+            std::wstring filePath = openOpenFileDialog();
+            if (!filePath.empty()) {
+
+                HWND hListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+                loadListFromCsv(filePath, replaceListData, hListView);
+
+
+            }
         }
         break;
 
@@ -872,8 +915,6 @@ void MultiReplacePanel::updateColumnWidths(HWND listView)
     ListView_SetColumnWidth(listView, 1, remainingWidth / 2);
 }
 
-
-
 void MultiReplacePanel::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems)
 {
     // Check if the string is already in the combo box
@@ -900,4 +941,200 @@ void MultiReplacePanel::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* 
     // Select the newly added string
     SendMessage(hComboBox, CB_SETCURSEL, 0, 0);
 }
+
+
+void MultiReplacePanel::updateUIVisibility() {
+
+    // Get the current window size
+    RECT rect;
+    GetClientRect(_hSelf, &rect);
+    int currentWidth = rect.right - rect.left;
+    int currentHeight = rect.bottom - rect.top;
+
+    // Set the minimum width and height
+    int minWidth = 800;
+    int minHeight = 350;
+
+    // Determine if the window is smaller than the minimum size
+    bool isSmallerThanMinSize = (currentWidth < minWidth) || (currentHeight < minHeight);
+
+    // Check if the elements are currently hidden
+
+    // Show or hide elements based on the window size
+    if (isSmallerThanMinSize ) {
+        // Hide elements
+        ShowWindow(GetDlgItem(_hSelf, IDC_FIND_EDIT), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), SW_HIDE);
+        //ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_FRAME), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_SEARCH_MODE_GROUP), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_REGEX_RADIO), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_FIND), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_REPLACE), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_SHOW);
+
+    }
+    else if (!isSmallerThanMinSize ) {
+        // Show elements
+        ShowWindow(GetDlgItem(_hSelf, IDC_FIND_EDIT), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), SW_SHOW);
+        //ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_FRAME), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_SEARCH_MODE_GROUP), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_REGEX_RADIO), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_FIND), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_REPLACE), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_HIDE);
+            
+    }
+
+}
+
+// Function to save list to a CSV file
+void MultiReplacePanel::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
+    std::wofstream outFile(filePath);
+    outFile.imbue(std::locale(outFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
+
+    if (!outFile.is_open()) {
+        std::wcerr << L"Error: Unable to open file for writing." << std::endl;
+        return;
+    }
+
+    // Write CSV header
+    outFile << L"Find,Replace,WholeWord,RegexSearch,MatchCase,Extended" << std::endl;
+
+    // Write list items to CSV file
+    for (const ReplaceItemData& item : list) {
+        outFile << item.findText << L"," << item.replaceText << L"," << item.wholeWord << L"," << item.regexSearch << L"," << item.matchCase << L"," << item.extended << std::endl;
+    }
+
+    outFile.close();
+}
+
+
+std::wstring MultiReplacePanel::openSaveFileDialog() {
+    OPENFILENAME ofn = { 0 };
+    WCHAR szFile[MAX_PATH] = { 0 };
+
+    ofn.lStructSize = sizeof(OPENFILENAME);
+    ofn.hwndOwner = _hSelf;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = sizeof(szFile) / sizeof(WCHAR);
+    ofn.lpstrFilter = L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0";
+    ofn.nFilterIndex = 1;
+    ofn.lpstrTitle = L"Save List As";
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT;
+
+    if (GetSaveFileName(&ofn)) {
+        return std::wstring(szFile);
+    }
+    else {
+        return std::wstring();
+    }
+}
+
+std::wstring MultiReplacePanel::openOpenFileDialog() {
+    OPENFILENAME ofn = { 0 };
+    WCHAR szFile[MAX_PATH] = { 0 };
+
+    ofn.lStructSize = sizeof(OPENFILENAME);
+    ofn.hwndOwner = _hSelf;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = sizeof(szFile) / sizeof(WCHAR);
+    ofn.lpstrFilter = L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0";
+    ofn.nFilterIndex = 1;
+    ofn.lpstrTitle = L"Open List";
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+    if (GetOpenFileName(&ofn)) {
+        return std::wstring(szFile);
+    }
+    else {
+        return std::wstring();
+    }
+}
+
+
+
+// Function to load list from a CSV file
+void MultiReplacePanel::loadListFromCsv(const std::wstring& filePath, std::vector<ReplaceItemData>& list, HWND listViewHandle) {
+    std::wifstream inFile(filePath);
+    inFile.imbue(std::locale(inFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
+
+    if (!inFile.is_open()) {
+        std::wcerr << L"Error: Unable to open file for reading." << std::endl;
+        return;
+    }
+
+    list.clear(); // Clear the existing list
+
+    std::wstring line;
+    std::getline(inFile, line); // Skip the CSV header
+
+    // Read list items from CSV file
+    while (std::getline(inFile, line)) {
+        std::wstringstream lineStream(line);
+        std::wstring cell;
+        ReplaceItemData item;
+
+        // Read findText
+        std::getline(lineStream, cell, L',');
+        item.findText = cell;
+
+        // Read replaceText
+        std::getline(lineStream, cell, L',');
+        item.replaceText = cell;
+
+        // Read wholeWord
+        std::getline(lineStream, cell, L',');
+        item.wholeWord = std::stoi(cell) != 0;
+
+        // Read regexSearch
+        std::getline(lineStream, cell, L',');
+        item.regexSearch = std::stoi(cell) != 0;
+
+        // Read matchCase
+        std::getline(lineStream, cell, L',');
+        item.matchCase = std::stoi(cell) != 0;
+
+        // Read extended
+        std::getline(lineStream, cell, L',');
+        item.extended = std::stoi(cell) != 0;
+
+        list.push_back(item);
+
+    }
+
+    inFile.close();
+
+    // Update the list view control
+    ListView_SetItemCountEx(listViewHandle, list.size(), LVSICF_NOINVALIDATEALL);
+    //InvalidateRect(listViewHandle, NULL, TRUE);
+
+}
+
 
