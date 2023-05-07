@@ -546,12 +546,12 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
 
         // Move buttons
         MoveWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), buttonX, buttonYStart, 160, 60, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), buttonX, buttonYStart + 86, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), buttonX, buttonYStart + 86 + 40, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), buttonX, buttonYStart + 86 + 80, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), buttonX, buttonYStart + 86 + 120, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), buttonX, buttonYStart + 86 + 160 + 24, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), buttonX, buttonYStart + 86 + 200 + 24, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), buttonX, buttonYStart + 87, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), buttonX, buttonYStart + 87 + 40, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), buttonX, buttonYStart + 87 + 80, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), buttonX, buttonYStart + 87 + 120, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), buttonX, buttonYStart + 87 + 160 + 24, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), buttonX, buttonYStart + 87 + 200 + 24, 160, 30, TRUE);
 
         // Move "In List" checkbox
         int checkboxX = buttonX - 20 - 100; // 20 is the desired gap between the buttons and the checkbox, and 100 is the width of the checkbox
@@ -1077,17 +1077,11 @@ void MultiReplacePanel::loadListFromCsv(const std::wstring& filePath) {
         bool insideQuotes = false;
         std::wstring currentValue;
 
-        // Show the entire line in a message box
-        std::wstring lineContent = lineStream.str();
-        MessageBox(NULL, lineContent.c_str(), L"Read Line", MB_OK);
-
         for (const wchar_t& ch : lineStream.str()) {
             if (ch == L'"') {
                 insideQuotes = !insideQuotes;
             }
             if (ch == L',' && !insideQuotes) {
-                std::wstring message = L"Value: " + currentValue + L", Length: " + std::to_wstring(currentValue.size());
-                MessageBox(NULL, message.c_str(), L"Current Value", MB_OK);
                 columns.push_back(unescapeCsvValue(currentValue));
                 currentValue.clear();
             }
@@ -1116,8 +1110,6 @@ void MultiReplacePanel::loadListFromCsv(const std::wstring& filePath) {
         // Use insertReplaceListItem to insert the item to the list
         insertReplaceListItem(item);
 
-        // Show the entire read line in a message box
-        //MessageBox(NULL, line.c_str(), L"Read Line", MB_OK);
     }
 
     inFile.close();
@@ -1125,7 +1117,6 @@ void MultiReplacePanel::loadListFromCsv(const std::wstring& filePath) {
     // Update the list view control
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 }
-
 
 
 std::wstring MultiReplacePanel::escapeCsvValue(const std::wstring& value) {
@@ -1183,52 +1174,4 @@ std::wstring MultiReplacePanel::unescapeCsvValue(const std::wstring& value) {
 
     return unescapedValue;
 }
-
-
-
-
-void MultiReplacePanel::testUnescapeCsvValue()
-{
-    // Open the file to write the test results
-    std::wofstream testFile("C:\\tmp\\unescapeTestResults.txt");
-    testFile.imbue(std::locale(testFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
-
-    if (!testFile.is_open()) {
-        std::wcerr << L"Error: Unable to open file for writing." << std::endl;
-        return;
-    }
-
-    // Define a list of test strings
-    std::vector<std::wstring> testStrings = {
-        L"",
-        L"simple",
-        L"\"quoted\"",
-        L"\"simple\"\"quoted\"",
-        L"\"escaped \\\"quote\\\"\"",
-        L"\"complex\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"",
-        L"\\backslash\\",
-        L"\"quoted \\\"quote\\\"\"",
-        L"\"mixed \\\"quote\"\" and \\\\ backslash\""
-    };
-
-    // Write the test results to the file
-    for (const std::wstring& testString : testStrings) {
-        std::wstring escapedValue = escapeCsvValue(testString);
-        std::wstring unescapedValue = unescapeCsvValue(escapedValue);
-        testFile << L"Test String: " << testString << std::endl;
-        testFile << L"Escaped Value: " << escapedValue << std::endl;
-        testFile << L"Unescaped Value: " << unescapedValue << std::endl;
-        testFile << std::endl;
-    }
-
-    // Close the test file
-    testFile.close(); 
-
-    // Show a message box with the file path
-    std::wstring message = L"Test results were saved to:\nC:\\rogram Files\\Notepad++\\plugins\\NppPluginMultiReplace\\unescapeTestResults.txt";
-    MessageBox(NULL, message.c_str(), L"Test Results Saved", MB_OK);
-
-}
-
-
 

@@ -64,7 +64,7 @@ void commandMenuInit()
     //            ShortcutKey *shortcut,          // optional. Define a shortcut to trigger this command
     //            bool check0nInit                // optional. Make this menu item be checked visually
     //            );
-    setCommand(1, TEXT("Find and Replace"), multiReplacePanel, NULL, false);
+    setCommand(1, TEXT("Multi Replace && Mark"), multiReplacePanel, NULL, false);
 }
 
 //
