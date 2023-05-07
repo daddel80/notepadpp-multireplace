@@ -169,6 +169,11 @@ int MultiReplacePanel::convertExtendedToString(const TCHAR* query, TCHAR* result
 
 void MultiReplacePanel::findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
+    // Return early if the Find field is empty
+    if (findText[0] == '\0') {
+        return;
+    }
+
     int searchFlags = 0;
     if (wholeWord)
         searchFlags |= SCFIND_WHOLEWORD;
@@ -223,6 +228,10 @@ void MultiReplacePanel::findAndReplace(const TCHAR* findText, const TCHAR* repla
 
 void MultiReplacePanel::markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
+    // Return early if the Find field is empty
+    if (findText[0] == '\0') {
+        return;
+    }
 
     int searchFlags = 0;
     if (wholeWord)
@@ -336,6 +345,11 @@ void MultiReplacePanel::onCopyToListButtonClick() {
 
 void MultiReplacePanel::insertReplaceListItem(const ReplaceItemData& itemData)
 {
+    // Return early if findText is empty
+    if (itemData.findText.empty()) {
+        return;
+    }
+
     _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
 
     // Add the data to the vector
@@ -442,37 +456,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         if (which != -1) {
             _curScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
         }
-
-        //Create Buttons and "In List" Checkbox
-        /*HWND hGroupBox = GetDlgItem(_hSelf, IDC_STATIC_FRAME);
-
-        _hInListCheckbox = CreateWindowEx(0, L"BUTTON", L"In List",
-            WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-            20, 60, 100, 20,
-            hGroupBox, (HMENU)IDC_IN_LIST_CHECKBOX, _hInst, NULL);
-
-
-        _hReplaceAllButton = CreateWindowEx(0, L"BUTTON", L"Replace All",
-            WS_CHILD | WS_VISIBLE,
-            140, 14, 160, 30,
-            hGroupBox, (HMENU)IDC_REPLACE_ALL_BUTTON, _hInst, NULL);
-
-        _hMarkMatchesButton = CreateWindowEx(0, L"BUTTON", L"Mark Matches",
-            WS_CHILD | WS_VISIBLE,
-            140, 54, 160, 30,
-            hGroupBox, (HMENU)IDC_MARK_MATCHES_BUTTON, _hInst, NULL);
-
-        _hClearMarksButton = CreateWindowEx(0, L"BUTTON", L"Clear Marks",
-            WS_CHILD | WS_VISIBLE,
-            140, 94, 160, 30,
-            hGroupBox, (HMENU)IDC_CLEAR_MARKS_BUTTON, _hInst, NULL);
-
-        _hCopyMarkedTextButton = CreateWindowEx(0, L"BUTTON", L"Copy Marked Text",
-            WS_CHILD | WS_VISIBLE,
-            140, 134, 160, 30,
-            hGroupBox, (HMENU)IDC_COPY_MARKED_TEXT_BUTTON, _hInst, NULL);*/
         
-
         // Check if the ListView is created correctly
         _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
 
@@ -540,38 +524,45 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         // Move and resize the List
         MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 270, newWidth - 255, newHeight - 300, TRUE);
 
-        // Move buttons
-        int buttonGap = 40;
-        int buttonX = newWidth - buttonGap - 160;
-
-        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), buttonX, 14, 160, 60, TRUE);
-        
-        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), buttonX, 100, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), buttonX, 140, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), buttonX, 180, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), buttonX, 220, 160, 30, TRUE);
-
-        MoveWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), buttonX, 280, 160, 30, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), buttonX, 320, 160, 30, TRUE);
-
-        // Move "In List" checkbox
-        int checkboxX = buttonX - 20 - 100; // 20 is the desired gap between the buttons and the checkbox, and 50 is the width of the checkbox
-        int checkboxY = 163;
-        MoveWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), checkboxX, checkboxY, 70, 20, TRUE);
-
         // Move the frame around the "In List" checkbox
-        /*int frameX = checkboxX - 20;
-        int frameY = checkboxY - 75;
+        int frameX = newWidth - 30 - 310;
+        int frameY = 88;
         int frameWidth = 310;
         int frameHeight = 170;
-        HWND hFrameOnly = GetDlgItem(_hSelf, IDC_STATIC_FRAME);
-        MoveWindow(hFrameOnly, frameX, frameY, frameWidth, frameHeight, TRUE);*/
+
+        MoveWindow(GetDlgItem(_hSelf, IDC_STATIC_FRAME), frameX, frameY, frameWidth, frameHeight, TRUE);
+        
+        // Redraw the frame and buttons
+        InvalidateRect(GetDlgItem(_hSelf, IDC_STATIC_FRAME), NULL, TRUE);
+        InvalidateRect(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), NULL, TRUE);
+        InvalidateRect(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), NULL, TRUE);
+        InvalidateRect(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), NULL, TRUE);
+        InvalidateRect(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), NULL, TRUE);
+
+        // Calculate button and checkbox positions
+        int buttonGap = 40;
+        int buttonX = newWidth - buttonGap - 160;
+        int buttonYStart = 14;
+
+        // Move buttons
+        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), buttonX, buttonYStart, 160, 60, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), buttonX, buttonYStart + 86, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), buttonX, buttonYStart + 86 + 40, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), buttonX, buttonYStart + 86 + 80, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), buttonX, buttonYStart + 86 + 120, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), buttonX, buttonYStart + 86 + 160 + 24, 160, 30, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), buttonX, buttonYStart + 86 + 200 + 24, 160, 30, TRUE);
+
+        // Move "In List" checkbox
+        int checkboxX = buttonX - 20 - 100; // 20 is the desired gap between the buttons and the checkbox, and 100 is the width of the checkbox
+        int checkboxY = 163;
+        MoveWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), checkboxX, checkboxY, 70, 20, TRUE);
 
         // Set a timer to delay column resizing
         SetTimer(_hSelf, RESIZE_TIMER_ID, 100, NULL); // 100 ms delay
 
         
-
+        /*InvalidateRect(_hSelf, NULL, TRUE); */
         return 0;
     }
     break;
@@ -692,11 +683,8 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     break;
 
 
-
     case WM_COMMAND:
     {
-
-     
 
         switch (wParam)
         {
@@ -768,12 +756,9 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
                     extended = true;
                 }
 
-                // Perform the Find and Replace operation if Find field has a value
-                if (findText[0] != '\0') {
-                    ::SendMessage(_curScintilla, SCI_BEGINUNDOACTION, 0, 0);
-                    findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
-                    ::SendMessage(_curScintilla, SCI_ENDUNDOACTION, 0, 0);
-                }
+                // Perform the Find and Replace operation
+                findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
+
 
                 // Add the entered text to the combo box history
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
@@ -797,12 +782,10 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
                     bool extended = itemData.extended;
 
                     // Perform the Mark Matching Strings operation if Find field has a value
-                    if (!itemData.findText.empty()) {
-                        markMatchingStrings(
+                    markMatchingStrings(
                             itemData.findText.c_str(), itemData.wholeWord,
-                            itemData.matchCase, regexSearch, extended
-                        );
-                    }
+                            itemData.matchCase, regexSearch, extended);
+
                 }
             }
             else
@@ -826,9 +809,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
                 }
 
                 // Perform the Mark Matching Strings operation if Find field has a value
-                if (findText[0] != '\0') {
-                    markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
-                }
+                markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
 
                 // Add the entered text to the combo box history
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
@@ -870,11 +851,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
             // Code zum Laden der Liste aus einer CSV-Datei
             std::wstring filePath = openOpenFileDialog();
             if (!filePath.empty()) {
-
-                HWND hListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
-                loadListFromCsv(filePath, replaceListData, hListView);
-
-
+                loadListFromCsv(filePath);
             }
         }
         break;
@@ -968,7 +945,7 @@ void MultiReplacePanel::updateUIVisibility() {
         ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), SW_HIDE);
-        //ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_FRAME), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_FRAME), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_SEARCH_MODE_GROUP), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_REGEX_RADIO), SW_HIDE);
@@ -984,7 +961,6 @@ void MultiReplacePanel::updateUIVisibility() {
         ShowWindow(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_SHOW);
-
     }
     else if (!isSmallerThanMinSize ) {
         // Show elements
@@ -993,7 +969,7 @@ void MultiReplacePanel::updateUIVisibility() {
         ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), SW_SHOW);
         ShowWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), SW_SHOW);
         ShowWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), SW_SHOW);
-        //ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_FRAME), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_FRAME), SW_SHOW);
         ShowWindow(GetDlgItem(_hSelf, IDC_SEARCH_MODE_GROUP), SW_SHOW);
         ShowWindow(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), SW_SHOW);
         ShowWindow(GetDlgItem(_hSelf, IDC_REGEX_RADIO), SW_SHOW);
@@ -1012,27 +988,6 @@ void MultiReplacePanel::updateUIVisibility() {
             
     }
 
-}
-
-// Function to save list to a CSV file
-void MultiReplacePanel::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
-    std::wofstream outFile(filePath);
-    outFile.imbue(std::locale(outFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
-
-    if (!outFile.is_open()) {
-        std::wcerr << L"Error: Unable to open file for writing." << std::endl;
-        return;
-    }
-
-    // Write CSV header
-    outFile << L"Find,Replace,WholeWord,RegexSearch,MatchCase,Extended" << std::endl;
-
-    // Write list items to CSV file
-    for (const ReplaceItemData& item : list) {
-        outFile << item.findText << L"," << item.replaceText << L"," << item.wholeWord << L"," << item.regexSearch << L"," << item.matchCase << L"," << item.extended << std::endl;
-    }
-
-    outFile.close();
 }
 
 
@@ -1078,10 +1033,29 @@ std::wstring MultiReplacePanel::openOpenFileDialog() {
     }
 }
 
+// Function to save list to a CSV file
+void MultiReplacePanel::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
+    std::wofstream outFile(filePath);
+    outFile.imbue(std::locale(outFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
 
+    if (!outFile.is_open()) {
+        std::wcerr << L"Error: Unable to open file for writing." << std::endl;
+        return;
+    }
+
+    // Write CSV header
+    outFile << L"Find,Replace,WholeWord,RegexSearch,MatchCase,Extended" << std::endl;
+
+    // Write list items to CSV file
+    for (const ReplaceItemData& item : list) {
+        outFile << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.regexSearch << L"," << item.matchCase << L"," << item.extended << std::endl;
+    }
+
+    outFile.close();
+}
 
 // Function to load list from a CSV file
-void MultiReplacePanel::loadListFromCsv(const std::wstring& filePath, std::vector<ReplaceItemData>& list, HWND listViewHandle) {
+void MultiReplacePanel::loadListFromCsv(const std::wstring& filePath) {
     std::wifstream inFile(filePath);
     inFile.imbue(std::locale(inFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
 
@@ -1090,7 +1064,7 @@ void MultiReplacePanel::loadListFromCsv(const std::wstring& filePath, std::vecto
         return;
     }
 
-    list.clear(); // Clear the existing list
+    replaceListData.clear(); // Clear the existing list
 
     std::wstring line;
     std::getline(inFile, line); // Skip the CSV header
@@ -1098,43 +1072,163 @@ void MultiReplacePanel::loadListFromCsv(const std::wstring& filePath, std::vecto
     // Read list items from CSV file
     while (std::getline(inFile, line)) {
         std::wstringstream lineStream(line);
-        std::wstring cell;
+        std::vector<std::wstring> columns;
+
+        bool insideQuotes = false;
+        std::wstring currentValue;
+
+        // Show the entire line in a message box
+        std::wstring lineContent = lineStream.str();
+        MessageBox(NULL, lineContent.c_str(), L"Read Line", MB_OK);
+
+        for (const wchar_t& ch : lineStream.str()) {
+            if (ch == L'"') {
+                insideQuotes = !insideQuotes;
+            }
+            if (ch == L',' && !insideQuotes) {
+                std::wstring message = L"Value: " + currentValue + L", Length: " + std::to_wstring(currentValue.size());
+                MessageBox(NULL, message.c_str(), L"Current Value", MB_OK);
+                columns.push_back(unescapeCsvValue(currentValue));
+                currentValue.clear();
+            }
+            else {
+                currentValue += ch;
+            }
+        }
+
+        columns.push_back(unescapeCsvValue(currentValue));
+
+        // Check if the row has the correct number of columns
+        if (columns.size() != 6) {
+            continue;
+        }
+
         ReplaceItemData item;
 
-        // Read findText
-        std::getline(lineStream, cell, L',');
-        item.findText = cell;
+        // Assign columns to item properties
+        item.findText = columns[0];
+        item.replaceText = columns[1];
+        item.wholeWord = std::stoi(columns[2]) != 0;
+        item.regexSearch = std::stoi(columns[3]) != 0;
+        item.matchCase = std::stoi(columns[4]) != 0;
+        item.extended = std::stoi(columns[5]) != 0;
 
-        // Read replaceText
-        std::getline(lineStream, cell, L',');
-        item.replaceText = cell;
+        // Use insertReplaceListItem to insert the item to the list
+        insertReplaceListItem(item);
 
-        // Read wholeWord
-        std::getline(lineStream, cell, L',');
-        item.wholeWord = std::stoi(cell) != 0;
-
-        // Read regexSearch
-        std::getline(lineStream, cell, L',');
-        item.regexSearch = std::stoi(cell) != 0;
-
-        // Read matchCase
-        std::getline(lineStream, cell, L',');
-        item.matchCase = std::stoi(cell) != 0;
-
-        // Read extended
-        std::getline(lineStream, cell, L',');
-        item.extended = std::stoi(cell) != 0;
-
-        list.push_back(item);
-
+        // Show the entire read line in a message box
+        //MessageBox(NULL, line.c_str(), L"Read Line", MB_OK);
     }
 
     inFile.close();
 
     // Update the list view control
-    ListView_SetItemCountEx(listViewHandle, list.size(), LVSICF_NOINVALIDATEALL);
-    //InvalidateRect(listViewHandle, NULL, TRUE);
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+}
+
+
+
+std::wstring MultiReplacePanel::escapeCsvValue(const std::wstring& value) {
+    std::wstring escapedValue;
+    bool needsQuotes = false;
+
+    for (const wchar_t& ch : value) {
+        // Check if value contains any character that requires escaping
+        if (ch == L',' || ch == L'"' || ch == L'\n' || ch == L'\r') {
+            needsQuotes = true;
+        }
+        escapedValue += ch;
+        // Escape double quotes by adding another double quote
+        if (ch == L'"') {
+            escapedValue += ch;
+        }
+    }
+
+    // Enclose the value in double quotes if necessary
+    if (needsQuotes) {
+        escapedValue = L'"' + escapedValue + L'"';
+    }
+
+    return escapedValue;
+}
+
+
+
+std::wstring MultiReplacePanel::unescapeCsvValue(const std::wstring& value) {
+    std::wstring unescapedValue;
+    bool insideQuotes = false;
+
+    for (size_t i = 0; i < value.length(); ++i) {
+        wchar_t ch = value[i];
+
+        if (ch == L'"') {
+            insideQuotes = !insideQuotes;
+            if (insideQuotes) {
+                // Ignore the leading quote
+                continue;
+            }
+            else {
+                // Check for escaped quotes (two consecutive quotes)
+                if (i + 1 < value.length() && value[i + 1] == L'"') {
+                    unescapedValue += ch;
+                    ++i; // Skip the next quote
+                }
+                // Otherwise, ignore the trailing quote
+            }
+        }
+        else {
+            unescapedValue += ch;
+        }
+    }
+
+    return unescapedValue;
+}
+
+
+
+
+void MultiReplacePanel::testUnescapeCsvValue()
+{
+    // Open the file to write the test results
+    std::wofstream testFile("C:\\tmp\\unescapeTestResults.txt");
+    testFile.imbue(std::locale(testFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
+
+    if (!testFile.is_open()) {
+        std::wcerr << L"Error: Unable to open file for writing." << std::endl;
+        return;
+    }
+
+    // Define a list of test strings
+    std::vector<std::wstring> testStrings = {
+        L"",
+        L"simple",
+        L"\"quoted\"",
+        L"\"simple\"\"quoted\"",
+        L"\"escaped \\\"quote\\\"\"",
+        L"\"complex\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"",
+        L"\\backslash\\",
+        L"\"quoted \\\"quote\\\"\"",
+        L"\"mixed \\\"quote\"\" and \\\\ backslash\""
+    };
+
+    // Write the test results to the file
+    for (const std::wstring& testString : testStrings) {
+        std::wstring escapedValue = escapeCsvValue(testString);
+        std::wstring unescapedValue = unescapeCsvValue(escapedValue);
+        testFile << L"Test String: " << testString << std::endl;
+        testFile << L"Escaped Value: " << escapedValue << std::endl;
+        testFile << L"Unescaped Value: " << unescapedValue << std::endl;
+        testFile << std::endl;
+    }
+
+    // Close the test file
+    testFile.close(); 
+
+    // Show a message box with the file path
+    std::wstring message = L"Test results were saved to:\nC:\\rogram Files\\Notepad++\\plugins\\NppPluginMultiReplace\\unescapeTestResults.txt";
+    MessageBox(NULL, message.c_str(), L"Test Results Saved", MB_OK);
 
 }
+
 
 

@@ -103,7 +103,10 @@ private:
     std::wstring openSaveFileDialog();
     std::wstring openOpenFileDialog();
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
-    void loadListFromCsv(const std::wstring& filePath, std::vector<ReplaceItemData>& list, HWND listViewHandle);
+    void loadListFromCsv(const std::wstring& filePath);
+    std::wstring escapeCsvValue(const std::wstring& value);
+    std::wstring unescapeCsvValue(const std::wstring& value);
+    void testUnescapeCsvValue();
 };
 
 #endif // MULTI_REPLACE_PANEL_H
