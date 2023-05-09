@@ -1,5 +1,5 @@
 //this file is part of notepad++
-//Copyright (C)2022 Don HO <don.h@free.fr>
+//Copyright (C)2022 Thomas Knoefel
 //
 //This program is free software; you can redistribute it and/or
 //modify it under the terms of the GNU General Public License
@@ -71,5 +71,6 @@ bool setCommand(size_t index, TCHAR *cmdName, PFUNCPLUGINCMD pFunc, ShortcutKey 
 // Your plugin command functions
 //
 void multiReplacePanel();
+void about();
 
 #endif //PLUGINDEFINITION_H

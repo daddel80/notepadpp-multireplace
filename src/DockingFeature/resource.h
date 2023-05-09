@@ -1,5 +1,5 @@
 //this file is part of notepad++
-// Copyright (C)2023 Thomas Knoefel
+//Copyright (C)2023 Thomas Knoefel
 //
 //This program is free software; you can redistribute it and/or
 //modify it under the terms of the GNU General Public License
@@ -22,10 +22,6 @@
 #ifndef IDC_STATIC
 #define IDC_STATIC	-1
 #endif
-
-#define	IDD_PLUGINGOLINE_DEMO		2500
-#define	ID_GOLINE_EDIT	(IDD_PLUGINGOLINE_DEMO + 1)
-#define	ID_UGO_STATIC  (IDD_PLUGINGOLINE_DEMO + 5)
 
 #define IDD_REPLACE_DIALOG     5000
 #define IDC_FIND_EDIT          5001
@@ -63,6 +59,15 @@
 #define ENABLED_ICON 1001
 #define COPYBACK_ICON 1002
 
+#define IDD_ABOUT_DIALOG       6000
+#define IDC_MAILTO_LINK        6001
+#define IDC_WEBSITE_LINK       6002
+#define IDC_VERSION_STATIC     6003
+#define IDC_LICENSE_STATIC     6004
+#define IDC_AUTHOR_STATIC 6008
+
+#define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace")
+#define IDC_MAILTO_LINK_VALUE  TEXT("mailto:tknoefel@gmail.com")
 
 #endif // RESOURCE_H
 

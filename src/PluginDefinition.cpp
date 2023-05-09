@@ -1,5 +1,5 @@
 //this file is part of notepad++
-//Copyright (C)2022 Don HO <don.h@free.fr>
+//Copyright (C)2022 Thomas Knoefel
 //
 //This program is free software; you can redistribute it and/or
 //modify it under the terms of the GNU General Public License
@@ -17,6 +17,10 @@
 
 #include "PluginDefinition.h"
 #include "MultiReplacePanel.h"
+#include "AboutDialog.h"
+
+#define VERSION_VALUE "1.0.0"
+
 
 MultiReplacePanel _MultiReplacePanel;
 
@@ -32,6 +36,7 @@ FuncItem funcItem[nbFunc];
 // The data of Notepad++ that you can use in your plugin commands
 //
 NppData nppData;
+HINSTANCE hInst;
 
 //
 // Initialize your plugin data here
@@ -39,6 +44,7 @@ NppData nppData;
 void pluginInit(HINSTANCE hModule)
 {
     _MultiReplacePanel.init((HINSTANCE)hModule, NULL);
+    hInst = (HINSTANCE)hModule;
 }
 
 //
@@ -64,7 +70,8 @@ void commandMenuInit()
     //            ShortcutKey *shortcut,          // optional. Define a shortcut to trigger this command
     //            bool check0nInit                // optional. Make this menu item be checked visually
     //            );
-    setCommand(1, TEXT("Multi Replace && Mark"), multiReplacePanel, NULL, false);
+    setCommand(0, TEXT("Multi Replace && Mark"), multiReplacePanel, NULL, false);
+    setCommand(1, TEXT("About"), about, NULL, false);
 }
 
 //
@@ -120,4 +127,9 @@ void multiReplacePanel()
         ::SendMessage(nppData._nppHandle, NPPM_DMMREGASDCKDLG, 0, (LPARAM)&data);
     }
     _MultiReplacePanel.display();
+}
+
+void about()
+{
+    ShowAboutDialog(nppData._nppHandle);
 }

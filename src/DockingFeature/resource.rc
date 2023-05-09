@@ -1,6 +1,26 @@
+//this file is part of notepad++
+//Copyright (C)2022 Thomas Knoefel
+//
+//This program is free software; you can redistribute it and/or
+//modify it under the terms of the GNU General Public License
+//as published by the Free Software Foundation; either
+//version 2 of the License, or (at your option) any later version.
+//
+//This program is distributed in the hope that it will be useful,
+//but WITHOUT ANY WARRANTY; without even the implied warranty of
+//MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//GNU General Public License for more details.
+//
+//You should have received a copy of the GNU General Public License
+//along with this program; if not, write to the Free Software
+//Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
 #include <windows.h>
 #include <commctrl.h>
 #include "resource.h"
+#include <commctrl.h>
+#pragma comment(lib, "comctl32.lib")
+
 
 DELETE_ICON ICON "delete.ico"
 ENABLED_ICON ICON "enabled.ico"
@@ -42,5 +62,16 @@ BEGIN
 
 END
 
-
+IDD_ABOUT_DIALOG DIALOGEX 0, 0, 200, 140
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_CENTER
+CAPTION "MultiReplace Plugin"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK", IDOK, 70, 110, 60, 20
+	LTEXT           "Version: 1.0.0", IDC_VERSION_STATIC, 20, 20, 200, 11
+    CONTROL         "Author:", IDC_AUTHOR_STATIC, "Static", SS_LEFT | WS_VISIBLE, 20, 40, 60, 11
+    CONTROL         "Thomas Knoefel", IDC_MAILTO_LINK, "Static", SS_NOTIFY | WS_VISIBLE, 60, 40, 100, 11
+    LTEXT           "License: GPLv2", IDC_LICENSE_STATIC, 20, 60, 200, 11
+	CONTROL         "Help and Support", IDC_WEBSITE_LINK, "Static", SS_NOTIFY | WS_VISIBLE, 60, 85, 150, 11
+END
 
