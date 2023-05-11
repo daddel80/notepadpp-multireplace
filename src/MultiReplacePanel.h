@@ -21,7 +21,10 @@
 #include <string>
 #include <vector>
 #include <commctrl.h>
+#include "PluginInterface.h"
 
+
+extern NppData nppData;
 
 struct ReplaceItemData
 {
@@ -98,7 +101,7 @@ private:
     void insertReplaceListItem(const ReplaceItemData& itemData);
     void onCopyToListButtonClick();
     void createListViewColumns(HWND listView);
-    void updateColumnWidths(HWND listView);
+    void updateListViewAndColumns(HWND listView, LPARAM lParam);
     void updateUIVisibility();
     std::wstring openSaveFileDialog();
     std::wstring openOpenFileDialog();

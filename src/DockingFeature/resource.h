@@ -23,49 +23,50 @@
 #define IDC_STATIC	-1
 #endif
 
-#define IDD_REPLACE_DIALOG     5000
-#define IDC_FIND_EDIT          5001
-#define IDC_REPLACE_EDIT       5002
-#define IDC_REPLACE_ALL_BUTTON   5003
-#define IDC_MARK_MATCHES_BUTTON  5004
-#define IDC_CLEAR_MARKS_BUTTON      5006
-#define IDC_COPY_MARKED_TEXT_BUTTON 5007
-#define IDC_SAVE_TO_CSV_BUTTON 5011
-#define IDC_LOAD_FROM_CSV_BUTTON 5012
-#define IDC_WHOLE_WORD_CHECKBOX 1103
-#define IDC_MATCH_CASE_CHECKBOX  1104
+#define IDD_REPLACE_DIALOG              5000
+#define IDC_FIND_EDIT                   5001
+#define IDC_REPLACE_EDIT                5002
+#define IDC_REPLACE_ALL_BUTTON          5003
+#define IDC_MARK_MATCHES_BUTTON         5004
+#define IDC_CLEAR_MARKS_BUTTON          5005
+#define IDC_COPY_MARKED_TEXT_BUTTON     5006
+#define IDC_COPY_TO_LIST_BUTTON         5007
+#define IDC_REPLACE_ALL_IN_LIST_BUTTON  5008
+#define IDC_DELETE_REPLACE_ITEM_BUTTON  5009
+#define IDC_SAVE_TO_CSV_BUTTON          5010
+#define IDC_LOAD_FROM_CSV_BUTTON        5011
 
-#define IDC_STATIC_FIND 3000
-#define IDC_STATIC_REPLACE 3001
-#define IDC_STATIC_HINT 3002
+#define IDC_STATIC_FIND                 5100
+#define IDC_STATIC_REPLACE              5101
+#define IDC_STATIC_HINT                 5102
 
-#define IDC_EXTENDED_CHECKBOX 1105
-#define IDC_REGEX_CHECKBOX  1106
-#define IDC_IN_LIST_CHECKBOX 1107
-#define IDC_STATIC_FRAME 1108
-#define IDC_TRANSPARENT_PANEL 1109
+#define IDC_WHOLE_WORD_CHECKBOX         5200
+#define IDC_MATCH_CASE_CHECKBOX         5201
+#define IDC_EXTENDED_CHECKBOX           5202
+#define IDC_REGEX_CHECKBOX              5203
+#define IDC_IN_LIST_CHECKBOX            5204
+#define IDC_STATIC_FRAME                5205
+#define IDC_TRANSPARENT_PANEL           5206
 
-#define IDC_SEARCH_MODE_GROUP 6000
-#define IDC_NORMAL_RADIO 6001
-#define IDC_REGEX_RADIO 6002
-#define IDC_EXTENDED_RADIO 6003
+#define IDC_SEARCH_MODE_GROUP           5300
+#define IDC_NORMAL_RADIO                5301
+#define IDC_REGEX_RADIO                 5302
+#define IDC_EXTENDED_RADIO              5303
 
-#define IDC_COPY_TO_LIST_BUTTON 5008
-#define IDC_REPLACE_LIST 7000
-#define IDC_REPLACE_ALL_IN_LIST_BUTTON 5009
-#define IDC_DELETE_REPLACE_ITEM_BUTTON 5010
+#define IDC_REPLACE_LIST                5400
 
-#define DELETE_ICON 1000
-#define ENABLED_ICON 1001
-#define COPYBACK_ICON 1002
+#define DELETE_ICON                     5500
+#define ENABLED_ICON                    5501
+#define COPYBACK_ICON                   5502
 
-#define IDD_ABOUT_DIALOG       6000
-#define IDC_MAILTO_LINK        6001
-#define IDC_WEBSITE_LINK       6002
-#define IDC_VERSION_STATIC     6003
-#define IDC_LICENSE_STATIC     6004
-#define IDC_AUTHOR_STATIC 6008
+#define IDD_ABOUT_DIALOG                5600
+#define IDC_MAILTO_LINK                 5601
+#define IDC_WEBSITE_LINK                5602
+#define IDC_VERSION_STATIC              5603
+#define IDC_LICENSE_STATIC              5604
+#define IDC_AUTHOR_STATIC               5605
 
+#define VERSION_VALUE "1.0.0"
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace")
 #define IDC_MAILTO_LINK_VALUE  TEXT("mailto:tknoefel@gmail.com")
 

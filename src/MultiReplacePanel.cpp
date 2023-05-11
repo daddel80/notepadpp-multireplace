@@ -19,35 +19,14 @@
 #include <codecvt>
 #include <locale>
 #include <regex>
-//this file is part of notepad++
-//Copyright (C)2022 Thomas Knoefel
-//
-//This program is free software; you can redistribute it and/or
-//modify it under the terms of the GNU General Public License
-//as published by the Free Software Foundation; either
-//version 2 of the License, or (at your option) any later version.
-//
-//This program is distributed in the hope that it will be useful,
-//but WITHOUT ANY WARRANTY; without even the implied warranty of
-//MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-//GNU General Public License for more details.
-//
-//You should have received a copy of the GNU General Public License
-//along with this program; if not, write to the Free Software
-//Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-
 #include <windows.h>
 #include <sstream>
 #include <Commctrl.h>
 #include <vector>
 #include <fstream>
 #include <iostream>
-
-
-
-extern NppData nppData;
-
-#define RESIZE_TIMER_ID 1
+#include <map>
+#include <DialogUnitCalculator.h>
 
 
 #ifdef UNICODE
@@ -376,7 +355,6 @@ void MultiReplacePanel::insertReplaceListItem(const ReplaceItemData& itemData)
     // Update the item count in the ListView
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
-    //InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
 
@@ -389,64 +367,65 @@ void MultiReplacePanel::createListViewColumns(HWND listView) {
     // Column for "Find" Text
     lvc.iSubItem = 0;
     lvc.pszText = L"Find";
-    lvc.cx = 347; // Spaltenbreite
+    lvc.cx = 195;
     ListView_InsertColumn(listView, 0, &lvc);
 
     // Column for "Replace" Text
     lvc.iSubItem = 1;
     lvc.pszText = L"Replace";
-    lvc.cx = 346; // Spaltenbreite
+    lvc.cx = 195;
     ListView_InsertColumn(listView, 1, &lvc);
 
     // Column for Option: Whole Word
     lvc.iSubItem = 2;
     lvc.pszText = L"W";
-    lvc.cx = 30; // Spaltenbreite
+    lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 2, &lvc);
 
     // Column for Option: Match Case
     lvc.iSubItem = 3;
     lvc.pszText = L"C";
-    lvc.cx = 30; // Spaltenbreite
+    lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 3, &lvc);
 
     // Column for Option: Normal
     lvc.iSubItem = 4;
     lvc.pszText = L"N";
-    lvc.cx = 30; // Spaltenbreite
+    lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 4, &lvc);
 
     // Column for Option: Regex
     lvc.iSubItem = 5;
     lvc.pszText = L"R";
-    lvc.cx = 30; // Spaltenbreite
+    lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 5, &lvc);
 
     // Column for Option: Extended
     lvc.iSubItem = 6;
     lvc.pszText = L"E";
-    lvc.cx = 30; // Spaltenbreite
+    lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 6, &lvc);
 
     // Column for Copy Back Button
     lvc.iSubItem = 7;
     lvc.pszText = L"";
-    lvc.cx = 20; // Spaltenbreite
+    lvc.cx = 20;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 7, &lvc); 
 
     // Column for Delete Button
     lvc.iSubItem = 8;
     lvc.pszText = L"";
-    lvc.cx = 20; // Spaltenbreite
+    lvc.cx = 20;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 8, &lvc);
 }
+
 
 
 INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
@@ -460,7 +439,11 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         // Create the font
         hFont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("MS Shell Dlg"));
 
+        // CheckBox to Normal
         CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_NORMAL_RADIO);
+
+        // Hide Int Text
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_HIDE);
 
         // Set the font for the controls
         SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), WM_SETFONT, (WPARAM)hFont, TRUE);
@@ -509,7 +492,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
 
         // Enable full row selection
         ListView_SetExtendedListViewStyle(_replaceListView, LVS_EX_FULLROWSELECT | LVS_EX_SUBITEMIMAGES);
-
+        
         return TRUE;
     }
     break;
@@ -528,18 +511,12 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     case WM_SIZE:
     {
         int newWidth = LOWORD(lParam);
-        int newHeight = HIWORD(lParam);
 
-        // Show Hint Massage or not releted to the Window Size
+        // Show Hint Message if not releted to the Window Size
         updateUIVisibility();
-        //ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_HIDE);
-
-        // Move and resize Find and Replace text boxes
-        MoveWindow(GetDlgItem(_hSelf, IDC_FIND_EDIT), 120, 14, newWidth - 360, 200, TRUE);
-        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), 120, 58, newWidth - 360, 200, TRUE);
 
         // Move and resize the List
-        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 270, newWidth - 255, newHeight - 300, TRUE);
+        updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), lParam);
 
         // Move the frame around the "In List" checkbox
         int frameX = newWidth - 30 - 310;
@@ -547,10 +524,20 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         int frameWidth = 310;
         int frameHeight = 170;
 
+        // Move and resize Find and Replace text boxes
+        MoveWindow(GetDlgItem(_hSelf, IDC_FIND_EDIT), 120, 14, newWidth - 360, 200, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), 120, 58, newWidth - 360, 200, TRUE);
+
         MoveWindow(GetDlgItem(_hSelf, IDC_STATIC_FRAME), frameX, frameY, frameWidth, frameHeight, TRUE);
         
-        // Redraw the frame and buttons
-        InvalidateRect(GetDlgItem(_hSelf, IDC_STATIC_FRAME), NULL, TRUE);
+        // Redraw Elements
+        InvalidateRect(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), NULL, TRUE);
+        InvalidateRect(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), NULL, TRUE);
+        InvalidateRect(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), NULL, TRUE);
+        InvalidateRect(GetDlgItem(_hSelf, IDC_REGEX_RADIO), NULL, TRUE);
+        InvalidateRect(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), NULL, TRUE);
+
+        InvalidateRect(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), NULL, TRUE);
         InvalidateRect(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), NULL, TRUE);
         InvalidateRect(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), NULL, TRUE);
         InvalidateRect(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), NULL, TRUE);
@@ -575,25 +562,6 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         int checkboxY = 163;
         MoveWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), checkboxX, checkboxY, 70, 20, TRUE);
 
-        // Set a timer to delay column resizing
-        SetTimer(_hSelf, RESIZE_TIMER_ID, 100, NULL); // 100 ms delay
-
-        
-        /*InvalidateRect(_hSelf, NULL, TRUE); */
-        return 0;
-    }
-    break;
-
-    case WM_TIMER:
-    {
-        if (wParam == RESIZE_TIMER_ID) {
-            // Resize columns after timer expires
-            KillTimer(_hSelf, RESIZE_TIMER_ID);
-            updateColumnWidths(_replaceListView);
-
-            // Show or hide elements based on the window size
-            updateUIVisibility();
-        }
         return 0;
     }
     break;
@@ -633,7 +601,6 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
                 }
             }
             break;
-
 
             case LVN_GETDISPINFO:
             {
@@ -699,7 +666,6 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     }
     break;
 
-
     case WM_COMMAND:
     {
 
@@ -732,7 +698,6 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
 
         case IDC_REPLACE_ALL_BUTTON:
         {
-
             // Check if the "In List" option is enabled
             bool inListEnabled = (IsDlgButtonChecked(_hSelf, IDC_IN_LIST_CHECKBOX) == BST_CHECKED);
 
@@ -887,12 +852,11 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
 }
 
 
-void MultiReplacePanel::updateColumnWidths(HWND listView)
+void MultiReplacePanel::updateListViewAndColumns(HWND listView, LPARAM lParam)
 {
-    // Get the current ListView client area width
-    RECT listViewRect;
-    GetClientRect(listView, &listViewRect);
-    int listViewWidth = listViewRect.right - listViewRect.left;
+    // Get the new width and height of the window from lParam
+    int newWidth = LOWORD(lParam);
+    int newHeight = HIWORD(lParam);
 
     // Calculate the total width of columns 3 to 8
     int columns3to7Width = 0;
@@ -902,12 +866,26 @@ void MultiReplacePanel::updateColumnWidths(HWND listView)
     }
 
     // Calculate the remaining width for the first two columns
-    int remainingWidth = listViewWidth - columns3to7Width;
+    int remainingWidth = newWidth - 280 - columns3to7Width;
 
-    // Set the width of the first two columns
+    static int prevWidth = newWidth; // Store the previous width
+
+    // If the window is horizontally maximized, update the IDC_REPLACE_LIST size first
+    if (newWidth > prevWidth) {
+        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 270, newWidth - 255, newHeight - 300, TRUE);        
+    }
+
     ListView_SetColumnWidth(listView, 0, remainingWidth / 2);
     ListView_SetColumnWidth(listView, 1, remainingWidth / 2);
+
+    // If the window is horizontally minimized or vetically changed the size
+    MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 270, newWidth - 255, newHeight - 300, TRUE);
+
+    // If the window size hasn't changed, no need to do anything
+
+    prevWidth = newWidth;
 }
+
 
 void MultiReplacePanel::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems)
 {
@@ -951,8 +929,6 @@ void MultiReplacePanel::updateUIVisibility() {
 
     // Determine if the window is smaller than the minimum size
     bool isSmallerThanMinSize = (currentWidth < minWidth) || (currentHeight < minHeight);
-
-    // Check if the elements are currently hidden
 
     // Show or hide elements based on the window size
     if (isSmallerThanMinSize ) {
@@ -1029,6 +1005,7 @@ std::wstring MultiReplacePanel::openSaveFileDialog() {
     }
 }
 
+
 std::wstring MultiReplacePanel::openOpenFileDialog() {
     OPENFILENAME ofn = { 0 };
     WCHAR szFile[MAX_PATH] = { 0 };
@@ -1049,6 +1026,7 @@ std::wstring MultiReplacePanel::openOpenFileDialog() {
         return std::wstring();
     }
 }
+
 
 // Function to save list to a CSV file
 void MultiReplacePanel::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
@@ -1159,7 +1137,6 @@ std::wstring MultiReplacePanel::escapeCsvValue(const std::wstring& value) {
 
     return escapedValue;
 }
-
 
 
 std::wstring MultiReplacePanel::unescapeCsvValue(const std::wstring& value) {

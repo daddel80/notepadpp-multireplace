@@ -19,8 +19,6 @@
 #include "MultiReplacePanel.h"
 #include "AboutDialog.h"
 
-#define VERSION_VALUE "1.0.0"
-
 
 MultiReplacePanel _MultiReplacePanel;
 
