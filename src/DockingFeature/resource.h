@@ -44,7 +44,7 @@
 #define IDC_MATCH_CASE_CHECKBOX         5201
 #define IDC_EXTENDED_CHECKBOX           5202
 #define IDC_REGEX_CHECKBOX              5203
-#define IDC_IN_LIST_CHECKBOX            5204
+#define IDC_USE_LIST_CHECKBOX			5204
 #define IDC_STATIC_FRAME                5205
 #define IDC_TRANSPARENT_PANEL           5206
 

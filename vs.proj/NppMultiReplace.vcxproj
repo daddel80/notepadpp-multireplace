@@ -39,19 +39,19 @@
     <ClCompile Include="..\src\DockingFeature\StaticDialog.cpp" />
     <ClCompile Include="..\src\DUCalculator\DialogUnitCalculator.cpp" />
     <ClCompile Include="..\src\MultiReplacePanel.cpp" />
-    <ClCompile Include="..\src\NppPluginMultireplace.cpp" />
+    <ClCompile Include="..\src\NppMultireplace.cpp" />
     <ClCompile Include="..\src\PluginDefinition.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\DockingFeature\resource.rc" />
-    <ResourceCompile Include="..\src\NppPluginMultireplace.rc" />
+    <ResourceCompile Include="..\src\NppMultireplace.rc" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{9D04DBD5-E12E-44E0-A683-6F43F21D533B}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>NppPluginTemplate</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>NppPluginMultiReplace</ProjectName>
+    <ProjectName>NppMultiReplace</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">

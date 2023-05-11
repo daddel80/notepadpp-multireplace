@@ -26,7 +26,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <DialogUnitCalculator.h>
+//#include <DialogUnitCalculator.h>
 
 
 #ifdef UNICODE
@@ -448,7 +448,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         // Set the font for the controls
         SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), WM_SETFONT, (WPARAM)hFont, TRUE);
-        SendMessage(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), WM_SETFONT, (WPARAM)hFont, TRUE);
+        SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), WM_SETFONT, (WPARAM)hFont, TRUE);
 
         // Initialize curScintilla
         int which = -1;
@@ -537,7 +537,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         InvalidateRect(GetDlgItem(_hSelf, IDC_REGEX_RADIO), NULL, TRUE);
         InvalidateRect(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), NULL, TRUE);
 
-        InvalidateRect(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), NULL, TRUE);
+        InvalidateRect(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), NULL, TRUE);
         InvalidateRect(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), NULL, TRUE);
         InvalidateRect(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), NULL, TRUE);
         InvalidateRect(GetDlgItem(_hSelf, IDC_CLEAR_MARKS_BUTTON), NULL, TRUE);
@@ -560,7 +560,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         // Move "In List" checkbox
         int checkboxX = buttonX - 20 - 100; // 20 is the desired gap between the buttons and the checkbox, and 100 is the width of the checkbox
         int checkboxY = 163;
-        MoveWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), checkboxX, checkboxY, 70, 20, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), checkboxX, checkboxY, 80, 20, TRUE);
 
         return 0;
     }
@@ -699,7 +699,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         case IDC_REPLACE_ALL_BUTTON:
         {
             // Check if the "In List" option is enabled
-            bool inListEnabled = (IsDlgButtonChecked(_hSelf, IDC_IN_LIST_CHECKBOX) == BST_CHECKED);
+            bool inListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
 
             if (inListEnabled)
             {
@@ -752,7 +752,7 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         case IDC_MARK_MATCHES_BUTTON:
         {
             // Check if the "In List" option is enabled
-            bool inListEnabled = (IsDlgButtonChecked(_hSelf, IDC_IN_LIST_CHECKBOX) == BST_CHECKED);
+            bool inListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
 
             if (inListEnabled)
             {
@@ -925,7 +925,7 @@ void MultiReplacePanel::updateUIVisibility() {
 
     // Set the minimum width and height
     int minWidth = 800;
-    int minHeight = 350;
+    int minHeight = 360;
 
     // Determine if the window is smaller than the minimum size
     bool isSmallerThanMinSize = (currentWidth < minWidth) || (currentHeight < minHeight);
@@ -937,7 +937,7 @@ void MultiReplacePanel::updateUIVisibility() {
         ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_FRAME), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_SEARCH_MODE_GROUP), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), SW_HIDE);
@@ -961,7 +961,7 @@ void MultiReplacePanel::updateUIVisibility() {
         ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), SW_SHOW);
         ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), SW_SHOW);
         ShowWindow(GetDlgItem(_hSelf, IDC_COPY_TO_LIST_BUTTON), SW_SHOW);
-        ShowWindow(GetDlgItem(_hSelf, IDC_IN_LIST_CHECKBOX), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), SW_SHOW);
         ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_FRAME), SW_SHOW);
         ShowWindow(GetDlgItem(_hSelf, IDC_SEARCH_MODE_GROUP), SW_SHOW);
         ShowWindow(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), SW_SHOW);
