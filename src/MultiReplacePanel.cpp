@@ -669,21 +669,48 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
         
     }
     break;
+    case WM_TIMER:
+    {   //Refresh of DropDown due to a Bug in Notepad++ Plugin implementation of Dark Mode
+        if (wParam == 1)
+        {
+            KillTimer(_hSelf, 1);
+
+            BOOL isDarkModeEnabled = (BOOL)::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0);
+
+            if (!isDarkModeEnabled)
+            {
+                int comboBoxIDs[] = { IDC_FIND_EDIT, IDC_REPLACE_EDIT };
+
+                for (int id : comboBoxIDs)
+                {
+                    HWND hComboBox = GetDlgItem(_hSelf, id);
+                    int itemCount = (int)SendMessage(hComboBox, CB_GETCOUNT, 0, 0);
+
+                    for (int i = itemCount - 1; i >= 0; i--)
+                    {
+                        SendMessage(hComboBox, CB_SETCURSEL, (WPARAM)i, 0);
+                    }
+                }
+            }
+        }
+    }
+    break;
 
     case WM_COMMAND:
     {
-        if (HIWORD(wParam) == CBN_DROPDOWN && (LOWORD(wParam) == IDC_FIND_EDIT || LOWORD(wParam) == IDC_REPLACE_EDIT))
+        switch (HIWORD(wParam))
         {
-            isDarkMode = SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0);
-            if (!isDarkMode)
-            {
-                // This effectively cancels the dropdown
-                SendMessage((HWND)lParam, CB_SHOWDROPDOWN, FALSE, 0);
+        case CBN_DROPDOWN:
+        {   //Refresh of DropDown due to a Bug in Notepad++ Plugin implementation of Dark Mode
+            if (LOWORD(wParam) == IDC_FIND_EDIT || LOWORD(wParam) == IDC_REPLACE_EDIT)
+            {                
+                SetTimer(_hSelf, 1, 1, NULL);
             }
         }
+        break;
+        }
 
-
-        switch (wParam)
+        switch (LOWORD(wParam))
         {
         case IDC_REGEX_RADIO:
         {
@@ -859,8 +886,6 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
     }
     break;
 
-    default:
-        return DockingDlgInterface::run_dlgProc(message, wParam, lParam);
     }
     return FALSE;
 }
