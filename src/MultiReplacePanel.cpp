@@ -336,6 +336,10 @@ void MultiReplacePanel::onCopyToListButtonClick() {
     itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
     insertReplaceListItem(itemData);
+
+    // Add the entered text to the combo box history
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceText);
 }
 
 
@@ -426,7 +430,7 @@ void MultiReplacePanel::createListViewColumns(HWND listView) {
     ListView_InsertColumn(listView, 8, &lvc);
 }
 
-
+bool isDarkMode = false;
 
 INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -668,6 +672,16 @@ INT_PTR CALLBACK MultiReplacePanel::run_dlgProc(UINT message, WPARAM wParam, LPA
 
     case WM_COMMAND:
     {
+        if (HIWORD(wParam) == CBN_DROPDOWN && (LOWORD(wParam) == IDC_FIND_EDIT || LOWORD(wParam) == IDC_REPLACE_EDIT))
+        {
+            isDarkMode = SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0);
+            if (!isDarkMode)
+            {
+                // This effectively cancels the dropdown
+                SendMessage((HWND)lParam, CB_SHOWDROPDOWN, FALSE, 0);
+            }
+        }
+
 
         switch (wParam)
         {
