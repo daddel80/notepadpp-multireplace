@@ -20,6 +20,7 @@
 #include "resource.h"
 #include <string>
 #include <vector>
+#include <map> 
 #include <commctrl.h>
 #include "PluginInterface.h"
 
@@ -34,6 +35,14 @@ struct ReplaceItemData
     bool regexSearch = false;
     bool matchCase = false;
     bool extended = false;
+};
+
+struct ControlInfo
+{
+    int x, y, cx, cy;
+    LPCWSTR className;
+    LPCWSTR windowName;
+    DWORD style;
 };
 
 typedef std::basic_string<TCHAR> generic_string;
@@ -56,7 +65,8 @@ public:
         _hEnabledIcon(NULL),
         deleteIconIndex(-1),
         enabledIconIndex(-1),
-        _himl(NULL)
+        _himl(NULL),
+        hFont(nullptr)
     {};
 
     virtual void display(bool toShow = true) const {
@@ -89,6 +99,7 @@ private:
     int copyBackIconIndex;
     int deleteIconIndex;
     int enabledIconIndex;
+    HFONT hFont;
 
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
@@ -110,6 +121,10 @@ private:
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
     void testUnescapeCsvValue();
+    void initializeCtrlMap();
+    static std::map<int, ControlInfo> ctrlMap;
+    void PositionControls(int windowWidth, int windowHeight);
+    void MoveAndResizeControls();
 };
 
 #endif // MULTI_REPLACE_PANEL_H
