@@ -13,8 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef MULTI_REPLACE_PANEL_H
-#define MULTI_REPLACE_PANEL_H
+#ifndef MULTI_REPLACE_H
+#define MULTI_REPLACE_H
 
 #include "DockingFeature\DockingDlgInterface.h"
 #include "resource.h"
@@ -47,22 +47,22 @@ struct ControlInfo
 
 typedef std::basic_string<TCHAR> generic_string;
 
-class MultiReplacePanel : public DockingDlgInterface
+class MultiReplace : public DockingDlgInterface
 {
 public:
-    MultiReplacePanel() :
-        _curScintilla(0),
+    MultiReplace() :
+        _hScintilla(0),
         _hClearMarksButton(nullptr),
         _hCopyBackIcon(nullptr),
         _hCopyMarkedTextButton(nullptr),
         _hInListCheckbox(nullptr),
         _hMarkMatchesButton(nullptr),
         _hReplaceAllButton(nullptr),
-        copyBackIconIndex(0),
         DockingDlgInterface(IDD_REPLACE_DIALOG),
         _replaceListView(NULL),
         _hDeleteIcon(NULL),
         _hEnabledIcon(NULL),
+        copyBackIconIndex(-1),
         deleteIconIndex(-1),
         enabledIconIndex(-1),
         _himl(NULL),
@@ -81,10 +81,8 @@ protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam);
 
 private:
-    static void addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems = 10);
-private:
     static const int RESIZE_TIMER_ID = 1;
-    HWND _curScintilla;
+    HWND _hScintilla;
     HWND _replaceListView;
 
     HWND _hInListCheckbox;
@@ -100,31 +98,46 @@ private:
     int deleteIconIndex;
     int enabledIconIndex;
     HFONT hFont;
+    static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
+    static constexpr int FONT_SIZE = 16;
 
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
+    static std::map<int, ControlInfo> ctrlMap;
 
+    // Initialization
+    void PositionControls(int windowWidth, int windowHeight);
+    bool createAndShowWindows(HINSTANCE hInstance);
+    void initializeCtrlMap();
+    void initializeScintilla();
+    void createImageList();
+    void initializeListView();
+    void MoveAndResizeControls();
+    void updateUIVisibility();
+
+    // ListView
+    void createListViewColumns(HWND listView);
+    void insertReplaceListItem(const ReplaceItemData& itemData);
+    void updateListViewAndColumns(HWND listView, LPARAM lParam);
+    void handleDeletion(NMITEMACTIVATE* pnmia);
+    void handleCopyBack(NMITEMACTIVATE* pnmia);
+
+    // SearchReplace
     int convertExtendedToString(const TCHAR* query, TCHAR* result, int length);
+    void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
+    void markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
     void clearAllMarks();
     void copyMarkedTextToClipboard();
-    void markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
-    void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
-    void insertReplaceListItem(const ReplaceItemData& itemData);
     void onCopyToListButtonClick();
-    void createListViewColumns(HWND listView);
-    void updateListViewAndColumns(HWND listView, LPARAM lParam);
-    void updateUIVisibility();
+    static void addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems = 10);
+
+    // FileOperations
     std::wstring openSaveFileDialog();
     std::wstring openOpenFileDialog();
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void loadListFromCsv(const std::wstring& filePath);
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
-    void testUnescapeCsvValue();
-    void initializeCtrlMap();
-    static std::map<int, ControlInfo> ctrlMap;
-    void PositionControls(int windowWidth, int windowHeight);
-    void MoveAndResizeControls();
 };
 
-#endif // MULTI_REPLACE_PANEL_H
+#endif // MULTI_REPLACE_H

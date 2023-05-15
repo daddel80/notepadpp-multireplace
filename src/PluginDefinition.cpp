@@ -16,11 +16,11 @@
 //Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 #include "PluginDefinition.h"
-#include "MultiReplacePanel.h"
+#include "MultiReplace.h"
 #include "AboutDialog.h"
 
 
-MultiReplacePanel _MultiReplacePanel;
+MultiReplace _MultiReplace;
 
 INT_PTR CALLBACK DialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
@@ -41,7 +41,7 @@ HINSTANCE hInst;
 // It will be called while plugin loading   
 void pluginInit(HINSTANCE hModule)
 {
-    _MultiReplacePanel.init((HINSTANCE)hModule, NULL);
+    _MultiReplace.init((HINSTANCE)hModule, NULL);
     hInst = (HINSTANCE)hModule;
 }
 
@@ -68,7 +68,7 @@ void commandMenuInit()
     //            ShortcutKey *shortcut,          // optional. Define a shortcut to trigger this command
     //            bool check0nInit                // optional. Make this menu item be checked visually
     //            );
-    setCommand(0, TEXT("Multi Replace && Mark"), multiReplacePanel, NULL, false);
+    setCommand(0, TEXT("Multi Replace && Mark"), multiReplace, NULL, false);
     setCommand(1, TEXT("About"), about, NULL, false);
 }
 
@@ -105,26 +105,26 @@ bool setCommand(size_t index, TCHAR* cmdName, PFUNCPLUGINCMD pFunc, ShortcutKey*
 //----------------------------------------------//
 
 
-void multiReplacePanel()
+void multiReplace()
 {
-    _MultiReplacePanel.setParent(nppData._nppHandle);
+    _MultiReplace.setParent(nppData._nppHandle);
     tTbData	data = { 0 };
 
-    if (!_MultiReplacePanel.isCreated())
+    if (!_MultiReplace.isCreated())
     {
-        _MultiReplacePanel.create(&data);
+        _MultiReplace.create(&data);
 
         // define the default docking behaviour
         data.uMask = DWS_DF_FLOATING;
 
-        data.pszModuleName = _MultiReplacePanel.getPluginFileName();
+        data.pszModuleName = _MultiReplace.getPluginFileName();
 
         // the dlgDlg should be the index of funcItem where the current function pointer is
         // in this case is DOCKABLE_DEMO_INDEX
         data.dlgID = 3;
         ::SendMessage(nppData._nppHandle, NPPM_DMMREGASDCKDLG, 0, (LPARAM)&data);
     }
-    _MultiReplacePanel.display();
+    _MultiReplace.display();
 }
 
 void about()

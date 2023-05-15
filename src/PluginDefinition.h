@@ -70,7 +70,7 @@ bool setCommand(size_t index, TCHAR *cmdName, PFUNCPLUGINCMD pFunc, ShortcutKey 
 //
 // Your plugin command functions
 //
-void multiReplacePanel();
+void multiReplace();
 void about();
 
 #endif //PLUGINDEFINITION_H

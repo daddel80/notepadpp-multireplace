@@ -31,14 +31,14 @@
     <ClInclude Include="..\src\DockingFeature\resource.h" />
     <ClInclude Include="..\src\DockingFeature\StaticDialog.h" />
     <ClInclude Include="..\src\DUCalculator\DialogUnitCalculator.h" />
-    <ClInclude Include="..\src\MultiReplacePanel.h" />
+    <ClInclude Include="..\src\MultiReplace.h" />
     <ClInclude Include="..\src\PluginDefinition.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\AboutDialog.cpp" />
     <ClCompile Include="..\src\DockingFeature\StaticDialog.cpp" />
     <ClCompile Include="..\src\DUCalculator\DialogUnitCalculator.cpp" />
-    <ClCompile Include="..\src\MultiReplacePanel.cpp" />
+    <ClCompile Include="..\src\MultiReplace.cpp" />
     <ClCompile Include="..\src\NppMultireplace.cpp" />
     <ClCompile Include="..\src\PluginDefinition.cpp" />
   </ItemGroup>
