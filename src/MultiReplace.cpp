@@ -27,7 +27,6 @@
 #include <iostream>
 #include <map>
 #include <Notepad_plus_msgs.h>
-//#include <DialogUnitCalculator.h>
 
 
 #ifdef UNICODE
@@ -389,7 +388,6 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
     prevWidth = newWidth;
 }
 
-// Function for handling deletion from the list view and data vector
 void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
     // Remove the item from the ListView
     ListView_DeleteItem(_replaceListView, pnmia->iItem);
@@ -403,7 +401,6 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
     InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
-// Function for handling copying data back to the source interfaces
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
     // Copy the data from the selected item back to the source interfaces
     ReplaceItemData& itemData = replaceListData[pnmia->iItem];
@@ -637,18 +634,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             if (inListEnabled)
             {
-                // Iterate through the list of items
+                ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
                 for (size_t i = 0; i < replaceListData.size(); i++)
                 {
                     ReplaceItemData& itemData = replaceListData[i];
-                    ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
                     findAndReplace(
                         itemData.findText.c_str(), itemData.replaceText.c_str(),
                         itemData.wholeWord, itemData.matchCase,
                         itemData.regexSearch, itemData.extended
                     );
-                    ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
                 }
+                ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
             }
             else
             {
@@ -672,9 +668,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     extended = true;
                 }
 
-                // Perform the Find and Replace operation
+                ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
                 findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
-
+                ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 
                 // Add the entered text to the combo box history
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
@@ -1015,7 +1011,7 @@ void MultiReplace::markMatchingStrings(const TCHAR* findText, bool wholeWord, bo
             matchLen = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
             ::SendMessage(_hScintilla, SCI_SETINDICATORVALUE, 1, 0);
             ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, pos, matchLen);
-            pos += findTextLength;
+            pos += matchLen;
         }
     }
 }
