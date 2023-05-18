@@ -66,7 +66,9 @@ public:
         deleteIconIndex(-1),
         enabledIconIndex(-1),
         _himl(NULL),
-        hFont(nullptr)
+        hFont(nullptr),
+        _hStatusMessage(nullptr),
+        _statusMessageColor(RGB(0, 0, 0))
     {};
 
     virtual void display(bool toShow = true) const {
@@ -97,6 +99,8 @@ private:
     int copyBackIconIndex;
     int deleteIconIndex;
     int enabledIconIndex;
+    HWND _hStatusMessage;
+    COLORREF  _statusMessageColor;
     HFONT hFont;
     static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
     static constexpr int FONT_SIZE = 16;
@@ -124,12 +128,13 @@ private:
 
     // SearchReplace
     int convertExtendedToString(const TCHAR* query, TCHAR* result, int length);
-    void findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
-    void markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
+    int findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
+    int markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
     void clearAllMarks();
     void copyMarkedTextToClipboard();
     void onCopyToListButtonClick();
     static void addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems = 10);
+    void showStatusMessage(const wchar_t* message, COLORREF color);
 
     // FileOperations
     std::wstring openSaveFileDialog();

@@ -39,6 +39,7 @@
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101
 #define IDC_STATIC_HINT                 5102
+#define IDC_STATUS_MESSAGE				5103
 
 #define IDC_WHOLE_WORD_CHECKBOX         5200
 #define IDC_MATCH_CASE_CHECKBOX         5201

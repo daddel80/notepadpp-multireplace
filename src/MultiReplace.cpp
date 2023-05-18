@@ -60,6 +60,7 @@ void MultiReplace::PositionControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_REGEX_RADIO] = { 250, 156, 200, 20, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP };
     ctrlMap[IDC_EXTENDED_RADIO] = { 250, 186, 200, 20, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP };
     ctrlMap[IDC_STATIC_HINT] = { 14, 100, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER };
+    ctrlMap[IDC_STATUS_MESSAGE] = { 14, 250, 300, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { 120, 14, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP };
@@ -436,6 +437,22 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     }
     break;
 
+    case WM_CTLCOLORSTATIC:
+    {
+        HDC hdcStatic = reinterpret_cast<HDC>(wParam);
+        HWND hwndStatic = reinterpret_cast<HWND>(lParam);
+
+        if (hwndStatic == GetDlgItem(_hSelf, IDC_STATUS_MESSAGE)) {
+            SetTextColor(hdcStatic, _statusMessageColor);
+            SetBkMode(hdcStatic, TRANSPARENT);
+            return (LRESULT)GetStockObject(NULL_BRUSH);
+        }
+
+        break;
+    }
+    break;
+
+
     case WM_DESTROY:
     {
         DestroyIcon(_hDeleteIcon);
@@ -607,7 +624,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
-        // Add these case blocks for IDC_NORMAL_RADIO and IDC_EXTENDED_RADIO
         case IDC_NORMAL_RADIO:
         case IDC_EXTENDED_RADIO:
         {
@@ -629,6 +645,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_BUTTON:
         {
+            int replaceCount = 0;
             // Check if the "In List" option is enabled
             bool inListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
 
@@ -638,7 +655,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 for (size_t i = 0; i < replaceListData.size(); i++)
                 {
                     ReplaceItemData& itemData = replaceListData[i];
-                    findAndReplace(
+                    replaceCount += findAndReplace(
                         itemData.findText.c_str(), itemData.replaceText.c_str(),
                         itemData.wholeWord, itemData.matchCase,
                         itemData.regexSearch, itemData.extended
@@ -669,18 +686,23 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
 
                 ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
-                findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
+                replaceCount = findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
                 ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 
                 // Add the entered text to the combo box history
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceText);
             }
+            // Display status message
+            wchar_t statusMessage[256];
+            wsprintf(statusMessage, L"%d occurrences were replaced in the entire file", replaceCount);
+            showStatusMessage(statusMessage, RGB(0, 128, 0));
         }
         break;
 
         case IDC_MARK_MATCHES_BUTTON:
         {
+            int matchCount = 0;
             // Check if the "In List" option is enabled
             bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
 
@@ -693,11 +715,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     bool regexSearch = itemData.regexSearch;
                     bool extended = itemData.extended;
 
-                    // Perform the Mark Matching Strings operation if Find field has a value
-                    markMatchingStrings(
+                    matchCount += markMatchingStrings(
                         itemData.findText.c_str(), itemData.wholeWord,
                         itemData.matchCase, regexSearch, extended);
-
                 }
             }
             else
@@ -721,14 +741,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
 
                 // Perform the Mark Matching Strings operation if Find field has a value
-                markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
+                matchCount = markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
 
                 // Add the entered text to the combo box history
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
             }
+            // Display status message
+            wchar_t statusMessage[256];
+            wsprintf(statusMessage, L"%d marked matches in the entire file", matchCount);
+            showStatusMessage(statusMessage, RGB(0, 0, 128));  // Blue color
         }
         break;
-
 
         case IDC_CLEAR_MARKS_BUTTON:
         {
@@ -907,11 +930,11 @@ int MultiReplace::convertExtendedToString(const TCHAR* query, TCHAR* result, int
 
 }
 
-void MultiReplace::findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
+int MultiReplace::findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
     // Return early if the Find field is empty
     if (findText[0] == '\0') {
-        return;
+        return 0;
     }
 
     int searchFlags = 0;
@@ -932,7 +955,6 @@ void MultiReplace::findAndReplace(const TCHAR* findText, const TCHAR* replaceTex
     TCHAR replaceTextExtended[256];
     if (extended)
     {
-
         int findTextExtendedLength = convertExtendedToString(findText, findTextExtended, findTextLength);
         int replaceTextExtendedLength = convertExtendedToString(replaceText, replaceTextExtended, replaceTextLength);
 
@@ -941,11 +963,12 @@ void MultiReplace::findAndReplace(const TCHAR* findText, const TCHAR* replaceTex
 
         findTextUtf8 = converter.to_bytes(findTextExtended);
         replaceTextUtf8 = converter.to_bytes(replaceTextExtended);
-
     }
 
     Sci_Position pos = 0;
     Sci_Position matchLen = 0;
+
+    int replaceCount = 0;  // Counter for replacements
 
     while (pos >= 0)
     {
@@ -960,15 +983,19 @@ void MultiReplace::findAndReplace(const TCHAR* findText, const TCHAR* replaceTex
             ::SendMessage(_hScintilla, SCI_SETSEL, pos, pos + matchLen);
             ::SendMessage(_hScintilla, SCI_REPLACESEL, 0, (LPARAM)replaceTextUtf8.c_str());
             pos += replaceTextLength;
+            replaceCount++;  // Increment the counter for each replacement
         }
     }
+
+    return replaceCount;  // Return the count of replacements
 }
 
-void MultiReplace::markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
+
+int MultiReplace::markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
     // Return early if the Find field is empty
     if (findText[0] == '\0') {
-        return;
+        return 0;
     }
 
     int searchFlags = 0;
@@ -999,6 +1026,8 @@ void MultiReplace::markMatchingStrings(const TCHAR* findText, bool wholeWord, bo
     ::SendMessage(_hScintilla, SCI_INDICSETFORE, 0, 0x007F00);
     ::SendMessage(_hScintilla, SCI_INDICSETALPHA, 0, 100);
 
+    int markCount = 0;  // Counter for marked matches
+
     while (pos >= 0)
     {
         ::SendMessage(_hScintilla, SCI_SETTARGETSTART, pos, 0);
@@ -1012,9 +1041,14 @@ void MultiReplace::markMatchingStrings(const TCHAR* findText, bool wholeWord, bo
             ::SendMessage(_hScintilla, SCI_SETINDICATORVALUE, 1, 0);
             ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, pos, matchLen);
             pos += matchLen;
+
+            markCount++;  // Increment the counter for each marked match
         }
     }
+
+    return markCount;  // Return the count of marked matches
 }
+
 
 void MultiReplace::clearAllMarks()
 {
@@ -1106,6 +1140,23 @@ void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, 
 
     // Select the newly added string
     SendMessage(hComboBox, CB_SETCURSEL, 0, 0);
+}
+
+void MultiReplace::showStatusMessage(const wchar_t* message, COLORREF color)
+{
+    // Get the handle for the status message control
+    HWND hStatusMessage = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
+
+    // Set the new message
+    _statusMessageColor = color;
+    SetWindowText(hStatusMessage, message);
+
+    // Invalidate the area of the parent where the control resides
+    RECT rect;
+    GetWindowRect(hStatusMessage, &rect);
+    MapWindowPoints(HWND_DESKTOP, GetParent(hStatusMessage), reinterpret_cast<POINT*>(&rect), 2);
+    InvalidateRect(GetParent(hStatusMessage), &rect, TRUE);
+    UpdateWindow(GetParent(hStatusMessage));
 }
 
 #pragma endregion
