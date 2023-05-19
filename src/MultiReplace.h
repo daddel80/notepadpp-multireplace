@@ -35,6 +35,19 @@ struct ReplaceItemData
     bool regexSearch = false;
     bool matchCase = false;
     bool extended = false;
+
+    bool operator==(const ReplaceItemData& rhs) const {
+        return findText == rhs.findText &&
+            replaceText == rhs.replaceText &&
+            wholeWord == rhs.wholeWord &&
+            matchCase == rhs.matchCase &&
+            regexSearch == rhs.regexSearch &&
+            extended == rhs.extended;
+    }
+
+    bool operator!=(const ReplaceItemData& rhs) const {
+        return !(*this == rhs);
+    }
 };
 
 struct ControlInfo
@@ -110,13 +123,13 @@ private:
     static std::map<int, ControlInfo> ctrlMap;
 
     // Initialization
-    void PositionControls(int windowWidth, int windowHeight);
+    void positionAndResizeControls(int windowWidth, int windowHeight);
     bool createAndShowWindows(HINSTANCE hInstance);
     void initializeCtrlMap();
     void initializeScintilla();
     void createImageList();
     void initializeListView();
-    void MoveAndResizeControls();
+    void moveAndResizeControls();
     void updateUIVisibility();
 
     // ListView
@@ -128,13 +141,13 @@ private:
 
     // SearchReplace
     int convertExtendedToString(const TCHAR* query, TCHAR* result, int length);
-    int findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
-    int markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
+    int replaceString(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
+    int markString(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
     void clearAllMarks();
     void copyMarkedTextToClipboard();
     void onCopyToListButtonClick();
     static void addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems = 10);
-    void showStatusMessage(const wchar_t* message, COLORREF color);
+    void showStatusMessage(int count, const wchar_t* messageFormat, COLORREF color);
 
     // FileOperations
     std::wstring openSaveFileDialog();

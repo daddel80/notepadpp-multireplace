@@ -41,7 +41,7 @@ std::map<int, ControlInfo> MultiReplace::ctrlMap;
 
 #pragma region Initialization
 
-void MultiReplace::PositionControls(int windowWidth, int windowHeight)
+void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 {
     int buttonX = windowWidth - 40 - 160;
     int comboWidth = windowWidth - 360;
@@ -60,7 +60,7 @@ void MultiReplace::PositionControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_REGEX_RADIO] = { 250, 156, 200, 20, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP };
     ctrlMap[IDC_EXTENDED_RADIO] = { 250, 186, 200, 20, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP };
     ctrlMap[IDC_STATIC_HINT] = { 14, 100, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER };
-    ctrlMap[IDC_STATUS_MESSAGE] = { 14, 250, 300, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT };
+    ctrlMap[IDC_STATUS_MESSAGE] = { 14, 250, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { 120, 14, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP };
@@ -127,7 +127,7 @@ void MultiReplace::initializeCtrlMap()
     int windowHeight = rcClient.bottom - rcClient.top;
 
     // Define Position for all Elements
-    PositionControls(windowWidth, windowHeight);
+    positionAndResizeControls(windowWidth, windowHeight);
 
     // Now iterate over the controls and create each one.
     if (!createAndShowWindows(hInstance)) {
@@ -185,7 +185,7 @@ void MultiReplace::initializeListView() {
     ListView_SetExtendedListViewStyle(_replaceListView, LVS_EX_FULLROWSELECT | LVS_EX_SUBITEMIMAGES);
 }
 
-void MultiReplace::MoveAndResizeControls() {
+void MultiReplace::moveAndResizeControls() {
     // IDs of controls to be moved or resized
     const int controlIds[] = {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON,
@@ -341,10 +341,19 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
 {
     // Return early if findText is empty
     if (itemData.findText.empty()) {
+        showStatusMessage(0, L"No 'No Find String' entered. Please provide a value to add to the list.", RGB(255, 0, 0));
         return;
     }
 
     _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+
+    // Check if itemData is already in the vector
+    for (const auto& existingItem : replaceListData) {
+        if (existingItem == itemData) {
+            showStatusMessage(0, L"Duplicate entry. This value already exists in the list.", RGB(255, 0, 0));
+            return;
+        }
+    }
 
     // Add the data to the vector
     ReplaceItemData newItemData = itemData;
@@ -403,6 +412,11 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 }
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
+
+    if (pnmia->iItem >= replaceListData.size()) {
+        return; // Item index is out of range, this can happen by double clicking in empty list, so return
+    }
+    
     // Copy the data from the selected item back to the source interfaces
     ReplaceItemData& itemData = replaceListData[pnmia->iItem];
 
@@ -476,10 +490,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), lParam);
 
         // Calculate Position for all Elements
-        PositionControls(newWidth, newHeight);
+        positionAndResizeControls(newWidth, newHeight);
 
         // Move all Elements
-        MoveAndResizeControls();
+        moveAndResizeControls();
 
         return 0;
     }
@@ -491,12 +505,16 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         if (pnmh->idFrom == IDC_REPLACE_LIST) {
             switch (pnmh->code) {
-            case NM_CLICK: {
+            case NM_CLICK: 
+            {
                 NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
                 if (pnmia->iSubItem == 8) { // Delete button column
                     handleDeletion(pnmia);
                 }
                 else if (pnmia->iSubItem == 7) { // Copy Back button column
+                    handleCopyBack(pnmia);
+                }
+                else {
                     handleCopyBack(pnmia);
                 }
             }
@@ -647,15 +665,20 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             int replaceCount = 0;
             // Check if the "In List" option is enabled
-            bool inListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+            bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
 
-            if (inListEnabled)
+            if (useListEnabled)
             {
+                // Check if the replaceListData is empty and warn the user if so
+                if (replaceListData.empty()) {
+                    showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to replace directly.", RGB(255, 0, 0));
+                    break;
+                }
                 ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
                 for (size_t i = 0; i < replaceListData.size(); i++)
                 {
                     ReplaceItemData& itemData = replaceListData[i];
-                    replaceCount += findAndReplace(
+                    replaceCount += replaceString(
                         itemData.findText.c_str(), itemData.replaceText.c_str(),
                         itemData.wholeWord, itemData.matchCase,
                         itemData.regexSearch, itemData.extended
@@ -686,7 +709,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
 
                 ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
-                replaceCount = findAndReplace(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
+                replaceCount = replaceString(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
                 ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 
                 // Add the entered text to the combo box history
@@ -694,9 +717,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceText);
             }
             // Display status message
-            wchar_t statusMessage[256];
-            wsprintf(statusMessage, L"%d occurrences were replaced in the entire file", replaceCount);
-            showStatusMessage(statusMessage, RGB(0, 128, 0));
+            showStatusMessage(replaceCount, L"%d occurrences were replaced.", RGB(0, 128, 0));
         }
         break;
 
@@ -708,6 +729,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             if (useListEnabled)
             {
+                // Check if the replaceListData is empty and warn the user if so
+                if (replaceListData.empty()) {
+                    showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to mark directly.", RGB(255, 0, 0));
+                    break;
+                }
                 // Iterate through the list of items
                 for (size_t i = 0; i < replaceListData.size(); i++)
                 {
@@ -715,7 +741,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     bool regexSearch = itemData.regexSearch;
                     bool extended = itemData.extended;
 
-                    matchCount += markMatchingStrings(
+                    matchCount += markString(
                         itemData.findText.c_str(), itemData.wholeWord,
                         itemData.matchCase, regexSearch, extended);
                 }
@@ -741,15 +767,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
 
                 // Perform the Mark Matching Strings operation if Find field has a value
-                matchCount = markMatchingStrings(findText, wholeWord, matchCase, regexSearch, extended);
+                matchCount = markString(findText, wholeWord, matchCase, regexSearch, extended);
 
                 // Add the entered text to the combo box history
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
             }
             // Display status message
-            wchar_t statusMessage[256];
-            wsprintf(statusMessage, L"%d marked matches in the entire file", matchCount);
-            showStatusMessage(statusMessage, RGB(0, 0, 128));  // Blue color
+            showStatusMessage(matchCount, L"%d occurrences were marked.", RGB(0, 0, 128));  // Blue color
         }
         break;
 
@@ -787,7 +811,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_LOAD_FROM_CSV_BUTTON:
         {
-            // Code zum Laden der Liste aus einer CSV-Datei
             std::wstring filePath = openOpenFileDialog();
             if (!filePath.empty()) {
                 loadListFromCsv(filePath);
@@ -930,7 +953,7 @@ int MultiReplace::convertExtendedToString(const TCHAR* query, TCHAR* result, int
 
 }
 
-int MultiReplace::findAndReplace(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
+int MultiReplace::replaceString(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
     // Return early if the Find field is empty
     if (findText[0] == '\0') {
@@ -990,8 +1013,7 @@ int MultiReplace::findAndReplace(const TCHAR* findText, const TCHAR* replaceText
     return replaceCount;  // Return the count of replacements
 }
 
-
-int MultiReplace::markMatchingStrings(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
+int MultiReplace::markString(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
 {
     // Return early if the Find field is empty
     if (findText[0] == '\0') {
@@ -1049,11 +1071,11 @@ int MultiReplace::markMatchingStrings(const TCHAR* findText, bool wholeWord, boo
     return markCount;  // Return the count of marked matches
 }
 
-
 void MultiReplace::clearAllMarks()
 {
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, 0, 0);
     ::SendMessage(_hScintilla, SCI_INDICATORCLEARRANGE, 0, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+    showStatusMessage(0, L"All marks cleared.", RGB(0, 128, 0));
 }
 
 void MultiReplace::copyMarkedTextToClipboard()
@@ -1061,6 +1083,7 @@ void MultiReplace::copyMarkedTextToClipboard()
 
     LRESULT length = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
     std::string markedText;
+    int markedTextCount = 0;
 
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, 0, 0);
     for (int i = 0; i < length; ++i)
@@ -1069,6 +1092,7 @@ void MultiReplace::copyMarkedTextToClipboard()
         {
             char ch = static_cast<char>(::SendMessage(_hScintilla, SCI_GETCHARAT, i, 0));
             markedText += ch;
+            markedTextCount++;
         }
     }
 
@@ -1088,8 +1112,13 @@ void MultiReplace::copyMarkedTextToClipboard()
                 EmptyClipboard();
                 SetClipboardData(CF_TEXT, hMem);
                 CloseClipboard();
+                showStatusMessage(markedTextCount, L"%d marked text strings copied into Clipboard.", RGB(0, 128, 0));
             }
         }
+    }
+    else
+    {
+        showStatusMessage(0, L"No marked text to copy.", RGB(255, 0, 0));
     }
 }
 
@@ -1142,8 +1171,11 @@ void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, 
     SendMessage(hComboBox, CB_SETCURSEL, 0, 0);
 }
 
-void MultiReplace::showStatusMessage(const wchar_t* message, COLORREF color)
+void MultiReplace::showStatusMessage(int count, const wchar_t* messageFormat, COLORREF color)
 {
+    wchar_t message[350];
+    wsprintf(message, messageFormat, count);
+
     // Get the handle for the status message control
     HWND hStatusMessage = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
 
@@ -1207,11 +1239,17 @@ std::wstring MultiReplace::openOpenFileDialog() {
 }
 
 void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
+    if (list.empty())
+    {
+        showStatusMessage(0, L"The list is empty. Nothing to save.", RGB(255, 0, 0));
+        return;
+    }
+
     std::wofstream outFile(filePath);
     outFile.imbue(std::locale(outFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
 
     if (!outFile.is_open()) {
-        std::wcerr << L"Error: Unable to open file for writing." << std::endl;
+        showStatusMessage(0, L"Error: Unable to open file for writing.", RGB(255, 0, 0)); // Red color
         return;
     }
 
@@ -1224,14 +1262,16 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     }
 
     outFile.close();
+
+    showStatusMessage(static_cast<int>(list.size()), L"%d items saved to CSV.", RGB(0, 128, 0));
 }
 
 void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
     std::wifstream inFile(filePath);
-    inFile.imbue(std::locale(inFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
+    inFile.imbue(std::locale(inFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>()));
 
     if (!inFile.is_open()) {
-        std::wcerr << L"Error: Unable to open file for reading." << std::endl;
+        showStatusMessage(0, L"Error: Unable to open file for reading.", RGB(255, 0, 0)); // Red color
         return;
     }
 
@@ -1287,6 +1327,16 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
 
     // Update the list view control
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+
+    if (replaceListData.empty())
+    {
+        showStatusMessage(0, L"No valid items found in the CSV file.", RGB(255, 0, 0)); // Red color
+    }
+    else
+    {
+        // Display status message
+        showStatusMessage(static_cast<int>(replaceListData.size()), L"%d items loaded from CSV.", RGB(0, 128, 0)); // Green color
+    }
 }
 
 std::wstring MultiReplace::escapeCsvValue(const std::wstring& value) {
