@@ -234,7 +234,7 @@ void MultiReplace::updateUIVisibility() {
         IDC_STATIC_FRAME, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_EXTENDED_RADIO,
         IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX,
         IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON,
-        IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON
+        IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_STATUS_MESSAGE
     };
 
     // Show or hide elements based on the window size
@@ -514,9 +514,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 else if (pnmia->iSubItem == 7) { // Copy Back button column
                     handleCopyBack(pnmia);
                 }
-                else {
-                    handleCopyBack(pnmia);
-                }
+
+            }
+            break;
+
+            case NM_DBLCLK:
+            {
+                NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
+                handleCopyBack(pnmia);
             }
             break;
 
