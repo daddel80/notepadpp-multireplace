@@ -35,6 +35,10 @@
 #define IDC_DELETE_REPLACE_ITEM_BUTTON  5009
 #define IDC_SAVE_TO_CSV_BUTTON          5010
 #define IDC_LOAD_FROM_CSV_BUTTON        5011
+#define IDC_UP_BUTTON					5012
+#define IDC_DOWN_BUTTON					5013
+#define IDC_SHIFT_FRAME					5014
+#define IDC_SHIFT_TEXT					5015
 
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101

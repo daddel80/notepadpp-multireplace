@@ -72,6 +72,10 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX, 222, 160, 30, WC_BUTTON, L"Copy Marked Text", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 286, 160, 30, WC_BUTTON, L"Load from CSV", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 326, 160, 30, WC_BUTTON, L"Save to CSV", BS_PUSHBUTTON | WS_TABSTOP };
+    ctrlMap[IDC_UP_BUTTON] = { buttonX+5, 390, 30, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER };
+    ctrlMap[IDC_DOWN_BUTTON] = { buttonX+5, 390 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER };    
+    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 390-14, 160, 85, WC_BUTTON, L"", BS_GROUPBOX };
+    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 40, 390 + 20, 60, 20, WC_STATIC, L"Shift Lines", SS_LEFT };
     ctrlMap[IDC_STATIC_FRAME] = { frameX, 88, 310, 170, WC_BUTTON, L"", BS_GROUPBOX };
     ctrlMap[IDC_REPLACE_LIST] = { 14, 270, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS };
     ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 164, 80, 20, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP };
@@ -191,7 +195,7 @@ void MultiReplace::moveAndResizeControls() {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON,
         IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON,
         IDC_COPY_MARKED_TEXT_BUTTON, IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON,
-        IDC_SAVE_TO_CSV_BUTTON
+        IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT
     };
 
     // IDs of controls to be redrawn
@@ -199,7 +203,7 @@ void MultiReplace::moveAndResizeControls() {
         IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX, IDC_NORMAL_RADIO,
         IDC_REGEX_RADIO, IDC_EXTENDED_RADIO, IDC_USE_LIST_CHECKBOX,
         IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON,
-        IDC_COPY_MARKED_TEXT_BUTTON
+        IDC_COPY_MARKED_TEXT_BUTTON,  IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT
     };
 
     // Move and resize controls
@@ -223,7 +227,7 @@ void MultiReplace::updateUIVisibility() {
 
     // Set the minimum width and height
     int minWidth = 800;
-    int minHeight = 360;
+    int minHeight = 465;
 
     // Determine if the window is smaller than the minimum size
     bool isSmallerThanMinSize = (currentWidth < minWidth) || (currentHeight < minHeight);
@@ -234,7 +238,8 @@ void MultiReplace::updateUIVisibility() {
         IDC_STATIC_FRAME, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_EXTENDED_RADIO,
         IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX,
         IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON,
-        IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_STATUS_MESSAGE
+        IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME,
+        IDC_SHIFT_TEXT, IDC_STATUS_MESSAGE
     };
 
     // Show or hide elements based on the window size
@@ -399,6 +404,10 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
 }
 
 void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
+
+    if (pnmia == nullptr || pnmia->iItem >= replaceListData.size()) {
+        return;
+    }
     // Remove the item from the ListView
     ListView_DeleteItem(_replaceListView, pnmia->iItem);
 
@@ -413,8 +422,8 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
 
-    if (pnmia->iItem >= replaceListData.size()) {
-        return; // Item index is out of range, this can happen by double clicking in empty list, so return
+    if (pnmia == nullptr || pnmia->iItem >= replaceListData.size()) {
+        return;
     }
     
     // Copy the data from the selected item back to the source interfaces
@@ -428,6 +437,89 @@ void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
     SendMessageW(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), BM_SETCHECK, (!itemData.regexSearch && !itemData.extended) ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_SETCHECK, itemData.regexSearch ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), BM_SETCHECK, itemData.extended ? BST_CHECKED : BST_UNCHECKED, 0);
+}
+
+void MultiReplace::shiftListItem(HWND listView, const Direction& direction) {
+    
+    // Enable the ListView accordingly
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
+    EnableWindow(_replaceListView, TRUE);
+    
+    std::vector<int> selectedIndices;
+    int i = -1;
+    while ((i = ListView_GetNextItem(listView, i, LVNI_SELECTED)) != -1) {
+        selectedIndices.push_back(i);
+    }
+
+    if (selectedIndices.empty()) {
+        showStatusMessage(0, L"No rows selected to shift.", RGB(255, 0, 0));
+        return;
+    }
+
+    // Check the bounds
+    if ((direction == Direction::Up && selectedIndices.front() == 0) || (direction == Direction::Down && selectedIndices.back() == replaceListData.size() - 1)) {
+        return; // Don't perform the move if it's out of bounds
+    }
+
+    // Perform the shift operation
+    if (direction == Direction::Up) {
+        for (int& index : selectedIndices) {
+            int swapIndex = index - 1;
+            std::swap(replaceListData[index], replaceListData[swapIndex]);
+            index = swapIndex;
+        }
+    }
+    else { // direction is Down
+        for (auto it = selectedIndices.rbegin(); it != selectedIndices.rend(); ++it) {
+            int swapIndex = *it + 1;
+            std::swap(replaceListData[*it], replaceListData[swapIndex]);
+            *it = swapIndex;
+        }
+    }
+
+    ListView_SetItemCountEx(listView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+
+    // Deselect all items
+    for (int j = 0; j < ListView_GetItemCount(listView); ++j) {
+        ListView_SetItemState(listView, j, 0, LVIS_SELECTED | LVIS_FOCUSED);
+    }
+
+    // Re-select the shifted items
+    for (int index : selectedIndices) {
+        ListView_SetItemState(listView, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+    }
+
+    // Show status message when rows are successfully shifted
+    std::wstring statusMessage = std::to_wstring(selectedIndices.size()) + L" rows successfully shifted.";
+    showStatusMessage(static_cast<int>(selectedIndices.size()), statusMessage.c_str(), RGB(0, 128, 0));
+}
+
+void MultiReplace::deleteSelectedLines(HWND listView) {
+    std::vector<int> selectedIndices;
+    int i = -1;
+    while ((i = ListView_GetNextItem(listView, i, LVNI_SELECTED)) != -1) {
+        selectedIndices.push_back(i);
+    }
+
+    if (selectedIndices.empty()) {
+        return;
+    }
+
+    size_t numDeletedLines = selectedIndices.size();
+
+    // Remove the selected lines from replaceListData
+    for (auto it = selectedIndices.rbegin(); it != selectedIndices.rend(); ++it) {
+        replaceListData.erase(replaceListData.begin() + *it);
+    }
+
+    ListView_SetItemCountEx(listView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+
+    // Deselect all items
+    for (int j = 0; j < ListView_GetItemCount(listView); ++j) {
+        ListView_SetItemState(listView, j, 0, LVIS_SELECTED | LVIS_FOCUSED);
+    }
+
+    showStatusMessage(static_cast<int>(numDeletedLines), L"%d lines deleted.", RGB(0, 128, 0));
 }
 
 #pragma endregion
@@ -465,7 +557,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         break;
     }
     break;
-
 
     case WM_DESTROY:
     {
@@ -514,7 +605,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 else if (pnmia->iSubItem == 7) { // Copy Back button column
                     handleCopyBack(pnmia);
                 }
-
             }
             break;
 
@@ -583,11 +673,22 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
             }
             break;
+
+            case LVN_KEYDOWN:
+            {
+                LPNMLVKEYDOWN pnkd = reinterpret_cast<LPNMLVKEYDOWN>(pnmh);
+
+                if (pnkd->wVKey == VK_DELETE) {
+                    deleteSelectedLines(_replaceListView);
+                }
+            }
+            break;
+
             }
         }
-
     }
     break;
+
     case WM_TIMER:
     {   //Refresh of DropDown due to a Bug in Notepad++ Plugin implementation of Dark Mode
         if (wParam == 1)
@@ -662,6 +763,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             // Enable or disable the ListView accordingly
             EnableWindow(_replaceListView, listCheckboxChecked);
+
+        }
+        break;
+
+        case IDC_COPY_TO_LIST_BUTTON:
+        {            
+            onCopyToListButtonClick();
 
         }
         break;
@@ -794,17 +902,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
-        case IDC_COPY_TO_LIST_BUTTON:
-        {
-            // Enable the ListView accordingly
-            SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
-            EnableWindow(_replaceListView, TRUE);
-
-            onCopyToListButtonClick();
-
-        }
-        break;
-
         case IDC_SAVE_TO_CSV_BUTTON:
         {
             std::wstring filePath = openSaveFileDialog();
@@ -822,6 +919,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             }
         }
         break;
+
+        case IDC_UP_BUTTON:
+        {
+            shiftListItem(_replaceListView, Direction::Up);
+            break;
+        }
+        case IDC_DOWN_BUTTON:
+        {
+            shiftListItem(_replaceListView, Direction::Down);
+            break;
+        }
 
         default:
             return FALSE;
@@ -1147,6 +1255,10 @@ void MultiReplace::onCopyToListButtonClick() {
     // Add the entered text to the combo box history
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceText);
+
+    // Enable the ListView accordingly
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
+    EnableWindow(_replaceListView, TRUE);
 }
 
 void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems)
@@ -1269,6 +1381,10 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     outFile.close();
 
     showStatusMessage(static_cast<int>(list.size()), L"%d items saved to CSV.", RGB(0, 128, 0));
+
+    // Enable the ListView accordingly
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
+    EnableWindow(_replaceListView, TRUE);
 }
 
 void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
@@ -1342,6 +1458,10 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         // Display status message
         showStatusMessage(static_cast<int>(replaceListData.size()), L"%d items loaded from CSV.", RGB(0, 128, 0)); // Green color
     }
+
+    // Enable the ListView accordingly
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
+    EnableWindow(_replaceListView, TRUE);
 }
 
 std::wstring MultiReplace::escapeCsvValue(const std::wstring& value) {

@@ -58,6 +58,8 @@ struct ControlInfo
     DWORD style;
 };
 
+enum class Direction { Up, Down };
+
 typedef std::basic_string<TCHAR> generic_string;
 
 class MultiReplace : public DockingDlgInterface
@@ -138,6 +140,8 @@ private:
     void updateListViewAndColumns(HWND listView, LPARAM lParam);
     void handleDeletion(NMITEMACTIVATE* pnmia);
     void handleCopyBack(NMITEMACTIVATE* pnmia);
+    void shiftListItem(HWND listView, const Direction& direction);
+    void deleteSelectedLines(HWND listView);
 
     // SearchReplace
     int convertExtendedToString(const TCHAR* query, TCHAR* result, int length);
