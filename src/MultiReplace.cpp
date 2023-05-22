@@ -76,6 +76,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_DOWN_BUTTON] = { buttonX+5, 390 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER };    
     ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 390-14, 160, 85, WC_BUTTON, L"", BS_GROUPBOX };
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 40, 390 + 20, 60, 20, WC_STATIC, L"Shift Lines", SS_LEFT };
+    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 485, 160, 30, WC_BUTTON, L"Export to Bash", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_STATIC_FRAME] = { frameX, 88, 310, 170, WC_BUTTON, L"", BS_GROUPBOX };
     ctrlMap[IDC_REPLACE_LIST] = { 14, 270, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS };
     ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 164, 80, 20, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP };
@@ -156,6 +157,10 @@ void MultiReplace::initializeCtrlMap()
     // Enable the checkbox ID IDC_USE_LIST_CHECKBOX
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
 
+    // Deactivate Export Bash as it is experimental
+    //HWND hExportButton = GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON);
+    //EnableWindow(hExportButton, FALSE);
+
 }
 
 void MultiReplace::initializeScintilla() {
@@ -195,7 +200,8 @@ void MultiReplace::moveAndResizeControls() {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON,
         IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON,
         IDC_COPY_MARKED_TEXT_BUTTON, IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON,
-        IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT
+        IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, 
+        IDC_EXPORT_BASH_BUTTON
     };
 
     // IDs of controls to be redrawn
@@ -203,7 +209,8 @@ void MultiReplace::moveAndResizeControls() {
         IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX, IDC_NORMAL_RADIO,
         IDC_REGEX_RADIO, IDC_EXTENDED_RADIO, IDC_USE_LIST_CHECKBOX,
         IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON,
-        IDC_COPY_MARKED_TEXT_BUTTON,  IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT
+        IDC_COPY_MARKED_TEXT_BUTTON,  IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT,
+        IDC_EXPORT_BASH_BUTTON
     };
 
     // Move and resize controls
@@ -239,7 +246,7 @@ void MultiReplace::updateUIVisibility() {
         IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX,
         IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON,
         IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME,
-        IDC_SHIFT_TEXT, IDC_STATUS_MESSAGE
+        IDC_SHIFT_TEXT, IDC_STATUS_MESSAGE, IDC_EXPORT_BASH_BUTTON
     };
 
     // Show or hide elements based on the window size
@@ -346,17 +353,18 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
 {
     // Return early if findText is empty
     if (itemData.findText.empty()) {
-        showStatusMessage(0, L"No 'No Find String' entered. Please provide a value to add to the list.", RGB(255, 0, 0));
+        showStatusMessage(0, L"No 'Find String' entered. Please provide a value to add to the list.", RGB(255, 0, 0));
         return;
     }
 
     _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
 
     // Check if itemData is already in the vector
+    bool isDuplicate = false;
     for (const auto& existingItem : replaceListData) {
         if (existingItem == itemData) {
-            showStatusMessage(0, L"Duplicate entry. This value already exists in the list.", RGB(255, 0, 0));
-            return;
+            isDuplicate = true;
+            break;
         }
     }
 
@@ -364,9 +372,18 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
     ReplaceItemData newItemData = itemData;
     replaceListData.push_back(newItemData);
 
+    // Show a status message indicating the value added to the list
+    std::wstring message;
+    if (isDuplicate) {
+        message = L"Duplicate entry: " + newItemData.findText;
+    }
+    else {
+        message = L"Value added to the list.";
+    }
+    showStatusMessage(0, message.c_str(), RGB(0, 128, 0));
+
     // Update the item count in the ListView
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-
 }
 
 void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
@@ -418,6 +435,8 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
     InvalidateRect(_replaceListView, NULL, TRUE);
+
+    showStatusMessage(0, L"1 line deleted.", RGB(0, 128, 0));
 }
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
@@ -506,6 +525,8 @@ void MultiReplace::deleteSelectedLines(HWND listView) {
     }
 
     size_t numDeletedLines = selectedIndices.size();
+    //int firstSelectedIndex = selectedIndices.front();
+    int lastSelectedIndex = selectedIndices.back();
 
     // Remove the selected lines from replaceListData
     for (auto it = selectedIndices.rbegin(); it != selectedIndices.rend(); ++it) {
@@ -518,6 +539,14 @@ void MultiReplace::deleteSelectedLines(HWND listView) {
     for (int j = 0; j < ListView_GetItemCount(listView); ++j) {
         ListView_SetItemState(listView, j, 0, LVIS_SELECTED | LVIS_FOCUSED);
     }
+
+    // Select the next available line
+    int nextIndexToSelect = lastSelectedIndex < ListView_GetItemCount(listView) ? lastSelectedIndex : ListView_GetItemCount(listView) - 1;
+    if (nextIndexToSelect >= 0) {
+        ListView_SetItemState(listView, nextIndexToSelect, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+    }
+
+    InvalidateRect(_replaceListView, NULL, TRUE);
 
     showStatusMessage(static_cast<int>(numDeletedLines), L"%d lines deleted.", RGB(0, 128, 0));
 }
@@ -633,41 +662,49 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     break;
                 case 2:
                     if (itemData.wholeWord) {
-                        plvdi->item.mask |= LVIF_IMAGE;
-                        plvdi->item.iImage = enabledIconIndex;
+                        //plvdi->item.mask |= LVIF_IMAGE;
+                        //plvdi->item.iImage = enabledIconIndex;
+                        plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 3:
                     if (itemData.matchCase) {
-                        plvdi->item.mask |= LVIF_IMAGE;
-                        plvdi->item.iImage = enabledIconIndex;
+                        //plvdi->item.mask |= LVIF_IMAGE;
+                        //plvdi->item.iImage = enabledIconIndex;
+                        plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 4:
                     if (!itemData.regexSearch && !itemData.extended) {
-                        plvdi->item.mask |= LVIF_IMAGE;
-                        plvdi->item.iImage = enabledIconIndex;
+                        //plvdi->item.mask |= LVIF_IMAGE;
+                        //plvdi->item.iImage = enabledIconIndex;
+                        plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 5:
                     if (itemData.regexSearch) {
-                        plvdi->item.mask |= LVIF_IMAGE;
-                        plvdi->item.iImage = enabledIconIndex;
+                        //plvdi->item.mask |= LVIF_IMAGE;
+                        //plvdi->item.iImage = enabledIconIndex;
+                        plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 6:
                     if (itemData.extended) {
-                        plvdi->item.mask |= LVIF_IMAGE;
-                        plvdi->item.iImage = enabledIconIndex;
+                        //plvdi->item.mask |= LVIF_IMAGE;
+                        //plvdi->item.iImage = enabledIconIndex;
+                        plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 7:
                     plvdi->item.mask |= LVIF_IMAGE;
                     plvdi->item.iImage = copyBackIconIndex;
+                    //plvdi->item.pszText = L"\u21A9";
                     break;
                 case 8:
                     plvdi->item.mask |= LVIF_IMAGE;
                     plvdi->item.iImage = deleteIconIndex;
+                    //plvdi->item.mask |= LVIF_TEXT;
+                    //plvdi->item.pszText = L"\u2716";
                     break;
 
                 }
@@ -930,6 +967,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             shiftListItem(_replaceListView, Direction::Down);
             break;
         }
+
+        case IDC_EXPORT_BASH_BUTTON:
+        {
+            std::wstring filePath = openSaveFileDialog();
+            if (!filePath.empty()) {
+                exportToBashScript(filePath);
+            }
+        }
+        break;
 
         default:
             return FALSE;
@@ -1263,6 +1309,12 @@ void MultiReplace::onCopyToListButtonClick() {
 
 void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems)
 {
+    if (_tcslen(str) == 0)
+    {
+        // Skip adding empty strings to the combo box history
+        return;
+    }
+
     // Check if the string is already in the combo box
     int index = static_cast<int>(SendMessage(hComboBox, CB_FINDSTRINGEXACT, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(str)));
 
@@ -1516,6 +1568,69 @@ std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
     }
 
     return unescapedValue;
+}
+
+#pragma endregion
+
+#pragma region Export
+void MultiReplace::exportToBashScript(const std::wstring& fileName)
+{
+    std::ofstream file(wstringToString(fileName));
+    if (!file.is_open()) {
+        // Handle the case where the file could not be opened for writing.
+        return;
+    }
+
+    file << "#!/bin/bash\n\n";
+    file << "FILENAME=$1\n\n";
+
+    std::string options = "-ri"; // Default options
+
+    for (const auto& itemData : replaceListData) {
+        std::string find = escapeSpecialChars(wstringToString(itemData.findText));
+        std::string replace = escapeSpecialChars(wstringToString(itemData.replaceText));
+
+        if (itemData.matchCase) {
+            options = "-r";
+        }
+
+        if (itemData.wholeWord) {
+            find = "\\b" + find + "\\b";
+        }
+
+        if (itemData.regexSearch) {
+            options += "E"; // Add extended regex option
+        }
+
+        std::string sedCommand = "sed " + options + " \"s/" + find + "/" + replace + "/g\" $FILENAME > temp && mv temp $FILENAME\n";
+        file << sedCommand;
+    }
+
+    file.close();
+}
+
+std::string MultiReplace::wstringToString(const std::wstring& wstr)
+{
+    std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+    return converter.to_bytes(wstr);
+}
+
+std::string MultiReplace::escapeSpecialChars(const std::string& input) {
+    std::string output = input;
+
+    // Add more special characters if necessary
+    std::string specialChars = "\\&/";
+
+    for (char c : specialChars) {
+        std::string str(1, c);
+        size_t pos = output.find(str);
+        while (pos != std::string::npos) {
+            output.insert(pos, "\\");
+            pos = output.find(str, pos + 2);
+        }
+    }
+
+    return output;
 }
 
 #pragma endregion

@@ -160,6 +160,11 @@ private:
     void loadListFromCsv(const std::wstring& filePath);
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
+
+    // Export
+    void exportToBashScript(const std::wstring& fileName);
+    std::string wstringToString(const std::wstring& wstr);
+    std::string escapeSpecialChars(const std::string& input);
 };
 
 #endif // MULTI_REPLACE_H

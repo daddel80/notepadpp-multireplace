@@ -39,6 +39,7 @@
 #define IDC_DOWN_BUTTON					5013
 #define IDC_SHIFT_FRAME					5014
 #define IDC_SHIFT_TEXT					5015
+#define IDC_EXPORT_BASH_BUTTON			5016
 
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101
