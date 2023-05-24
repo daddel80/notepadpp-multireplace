@@ -232,9 +232,10 @@ void MultiReplace::updateUIVisibility() {
     int currentWidth = rect.right - rect.left;
     int currentHeight = rect.bottom - rect.top;
 
-    // Set the minimum width and height
-    int minWidth = 800;
-    int minHeight = 465;
+    // Set the minimum width and height in resourece.h 
+    int minWidth = MIN_WIDTH;
+    int minHeight = MIN_HEIGHT;
+
 
     // Determine if the window is smaller than the minimum size
     bool isSmallerThanMinSize = (currentWidth < minWidth) || (currentHeight < minHeight);
@@ -337,14 +338,14 @@ void MultiReplace::createListViewColumns(HWND listView) {
     // Column for Copy Back Button
     lvc.iSubItem = 7;
     lvc.pszText = L"";
-    lvc.cx = 20;
+    lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 7, &lvc);
 
     // Column for Delete Button
     lvc.iSubItem = 8;
     lvc.pszText = L"";
-    lvc.cx = 20;
+    lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 8, &lvc);
 }
@@ -453,8 +454,8 @@ void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
     SetWindowTextW(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText.c_str());
     SendMessageW(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), BM_SETCHECK, itemData.wholeWord ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), BM_SETCHECK, itemData.matchCase ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessageW(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), BM_SETCHECK, (!itemData.regexSearch && !itemData.extended) ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessageW(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_SETCHECK, itemData.regexSearch ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), BM_SETCHECK, (!itemData.regex && !itemData.extended) ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_SETCHECK, itemData.regex ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), BM_SETCHECK, itemData.extended ? BST_CHECKED : BST_UNCHECKED, 0);
 }
 
@@ -664,6 +665,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     if (itemData.wholeWord) {
                         //plvdi->item.mask |= LVIF_IMAGE;
                         //plvdi->item.iImage = enabledIconIndex;
+                        plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
@@ -671,20 +673,23 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     if (itemData.matchCase) {
                         //plvdi->item.mask |= LVIF_IMAGE;
                         //plvdi->item.iImage = enabledIconIndex;
+                        plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 4:
-                    if (!itemData.regexSearch && !itemData.extended) {
+                    if (!itemData.regex && !itemData.extended) {
                         //plvdi->item.mask |= LVIF_IMAGE;
                         //plvdi->item.iImage = enabledIconIndex;
+                        plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 5:
-                    if (itemData.regexSearch) {
+                    if (itemData.regex) {
                         //plvdi->item.mask |= LVIF_IMAGE;
                         //plvdi->item.iImage = enabledIconIndex;
+                        plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
@@ -692,19 +697,21 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     if (itemData.extended) {
                         //plvdi->item.mask |= LVIF_IMAGE;
                         //plvdi->item.iImage = enabledIconIndex;
+                        plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 7:
-                    plvdi->item.mask |= LVIF_IMAGE;
-                    plvdi->item.iImage = copyBackIconIndex;
-                    //plvdi->item.pszText = L"\u21A9";
+                    //plvdi->item.mask |= LVIF_IMAGE;
+                    //plvdi->item.iImage = copyBackIconIndex;
+                    plvdi->item.mask |= LVIF_TEXT;
+                    plvdi->item.pszText = L"\U0001F879";
                     break;
                 case 8:
-                    plvdi->item.mask |= LVIF_IMAGE;
-                    plvdi->item.iImage = deleteIconIndex;
-                    //plvdi->item.mask |= LVIF_TEXT;
-                    //plvdi->item.pszText = L"\u2716";
+                    //plvdi->item.mask |= LVIF_IMAGE;
+                    //plvdi->item.iImage = deleteIconIndex;
+                    plvdi->item.mask |= LVIF_TEXT;
+                    plvdi->item.pszText = L"\u2716";
                     break;
 
                 }
@@ -831,7 +838,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     replaceCount += replaceString(
                         itemData.findText.c_str(), itemData.replaceText.c_str(),
                         itemData.wholeWord, itemData.matchCase,
-                        itemData.regexSearch, itemData.extended
+                        itemData.regex, itemData.extended
                     );
                 }
                 ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
@@ -842,7 +849,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 TCHAR replaceText[256];
                 GetDlgItemText(_hSelf, IDC_FIND_EDIT, findText, 256);
                 GetDlgItemText(_hSelf, IDC_REPLACE_EDIT, replaceText, 256);
-                bool regexSearch = false;
+                bool regex = false;
                 bool extended = false;
 
                 // Get the state of the Whole word checkbox
@@ -852,14 +859,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
 
                 if (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED) {
-                    regexSearch = true;
+                    regex = true;
                 }
                 else if (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED) {
                     extended = true;
                 }
 
                 ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
-                replaceCount = replaceString(findText, replaceText, wholeWord, matchCase, regexSearch, extended);
+                replaceCount = replaceString(findText, replaceText, wholeWord, matchCase, regex, extended);
                 ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 
                 // Add the entered text to the combo box history
@@ -888,19 +895,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 for (size_t i = 0; i < replaceListData.size(); i++)
                 {
                     ReplaceItemData& itemData = replaceListData[i];
-                    bool regexSearch = itemData.regexSearch;
+                    bool regex = itemData.regex;
                     bool extended = itemData.extended;
 
                     matchCount += markString(
                         itemData.findText.c_str(), itemData.wholeWord,
-                        itemData.matchCase, regexSearch, extended);
+                        itemData.matchCase, regex, extended);
                 }
             }
             else
             {
                 TCHAR findText[256];
                 GetDlgItemText(_hSelf, IDC_FIND_EDIT, findText, 256);
-                bool regexSearch = false;
+                bool regex = false;
                 bool extended = false;
 
                 // Get the state of the Whole word checkbox
@@ -910,14 +917,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
 
                 if (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED) {
-                    regexSearch = true;
+                    regex = true;
                 }
                 else if (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED) {
                     extended = true;
                 }
 
                 // Perform the Mark Matching Strings operation if Find field has a value
-                matchCount = markString(findText, wholeWord, matchCase, regexSearch, extended);
+                matchCount = markString(findText, wholeWord, matchCase, regex, extended);
 
                 // Add the entered text to the combo box history
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
@@ -941,7 +948,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_SAVE_TO_CSV_BUTTON:
         {
-            std::wstring filePath = openSaveFileDialog();
+            std::wstring filePath = openFileDialog(true, L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0", L"Save List As", OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"csv");
             if (!filePath.empty()) {
                 saveListToCsv(filePath, replaceListData);
             }
@@ -950,7 +957,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_LOAD_FROM_CSV_BUTTON:
         {
-            std::wstring filePath = openOpenFileDialog();
+            std::wstring filePath = openFileDialog(false, L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0", L"Open List", OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST, L"csv");
             if (!filePath.empty()) {
                 loadListFromCsv(filePath);
             }
@@ -970,7 +977,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_EXPORT_BASH_BUTTON:
         {
-            std::wstring filePath = openSaveFileDialog();
+            std::wstring filePath = openFileDialog(true, L"Bash Files (*.sh)\0*.sh\0All Files (*.*)\0*.*\0", L"Export as Bash", OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"sh");
             if (!filePath.empty()) {
                 exportToBashScript(filePath);
             }
@@ -1112,7 +1119,7 @@ int MultiReplace::convertExtendedToString(const TCHAR* query, TCHAR* result, int
 
 }
 
-int MultiReplace::replaceString(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
+int MultiReplace::replaceString(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regex, bool extended)
 {
     // Return early if the Find field is empty
     if (findText[0] == '\0') {
@@ -1124,7 +1131,7 @@ int MultiReplace::replaceString(const TCHAR* findText, const TCHAR* replaceText,
         searchFlags |= SCFIND_WHOLEWORD;
     if (matchCase)
         searchFlags |= SCFIND_MATCHCASE;
-    if (regexSearch)
+    if (regex)
         searchFlags |= SCFIND_REGEXP;
 
     std::wstring_convert<std::codecvt_utf8_utf16<TCHAR>> converter;
@@ -1172,7 +1179,7 @@ int MultiReplace::replaceString(const TCHAR* findText, const TCHAR* replaceText,
     return replaceCount;  // Return the count of replacements
 }
 
-int MultiReplace::markString(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended)
+int MultiReplace::markString(const TCHAR* findText, bool wholeWord, bool matchCase, bool regex, bool extended)
 {
     // Return early if the Find field is empty
     if (findText[0] == '\0') {
@@ -1184,7 +1191,7 @@ int MultiReplace::markString(const TCHAR* findText, bool wholeWord, bool matchCa
         searchFlags |= SCFIND_WHOLEWORD;
     if (matchCase)
         searchFlags |= SCFIND_MATCHCASE;
-    if (regexSearch)
+    if (regex)
         searchFlags |= SCFIND_REGEXP;
 
     std::wstring_convert<std::codecvt_utf8_utf16<TCHAR>> converter;
@@ -1293,7 +1300,7 @@ void MultiReplace::onCopyToListButtonClick() {
 
     itemData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
     itemData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-    itemData.regexSearch = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+    itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
     itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
     insertReplaceListItem(itemData);
@@ -1365,7 +1372,7 @@ void MultiReplace::showStatusMessage(int count, const wchar_t* messageFormat, CO
 
 #pragma region FileOperations
 
-std::wstring MultiReplace::openSaveFileDialog() {
+std::wstring MultiReplace::openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension) {
     OPENFILENAME ofn = { 0 };
     WCHAR szFile[MAX_PATH] = { 0 };
 
@@ -1373,34 +1380,20 @@ std::wstring MultiReplace::openSaveFileDialog() {
     ofn.hwndOwner = _hSelf;
     ofn.lpstrFile = szFile;
     ofn.nMaxFile = sizeof(szFile) / sizeof(WCHAR);
-    ofn.lpstrFilter = L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0";
+    ofn.lpstrFilter = filter;
     ofn.nFilterIndex = 1;
-    ofn.lpstrTitle = L"Save List As";
-    ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT;
+    ofn.lpstrTitle = title;
+    ofn.Flags = flags;
 
-    if (GetSaveFileName(&ofn)) {
-        return std::wstring(szFile);
-    }
-    else {
-        return std::wstring();
-    }
-}
+    if (saveFile ? GetSaveFileName(&ofn) : GetOpenFileName(&ofn)) {
+        std::wstring filePath(szFile);
 
-std::wstring MultiReplace::openOpenFileDialog() {
-    OPENFILENAME ofn = { 0 };
-    WCHAR szFile[MAX_PATH] = { 0 };
+        // Ensure that the filename ends with the correct extension if no extension is provided
+        if (filePath.find_last_of(L".") == std::wstring::npos) {
+            filePath += L"." + fileExtension;
+        }
 
-    ofn.lStructSize = sizeof(OPENFILENAME);
-    ofn.hwndOwner = _hSelf;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = sizeof(szFile) / sizeof(WCHAR);
-    ofn.lpstrFilter = L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0";
-    ofn.nFilterIndex = 1;
-    ofn.lpstrTitle = L"Open List";
-    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-
-    if (GetOpenFileName(&ofn)) {
-        return std::wstring(szFile);
+        return filePath;
     }
     else {
         return std::wstring();
@@ -1423,11 +1416,11 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     }
 
     // Write CSV header
-    outFile << L"Find,Replace,WholeWord,RegexSearch,MatchCase,Extended" << std::endl;
+    outFile << L"Find,Replace,WholeWord,regex,MatchCase,Extended" << std::endl;
 
     // Write list items to CSV file
     for (const ReplaceItemData& item : list) {
-        outFile << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.regexSearch << L"," << item.matchCase << L"," << item.extended << std::endl;
+        outFile << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.regex << L"," << item.matchCase << L"," << item.extended << std::endl;
     }
 
     outFile.close();
@@ -1487,7 +1480,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         item.findText = columns[0];
         item.replaceText = columns[1];
         item.wholeWord = std::stoi(columns[2]) != 0;
-        item.regexSearch = std::stoi(columns[3]) != 0;
+        item.regex = std::stoi(columns[3]) != 0;
         item.matchCase = std::stoi(columns[4]) != 0;
         item.extended = std::stoi(columns[5]) != 0;
 
@@ -1572,39 +1565,72 @@ std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
 
 #pragma endregion
 
+
 #pragma region Export
-void MultiReplace::exportToBashScript(const std::wstring& fileName)
-{
+
+void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     std::ofstream file(wstringToString(fileName));
     if (!file.is_open()) {
         // Handle the case where the file could not be opened for writing.
         return;
     }
 
-    file << "#!/bin/bash\n\n";
+    file << "#!/bin/bash\n";
+    file << "# Auto-generated by MultiReplace Notepad++ plugin (by Thomas Knoefel)\n";
+    file << "# Function processLine: Parses and processes each line of inputStrings\n";
+    file << "# inputStrings: Auto-populated by user-defined parameters in MultiReplace\n\n";
+
     file << "FILENAME=$1\n\n";
 
-    std::string options = "-ri"; // Default options
+    file << "processLine() {\n";
+    file << R"(
+processLine() { 
+    line=$1; 
+    IFS=' '; 
+    read -ra params <<< "$line"; 
+    findString=${params[0]}; 
+    replaceString=${params[1]}; 
+    wholeWord=${params[2]}; 
+    matchCase=${params[3]}; 
+    normal=${params[4]}; 
+    regex=${params[5]}; 
+    extended=${params[6]}; 
+    if [[ "$wholeWord" -eq 1 ]]; then findString='\<'${findString}'\>'; fi; 
+    if [[ "$matchCase" -eq 1 ]]; then caseOption=""; else caseOption="i"; fi; 
+    if [[ "$normal" -eq 1 ]]; then 
+        sed -${caseOption}e "s/${findString}/${replaceString}/g" $FILENAME > temp && mv temp $FILENAME; 
+    elif [[ "$regex" -eq 1 ]]; then 
+        if [[ "$wholeWord" -eq 0 ]]; then 
+            sed -${caseOption}r "s/${findString}/${replaceString}/g" $FILENAME > temp && mv temp $FILENAME; 
+        else 
+            echo "Error: Whole word matching is not available for regex"; 
+        fi; 
+    elif [[ "$extended" -eq 1 ]]; then 
+        echo -e $FILENAME | sed -${caseOption}e "s/${findString}/${replaceString}/g" > temp && mv temp $FILENAME; 
+    fi; 
+})";
+    file << "}\n\n";
 
+    file << "inputStrings=(";
     for (const auto& itemData : replaceListData) {
         std::string find = escapeSpecialChars(wstringToString(itemData.findText));
         std::string replace = escapeSpecialChars(wstringToString(itemData.replaceText));
+        std::string wholeWord = itemData.wholeWord ? "1" : "0";
+        std::string matchCase = itemData.matchCase ? "1" : "0";
+        std::string regex = itemData.regex ? "1" : "0";
+        std::string normal = (!itemData.regex && !itemData.extended) ? "1" : "0";
+        std::string extended = itemData.extended ? "1" : "0";
 
-        if (itemData.matchCase) {
-            options = "-r";
-        }
+        std::string line = "\"" + find + " " + replace + " " + wholeWord + " " + matchCase + " " + normal + " " + regex + " " + extended + "\"";
 
-        if (itemData.wholeWord) {
-            find = "\\b" + find + "\\b";
-        }
-
-        if (itemData.regexSearch) {
-            options += "E"; // Add extended regex option
-        }
-
-        std::string sedCommand = "sed " + options + " \"s/" + find + "/" + replace + "/g\" $FILENAME > temp && mv temp $FILENAME\n";
-        file << sedCommand;
+        file << line << "\n";
     }
+    file << ")\n\n";
+
+    file << R"(
+for str in "${inputStrings[@]}"; do
+    processLine "$str"
+done)";
 
     file.close();
 }

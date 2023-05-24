@@ -32,7 +32,7 @@ struct ReplaceItemData
     std::wstring findText;
     std::wstring replaceText;
     bool wholeWord = false;
-    bool regexSearch = false;
+    bool regex = false;
     bool matchCase = false;
     bool extended = false;
 
@@ -41,7 +41,7 @@ struct ReplaceItemData
             replaceText == rhs.replaceText &&
             wholeWord == rhs.wholeWord &&
             matchCase == rhs.matchCase &&
-            regexSearch == rhs.regexSearch &&
+            regex == rhs.regex &&
             extended == rhs.extended;
     }
 
@@ -154,8 +154,7 @@ private:
     void showStatusMessage(int count, const wchar_t* messageFormat, COLORREF color);
 
     // FileOperations
-    std::wstring openSaveFileDialog();
-    std::wstring openOpenFileDialog();
+    std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void loadListFromCsv(const std::wstring& filePath);
     std::wstring escapeCsvValue(const std::wstring& value);

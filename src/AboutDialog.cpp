@@ -78,20 +78,14 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM /*l
     case WM_INITDIALOG:
     {
         HFONT hUnderlineFont = CreateFont(0, 0, 0, 0, FW_NORMAL, FALSE, TRUE, FALSE, 0, 0, 0, 0, 0, NULL);
-
-        HWND hwndMailtoLink = GetDlgItem(hwnd, IDC_MAILTO_LINK);
         HWND hwndWebsiteLink = GetDlgItem(hwnd, IDC_WEBSITE_LINK);
-
-        SendMessage(hwndMailtoLink, WM_SETFONT, (WPARAM)hUnderlineFont, TRUE);
         SendMessage(hwndWebsiteLink, WM_SETFONT, (WPARAM)hUnderlineFont, TRUE);
-
-        SetWindowSubclass(hwndMailtoLink, WebsiteLinkProc, 0, reinterpret_cast<DWORD_PTR>(IDC_MAILTO_LINK_VALUE));
         SetWindowSubclass(hwndWebsiteLink, WebsiteLinkProc, 0, reinterpret_cast<DWORD_PTR>(IDC_WEBSITE_LINK_VALUE));
 
         DeleteObject(hUnderlineFont);
         HFONT hFont = CreateFont(8, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"MS Shell Dlg");
-        SendMessage(GetDlgItem(hwnd, IDC_AUTHOR_STATIC), WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessage(GetDlgItem(hwnd, IDC_VERSION_STATIC), WM_SETFONT, (WPARAM)hFont, TRUE);
+        SendMessage(GetDlgItem(hwnd, IDC_AUTHOR_STATIC), WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessage(GetDlgItem(hwnd, IDC_LICENSE_STATIC), WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessage(GetDlgItem(hwnd, IDC_MAILTO_LINK), WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessage(GetDlgItem(hwnd, IDC_WEBSITE_LINK), WM_SETFONT, (WPARAM)hFont, TRUE);

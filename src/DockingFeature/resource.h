@@ -72,6 +72,9 @@
 #define IDC_LICENSE_STATIC              5604
 #define IDC_AUTHOR_STATIC               5605
 
+#define MIN_WIDTH 800
+#define MIN_HEIGHT 520
+
 #define VERSION_VALUE "1.0.0"
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace")
 #define IDC_MAILTO_LINK_VALUE  TEXT("mailto:tknoefel@gmail.com")
