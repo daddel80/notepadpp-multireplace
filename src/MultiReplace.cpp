@@ -1641,11 +1641,16 @@ std::string MultiReplace::wstringToString(const std::wstring& wstr)
     return converter.to_bytes(wstr);
 }
 
-std::string MultiReplace::escapeSpecialChars(const std::string& input) {
+std::string MultiReplace::escapeSpecialChars(const std::string& input, bool extended) {
     std::string output = input;
 
-    // Add more special characters if necessary
-    std::string specialChars = "\\&/";
+    // Extended: Mask only characters that are part of sed's extended regex syntax or could be interpreted by the shell.
+    std::string specialCharsExtended = "$.*[]^&{}()?+|<>\\\"";
+
+    // Non-extended: Mask all characters that could be interpreted by sed or the shell, including escape sequences.
+    std::string specialCharsNonExtended = "$.*[]^&\\{}()?+|<>\\\"'`~;#";
+
+    std::string specialChars = extended ? specialCharsExtended : specialCharsNonExtended;
 
     for (char c : specialChars) {
         std::string str(1, c);

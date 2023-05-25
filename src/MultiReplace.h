@@ -157,7 +157,7 @@ private:
     std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void loadListFromCsv(const std::wstring& filePath);
-    std::wstring escapeCsvValue(const std::wstring& value);
+    std::wstring escapeSpecialChars(const std::string& input, bool extended);
     std::wstring unescapeCsvValue(const std::wstring& value);
 
     // Export
