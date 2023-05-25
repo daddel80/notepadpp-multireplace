@@ -1571,7 +1571,6 @@ std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
 void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     std::ofstream file(wstringToString(fileName));
     if (!file.is_open()) {
-        // Handle the case where the file could not be opened for writing.
         return;
     }
 
@@ -1580,41 +1579,46 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     file << "# Function processLine: Parses and processes each line of inputStrings\n";
     file << "# inputStrings: Auto-populated by user-defined parameters in MultiReplace\n\n";
 
-    file << "FILENAME=$1\n\n";
+    file << "textFile=\"test.txt\"\n\n";
 
     file << "processLine() {\n";
     file << R"(
-processLine() { 
-    line=$1; 
-    IFS=' '; 
-    read -ra params <<< "$line"; 
-    findString=${params[0]}; 
-    replaceString=${params[1]}; 
-    wholeWord=${params[2]}; 
-    matchCase=${params[3]}; 
-    normal=${params[4]}; 
-    regex=${params[5]}; 
-    extended=${params[6]}; 
-    if [[ "$wholeWord" -eq 1 ]]; then findString='\<'${findString}'\>'; fi; 
-    if [[ "$matchCase" -eq 1 ]]; then caseOption=""; else caseOption="i"; fi; 
-    if [[ "$normal" -eq 1 ]]; then 
-        sed -${caseOption}e "s/${findString}/${replaceString}/g" $FILENAME > temp && mv temp $FILENAME; 
-    elif [[ "$regex" -eq 1 ]]; then 
-        if [[ "$wholeWord" -eq 0 ]]; then 
-            sed -${caseOption}r "s/${findString}/${replaceString}/g" $FILENAME > temp && mv temp $FILENAME; 
-        else 
-            echo "Error: Whole word matching is not available for regex"; 
-        fi; 
-    elif [[ "$extended" -eq 1 ]]; then 
-        echo -e $FILENAME | sed -${caseOption}e "s/${findString}/${replaceString}/g" > temp && mv temp $FILENAME; 
-    fi; 
-})";
+IFS=' ' read -r findString replaceString wholeWord matchCase normal regex extended <<< "$1"
+if [[ "$wholeWord" -eq 1 ]]; then
+    findString='\b'${findString}'\b'
+fi
+if [[ "$matchCase" -eq 1 ]]; then
+    template='s/'${findString}'/'${replaceString}'/g'
+else
+    template='s/'${findString}'/'${replaceString}'/gi'
+fi
+case 1 in
+    $normal)
+        sed -i -e "${template}" "$textFile"
+        ;;
+    $regex)
+        sed -i -r -e "${template}" "$textFile"
+        ;;
+    $extended)
+        sed -i -e ':a' -e 'N' -e '$!ba' -e"${template}" "$textFile"
+        ;;
+esac
+)";
     file << "}\n\n";
 
     file << "inputStrings=(";
     for (const auto& itemData : replaceListData) {
-        std::string find = escapeSpecialChars(wstringToString(itemData.findText));
-        std::string replace = escapeSpecialChars(wstringToString(itemData.replaceText));
+        std::string find;
+        std::string replace;
+        if (itemData.extended) {
+            find = translateUnsupportedEscapes(escapeSpecialChars(wstringToString(itemData.findText), true));
+            replace = translateUnsupportedEscapes(escapeSpecialChars(wstringToString(itemData.replaceText), true));
+        }
+        else {
+            find = translateUnsupportedEscapes(escapeSpecialChars(wstringToString(itemData.findText), false));
+            replace = translateUnsupportedEscapes(escapeSpecialChars(wstringToString(itemData.replaceText), false));
+        }
+
         std::string wholeWord = itemData.wholeWord ? "1" : "0";
         std::string matchCase = itemData.matchCase ? "1" : "0";
         std::string regex = itemData.regex ? "1" : "0";
@@ -1623,9 +1627,9 @@ processLine() {
 
         std::string line = "\"" + find + " " + replace + " " + wholeWord + " " + matchCase + " " + normal + " " + regex + " " + extended + "\"";
 
-        file << line << "\n";
+        file << "\n              " << line;
     }
-    file << ")\n\n";
+    file << "\n              )\n\n";
 
     file << R"(
 for str in "${inputStrings[@]}"; do
@@ -1658,6 +1662,62 @@ std::string MultiReplace::escapeSpecialChars(const std::string& input, bool exte
         while (pos != std::string::npos) {
             output.insert(pos, "\\");
             pos = output.find(str, pos + 2);
+        }
+    }
+
+    // Replace all spaces with '\s'
+    size_t pos = output.find(' ');
+    while (pos != std::string::npos) {
+        output.replace(pos, 1, "\\s");
+        pos = output.find(' ', pos + 2);
+    }
+
+    return output;
+}
+
+std::string MultiReplace::translateUnsupportedEscapes(const std::string& input) {
+    std::string output = input;
+    std::regex octalRegex("\\\\0([0-7]{3})");
+    std::regex decimalRegex("\\\\d([0-9]{3})");
+    std::regex unicodeRegex("\\\\u([0-9a-fA-F]{4})");
+
+    std::sregex_iterator begin, end;
+
+    // Handle octal escapes
+    begin = std::sregex_iterator(input.begin(), input.end(), octalRegex);
+    for (std::sregex_iterator i = begin; i != end; ++i) {
+        std::smatch match = *i;
+        std::string octalEscape = match.str();
+        char octalChar = static_cast<char>(std::stoi(octalEscape.substr(2), nullptr, 8));
+        size_t pos = output.find(octalEscape);
+        if (pos != std::string::npos) {
+            output.replace(pos, octalEscape.length(), 1, octalChar);
+        }
+    }
+
+    // Handle decimal escapes
+    begin = std::sregex_iterator(input.begin(), input.end(), decimalRegex);
+    for (std::sregex_iterator i = begin; i != end; ++i) {
+        std::smatch match = *i;
+        std::string decimalEscape = match.str();
+        char decimalChar = static_cast<char>(std::stoi(decimalEscape.substr(2)));
+        size_t pos = output.find(decimalEscape);
+        if (pos != std::string::npos) {
+            output.replace(pos, decimalEscape.length(), 1, decimalChar);
+        }
+    }
+
+    // Handle Unicode escapes
+    begin = std::sregex_iterator(input.begin(), input.end(), unicodeRegex);
+    for (std::sregex_iterator i = begin; i != end; ++i) {
+        std::smatch match = *i;
+        std::string unicodeEscape = match.str();
+        int codepoint = std::stoi(unicodeEscape.substr(2), 0, 16);
+        std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> convert;
+        std::string utf8Char = convert.to_bytes(static_cast<char32_t>(codepoint));
+        size_t pos = output.find(unicodeEscape);
+        if (pos != std::string::npos) {
+            output.replace(pos, unicodeEscape.length(), utf8Char);
         }
     }
 
