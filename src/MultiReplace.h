@@ -23,6 +23,8 @@
 #include <map> 
 #include <commctrl.h>
 #include "PluginInterface.h"
+#include <functional>
+#include <regex>
 
 
 extern NppData nppData;
@@ -164,6 +166,7 @@ private:
     void exportToBashScript(const std::wstring& fileName);
     std::string wstringToString(const std::wstring& wstr);
     std::string escapeSpecialChars(const std::string& input, bool extended);
+    void handleEscapeSequence(const std::regex& regex, const std::string& input, std::string& output, std::function<char(const std::string&)> converter);
     std::string translateUnsupportedEscapes(const std::string& input);
 };
 

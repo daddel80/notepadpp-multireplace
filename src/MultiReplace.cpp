@@ -27,6 +27,10 @@
 #include <iostream>
 #include <map>
 #include <Notepad_plus_msgs.h>
+#include <bitset>
+#include <string>
+#include <functional>
+
 
 
 #ifdef UNICODE
@@ -1615,8 +1619,8 @@ esac
             replace = translateUnsupportedEscapes(escapeSpecialChars(wstringToString(itemData.replaceText), true));
         }
         else {
-            find = translateUnsupportedEscapes(escapeSpecialChars(wstringToString(itemData.findText), false));
-            replace = translateUnsupportedEscapes(escapeSpecialChars(wstringToString(itemData.replaceText), false));
+            find = escapeSpecialChars(wstringToString(itemData.findText), false);
+            replace = escapeSpecialChars(wstringToString(itemData.replaceText), false);
         }
 
         std::string wholeWord = itemData.wholeWord ? "1" : "0";
@@ -1648,20 +1652,34 @@ std::string MultiReplace::wstringToString(const std::wstring& wstr)
 std::string MultiReplace::escapeSpecialChars(const std::string& input, bool extended) {
     std::string output = input;
 
+    // Define the escape characters that should not be masked
+    std::string supportedEscapes = "nrt0xub";
+
     // Extended: Mask only characters that are part of sed's extended regex syntax or could be interpreted by the shell.
-    std::string specialCharsExtended = "$.*[]^&{}()?+|<>\\\"";
+    std::string specialCharsExtended = "$.*[]^&{}()?+|<>\"";
 
     // Non-extended: Mask all characters that could be interpreted by sed or the shell, including escape sequences.
-    std::string specialCharsNonExtended = "$.*[]^&\\{}()?+|<>\\\"'`~;#";
+    std::string specialCharsNonExtended = "$.*[]^&\\{}()?+|<>\"'`~;#";
 
     std::string specialChars = extended ? specialCharsExtended : specialCharsNonExtended;
 
     for (char c : specialChars) {
         std::string str(1, c);
         size_t pos = output.find(str);
+
         while (pos != std::string::npos) {
+            // Check if the current character is an escape character
+            if (str == "\\" && (pos == 0 || output[pos - 1] != '\\')) {
+                // Skip masking if it is a supported or unsupported escape
+                if (extended && (pos + 1 < output.size() && supportedEscapes.find(output[pos + 1]) != std::string::npos)) {
+                    pos = output.find(str, pos + 1);
+                    continue;
+                }
+            }
+
             output.insert(pos, "\\");
             pos = output.find(str, pos + 2);
+
         }
     }
 
@@ -1675,51 +1693,68 @@ std::string MultiReplace::escapeSpecialChars(const std::string& input, bool exte
     return output;
 }
 
+void MultiReplace::handleEscapeSequence(const std::regex& regex, const std::string& input, std::string& output, std::function<char(const std::string&)> converter) {
+    std::sregex_iterator begin = std::sregex_iterator(input.begin(), input.end(), regex);
+    std::sregex_iterator end;
+    for (std::sregex_iterator i = begin; i != end; ++i) {
+        std::smatch match = *i;
+        std::string escape = match.str();
+        try {
+            char actualChar = converter(escape);
+            size_t pos = output.find(escape);
+            if (pos != std::string::npos) {
+
+                // Display MessageBox with the parameters and output string
+                std::string message = "Output Replace Parameters:\n"
+                    "  Position: " + std::to_string(pos) + "\n"
+                    "  Length: " + std::to_string(escape.length()) + "\n"
+                    "  Character: " + actualChar + "\n"
+                    "Output String: " + output;
+
+                MessageBoxA(NULL, message.c_str(), "Output Replace", MB_OK);
+
+                output.replace(pos, escape.length(), 1, actualChar);
+            }
+        }
+        catch (const std::invalid_argument& ia) {
+            std::cerr << "Invalid argument: " << ia.what() << '\n';
+        }
+        catch (const std::out_of_range& oor) {
+            std::cerr << "Out of range: " << oor.what() << '\n';
+        }
+    }
+}
+
 std::string MultiReplace::translateUnsupportedEscapes(const std::string& input) {
     std::string output = input;
-    std::regex octalRegex("\\\\0([0-7]{3})");
+
+    std::regex octalRegex("\\\\o([0-7]{3})");
     std::regex decimalRegex("\\\\d([0-9]{3})");
+    std::regex hexRegex("\\\\x([0-9a-fA-F]{2})");
+    std::regex binaryRegex("\\\\b([01]{8})");
     std::regex unicodeRegex("\\\\u([0-9a-fA-F]{4})");
 
-    std::sregex_iterator begin, end;
+    handleEscapeSequence(octalRegex, input, output, [](const std::string& octalEscape) {
+        return static_cast<char>(std::stoi(octalEscape.substr(2), nullptr, 8));
+        });
 
-    // Handle octal escapes
-    begin = std::sregex_iterator(input.begin(), input.end(), octalRegex);
-    for (std::sregex_iterator i = begin; i != end; ++i) {
-        std::smatch match = *i;
-        std::string octalEscape = match.str();
-        char octalChar = static_cast<char>(std::stoi(octalEscape.substr(2), nullptr, 8));
-        size_t pos = output.find(octalEscape);
-        if (pos != std::string::npos) {
-            output.replace(pos, octalEscape.length(), 1, octalChar);
-        }
-    }
+    handleEscapeSequence(decimalRegex, input, output, [](const std::string& decimalEscape) {
+        return static_cast<char>(std::stoi(decimalEscape.substr(2)));
+        });
 
-    // Handle decimal escapes
-    begin = std::sregex_iterator(input.begin(), input.end(), decimalRegex);
-    for (std::sregex_iterator i = begin; i != end; ++i) {
-        std::smatch match = *i;
-        std::string decimalEscape = match.str();
-        char decimalChar = static_cast<char>(std::stoi(decimalEscape.substr(2)));
-        size_t pos = output.find(decimalEscape);
-        if (pos != std::string::npos) {
-            output.replace(pos, decimalEscape.length(), 1, decimalChar);
-        }
-    }
+    handleEscapeSequence(hexRegex, input, output, [](const std::string& hexEscape) {
+        return static_cast<char>(std::stoi(hexEscape.substr(2), nullptr, 16));
+        });
 
-    // Handle Unicode escapes
-    begin = std::sregex_iterator(input.begin(), input.end(), unicodeRegex);
-    for (std::sregex_iterator i = begin; i != end; ++i) {
-        std::smatch match = *i;
-        std::string unicodeEscape = match.str();
-        int codepoint = std::stoi(unicodeEscape.substr(2), 0, 16);
+    handleEscapeSequence(binaryRegex, input, output, [](const std::string& binaryEscape) {
+        return static_cast<char>(std::bitset<8>(binaryEscape.substr(2)).to_ulong());
+        });
+
+    handleEscapeSequence(unicodeRegex, input, output, [](const std::string& unicodeEscape) {
+        int codepoint = std::stoi(unicodeEscape.substr(2), nullptr, 16);
         std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> convert;
-        std::string utf8Char = convert.to_bytes(static_cast<char32_t>(codepoint));
-        size_t pos = output.find(unicodeEscape);
-        if (pos != std::string::npos) {
-            output.replace(pos, unicodeEscape.length(), utf8Char);
-        }
-    }
+        return convert.to_bytes(static_cast<char32_t>(codepoint)).front();
+        });
 
     return output;
 }
