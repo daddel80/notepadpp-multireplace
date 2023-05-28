@@ -1415,16 +1415,16 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     outFile.imbue(std::locale(outFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
 
     if (!outFile.is_open()) {
-        showStatusMessage(0, L"Error: Unable to open file for writing.", RGB(255, 0, 0)); // Red color
+        showStatusMessage(0, L"Error: Unable to open file for writing.", RGB(255, 0, 0));
         return;
     }
 
     // Write CSV header
-    outFile << L"Find,Replace,WholeWord,regex,MatchCase,Extended" << std::endl;
+    outFile << L"Find,Replace,WholeWord,MatchCase,Regex,Extended" << std::endl;
 
     // Write list items to CSV file
     for (const ReplaceItemData& item : list) {
-        outFile << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.regex << L"," << item.matchCase << L"," << item.extended << std::endl;
+        outFile << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.matchCase << L"," << item.regex << L"," << item.extended << std::endl;
     }
 
     outFile.close();
@@ -1484,8 +1484,8 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         item.findText = columns[0];
         item.replaceText = columns[1];
         item.wholeWord = std::stoi(columns[2]) != 0;
-        item.regex = std::stoi(columns[3]) != 0;
         item.matchCase = std::stoi(columns[4]) != 0;
+        item.regex = std::stoi(columns[3]) != 0;
         item.extended = std::stoi(columns[5]) != 0;
 
         // Use insertReplaceListItem to insert the item to the list
@@ -1617,8 +1617,12 @@ esac
         std::string find;
         std::string replace;
         if (itemData.extended) {
-            find = translateUnsupportedEscapes(escapeSpecialChars(wstringToString(itemData.findText), true));
-            replace = translateUnsupportedEscapes(escapeSpecialChars(wstringToString(itemData.replaceText), true));
+            find = translateEscapes(escapeSpecialChars(wstringToString(itemData.findText), true));
+            replace = translateEscapes(escapeSpecialChars(wstringToString(itemData.replaceText), true));
+        }
+        else if (itemData.regex) {
+            find = wstringToString(itemData.findText);
+            replace = wstringToString(itemData.replaceText);
         }
         else {
             find = escapeSpecialChars(wstringToString(itemData.findText), false);
@@ -1636,6 +1640,12 @@ esac
     }
 
     file.close();
+
+    showStatusMessage(0, L"List exported to BASH script.", RGB(0, 128, 0));
+
+    // Enable the ListView accordingly
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
+    EnableWindow(_replaceListView, TRUE);
 }
 
 std::string MultiReplace::wstringToString(const std::wstring& wstr)
@@ -1696,7 +1706,7 @@ void MultiReplace::handleEscapeSequence(const std::regex& regex, const std::stri
     }
 }
 
-std::string MultiReplace::translateUnsupportedEscapes(const std::string& input) {
+std::string MultiReplace::translateEscapes(const std::string& input) {
     std::string output = input;
 
     std::regex octalRegex("\\\\o([0-7]{3})");

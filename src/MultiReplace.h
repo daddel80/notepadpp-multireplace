@@ -167,7 +167,7 @@ private:
     std::string wstringToString(const std::wstring& wstr);
     std::string escapeSpecialChars(const std::string& input, bool extended);
     void handleEscapeSequence(const std::regex& regex, const std::string& input, std::string& output, std::function<char(const std::string&)> converter);
-    std::string translateUnsupportedEscapes(const std::string& input);
+    std::string translateEscapes(const std::string& input);
 };
 
 #endif // MULTI_REPLACE_H
