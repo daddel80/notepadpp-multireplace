@@ -86,7 +86,50 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 164, 80, 20, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP };
 }
 
-bool MultiReplace::createAndShowWindows(HINSTANCE hInstance) {
+void MultiReplace::initializeCtrlMap()
+{
+    hInstance = (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE);
+
+    // Get the client rectangle
+    RECT rcClient;
+    GetClientRect(_hSelf, &rcClient);
+    // Extract width and height from the RECT
+    int windowWidth = rcClient.right - rcClient.left;
+    int windowHeight = rcClient.bottom - rcClient.top;
+
+    // Define Position for all Elements
+    positionAndResizeControls(windowWidth, windowHeight);
+
+    // Now iterate over the controls and create each one.
+    if (!createAndShowWindows()) {
+        return;
+    }
+
+    // Create the font
+    hFont = CreateFont(FONT_SIZE, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, FONT_NAME);
+
+    // Set the font for each control in ctrlMap
+    for (auto& pair : ctrlMap)
+    {
+        SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)hFont, TRUE);
+    }
+
+    // CheckBox to Normal
+    CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_NORMAL_RADIO);
+
+    // Hide Hint Text
+    ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_HIDE);
+
+    // Enable the checkbox ID IDC_USE_LIST_CHECKBOX
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
+
+    // Deactivate Export Bash as it is experimental
+    //HWND hExportButton = GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON);
+    //EnableWindow(hExportButton, FALSE);
+
+}
+
+bool MultiReplace::createAndShowWindows() {
 
     // Buffer size for the error message
     constexpr int BUFFER_SIZE = 256;
@@ -122,49 +165,6 @@ bool MultiReplace::createAndShowWindows(HINSTANCE hInstance) {
         UpdateWindow(hwndControl);
     }
     return true;
-}
-
-void MultiReplace::initializeCtrlMap()
-{
-    HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE);
-
-    // Get the client rectangle
-    RECT rcClient;
-    GetClientRect(_hSelf, &rcClient);
-    // Extract width and height from the RECT
-    int windowWidth = rcClient.right - rcClient.left;
-    int windowHeight = rcClient.bottom - rcClient.top;
-
-    // Define Position for all Elements
-    positionAndResizeControls(windowWidth, windowHeight);
-
-    // Now iterate over the controls and create each one.
-    if (!createAndShowWindows(hInstance)) {
-        return;
-    }
-
-    // Create the font
-    hFont = CreateFont(FONT_SIZE, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, FONT_NAME);
-
-    // Set the font for each control in ctrlMap
-    for (auto& pair : ctrlMap)
-    {
-        SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)hFont, TRUE);
-    }
-
-    // CheckBox to Normal
-    CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_NORMAL_RADIO);
-
-    // Hide Hint Text
-    ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_HIDE);
-
-    // Enable the checkbox ID IDC_USE_LIST_CHECKBOX
-    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
-
-    // Deactivate Export Bash as it is experimental
-    //HWND hExportButton = GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON);
-    //EnableWindow(hExportButton, FALSE);
-
 }
 
 void MultiReplace::initializeScintilla() {
@@ -339,15 +339,8 @@ void MultiReplace::createListViewColumns(HWND listView) {
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 6, &lvc);
 
-    // Column for Copy Back Button
-    lvc.iSubItem = 7;
-    lvc.pszText = L"";
-    lvc.cx = 30;
-    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
-    ListView_InsertColumn(listView, 7, &lvc);
-
     // Column for Delete Button
-    lvc.iSubItem = 8;
+    lvc.iSubItem = 7;
     lvc.pszText = L"";
     lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
@@ -633,11 +626,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             case NM_CLICK: 
             {
                 NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
-                if (pnmia->iSubItem == 8) { // Delete button column
+                if (pnmia->iSubItem == 7) { // Delete button column
                     handleDeletion(pnmia);
-                }
-                else if (pnmia->iSubItem == 7) { // Copy Back button column
-                    handleCopyBack(pnmia);
                 }
             }
             break;
@@ -707,12 +697,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     break;
                 case 7:
                     //plvdi->item.mask |= LVIF_IMAGE;
-                    //plvdi->item.iImage = copyBackIconIndex;
-                    plvdi->item.mask |= LVIF_TEXT;
-                    plvdi->item.pszText = L"\U0001F879";
-                    break;
-                case 8:
-                    //plvdi->item.mask |= LVIF_IMAGE;
                     //plvdi->item.iImage = deleteIconIndex;
                     plvdi->item.mask |= LVIF_TEXT;
                     plvdi->item.pszText = L"\u2716";
@@ -769,7 +753,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         switch (HIWORD(wParam))
         {
         case CBN_DROPDOWN:
-        {   //Refresh of DropDown due to a Bug in Notepad++ Plugin implementation of Dark Mode
+        {   //Refresh of DropDown due to a Bug in Notepad++ Plugin implementation of Light Mode
             if (LOWORD(wParam) == IDC_FIND_EDIT || LOWORD(wParam) == IDC_REPLACE_EDIT)
             {
                 SetTimer(_hSelf, 1, 1, NULL);
@@ -1183,24 +1167,33 @@ int MultiReplace::replaceString(const TCHAR* findText, const TCHAR* replaceText,
     return replaceCount;  // Return the count of replacements
 }
 
+long MultiReplace::generateColorValue(const std::string& str) {
+    // DJB2 hash
+    unsigned long hash = 5381;
+    for (char c : str) {
+        hash = ((hash << 5) + hash) + c;  // hash * 33 + c
+    }
+
+    // Create an RGB color using the hash
+    int r = (hash >> 16) & 0xFF;
+    int g = (hash >> 8) & 0xFF;
+    int b = hash & 0xFF;
+
+    // Convert RGB to long
+    long color = (r << 16) | (g << 8) | b;
+
+    return color;
+}
+
 int MultiReplace::markString(const TCHAR* findText, bool wholeWord, bool matchCase, bool regex, bool extended)
 {
-    // Return early if the Find field is empty
     if (findText[0] == '\0') {
         return 0;
     }
 
-    int searchFlags = 0;
-    if (wholeWord)
-        searchFlags |= SCFIND_WHOLEWORD;
-    if (matchCase)
-        searchFlags |= SCFIND_MATCHCASE;
-    if (regex)
-        searchFlags |= SCFIND_REGEXP;
-
+    int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
     std::wstring_convert<std::codecvt_utf8_utf16<TCHAR>> converter;
     std::string findTextUtf8 = converter.to_bytes(findText);
-
     int findTextLength = static_cast<int>(findTextUtf8.length());
 
     if (extended)
@@ -1211,40 +1204,78 @@ int MultiReplace::markString(const TCHAR* findText, bool wholeWord, bool matchCa
         findTextUtf8 = converter.to_bytes(findTextExtended);
     }
 
+    // Check if this string is already marked
+    bool isAlreadyMarked = (std::find(markedStrings.begin(), markedStrings.end(), findTextUtf8) != markedStrings.end());
+
+    // Variables for the search and mark process
     LRESULT pos = 0;
     LRESULT matchLen = 0;
-    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, 0, 0);
-    ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, 0, INDIC_STRAIGHTBOX);
-    ::SendMessage(_hScintilla, SCI_INDICSETFORE, 0, 0x007F00);
-    ::SendMessage(_hScintilla, SCI_INDICSETALPHA, 0, 100);
+    int markCount = 0;
 
-    int markCount = 0;  // Counter for marked matches
-
+    // Loop over the entire document and search for the string
     while (pos >= 0)
     {
+        LRESULT targetEnd = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
         ::SendMessage(_hScintilla, SCI_SETTARGETSTART, pos, 0);
-        ::SendMessage(_hScintilla, SCI_SETTARGETEND, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0), 0);
+        ::SendMessage(_hScintilla, SCI_SETTARGETEND, targetEnd, 0);
         ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
 
         pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextLength, reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
         if (pos >= 0)
         {
             matchLen = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
-            ::SendMessage(_hScintilla, SCI_SETINDICATORVALUE, 1, 0);
-            ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, pos, matchLen);
-            pos += matchLen;
 
-            markCount++;  // Increment the counter for each marked match
+            // Only mark the string if it's not already marked
+            if (!isAlreadyMarked) {
+                highlightTextRange(pos, matchLen, findTextUtf8);
+            }
+
+            pos += matchLen;
+            markCount++;
         }
     }
 
-    return markCount;  // Return the count of marked matches
+    // If the string was not already marked, add it to the list of marked strings
+    if (!isAlreadyMarked) {
+        markedStrings.push_back(findTextUtf8);
+        if (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED) {
+            markedStringsCount++;
+        }
+    }
+
+    return markCount;
+}
+
+void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8)
+{
+    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+    int indicatorStyle = useListEnabled ? (markedStringsCount % 255) + 1 : 0;
+    long color = useListEnabled ?  generateColorValue(findTextUtf8) : 0x007F00;
+
+    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicatorStyle, 0);
+    ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
+
+    if (markedStringsCount <= 255) {
+        ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicatorStyle, color);
+    }
+
+    ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicatorStyle, 100);
+    ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, pos, len);
 }
 
 void MultiReplace::clearAllMarks()
 {
-    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, 0, 0);
-    ::SendMessage(_hScintilla, SCI_INDICATORCLEARRANGE, 0, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+    for (int style = 0; style <= 255; ++style)
+    {
+        ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
+        ::SendMessage(_hScintilla, SCI_INDICATORCLEARRANGE, 0, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+    }
+
+    markedStringsCount = 1;
+
+    // Clear marked strings list
+    markedStrings.clear();
+
     showStatusMessage(0, L"All marks cleared.", RGB(0, 128, 0));
 }
 
@@ -1405,12 +1436,6 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const WCHAR* filter, co
 }
 
 void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
-    if (list.empty())
-    {
-        showStatusMessage(0, L"The list is empty. Nothing to save.", RGB(255, 0, 0));
-        return;
-    }
-
     std::wofstream outFile(filePath);
     outFile.imbue(std::locale(outFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
 
@@ -1422,14 +1447,17 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     // Write CSV header
     outFile << L"Find,Replace,WholeWord,MatchCase,Regex,Extended" << std::endl;
 
-    // Write list items to CSV file
-    for (const ReplaceItemData& item : list) {
-        outFile << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.matchCase << L"," << item.regex << L"," << item.extended << std::endl;
+    // If list is empty, only the header will be written to the file
+    if (!list.empty()) {
+        // Write list items to CSV file
+        for (const ReplaceItemData& item : list) {
+            outFile << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.matchCase << L"," << item.regex << L"," << item.extended << std::endl;
+        }
+
     }
-
-    outFile.close();
-
     showStatusMessage(static_cast<int>(list.size()), L"%d items saved to CSV.", RGB(0, 128, 0));
+  
+    outFile.close();
 
     // Enable the ListView accordingly
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
@@ -1591,25 +1619,25 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     file << "    local regex=\"$6\"\n";
     file << "    local extended=\"$7\"\n";
     file << R"(
-if [[ "$wholeWord" -eq 1 ]]; then
-    findString='\b'${findString}'\b'
-fi
-if [[ "$matchCase" -eq 1 ]]; then
-    template='s/'${findString}'/'${replaceString}'/g'
-else
-    template='s/'${findString}'/'${replaceString}'/gi'
-fi
-case 1 in
-    $normal)
-        sed -i -e "${template}" "$textFile"
-        ;;
-    $regex)
-        sed -i -r -e "${template}" "$textFile"
-        ;;
-    $extended)
-        sed -i -e ':a' -e 'N' -e '$!ba' -e"${template}" "$textFile"
-        ;;
-esac
+    if [[ "$wholeWord" -eq 1 ]]; then
+        findString='\b'${findString}'\b'
+    fi
+    if [[ "$matchCase" -eq 1 ]]; then
+        template='s/'${findString}'/'${replaceString}'/g'
+    else
+        template='s/'${findString}'/'${replaceString}'/gi'
+    fi
+    case 1 in
+        $normal)
+            sed -i -e "${template}" "$textFile"
+            ;;
+        $regex)
+            sed -i -r -e "${template}" "$textFile"
+            ;;
+        $extended)
+            sed -i -e ':a' -e 'N' -e '$!ba' -e"${template}" "$textFile"
+            ;;
+    esac
 )";
     file << "}\n\n";
 

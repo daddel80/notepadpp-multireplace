@@ -101,6 +101,7 @@ protected:
 
 private:
     static const int RESIZE_TIMER_ID = 1;
+    HINSTANCE hInstance;
     HWND _hScintilla;
     HWND _replaceListView;
 
@@ -117,10 +118,12 @@ private:
     int deleteIconIndex;
     int enabledIconIndex;
     HWND _hStatusMessage;
-    COLORREF  _statusMessageColor;
+    COLORREF _statusMessageColor;
     HFONT hFont;
     static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
     static constexpr int FONT_SIZE = 16;
+    int markedStringsCount = 1;
+    std::vector<std::string> markedStrings;
 
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
@@ -128,8 +131,8 @@ private:
 
     // Initialization
     void positionAndResizeControls(int windowWidth, int windowHeight);
-    bool createAndShowWindows(HINSTANCE hInstance);
     void initializeCtrlMap();
+    bool createAndShowWindows();
     void initializeScintilla();
     void createImageList();
     void initializeListView();
@@ -147,8 +150,10 @@ private:
 
     // SearchReplace
     int convertExtendedToString(const TCHAR* query, TCHAR* result, int length);
+    long generateColorValue(const std::string& str);
     int replaceString(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
-    int markString(const TCHAR* findText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
+    int markString(const TCHAR* findText, bool wholeWord, bool matchCase, bool regex, bool extended);
+    void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
     void clearAllMarks();
     void copyMarkedTextToClipboard();
     void onCopyToListButtonClick();
