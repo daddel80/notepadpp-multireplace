@@ -20,7 +20,7 @@
 #include "resource.h"
 #include <string>
 #include <vector>
-#include <map> 
+#include <map>
 #include <commctrl.h>
 #include "PluginInterface.h"
 #include <functional>
@@ -60,6 +60,12 @@ struct ControlInfo
     DWORD style;
 };
 
+struct SearchResult {
+    LRESULT pos;
+    LRESULT length;
+    LRESULT nextPos;
+};
+
 enum class Direction { Up, Down };
 
 typedef std::basic_string<TCHAR> generic_string;
@@ -68,6 +74,7 @@ class MultiReplace : public DockingDlgInterface
 {
 public:
     MultiReplace() :
+        hInstance(NULL),
         _hScintilla(0),
         _hClearMarksButton(nullptr),
         _hCopyBackIcon(nullptr),
@@ -123,7 +130,6 @@ private:
     static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
     static constexpr int FONT_SIZE = 16;
     int markedStringsCount = 1;
-    std::vector<std::string> markedStrings;
 
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
@@ -147,18 +153,20 @@ private:
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void shiftListItem(HWND listView, const Direction& direction);
     void deleteSelectedLines(HWND listView);
+    void showStatusMessage(int count, const wchar_t* messageFormat, COLORREF color);
 
     // SearchReplace
     int convertExtendedToString(const TCHAR* query, TCHAR* result, int length);
     long generateColorValue(const std::string& str);
     int replaceString(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
+    Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
+    SearchResult performSearch(const std::string& findTextUtf8, int searchFlags, LRESULT start);
     int markString(const TCHAR* findText, bool wholeWord, bool matchCase, bool regex, bool extended);
     void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
     void clearAllMarks();
     void copyMarkedTextToClipboard();
     void onCopyToListButtonClick();
     static void addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems = 10);
-    void showStatusMessage(int count, const wchar_t* messageFormat, COLORREF color);
 
     // FileOperations
     std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);

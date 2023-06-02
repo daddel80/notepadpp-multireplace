@@ -32,7 +32,6 @@
 #include <functional>
 
 
-
 #ifdef UNICODE
 #define generic_strtoul wcstoul
 #define generic_sprintf swprintf
@@ -268,6 +267,26 @@ void MultiReplace::updateUIVisibility() {
     for (int id : oppositeElementIds) {
         ShowWindow(GetDlgItem(_hSelf, id), isSmallerThanMinSize ? SW_SHOW : SW_HIDE);
     }
+}
+
+void MultiReplace::showStatusMessage(int count, const wchar_t* messageFormat, COLORREF color)
+{
+    wchar_t message[350];
+    wsprintf(message, messageFormat, count);
+
+    // Get the handle for the status message control
+    HWND hStatusMessage = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
+
+    // Set the new message
+    _statusMessageColor = color;
+    SetWindowText(hStatusMessage, message);
+
+    // Invalidate the area of the parent where the control resides
+    RECT rect;
+    GetWindowRect(hStatusMessage, &rect);
+    MapWindowPoints(HWND_DESKTOP, GetParent(hStatusMessage), reinterpret_cast<POINT*>(&rect), 2);
+    InvalidateRect(GetParent(hStatusMessage), &rect, TRUE);
+    UpdateWindow(GetParent(hStatusMessage));
 }
 
 #pragma endregion
@@ -553,6 +572,7 @@ void MultiReplace::deleteSelectedLines(HWND listView) {
 }
 
 #pragma endregion
+
 
 #pragma region SearchReplace
 
@@ -855,7 +875,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_COPY_TO_LIST_BUTTON:
         {            
             onCopyToListButtonClick();
-
         }
         break;
 
@@ -922,56 +941,35 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_MARK_MATCHES_BUTTON:
         {
             int matchCount = 0;
-            // Check if the "In List" option is enabled
             bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
 
             if (useListEnabled)
             {
-                // Check if the replaceListData is empty and warn the user if so
                 if (replaceListData.empty()) {
                     showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to mark directly.", RGB(255, 0, 0));
                     break;
                 }
-                // Iterate through the list of items
-                for (size_t i = 0; i < replaceListData.size(); i++)
+                markedStringsCount = 1;
+                for (ReplaceItemData& itemData : replaceListData)
                 {
-                    ReplaceItemData& itemData = replaceListData[i];
-                    bool regex = itemData.regex;
-                    bool extended = itemData.extended;
-
                     matchCount += markString(
                         itemData.findText.c_str(), itemData.wholeWord,
-                        itemData.matchCase, regex, extended);
+                        itemData.matchCase, itemData.regex, itemData.extended);
                 }
             }
             else
             {
                 TCHAR findText[256];
                 GetDlgItemText(_hSelf, IDC_FIND_EDIT, findText, 256);
-                bool regex = false;
-                bool extended = false;
-
-                // Get the state of the Whole word checkbox
                 bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-
-                // Get the state of the Match case checkbox
                 bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-
-                if (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED) {
-                    regex = true;
-                }
-                else if (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED) {
-                    extended = true;
-                }
-
-                // Perform the Mark Matching Strings operation if Find field has a value
+                bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+                bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+                markedStringsCount = 0;
                 matchCount = markString(findText, wholeWord, matchCase, regex, extended);
-
-                // Add the entered text to the combo box history
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
             }
-            // Display status message
-            showStatusMessage(matchCount, L"%d occurrences were marked.", RGB(0, 0, 128));  // Blue color
+            showStatusMessage(matchCount, L"%d occurrences were marked.", RGB(0, 0, 128));
         }
         break;
 
@@ -1069,30 +1067,35 @@ int MultiReplace::convertExtendedToString(const TCHAR* query, TCHAR* result, int
         *value = temp;
         return true;
     };
-    int resultLength = 0;
 
-    for (int i = 0; i < length; ++i)
-    {
-        if (query[i] == '\\' && (i + 1) < length)
-        {
+    int i = 0, j = 0;
+    int charLeft = length;
+    TCHAR current;
+    while (i < length)
+    {	//because the backslash escape quences always reduce the size of the generic_string, no overflow checks have to be made for target, assuming parameters are correct
+        current = query[i];
+        --charLeft;
+        if (current == '\\' && charLeft)
+        {	//possible escape sequence
             ++i;
-            TCHAR current = query[i];
+            --charLeft;
+            current = query[i];
             switch (current)
             {
-            case 'n':
-                result[resultLength++] = '\n';
-                break;
-            case 't':
-                result[resultLength++] = '\t';
-                break;
             case 'r':
-                result[resultLength++] = '\r';
+                result[j] = '\r';
+                break;
+            case 'n':
+                result[j] = '\n';
                 break;
             case '0':
-                result[resultLength++] = '\0';
+                result[j] = '\0';
+                break;
+            case 't':
+                result[j] = '\t';
                 break;
             case '\\':
-                result[resultLength++] = '\\';
+                result[j] = '\\';
                 break;
             case 'b':
             case 'd':
@@ -1102,122 +1105,154 @@ int MultiReplace::convertExtendedToString(const TCHAR* query, TCHAR* result, int
             {
                 int size = 0, base = 0;
                 if (current == 'b')
-                {
+                {	//11111111
                     size = 8, base = 2;
                 }
                 else if (current == 'o')
-                {
+                {	//377
                     size = 3, base = 8;
                 }
                 else if (current == 'd')
-                {
+                {	//255
                     size = 3, base = 10;
                 }
                 else if (current == 'x')
-                {
+                {	//0xFF
                     size = 2, base = 16;
                 }
                 else if (current == 'u')
-                {
+                {	//0xCDCD
                     size = 4, base = 16;
                 }
 
-                if (length - i >= size)
+                if (charLeft >= size)
                 {
                     int res = 0;
                     if (readBase(query + (i + 1), &res, base, size))
                     {
-                        result[resultLength++] = static_cast<TCHAR>(res);
+                        result[j] = static_cast<TCHAR>(res);
                         i += size;
                         break;
                     }
                 }
-                // not enough chars to make parameter, use default method as fallback
-                /* fallthrough */
+
             }
 
             default:
-                // unknown sequence, treat as regular text
-                result[resultLength++] = '\\';
-                result[resultLength++] = current;
+            {	//unknown sequence, treat as regular text
+                result[j] = '\\';
+                ++j;
+                result[j] = current;
                 break;
+            }
             }
         }
         else
         {
-            result[resultLength++] = query[i];
+            result[j] = query[i];
         }
+        ++i;
+        ++j;
     }
-
-    result[resultLength] = 0;
-
-    // Convert TCHAR string to UTF-8 string
-    std::wstring_convert<std::codecvt_utf8_utf16<TCHAR>> converter;
-    std::string utf8Result = converter.to_bytes(result);
-
-    // Return the length of the UTF-8 string
-    return static_cast<int>(utf8Result.length());
-
+    result[j] = 0;
+    return j;
 }
 
 int MultiReplace::replaceString(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regex, bool extended)
 {
-    // Return early if the Find field is empty
     if (findText[0] == '\0') {
         return 0;
     }
 
-    int searchFlags = 0;
-    if (wholeWord)
-        searchFlags |= SCFIND_WHOLEWORD;
-    if (matchCase)
-        searchFlags |= SCFIND_MATCHCASE;
-    if (regex)
-        searchFlags |= SCFIND_REGEXP;
-
+    int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
     std::wstring_convert<std::codecvt_utf8_utf16<TCHAR>> converter;
     std::string findTextUtf8 = converter.to_bytes(findText);
     std::string replaceTextUtf8 = converter.to_bytes(replaceText);
 
-    int findTextLength = static_cast<int>(findTextUtf8.length());
-    int replaceTextLength = static_cast<int>(replaceTextUtf8.length());
-    TCHAR findTextExtended[256];
-    TCHAR replaceTextExtended[256];
     if (extended)
     {
-        int findTextExtendedLength = convertExtendedToString(findText, findTextExtended, findTextLength);
-        int replaceTextExtendedLength = convertExtendedToString(replaceText, replaceTextExtended, replaceTextLength);
-
-        findTextLength = findTextExtendedLength;
-        replaceTextLength = replaceTextExtendedLength;
-
+        TCHAR findTextExtended[256];
+        TCHAR replaceTextExtended[256];
+        convertExtendedToString(findText, findTextExtended, static_cast<int>(findTextUtf8.length()));
+        convertExtendedToString(replaceText, replaceTextExtended, static_cast<int>(replaceTextUtf8.length()));
         findTextUtf8 = converter.to_bytes(findTextExtended);
         replaceTextUtf8 = converter.to_bytes(replaceTextExtended);
     }
 
-    Sci_Position pos = 0;
-    Sci_Position matchLen = 0;
-
     int replaceCount = 0;  // Counter for replacements
-
-    while (pos >= 0)
+    SearchResult searchResult = performSearch(findTextUtf8, searchFlags, 0);
+    while (searchResult.pos >= 0)
     {
-        ::SendMessage(_hScintilla, SCI_SETTARGETSTART, pos, 0);
-        ::SendMessage(_hScintilla, SCI_SETTARGETEND, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0), 0);
-        ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
-        pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextLength, reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
-
-        if (pos >= 0)
-        {
-            matchLen = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
-            ::SendMessage(_hScintilla, SCI_SETSEL, pos, pos + matchLen);
-            ::SendMessage(_hScintilla, SCI_REPLACESEL, 0, (LPARAM)replaceTextUtf8.c_str());
-            pos += replaceTextLength;
-            replaceCount++;  // Increment the counter for each replacement
-        }
+        Sci_Position newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+        replaceCount++;
+        searchResult = performSearch(findTextUtf8, searchFlags, newPos);
     }
 
-    return replaceCount;  // Return the count of replacements
+    return replaceCount;
+}
+
+Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
+{
+    ::SendMessage(_hScintilla, SCI_SETSEL, pos, pos + length);
+    ::SendMessage(_hScintilla, SCI_REPLACESEL, 0, (LPARAM)replaceTextUtf8.c_str());
+
+    return pos + static_cast<Sci_Position>(replaceTextUtf8.length());
+}
+
+SearchResult MultiReplace::performSearch(const std::string& findTextUtf8, int searchFlags, LRESULT start)
+{
+    LRESULT targetEnd = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+    ::SendMessage(_hScintilla, SCI_SETTARGETSTART, start, 0);
+    ::SendMessage(_hScintilla, SCI_SETTARGETEND, targetEnd, 0);
+    ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
+    LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
+
+    SearchResult result;
+    result.pos = pos;
+
+    if (pos >= 0) {
+        result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
+        result.nextPos = result.pos + result.length;
+    }
+    else {
+        result.length = 0;
+        result.nextPos = -1;
+    }
+
+    return result;
+}
+
+int MultiReplace::markString(const TCHAR* findText, bool wholeWord, bool matchCase, bool regex, bool extended)
+{
+    if (findText[0] == '\0') {
+        return 0;
+    }
+
+    int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
+    std::wstring_convert<std::codecvt_utf8_utf16<TCHAR>> converter;
+    std::string findTextUtf8 = converter.to_bytes(findText);
+
+    if (extended)
+    {
+        TCHAR findTextExtended[256];
+        convertExtendedToString(findText, findTextExtended, static_cast<int>(findTextUtf8.length()));
+        findTextUtf8 = converter.to_bytes(findTextExtended);
+    }
+
+    int markCount = 0;  // Counter for marked matches
+    SearchResult searchResult = performSearch(findTextUtf8, searchFlags, 0);
+    while (searchResult.pos >= 0)
+    {
+        highlightTextRange(searchResult.pos, searchResult.length, findTextUtf8);
+        markCount++;
+        searchResult = performSearch(findTextUtf8, searchFlags, searchResult.nextPos); // Use nextPos for the next search
+    }
+
+    if (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED) {
+        markedStringsCount++;
+    }
+
+    return markCount;
 }
 
 long MultiReplace::generateColorValue(const std::string& str) {
@@ -1238,73 +1273,13 @@ long MultiReplace::generateColorValue(const std::string& str) {
     return color;
 }
 
-int MultiReplace::markString(const TCHAR* findText, bool wholeWord, bool matchCase, bool regex, bool extended)
-{
-    if (findText[0] == '\0') {
-        return 0;
-    }
-
-    int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
-    std::wstring_convert<std::codecvt_utf8_utf16<TCHAR>> converter;
-    std::string findTextUtf8 = converter.to_bytes(findText);
-    int findTextLength = static_cast<int>(findTextUtf8.length());
-
-    if (extended)
-    {
-        TCHAR findTextExtended[256];
-        int findTextExtendedLength = convertExtendedToString(findText, findTextExtended, findTextLength);
-        findTextLength = findTextExtendedLength;
-        findTextUtf8 = converter.to_bytes(findTextExtended);
-    }
-
-    // Check if this string is already marked
-    bool isAlreadyMarked = (std::find(markedStrings.begin(), markedStrings.end(), findTextUtf8) != markedStrings.end());
-
-    // Variables for the search and mark process
-    LRESULT pos = 0;
-    LRESULT matchLen = 0;
-    int markCount = 0;
-
-    // Loop over the entire document and search for the string
-    while (pos >= 0)
-    {
-        LRESULT targetEnd = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
-        ::SendMessage(_hScintilla, SCI_SETTARGETSTART, pos, 0);
-        ::SendMessage(_hScintilla, SCI_SETTARGETEND, targetEnd, 0);
-        ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
-
-        pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextLength, reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
-        if (pos >= 0)
-        {
-            matchLen = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
-
-            // Only mark the string if it's not already marked
-            if (!isAlreadyMarked) {
-                highlightTextRange(pos, matchLen, findTextUtf8);
-            }
-
-            pos += matchLen;
-            markCount++;
-        }
-    }
-
-    // If the string was not already marked, add it to the list of marked strings
-    if (!isAlreadyMarked) {
-        markedStrings.push_back(findTextUtf8);
-        if (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED) {
-            markedStringsCount++;
-        }
-    }
-
-    return markCount;
-}
-
 void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8)
 {
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     int indicatorStyle = useListEnabled ? (markedStringsCount % 255) + 1 : 0;
-    long color = useListEnabled ?  generateColorValue(findTextUtf8) : 0x007F00;
+    long color = useListEnabled ? generateColorValue(findTextUtf8) : 0x007F00;
 
+    // Set and apply highlighting style
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicatorStyle, 0);
     ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
 
@@ -1325,10 +1300,6 @@ void MultiReplace::clearAllMarks()
     }
 
     markedStringsCount = 1;
-
-    // Clear marked strings list
-    markedStrings.clear();
-
     showStatusMessage(0, L"All marks cleared.", RGB(0, 128, 0));
 }
 
@@ -1433,26 +1404,6 @@ void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, 
 
     // Select the newly added string
     SendMessage(hComboBox, CB_SETCURSEL, 0, 0);
-}
-
-void MultiReplace::showStatusMessage(int count, const wchar_t* messageFormat, COLORREF color)
-{
-    wchar_t message[350];
-    wsprintf(message, messageFormat, count);
-
-    // Get the handle for the status message control
-    HWND hStatusMessage = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
-
-    // Set the new message
-    _statusMessageColor = color;
-    SetWindowText(hStatusMessage, message);
-
-    // Invalidate the area of the parent where the control resides
-    RECT rect;
-    GetWindowRect(hStatusMessage, &rect);
-    MapWindowPoints(HWND_DESKTOP, GetParent(hStatusMessage), reinterpret_cast<POINT*>(&rect), 2);
-    InvalidateRect(GetParent(hStatusMessage), &rect, TRUE);
-    UpdateWindow(GetParent(hStatusMessage));
 }
 
 #pragma endregion
