@@ -25,6 +25,7 @@
 #include "PluginInterface.h"
 #include <functional>
 #include <regex>
+#include <algorithm>
 
 
 extern NppData nppData;
@@ -130,6 +131,7 @@ private:
     static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
     static constexpr int FONT_SIZE = 16;
     int markedStringsCount = 1;
+    const int MAX_TEXT_LENGTH = 4096; //Set maximum Textlength for Find and Replace String
 
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
@@ -140,7 +142,7 @@ private:
     void initializeCtrlMap();
     bool createAndShowWindows();
     void initializeScintilla();
-    void createImageList();
+    /*void createImageList();*/
     void initializeListView();
     void moveAndResizeControls();
     void updateUIVisibility();
@@ -158,6 +160,7 @@ private:
     // SearchReplace
     int convertExtendedToString(const TCHAR* query, TCHAR* result, int length);
     long generateColorValue(const std::string& str);
+    std::string tcharToUtf8(const TCHAR* text, bool extended);
     int replaceString(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     SearchResult performSearch(const std::string& findTextUtf8, int searchFlags, LRESULT start);
@@ -167,6 +170,7 @@ private:
     void copyMarkedTextToClipboard();
     void onCopyToListButtonClick();
     static void addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems = 10);
+    std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
 
     // FileOperations
     std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
