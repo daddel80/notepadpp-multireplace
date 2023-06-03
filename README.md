@@ -2,7 +2,7 @@
 # MultiReplace for Notepad++
 multi-string replacement plugin for Notepad++
 
-<img src="./NppMultiReplace.gif" alt="MultiReplace Screenshot" width="560" height="410">
+<img src="./NppMultiReplace.gif" alt="MultiReplace Screenshot" width="540" height="440">
 
 ## Overview
 
@@ -18,7 +18,7 @@ MultiReplace introduces a functionality to store search and replace strings in a
 
 - **Upward Arrow**: Clicking on the upward arrow on the right side of a row transfers the contents of the row back into the "Find what:" and "Replace with:" fields for editing and re-insertion.
 
-- **Double-Click**: Double-clicking a row will also copy its contents to the "Find what:" and "Replace with:" fields.
+- **Double-Click/ Space key**: Double-clicking a row will also copy its contents to the "Find what:" and "Replace with:" fields.
 
 - **Delete Button (X)**: The X button deletes the corresponding row. You can also delete a row by selecting it and pressing the "Delete" key. Multiple rows can be selected and deleted simultaneously.
 
@@ -32,7 +32,7 @@ MultiReplace offers the option to unload search and replace strings with all ass
 
 ### Use List Checkbox
 
-The "UseList" checkbox determines the behavior of the Replace and Mark operations. When selected, these operations are applied to all entries in the list. When deselected, the "Find what:" and "Replace with:" fields act as the input for replace or mark operations, similar to the core functionality of Notepad++.
+The "Use List" checkbox determines the behavior of the Replace and Mark operations. When selected, these operations are applied to all entries in the list. When deselected, the "Find what:" and "Replace with:" fields act as the input for replace or mark operations, similar to the core functionality of Notepad++.
 
 ### Compatibility with Notepad++ Search Modes
 
