@@ -12,7 +12,7 @@ MultiReplace is a Notepad++ plugin that enhances the existing search and replace
 
 ### Multiple Search and Replace
 
-MultiReplace introduces a functionality to store search and replace strings in a list. This enhances efficiency when multiple replacements need to be made concurrently. 
+MultiReplace introduces a functionality to store search and replace strings in a list. This enhances efficiency when multiple replacements need to be made concurrently. MultiReplace introduces a functionality to store search and replace strings in a list. This enhances efficiency when multiple replacements need to be made concurrently. Please note that the "Find what:" and "Replace with:" fields are each limited to 4096 characters for performance and stability reasons.
 
 ### Interaction with the List
 
