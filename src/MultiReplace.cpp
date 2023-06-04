@@ -792,7 +792,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     break;
 
     case WM_TIMER:
-    {   //Refresh of DropDown due to a Bug in Notepad++ Plugin implementation of Light Mode
+    {
+        //Refresh of DropDown due to a Bug in Notepad++ Plugin implementation of Light Mode
         if (wParam == 1)
         {
             KillTimer(_hSelf, 1);
@@ -801,17 +802,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             if (!isDarkModeEnabled)
             {
-                int comboBoxIDs[] = { IDC_FIND_EDIT, IDC_REPLACE_EDIT };
+                HWND hComboBox = GetDlgItem(_hSelf, lastClickedComboBoxId);
+                int itemCount = (int)SendMessage(hComboBox, CB_GETCOUNT, 0, 0);
 
-                for (int id : comboBoxIDs)
+                for (int i = itemCount - 1; i >= 0; i--)
                 {
-                    HWND hComboBox = GetDlgItem(_hSelf, id);
-                    int itemCount = (int)SendMessage(hComboBox, CB_GETCOUNT, 0, 0);
-
-                    for (int i = itemCount - 1; i >= 0; i--)
-                    {
-                        SendMessage(hComboBox, CB_SETCURSEL, (WPARAM)i, 0);
-                    }
+                    SendMessage(hComboBox, CB_SETCURSEL, (WPARAM)i, 0);
                 }
             }
         }
@@ -823,9 +819,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         switch (HIWORD(wParam))
         {
         case CBN_DROPDOWN:
-        {   //Refresh of DropDown due to a Bug in Notepad++ Plugin implementation of Light Mode
+        {
+            //Refresh of DropDown due to a Bug in Notepad++ Plugin implementation of Light Mode
             if (LOWORD(wParam) == IDC_FIND_EDIT || LOWORD(wParam) == IDC_REPLACE_EDIT)
             {
+                lastClickedComboBoxId = LOWORD(wParam);
                 SetTimer(_hSelf, 1, 1, NULL);
             }
         }
@@ -937,6 +935,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             int matchCount = 0;
             bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+            markedStringsCount = 0;
 
             if (useListEnabled)
             {
@@ -944,7 +943,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to mark directly.", RGB(255, 0, 0));
                     break;
                 }
-                markedStringsCount = 1;
+                
                 for (ReplaceItemData& itemData : replaceListData)
                 {
                     matchCount += markString(
@@ -959,7 +958,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
                 bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
                 bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                markedStringsCount = 0;
                 matchCount = markString(findText.c_str(), wholeWord, matchCase, regex, extended);
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText.c_str());
             }
@@ -1297,26 +1295,47 @@ void MultiReplace::clearAllMarks()
 
 void MultiReplace::copyMarkedTextToClipboard()
 {
-
     LRESULT length = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
-    std::string markedText;
-    int markedTextCount = 0;
+    size_t markedTextCount = 0;
+    bool wasLastCharMarked = false;
 
-    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, 0, 0);
-    for (int i = 0; i < length; ++i)
+    std::string markedText;
+    std::string styleText;
+
+    int style = 0;
+    while (style <= 255) // Ensure we do not exceed style 255
     {
-        if (::SendMessage(_hScintilla, SCI_INDICATORVALUEAT, 0, i))
+        ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
+        for (int i = 0; i < length; ++i)
         {
-            char ch = static_cast<char>(::SendMessage(_hScintilla, SCI_GETCHARAT, i, 0));
-            markedText += ch;
-            markedTextCount++;
+            bool isCharMarked = ::SendMessage(_hScintilla, SCI_INDICATORVALUEAT, style, i);
+            if (isCharMarked)
+            {
+                if (!wasLastCharMarked)
+                {
+                    // If the last character was not marked, then this is a new marked section.
+                    ++markedTextCount;
+                }
+
+                char ch = static_cast<char>(::SendMessage(_hScintilla, SCI_GETCHARAT, i, 0));
+                styleText += ch;
+            }
+            wasLastCharMarked = isCharMarked; // Update the wasLastCharMarked status for the next iteration.
         }
+
+        if (!styleText.empty()) {
+            markedText += styleText;
+            styleText.clear();
+        }
+
+        style++;
     }
 
-    if (!markedText.empty())
+    if (markedTextCount > 0)
     {
         const char* output = markedText.c_str();
         size_t outputLength = markedText.length();
+
         HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, outputLength + 1);
         if (hMem)
         {
@@ -1329,9 +1348,11 @@ void MultiReplace::copyMarkedTextToClipboard()
                 EmptyClipboard();
                 SetClipboardData(CF_TEXT, hMem);
                 CloseClipboard();
-                showStatusMessage(markedTextCount, L"%d marked text strings copied into Clipboard.", RGB(0, 128, 0));
             }
         }
+
+        int markedTextCountInt = static_cast<int>(markedTextCount);
+        showStatusMessage(markedTextCountInt, L"%d marked blocks copied into Clipboard.", RGB(0, 128, 0));
     }
     else
     {

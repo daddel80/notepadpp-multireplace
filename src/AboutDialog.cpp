@@ -87,7 +87,7 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM /*l
         SendMessage(GetDlgItem(hwnd, IDC_VERSION_STATIC), WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessage(GetDlgItem(hwnd, IDC_AUTHOR_STATIC), WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessage(GetDlgItem(hwnd, IDC_LICENSE_STATIC), WM_SETFONT, (WPARAM)hFont, TRUE);
-        SendMessage(GetDlgItem(hwnd, IDC_MAILTO_LINK), WM_SETFONT, (WPARAM)hFont, TRUE);
+        SendMessage(GetDlgItem(hwnd, IDC_NAME_STATIC), WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessage(GetDlgItem(hwnd, IDC_WEBSITE_LINK), WM_SETFONT, (WPARAM)hFont, TRUE);
         DeleteObject(hFont);
 
