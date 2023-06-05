@@ -35,17 +35,17 @@ struct ReplaceItemData
     std::wstring findText;
     std::wstring replaceText;
     bool wholeWord = false;
-    bool regex = false;
     bool matchCase = false;
     bool extended = false;
+    bool regex = false;
 
     bool operator==(const ReplaceItemData& rhs) const {
         return findText == rhs.findText &&
             replaceText == rhs.replaceText &&
             wholeWord == rhs.wholeWord &&
             matchCase == rhs.matchCase &&
-            regex == rhs.regex &&
-            extended == rhs.extended;
+            extended == rhs.extended &&
+            regex == rhs.regex;
     }
 
     bool operator!=(const ReplaceItemData& rhs) const {

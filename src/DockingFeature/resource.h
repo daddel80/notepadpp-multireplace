@@ -51,8 +51,8 @@
 
 #define IDC_SEARCH_MODE_GROUP           5300
 #define IDC_NORMAL_RADIO                5301
-#define IDC_REGEX_RADIO                 5302
-#define IDC_EXTENDED_RADIO              5303
+#define IDC_EXTENDED_RADIO              5302
+#define IDC_REGEX_RADIO                 5303
 
 #define IDC_STATIC_FRAME                5401
 #define IDC_USE_LIST_CHECKBOX			5402

@@ -61,8 +61,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 146, 100, 28, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP };
     ctrlMap[IDC_SEARCH_MODE_GROUP] = { 200, 105, 190, 100, WC_BUTTON, L"Search Mode", BS_GROUPBOX };
     ctrlMap[IDC_NORMAL_RADIO] = { 210, 125, 100, 20, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP };
-    ctrlMap[IDC_REGEX_RADIO] = { 210, 150, 175, 20, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_EXTENDED_RADIO] = { 210, 175, 175, 20, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP };
+    ctrlMap[IDC_EXTENDED_RADIO] = { 210, 150, 175, 20, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP };
+    ctrlMap[IDC_REGEX_RADIO] = { 210, 175, 175, 20, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP };
     ctrlMap[IDC_STATIC_HINT] = { 14, 100, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER };
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 224, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT };
 
@@ -213,7 +213,7 @@ void MultiReplace::moveAndResizeControls() {
     // IDs of controls to be redrawn
     const int redrawIds[] = {
         IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX, IDC_NORMAL_RADIO,
-        IDC_REGEX_RADIO, IDC_EXTENDED_RADIO, IDC_USE_LIST_CHECKBOX,
+        IDC_EXTENDED_RADIO, IDC_REGEX_RADIO, IDC_USE_LIST_CHECKBOX,
         IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON,
         IDC_COPY_MARKED_TEXT_BUTTON,  IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT,
         IDC_EXPORT_BASH_BUTTON
@@ -249,7 +249,7 @@ void MultiReplace::updateUIVisibility() {
     // Define the UI element IDs to be shown or hidden based on the window size
     const int elementIds[] = {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX,
-        IDC_STATIC_FRAME, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_EXTENDED_RADIO,
+        IDC_STATIC_FRAME, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
         IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX,
         IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON,
         IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME,
@@ -350,16 +350,16 @@ void MultiReplace::createListViewColumns(HWND listView) {
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 4, &lvc);
 
-    // Column for Option: Regex
+    // Column for Option: Extended
     lvc.iSubItem = 5;
-    lvc.pszText = L"R";
+    lvc.pszText = L"E";
     lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 5, &lvc);
 
-    // Column for Option: Extended
+    // Column for Option: Regex
     lvc.iSubItem = 6;
-    lvc.pszText = L"E";
+    lvc.pszText = L"R";
     lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 6, &lvc);
@@ -369,7 +369,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     lvc.pszText = L"";
     lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
-    ListView_InsertColumn(listView, 8, &lvc);
+    ListView_InsertColumn(listView, 7, &lvc);
 }
 
 void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
@@ -415,9 +415,9 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
     int newWidth = LOWORD(lParam);
     int newHeight = HIWORD(lParam);
 
-    // Calculate the total width of columns 3 to 8
+    // Calculate the total width of columns 3 to 7
     int columns3to7Width = 0;
-    for (int i = 2; i < 9; i++)
+    for (int i = 2; i < 8; i++)
     {
         columns3to7Width += ListView_GetColumnWidth(listView, i);
     }
@@ -477,8 +477,8 @@ void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
     SendMessageW(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), BM_SETCHECK, itemData.wholeWord ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), BM_SETCHECK, itemData.matchCase ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), BM_SETCHECK, (!itemData.regex && !itemData.extended) ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessageW(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_SETCHECK, itemData.regex ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), BM_SETCHECK, itemData.extended ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_SETCHECK, itemData.regex ? BST_CHECKED : BST_UNCHECKED, 0);
 }
 
 void MultiReplace::shiftListItem(HWND listView, const Direction& direction) {
@@ -705,7 +705,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     }
                     break;
                 case 5:
-                    if (itemData.regex) {
+                    if (itemData.extended) {
                         //plvdi->item.mask |= LVIF_IMAGE;
                         //plvdi->item.iImage = enabledIconIndex;
                         plvdi->item.mask |= LVIF_TEXT;
@@ -713,7 +713,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     }
                     break;
                 case 6:
-                    if (itemData.extended) {
+                    if (itemData.regex) {
                         //plvdi->item.mask |= LVIF_IMAGE;
                         //plvdi->item.iImage = enabledIconIndex;
                         plvdi->item.mask |= LVIF_TEXT;
@@ -1368,8 +1368,8 @@ void MultiReplace::onCopyToListButtonClick() {
 
     itemData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
     itemData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-    itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
     itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+    itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
 
     insertReplaceListItem(itemData);
 
@@ -1476,7 +1476,7 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     if (!list.empty()) {
         // Write list items to CSV file
         for (const ReplaceItemData& item : list) {
-            outFile << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.matchCase << L"," << item.regex << L"," << item.extended << std::endl;
+            outFile << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.matchCase << L"," << item.extended << L"," << item.regex << std::endl;
         }
 
     }
@@ -1542,10 +1542,10 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         item.findText = columns[0];
         item.replaceText = columns[1];
         item.wholeWord = std::stoi(columns[2]) != 0;
-        item.matchCase = std::stoi(columns[4]) != 0;
-        item.regex = std::stoi(columns[3]) != 0;
-        item.extended = std::stoi(columns[5]) != 0;
-
+        item.matchCase = std::stoi(columns[3]) != 0;
+        item.extended = std::stoi(columns[4]) != 0;
+        item.regex = std::stoi(columns[5]) != 0;
+        
         // Use insertReplaceListItem to insert the item to the list
         insertReplaceListItem(item);
 
@@ -1656,8 +1656,8 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     file << "    local wholeWord=\"$3\"\n";
     file << "    local matchCase=\"$4\"\n";
     file << "    local normal=\"$5\"\n";
-    file << "    local regex=\"$6\"\n";
-    file << "    local extended=\"$7\"\n";
+    file << "    local extended=\"$6\"\n";
+    file << "    local regex=\"$7\"\n";
     file << R"(
     if [[ "$wholeWord" -eq 1 ]]; then
         findString='\b'${findString}'\b'
@@ -1671,17 +1671,17 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
         $normal)
             sed -i -e "${template}" "$textFile"
             ;;
-        $regex)
-            sed -i -r -e "${template}" "$textFile"
-            ;;
         $extended)
             sed -i -e ':a' -e 'N' -e '$!ba' -e"${template}" "$textFile"
+            ;;
+        $regex)
+            sed -i -r -e "${template}" "$textFile"
             ;;
     esac
 )";
     file << "}\n\n";
 
-    file << "# processLine arguments: \"findString\" \"replaceString\" wholeWord matchCase normal regex extended\n";
+    file << "# processLine arguments: \"findString\" \"replaceString\" wholeWord matchCase normal extended regex\n";
     for (const auto& itemData : replaceListData) {
         std::string find;
         std::string replace;
@@ -1700,11 +1700,11 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
 
         std::string wholeWord = itemData.wholeWord ? "1" : "0";
         std::string matchCase = itemData.matchCase ? "1" : "0";
-        std::string regex = itemData.regex ? "1" : "0";
         std::string normal = (!itemData.regex && !itemData.extended) ? "1" : "0";
         std::string extended = itemData.extended ? "1" : "0";
+        std::string regex = itemData.regex ? "1" : "0";
 
-        file << "processLine \"" << find << "\" \"" << replace << "\" " << wholeWord << " " << matchCase << " " << normal << " " << regex << " " << extended << "\n";
+        file << "processLine \"" << find << "\" \"" << replace << "\" " << wholeWord << " " << matchCase << " " << normal << " " << extended << " " << regex << "\n";
     }
 
     file.close();
