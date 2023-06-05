@@ -131,7 +131,7 @@ private:
     static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
     static constexpr int FONT_SIZE = 16;
     int markedStringsCount = 0;
-    int lastClickedComboBoxId;  // for Combobox workaround
+    int lastClickedComboBoxId = 0;  // for Combobox workaround
     const int MAX_TEXT_LENGTH = 4096; //Set maximum Textlength for Find and Replace String
 
     HIMAGELIST _himl;

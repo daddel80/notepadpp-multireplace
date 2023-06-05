@@ -69,7 +69,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP };
     ctrlMap[IDC_REPLACE_EDIT] = { 120, 54, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP };
-    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, L"Add to Replace List", BS_PUSHBUTTON | WS_TABSTOP };
+    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, L"Add into List", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 93, 160, 30, WC_BUTTON, L"Replace All", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 128, 160, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 163, 160, 30, WC_BUTTON, L"Clear all marks", BS_PUSHBUTTON | WS_TABSTOP };
@@ -1417,12 +1417,15 @@ void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, 
 
 std::wstring MultiReplace::getTextFromDialogItem(HWND hwnd, int itemID) {
     int textLen = GetWindowTextLength(GetDlgItem(hwnd, itemID));
-    // Begrenzt die Länge des Textes auf den maximalen Wert
+    // Limit the length of the text to the maximum value
     textLen = std::min(textLen, MAX_TEXT_LENGTH);
     std::vector<TCHAR> buffer(textLen + 1);  // +1 for null terminator
     GetDlgItemText(hwnd, itemID, &buffer[0], textLen + 1);
-    return std::wstring(buffer.begin(), buffer.end());
+
+    // Construct the std::wstring from the buffer excluding the null character
+    return std::wstring(buffer.begin(), buffer.begin() + textLen);
 }
+
 
 #pragma endregion
 
@@ -1500,8 +1503,12 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
     std::wstring line;
     std::getline(inFile, line); // Skip the CSV header
 
+    std::vector<int> faultyLines; // Store the line numbers of the faulty lines
+    int lineNumber = 1; // Start from line 1 after the header
+
     // Read list items from CSV file
     while (std::getline(inFile, line)) {
+        lineNumber++;
         std::wstringstream lineStream(line);
         std::vector<std::wstring> columns;
 
@@ -1525,6 +1532,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
 
         // Check if the row has the correct number of columns
         if (columns.size() != 6) {
+            faultyLines.push_back(lineNumber); // Store the line number of the faulty line
             continue;
         }
 
@@ -1554,11 +1562,21 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
     }
     else
     {
-        // Display status message
-        showStatusMessage(static_cast<int>(replaceListData.size()), L"%d items loaded from CSV.", RGB(0, 128, 0)); // Green color
+        std::wstringstream ss;
+        ss << replaceListData.size() << L" items loaded from CSV.";
+
+        if (!faultyLines.empty()) {
+            ss << L" But could not read line: ";
+            for (int i = 0; i < 3 && i < faultyLines.size(); ++i) {
+                if (i > 0) ss << L", ";
+                ss << faultyLines[i];
+            }
+            if (faultyLines.size() > 3) ss << L", ..."; // Add ", ..." if there are more than three faulty lines
+        }
+
+        showStatusMessage(static_cast<int>(replaceListData.size()), ss.str().c_str(), faultyLines.empty() ? RGB(0, 128, 0) : RGB(255, 69, 0)); // Green color if no faulty lines, Dark Orange color otherwise
     }
 
-    // Enable the ListView accordingly
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
     EnableWindow(_replaceListView, TRUE);
 }
@@ -1569,7 +1587,7 @@ std::wstring MultiReplace::escapeCsvValue(const std::wstring& value) {
 
     for (const wchar_t& ch : value) {
         // Check if value contains any character that requires escaping
-        if (ch == L',' || ch == L'"' || ch == L'\n' || ch == L'\r') {
+        if (ch == L',' || ch == L'"') {
             needsQuotes = true;
         }
         escapedValue += ch;
@@ -1663,6 +1681,7 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
 )";
     file << "}\n\n";
 
+    file << "# processLine arguments: \"findString\" \"replaceString\" wholeWord matchCase normal regex extended\n";
     for (const auto& itemData : replaceListData) {
         std::string find;
         std::string replace;
@@ -1685,7 +1704,6 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
         std::string normal = (!itemData.regex && !itemData.extended) ? "1" : "0";
         std::string extended = itemData.extended ? "1" : "0";
 
-        file << "# processLine arguments: \"findString\" \"replaceString\" wholeWord matchCase normal regex extended\n";
         file << "processLine \"" << find << "\" \"" << replace << "\" " << wholeWord << " " << matchCase << " " << normal << " " << regex << " " << extended << "\n";
     }
 
@@ -1708,7 +1726,7 @@ std::string MultiReplace::escapeSpecialChars(const std::string& input, bool exte
     std::string output = input;
 
     // Define the escape characters that should not be masked
-    std::string supportedEscapes = "nrt0xub";
+    std::string supportedEscapes = "nrt0xubd";
 
     // Mask all characters that could be interpreted by sed or the shell, including escape sequences.
     std::string specialChars = "$.*[]^&\\{}()?+|<>\"'`~;#";
