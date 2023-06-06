@@ -923,8 +923,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 
                 // Add the entered text to the combo box history
-                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText.c_str());
-                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceText.c_str());
+                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceText);
             }
             // Display status message
             showStatusMessage(replaceCount, L"%d occurrences were replaced.", RGB(0, 128, 0));
@@ -959,7 +959,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
                 bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
                 matchCount = markString(findText.c_str(), wholeWord, matchCase, regex, extended);
-                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText.c_str());
+                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
             }
             showStatusMessage(matchCount, L"%d occurrences were marked.", RGB(0, 0, 128));
         }
@@ -1389,29 +1389,29 @@ void MultiReplace::onCopyToListButtonClick() {
     insertReplaceListItem(itemData);
 
     // Add the entered text to the combo box history
-    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText.c_str());
-    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText.c_str());
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
 
     // Enable the ListView accordingly
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
     EnableWindow(_replaceListView, TRUE);
 }
 
-void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems)
+void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems)
 {
-    if (_tcslen(str) == 0)
+    if (str.length() == 0)
     {
         // Skip adding empty strings to the combo box history
         return;
     }
 
     // Check if the string is already in the combo box
-    int index = static_cast<int>(SendMessage(hComboBox, CB_FINDSTRINGEXACT, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(str)));
+    int index = static_cast<int>(SendMessage(hComboBox, CB_FINDSTRINGEXACT, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(str.c_str())));
 
     // If the string is not found, insert it at the beginning
     if (index == CB_ERR)
     {
-        SendMessage(hComboBox, CB_INSERTSTRING, 0, reinterpret_cast<LPARAM>(str));
+        SendMessage(hComboBox, CB_INSERTSTRING, 0, reinterpret_cast<LPARAM>(str.c_str()));
 
         // Remove the last item if the list exceeds maxItems
         if (SendMessage(hComboBox, CB_GETCOUNT, 0, 0) > maxItems)
@@ -1423,7 +1423,7 @@ void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, 
     {
         // If the string is found, move it to the beginning
         SendMessage(hComboBox, CB_DELETESTRING, index, 0);
-        SendMessage(hComboBox, CB_INSERTSTRING, 0, reinterpret_cast<LPARAM>(str));
+        SendMessage(hComboBox, CB_INSERTSTRING, 0, reinterpret_cast<LPARAM>(str.c_str()));
     }
 
     // Select the newly added string

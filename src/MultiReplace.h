@@ -170,7 +170,7 @@ private:
     void clearAllMarks();
     void copyMarkedTextToClipboard();
     void onCopyToListButtonClick();
-    static void addStringToComboBoxHistory(HWND hComboBox, const TCHAR* str, int maxItems = 10);
+    static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 10);
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
 
     // FileOperations
