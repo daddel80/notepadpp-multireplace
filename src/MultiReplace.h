@@ -159,13 +159,13 @@ private:
     void showStatusMessage(int count, const wchar_t* messageFormat, COLORREF color);
 
     // SearchReplace
-    int convertExtendedToString(const TCHAR* query, TCHAR* result, int length);
+    int convertExtendedToString(const std::string& query, std::string& result);
     long generateColorValue(const std::string& str);
-    std::string tcharToUtf8(const TCHAR* text, bool extended);
-    int replaceString(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regexSearch, bool extended);
+    std::string convertAndExtend(const std::wstring& input, bool extended);
+    int replaceString(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     SearchResult performSearch(const std::string& findTextUtf8, int searchFlags, LRESULT start);
-    int markString(const TCHAR* findText, bool wholeWord, bool matchCase, bool regex, bool extended);
+    int markString(const std::wstring& findText, bool wholeWord, bool matchCase, bool regex, bool extended);
     void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
     void clearAllMarks();
     void copyMarkedTextToClipboard();

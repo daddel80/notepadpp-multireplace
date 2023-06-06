@@ -577,7 +577,7 @@ void MultiReplace::deleteSelectedLines(HWND listView) {
 #pragma endregion
 
 
-#pragma region SearchReplace
+#pragma region
 
 INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -1026,14 +1026,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     return FALSE;
 }
 
-int MultiReplace::convertExtendedToString(const TCHAR* query, TCHAR* result, int length)
+int MultiReplace::convertExtendedToString(const std::string& query, std::string& result)
 {
-    auto readBase = [](const TCHAR* str, int* value, int base, int size) -> bool
+    auto readBase = [](const char* str, int* value, int base, int size) -> bool
     {
         int i = 0, temp = 0;
         *value = 0;
-        TCHAR max = '0' + static_cast<TCHAR>(base) - 1;
-        TCHAR current;
+        char max = '0' + static_cast<char>(base) - 1;
+        char current;
         while (i < size)
         {
             current = str[i];
@@ -1061,14 +1061,17 @@ int MultiReplace::convertExtendedToString(const TCHAR* query, TCHAR* result, int
     };
 
     int i = 0, j = 0;
-    int charLeft = length;
-    TCHAR current;
-    while (i < length)
-    {	//because the backslash escape quences always reduce the size of the generic_string, no overflow checks have to be made for target, assuming parameters are correct
+    size_t charLeft = query.length();
+    char current;
+    result.clear();
+    result.resize(query.length()); // Preallocate memory for optimal performance
+
+    while (i < query.length())
+    {
         current = query[i];
         --charLeft;
         if (current == '\\' && charLeft)
-        {	//possible escape sequence
+        {
             ++i;
             --charLeft;
             current = query[i];
@@ -1097,46 +1100,45 @@ int MultiReplace::convertExtendedToString(const TCHAR* query, TCHAR* result, int
             {
                 int size = 0, base = 0;
                 if (current == 'b')
-                {	//11111111
+                {
                     size = 8, base = 2;
                 }
                 else if (current == 'o')
-                {	//377
+                {
                     size = 3, base = 8;
                 }
                 else if (current == 'd')
-                {	//255
+                {
                     size = 3, base = 10;
                 }
                 else if (current == 'x')
-                {	//0xFF
+                {
                     size = 2, base = 16;
                 }
                 else if (current == 'u')
-                {	//0xCDCD
+                {
                     size = 4, base = 16;
                 }
 
                 if (charLeft >= size)
                 {
                     int res = 0;
-                    if (readBase(query + (i + 1), &res, base, size))
+                    if (readBase(query.c_str() + (i + 1), &res, base, size))
                     {
-                        result[j] = static_cast<TCHAR>(res);
+                        result[j] = static_cast<char>(res);
                         i += size;
                         break;
                     }
                 }
-
+                // not enough chars to make parameter, use default method as fallback
             }
 
             default:
-            {	//unknown sequence, treat as regular text
+                // unknown sequence, treat as regular text
                 result[j] = '\\';
                 ++j;
                 result[j] = current;
                 break;
-            }
             }
         }
         else
@@ -1146,35 +1148,47 @@ int MultiReplace::convertExtendedToString(const TCHAR* query, TCHAR* result, int
         ++i;
         ++j;
     }
-    result[j] = 0;
+
+    // Nullterminate the result-String
+    result.resize(j);
+
+    // Return length of result-Strings
     return j;
 }
 
-std::string MultiReplace::tcharToUtf8(const TCHAR* text, bool extended)
+std::string MultiReplace::convertAndExtend(const std::wstring& input, bool extended)
 {
-    std::wstring_convert<std::codecvt_utf8_utf16<TCHAR>> converter;
-    std::string textUtf8 = converter.to_bytes(text);
+    std::string output = wstringToString(input);
 
     if (extended)
     {
-        std::vector<TCHAR> textExtended;
-        textExtended.resize(textUtf8.length() + 1); // +1 for null terminator
-        convertExtendedToString(text, textExtended.data(), static_cast<int>(textUtf8.length()));
-        textUtf8 = converter.to_bytes(textExtended.data());
+        //MessageBoxA(NULL, output.c_str(), "Input of convertExtendedToString", MB_OK);
+
+        std::string outputExtended;
+        convertExtendedToString(output, outputExtended);
+        output = outputExtended;
+
+        /*std::string asciiOutput;
+        for (char c : output) {
+            asciiOutput += std::to_string(static_cast<int>(c)) + " ";
+        }
+
+        MessageBoxA(NULL, asciiOutput.c_str(), "Output of convertAndExtend", MB_OK);*/
     }
 
-    return textUtf8;
+    return output;
 }
 
-int MultiReplace::replaceString(const TCHAR* findText, const TCHAR* replaceText, bool wholeWord, bool matchCase, bool regex, bool extended)
+int MultiReplace::replaceString(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended)
 {
-    if (findText[0] == '\0') {
+    if (findText.empty()) {
         return 0;
     }
 
     int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
-    std::string findTextUtf8 = tcharToUtf8(findText, extended);
-    std::string replaceTextUtf8 = tcharToUtf8(replaceText, extended);
+
+    std::string findTextUtf8 = convertAndExtend(findText, extended);
+    std::string replaceTextUtf8 = convertAndExtend(replaceText, extended);
 
     int replaceCount = 0;  // Counter for replacements
     SearchResult searchResult = performSearch(findTextUtf8, searchFlags, 0);
@@ -1220,14 +1234,15 @@ SearchResult MultiReplace::performSearch(const std::string& findTextUtf8, int se
     return result;
 }
 
-int MultiReplace::markString(const TCHAR* findText, bool wholeWord, bool matchCase, bool regex, bool extended)
+int MultiReplace::markString(const std::wstring& findText, bool wholeWord, bool matchCase, bool regex, bool extended)
 {
-    if (findText[0] == '\0') {
+    if (findText.empty()) {
         return 0;
     }
 
     int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
-    std::string findTextUtf8 = tcharToUtf8(findText, extended);
+
+    std::string findTextUtf8 = convertAndExtend(findText, extended);
 
     int markCount = 0;  // Counter for marked matches
     SearchResult searchResult = performSearch(findTextUtf8, searchFlags, 0);
