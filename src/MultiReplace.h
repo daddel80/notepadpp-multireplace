@@ -131,9 +131,13 @@ private:
     static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
     static constexpr int FONT_SIZE = 16;
     int markedStringsCount = 0;
-    int lastClickedComboBoxId = 0;  // for Combobox workaround
-    const int MAX_TEXT_LENGTH = 4096; //Set maximum Textlength for Find and Replace String
-
+    int lastClickedComboBoxId = 0;    // for Combobox workaround
+    const int MAX_TEXT_LENGTH = 4096; // Set maximum Textlength for Find and Replace String
+                                   // workaround for scintilla supported Styles
+    std::vector<int> validStyles = { 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 
+                                    14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 
+                                    24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 
+                                    37, 38, 39, 40, 41, 42, 43 };
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
     static std::map<int, ControlInfo> ctrlMap;

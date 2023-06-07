@@ -532,8 +532,8 @@ void MultiReplace::shiftListItem(HWND listView, const Direction& direction) {
     }
 
     // Show status message when rows are successfully shifted
-    std::wstring statusMessage = std::to_wstring(selectedIndices.size()) + L" rows successfully shifted.";
-    showStatusMessage(static_cast<int>(selectedIndices.size()), statusMessage.c_str(), RGB(0, 128, 0));
+    showStatusMessage(static_cast<int>(selectedIndices.size()), L"%d rows successfully shifted.", RGB(0, 128, 0));
+
 }
 
 void MultiReplace::deleteSelectedLines(HWND listView) {
@@ -891,7 +891,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 {
                     ReplaceItemData& itemData = replaceListData[i];
                     replaceCount += replaceString(
-                        itemData.findText.c_str(), itemData.replaceText.c_str(),
+                        itemData.findText, itemData.replaceText,
                         itemData.wholeWord, itemData.matchCase,
                         itemData.regex, itemData.extended
                     );
@@ -919,7 +919,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
 
                 ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
-                replaceCount = replaceString(findText.c_str(), replaceText.c_str(), wholeWord, matchCase, regex, extended);
+                replaceCount = replaceString(findText, replaceText, wholeWord, matchCase, regex, extended);
                 ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 
                 // Add the entered text to the combo box history
@@ -947,7 +947,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 for (ReplaceItemData& itemData : replaceListData)
                 {
                     matchCount += markString(
-                        itemData.findText.c_str(), itemData.wholeWord,
+                        itemData.findText, itemData.wholeWord,
                         itemData.matchCase, itemData.regex, itemData.extended);
                 }
             }
@@ -958,7 +958,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
                 bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
                 bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                matchCount = markString(findText.c_str(), wholeWord, matchCase, regex, extended);
+                matchCount = markString(findText, wholeWord, matchCase, regex, extended);
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
             }
             showStatusMessage(matchCount, L"%d occurrences were marked.", RGB(0, 0, 128));
@@ -1162,18 +1162,9 @@ std::string MultiReplace::convertAndExtend(const std::wstring& input, bool exten
 
     if (extended)
     {
-        //MessageBoxA(NULL, output.c_str(), "Input of convertExtendedToString", MB_OK);
-
         std::string outputExtended;
         convertExtendedToString(output, outputExtended);
         output = outputExtended;
-
-        /*std::string asciiOutput;
-        for (char c : output) {
-            asciiOutput += std::to_string(static_cast<int>(c)) + " ";
-        }
-
-        MessageBoxA(NULL, asciiOutput.c_str(), "Output of convertAndExtend", MB_OK);*/
     }
 
     return output;
@@ -1253,7 +1244,7 @@ int MultiReplace::markString(const std::wstring& findText, bool wholeWord, bool 
         searchResult = performSearch(findTextUtf8, searchFlags, searchResult.nextPos); // Use nextPos for the next search
     }
 
-    if (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED) {
+    if (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED && markCount > 0) {
         markedStringsCount++;
     }
 
@@ -1281,30 +1272,31 @@ long MultiReplace::generateColorValue(const std::string& str) {
 void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8)
 {
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
-    int indicatorStyle = useListEnabled ? (markedStringsCount % 255) + 1 : 0;
+    int indicatorStyle = useListEnabled ? validStyles[markedStringsCount % validStyles.size()] : 0;
     long color = useListEnabled ? generateColorValue(findTextUtf8) : 0x007F00;
 
     // Set and apply highlighting style
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicatorStyle, 0);
     ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
 
-    if (markedStringsCount <= 255) {
+    if (markedStringsCount <= validStyles.size()) {
         ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicatorStyle, color);
     }
 
     ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicatorStyle, 100);
     ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, pos, len);
+
 }
 
 void MultiReplace::clearAllMarks()
 {
-    for (int style = 0; style <= 255; ++style)
+    for (int style : validStyles)
     {
         ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
         ::SendMessage(_hScintilla, SCI_INDICATORCLEARRANGE, 0, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
     }
 
-    markedStringsCount = 1;
+    markedStringsCount = 0;
     showStatusMessage(0, L"All marks cleared.", RGB(0, 128, 0));
 }
 
@@ -1317,8 +1309,7 @@ void MultiReplace::copyMarkedTextToClipboard()
     std::string markedText;
     std::string styleText;
 
-    int style = 0;
-    while (style <= 255) // Ensure we do not exceed style 255
+    for (int style : validStyles)
     {
         ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
         for (int i = 0; i < length; ++i)
@@ -1342,8 +1333,6 @@ void MultiReplace::copyMarkedTextToClipboard()
             markedText += styleText;
             styleText.clear();
         }
-
-        style++;
     }
 
     if (markedTextCount > 0)
@@ -1440,7 +1429,6 @@ std::wstring MultiReplace::getTextFromDialogItem(HWND hwnd, int itemID) {
     // Construct the std::wstring from the buffer excluding the null character
     return std::wstring(buffer.begin(), buffer.begin() + textLen);
 }
-
 
 #pragma endregion
 
