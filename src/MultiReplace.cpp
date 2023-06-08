@@ -1272,7 +1272,7 @@ long MultiReplace::generateColorValue(const std::string& str) {
 void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8)
 {
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
-    int indicatorStyle = useListEnabled ? validStyles[markedStringsCount % validStyles.size()] : 0;
+    int indicatorStyle = useListEnabled ? validStyles[(markedStringsCount % (validStyles.size() - 1)) + 1] : validStyles[0];
     long color = useListEnabled ? generateColorValue(findTextUtf8) : 0x007F00;
 
     // Set and apply highlighting style
@@ -1286,6 +1286,31 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::strin
     ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicatorStyle, 100);
     ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, pos, len);
 
+
+    /*
+    std::ostringstream msg;
+    msg << "IndicatorStyle: " << indicatorStyle;
+
+    // Display the message box
+    std::string str_msg = msg.str();
+    std::wstring wstr(str_msg.begin(), str_msg.end());
+    MessageBox(NULL, wstr.c_str(), L"Information", MB_OK | MB_ICONINFORMATION);
+
+    // Creating a message for the message box
+    std::ostringstream msg;
+    msg << "Text: " << findTextUtf8
+        << "\nColor: " << std::hex << color
+        << "\nPos: " << pos
+        << "\nLen: " << len
+        << "\nMarkedStringsCount: " << markedStringsCount
+        << "\nModulo Value: " << markedStringsCount % validStyles.size();
+    
+
+    // Display the message box
+    std::string str_msg = msg.str();
+    std::wstring wstr(str_msg.begin(), str_msg.end());
+    MessageBox(NULL, wstr.c_str(), L"Information", MB_OK | MB_ICONINFORMATION);
+    */
 }
 
 void MultiReplace::clearAllMarks()
