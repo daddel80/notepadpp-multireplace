@@ -738,7 +738,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 if (pnkd->wVKey == VK_DELETE) { // Delete key
                     deleteSelectedLines(_replaceListView);
                 }
-                else if (pnkd->wVKey == VK_SPACE) { // Space key
+                else if ((GetKeyState(VK_MENU) & 0x8000) && (pnkd->wVKey == VK_UP)) { // Alt/AltGr + Up key
                     int iItem = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED);
                     if (iItem >= 0) {
                         NMITEMACTIVATE nmia;
