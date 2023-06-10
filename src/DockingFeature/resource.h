@@ -73,7 +73,6 @@
 #define MIN_WIDTH 700
 #define MIN_HEIGHT 440
 
-#define VERSION_VALUE "1.0.0"
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace")
 
 #endif // RESOURCE_H
