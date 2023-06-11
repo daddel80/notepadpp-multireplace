@@ -1,14 +1,21 @@
 # MultiReplace for Notepad++
-Multi-string replacement plugin for Notepad++
+
+MultiReplace is a Notepad++ plugin that introduces a functionality to store search and replace strings in a list, providing a way to manage and reuse these strings across multiple sessions or projects. This enhancement improves efficiency when multiple replacements need to be made concurrently, thereby improving the overall functionality of Notepad++. The plugin offers the following key features:
+
+- Allows multiple replacements in a single operation.
+- Offers CSV-based string list storage.
+- Enables scripted text replacements through bash script export.
+
+MultiReplace is released under the same GNU General Public License as Notepad++ itself.
 
 <img src="./NppMultiReplace.gif" alt="MultiReplace Screenshot" width="540" height="440">
 
 ## Technical Features
 
 ### String Handling and Visualization
-- Create and store search and replace strings in a list.
-- Field limits of 4096 characters for "Find what:" and "Replace with:".
-- Uses the djb2 hash algorithm to ensure consistent color marking of unique words of a Findstring.
+- Allows the creation and storage of search and replace strings in a list.
+- Sets field limits of 4096 characters for "Find what:" and "Replace with:".
+- Utilizes the djb2 hash algorithm to ensure consistent color marking of unique words of a Findstring.
 - Supports over 20 distinct colors for marking.
 
 ### List Interaction
@@ -22,18 +29,11 @@ Multi-string replacement plugin for Notepad++
 - Enables reuse of search and replace operations across sessions and projects.
 
 ### Bash Script Export
-- Exports Find and Replace strings into a runnable script.
-- Strives to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
-- Intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
+- Exports Find and Replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
+- This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
 
 ### Function Toggling
 - "Use List" checkbox toggles operation application between all list entries or the "Find what:" and "Replace with:" fields.
 
 ### Compatibility
 - Full compatibility with standard Notepad++ search parameters, including "Match whole word only", "Match case", and "Search Mode".
-
-## Usage
-MultiReplace enhances Notepad++ functionalities, enabling:
-- Multiple replacements in a single operation.
-- CSV-based string list storage.
-- Scripted text replacements through bash script export.
