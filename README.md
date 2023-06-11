@@ -5,6 +5,7 @@ MultiReplace is a Notepad++ plugin that introduces a functionality to store sear
 - Allows multiple replacements in a single operation.
 - Offers CSV-based string list storage.
 - Enables scripted text replacements through bash script export.
+- Highlights multiple find words in unique colors for better visual distinction.
 
 MultiReplace is released under the same GNU General Public License as Notepad++ itself.
 
