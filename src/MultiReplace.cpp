@@ -27,7 +27,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <Notepad_plus_msgs.h>
+#include "Notepad_plus_msgs.h"
 #include <bitset>
 #include <string>
 #include <functional>
