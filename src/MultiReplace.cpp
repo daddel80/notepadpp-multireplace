@@ -445,7 +445,7 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
 
 void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 
-    if (pnmia == nullptr || pnmia->iItem >= replaceListData.size()) {
+    if (pnmia == nullptr || pnmia->iItem >= (int)replaceListData.size()) {
         return;
     }
     // Remove the item from the ListView
@@ -464,7 +464,7 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
 
-    if (pnmia == nullptr || pnmia->iItem >= replaceListData.size()) {
+    if (pnmia == nullptr || pnmia->iItem >= (int)replaceListData.size()) {
         return;
     }
     
@@ -499,7 +499,7 @@ void MultiReplace::shiftListItem(HWND listView, const Direction& direction) {
     }
 
     // Check the bounds
-    if ((direction == Direction::Up && selectedIndices.front() == 0) || (direction == Direction::Down && selectedIndices.back() == replaceListData.size() - 1)) {
+    if ((direction == Direction::Up && selectedIndices.front() == 0) || (direction == Direction::Down && selectedIndices.back() == (int)replaceListData.size() - 1)) {
         return; // Don't perform the move if it's out of bounds
     }
 
@@ -1074,7 +1074,7 @@ int MultiReplace::convertExtendedToString(const std::string& query, std::string&
     result.clear();
     result.resize(query.length()); // Preallocate memory for optimal performance
 
-    while (i < query.length())
+    while (i < (int)query.length())
     {
         current = query[i];
         --charLeft;
@@ -1128,7 +1128,7 @@ int MultiReplace::convertExtendedToString(const std::string& query, std::string&
                     size = 4, base = 16;
                 }
 
-                if (charLeft >= size)
+                if ((int)charLeft >= size)
                 {
                     int res = 0;
                     if (readBase(query.c_str() + (i + 1), &res, base, size))
@@ -1287,7 +1287,7 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::strin
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicatorStyle, 0);
     ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
 
-    if (markedStringsCount <= validStyles.size()) {
+    if (markedStringsCount <= (int)validStyles.size()) {
         ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicatorStyle, color);
     }
 
@@ -1578,7 +1578,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
 
         if (!faultyLines.empty()) {
             ss << L" But could not read line: ";
-            for (int i = 0; i < 3 && i < faultyLines.size(); ++i) {
+            for (int i = 0; i < 3 && i < (int)faultyLines.size(); ++i) {
                 if (i > 0) ss << L", ";
                 ss << faultyLines[i];
             }
