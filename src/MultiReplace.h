@@ -122,15 +122,15 @@ private:
     HICON _hCopyBackIcon;
     HICON _hDeleteIcon;
     HICON _hEnabledIcon;
-    int copyBackIconIndex;
-    int deleteIconIndex;
-    int enabledIconIndex;
     HWND _hStatusMessage;
     COLORREF _statusMessageColor;
     HFONT hFont;
+    int copyBackIconIndex;
+    int deleteIconIndex;
+    int enabledIconIndex;
     static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
     static constexpr int FONT_SIZE = 16;
-    int markedStringsCount = 0;
+    size_t markedStringsCount = 0;
     int lastClickedComboBoxId = 0;    // for Combobox workaround
     const int MAX_TEXT_LENGTH = 4096; // Set maximum Textlength for Find and Replace String
     
@@ -168,7 +168,7 @@ private:
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void shiftListItem(HWND listView, const Direction& direction);
     void deleteSelectedLines(HWND listView);
-    void showStatusMessage(int count, const wchar_t* messageFormat, COLORREF color);
+    void showStatusMessage(size_t count, const wchar_t* messageFormat, COLORREF color);
 
     // SearchReplace
     int convertExtendedToString(const std::string& query, std::string& result);
@@ -185,6 +185,14 @@ private:
     static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 10);
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
 
+    // StringHandling
+    std::string wstringToString(const std::wstring& input);
+    static constexpr bool IsDBCSCodePage(int codePage) noexcept;
+    static bool DBCSIsLeadByte(int codePage, char ch) noexcept;
+    static bool IsDBCSValidSingleByte(int codePage, int ch) noexcept;
+    std::wstring convertEncodingToWideString(const std::string& input);
+    /*std::string convertEncodingToUtf8(const std::wstring& input);*/
+
     // FileOperations
     std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
@@ -194,7 +202,6 @@ private:
 
     // Export
     void exportToBashScript(const std::wstring& fileName);
-    std::string wstringToString(const std::wstring& wstr);
     std::string escapeSpecialChars(const std::string& input, bool extended);
     void handleEscapeSequence(const std::regex& regex, const std::string& input, std::string& output, std::function<char(const std::string&)> converter);
     std::string translateEscapes(const std::string& input);

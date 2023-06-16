@@ -272,7 +272,7 @@ void MultiReplace::updateUIVisibility() {
     }
 }
 
-void MultiReplace::showStatusMessage(int count, const wchar_t* messageFormat, COLORREF color)
+void MultiReplace::showStatusMessage(size_t count, const wchar_t* messageFormat, COLORREF color)
 {
     wchar_t message[350];
     wsprintf(message, messageFormat, count);
@@ -445,7 +445,7 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
 
 void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 
-    if (pnmia == nullptr || pnmia->iItem >= replaceListData.size()) {
+    if (pnmia == nullptr || static_cast<size_t>(pnmia->iItem) >= replaceListData.size()) {
         return;
     }
     // Remove the item from the ListView
@@ -464,7 +464,7 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
 
-    if (pnmia == nullptr || pnmia->iItem >= replaceListData.size()) {
+    if (pnmia == nullptr || static_cast<size_t>(pnmia->iItem) >= replaceListData.size()) {
         return;
     }
     
@@ -487,7 +487,7 @@ void MultiReplace::shiftListItem(HWND listView, const Direction& direction) {
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
     EnableWindow(_replaceListView, TRUE);
     
-    std::vector<int> selectedIndices;
+    std::vector<size_t> selectedIndices;
     int i = -1;
     while ((i = ListView_GetNextItem(listView, i, LVNI_SELECTED)) != -1) {
         selectedIndices.push_back(i);
@@ -505,15 +505,15 @@ void MultiReplace::shiftListItem(HWND listView, const Direction& direction) {
 
     // Perform the shift operation
     if (direction == Direction::Up) {
-        for (int& index : selectedIndices) {
-            int swapIndex = index - 1;
+        for (size_t& index : selectedIndices) {
+            size_t swapIndex = index - 1;
             std::swap(replaceListData[index], replaceListData[swapIndex]);
             index = swapIndex;
         }
     }
     else { // direction is Down
         for (auto it = selectedIndices.rbegin(); it != selectedIndices.rend(); ++it) {
-            int swapIndex = *it + 1;
+            size_t swapIndex = *it + 1;
             std::swap(replaceListData[*it], replaceListData[swapIndex]);
             *it = swapIndex;
         }
@@ -527,12 +527,12 @@ void MultiReplace::shiftListItem(HWND listView, const Direction& direction) {
     }
 
     // Re-select the shifted items
-    for (int index : selectedIndices) {
+    for (size_t index : selectedIndices) {
         ListView_SetItemState(listView, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
     }
 
     // Show status message when rows are successfully shifted
-    showStatusMessage(static_cast<int>(selectedIndices.size()), L"%d rows successfully shifted.", RGB(0, 128, 0));
+    showStatusMessage(selectedIndices.size(), L"%d rows successfully shifted.", RGB(0, 128, 0));
 
 }
 
@@ -571,13 +571,13 @@ void MultiReplace::deleteSelectedLines(HWND listView) {
 
     InvalidateRect(_replaceListView, NULL, TRUE);
 
-    showStatusMessage(static_cast<int>(numDeletedLines), L"%d lines deleted.", RGB(0, 128, 0));
+    showStatusMessage(numDeletedLines, L"%d lines deleted.", RGB(0, 128, 0));
 }
 
 #pragma endregion
 
 
-#pragma region
+#pragma region SearchReplace
 
 INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -1061,12 +1061,12 @@ int MultiReplace::convertExtendedToString(const std::string& query, std::string&
     };
 
     int i = 0, j = 0;
-    size_t charLeft = query.length();
+    int charLeft = static_cast<int>(query.length());
     char current;
     result.clear();
     result.resize(query.length()); // Preallocate memory for optimal performance
 
-    while (i < query.length())
+    while (i < static_cast<int>(query.length()))
     {
         current = query[i];
         --charLeft;
@@ -1251,24 +1251,6 @@ int MultiReplace::markString(const std::wstring& findText, bool wholeWord, bool 
     return markCount;
 }
 
-long MultiReplace::generateColorValue(const std::string& str) {
-    // DJB2 hash
-    unsigned long hash = 5381;
-    for (char c : str) {
-        hash = ((hash << 5) + hash) + c;  // hash * 33 + c
-    }
-
-    // Create an RGB color using the hash
-    int r = (hash >> 16) & 0xFF;
-    int g = (hash >> 8) & 0xFF;
-    int b = hash & 0xFF;
-
-    // Convert RGB to long
-    long color = (r << 16) | (g << 8) | b;
-
-    return color;
-}
-
 void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8)
 {
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
@@ -1288,6 +1270,24 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::strin
 
 }
 
+long MultiReplace::generateColorValue(const std::string& str) {
+    // DJB2 hash
+    unsigned long hash = 5381;
+    for (char c : str) {
+        hash = ((hash << 5) + hash) + c;  // hash * 33 + c
+    }
+
+    // Create an RGB color using the hash
+    int r = (hash >> 16) & 0xFF;
+    int g = (hash >> 8) & 0xFF;
+    int b = hash & 0xFF;
+
+    // Convert RGB to long
+    long color = (r << 16) | (g << 8) | b;
+
+    return color;
+}
+
 void MultiReplace::clearAllMarks()
 {
     for (int style : validStyles)
@@ -1303,8 +1303,8 @@ void MultiReplace::clearAllMarks()
 void MultiReplace::copyMarkedTextToClipboard()
 {
     LRESULT length = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
-    size_t markedTextCount = 0;
     bool wasLastCharMarked = false;
+    size_t markedTextCount = 0;
 
     std::string markedText;
     std::string styleText;
@@ -1312,7 +1312,7 @@ void MultiReplace::copyMarkedTextToClipboard()
     for (int style : validStyles)
     {
         ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
-        for (int i = 0; i < length; ++i)
+        for (LRESULT i = 0; i < length; ++i)
         {
             bool isCharMarked = ::SendMessage(_hScintilla, SCI_INDICATORVALUEAT, style, i);
             if (isCharMarked)
@@ -1323,40 +1323,64 @@ void MultiReplace::copyMarkedTextToClipboard()
                     ++markedTextCount;
                 }
 
+                wasLastCharMarked = true;
+
                 char ch = static_cast<char>(::SendMessage(_hScintilla, SCI_GETCHARAT, i, 0));
                 styleText += ch;
             }
-            wasLastCharMarked = isCharMarked; // Update the wasLastCharMarked status for the next iteration.
+            else
+            {
+                wasLastCharMarked = false;
+
+                if (!styleText.empty())
+                {
+                    markedText += styleText;
+                    styleText.clear();
+                }
+            }
         }
 
-        if (!styleText.empty()) {
+        if (!styleText.empty())
+        {
             markedText += styleText;
             styleText.clear();
         }
     }
 
+    // Convert encoding to wide string
+    std::wstring wstr = convertEncodingToWideString(markedText);
+
+
     if (markedTextCount > 0)
     {
-        const char* output = markedText.c_str();
-        size_t outputLength = markedText.length();
+        // Clear clipboard
+        OpenClipboard(0);
+        EmptyClipboard();
 
-        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, outputLength + 1);
+        // Copy data to clipboard
+        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, wstr.length() * sizeof(wchar_t) + 1);
         if (hMem)
         {
             LPVOID lockedMem = GlobalLock(hMem);
             if (lockedMem)
             {
-                memcpy(lockedMem, output, outputLength + 1);
+                memcpy(lockedMem, wstr.c_str(), wstr.length() * sizeof(wchar_t) + 1);
                 GlobalUnlock(hMem);
-                OpenClipboard(0);
-                EmptyClipboard();
-                SetClipboardData(CF_TEXT, hMem);
-                CloseClipboard();
+
+                // Checking SetClipboardData return
+                if (SetClipboardData(CF_UNICODETEXT, hMem) != NULL)
+                {
+                    int markedTextCountInt = static_cast<int>(markedTextCount);
+                    showStatusMessage(markedTextCountInt, L"%d marked blocks copied into Clipboard.", RGB(0, 128, 0));
+                }
+                else
+                {
+                    showStatusMessage(0, L"Failed to copy marked text to Clipboard.", RGB(255, 0, 0));
+                }
             }
         }
 
-        int markedTextCountInt = static_cast<int>(markedTextCount);
-        showStatusMessage(markedTextCountInt, L"%d marked blocks copied into Clipboard.", RGB(0, 128, 0));
+        CloseClipboard();
     }
     else
     {
@@ -1433,6 +1457,137 @@ std::wstring MultiReplace::getTextFromDialogItem(HWND hwnd, int itemID) {
 #pragma endregion
 
 
+#pragma region StringHandling
+
+#include <windows.h>
+#include <string>
+
+// Check if the provided code page is a DBCS code page
+constexpr bool MultiReplace::IsDBCSCodePage(int codePage) noexcept {
+    return codePage == 932 || codePage == 936 || codePage == 949 || codePage == 950 || codePage == 1361;
+}
+
+// Check if a character is a lead byte
+bool MultiReplace::DBCSIsLeadByte(int codePage, char ch) noexcept {
+    const unsigned char uch = ch;
+    switch (codePage) {
+    case 932:  // Shift_jis
+        return ((uch >= 0x81) && (uch <= 0x9F)) || ((uch >= 0xE0) && (uch <= 0xFC));
+    case 936:  // GBK
+    case 949:  // Korean Wansung KS C-5601-1987
+    case 950:  // Big5
+        return (uch >= 0x81) && (uch <= 0xFE);
+    case 1361:  // Korean Johab KS C-5601-1992
+        return ((uch >= 0x84) && (uch <= 0xD3)) || ((uch >= 0xD8) && (uch <= 0xDE)) || ((uch >= 0xE0) && (uch <= 0xF9));
+    default:
+        return false;
+    }
+}
+
+// Check if a character is a valid single byte
+bool MultiReplace::IsDBCSValidSingleByte(int codePage, int ch) noexcept {
+    switch (codePage) {
+    case 932:
+        return ch == 0x80 || (ch >= 0xA0 && ch <= 0xDF) || (ch >= 0xFD);
+    default:
+        return false;
+    }
+}
+
+std::wstring MultiReplace::convertEncodingToWideString(const std::string& input) {
+    int codePage = static_cast<int>(::SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
+
+    if (codePage == 0) {  // ANSI encoding
+        codePage = ::GetACP();  // Get the actual ANSI code page
+    }
+
+    int requiredSize = MultiByteToWideChar(codePage, 0, input.c_str(), -1, NULL, 0);
+    if (requiredSize == 0)
+        return std::wstring();
+
+    std::wstring wideOutput(requiredSize, L'\0');
+
+    if (IsDBCSCodePage(codePage)) {
+        for (size_t i = 0; i < input.size(); i++) {
+            if (DBCSIsLeadByte(codePage, input[i]) && i < input.size() - 1) {
+                MultiByteToWideChar(codePage, 0, &input[i], 2, &wideOutput[i / 2], 2);
+                i++;
+            }
+            else if (!IsDBCSValidSingleByte(codePage, input[i])) {
+                MultiByteToWideChar(codePage, 0, &input[i], 1, &wideOutput[i / 2], 1);
+            }
+        }
+    }
+    else {
+        MultiByteToWideChar(codePage, 0, input.c_str(), -1, &wideOutput[0], requiredSize);
+    }
+
+    return wideOutput;
+}
+
+std::string MultiReplace::wstringToString(const std::wstring& input) {
+    if (input.empty()) return std::string();
+    
+    int codePage = static_cast<int>(::SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
+
+    std::string message;
+    std::wstring wMessage;
+    message = "Codepage: " + std::to_string(codePage);
+    wMessage = std::wstring(message.begin(), message.end());
+    MessageBox(NULL, wMessage.c_str(), L"Codepage", MB_OK);
+
+    // If the codepage is 65001 (UTF-8), convert the wstring to UTF-8
+    if (codePage == 65001) {
+        std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+        return converter.to_bytes(input);
+    }
+
+    // For ANSI encoding, convert the wstring to ANSI
+    if (codePage == 0) {
+        int size_needed = WideCharToMultiByte(CP_ACP, 0, &input[0], (int)input.size(), NULL, 0, NULL, NULL);
+        std::string strTo(size_needed, 0);
+        WideCharToMultiByte(CP_ACP, 0, &input[0], (int)input.size(), &strTo[0], size_needed, NULL, NULL);
+        return strTo;
+    }
+
+    int requiredSize = WideCharToMultiByte(codePage, 0, input.c_str(), -1, NULL, 0, NULL, NULL);
+    if (requiredSize == 0)
+        return std::string();
+
+    std::string output(requiredSize, '\0');
+
+    if (IsDBCSCodePage(codePage)) {
+        for (size_t i = 0; i < input.size(); i++) {
+            char buffer[3] = { 0 };
+            WideCharToMultiByte(codePage, 0, &input[i], 1, buffer, 3, NULL, NULL);
+            if (DBCSIsLeadByte(codePage, buffer[0]) && i < input.size() - 1) {
+                message = "DBCS Lead Byte detected: " + std::string(buffer);
+                wMessage = std::wstring(message.begin(), message.end());
+                MessageBox(NULL, wMessage.c_str(), L"DBCS Lead Byte", MB_OK);
+
+                WideCharToMultiByte(codePage, 0, &input[i], 2, &output[i / 2], 2, NULL, NULL);
+                i++;
+            }
+            else if (!IsDBCSValidSingleByte(codePage, buffer[0])) {
+                message = "Invalid DBCS Single Byte detected: " + std::string(buffer);
+                wMessage = std::wstring(message.begin(), message.end());
+                MessageBox(NULL, wMessage.c_str(), L"Invalid DBCS Single Byte", MB_OK);
+
+                WideCharToMultiByte(codePage, 0, &input[i], 1, &output[i / 2], 1, NULL, NULL);
+            }
+        }
+    }
+    else {
+        WideCharToMultiByte(codePage, 0, input.c_str(), -1, &output[0], requiredSize, NULL, NULL);
+    }
+
+    return output;
+}
+
+
+#pragma endregion
+
+
 #pragma region FileOperations
 
 std::wstring MultiReplace::openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension) {
@@ -1483,7 +1638,7 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
         }
 
     }
-    showStatusMessage(static_cast<int>(list.size()), L"%d items saved to CSV.", RGB(0, 128, 0));
+    showStatusMessage(list.size(), L"%d items saved to CSV.", RGB(0, 128, 0));
   
     outFile.close();
 
@@ -1570,14 +1725,15 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
 
         if (!faultyLines.empty()) {
             ss << L" But could not read line: ";
-            for (int i = 0; i < 3 && i < faultyLines.size(); ++i) {
+            for (size_t i = 0; i < 3 && i < faultyLines.size(); ++i)
+            {
                 if (i > 0) ss << L", ";
                 ss << faultyLines[i];
             }
             if (faultyLines.size() > 3) ss << L", ..."; // Add ", ..." if there are more than three faulty lines
         }
 
-        showStatusMessage(static_cast<int>(replaceListData.size()), ss.str().c_str(), faultyLines.empty() ? RGB(0, 128, 0) : RGB(255, 69, 0)); // Green color if no faulty lines, Dark Orange color otherwise
+        showStatusMessage(replaceListData.size(), ss.str().c_str(), faultyLines.empty() ? RGB(0, 128, 0) : RGB(255, 69, 0)); // Green color if no faulty lines, Dark Orange color otherwise
     }
 
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
@@ -1650,7 +1806,7 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     }
 
     file << "#!/bin/bash\n";
-    file << "# Auto-generated by MultiReplace Notepad++ plugin (by Thomas Knoefel)\n\n";
+    file << "# Auto-generated by MultiReplace Notepad++\n\n";
     file << "inputFile=\"$1\"\n";
     file << "outputFile=\"$2\"\n\n";
 
@@ -1722,12 +1878,6 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     // Enable the ListView accordingly
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
     EnableWindow(_replaceListView, TRUE);
-}
-
-std::string MultiReplace::wstringToString(const std::wstring& wstr)
-{
-    std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-    return converter.to_bytes(wstr);
 }
 
 std::string MultiReplace::escapeSpecialChars(const std::string& input, bool extended) {
