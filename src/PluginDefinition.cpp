@@ -68,8 +68,8 @@ void commandMenuInit()
     //            ShortcutKey *shortcut,          // optional. Define a shortcut to trigger this command
     //            bool check0nInit                // optional. Make this menu item be checked visually
     //            );
-    setCommand(0, TEXT("Multi Replace && Mark"), multiReplace, NULL, false);
-    setCommand(1, TEXT("About"), about, NULL, false);
+    setCommand(0, TEXT("&Multi Replace && Mark"), multiReplace, NULL, false);
+    setCommand(1, TEXT("&About"), about, NULL, false);
 }
 
 //
@@ -121,7 +121,7 @@ void multiReplace()
 
         // the dlgDlg should be the index of funcItem where the current function pointer is
         // in this case is DOCKABLE_DEMO_INDEX
-        data.dlgID = 3;
+        data.dlgID = 0;
         ::SendMessage(nppData._nppHandle, NPPM_DMMREGASDCKDLG, 0, (LPARAM)&data);
     }
     _MultiReplace.display();
