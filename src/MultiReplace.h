@@ -200,4 +200,6 @@ private:
     std::string translateEscapes(const std::string& input);
 };
 
+extern MultiReplace _MultiReplace;
+
 #endif // MULTI_REPLACE_H
