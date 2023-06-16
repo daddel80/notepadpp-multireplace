@@ -17,3 +17,5 @@ vs.proj/.vs/
 *.zip
 *.bak
 /src/DUCalculator
+*.exp
+*.lib
