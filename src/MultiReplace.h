@@ -17,7 +17,7 @@
 #define MULTI_REPLACE_H
 
 #include "DockingFeature\DockingDlgInterface.h"
-#include "resource.h"
+#include "DockingFeature\resource.h"
 #include <string>
 #include <vector>
 #include <map>
