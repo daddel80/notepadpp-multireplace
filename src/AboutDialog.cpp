@@ -98,10 +98,15 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM /*l
         switch (LOWORD(wParam))
         {
         case IDOK:
-            EndDialog(hwnd, IDOK);
+        case IDCANCEL:
+            EndDialog(hwnd, 0);
             return TRUE;
         }
         break;
+
+    case WM_CLOSE:
+        EndDialog(hwnd, 0);
+        return TRUE;
     }
 
     return FALSE;

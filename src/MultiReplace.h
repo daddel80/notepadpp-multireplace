@@ -187,10 +187,7 @@ private:
 
     // StringHandling
     std::string wstringToString(const std::wstring& input);
-    static constexpr bool IsDBCSCodePage(int codePage) noexcept;
-    static bool DBCSIsLeadByte(int codePage, char ch) noexcept;
-    static bool IsDBCSValidSingleByte(int codePage, int ch) noexcept;
-    std::wstring convertEncodingToWideString(const std::string& input);
+    std::wstring stringToWString(const std::string& encodedInput);
     /*std::string convertEncodingToUtf8(const std::wstring& input);*/
 
     // FileOperations

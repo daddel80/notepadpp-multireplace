@@ -1356,7 +1356,7 @@ void MultiReplace::copyMarkedTextToClipboard()
     }
 
     // Convert encoding to wide string
-    std::wstring wstr = convertEncodingToWideString(markedText);
+    std::wstring wstr = stringToWString(markedText);
 
 
     if (markedTextCount > 0)
@@ -1467,131 +1467,54 @@ std::wstring MultiReplace::getTextFromDialogItem(HWND hwnd, int itemID) {
 
 #pragma region StringHandling
 
-#include <windows.h>
-#include <string>
-
-// Check if the provided code page is a DBCS code page
-constexpr bool MultiReplace::IsDBCSCodePage(int codePage) noexcept {
-    return codePage == 932 || codePage == 936 || codePage == 949 || codePage == 950 || codePage == 1361;
-}
-
-// Check if a character is a lead byte
-bool MultiReplace::DBCSIsLeadByte(int codePage, char ch) noexcept {
-    const unsigned char uch = ch;
-    switch (codePage) {
-    case 932:  // Shift_jis
-        return ((uch >= 0x81) && (uch <= 0x9F)) || ((uch >= 0xE0) && (uch <= 0xFC));
-    case 936:  // GBK
-    case 949:  // Korean Wansung KS C-5601-1987
-    case 950:  // Big5
-        return (uch >= 0x81) && (uch <= 0xFE);
-    case 1361:  // Korean Johab KS C-5601-1992
-        return ((uch >= 0x84) && (uch <= 0xD3)) || ((uch >= 0xD8) && (uch <= 0xDE)) || ((uch >= 0xE0) && (uch <= 0xF9));
-    default:
-        return false;
-    }
-}
-
-// Check if a character is a valid single byte
-bool MultiReplace::IsDBCSValidSingleByte(int codePage, int ch) noexcept {
-    switch (codePage) {
-    case 932:
-        return ch == 0x80 || (ch >= 0xA0 && ch <= 0xDF) || (ch >= 0xFD);
-    default:
-        return false;
-    }
-}
-
-std::wstring MultiReplace::convertEncodingToWideString(const std::string& input) {
+std::wstring MultiReplace::stringToWString(const std::string& encodedInput) {
     int codePage = static_cast<int>(::SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
 
     if (codePage == 0) {  // ANSI encoding
         codePage = ::GetACP();  // Get the actual ANSI code page
+
+        int requiredSize = MultiByteToWideChar(codePage, 0, encodedInput.c_str(), -1, NULL, 0);
+        if (requiredSize == 0)
+            return std::wstring();
+
+        std::wstring wideStringResult(requiredSize, L'\0');
+        MultiByteToWideChar(codePage, 0, encodedInput.c_str(), -1, &wideStringResult[0], requiredSize);
+
+        return wideStringResult;
     }
-
-    int requiredSize = MultiByteToWideChar(codePage, 0, input.c_str(), -1, NULL, 0);
-    if (requiredSize == 0)
-        return std::wstring();
-
-    std::wstring wideOutput(requiredSize, L'\0');
-
-    if (IsDBCSCodePage(codePage)) {
-        for (size_t i = 0; i < input.size(); i++) {
-            if (DBCSIsLeadByte(codePage, input[i]) && i < input.size() - 1) {
-                MultiByteToWideChar(codePage, 0, &input[i], 2, &wideOutput[i / 2], 2);
-                i++;
-            }
-            else if (!IsDBCSValidSingleByte(codePage, input[i])) {
-                MultiByteToWideChar(codePage, 0, &input[i], 1, &wideOutput[i / 2], 1);
-            }
-        }
+    else if (codePage == 65001) {  // UTF-8 encoding
+        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+        return converter.from_bytes(encodedInput);
     }
     else {
-        MultiByteToWideChar(codePage, 0, input.c_str(), -1, &wideOutput[0], requiredSize);
+        // Handle unknown codePage if necessary
+        return std::wstring();
     }
-
-    return wideOutput;
 }
 
 std::string MultiReplace::wstringToString(const std::wstring& input) {
     if (input.empty()) return std::string();
-    
+
     int codePage = static_cast<int>(::SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
 
-    std::string message;
-    std::wstring wMessage;
-    message = "Codepage: " + std::to_string(codePage);
-    wMessage = std::wstring(message.begin(), message.end());
-    MessageBox(NULL, wMessage.c_str(), L"Codepage", MB_OK);
+    if (codePage == 0) {  // ANSI encoding
+        int size_needed = WideCharToMultiByte(CP_ACP, 0, &input[0], (int)input.size(), NULL, 0, NULL, NULL);
+        if (size_needed == 0)
+            return std::string();
 
-    // If the codepage is 65001 (UTF-8), convert the wstring to UTF-8
-    if (codePage == 65001) {
+        std::string ansiStringResult(size_needed, 0);
+        WideCharToMultiByte(CP_ACP, 0, &input[0], (int)input.size(), &ansiStringResult[0], size_needed, NULL, NULL);
+        return ansiStringResult;
+    }
+    else if (codePage == 65001) {  // UTF-8 encoding
         std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
         return converter.to_bytes(input);
     }
-
-    // For ANSI encoding, convert the wstring to ANSI
-    if (codePage == 0) {
-        int size_needed = WideCharToMultiByte(CP_ACP, 0, &input[0], (int)input.size(), NULL, 0, NULL, NULL);
-        std::string strTo(size_needed, 0);
-        WideCharToMultiByte(CP_ACP, 0, &input[0], (int)input.size(), &strTo[0], size_needed, NULL, NULL);
-        return strTo;
-    }
-
-    int requiredSize = WideCharToMultiByte(codePage, 0, input.c_str(), -1, NULL, 0, NULL, NULL);
-    if (requiredSize == 0)
-        return std::string();
-
-    std::string output(requiredSize, '\0');
-
-    if (IsDBCSCodePage(codePage)) {
-        for (size_t i = 0; i < input.size(); i++) {
-            char buffer[3] = { 0 };
-            WideCharToMultiByte(codePage, 0, &input[i], 1, buffer, 3, NULL, NULL);
-            if (DBCSIsLeadByte(codePage, buffer[0]) && i < input.size() - 1) {
-                message = "DBCS Lead Byte detected: " + std::string(buffer);
-                wMessage = std::wstring(message.begin(), message.end());
-                MessageBox(NULL, wMessage.c_str(), L"DBCS Lead Byte", MB_OK);
-
-                WideCharToMultiByte(codePage, 0, &input[i], 2, &output[i / 2], 2, NULL, NULL);
-                i++;
-            }
-            else if (!IsDBCSValidSingleByte(codePage, buffer[0])) {
-                message = "Invalid DBCS Single Byte detected: " + std::string(buffer);
-                wMessage = std::wstring(message.begin(), message.end());
-                MessageBox(NULL, wMessage.c_str(), L"Invalid DBCS Single Byte", MB_OK);
-
-                WideCharToMultiByte(codePage, 0, &input[i], 1, &output[i / 2], 1, NULL, NULL);
-            }
-        }
-    }
     else {
-        WideCharToMultiByte(codePage, 0, input.c_str(), -1, &output[0], requiredSize, NULL, NULL);
+        // Handle unknown codePage if necessary
+        return std::string();
     }
-
-    return output;
 }
-
 
 #pragma endregion
 
