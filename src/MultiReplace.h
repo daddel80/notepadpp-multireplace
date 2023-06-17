@@ -17,7 +17,7 @@
 #define MULTI_REPLACE_H
 
 #include "DockingFeature\DockingDlgInterface.h"
-#include "resource.h"
+#include "DockingFeature\resource.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -206,5 +206,7 @@ private:
     void handleEscapeSequence(const std::regex& regex, const std::string& input, std::string& output, std::function<char(const std::string&)> converter);
     std::string translateEscapes(const std::string& input);
 };
+
+extern MultiReplace _MultiReplace;
 
 #endif // MULTI_REPLACE_H

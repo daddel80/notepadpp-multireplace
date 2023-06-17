@@ -27,7 +27,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <Notepad_plus_msgs.h>
+#include "Notepad_plus_msgs.h"
 #include <bitset>
 #include <string>
 #include <functional>
@@ -832,6 +832,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         switch (LOWORD(wParam))
         {
+
+        case IDCANCEL :
+        {
+            EndDialog(_hSelf, 0);
+            _MultiReplace.display(false);
+        }
+        break;
+
         case IDC_REGEX_RADIO:
         {
             // Check if the Regular expression radio button is checked
