@@ -313,63 +313,70 @@ void MultiReplace::createListViewColumns(HWND listView) {
     int remainingWidth = windowWidth - 280;
 
     // Calculate the total width of columns 3 to 7
-    int columns3to7Width = 30 * 6; // Assuming fixed width of 30 for columns 3 to 7
+    int columns3to7Width = 30 * 7; // Assuming fixed width of 30 for columns 3 to 7
 
     remainingWidth -= columns3to7Width;
 
-    // Column for "Find" Text
     lvc.iSubItem = 0;
-    lvc.pszText = L"Find";
-    lvc.cx = remainingWidth / 2;
+    lvc.pszText = L"";
+    lvc.cx = 0;
     ListView_InsertColumn(listView, 0, &lvc);
 
-    // Column for "Replace" Text
     lvc.iSubItem = 1;
-    lvc.pszText = L"Replace";
-    lvc.cx = remainingWidth / 2;
+    lvc.pszText = L"\u2BBD";
+    lvc.cx = 30;
+    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 1, &lvc);
 
-    // Column for Option: Whole Word
+    // Column for "Find" Text
     lvc.iSubItem = 2;
-    lvc.pszText = L"W";
-    lvc.cx = 30;
-    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
+    lvc.pszText = L"Find";
+    lvc.cx = remainingWidth / 2;
+    lvc.fmt = LVCFMT_LEFT;
     ListView_InsertColumn(listView, 2, &lvc);
 
-    // Column for Option: Match Case
+    // Column for "Replace" Text
     lvc.iSubItem = 3;
-    lvc.pszText = L"C";
-    lvc.cx = 30;
-    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
+    lvc.pszText = L"Replace";
+    lvc.cx = remainingWidth / 2;
     ListView_InsertColumn(listView, 3, &lvc);
 
-    // Column for Option: Normal
+    // Column for Option: Whole Word
     lvc.iSubItem = 4;
-    lvc.pszText = L"N";
+    lvc.pszText = L"W";
     lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 4, &lvc);
 
-    // Column for Option: Extended
+    // Column for Option: Match Case
     lvc.iSubItem = 5;
-    lvc.pszText = L"E";
+    lvc.pszText = L"C";
     lvc.cx = 30;
-    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 5, &lvc);
 
-    // Column for Option: Regex
+    // Column for Option: Normal
     lvc.iSubItem = 6;
-    lvc.pszText = L"R";
+    lvc.pszText = L"N";
     lvc.cx = 30;
-    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 6, &lvc);
 
-    // Column for Delete Button
+    // Column for Option: Extended
     lvc.iSubItem = 7;
+    lvc.pszText = L"E";
+    lvc.cx = 30;
+    ListView_InsertColumn(listView, 7, &lvc);
+
+    // Column for Option: Regex
+    lvc.iSubItem = 8;
+    lvc.pszText = L"R";
+    lvc.cx = 30;
+    ListView_InsertColumn(listView, 8, &lvc);
+
+    // Column for Delete Button
+    lvc.iSubItem = 9;
     lvc.pszText = L"";
     lvc.cx = 30;
-    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
-    ListView_InsertColumn(listView, 7, &lvc);
+    ListView_InsertColumn(listView, 9, &lvc);
 }
 
 void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
@@ -417,10 +424,11 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
 
     // Calculate the total width of columns 3 to 7
     int columns3to7Width = 0;
-    for (int i = 2; i < 8; i++)
+    for (int i = 4; i < 10; i++)
     {
         columns3to7Width += ListView_GetColumnWidth(listView, i);
     }
+    columns3to7Width += 30; // for the first column
 
     // Calculate the remaining width for the first two columns
     int remainingWidth = newWidth - 280 - columns3to7Width;
@@ -432,8 +440,8 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
         MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 244, newWidth - 255, newHeight - 274, TRUE);
     }
 
-    ListView_SetColumnWidth(listView, 0, remainingWidth / 2);
-    ListView_SetColumnWidth(listView, 1, remainingWidth / 2);
+    ListView_SetColumnWidth(listView, 2, remainingWidth / 2);
+    ListView_SetColumnWidth(listView, 3, remainingWidth / 2);
 
     // If the window is horizontally minimized or vetically changed the size
     MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 244, newWidth - 255, newHeight - 274, TRUE);
@@ -461,6 +469,19 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 
     showStatusMessage(0, L"1 line deleted.", RGB(0, 128, 0));
 }
+
+void MultiReplace::handleSelection(NMITEMACTIVATE* pnmia) {
+    if (pnmia == nullptr || static_cast<size_t>(pnmia->iItem) >= replaceListData.size()) {
+        return;
+    }
+
+    replaceListData[pnmia->iItem].isSelected = !replaceListData[pnmia->iItem].isSelected;
+
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+
+    InvalidateRect(_replaceListView, NULL, TRUE);
+}
+
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
 
@@ -651,8 +672,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             case NM_CLICK: 
             {
                 NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
-                if (pnmia->iSubItem == 7) { // Delete button column
+                if (pnmia->iSubItem == 9) { // Delete button column
                     handleDeletion(pnmia);
+                }
+                if (pnmia->iSubItem == 1) { // Select button column
+                    handleSelection(pnmia);
                 }
             }
             break;
@@ -674,13 +698,22 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // Display the data based on the subitem
                 switch (plvdi->item.iSubItem)
                 {
-                case 0:
-                    plvdi->item.pszText = const_cast<LPWSTR>(itemData.findText.c_str());
-                    break;
+              
                 case 1:
-                    plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceText.c_str());
+                    if (itemData.isSelected) {
+                        plvdi->item.pszText = L"\u2BBD";
+                    }
+                    else {
+                        plvdi->item.pszText = L"\u2610";
+                    }
                     break;
                 case 2:
+                    plvdi->item.pszText = const_cast<LPWSTR>(itemData.findText.c_str());
+                    break;
+                case 3:
+                    plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceText.c_str());
+                    break;
+                case 4:
                     if (itemData.wholeWord) {
                         //plvdi->item.mask |= LVIF_IMAGE;
                         //plvdi->item.iImage = enabledIconIndex;
@@ -688,7 +721,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
-                case 3:
+                case 5:
                     if (itemData.matchCase) {
                         //plvdi->item.mask |= LVIF_IMAGE;
                         //plvdi->item.iImage = enabledIconIndex;
@@ -696,7 +729,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
-                case 4:
+                case 6:
                     if (!itemData.regex && !itemData.extended) {
                         //plvdi->item.mask |= LVIF_IMAGE;
                         //plvdi->item.iImage = enabledIconIndex;
@@ -704,7 +737,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
-                case 5:
+                case 7:
                     if (itemData.extended) {
                         //plvdi->item.mask |= LVIF_IMAGE;
                         //plvdi->item.iImage = enabledIconIndex;
@@ -712,7 +745,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
-                case 6:
+                case 8:
                     if (itemData.regex) {
                         //plvdi->item.mask |= LVIF_IMAGE;
                         //plvdi->item.iImage = enabledIconIndex;
@@ -720,16 +753,25 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
-                case 7:
+                case 9:
                     //plvdi->item.mask |= LVIF_IMAGE;
                     //plvdi->item.iImage = deleteIconIndex;
                     plvdi->item.mask |= LVIF_TEXT;
                     plvdi->item.pszText = L"\u2716";
                     break;
-
                 }
             }
             break;
+
+            case LVN_COLUMNCLICK:
+            {
+                NMLISTVIEW* pnmv = (NMLISTVIEW*)lParam;
+
+                // Check if the column 1 header was clicked
+                if (pnmv->iSubItem == 1) {
+                    toggleAllSelections();
+                }
+            }
 
             case LVN_KEYDOWN:
             {
@@ -1461,6 +1503,34 @@ std::wstring MultiReplace::getTextFromDialogItem(HWND hwnd, int itemID) {
     // Construct the std::wstring from the buffer excluding the null character
     return std::wstring(buffer.begin(), buffer.begin() + textLen);
 }
+
+void MultiReplace::toggleAllSelections()
+{
+    // Set the isSelected field of all items in the replaceListData vector to the opposite of allSelected
+    for (auto& itemData : replaceListData) {
+        itemData.isSelected = !allSelected;
+    }
+
+    // Update the allSelected flag
+    allSelected = !allSelected;
+
+    // Initialize the LVCOLUMN structure
+    LVCOLUMN lvc = { 0 };
+    lvc.mask = LVCF_TEXT;
+
+    if (allSelected) {
+        lvc.pszText = L"\u2BBD"; // Ballot box with check
+    }
+    else {
+        lvc.pszText = L"\u2610"; // Ballot box
+    }
+
+    ListView_SetColumn(_replaceListView, 1, &lvc);
+
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+}
+
 
 #pragma endregion
 
