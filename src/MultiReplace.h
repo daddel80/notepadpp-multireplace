@@ -32,6 +32,7 @@ extern NppData nppData;
 
 struct ReplaceItemData
 {
+    bool isSelected = true;
     std::wstring findText;
     std::wstring replaceText;
     bool wholeWord = false;
@@ -40,7 +41,9 @@ struct ReplaceItemData
     bool regex = false;
 
     bool operator==(const ReplaceItemData& rhs) const {
-        return findText == rhs.findText &&
+        return 
+            isSelected == rhs.isSelected &&
+            findText == rhs.findText &&
             replaceText == rhs.replaceText &&
             wholeWord == rhs.wholeWord &&
             matchCase == rhs.matchCase &&
@@ -133,6 +136,7 @@ private:
     size_t markedStringsCount = 0;
     int lastClickedComboBoxId = 0;    // for Combobox workaround
     const int MAX_TEXT_LENGTH = 4096; // Set maximum Textlength for Find and Replace String
+    bool allSelected = true;
     
     /*
        Available styles (self-tested):
@@ -165,10 +169,12 @@ private:
     void insertReplaceListItem(const ReplaceItemData& itemData);
     void updateListViewAndColumns(HWND listView, LPARAM lParam);
     void handleDeletion(NMITEMACTIVATE* pnmia);
+    void handleSelection(NMITEMACTIVATE* pnmia);
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void shiftListItem(HWND listView, const Direction& direction);
     void deleteSelectedLines(HWND listView);
     void showStatusMessage(size_t count, const wchar_t* messageFormat, COLORREF color);
+    void toggleAllSelections();
 
     // SearchReplace
     int convertExtendedToString(const std::string& query, std::string& result);
