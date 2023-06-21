@@ -48,6 +48,7 @@ std::map<int, ControlInfo> MultiReplace::ctrlMap;
 void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 {
     int buttonX = windowWidth - 40 - 160;
+    int swapButtonX = windowWidth - 40 - 160 - 37;
     int comboWidth = windowWidth - 360;
     int frameX = windowWidth  - 310;
     int listWidth = windowWidth - 255;
@@ -69,6 +70,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP };
     ctrlMap[IDC_REPLACE_EDIT] = { 120, 54, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP };
+    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, 33, 28, 34, WC_BUTTON, L"\u21C5", BS_PUSHBUTTON | WS_TABSTOP  };
     ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, L"Add into List", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 93, 160, 30, WC_BUTTON, L"Replace All", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 128, 160, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP };
@@ -105,6 +107,10 @@ void MultiReplace::initializeCtrlMap()
         return;
     }
 
+    // Create the larger, bolder font
+    HFONT hLargerBolderFont = CreateFont(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("Courier New"));
+
+
     // Create the font
     hFont = CreateFont(FONT_SIZE, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, FONT_NAME);
 
@@ -113,6 +119,9 @@ void MultiReplace::initializeCtrlMap()
     {
         SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)hFont, TRUE);
     }
+
+    // Set the larger, bolder font for the swap button
+    SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont, TRUE);
 
     // CheckBox to Normal
     CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_NORMAL_RADIO);
@@ -199,7 +208,7 @@ void MultiReplace::initializeListView() {
 void MultiReplace::moveAndResizeControls() {
     // IDs of controls to be moved or resized
     const int controlIds[] = {
-        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON,
+        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON,
         IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON,
         IDC_COPY_MARKED_TEXT_BUTTON, IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON,
         IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, 
@@ -244,7 +253,7 @@ void MultiReplace::updateUIVisibility() {
 
     // Define the UI element IDs to be shown or hidden based on the window size
     const int elementIds[] = {
-        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX,
+        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX,
         IDC_STATIC_FRAME, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
         IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX,
         IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON,
@@ -934,6 +943,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
+        case IDC_SWAP_BUTTON:
+        {
+            std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+            std::wstring replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
+
+            // Swap the content of the two text fields
+            SetDlgItemTextW(_hSelf, IDC_FIND_EDIT, replaceText.c_str());
+            SetDlgItemTextW(_hSelf, IDC_REPLACE_EDIT, findText.c_str());
+        }
+        break;
+
+
+
         case IDC_COPY_TO_LIST_BUTTON:
         {            
             onCopyToListButtonClick();
@@ -1525,6 +1547,10 @@ std::wstring MultiReplace::getTextFromDialogItem(HWND hwnd, int itemID) {
 }
 
 void MultiReplace::setSelections(bool select, bool onlySelected) {
+    if (replaceListData.empty()) {
+        return; 
+    }
+
     int i = 0;
     do {
         if (!onlySelected || ListView_GetItemState(_replaceListView, i, LVIS_SELECTED)) {
