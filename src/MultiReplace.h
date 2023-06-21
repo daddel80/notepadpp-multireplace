@@ -174,7 +174,8 @@ private:
     void shiftListItem(HWND listView, const Direction& direction);
     void deleteSelectedLines(HWND listView);
     void showStatusMessage(size_t count, const wchar_t* messageFormat, COLORREF color);
-    void toggleAllSelections();
+    void setSelections(bool select, bool onlySelected = false);
+    void updateHeader();
 
     // SearchReplace
     int convertExtendedToString(const std::string& query, std::string& result);

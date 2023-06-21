@@ -123,10 +123,6 @@ void MultiReplace::initializeCtrlMap()
     // Enable the checkbox ID IDC_USE_LIST_CHECKBOX
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
 
-    // Deactivate Export Bash as it is experimental
-    //HWND hExportButton = GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON);
-    //EnableWindow(hExportButton, FALSE);
-
 }
 
 bool MultiReplace::createAndShowWindows() {
@@ -323,7 +319,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     ListView_InsertColumn(listView, 0, &lvc);
 
     lvc.iSubItem = 1;
-    lvc.pszText = L"\u2BBD";
+    lvc.pszText = L"\u25A0";
     lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 1, &lvc);
@@ -477,11 +473,12 @@ void MultiReplace::handleSelection(NMITEMACTIVATE* pnmia) {
 
     replaceListData[pnmia->iItem].isSelected = !replaceListData[pnmia->iItem].isSelected;
 
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    // Update the header after changing the selection status of an item
+    updateHeader();
 
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
 }
-
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
 
@@ -676,7 +673,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     handleDeletion(pnmia);
                 }
                 if (pnmia->iSubItem == 1) { // Select button column
-                    handleSelection(pnmia);
+                    // get current selection status of the item
+                    bool currentSelectionStatus = replaceListData[pnmia->iItem].isSelected;
+                    // set the selection status to its opposite
+                    setSelections(!currentSelectionStatus, true);
                 }
             }
             break;
@@ -701,7 +701,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
               
                 case 1:
                     if (itemData.isSelected) {
-                        plvdi->item.pszText = L"\u2BBD";
+                        plvdi->item.pszText = L"\u25A0";
                     }
                     else {
                         plvdi->item.pszText = L"\u2610";
@@ -769,7 +769,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
                 // Check if the column 1 header was clicked
                 if (pnmv->iSubItem == 1) {
-                    toggleAllSelections();
+                    setSelections(!allSelected);
                 }
             }
 
@@ -777,7 +777,16 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             {
                 LPNMLVKEYDOWN pnkd = reinterpret_cast<LPNMLVKEYDOWN>(pnmh);
 
-                if (pnkd->wVKey == VK_DELETE) { // Delete key
+                PostMessage(_replaceListView, WM_SETFOCUS, 0, 0);
+                // Alt+A key for Select All
+                if (pnkd->wVKey == 'A' && GetKeyState(VK_MENU) & 0x8000) {
+                    setSelections(true, ListView_GetSelectedCount(_replaceListView) > 0);
+                }
+                // Alt+D key for Deselect All
+                else if (pnkd->wVKey == 'D' && GetKeyState(VK_MENU) & 0x8000) {
+                    setSelections(false, ListView_GetSelectedCount(_replaceListView) > 0);
+                }
+                else if (pnkd->wVKey == VK_DELETE) { // Delete key
                     deleteSelectedLines(_replaceListView);
                 }
                 else if ((GetKeyState(VK_MENU) & 0x8000) && (pnkd->wVKey == VK_UP)) { // Alt/AltGr + Up key
@@ -823,7 +832,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         ReleaseDC(_hSelf, hDC);
                     }
                 }
-
+                else if (pnkd->wVKey == VK_SPACE) { // Spacebar key
+                    int iItem = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED);
+                    if (iItem >= 0) {
+                        // get current selection status of the item
+                        bool currentSelectionStatus = replaceListData[iItem].isSelected;
+                        // set the selection status to its opposite
+                        setSelections(!currentSelectionStatus, true);
+                    }
+                }
             }
             break;
 
@@ -940,11 +957,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 for (size_t i = 0; i < replaceListData.size(); i++)
                 {
                     ReplaceItemData& itemData = replaceListData[i];
-                    replaceCount += replaceString(
-                        itemData.findText, itemData.replaceText,
-                        itemData.wholeWord, itemData.matchCase,
-                        itemData.regex, itemData.extended
-                    );
+                    if (itemData.isSelected) {
+                        replaceCount += replaceString(
+                            itemData.findText, itemData.replaceText,
+                            itemData.wholeWord, itemData.matchCase,
+                            itemData.regex, itemData.extended);
+                    }
                 }
                 ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
             }
@@ -996,9 +1014,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 
                 for (ReplaceItemData& itemData : replaceListData)
                 {
-                    matchCount += markString(
-                        itemData.findText, itemData.wholeWord,
-                        itemData.matchCase, itemData.regex, itemData.extended);
+                    if (itemData.isSelected) {
+                        matchCount += markString(
+                            itemData.findText, itemData.wholeWord,
+                            itemData.matchCase, itemData.regex, itemData.extended);
+                    }
                 }
             }
             else
@@ -1504,33 +1524,56 @@ std::wstring MultiReplace::getTextFromDialogItem(HWND hwnd, int itemID) {
     return std::wstring(buffer.begin(), buffer.begin() + textLen);
 }
 
-void MultiReplace::toggleAllSelections()
-{
-    // Set the isSelected field of all items in the replaceListData vector to the opposite of allSelected
-    for (auto& itemData : replaceListData) {
-        itemData.isSelected = !allSelected;
+void MultiReplace::setSelections(bool select, bool onlySelected) {
+    int i = 0;
+    do {
+        if (!onlySelected || ListView_GetItemState(_replaceListView, i, LVIS_SELECTED)) {
+            replaceListData[i].isSelected = select;
+        }
+    } while ((i = ListView_GetNextItem(_replaceListView, i, LVNI_ALL)) != -1);
+
+    // Update the allSelected flag if all items were selected/deselected
+    if (!onlySelected) {
+        allSelected = select;
     }
 
-    // Update the allSelected flag
-    allSelected = !allSelected;
+    // Update the header after changing the selection status of the items
+    updateHeader();
+
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+}
+
+void MultiReplace::updateHeader() {
+    bool anySelected = false;
+    allSelected = true;
+
+    // Check if any or all items in the replaceListData vector are selected
+    for (const auto& itemData : replaceListData) {
+        if (itemData.isSelected) {
+            anySelected = true;
+        }
+        else {
+            allSelected = false;
+        }
+    }
 
     // Initialize the LVCOLUMN structure
     LVCOLUMN lvc = { 0 };
     lvc.mask = LVCF_TEXT;
 
     if (allSelected) {
-        lvc.pszText = L"\u2BBD"; // Ballot box with check
+        lvc.pszText = L"\u25A0"; // Ballot box with check
+    }
+    else if (anySelected) {
+        lvc.pszText = L"\u25A3"; // Black square containing small white square
     }
     else {
         lvc.pszText = L"\u2610"; // Ballot box
     }
 
     ListView_SetColumn(_replaceListView, 1, &lvc);
-
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
 }
-
 
 #pragma endregion
 
@@ -1621,7 +1664,7 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const WCHAR* filter, co
 
 void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
     std::wofstream outFile(filePath);
-    outFile.imbue(std::locale(outFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
+    outFile.imbue(std::locale(outFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>()));
 
     if (!outFile.is_open()) {
         showStatusMessage(0, L"Error: Unable to open file for writing.", RGB(255, 0, 0));
@@ -1629,18 +1672,18 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     }
 
     // Write CSV header
-    outFile << L"Find,Replace,WholeWord,MatchCase,Regex,Extended" << std::endl;
+    outFile << L"Selected,Find,Replace,WholeWord,MatchCase,Regex,Extended" << std::endl;
 
     // If list is empty, only the header will be written to the file
     if (!list.empty()) {
         // Write list items to CSV file
         for (const ReplaceItemData& item : list) {
-            outFile << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.matchCase << L"," << item.extended << L"," << item.regex << std::endl;
+            outFile << item.isSelected << L"," << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.matchCase << L"," << item.extended << L"," << item.regex << std::endl;
         }
 
     }
     showStatusMessage(list.size(), L"%d items saved to CSV.", RGB(0, 128, 0));
-  
+
     outFile.close();
 
     // Enable the ListView accordingly
@@ -1690,7 +1733,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         columns.push_back(unescapeCsvValue(currentValue));
 
         // Check if the row has the correct number of columns
-        if (columns.size() != 6) {
+        if (columns.size() != 7) {
             faultyLines.push_back(lineNumber); // Store the line number of the faulty line
             continue;
         }
@@ -1698,20 +1741,21 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         ReplaceItemData item;
 
         // Assign columns to item properties
-        item.findText = columns[0];
-        item.replaceText = columns[1];
-        item.wholeWord = std::stoi(columns[2]) != 0;
-        item.matchCase = std::stoi(columns[3]) != 0;
-        item.extended = std::stoi(columns[4]) != 0;
-        item.regex = std::stoi(columns[5]) != 0;
-        
+        item.isSelected = std::stoi(columns[0]) != 0;
+        item.findText = columns[1];
+        item.replaceText = columns[2];
+        item.wholeWord = std::stoi(columns[3]) != 0;
+        item.matchCase = std::stoi(columns[4]) != 0;
+        item.extended = std::stoi(columns[5]) != 0;
+        item.regex = std::stoi(columns[6]) != 0;
+
         // Use insertReplaceListItem to insert the item to the list
         insertReplaceListItem(item);
-
     }
 
     inFile.close();
 
+    updateHeader();
     // Update the list view control
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
@@ -1848,6 +1892,8 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
 
     file << "# processLine arguments: \"findString\" \"replaceString\" wholeWord matchCase normal extended regex\n";
     for (const auto& itemData : replaceListData) {
+        if (!itemData.isSelected) continue; // Skip if this item is not selected
+
         std::string find;
         std::string replace;
         if (itemData.extended) {
