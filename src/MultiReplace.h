@@ -139,6 +139,7 @@ private:
     const int MAX_TEXT_LENGTH = 4096; // Set maximum Textlength for Find and Replace String
     bool allSelected = true;
     std::unordered_map<long, int> colorToStyleMap;
+    static const long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     
     /*
        Available styles (self-tested):
@@ -161,6 +162,7 @@ private:
     void initializeCtrlMap();
     bool createAndShowWindows();
     void initializeScintilla();
+    void initializePluginStyle();
     /*void createImageList();*/
     void initializeListView();
     void moveAndResizeControls();

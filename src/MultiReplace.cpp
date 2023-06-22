@@ -181,6 +181,20 @@ void MultiReplace::initializeScintilla() {
     }
 }
 
+void MultiReplace::initializePluginStyle()
+{
+    // Initialize for non-list marker
+    long standardMarkerColor = MARKER_COLOR;
+    int standardMarkerStyle = validStyles[0];
+    colorToStyleMap[standardMarkerColor] = standardMarkerStyle;
+
+    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, standardMarkerStyle, 0);
+    ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, standardMarkerStyle, INDIC_STRAIGHTBOX);
+    ::SendMessage(_hScintilla, SCI_INDICSETFORE, standardMarkerStyle, standardMarkerColor);
+    ::SendMessage(_hScintilla, SCI_INDICSETALPHA, standardMarkerStyle, 100);
+}
+
+
 /*
 void MultiReplace::createImageList() {
     const int ImageListSize = 16;
@@ -624,6 +638,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_INITDIALOG:
     {
         initializeScintilla();
+        initializePluginStyle();
         initializeCtrlMap();
         updateUIVisibility();
         initializeListView();
@@ -1356,8 +1371,7 @@ int MultiReplace::markString(const std::wstring& findText, bool wholeWord, bool 
 void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8)
 {
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
-
-    long color = useListEnabled ? generateColorValue(findTextUtf8) : 0x007F00;
+    long color = useListEnabled ? generateColorValue(findTextUtf8) : MARKER_COLOR;
 
     // Check if the color already has an associated style
     int indicatorStyle;
@@ -1375,7 +1389,7 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::strin
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicatorStyle, 0);
     ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
 
-    if (colorToStyleMap.size() <= validStyles.size()) {
+    if (colorToStyleMap.size() < validStyles.size()) {
         ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicatorStyle, color);
     }
 
