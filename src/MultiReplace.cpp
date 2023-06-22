@@ -32,6 +32,7 @@
 #include <string>
 #include <functional>
 #include <algorithm>
+#include <unordered_map>
 
 #ifdef UNICODE
 #define generic_strtoul wcstoul
@@ -328,7 +329,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     ListView_InsertColumn(listView, 0, &lvc);
 
     lvc.iSubItem = 1;
-    lvc.pszText = L"\u25A0";
+    lvc.pszText = L"\u2610";
     lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 1, &lvc);
@@ -419,6 +420,9 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
 
     // Update the item count in the ListView
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+
+    // Update Header if there might be any changes
+    updateHeader();
 }
 
 void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
@@ -454,25 +458,6 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
     // If the window size hasn't changed, no need to do anything
 
     prevWidth = newWidth;
-}
-
-void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
-
-    if (pnmia == nullptr || static_cast<size_t>(pnmia->iItem) >= replaceListData.size()) {
-        return;
-    }
-    // Remove the item from the ListView
-    ListView_DeleteItem(_replaceListView, pnmia->iItem);
-
-    // Remove the item from the replaceListData vector
-    replaceListData.erase(replaceListData.begin() + pnmia->iItem);
-
-    // Update the item count in the ListView
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-
-    InvalidateRect(_replaceListView, NULL, TRUE);
-
-    showStatusMessage(0, L"1 line deleted.", RGB(0, 128, 0));
 }
 
 void MultiReplace::handleSelection(NMITEMACTIVATE* pnmia) {
@@ -563,6 +548,28 @@ void MultiReplace::shiftListItem(HWND listView, const Direction& direction) {
 
 }
 
+void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
+
+    if (pnmia == nullptr || static_cast<size_t>(pnmia->iItem) >= replaceListData.size()) {
+        return;
+    }
+    // Remove the item from the ListView
+    ListView_DeleteItem(_replaceListView, pnmia->iItem);
+
+    // Remove the item from the replaceListData vector
+    replaceListData.erase(replaceListData.begin() + pnmia->iItem);
+
+    // Update the item count in the ListView
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+
+    // Update Header if there might be any changes
+    updateHeader();
+
+    InvalidateRect(_replaceListView, NULL, TRUE);
+
+    showStatusMessage(0, L"1 line deleted.", RGB(0, 128, 0));
+}
+
 void MultiReplace::deleteSelectedLines(HWND listView) {
     std::vector<int> selectedIndices;
     int i = -1;
@@ -595,6 +602,9 @@ void MultiReplace::deleteSelectedLines(HWND listView) {
     if (nextIndexToSelect >= 0) {
         ListView_SetItemState(listView, nextIndexToSelect, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
     }
+
+    // Update Header if there might be any changes
+    updateHeader();
 
     InvalidateRect(_replaceListView, NULL, TRUE);
 
@@ -1346,20 +1356,31 @@ int MultiReplace::markString(const std::wstring& findText, bool wholeWord, bool 
 void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8)
 {
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
-    int indicatorStyle = useListEnabled ? validStyles[(markedStringsCount % (validStyles.size() - 1)) + 1] : validStyles[0];
+
     long color = useListEnabled ? generateColorValue(findTextUtf8) : 0x007F00;
+
+    // Check if the color already has an associated style
+    int indicatorStyle;
+    if (colorToStyleMap.find(color) == colorToStyleMap.end()) {
+        // If not, assign a new style and store it in the map
+        indicatorStyle = useListEnabled ? validStyles[(colorToStyleMap.size() % (validStyles.size() - 1)) + 1] : validStyles[0];
+        colorToStyleMap[color] = indicatorStyle;
+    }
+    else {
+        // If yes, use the existing style
+        indicatorStyle = colorToStyleMap[color];
+    }
 
     // Set and apply highlighting style
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicatorStyle, 0);
     ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
 
-    if (markedStringsCount <= validStyles.size()) {
+    if (colorToStyleMap.size() <= validStyles.size()) {
         ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicatorStyle, color);
     }
 
     ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicatorStyle, 100);
     ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, pos, len);
-
 }
 
 long MultiReplace::generateColorValue(const std::string& str) {
@@ -1389,6 +1410,7 @@ void MultiReplace::clearAllMarks()
     }
 
     markedStringsCount = 0;
+    colorToStyleMap.clear();
     showStatusMessage(0, L"All marks cleared.", RGB(0, 128, 0));
 }
 
@@ -1572,7 +1594,7 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
 
 void MultiReplace::updateHeader() {
     bool anySelected = false;
-    allSelected = true;
+    allSelected = !replaceListData.empty();
 
     // Check if any or all items in the replaceListData vector are selected
     for (const auto& itemData : replaceListData) {

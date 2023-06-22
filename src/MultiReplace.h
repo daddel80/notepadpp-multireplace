@@ -26,6 +26,7 @@
 #include <functional>
 #include <regex>
 #include <algorithm>
+#include <unordered_map>
 
 
 extern NppData nppData;
@@ -137,6 +138,7 @@ private:
     int lastClickedComboBoxId = 0;    // for Combobox workaround
     const int MAX_TEXT_LENGTH = 4096; // Set maximum Textlength for Find and Replace String
     bool allSelected = true;
+    std::unordered_map<long, int> colorToStyleMap;
     
     /*
        Available styles (self-tested):
