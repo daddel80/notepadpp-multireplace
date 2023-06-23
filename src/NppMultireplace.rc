@@ -19,12 +19,19 @@
 
 #include <windows.h>
 
-#define VERSION_VALUE "4.3\0"
-#define VERSION_DIGITALVALUE 1, 0, 0, 0
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+
+/* VERSION DEFINITIONS */
+#define VER_MAJOR   1
+#define VER_MINOR   0
+#define VER_RELEASE 0
+#define VER_BUILD   0
+#define VER_STRING  STR(VER_MAJOR) "." STR(VER_MINOR) "." STR(VER_RELEASE) "." STR(VER_BUILD)
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION	VERSION_DIGITALVALUE
-PRODUCTVERSION	VERSION_DIGITALVALUE
+FILEVERSION VER_MAJOR,VER_MINOR,VER_RELEASE,VER_BUILD
+PRODUCTVERSION VER_MAJOR,VER_MINOR,VER_RELEASE,VER_BUILD
 FILEFLAGSMASK	0x3fL
 FILEFLAGS 0
 FILEOS VOS_NT_WINDOWS32
@@ -41,12 +48,12 @@ BEGIN
 		BEGIN
 			VALUE	"CompanyName",	"Thomas Knoefel\0"
 			VALUE	"FileDescription",	"Plugin for Multiple Replace\0"
-			VALUE	"FileVersion",	VERSION_VALUE
+			VALUE	"FileVersion",	VER_STRING
 			VALUE	"InternalName",	"NppMultiReplace.dll\0"
 			VALUE	"LegalCopyright",	"Copyright 2023 by Thomas Knoefel\0"
 			VALUE	"OriginalFilename",	"MultiReplace.dll\0"
 			VALUE	"ProductName",	"NppMultiReplace\0"
-			VALUE	"ProductVersion",	VERSION_VALUE
+			VALUE	"ProductVersion",	VER_STRING
 		END
 	END
 END
