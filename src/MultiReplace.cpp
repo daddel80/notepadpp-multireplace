@@ -881,6 +881,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             }
         }
+        else
+            DockingDlgInterface::run_dlgProc( message, wParam, lParam );
     }
     break;
 
@@ -928,8 +930,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDCANCEL :
         {
-            EndDialog(_hSelf, 0);
-            _MultiReplace.display(false);
+            if (_MultiReplace.isFloating())
+            {
+                EndDialog(_hSelf, 0);
+                _MultiReplace.display(false);
+            }
+            else
+            {
+                ::SetFocus( getCurScintilla() );
+            }
         }
         break;
 

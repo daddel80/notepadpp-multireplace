@@ -108,6 +108,10 @@ public:
         _hParent = parent2set;
     };
 
+	bool isFloating() const {
+		return _isFloating;
+	};
+
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam);
 
