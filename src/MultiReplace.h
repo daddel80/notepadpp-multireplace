@@ -213,6 +213,19 @@ private:
     std::string escapeSpecialChars(const std::string& input, bool extended);
     void handleEscapeSequence(const std::regex& regex, const std::string& input, std::string& output, std::function<char(const std::string&)> converter);
     std::string translateEscapes(const std::string& input);
+
+    // INI
+    void saveSettingsToIni(const std::wstring& iniFilePath);
+    void saveSettings();
+    void loadSettingsFromIni(const std::wstring& iniFilePath);
+    void loadSettings();
+    std::wstring readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue);
+    bool MultiReplace::readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue);
+    int readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue);
+    void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
+    std::wstring encodeLengthPrefixedString(const std::wstring& str);
+    std::wstring readLengthPrefixedString(const std::wstring& input, size_t& pos);
+
 };
 
 extern MultiReplace _MultiReplace;

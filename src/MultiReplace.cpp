@@ -642,6 +642,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializeCtrlMap();
         updateUIVisibility();
         initializeListView();
+        loadSettings();
 
         return TRUE;
     }
@@ -664,6 +665,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_DESTROY:
     {
+        saveSettings();
         DestroyIcon(_hDeleteIcon);
         DestroyIcon(_hEnabledIcon);
         DestroyIcon(_hCopyBackIcon);
@@ -2080,6 +2082,262 @@ std::string MultiReplace::translateEscapes(const std::string& input) {
     output = std::regex_replace(output, nullCharRegex, "");  // \0 will not be supported
 
     return output;
+}
+
+#pragma endregion
+
+
+#pragma region INI
+
+void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
+    // Convert std::wstring to LPCWSTR
+    LPCWSTR iniFilePathLpc = iniFilePath.c_str();
+
+    // Prepare and Store the current "Find what" and "Replace with" texts
+    std::wstring currentFindTextData = encodeLengthPrefixedString(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
+    std::wstring currentReplaceTextData = encodeLengthPrefixedString(getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT));
+
+    // Add length to string
+    WritePrivateProfileString(L"Current", L"FindText", currentFindTextData.c_str(), iniFilePathLpc);
+    WritePrivateProfileString(L"Current", L"ReplaceText", currentReplaceTextData.c_str(), iniFilePathLpc);
+
+    // Prepare and Store the current options
+    int wholeWord = IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? 1 : 0;
+    int matchCase = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? 1 : 0;
+    int regex = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0;
+    int extended = IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED ? 1 : 0;
+
+    // Store Options
+    WritePrivateProfileString(L"Options", L"WholeWord", std::to_wstring(wholeWord).c_str(), iniFilePathLpc);
+    WritePrivateProfileString(L"Options", L"MatchCase", std::to_wstring(matchCase).c_str(), iniFilePathLpc);
+    WritePrivateProfileString(L"Options", L"Regex", std::to_wstring(regex).c_str(), iniFilePathLpc);
+    WritePrivateProfileString(L"Options", L"Extended", std::to_wstring(extended).c_str(), iniFilePathLpc);
+
+    // Store "Find what" history
+    LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
+    WritePrivateProfileString(L"History", L"FindTextHistoryCount", std::to_wstring(findWhatCount).c_str(), iniFilePathLpc);
+    for (LRESULT i = 0; i < findWhatCount; i++) {
+        LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXTLEN, i, 0);
+        std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
+        SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
+        std::wstring findTextData = encodeLengthPrefixedString(std::wstring(buffer.data()));
+        std::wstring findWhatItemKey = L"FindTextHistory" + std::to_wstring(i);
+        WritePrivateProfileString(L"History", findWhatItemKey.c_str(), findTextData.c_str(), iniFilePathLpc);
+    }
+
+    // Store "Replace with" history
+    LRESULT replaceWithCount = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETCOUNT, 0, 0);
+    WritePrivateProfileString(L"History", L"ReplaceTextHistoryCount", std::to_wstring(replaceWithCount).c_str(), iniFilePathLpc);
+    for (LRESULT i = 0; i < replaceWithCount; i++) {
+        LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXTLEN, i, 0);
+        std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
+        SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
+        std::wstring replaceTextData = encodeLengthPrefixedString(std::wstring(buffer.data()));
+        std::wstring replaceWithItemKey = L"ReplaceTextHistory" + std::to_wstring(i);
+        WritePrivateProfileString(L"History", replaceWithItemKey.c_str(), replaceTextData.c_str(), iniFilePathLpc);
+    }
+
+    // Store List
+    WritePrivateProfileString(L"List", NULL, NULL, iniFilePathLpc);  // delete all entries first
+    WritePrivateProfileString(L"List", L"Count", std::to_wstring(replaceListData.size()).c_str(), iniFilePathLpc);
+    for (int i = 0; i < replaceListData.size(); i++) {
+        const ReplaceItemData& item = replaceListData[i];
+        std::wstring listFindTextData = encodeLengthPrefixedString(item.findText);
+        std::wstring listReplaceTextData = encodeLengthPrefixedString(item.replaceText);
+        std::wstring itemData = listFindTextData + L":" + listReplaceTextData + L":" +
+            std::to_wstring(item.isSelected ? 1 : 0) + L":" +
+            std::to_wstring(item.wholeWord ? 1 : 0) + L":" +
+            std::to_wstring(item.matchCase ? 1 : 0) + L":" +
+            std::to_wstring(item.extended ? 1 : 0) + L":" +
+            std::to_wstring(item.regex ? 1 : 0);
+
+        std::wstring itemKey = L"Item" + std::to_wstring(i);
+        WritePrivateProfileString(L"List", itemKey.c_str(), itemData.c_str(), iniFilePathLpc);
+    }
+
+}
+
+void MultiReplace::saveSettings() {
+    static bool settingsSaved = false;
+    if (settingsSaved) {
+        return;  // Check as WM_DESTROY will be 28 times triggered
+    }
+
+    // Get the path to the plugin's configuration file
+    wchar_t configDir[MAX_PATH] = {}; // Initialize all elements to 0
+    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, (LPARAM)configDir);
+    configDir[MAX_PATH - 1] = '\0'; // Ensure the configDir is null-terminated
+
+    // Form the path to the INI file
+    std::wstring iniFilePath = std::wstring(configDir) + L"\\MultiReplace.ini";
+
+    // Try to save the settings in the INI file
+    try {
+        saveSettingsToIni(iniFilePath);
+    }
+    catch (const std::exception& ex) {
+        // If an error occurs while writing to the INI file, we show an error message
+        std::wstring errorMessage = L"An error occurred while saving the settings: ";
+        errorMessage += std::wstring(ex.what(), ex.what() + strlen(ex.what()));
+        MessageBox(NULL, errorMessage.c_str(), L"Error", MB_OK | MB_ICONERROR);
+    }
+    settingsSaved = true;
+}
+
+void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
+
+    // Load combo box histories
+    int findHistoryCount = readIntFromIniFile(iniFilePath, L"History", L"FindTextHistoryCount", 0);
+    for (int i = 0; i < findHistoryCount; i++) {
+        std::wstring findHistoryItem = readStringFromIniFile(iniFilePath, L"History", L"FindTextHistory" + std::to_wstring(i), L"");
+        size_t pos = 0;
+        findHistoryItem = readLengthPrefixedString(findHistoryItem, pos);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findHistoryItem);
+    }
+
+    int replaceHistoryCount = readIntFromIniFile(iniFilePath, L"History", L"ReplaceTextHistoryCount", 0);
+    for (int i = 0; i < replaceHistoryCount; i++) {
+        std::wstring replaceHistoryItem = readStringFromIniFile(iniFilePath, L"History", L"ReplaceTextHistory" + std::to_wstring(i), L"");
+        size_t pos = 0;
+        replaceHistoryItem = readLengthPrefixedString(replaceHistoryItem, pos);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceHistoryItem);
+    }
+
+    // Read the current "Find what" and "Replace with" texts
+    std::wstring findTextData = readStringFromIniFile(iniFilePath, L"Current", L"FindText", L"");
+    std::wstring replaceTextData = readStringFromIniFile(iniFilePath, L"Current", L"ReplaceText", L"");
+    size_t findTextPos = 0, replaceTextPos = 0;
+    std::wstring findText = readLengthPrefixedString(findTextData, findTextPos);
+    std::wstring replaceText = readLengthPrefixedString(replaceTextData, replaceTextPos);
+
+    setTextInDialogItem(_hSelf, IDC_FIND_EDIT, findText);
+    setTextInDialogItem(_hSelf, IDC_REPLACE_EDIT, replaceText);
+
+    bool wholeWord = readBoolFromIniFile(iniFilePath, L"Options", L"WholeWord", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), BM_SETCHECK, wholeWord ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    bool matchCase = readBoolFromIniFile(iniFilePath, L"Options", L"MatchCase", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), BM_SETCHECK, matchCase ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    bool extended = readBoolFromIniFile(iniFilePath, L"Options", L"Extended", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), BM_SETCHECK, extended ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    bool regex = readBoolFromIniFile(iniFilePath, L"Options", L"Regex", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_SETCHECK, regex ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    std::wstring message = L"findText: " + findText + L"\nreplaceText: " + replaceText + L"\nwholeWord: " + (wholeWord ? L"Yes" : L"No");    
+
+    int listCount = readIntFromIniFile(iniFilePath, L"List", L"Count", 0);
+    for (int i = 0; i < listCount; i++) {
+        std::wstring itemKey = L"Item" + std::to_wstring(i);
+        std::wstring itemData = readStringFromIniFile(iniFilePath, L"List", itemKey.c_str(), L"");
+
+        std::vector<std::wstring> components;
+        size_t pos = 0;
+
+        findText = readLengthPrefixedString(itemData, pos);
+        components.push_back(findText);
+
+        replaceText = readLengthPrefixedString(itemData, pos);
+        components.push_back(replaceText);
+
+        components.push_back(itemData.substr(pos)); // remaining options
+
+        if (components.size() >= 3) {
+            ReplaceItemData item;
+            item.findText = components[0];  // already unmasked
+            item.replaceText = components[1]; // already unmasked
+
+            // Split remaining options
+            std::vector<std::wstring> options;
+            std::wstringstream ss(components[2]);
+            std::wstring token;
+            while (std::getline(ss, token, L':')) {
+                options.push_back(token);
+            }
+
+            // If we have at least five options
+            if (options.size() >= 5) {
+                item.isSelected = std::stoi(options[0]) != 0;
+                item.wholeWord = std::stoi(options[1]) != 0;
+                item.matchCase = std::stoi(options[2]) != 0;
+                item.extended = std::stoi(options[3]) != 0;
+                item.regex = std::stoi(options[4]) != 0;
+                replaceListData.push_back(item);
+            }
+
+        }
+    }
+
+}
+
+void MultiReplace::loadSettings() {
+    // Initialize configDir with all elements set to 0
+    wchar_t configDir[MAX_PATH] = {};
+
+    // Get the path to the plugin's configuration directory
+    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, (LPARAM)configDir);
+
+    // Ensure configDir is null-terminated
+    configDir[MAX_PATH - 1] = '\0';
+
+    std::wstring iniFilePath = std::wstring(configDir) + L"\\MultiReplace.ini";
+
+    // Verify that the settings file exists before attempting to read it
+    DWORD ftyp = GetFileAttributesW(iniFilePath.c_str());
+    if (ftyp == INVALID_FILE_ATTRIBUTES) {
+        // MessageBox(NULL, L"The settings file does not exist.", L"Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    try {
+        loadSettingsFromIni(iniFilePath);
+    }
+    catch (const std::exception& ex) {
+        std::wstring errorMessage = L"An error occurred while loading the settings: ";
+        errorMessage += std::wstring(ex.what(), ex.what() + strlen(ex.what()));
+        // MessageBox(NULL, errorMessage.c_str(), L"Error", MB_OK | MB_ICONERROR);
+    }
+    updateHeader();
+
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+}
+
+std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue) {
+    wchar_t buffer[1024];
+    ::GetPrivateProfileStringW(section.c_str(), key.c_str(), defaultValue.c_str(), buffer, 1024, iniFilePath.c_str());
+    return std::wstring(buffer);
+}
+
+bool MultiReplace::readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue) {
+    std::wstring defaultValueStr = defaultValue ? L"1" : L"0";
+    std::wstring value = readStringFromIniFile(iniFilePath, section, key, defaultValueStr);
+    return value == L"1";
+}
+
+int MultiReplace::readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue) {
+    return ::GetPrivateProfileIntW(section.c_str(), key.c_str(), defaultValue, iniFilePath.c_str());
+}
+
+void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {
+    ::SetDlgItemTextW(hDlg, itemID, text.c_str());
+}
+
+std::wstring MultiReplace::encodeLengthPrefixedString(const std::wstring& str) {
+    return std::to_wstring(str.length()) + L"\"" + str + L"\"";
+}
+
+std::wstring MultiReplace::readLengthPrefixedString(const std::wstring& input, size_t& pos) {
+    size_t end = input.find(L"\"", pos);
+    if (end != std::wstring::npos) {
+        int len = std::stoi(input.substr(pos, end - pos));
+        pos = end + 1;
+        std::wstring result = input.substr(pos, len);
+        pos += len + 2;
+        return result;
+    }
+    return L"";
 }
 
 #pragma endregion
