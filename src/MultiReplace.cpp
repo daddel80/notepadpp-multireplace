@@ -674,7 +674,7 @@ std::vector<ReplaceItemData> MultiReplace::getSelectedRows() {
 void MultiReplace::selectRows(const std::vector<ReplaceItemData>& rowsToSelect) {
     ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);  // deselect all items
 
-    for (int i = 0; i < replaceListData.size(); i++) {
+    for (size_t i = 0; i < replaceListData.size(); i++) {
         for (const auto& row : rowsToSelect) {
             if (replaceListData[i] == row) {
                 ListView_SetItemState(_replaceListView, i, LVIS_SELECTED, LVIS_SELECTED);
