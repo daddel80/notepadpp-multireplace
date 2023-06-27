@@ -71,6 +71,11 @@ struct SearchResult {
     LRESULT nextPos;
 };
 
+struct SortData {
+    int iSubItem;
+    bool sortAscending;
+};
+
 enum class Direction { Up, Down };
 
 typedef std::basic_string<TCHAR> generic_string;
@@ -140,6 +145,8 @@ private:
     bool allSelected = true;
     std::unordered_map<long, int> colorToStyleMap;
     static const long MARKER_COLOR = 0x007F00; // Color for non-list Marker
+    int lastColumn = -1;
+    bool ascending = true;
     
     /*
        Available styles (self-tested):
@@ -180,6 +187,9 @@ private:
     void showStatusMessage(size_t count, const wchar_t* messageFormat, COLORREF color);
     void setSelections(bool select, bool onlySelected = false);
     void updateHeader();
+    void sortReplaceListData(int column);
+    std::vector<ReplaceItemData> getSelectedRows();
+    void selectRows(const std::vector<ReplaceItemData>& rowsToSelect);
 
     // SearchReplace
     int convertExtendedToString(const std::string& query, std::string& result);

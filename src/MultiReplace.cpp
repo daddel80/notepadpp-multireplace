@@ -625,6 +625,62 @@ void MultiReplace::deleteSelectedLines(HWND listView) {
     showStatusMessage(numDeletedLines, L"%d lines deleted.", RGB(0, 128, 0));
 }
 
+void MultiReplace::sortReplaceListData(int column) {
+    // Get the currently selected rows
+    auto selectedRows = getSelectedRows();
+
+    if (column == 2) {
+        // Sort by `findText`
+        std::sort(replaceListData.begin(), replaceListData.end(),
+            [this](const ReplaceItemData& a, const ReplaceItemData& b) {
+                if (this->ascending)
+                    return a.findText < b.findText;
+                else
+                    return a.findText > b.findText;
+            });
+    }
+    else if (column == 3) {
+        // Sort by `replaceText`
+        std::sort(replaceListData.begin(), replaceListData.end(),
+            [this](const ReplaceItemData& a, const ReplaceItemData& b) {
+                if (this->ascending)
+                    return a.replaceText < b.replaceText;
+                else
+                    return a.replaceText > b.replaceText;
+            });
+    }
+
+    // Update the ListView
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+
+    // Select the previously selected rows
+    selectRows(selectedRows);
+}
+
+std::vector<ReplaceItemData> MultiReplace::getSelectedRows() {
+    std::vector<ReplaceItemData> selectedRows;
+    int i = -1;
+    while ((i = ListView_GetNextItem(_replaceListView, i, LVNI_SELECTED)) != -1) {
+        selectedRows.push_back(replaceListData[i]);
+    }
+    return selectedRows;
+}
+
+void MultiReplace::selectRows(const std::vector<ReplaceItemData>& rowsToSelect) {
+    ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);  // deselect all items
+
+    for (int i = 0; i < replaceListData.size(); i++) {
+        for (const auto& row : rowsToSelect) {
+            if (replaceListData[i] == row) {
+                ListView_SetItemState(_replaceListView, i, LVIS_SELECTED, LVIS_SELECTED);
+                break;
+            }
+        }
+    }
+}
+
+
 #pragma endregion
 
 
@@ -807,6 +863,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 if (pnmv->iSubItem == 1) {
                     setSelections(!allSelected);
                 }
+
+                // Check if the column "Find" or "Replace" header was clicked
+                if (pnmv->iSubItem == 2 || pnmv->iSubItem == 3) {
+                    if (lastColumn == pnmv->iSubItem) {
+                        ascending = !ascending;
+                    }
+                    else {
+                        lastColumn = pnmv->iSubItem;
+                        ascending = true;
+                    }
+                    sortReplaceListData(lastColumn);
+                }
+                break;
             }
 
             case LVN_KEYDOWN:
