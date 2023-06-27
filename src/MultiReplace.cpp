@@ -2140,7 +2140,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     // Store List
     WritePrivateProfileString(L"List", NULL, NULL, iniFilePathLpc);  // delete all entries first
     WritePrivateProfileString(L"List", L"Count", std::to_wstring(replaceListData.size()).c_str(), iniFilePathLpc);
-    for (int i = 0; i < replaceListData.size(); i++) {
+    for (size_t i = 0; i < replaceListData.size(); i++) {
         const ReplaceItemData& item = replaceListData[i];
         std::wstring listFindTextData = encodeLengthPrefixedString(item.findText);
         std::wstring listReplaceTextData = encodeLengthPrefixedString(item.replaceText);
