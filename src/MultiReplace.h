@@ -172,6 +172,7 @@ private:
     void initializePluginStyle();
     /*void createImageList();*/
     void initializeListView();
+    void createListViewToolTips(HWND listView);
     void moveAndResizeControls();
     void updateUIVisibility();
 

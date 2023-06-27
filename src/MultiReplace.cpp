@@ -214,7 +214,7 @@ void MultiReplace::createImageList() {
 
 void MultiReplace::initializeListView() {
     _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
-    /*createImageList();     # Icons currently not used */  
+    /*createImageList();     # Icons currently not used */
     createListViewColumns(_replaceListView);
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     ListView_SetExtendedListViewStyle(_replaceListView, LVS_EX_FULLROWSELECT | LVS_EX_SUBITEMIMAGES);
@@ -638,6 +638,8 @@ void MultiReplace::sortReplaceListData(int column) {
                 else
                     return a.findText > b.findText;
             });
+        std::wstring statusMessage = L"Find column sorted in " + std::wstring(ascending ? L"ascending" : L"descending") + L" order.";
+        showStatusMessage(0, statusMessage.c_str(), RGB(0, 0, 255));
     }
     else if (column == 3) {
         // Sort by `replaceText`
@@ -648,6 +650,8 @@ void MultiReplace::sortReplaceListData(int column) {
                 else
                     return a.replaceText > b.replaceText;
             });
+        std::wstring statusMessage = L"Replace column sorted in " + std::wstring(ascending ? L"ascending" : L"descending") + L" order.";
+        showStatusMessage(0, statusMessage.c_str(), RGB(0, 0, 255));
     }
 
     // Update the ListView
