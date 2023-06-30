@@ -178,6 +178,7 @@ private:
     void initializeListView();
     void createListViewToolTips(HWND listView);
     void moveAndResizeControls();
+    void updateFindAndMarkButtonVisibility();
     void updateUIVisibility();
 
     // ListView

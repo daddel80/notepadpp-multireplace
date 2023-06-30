@@ -49,11 +49,12 @@ std::map<int, ControlInfo> MultiReplace::ctrlMap;
 void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 {
     int buttonX = windowWidth - 40 - 160;
+    int checkbox2X = buttonX + 173;
     int swapButtonX = windowWidth - 40 - 160 - 37;
     int comboWidth = windowWidth - 360;
     int frameX = windowWidth  - 310;
     int listWidth = windowWidth - 255;
-    int listHeight = windowHeight - 274;
+    int listHeight = windowHeight - 309;
     int checkboxX = buttonX - 100;
 
     // Static positions and sizes
@@ -61,6 +62,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_STATIC_REPLACE] = { 14, 54, 100, 24, WC_STATIC, L"Replace with : ", SS_RIGHT };
     ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 122, 180, 28, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP };
     ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 146, 100, 28, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 170, 180, 28, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP };
     ctrlMap[IDC_SEARCH_MODE_GROUP] = { 200, 105, 190, 100, WC_BUTTON, L"Search Mode", BS_GROUPBOX };
     ctrlMap[IDC_NORMAL_RADIO] = { 210, 125, 100, 20, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP };
     ctrlMap[IDC_EXTENDED_RADIO] = { 210, 150, 175, 20, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP };
@@ -71,22 +73,29 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP };
     ctrlMap[IDC_REPLACE_EDIT] = { 120, 54, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP };
-    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, 33, 28, 34, WC_BUTTON, L"\u21C5", BS_PUSHBUTTON | WS_TABSTOP  };
+    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, 33, 28, 34, WC_BUTTON, L"\u21C5", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, L"Add into List", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 93, 160, 30, WC_BUTTON, L"Replace All", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 128, 160, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 163, 160, 30, WC_BUTTON, L"Clear all marks", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX, 198, 160, 30, WC_BUTTON, L"Copy Marked Text", BS_PUSHBUTTON | WS_TABSTOP };
+    ctrlMap[IDC_FIND_BUTTON] = { buttonX, 128, 160, 30, WC_BUTTON, L"Find Next", BS_PUSHBUTTON | WS_TABSTOP };
+    ctrlMap[IDC_FIND_NEXT_BUTTON] = { buttonX + 35, 128, 120, 30, WC_BUTTON, L"\u25BC Find Next", BS_PUSHBUTTON | WS_TABSTOP };
+    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 128, 35, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP };
+    ctrlMap[IDC_2_FIND_BUTTONS_MODE] = { checkbox2X, 128, 30, 30, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP };
+    ctrlMap[IDC_MARK_BUTTON] = { buttonX, 163, 160, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP };
+    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 163, 120, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP };
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 163, 35, 30, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP };
+    ctrlMap[IDC_2_MARK_BUTTONS_MODE] = { checkbox2X, 163, 30, 30, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP };
+    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 198, 160, 30, WC_BUTTON, L"Clear all marks", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 244, 160, 30, WC_BUTTON, L"Load from CSV", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 279, 160, 30, WC_BUTTON, L"Save to CSV", BS_PUSHBUTTON | WS_TABSTOP };
     ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 314, 160, 30, WC_BUTTON, L"Export to Bash", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_UP_BUTTON] = { buttonX+5, 364, 30, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER };
-    ctrlMap[IDC_DOWN_BUTTON] = { buttonX+5, 364 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER };    
-    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 364-14, 160, 85, WC_BUTTON, L"", BS_GROUPBOX };
+    ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 364, 30, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER };
+    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 364 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER };
+    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 364 - 14, 160, 85, WC_BUTTON, L"", BS_GROUPBOX };
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 364 + 20, 60, 20, WC_STATIC, L"Shift Lines", SS_LEFT };
     ctrlMap[IDC_STATIC_FRAME] = { frameX, 80, 280, 155, WC_BUTTON, L"", BS_GROUPBOX };
     ctrlMap[IDC_REPLACE_LIST] = { 14, 244, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS };
-    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 150, 80, 20, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 170, 180, 28, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP };
+    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 168, 80, 20, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP };
 }
 
 void MultiReplace::initializeCtrlMap()
@@ -111,7 +120,6 @@ void MultiReplace::initializeCtrlMap()
     // Create the larger, bolder font
     HFONT hLargerBolderFont = CreateFont(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("Courier New"));
 
-
     // Create the font
     hFont = CreateFont(FONT_SIZE, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, FONT_NAME);
 
@@ -121,8 +129,11 @@ void MultiReplace::initializeCtrlMap()
         SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)hFont, TRUE);
     }
 
-    // Set the larger, bolder font for the swap button
+    // Set the larger, bolder font for the swap and copy button
     SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont, TRUE);
+
+    HFONT hLargerBolderFont1 = CreateFont(29, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("Courier New"));
+    SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
 
     // CheckBox to Normal
     CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_NORMAL_RADIO);
@@ -224,9 +235,9 @@ void MultiReplace::moveAndResizeControls() {
     // IDs of controls to be moved or resized
     const int controlIds[] = {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON,
-        IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON,
-        IDC_COPY_MARKED_TEXT_BUTTON, IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON,
-        IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, 
+        IDC_REPLACE_ALL_BUTTON, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_2_FIND_BUTTONS_MODE,
+        IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_2_MARK_BUTTONS_MODE,
+        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, 
         IDC_EXPORT_BASH_BUTTON
     };
 
@@ -234,8 +245,9 @@ void MultiReplace::moveAndResizeControls() {
     const int redrawIds[] = {
         IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX, IDC_NORMAL_RADIO,
         IDC_EXTENDED_RADIO, IDC_REGEX_RADIO, IDC_USE_LIST_CHECKBOX,
-        IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON,
-        IDC_COPY_MARKED_TEXT_BUTTON,  IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT,
+        IDC_REPLACE_ALL_BUTTON, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_2_FIND_BUTTONS_MODE,
+        IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_2_MARK_BUTTONS_MODE,
+        IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT,
         IDC_EXPORT_BASH_BUTTON
     };
 
@@ -249,6 +261,22 @@ void MultiReplace::moveAndResizeControls() {
     for (int ctrlId : redrawIds) {
         InvalidateRect(GetDlgItem(_hSelf, ctrlId), NULL, TRUE);
     }
+}
+
+void MultiReplace::updateFindAndMarkButtonVisibility() {
+    // Update visibility of the buttons based on IDC_2_BUTTONS_MODE and IDC_2_MARK_BUTTONS_MODE state
+    BOOL twoFindButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_FIND_BUTTONS_MODE);
+    BOOL twoMarkButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_MARK_BUTTONS_MODE);
+
+    // for find buttons
+    ShowWindow(GetDlgItem(_hSelf, IDC_FIND_NEXT_BUTTON), twoFindButtonsMode ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), twoFindButtonsMode ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_FIND_BUTTON), twoFindButtonsMode ? SW_HIDE : SW_SHOW);
+
+    // for mark buttons
+    ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), twoMarkButtonsMode ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), twoMarkButtonsMode ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_MARK_BUTTON), twoMarkButtonsMode ? SW_HIDE : SW_SHOW);
 }
 
 void MultiReplace::updateUIVisibility() {
@@ -270,9 +298,10 @@ void MultiReplace::updateUIVisibility() {
     const int elementIds[] = {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX,
         IDC_STATIC_FRAME, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
-        IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX,
-        IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_MATCHES_BUTTON,
-        IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME,
+        IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_2_FIND_BUTTONS_MODE,
+        IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
+        IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON,
+        IDC_CLEAR_MARKS_BUTTON, IDC_2_MARK_BUTTONS_MODE, IDC_COPY_MARKED_TEXT_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME,
         IDC_SHIFT_TEXT, IDC_STATUS_MESSAGE, IDC_EXPORT_BASH_BUTTON
     };
 
@@ -289,6 +318,20 @@ void MultiReplace::updateUIVisibility() {
     // Show or hide elements contrary to the window size
     for (int id : oppositeElementIds) {
         ShowWindow(GetDlgItem(_hSelf, id), isSmallerThanMinSize ? SW_SHOW : SW_HIDE);
+    }
+
+    // Check the checkbox state and decide which buttons to show
+    if (!isSmallerThanMinSize) {
+        updateFindAndMarkButtonVisibility();
+    }
+    else {
+        ShowWindow(GetDlgItem(_hSelf, IDC_FIND_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_FIND_NEXT_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), SW_HIDE);
+
+        ShowWindow(GetDlgItem(_hSelf, IDC_MARK_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), SW_HIDE);
     }
 }
 
@@ -1017,6 +1060,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
+        case IDC_2_MARK_BUTTONS_MODE:
+        case IDC_2_FIND_BUTTONS_MODE:
+        {
+            // Check if the Find checkbox has been clicked
+            if (HIWORD(wParam) == BN_CLICKED)
+            {
+                updateFindAndMarkButtonVisibility();
+            }
+        }
+        break;
+
         case IDC_REGEX_RADIO:
         {
             // Check if the Regular expression radio button is checked
@@ -1062,8 +1116,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             SetDlgItemTextW(_hSelf, IDC_REPLACE_EDIT, findText.c_str());
         }
         break;
-
-
 
         case IDC_COPY_TO_LIST_BUTTON:
         {            
@@ -1131,6 +1183,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         break;
 
         case IDC_MARK_MATCHES_BUTTON:
+        case IDC_MARK_BUTTON:
         {
             int matchCount = 0;
             bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
@@ -2188,12 +2241,16 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int matchCase = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int regex = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0;
     int extended = IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED ? 1 : 0;
+    int findButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_FIND_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
+    int markButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_MARK_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
 
     // Store Options
     WritePrivateProfileString(L"Options", L"WholeWord", std::to_wstring(wholeWord).c_str(), iniFilePathLpc);
     WritePrivateProfileString(L"Options", L"MatchCase", std::to_wstring(matchCase).c_str(), iniFilePathLpc);
     WritePrivateProfileString(L"Options", L"Regex", std::to_wstring(regex).c_str(), iniFilePathLpc);
     WritePrivateProfileString(L"Options", L"Extended", std::to_wstring(extended).c_str(), iniFilePathLpc);
+    WritePrivateProfileString(L"Options", L"FindButtonsMode", std::to_wstring(findButtonsMode).c_str(), iniFilePathLpc);
+    WritePrivateProfileString(L"Options", L"MarkButtonsMode", std::to_wstring(markButtonsMode).c_str(), iniFilePathLpc);
 
     // Store "Find what" history
     LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
@@ -2306,6 +2363,12 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
     bool regex = readBoolFromIniFile(iniFilePath, L"Options", L"Regex", false);
     SendMessage(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_SETCHECK, regex ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    bool findButtonsMode = readBoolFromIniFile(iniFilePath, L"Options", L"FindButtonsMode", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_2_FIND_BUTTONS_MODE), BM_SETCHECK, findButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    bool markButtonsMode = readBoolFromIniFile(iniFilePath, L"Options", L"MarkButtonsMode", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_2_MARK_BUTTONS_MODE), BM_SETCHECK, markButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
 
     std::wstring message = L"findText: " + findText + L"\nreplaceText: " + replaceText + L"\nwholeWord: " + (wholeWord ? L"Yes" : L"No");    
 
