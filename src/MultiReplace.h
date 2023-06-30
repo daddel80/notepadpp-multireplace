@@ -71,11 +71,6 @@ struct SearchResult {
     LRESULT nextPos;
 };
 
-struct SortData {
-    int iSubItem;
-    bool sortAscending;
-};
-
 enum class Direction { Up, Down };
 
 typedef std::basic_string<TCHAR> generic_string;
@@ -163,6 +158,7 @@ private:
     */
     std::vector<int> validStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 
                                     30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
+    static const int INDICATOR_SEARCHRESULT = 29;  // N++ Standard Find Indicator Style
 
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
@@ -203,7 +199,10 @@ private:
     std::string convertAndExtend(const std::wstring& input, bool extended);
     int replaceString(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
-    SearchResult performSearch(const std::string& findTextUtf8, int searchFlags, LRESULT start);
+    SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start);
+    SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start);
+    SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos);
+    SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos);
     int markString(const std::wstring& findText, bool wholeWord, bool matchCase, bool regex, bool extended);
     void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
     void clearAllMarks();

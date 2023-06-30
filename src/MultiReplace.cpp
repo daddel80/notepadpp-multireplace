@@ -1123,6 +1123,61 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
+        case IDC_FIND_BUTTON:
+        case IDC_FIND_NEXT_BUTTON:
+        {
+            bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+            bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+
+            LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+
+            if (useListEnabled)
+            {
+                if (replaceListData.empty()) {
+                    showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to find directly.", RGB(255, 0, 0));
+                    break;
+                }
+
+                SearchResult result = performListSearchForward(replaceListData, searchPos);
+
+                if (result.pos >= 0) {
+                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+                }
+                else if (wrapAroundEnabled)
+                {
+                    result = performListSearchForward(replaceListData, 0);
+                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+                }
+            }
+            else
+            {
+                std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+                bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+                bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+                bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+                bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+                int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
+               
+                std::string findTextUtf8 = convertAndExtend(findText, extended);
+                SearchResult result = performSearchForward(findTextUtf8, searchFlags, searchPos);
+
+                if (result.pos >= 0) {
+                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+                }
+                else if (wrapAroundEnabled)
+                {
+                    result = performSearchForward(findTextUtf8, searchFlags, 0);
+                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+                }
+
+                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+            }
+            break;
+        } 
+
+        break;
+
+
         case IDC_REPLACE_ALL_BUTTON:
         {
             int replaceCount = 0;
@@ -1153,21 +1208,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             {
                 std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
                 std::wstring replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
-                bool regex = false;
-                bool extended = false;
-
-                // Get the state of the Whole word checkbox
                 bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-
-                // Get the state of the Match case checkbox
                 bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-
-                if (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED) {
-                    regex = true;
-                }
-                else if (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED) {
-                    extended = true;
-                }
+                bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+                bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
                 ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
                 replaceCount = replaceString(findText, replaceText, wholeWord, matchCase, regex, extended);
@@ -1436,13 +1480,13 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
     std::string replaceTextUtf8 = convertAndExtend(replaceText, extended);
 
     int replaceCount = 0;  // Counter for replacements
-    SearchResult searchResult = performSearch(findTextUtf8, searchFlags, 0);
+    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, 0);
     while (searchResult.pos >= 0)
     {
         Sci_Position newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
         replaceCount++;
 
-        searchResult = performSearch(findTextUtf8, searchFlags, newPos);
+        searchResult = performSearchForward(findTextUtf8, searchFlags, newPos);
     }
 
     return replaceCount;
@@ -1456,7 +1500,8 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
     return pos + static_cast<Sci_Position>(replaceTextUtf8.length());
 }
 
-SearchResult MultiReplace::performSearch(const std::string& findTextUtf8, int searchFlags, LRESULT start)
+
+SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start)
 {
     LRESULT targetEnd = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
     ::SendMessage(_hScintilla, SCI_SETTARGETSTART, start, 0);
@@ -1479,6 +1524,74 @@ SearchResult MultiReplace::performSearch(const std::string& findTextUtf8, int se
     return result;
 }
 
+SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start)
+{
+    LRESULT targetStart = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+    ::SendMessage(_hScintilla, SCI_SETTARGETSTART, targetStart, 0);
+    ::SendMessage(_hScintilla, SCI_SETTARGETEND, start, 0);
+    ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
+    LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
+
+    SearchResult result;
+    result.pos = pos;
+
+    if (pos >= 0) {
+        result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
+        result.nextPos = pos - 1; // Start the next search directly before the current match
+    }
+    else {
+        result.length = 0;
+        result.nextPos = -1;
+    }
+
+    return result;
+}
+
+SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos)
+{
+    SearchResult closestMatch;
+    closestMatch.pos = -1;
+
+    for (const ReplaceItemData& itemData : list)
+    {
+        if (itemData.isSelected) {
+            int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
+            std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
+            SearchResult result = performSearchForward(findTextUtf8, searchFlags, cursorPos);
+
+            // If a match was found and it's closer to the cursor than the current closest match, update the closest match
+            if (result.pos >= 0 && (closestMatch.pos < 0 || result.pos < closestMatch.pos)) {
+                closestMatch = result;
+            }
+        }
+    }
+
+    return closestMatch;
+}
+
+SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos)
+{
+    SearchResult closestMatch;
+    closestMatch.pos = -1;
+
+    for (const ReplaceItemData& itemData : list)
+    {
+        if (itemData.isSelected) {
+            int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
+            std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
+            SearchResult result = performSearchBackward(findTextUtf8, searchFlags, cursorPos);
+
+            // If a match was found and it's closer to the cursor than the current closest match, update the closest match
+            if (result.pos >= 0 && (closestMatch.pos < 0 || result.pos > closestMatch.pos)) {
+                closestMatch = result;
+            }
+        }
+    }
+
+    return closestMatch;
+}
+
+
 int MultiReplace::markString(const std::wstring& findText, bool wholeWord, bool matchCase, bool regex, bool extended)
 {
     if (findText.empty()) {
@@ -1490,12 +1603,12 @@ int MultiReplace::markString(const std::wstring& findText, bool wholeWord, bool 
     std::string findTextUtf8 = convertAndExtend(findText, extended);
 
     int markCount = 0;  // Counter for marked matches
-    SearchResult searchResult = performSearch(findTextUtf8, searchFlags, 0);
+    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, 0);
     while (searchResult.pos >= 0)
     {
         highlightTextRange(searchResult.pos, searchResult.length, findTextUtf8);
         markCount++;
-        searchResult = performSearch(findTextUtf8, searchFlags, searchResult.nextPos); // Use nextPos for the next search
+        searchResult = performSearchForward(findTextUtf8, searchFlags, searchResult.nextPos); // Use nextPos for the next search
     }
 
     if (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED && markCount > 0) {
