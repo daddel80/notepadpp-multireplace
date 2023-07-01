@@ -44,6 +44,7 @@
 
 std::map<int, ControlInfo> MultiReplace::ctrlMap;
 
+
 #pragma region Initialization
 
 void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
@@ -205,24 +206,6 @@ void MultiReplace::initializePluginStyle()
     ::SendMessage(_hScintilla, SCI_INDICSETALPHA, standardMarkerStyle, 100);
 }
 
-
-/*
-void MultiReplace::createImageList() {
-    const int ImageListSize = 16;
-    _himl = ImageList_Create(ImageListSize, ImageListSize, ILC_COLOR32 | ILC_MASK, 1, 1);
-
-    _hDeleteIcon = LoadIcon(_hInst, MAKEINTRESOURCE(DELETE_ICON));
-    _hEnabledIcon = LoadIcon(_hInst, MAKEINTRESOURCE(ENABLED_ICON));
-    _hCopyBackIcon = LoadIcon(_hInst, MAKEINTRESOURCE(COPYBACK_ICON));
-
-    copyBackIconIndex = ImageList_AddIcon(_himl, _hCopyBackIcon);
-    enabledIconIndex = ImageList_AddIcon(_himl, _hEnabledIcon);
-    deleteIconIndex = ImageList_AddIcon(_himl, _hDeleteIcon);
-
-    ListView_SetImageList(_replaceListView, _himl, LVSIL_SMALL);
-}
-*/
-
 void MultiReplace::initializeListView() {
     _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
     /*createImageList();     # Icons currently not used */
@@ -333,26 +316,6 @@ void MultiReplace::updateUIVisibility() {
         ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), SW_HIDE);
     }
-}
-
-void MultiReplace::showStatusMessage(size_t count, const wchar_t* messageFormat, COLORREF color)
-{
-    wchar_t message[350];
-    wsprintf(message, messageFormat, count);
-
-    // Get the handle for the status message control
-    HWND hStatusMessage = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
-
-    // Set the new message
-    _statusMessageColor = color;
-    SetWindowText(hStatusMessage, message);
-
-    // Invalidate the area of the parent where the control resides
-    RECT rect;
-    GetWindowRect(hStatusMessage, &rect);
-    MapWindowPoints(HWND_DESKTOP, GetParent(hStatusMessage), reinterpret_cast<POINT*>(&rect), 2);
-    InvalidateRect(GetParent(hStatusMessage), &rect, TRUE);
-    UpdateWindow(GetParent(hStatusMessage));
 }
 
 #pragma endregion
@@ -727,11 +690,10 @@ void MultiReplace::selectRows(const std::vector<ReplaceItemData>& rowsToSelect) 
     }
 }
 
-
 #pragma endregion
 
 
-#pragma region SearchReplace
+#pragma region Dialog
 
 INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -854,47 +816,35 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     break;
                 case 4:
                     if (itemData.wholeWord) {
-                        //plvdi->item.mask |= LVIF_IMAGE;
-                        //plvdi->item.iImage = enabledIconIndex;
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 5:
                     if (itemData.matchCase) {
-                        //plvdi->item.mask |= LVIF_IMAGE;
-                        //plvdi->item.iImage = enabledIconIndex;
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 6:
                     if (!itemData.regex && !itemData.extended) {
-                        //plvdi->item.mask |= LVIF_IMAGE;
-                        //plvdi->item.iImage = enabledIconIndex;
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 7:
                     if (itemData.extended) {
-                        //plvdi->item.mask |= LVIF_IMAGE;
-                        //plvdi->item.iImage = enabledIconIndex;
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 8:
                     if (itemData.regex) {
-                        //plvdi->item.mask |= LVIF_IMAGE;
-                        //plvdi->item.iImage = enabledIconIndex;
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 9:
-                    //plvdi->item.mask |= LVIF_IMAGE;
-                    //plvdi->item.iImage = deleteIconIndex;
                     plvdi->item.mask |= LVIF_TEXT;
                     plvdi->item.pszText = L"\u2716";
                     break;
@@ -1142,11 +1092,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
                 if (result.pos >= 0) {
                     ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+                    showStatusMessage(0, L"", RGB(0, 128, 0));
                 }
                 else if (wrapAroundEnabled)
                 {
                     result = performListSearchForward(replaceListData, 0);
-                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+                    if (result.pos >= 0) {
+                        ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+                        showStatusMessage(0, L"Wrapped, found match.", RGB(0, 128, 0));
+                    }
+                }
+                else
+                {
+                    showStatusMessage(0, L"No matches found.", RGB(255, 0, 0));
                 }
             }
             else
@@ -1157,24 +1115,106 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
                 bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
                 int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
-               
+
                 std::string findTextUtf8 = convertAndExtend(findText, extended);
                 SearchResult result = performSearchForward(findTextUtf8, searchFlags, searchPos);
 
                 if (result.pos >= 0) {
                     ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+                    showStatusMessage(0, L"", RGB(0, 128, 0));
                 }
                 else if (wrapAroundEnabled)
                 {
-                    result = performSearchForward(findTextUtf8, searchFlags, 0);
-                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+                    result = performListSearchForward(replaceListData, 0);
+                    if (result.pos >= 0) {
+                        ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+                        showStatusMessage(0, (L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
+                    }
+                }
+                else
+                {
+                    showStatusMessage(0, (L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
                 }
 
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
             }
             break;
-        } 
+        }
+        break;
 
+        case IDC_FIND_PREV_BUTTON:
+        {
+            bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+            bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+
+            LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+            searchPos = (searchPos > 0) ? searchPos - 1 : searchPos;
+
+            if (useListEnabled)
+            {
+                if (replaceListData.empty()) {
+                    showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to find directly.", RGB(255, 0, 0));
+                    break;
+                }
+
+                SearchResult result = performListSearchBackward(replaceListData, searchPos);
+
+                if (result.pos >= 0) {
+                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
+                    showStatusMessage(0, L"", RGB(0, 128, 0));
+                }
+                else if (wrapAroundEnabled)
+                {
+                    result = performListSearchBackward(replaceListData, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+                    if (result.pos >= 0) {
+                        ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
+                        showStatusMessage(0, L"Wrapped, found match.", RGB(0, 128, 0));
+                    }
+                    else {
+                        showStatusMessage(0, L"No matches found after wrap.", RGB(255, 0, 0));
+                    }
+                }
+                else
+                {
+                    showStatusMessage(0, L"No matches found.", RGB(255, 0, 0));
+                }
+            }
+            else
+            {
+                std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+                bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+                bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+                bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+                bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+                int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
+
+                std::string findTextUtf8 = convertAndExtend(findText, extended);
+                SearchResult result = performSearchBackward(findTextUtf8, searchFlags, searchPos);
+
+                if (result.pos >= 0) {
+                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos );
+                    showStatusMessage(0, L"", RGB(0, 128, 0));
+                }
+                else if (wrapAroundEnabled)
+                {
+                    result = performSearchBackward(findTextUtf8, searchFlags, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+                    if (result.pos >= 0) {
+                        ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
+                        showStatusMessage(0, (L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
+                    }
+                    else {
+                        showStatusMessage(0, (L"No matches found for '" + findText + L"' after wrap.").c_str(), RGB(255, 0, 0));
+                    }
+                }
+                else
+                {
+                    showStatusMessage(0, (L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
+                }
+
+                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+            }
+            break;
+        }
         break;
 
 
@@ -1324,149 +1364,32 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     return FALSE;
 }
 
-int MultiReplace::convertExtendedToString(const std::string& query, std::string& result)
-{
-    auto readBase = [](const char* str, int* value, int base, int size) -> bool
-    {
-        int i = 0, temp = 0;
-        *value = 0;
-        char max = '0' + static_cast<char>(base) - 1;
-        char current;
-        while (i < size)
-        {
-            current = str[i];
-            if (current >= 'A')
-            {
-                current &= 0xdf;
-                current -= ('A' - '0' - 10);
-            }
-            else if (current > '9')
-                return false;
+void MultiReplace::onCopyToListButtonClick() {
+    ReplaceItemData itemData;
 
-            if (current >= '0' && current <= max)
-            {
-                temp *= base;
-                temp += (current - '0');
-            }
-            else
-            {
-                return false;
-            }
-            ++i;
-        }
-        *value = temp;
-        return true;
-    };
+    itemData.findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+    itemData.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
 
-    int i = 0, j = 0;
-    int charLeft = static_cast<int>(query.length());
-    char current;
-    result.clear();
-    result.resize(query.length()); // Preallocate memory for optimal performance
+    itemData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+    itemData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+    itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+    itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
 
-    while (i < static_cast<int>(query.length()))
-    {
-        current = query[i];
-        --charLeft;
-        if (current == '\\' && charLeft)
-        {
-            ++i;
-            --charLeft;
-            current = query[i];
-            switch (current)
-            {
-            case 'r':
-                result[j] = '\r';
-                break;
-            case 'n':
-                result[j] = '\n';
-                break;
-            case '0':
-                result[j] = '\0';
-                break;
-            case 't':
-                result[j] = '\t';
-                break;
-            case '\\':
-                result[j] = '\\';
-                break;
-            case 'b':
-            case 'd':
-            case 'o':
-            case 'x':
-            case 'u':
-            {
-                int size = 0, base = 0;
-                if (current == 'b')
-                {
-                    size = 8, base = 2;
-                }
-                else if (current == 'o')
-                {
-                    size = 3, base = 8;
-                }
-                else if (current == 'd')
-                {
-                    size = 3, base = 10;
-                }
-                else if (current == 'x')
-                {
-                    size = 2, base = 16;
-                }
-                else if (current == 'u')
-                {
-                    size = 4, base = 16;
-                }
+    insertReplaceListItem(itemData);
 
-                if (charLeft >= size)
-                {
-                    int res = 0;
-                    if (readBase(query.c_str() + (i + 1), &res, base, size))
-                    {
-                        result[j] = static_cast<char>(res);
-                        i += size;
-                        break;
-                    }
-                }
-                // not enough chars to make parameter, use default method as fallback
-            }
+    // Add the entered text to the combo box history
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
 
-            default:
-                // unknown sequence, treat as regular text
-                result[j] = '\\';
-                ++j;
-                result[j] = current;
-                break;
-            }
-        }
-        else
-        {
-            result[j] = query[i];
-        }
-        ++i;
-        ++j;
-    }
-
-    // Nullterminate the result-String
-    result.resize(j);
-
-    // Return length of result-Strings
-    return j;
+    // Enable the ListView accordingly
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
+    EnableWindow(_replaceListView, TRUE);
 }
 
-std::string MultiReplace::convertAndExtend(const std::wstring& input, bool extended)
-{
-    std::string output = wstringToString(input);
+#pragma endregion
 
-    if (extended)
-    {
-        std::string outputExtended;
-        convertExtendedToString(output, outputExtended);
-        output = outputExtended;
-    }
 
-    return output;
-}
+#pragma region Replace
 
 int MultiReplace::replaceString(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended)
 {
@@ -1500,6 +1423,10 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
     return pos + static_cast<Sci_Position>(replaceTextUtf8.length());
 }
 
+#pragma endregion
+
+
+#pragma region Find
 
 SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start)
 {
@@ -1526,9 +1453,8 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
 
 SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start)
 {
-    LRESULT targetStart = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
-    ::SendMessage(_hScintilla, SCI_SETTARGETSTART, targetStart, 0);
-    ::SendMessage(_hScintilla, SCI_SETTARGETEND, start, 0);
+    ::SendMessage(_hScintilla, SCI_SETTARGETSTART, start, 0);
+    ::SendMessage(_hScintilla, SCI_SETTARGETEND, 0, 0);
     ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
     LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
 
@@ -1537,7 +1463,7 @@ SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8
 
     if (pos >= 0) {
         result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
-        result.nextPos = pos - 1; // Start the next search directly before the current match
+        result.nextPos = pos;
     }
     else {
         result.length = 0;
@@ -1573,6 +1499,7 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
 {
     SearchResult closestMatch;
     closestMatch.pos = -1;
+    closestMatch.length = 0;
 
     for (const ReplaceItemData& itemData : list)
     {
@@ -1582,7 +1509,7 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
             SearchResult result = performSearchBackward(findTextUtf8, searchFlags, cursorPos);
 
             // If a match was found and it's closer to the cursor than the current closest match, update the closest match
-            if (result.pos >= 0 && (closestMatch.pos < 0 || result.pos > closestMatch.pos)) {
+            if (result.pos >= 0 && (closestMatch.pos < 0 || (result.pos + result.length) >(closestMatch.pos + closestMatch.length))) {
                 closestMatch = result;
             }
         }
@@ -1591,6 +1518,10 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
     return closestMatch;
 }
 
+#pragma endregion
+
+
+#pragma region Mark
 
 int MultiReplace::markString(const std::wstring& findText, bool wholeWord, bool matchCase, bool regex, bool extended)
 {
@@ -1766,26 +1697,153 @@ void MultiReplace::copyMarkedTextToClipboard()
     }
 }
 
-void MultiReplace::onCopyToListButtonClick() {
-    ReplaceItemData itemData;
+#pragma endregion
 
-    itemData.findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-    itemData.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
 
-    itemData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-    itemData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-    itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-    itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+#pragma region Utilities
 
-    insertReplaceListItem(itemData);
+int MultiReplace::convertExtendedToString(const std::string& query, std::string& result)
+{
+    auto readBase = [](const char* str, int* value, int base, int size) -> bool
+    {
+        int i = 0, temp = 0;
+        *value = 0;
+        char max = '0' + static_cast<char>(base) - 1;
+        char current;
+        while (i < size)
+        {
+            current = str[i];
+            if (current >= 'A')
+            {
+                current &= 0xdf;
+                current -= ('A' - '0' - 10);
+            }
+            else if (current > '9')
+                return false;
 
-    // Add the entered text to the combo box history
-    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
-    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
+            if (current >= '0' && current <= max)
+            {
+                temp *= base;
+                temp += (current - '0');
+            }
+            else
+            {
+                return false;
+            }
+            ++i;
+        }
+        *value = temp;
+        return true;
+    };
 
-    // Enable the ListView accordingly
-    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
-    EnableWindow(_replaceListView, TRUE);
+    int i = 0, j = 0;
+    int charLeft = static_cast<int>(query.length());
+    char current;
+    result.clear();
+    result.resize(query.length()); // Preallocate memory for optimal performance
+
+    while (i < static_cast<int>(query.length()))
+    {
+        current = query[i];
+        --charLeft;
+        if (current == '\\' && charLeft)
+        {
+            ++i;
+            --charLeft;
+            current = query[i];
+            switch (current)
+            {
+            case 'r':
+                result[j] = '\r';
+                break;
+            case 'n':
+                result[j] = '\n';
+                break;
+            case '0':
+                result[j] = '\0';
+                break;
+            case 't':
+                result[j] = '\t';
+                break;
+            case '\\':
+                result[j] = '\\';
+                break;
+            case 'b':
+            case 'd':
+            case 'o':
+            case 'x':
+            case 'u':
+            {
+                int size = 0, base = 0;
+                if (current == 'b')
+                {
+                    size = 8, base = 2;
+                }
+                else if (current == 'o')
+                {
+                    size = 3, base = 8;
+                }
+                else if (current == 'd')
+                {
+                    size = 3, base = 10;
+                }
+                else if (current == 'x')
+                {
+                    size = 2, base = 16;
+                }
+                else if (current == 'u')
+                {
+                    size = 4, base = 16;
+                }
+
+                if (charLeft >= size)
+                {
+                    int res = 0;
+                    if (readBase(query.c_str() + (i + 1), &res, base, size))
+                    {
+                        result[j] = static_cast<char>(res);
+                        i += size;
+                        break;
+                    }
+                }
+                // not enough chars to make parameter, use default method as fallback
+            }
+
+            default:
+                // unknown sequence, treat as regular text
+                result[j] = '\\';
+                ++j;
+                result[j] = current;
+                break;
+            }
+        }
+        else
+        {
+            result[j] = query[i];
+        }
+        ++i;
+        ++j;
+    }
+
+    // Nullterminate the result-String
+    result.resize(j);
+
+    // Return length of result-Strings
+    return j;
+}
+
+std::string MultiReplace::convertAndExtend(const std::wstring& input, bool extended)
+{
+    std::string output = wstringToString(input);
+
+    if (extended)
+    {
+        std::string outputExtended;
+        convertExtendedToString(output, outputExtended);
+        output = outputExtended;
+    }
+
+    return output;
 }
 
 void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems)
@@ -1887,6 +1945,25 @@ void MultiReplace::updateHeader() {
     ListView_SetColumn(_replaceListView, 1, &lvc);
 }
 
+void MultiReplace::showStatusMessage(size_t count, const wchar_t* messageFormat, COLORREF color)
+{
+    wchar_t message[350];
+    wsprintf(message, messageFormat, count);
+
+    // Get the handle for the status message control
+    HWND hStatusMessage = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
+
+    // Set the new message
+    _statusMessageColor = color;
+    SetWindowText(hStatusMessage, message);
+
+    // Invalidate the area of the parent where the control resides
+    RECT rect;
+    GetWindowRect(hStatusMessage, &rect);
+    MapWindowPoints(HWND_DESKTOP, GetParent(hStatusMessage), reinterpret_cast<POINT*>(&rect), 2);
+    InvalidateRect(GetParent(hStatusMessage), &rect, TRUE);
+    UpdateWindow(GetParent(hStatusMessage));
+}
 #pragma endregion
 
 
@@ -2008,7 +2085,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
     inFile.imbue(std::locale(inFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>()));
 
     if (!inFile.is_open()) {
-        showStatusMessage(0, L"Error: Unable to open file for reading.", RGB(255, 0, 0)); // Red color
+        showStatusMessage(0, L"Error: Unable to open file for reading.", RGB(255, 0, 0));
         return;
     }
 

@@ -214,7 +214,6 @@ private:
     // StringHandling
     std::string wstringToString(const std::wstring& input);
     std::wstring stringToWString(const std::string& encodedInput);
-    /*std::string convertEncodingToUtf8(const std::wstring& input);*/
 
     // FileOperations
     std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
