@@ -96,7 +96,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_STATIC_FRAME] = { frameX, 80, 280, 155, WC_BUTTON, L"", BS_GROUPBOX };
     ctrlMap[IDC_REPLACE_LIST] = { 14, 244, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS };
     ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 170, 180, 28, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP };
-    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 168, 80, 20, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP };
+    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 150, 80, 20, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP };
 }
 
 void MultiReplace::initializeCtrlMap()
@@ -137,7 +137,7 @@ void MultiReplace::initializeCtrlMap()
     SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
 
     // CheckBox to Normal
-    CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_NORMAL_RADIO);
+    CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_NORMAL_RADIO);
 
     // Hide Hint Text
     ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_HIDE);
@@ -690,6 +690,28 @@ void MultiReplace::selectRows(const std::vector<ReplaceItemData>& rowsToSelect) 
     }
 }
 
+void MultiReplace::handleCopyToListButton() {
+    ReplaceItemData itemData;
+
+    itemData.findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+    itemData.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
+
+    itemData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+    itemData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+    itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+    itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+
+    insertReplaceListItem(itemData);
+
+    // Add the entered text to the combo box history
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
+
+    // Enable the ListView accordingly
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
+    EnableWindow(_replaceListView, TRUE);
+}
+
 #pragma endregion
 
 
@@ -1069,249 +1091,46 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COPY_TO_LIST_BUTTON:
         {            
-            onCopyToListButtonClick();
+            handleCopyToListButton();
         }
         break;
 
         case IDC_FIND_BUTTON:
         case IDC_FIND_NEXT_BUTTON:
         {
-            bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
-            bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
-
-            LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
-
-            if (useListEnabled)
-            {
-                if (replaceListData.empty()) {
-                    showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to find directly.", RGB(255, 0, 0));
-                    break;
-                }
-
-                SearchResult result = performListSearchForward(replaceListData, searchPos);
-
-                if (result.pos >= 0) {
-                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
-                    showStatusMessage(0, L"", RGB(0, 128, 0));
-                }
-                else if (wrapAroundEnabled)
-                {
-                    result = performListSearchForward(replaceListData, 0);
-                    if (result.pos >= 0) {
-                        ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
-                        showStatusMessage(0, L"Wrapped, found match.", RGB(0, 128, 0));
-                    }
-                }
-                else
-                {
-                    showStatusMessage(0, L"No matches found.", RGB(255, 0, 0));
-                }
-            }
-            else
-            {
-                std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-                bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-                bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-                bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-                bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
-
-                std::string findTextUtf8 = convertAndExtend(findText, extended);
-                SearchResult result = performSearchForward(findTextUtf8, searchFlags, searchPos);
-
-                if (result.pos >= 0) {
-                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
-                    showStatusMessage(0, L"", RGB(0, 128, 0));
-                }
-                else if (wrapAroundEnabled)
-                {
-                    result = performListSearchForward(replaceListData, 0);
-                    if (result.pos >= 0) {
-                        ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
-                        showStatusMessage(0, (L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
-                    }
-                }
-                else
-                {
-                    showStatusMessage(0, (L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
-                }
-
-                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
-            }
-            break;
+            handleFindNextButton();
         }
         break;
 
         case IDC_FIND_PREV_BUTTON:
         {
-            bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
-            bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
-
-            LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
-            searchPos = (searchPos > 0) ? searchPos - 1 : searchPos;
-
-            if (useListEnabled)
-            {
-                if (replaceListData.empty()) {
-                    showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to find directly.", RGB(255, 0, 0));
-                    break;
-                }
-
-                SearchResult result = performListSearchBackward(replaceListData, searchPos);
-
-                if (result.pos >= 0) {
-                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
-                    showStatusMessage(0, L"", RGB(0, 128, 0));
-                }
-                else if (wrapAroundEnabled)
-                {
-                    result = performListSearchBackward(replaceListData, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
-                    if (result.pos >= 0) {
-                        ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
-                        showStatusMessage(0, L"Wrapped, found match.", RGB(0, 128, 0));
-                    }
-                    else {
-                        showStatusMessage(0, L"No matches found after wrap.", RGB(255, 0, 0));
-                    }
-                }
-                else
-                {
-                    showStatusMessage(0, L"No matches found.", RGB(255, 0, 0));
-                }
-            }
-            else
-            {
-                std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-                bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-                bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-                bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-                bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
-
-                std::string findTextUtf8 = convertAndExtend(findText, extended);
-                SearchResult result = performSearchBackward(findTextUtf8, searchFlags, searchPos);
-
-                if (result.pos >= 0) {
-                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos );
-                    showStatusMessage(0, L"", RGB(0, 128, 0));
-                }
-                else if (wrapAroundEnabled)
-                {
-                    result = performSearchBackward(findTextUtf8, searchFlags, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
-                    if (result.pos >= 0) {
-                        ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
-                        showStatusMessage(0, (L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
-                    }
-                    else {
-                        showStatusMessage(0, (L"No matches found for '" + findText + L"' after wrap.").c_str(), RGB(255, 0, 0));
-                    }
-                }
-                else
-                {
-                    showStatusMessage(0, (L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
-                }
-
-                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
-            }
-            break;
+            handleFindPrevButton();
         }
         break;
 
 
         case IDC_REPLACE_ALL_BUTTON:
         {
-            int replaceCount = 0;
-            // Check if the "In List" option is enabled
-            bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
-
-            if (useListEnabled)
-            {
-                // Check if the replaceListData is empty and warn the user if so
-                if (replaceListData.empty()) {
-                    showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to replace directly.", RGB(255, 0, 0));
-                    break;
-                }
-                ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
-                for (size_t i = 0; i < replaceListData.size(); i++)
-                {
-                    ReplaceItemData& itemData = replaceListData[i];
-                    if (itemData.isSelected) {
-                        replaceCount += replaceString(
-                            itemData.findText, itemData.replaceText,
-                            itemData.wholeWord, itemData.matchCase,
-                            itemData.regex, itemData.extended);
-                    }
-                }
-                ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
-            }
-            else
-            {
-                std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-                std::wstring replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
-                bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-                bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-                bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-                bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-
-                ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
-                replaceCount = replaceString(findText, replaceText, wholeWord, matchCase, regex, extended);
-                ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
-
-                // Add the entered text to the combo box history
-                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
-                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceText);
-            }
-            // Display status message
-            showStatusMessage(replaceCount, L"%d occurrences were replaced.", RGB(0, 128, 0));
+            handleReplaceAllButton();
         }
         break;
 
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
         {
-            int matchCount = 0;
-            bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
-            markedStringsCount = 0;
-
-            if (useListEnabled)
-            {
-                if (replaceListData.empty()) {
-                    showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to mark directly.", RGB(255, 0, 0));
-                    break;
-                }
-                
-                for (ReplaceItemData& itemData : replaceListData)
-                {
-                    if (itemData.isSelected) {
-                        matchCount += markString(
-                            itemData.findText, itemData.wholeWord,
-                            itemData.matchCase, itemData.regex, itemData.extended);
-                    }
-                }
-            }
-            else
-            {
-                std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-                bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-                bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-                bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-                bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                matchCount = markString(findText, wholeWord, matchCase, regex, extended);
-                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
-            }
-            showStatusMessage(matchCount, L"%d occurrences were marked.", RGB(0, 0, 128));
+            handleMarkMatchesButton();
         }
         break;
 
         case IDC_CLEAR_MARKS_BUTTON:
         {
-            clearAllMarks();
+            handleClearAllMarksButton();
         }
         break;
 
         case IDC_COPY_MARKED_TEXT_BUTTON:
         {
-            copyMarkedTextToClipboard();
+            handleCopyMarkedTextToClipboardButton();
         }
         break;
 
@@ -1364,32 +1183,56 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     return FALSE;
 }
 
-void MultiReplace::onCopyToListButtonClick() {
-    ReplaceItemData itemData;
-
-    itemData.findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-    itemData.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
-
-    itemData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-    itemData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-    itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-    itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-
-    insertReplaceListItem(itemData);
-
-    // Add the entered text to the combo box history
-    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
-    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
-
-    // Enable the ListView accordingly
-    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
-    EnableWindow(_replaceListView, TRUE);
-}
-
 #pragma endregion
 
 
 #pragma region Replace
+
+void MultiReplace::handleReplaceAllButton() {
+    int replaceCount = 0;
+    // Check if the "In List" option is enabled
+    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+
+    if (useListEnabled)
+    {
+        // Check if the replaceListData is empty and warn the user if so
+        if (replaceListData.empty()) {
+            showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to replace directly.", RGB(255, 0, 0));
+            return;
+        }
+        ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
+        for (size_t i = 0; i < replaceListData.size(); i++)
+        {
+            ReplaceItemData& itemData = replaceListData[i];
+            if (itemData.isSelected) {
+                replaceCount += replaceString(
+                    itemData.findText, itemData.replaceText,
+                    itemData.wholeWord, itemData.matchCase,
+                    itemData.regex, itemData.extended);
+            }
+        }
+        ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
+    }
+    else
+    {
+        std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        std::wstring replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
+        bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+        bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+        bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+        bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+
+        ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
+        replaceCount = replaceString(findText, replaceText, wholeWord, matchCase, regex, extended);
+        ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
+
+        // Add the entered text to the combo box history
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceText);
+    }
+    // Display status message
+    showStatusMessage(replaceCount, L"%d occurrences were replaced.", RGB(0, 128, 0));
+}
 
 int MultiReplace::replaceString(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended)
 {
@@ -1427,6 +1270,145 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
 
 
 #pragma region Find
+
+void MultiReplace::handleFindNextButton() {
+    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+    bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+
+    LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+
+    if (useListEnabled)
+    {
+        if (replaceListData.empty()) {
+            showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to find directly.", RGB(255, 0, 0));
+            return;
+        }
+
+        SearchResult result = performListSearchForward(replaceListData, searchPos);
+
+        if (result.pos >= 0) {
+            ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+            showStatusMessage(0, L"", RGB(0, 128, 0));
+        }
+        else if (wrapAroundEnabled)
+        {
+            result = performListSearchForward(replaceListData, 0);
+            if (result.pos >= 0) {
+                ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+                showStatusMessage(0, L"Wrapped, found match.", RGB(0, 128, 0));
+            }
+        }
+        else
+        {
+            showStatusMessage(0, L"No matches found.", RGB(255, 0, 0));
+        }
+    }
+    else
+    {
+        std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+        bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+        bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+        bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+        int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
+
+        std::string findTextUtf8 = convertAndExtend(findText, extended);
+        SearchResult result = performSearchForward(findTextUtf8, searchFlags, searchPos);
+
+        if (result.pos >= 0) {
+            ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+            showStatusMessage(0, L"", RGB(0, 128, 0));
+        }
+        else if (wrapAroundEnabled)
+        {
+            result = performListSearchForward(replaceListData, 0);
+            if (result.pos >= 0) {
+                ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
+                showStatusMessage(0, (L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
+            }
+        }
+        else
+        {
+            showStatusMessage(0, (L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
+        }
+
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+    }
+}
+
+void MultiReplace::handleFindPrevButton() {
+    {
+        bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+        bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+
+        LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+        searchPos = (searchPos > 0) ? searchPos - 1 : searchPos;
+
+        if (useListEnabled)
+        {
+            if (replaceListData.empty()) {
+                showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to find directly.", RGB(255, 0, 0));
+                return;
+            }
+
+            SearchResult result = performListSearchBackward(replaceListData, searchPos);
+
+            if (result.pos >= 0) {
+                ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
+                showStatusMessage(0, L"", RGB(0, 128, 0));
+            }
+            else if (wrapAroundEnabled)
+            {
+                result = performListSearchBackward(replaceListData, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+                if (result.pos >= 0) {
+                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
+                    showStatusMessage(0, L"Wrapped, found match.", RGB(0, 128, 0));
+                }
+                else {
+                    showStatusMessage(0, L"No matches found after wrap.", RGB(255, 0, 0));
+                }
+            }
+            else
+            {
+                showStatusMessage(0, L"No matches found.", RGB(255, 0, 0));
+            }
+        }
+        else
+        {
+            std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+            bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+            bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+            bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+            bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+            int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
+
+            std::string findTextUtf8 = convertAndExtend(findText, extended);
+            SearchResult result = performSearchBackward(findTextUtf8, searchFlags, searchPos);
+
+            if (result.pos >= 0) {
+                ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
+                showStatusMessage(0, L"", RGB(0, 128, 0));
+            }
+            else if (wrapAroundEnabled)
+            {
+                result = performSearchBackward(findTextUtf8, searchFlags, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+                if (result.pos >= 0) {
+                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
+                    showStatusMessage(0, (L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
+                }
+                else {
+                    showStatusMessage(0, (L"No matches found for '" + findText + L"' after wrap.").c_str(), RGB(255, 0, 0));
+                }
+            }
+            else
+            {
+                showStatusMessage(0, (L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
+            }
+
+            addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+        }
+    }
+}
 
 SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start)
 {
@@ -1523,6 +1505,40 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
 
 #pragma region Mark
 
+void MultiReplace::handleMarkMatchesButton() {
+    int matchCount = 0;
+    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+    markedStringsCount = 0;
+
+    if (useListEnabled)
+    {
+        if (replaceListData.empty()) {
+            showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to mark directly.", RGB(255, 0, 0));
+            return;
+        }
+
+        for (ReplaceItemData& itemData : replaceListData)
+        {
+            if (itemData.isSelected) {
+                matchCount += markString(
+                    itemData.findText, itemData.wholeWord,
+                    itemData.matchCase, itemData.regex, itemData.extended);
+            }
+        }
+    }
+    else
+    {
+        std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+        bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+        bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+        bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+        matchCount = markString(findText, wholeWord, matchCase, regex, extended);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+    }
+    showStatusMessage(matchCount, L"%d occurrences were marked.", RGB(0, 0, 128));
+}
+
 int MultiReplace::markString(const std::wstring& findText, bool wholeWord, bool matchCase, bool regex, bool extended)
 {
     if (findText.empty()) {
@@ -1596,7 +1612,7 @@ long MultiReplace::generateColorValue(const std::string& str) {
     return color;
 }
 
-void MultiReplace::clearAllMarks()
+void MultiReplace::handleClearAllMarksButton()
 {
     for (int style : validStyles)
     {
@@ -1609,7 +1625,7 @@ void MultiReplace::clearAllMarks()
     showStatusMessage(0, L"All marks cleared.", RGB(0, 128, 0));
 }
 
-void MultiReplace::copyMarkedTextToClipboard()
+void MultiReplace::handleCopyMarkedTextToClipboardButton()
 {
     LRESULT length = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
     bool wasLastCharMarked = false;
@@ -2429,16 +2445,18 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     // Prepare and Store the current options
     int wholeWord = IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int matchCase = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? 1 : 0;
-    int regex = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0;
     int extended = IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED ? 1 : 0;
+    int regex = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0;
+    int wrapAround = IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int findButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_FIND_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
     int markButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_MARK_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
 
     // Store Options
     WritePrivateProfileString(L"Options", L"WholeWord", std::to_wstring(wholeWord).c_str(), iniFilePathLpc);
     WritePrivateProfileString(L"Options", L"MatchCase", std::to_wstring(matchCase).c_str(), iniFilePathLpc);
-    WritePrivateProfileString(L"Options", L"Regex", std::to_wstring(regex).c_str(), iniFilePathLpc);
     WritePrivateProfileString(L"Options", L"Extended", std::to_wstring(extended).c_str(), iniFilePathLpc);
+    WritePrivateProfileString(L"Options", L"Regex", std::to_wstring(regex).c_str(), iniFilePathLpc);
+    WritePrivateProfileString(L"Options", L"WrapAround", std::to_wstring(wrapAround).c_str(), iniFilePathLpc);
     WritePrivateProfileString(L"Options", L"FindButtonsMode", std::to_wstring(findButtonsMode).c_str(), iniFilePathLpc);
     WritePrivateProfileString(L"Options", L"MarkButtonsMode", std::to_wstring(markButtonsMode).c_str(), iniFilePathLpc);
 
@@ -2549,10 +2567,22 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     SendMessage(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), BM_SETCHECK, matchCase ? BST_CHECKED : BST_UNCHECKED, 0);
 
     bool extended = readBoolFromIniFile(iniFilePath, L"Options", L"Extended", false);
-    SendMessage(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), BM_SETCHECK, extended ? BST_CHECKED : BST_UNCHECKED, 0);
-
     bool regex = readBoolFromIniFile(iniFilePath, L"Options", L"Regex", false);
-    SendMessage(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_SETCHECK, regex ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    // Select the appropriate radio button based on the settings
+    if (regex) {
+        CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_REGEX_RADIO);
+    }
+    else if (extended) {
+        CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_EXTENDED_RADIO);
+    }
+    else {
+        CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_NORMAL_RADIO);
+    }
+
+
+    bool wrapAround = readBoolFromIniFile(iniFilePath, L"Options", L"WrapAround", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_WRAP_AROUND_CHECKBOX), BM_SETCHECK, wrapAround ? BST_CHECKED : BST_UNCHECKED, 0);
 
     bool findButtonsMode = readBoolFromIniFile(iniFilePath, L"Options", L"FindButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_FIND_BUTTONS_MODE), BM_SETCHECK, findButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
