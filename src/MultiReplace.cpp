@@ -59,44 +59,47 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int checkboxX = buttonX - 100;
 
     // Static positions and sizes
-    ctrlMap[IDC_STATIC_FIND] = { 14, 19, 100, 24, WC_STATIC, L"Find what : ", SS_RIGHT };
+    ctrlMap[IDC_STATIC_FIND] = { 14, 19, 100, 24, WC_STATIC, L"Find what : ", SS_RIGHT, NULL };
     ctrlMap[IDC_STATIC_REPLACE] = { 14, 54, 100, 24, WC_STATIC, L"Replace with : ", SS_RIGHT };
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 122, 180, 28, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 146, 100, 28, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 170, 180, 28, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP };
-    ctrlMap[IDC_SEARCH_MODE_GROUP] = { 200, 105, 190, 100, WC_BUTTON, L"Search Mode", BS_GROUPBOX };
-    ctrlMap[IDC_NORMAL_RADIO] = { 210, 125, 100, 20, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP };
-    ctrlMap[IDC_EXTENDED_RADIO] = { 210, 150, 175, 20, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_REGEX_RADIO] = { 210, 175, 175, 20, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_STATIC_HINT] = { 14, 100, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER };
-    ctrlMap[IDC_STATUS_MESSAGE] = { 14, 224, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 122, 180, 28, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 146, 100, 28, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 170, 180, 28, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SEARCH_MODE_GROUP] = { 200, 105, 190, 100, WC_BUTTON, L"Search Mode", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_NORMAL_RADIO] = { 210, 125, 100, 20, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXTENDED_RADIO] = { 210, 150, 175, 20, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REGEX_RADIO] = { 210, 175, 175, 20, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_STATIC_HINT] = { 14, 100, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER, NULL };
+    ctrlMap[IDC_STATUS_MESSAGE] = { 14, 224, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
     // Dynamic positions and sizes
-    ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP };
-    ctrlMap[IDC_REPLACE_EDIT] = { 120, 54, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP };
-    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, 33, 28, 34, WC_BUTTON, L"\u21C5", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, L"Add into List", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 93, 160, 30, WC_BUTTON, L"Replace All", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_FIND_BUTTON] = { buttonX, 128, 160, 30, WC_BUTTON, L"Find Next", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_FIND_NEXT_BUTTON] = { buttonX + 35, 128, 120, 30, WC_BUTTON, L"\u25BC Find Next", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 128, 35, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_2_FIND_BUTTONS_MODE] = { checkbox2X, 128, 30, 30, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP };
-    ctrlMap[IDC_MARK_BUTTON] = { buttonX, 163, 160, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 163, 120, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 163, 35, 30, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_2_MARK_BUTTONS_MODE] = { checkbox2X, 163, 30, 30, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP };
-    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 198, 160, 30, WC_BUTTON, L"Clear all marks", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 244, 160, 30, WC_BUTTON, L"Load from CSV", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 279, 160, 30, WC_BUTTON, L"Save to CSV", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 314, 160, 30, WC_BUTTON, L"Export to Bash", BS_PUSHBUTTON | WS_TABSTOP };
-    ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 364, 30, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER };
-    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 364 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER };
-    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 364 - 14, 160, 85, WC_BUTTON, L"", BS_GROUPBOX };
-    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 364 + 20, 60, 20, WC_STATIC, L"Shift Lines", SS_LEFT };
-    ctrlMap[IDC_STATIC_FRAME] = { frameX, 80, 280, 155, WC_BUTTON, L"", BS_GROUPBOX };
-    ctrlMap[IDC_REPLACE_LIST] = { 14, 244, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 170, 180, 28, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP };
-    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 150, 80, 20, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP };
+    ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_EDIT] = { 120, 54, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, 33, 28, 34, WC_BUTTON, L"\u21C5", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, L"Add into List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 93, 160, 30, WC_BUTTON, L"Replace All", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, 93, 120, 30, WC_BUTTON, L"Replace", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 93, 35, 30, WC_BUTTON, L"\u066D", BS_PUSHBUTTON | WS_TABSTOP, L"Replace All" };
+    ctrlMap[IDC_2_REPLACE_BUTTONS_MODE] = { checkbox2X, 93, 30, 30, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_BUTTON] = { buttonX, 128, 160, 30, WC_BUTTON, L"Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_NEXT_BUTTON] = { buttonX + 35, 128, 120, 30, WC_BUTTON, L"\u25BC Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 128, 35, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_2_FIND_BUTTONS_MODE] = { checkbox2X, 128, 30, 30, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_BUTTON] = { buttonX, 163, 160, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 163, 120, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 163, 35, 30, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP, L"Copy to Clipboard" };
+    ctrlMap[IDC_2_MARK_BUTTONS_MODE] = { checkbox2X, 163, 30, 30, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 198, 160, 30, WC_BUTTON, L"Clear all marks", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 244, 160, 30, WC_BUTTON, L"Load from CSV", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 279, 160, 30, WC_BUTTON, L"Save to CSV", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 314, 160, 30, WC_BUTTON, L"Export to Bash", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 364, 30, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
+    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 364 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
+    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 364 - 14, 160, 85, WC_BUTTON, L"", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 364 + 20, 60, 20, WC_STATIC, L"Shift Lines", SS_LEFT, NULL };
+    ctrlMap[IDC_STATIC_FRAME] = { frameX, 80, 280, 155, WC_BUTTON, L"", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_REPLACE_LIST] = { 14, 244, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 170, 180, 28, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 150, 80, 20, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 }
 
 void MultiReplace::initializeCtrlMap()
@@ -135,6 +138,8 @@ void MultiReplace::initializeCtrlMap()
 
     HFONT hLargerBolderFont1 = CreateFont(29, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("Courier New"));
     SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
+    HFONT hLargerBolderFont2 = CreateFont(29, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("Courier New"));
+    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont2, TRUE);
 
     // CheckBox to Normal
     CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_NORMAL_RADIO);
@@ -178,6 +183,31 @@ bool MultiReplace::createAndShowWindows() {
             return false;
         }
 
+        // Create the tooltip for this control if it has tooltip text
+        if (pair.second.tooltipText != NULL && pair.second.tooltipText[0] != '\0')
+        {
+            HWND hwndTooltip = CreateWindowEx(NULL, TOOLTIPS_CLASS, NULL,
+                WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON,
+                CW_USEDEFAULT, CW_USEDEFAULT,
+                CW_USEDEFAULT, CW_USEDEFAULT,
+                _hSelf, NULL, hInstance, NULL);
+
+            if (!hwndTooltip)
+            {
+                // Handle error
+                continue;
+            }
+
+            // Associate the tooltip with the control
+            TOOLINFO toolInfo = { 0 };
+            toolInfo.cbSize = sizeof(toolInfo);
+            toolInfo.hwnd = _hSelf;
+            toolInfo.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+            toolInfo.uId = (UINT_PTR)hwndControl;
+            toolInfo.lpszText = (LPWSTR)pair.second.tooltipText;
+            SendMessage(hwndTooltip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
+        }
+
         // Show the window
         ShowWindow(hwndControl, SW_SHOW);
         UpdateWindow(hwndControl);
@@ -218,7 +248,8 @@ void MultiReplace::moveAndResizeControls() {
     // IDs of controls to be moved or resized
     const int controlIds[] = {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON,
-        IDC_REPLACE_ALL_BUTTON, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_2_FIND_BUTTONS_MODE,
+        IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_REPLACE_BUTTONS_MODE,
+        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_2_FIND_BUTTONS_MODE,
         IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_2_MARK_BUTTONS_MODE,
         IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, 
         IDC_EXPORT_BASH_BUTTON
@@ -226,9 +257,10 @@ void MultiReplace::moveAndResizeControls() {
 
     // IDs of controls to be redrawn
     const int redrawIds[] = {
-        IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX, IDC_NORMAL_RADIO,
+        IDC_COPY_TO_LIST_BUTTON, IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX, IDC_NORMAL_RADIO,
         IDC_EXTENDED_RADIO, IDC_REGEX_RADIO, IDC_USE_LIST_CHECKBOX,
-        IDC_REPLACE_ALL_BUTTON, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_2_FIND_BUTTONS_MODE,
+        IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_REPLACE_BUTTONS_MODE,
+        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_2_FIND_BUTTONS_MODE,
         IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_2_MARK_BUTTONS_MODE,
         IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT,
         IDC_EXPORT_BASH_BUTTON
@@ -246,10 +278,16 @@ void MultiReplace::moveAndResizeControls() {
     }
 }
 
-void MultiReplace::updateFindAndMarkButtonVisibility() {
+void MultiReplace::updateButtonVisibilityBasedOnMode() {
     // Update visibility of the buttons based on IDC_2_BUTTONS_MODE and IDC_2_MARK_BUTTONS_MODE state
     BOOL twoFindButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_FIND_BUTTONS_MODE);
     BOOL twoMarkButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_MARK_BUTTONS_MODE);
+    BOOL twoReplaceButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_REPLACE_BUTTONS_MODE);
+
+    // for replace buttons
+    ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), twoReplaceButtonsMode ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_BUTTON), twoReplaceButtonsMode ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), twoReplaceButtonsMode ? SW_HIDE : SW_SHOW);
 
     // for find buttons
     ShowWindow(GetDlgItem(_hSelf, IDC_FIND_NEXT_BUTTON), twoFindButtonsMode ? SW_SHOW : SW_HIDE);
@@ -281,6 +319,7 @@ void MultiReplace::updateUIVisibility() {
     const int elementIds[] = {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX,
         IDC_STATIC_FRAME, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
+        IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_REPLACE_BUTTONS_MODE,
         IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_2_FIND_BUTTONS_MODE,
         IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
         IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON,
@@ -305,12 +344,16 @@ void MultiReplace::updateUIVisibility() {
 
     // Check the checkbox state and decide which buttons to show
     if (!isSmallerThanMinSize) {
-        updateFindAndMarkButtonVisibility();
+        updateButtonVisibilityBasedOnMode();
     }
     else {
         ShowWindow(GetDlgItem(_hSelf, IDC_FIND_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_FIND_NEXT_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), SW_HIDE);
+
+        ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), SW_HIDE);
 
         ShowWindow(GetDlgItem(_hSelf, IDC_MARK_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), SW_HIDE);
@@ -1032,13 +1075,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
+        case IDC_2_REPLACE_BUTTONS_MODE:
         case IDC_2_MARK_BUTTONS_MODE:
         case IDC_2_FIND_BUTTONS_MODE:
         {
             // Check if the Find checkbox has been clicked
             if (HIWORD(wParam) == BN_CLICKED)
             {
-                updateFindAndMarkButtonVisibility();
+                updateButtonVisibilityBasedOnMode();
             }
         }
         break;
@@ -1108,7 +1152,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
+        case IDC_REPLACE_BUTTON:
+        {
+            handleReplaceButton();
+        }
+        break;
 
+        case IDC_REPLACE_ALL_SMALL_BUTTON:
         case IDC_REPLACE_ALL_BUTTON:
         {
             handleReplaceAllButton();
@@ -1234,6 +1284,107 @@ void MultiReplace::handleReplaceAllButton() {
     showStatusMessage(replaceCount, L"%d occurrences were replaced.", RGB(0, 128, 0));
 }
 
+void MultiReplace::handleReplaceButton() {
+    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+    bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+
+    SearchResult searchResult;
+    searchResult.pos = -1;
+    searchResult.length = 0;
+    searchResult.foundText = "";
+
+    // Get the cursor position
+    LRESULT cursorPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+
+    if (useListEnabled) {
+        if (replaceListData.empty()) {
+            showStatusMessage(0, L"Add values into the list. Or uncheck 'Use in List' to replace directly.", RGB(255, 0, 0));
+            return;
+        }
+
+        // Get selected text to check against the list
+        SelectionInfo selection = getSelectionInfo();
+
+        // Search through replaceListData to find a match with the selected text
+        bool matchFound = false;
+        for (const ReplaceItemData& itemData : replaceListData) {
+            std::string itemDataUtf8 = convertAndExtend(itemData.findText, itemData.extended);
+            if (itemDataUtf8 == selection.text) {
+                // If it does match, replace the selected string
+                std::string replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
+                performReplace(replaceTextUtf8, selection.startPos, selection.length);
+                showStatusMessage(0, (L"Replaced '" + stringToWString(selection.text) + L"' with '" + itemData.replaceText + L"'.").c_str(), RGB(0, 128, 0));
+                matchFound = true;
+                break;
+            }
+        }
+
+        // If no match was found in the list, perform list search forward
+        if (!matchFound) {
+            searchResult = performListSearchForward(replaceListData, cursorPos);
+            if (searchResult.pos < 0 && wrapAroundEnabled) {
+                // If no match was found, and wrap-around is enabled, start the search again from the start
+                searchResult = performListSearchForward(replaceListData, 0);
+                if (searchResult.pos >= 0) {
+                    showStatusMessage(0, L"Wrapped, found match.", RGB(0, 128, 0));
+                }
+                else {
+                    showStatusMessage(0, L"No further matches found.", RGB(255, 0, 0));
+                }
+            }
+            else if (searchResult.pos >= 0) {
+                showStatusMessage(0, (L"Found match for '" + stringToWString(searchResult.foundText) + L"'.").c_str(), RGB(0, 128, 0));
+            }
+            else {
+                showStatusMessage(0, L"No matches found.", RGB(255, 0, 0));
+            }
+        }
+    }
+
+    else {
+        std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        std::wstring replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
+        bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+        bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+        bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+        bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+
+        SelectionInfo selection = getSelectionInfo();
+        std::string findTextUtf8 = convertAndExtend(findText, extended);
+
+        // Prüfen, ob der aktuell ausgewählte Text mit dem gesuchten Text übereinstimmt
+        bool textMatch = (selection.text == findTextUtf8);
+
+        if (textMatch) {
+            // If it does match, replace the selected string
+            std::string replaceTextUtf8 = convertAndExtend(replaceText, extended);
+            performReplace(replaceTextUtf8, selection.startPos, selection.length);
+            showStatusMessage(0, (L"Replaced '" + findText + L"' with '" + replaceText + L"'.").c_str(), RGB(0, 128, 0));
+        }
+        else {
+            // If it does not match, perform a new search
+            int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
+            searchResult = performSearchForward(findTextUtf8, searchFlags, cursorPos, true);
+            if (searchResult.pos < 0 && wrapAroundEnabled) {
+                // If no match was found, and wrap-around is enabled, start the search again from the start
+                searchResult = performSearchForward(findTextUtf8, searchFlags, 0, true);
+                if (searchResult.pos >= 0) {
+                    showStatusMessage(0, (L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
+                }
+                else {
+                    showStatusMessage(0, (L"No further matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
+                }
+            }
+            else if (searchResult.pos >= 0) {
+                showStatusMessage(0, (L"Found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
+            }
+            else {
+                showStatusMessage(0, (L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
+            }
+        }
+    }
+}
+
 int MultiReplace::replaceString(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended)
 {
     if (findText.empty()) {
@@ -1246,13 +1397,13 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
     std::string replaceTextUtf8 = convertAndExtend(replaceText, extended);
 
     int replaceCount = 0;  // Counter for replacements
-    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, 0);
+    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, 0, false);
     while (searchResult.pos >= 0)
     {
         Sci_Position newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
         replaceCount++;
 
-        searchResult = performSearchForward(findTextUtf8, searchFlags, newPos);
+        searchResult = performSearchForward(findTextUtf8, searchFlags, newPos, false);
     }
 
     return replaceCount;
@@ -1264,6 +1415,20 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
     ::SendMessage(_hScintilla, SCI_REPLACESEL, 0, (LPARAM)replaceTextUtf8.c_str());
 
     return pos + static_cast<Sci_Position>(replaceTextUtf8.length());
+}
+
+SelectionInfo MultiReplace::getSelectionInfo() {
+    // Get selected text
+    Sci_Position selectionStart = ::SendMessage(_hScintilla, SCI_GETSELECTIONSTART, 0, 0);
+    Sci_Position selectionEnd = ::SendMessage(_hScintilla, SCI_GETSELECTIONEND, 0, 0);
+    std::vector<char> buffer(selectionEnd - selectionStart + 1);
+    ::SendMessage(_hScintilla, SCI_GETSELTEXT, 0, reinterpret_cast<LPARAM>(&buffer[0]));
+    std::string selectedText(&buffer[0]);
+
+    // Calculate the length of the selected text
+    Sci_Position selectionLength = selectionEnd - selectionStart;
+
+    return SelectionInfo{ selectedText, selectionStart, selectionLength };
 }
 
 #pragma endregion
@@ -1287,14 +1452,12 @@ void MultiReplace::handleFindNextButton() {
         SearchResult result = performListSearchForward(replaceListData, searchPos);
 
         if (result.pos >= 0) {
-            ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
             showStatusMessage(0, L"", RGB(0, 128, 0));
         }
         else if (wrapAroundEnabled)
         {
             result = performListSearchForward(replaceListData, 0);
             if (result.pos >= 0) {
-                ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
                 showStatusMessage(0, L"Wrapped, found match.", RGB(0, 128, 0));
             }
         }
@@ -1313,17 +1476,15 @@ void MultiReplace::handleFindNextButton() {
         int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
 
         std::string findTextUtf8 = convertAndExtend(findText, extended);
-        SearchResult result = performSearchForward(findTextUtf8, searchFlags, searchPos);
+        SearchResult result = performSearchForward(findTextUtf8, searchFlags, searchPos, true);
 
         if (result.pos >= 0) {
-            ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
             showStatusMessage(0, L"", RGB(0, 128, 0));
         }
         else if (wrapAroundEnabled)
         {
-            result = performListSearchForward(replaceListData, 0);
+            result = performSearchForward(findTextUtf8, searchFlags, 0, true);
             if (result.pos >= 0) {
-                ::SendMessage(_hScintilla, SCI_SETSELECTION, result.nextPos, result.pos);
                 showStatusMessage(0, (L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
             }
         }
@@ -1342,7 +1503,7 @@ void MultiReplace::handleFindPrevButton() {
         bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
         LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
-        searchPos = (searchPos > 0) ? searchPos - 1 : searchPos;
+        searchPos = (searchPos > 0) ? ::SendMessage(_hScintilla, SCI_POSITIONBEFORE, searchPos, 0) : searchPos;
 
         if (useListEnabled)
         {
@@ -1354,14 +1515,12 @@ void MultiReplace::handleFindPrevButton() {
             SearchResult result = performListSearchBackward(replaceListData, searchPos);
 
             if (result.pos >= 0) {
-                ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
                 showStatusMessage(0, L"", RGB(0, 128, 0));
             }
             else if (wrapAroundEnabled)
             {
                 result = performListSearchBackward(replaceListData, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
                 if (result.pos >= 0) {
-                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
                     showStatusMessage(0, L"Wrapped, found match.", RGB(0, 128, 0));
                 }
                 else {
@@ -1386,14 +1545,12 @@ void MultiReplace::handleFindPrevButton() {
             SearchResult result = performSearchBackward(findTextUtf8, searchFlags, searchPos);
 
             if (result.pos >= 0) {
-                ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
                 showStatusMessage(0, L"", RGB(0, 128, 0));
             }
             else if (wrapAroundEnabled)
             {
                 result = performSearchBackward(findTextUtf8, searchFlags, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
                 if (result.pos >= 0) {
-                    ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
                     showStatusMessage(0, (L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
                 }
                 else {
@@ -1410,24 +1567,29 @@ void MultiReplace::handleFindPrevButton() {
     }
 }
 
-SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start)
+SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start, bool selectMatch)
 {
+    SearchResult result;
+    result.pos = -1;
+    result.length = 0;
+    result.foundText = "";
+
     LRESULT targetEnd = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
     ::SendMessage(_hScintilla, SCI_SETTARGETSTART, start, 0);
     ::SendMessage(_hScintilla, SCI_SETTARGETEND, targetEnd, 0);
     ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
     LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
-
-    SearchResult result;
     result.pos = pos;
 
     if (pos >= 0) {
         result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
-        result.nextPos = result.pos + result.length;
+        result.foundText = findTextUtf8;
+
+        // If selectMatch is true, set the selection
+        selectMatch ? ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos) : NULL;
     }
     else {
         result.length = 0;
-        result.nextPos = -1;
     }
 
     return result;
@@ -1435,21 +1597,24 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
 
 SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start)
 {
+    SearchResult result;
+    result.pos = -1;
+    result.length = 0;
+    result.foundText = "";
+
     ::SendMessage(_hScintilla, SCI_SETTARGETSTART, start, 0);
     ::SendMessage(_hScintilla, SCI_SETTARGETEND, 0, 0);
     ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
     LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
-
-    SearchResult result;
     result.pos = pos;
 
     if (pos >= 0) {
         result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
-        result.nextPos = pos;
+        result.foundText = findTextUtf8;
+        ::SendMessage(_hScintilla, SCI_SETSELECTION, result.pos + result.length, result.pos);
     }
     else {
         result.length = 0;
-        result.nextPos = -1;
     }
 
     return result;
@@ -1459,13 +1624,15 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
 {
     SearchResult closestMatch;
     closestMatch.pos = -1;
+    closestMatch.length = 0;
+    closestMatch.foundText = "";
 
     for (const ReplaceItemData& itemData : list)
     {
         if (itemData.isSelected) {
             int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
             std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
-            SearchResult result = performSearchForward(findTextUtf8, searchFlags, cursorPos);
+            SearchResult result = performSearchForward(findTextUtf8, searchFlags, cursorPos, false);
 
             // If a match was found and it's closer to the cursor than the current closest match, update the closest match
             if (result.pos >= 0 && (closestMatch.pos < 0 || result.pos < closestMatch.pos)) {
@@ -1473,7 +1640,9 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
             }
         }
     }
-
+    if (closestMatch.pos != -1) { // Check if a match was found
+        ::SendMessage(_hScintilla, SCI_SETSELECTION, closestMatch.pos + closestMatch.length, closestMatch.pos);
+    }
     return closestMatch;
 }
 
@@ -1482,6 +1651,7 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
     SearchResult closestMatch;
     closestMatch.pos = -1;
     closestMatch.length = 0;
+    closestMatch.foundText = "";
 
     for (const ReplaceItemData& itemData : list)
     {
@@ -1495,6 +1665,9 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
                 closestMatch = result;
             }
         }
+    }
+    if (closestMatch.pos != -1) { // Check if a match was found
+        ::SendMessage(_hScintilla, SCI_SETSELECTION, closestMatch.pos + closestMatch.length, closestMatch.pos);
     }
 
     return closestMatch;
@@ -1550,12 +1723,12 @@ int MultiReplace::markString(const std::wstring& findText, bool wholeWord, bool 
     std::string findTextUtf8 = convertAndExtend(findText, extended);
 
     int markCount = 0;  // Counter for marked matches
-    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, 0);
+    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, 0, false);
     while (searchResult.pos >= 0)
     {
         highlightTextRange(searchResult.pos, searchResult.length, findTextUtf8);
         markCount++;
-        searchResult = performSearchForward(findTextUtf8, searchFlags, searchResult.nextPos); // Use nextPos for the next search
+        searchResult = performSearchForward(findTextUtf8, searchFlags, searchResult.pos + searchResult.length, false); // Use nextPos for the next search
     }
 
     if (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED && markCount > 0) {
@@ -1980,6 +2153,7 @@ void MultiReplace::showStatusMessage(size_t count, const wchar_t* messageFormat,
     InvalidateRect(GetParent(hStatusMessage), &rect, TRUE);
     UpdateWindow(GetParent(hStatusMessage));
 }
+
 #pragma endregion
 
 
@@ -2067,13 +2241,12 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const WCHAR* filter, co
     }
 }
 
-void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
+bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
     std::wofstream outFile(filePath);
     outFile.imbue(std::locale(outFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>()));
 
     if (!outFile.is_open()) {
-        showStatusMessage(0, L"Error: Unable to open file for writing.", RGB(255, 0, 0));
-        return;
+        return false;
     }
 
     // Write CSV header
@@ -2085,37 +2258,40 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
         for (const ReplaceItemData& item : list) {
             outFile << item.isSelected << L"," << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.matchCase << L"," << item.extended << L"," << item.regex << std::endl;
         }
-
     }
-    showStatusMessage(list.size(), L"%d items saved to CSV.", RGB(0, 128, 0));
 
     outFile.close();
+    return true;
+}
+
+void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
+    if (!saveListToCsvSilent(filePath, list)) {
+        showStatusMessage(0, L"Error: Unable to open file for writing.", RGB(255, 0, 0));
+        return;
+    }
+
+    showStatusMessage(list.size(), L"%d items saved to CSV.", RGB(0, 128, 0));
 
     // Enable the ListView accordingly
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
     EnableWindow(_replaceListView, TRUE);
 }
 
-void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
+bool MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list) {
     std::wifstream inFile(filePath);
     inFile.imbue(std::locale(inFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>()));
 
     if (!inFile.is_open()) {
-        showStatusMessage(0, L"Error: Unable to open file for reading.", RGB(255, 0, 0));
-        return;
+        return false;
     }
 
-    replaceListData.clear(); // Clear the existing list
+    list.clear(); // Clear the existing list
 
     std::wstring line;
     std::getline(inFile, line); // Skip the CSV header
 
-    std::vector<int> faultyLines; // Store the line numbers of the faulty lines
-    int lineNumber = 1; // Start from line 1 after the header
-
     // Read list items from CSV file
     while (std::getline(inFile, line)) {
-        lineNumber++;
         std::wstringstream lineStream(line);
         std::vector<std::wstring> columns;
 
@@ -2139,7 +2315,6 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
 
         // Check if the row has the correct number of columns
         if (columns.size() != 7) {
-            faultyLines.push_back(lineNumber); // Store the line number of the faulty line
             continue;
         }
 
@@ -2154,11 +2329,19 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         item.extended = std::stoi(columns[5]) != 0;
         item.regex = std::stoi(columns[6]) != 0;
 
-        // Use insertReplaceListItem to insert the item to the list
-        insertReplaceListItem(item);
+        // Add the item to the list
+        list.push_back(item);
     }
 
     inFile.close();
+    return true;
+}
+
+void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
+    if (!loadListFromCsvSilent(filePath, replaceListData)) {
+        showStatusMessage(0, L"Error: Unable to open file for reading.", RGB(255, 0, 0));
+        return;
+    }
 
     updateHeader();
     // Update the list view control
@@ -2172,22 +2355,11 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
     {
         std::wstringstream ss;
         ss << replaceListData.size() << L" items loaded from CSV.";
-
-        if (!faultyLines.empty()) {
-            ss << L" But could not read line: ";
-            for (size_t i = 0; i < 3 && i < faultyLines.size(); ++i)
-            {
-                if (i > 0) ss << L", ";
-                ss << faultyLines[i];
-            }
-            if (faultyLines.size() > 3) ss << L", ..."; // Add ", ..." if there are more than three faulty lines
-        }
-
-        showStatusMessage(replaceListData.size(), ss.str().c_str(), faultyLines.empty() ? RGB(0, 128, 0) : RGB(255, 69, 0)); // Green color if no faulty lines, Dark Orange color otherwise
+        showStatusMessage(replaceListData.size(), ss.str().c_str(), RGB(0, 128, 0)); // Green color
     }
 
-    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
-    EnableWindow(_replaceListView, TRUE);
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
 std::wstring MultiReplace::escapeCsvValue(const std::wstring& value) {
@@ -2431,16 +2603,19 @@ std::string MultiReplace::translateEscapes(const std::string& input) {
 #pragma region INI
 
 void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
-    // Convert std::wstring to LPCWSTR
-    LPCWSTR iniFilePathLpc = iniFilePath.c_str();
+    std::wofstream outFile(iniFilePath);
+    outFile.imbue(std::locale(outFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>()));
 
-    // Prepare and Store the current "Find what" and "Replace with" texts
-    std::wstring currentFindTextData = encodeLengthPrefixedString(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
-    std::wstring currentReplaceTextData = encodeLengthPrefixedString(getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT));
+    if (!outFile.is_open()) {
+        throw std::runtime_error("Could not open settings file for writing.");
+    }
 
-    // Add length to string
-    WritePrivateProfileString(L"Current", L"FindText", currentFindTextData.c_str(), iniFilePathLpc);
-    WritePrivateProfileString(L"Current", L"ReplaceText", currentReplaceTextData.c_str(), iniFilePathLpc);
+    // Store the current "Find what" and "Replace with" texts
+    std::wstring currentFindTextData = L"\"" + getTextFromDialogItem(_hSelf, IDC_FIND_EDIT) + L"\"";
+    std::wstring currentReplaceTextData = L"\"" + getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT) + L"\"";
+    outFile << L"[Current]\n";
+    outFile << L"FindText=" << currentFindTextData << L"\n";
+    outFile << L"ReplaceText=" << currentReplaceTextData << L"\n";
 
     // Prepare and Store the current options
     int wholeWord = IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? 1 : 0;
@@ -2448,60 +2623,47 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int extended = IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED ? 1 : 0;
     int regex = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0;
     int wrapAround = IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED ? 1 : 0;
+    int replaceButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_REPLACE_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
     int findButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_FIND_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
     int markButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_MARK_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
+    int useList = IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED ? 1 : 0;
 
     // Store Options
-    WritePrivateProfileString(L"Options", L"WholeWord", std::to_wstring(wholeWord).c_str(), iniFilePathLpc);
-    WritePrivateProfileString(L"Options", L"MatchCase", std::to_wstring(matchCase).c_str(), iniFilePathLpc);
-    WritePrivateProfileString(L"Options", L"Extended", std::to_wstring(extended).c_str(), iniFilePathLpc);
-    WritePrivateProfileString(L"Options", L"Regex", std::to_wstring(regex).c_str(), iniFilePathLpc);
-    WritePrivateProfileString(L"Options", L"WrapAround", std::to_wstring(wrapAround).c_str(), iniFilePathLpc);
-    WritePrivateProfileString(L"Options", L"FindButtonsMode", std::to_wstring(findButtonsMode).c_str(), iniFilePathLpc);
-    WritePrivateProfileString(L"Options", L"MarkButtonsMode", std::to_wstring(markButtonsMode).c_str(), iniFilePathLpc);
+    outFile << L"[Options]\n";
+    outFile << L"WholeWord=" << wholeWord << L"\n";
+    outFile << L"MatchCase=" << matchCase << L"\n";
+    outFile << L"Extended=" << extended << L"\n";
+    outFile << L"Regex=" << regex << L"\n";
+    outFile << L"WrapAround=" << wrapAround << L"\n";
+    outFile << L"ReplaceButtonsMode=" << replaceButtonsMode << L"\n";
+    outFile << L"FindButtonsMode=" << findButtonsMode << L"\n";
+    outFile << L"MarkButtonsMode=" << markButtonsMode << L"\n";
+    outFile << L"UseList=" << useList << L"\n";
 
     // Store "Find what" history
     LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
-    WritePrivateProfileString(L"History", L"FindTextHistoryCount", std::to_wstring(findWhatCount).c_str(), iniFilePathLpc);
+    outFile << L"[History]\n";
+    outFile << L"FindTextHistoryCount=" << findWhatCount << L"\n";
     for (LRESULT i = 0; i < findWhatCount; i++) {
         LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
         SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
-        std::wstring findTextData = encodeLengthPrefixedString(std::wstring(buffer.data()));
-        std::wstring findWhatItemKey = L"FindTextHistory" + std::to_wstring(i);
-        WritePrivateProfileString(L"History", findWhatItemKey.c_str(), findTextData.c_str(), iniFilePathLpc);
+        std::wstring findTextData = L"\"" + std::wstring(buffer.data()) + L"\"";
+        outFile << L"FindTextHistory" << i << L"=" << findTextData << L"\n";
     }
 
     // Store "Replace with" history
     LRESULT replaceWithCount = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETCOUNT, 0, 0);
-    WritePrivateProfileString(L"History", L"ReplaceTextHistoryCount", std::to_wstring(replaceWithCount).c_str(), iniFilePathLpc);
+    outFile << L"ReplaceTextHistoryCount=" << replaceWithCount << L"\n";
     for (LRESULT i = 0; i < replaceWithCount; i++) {
         LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
         SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
-        std::wstring replaceTextData = encodeLengthPrefixedString(std::wstring(buffer.data()));
-        std::wstring replaceWithItemKey = L"ReplaceTextHistory" + std::to_wstring(i);
-        WritePrivateProfileString(L"History", replaceWithItemKey.c_str(), replaceTextData.c_str(), iniFilePathLpc);
+        std::wstring replaceTextData = L"\"" + std::wstring(buffer.data()) + L"\"";
+        outFile << L"ReplaceTextHistory" << i << L"=" << replaceTextData << L"\n";
     }
 
-    // Store List
-    WritePrivateProfileString(L"List", NULL, NULL, iniFilePathLpc);  // delete all entries first
-    WritePrivateProfileString(L"List", L"Count", std::to_wstring(replaceListData.size()).c_str(), iniFilePathLpc);
-    for (size_t i = 0; i < replaceListData.size(); i++) {
-        const ReplaceItemData& item = replaceListData[i];
-        std::wstring listFindTextData = encodeLengthPrefixedString(item.findText);
-        std::wstring listReplaceTextData = encodeLengthPrefixedString(item.replaceText);
-        std::wstring itemData = listFindTextData + L":" + listReplaceTextData + L":" +
-            std::to_wstring(item.isSelected ? 1 : 0) + L":" +
-            std::to_wstring(item.wholeWord ? 1 : 0) + L":" +
-            std::to_wstring(item.matchCase ? 1 : 0) + L":" +
-            std::to_wstring(item.extended ? 1 : 0) + L":" +
-            std::to_wstring(item.regex ? 1 : 0);
-
-        std::wstring itemKey = L"Item" + std::to_wstring(i);
-        WritePrivateProfileString(L"List", itemKey.c_str(), itemData.c_str(), iniFilePathLpc);
-    }
-
+    outFile.close();
 }
 
 void MultiReplace::saveSettings() {
@@ -2517,10 +2679,12 @@ void MultiReplace::saveSettings() {
 
     // Form the path to the INI file
     std::wstring iniFilePath = std::wstring(configDir) + L"\\MultiReplace.ini";
+    std::wstring csvFilePath = std::wstring(configDir) + L"\\MultiReplaceList.ini";
 
     // Try to save the settings in the INI file
     try {
         saveSettingsToIni(iniFilePath);
+        saveListToCsvSilent(csvFilePath, replaceListData);
     }
     catch (const std::exception& ex) {
         // If an error occurs while writing to the INI file, we show an error message
@@ -2533,29 +2697,25 @@ void MultiReplace::saveSettings() {
 
 void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
+    std::wifstream inFile(iniFilePath);
+    inFile.imbue(std::locale(inFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>()));
+
     // Load combo box histories
     int findHistoryCount = readIntFromIniFile(iniFilePath, L"History", L"FindTextHistoryCount", 0);
     for (int i = 0; i < findHistoryCount; i++) {
         std::wstring findHistoryItem = readStringFromIniFile(iniFilePath, L"History", L"FindTextHistory" + std::to_wstring(i), L"");
-        size_t pos = 0;
-        findHistoryItem = readLengthPrefixedString(findHistoryItem, pos);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findHistoryItem);
     }
 
     int replaceHistoryCount = readIntFromIniFile(iniFilePath, L"History", L"ReplaceTextHistoryCount", 0);
     for (int i = 0; i < replaceHistoryCount; i++) {
         std::wstring replaceHistoryItem = readStringFromIniFile(iniFilePath, L"History", L"ReplaceTextHistory" + std::to_wstring(i), L"");
-        size_t pos = 0;
-        replaceHistoryItem = readLengthPrefixedString(replaceHistoryItem, pos);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceHistoryItem);
     }
 
     // Read the current "Find what" and "Replace with" texts
-    std::wstring findTextData = readStringFromIniFile(iniFilePath, L"Current", L"FindText", L"");
-    std::wstring replaceTextData = readStringFromIniFile(iniFilePath, L"Current", L"ReplaceText", L"");
-    size_t findTextPos = 0, replaceTextPos = 0;
-    std::wstring findText = readLengthPrefixedString(findTextData, findTextPos);
-    std::wstring replaceText = readLengthPrefixedString(replaceTextData, replaceTextPos);
+    std::wstring findText = readStringFromIniFile(iniFilePath, L"Current", L"FindText", L"");
+    std::wstring replaceText = readStringFromIniFile(iniFilePath, L"Current", L"ReplaceText", L"");
 
     setTextInDialogItem(_hSelf, IDC_FIND_EDIT, findText);
     setTextInDialogItem(_hSelf, IDC_REPLACE_EDIT, replaceText);
@@ -2580,9 +2740,11 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
         CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_NORMAL_RADIO);
     }
 
-
     bool wrapAround = readBoolFromIniFile(iniFilePath, L"Options", L"WrapAround", false);
     SendMessage(GetDlgItem(_hSelf, IDC_WRAP_AROUND_CHECKBOX), BM_SETCHECK, wrapAround ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    bool replaceButtonsMode = readBoolFromIniFile(iniFilePath, L"Options", L"ReplaceButtonsMode", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_2_REPLACE_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
 
     bool findButtonsMode = readBoolFromIniFile(iniFilePath, L"Options", L"FindButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_FIND_BUTTONS_MODE), BM_SETCHECK, findButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -2590,50 +2752,8 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     bool markButtonsMode = readBoolFromIniFile(iniFilePath, L"Options", L"MarkButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_MARK_BUTTONS_MODE), BM_SETCHECK, markButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    std::wstring message = L"findText: " + findText + L"\nreplaceText: " + replaceText + L"\nwholeWord: " + (wholeWord ? L"Yes" : L"No");    
-
-    int listCount = readIntFromIniFile(iniFilePath, L"List", L"Count", 0);
-    for (int i = 0; i < listCount; i++) {
-        std::wstring itemKey = L"Item" + std::to_wstring(i);
-        std::wstring itemData = readStringFromIniFile(iniFilePath, L"List", itemKey.c_str(), L"");
-
-        std::vector<std::wstring> components;
-        size_t pos = 0;
-
-        findText = readLengthPrefixedString(itemData, pos);
-        components.push_back(findText);
-
-        replaceText = readLengthPrefixedString(itemData, pos);
-        components.push_back(replaceText);
-
-        components.push_back(itemData.substr(pos)); // remaining options
-
-        if (components.size() >= 3) {
-            ReplaceItemData item;
-            item.findText = components[0];  // already unmasked
-            item.replaceText = components[1]; // already unmasked
-
-            // Split remaining options
-            std::vector<std::wstring> options;
-            std::wstringstream ss(components[2]);
-            std::wstring token;
-            while (std::getline(ss, token, L':')) {
-                options.push_back(token);
-            }
-
-            // If we have at least five options
-            if (options.size() >= 5) {
-                item.isSelected = std::stoi(options[0]) != 0;
-                item.wholeWord = std::stoi(options[1]) != 0;
-                item.matchCase = std::stoi(options[2]) != 0;
-                item.extended = std::stoi(options[3]) != 0;
-                item.regex = std::stoi(options[4]) != 0;
-                replaceListData.push_back(item);
-            }
-
-        }
-    }
-
+    bool useList = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, useList ? BST_CHECKED : BST_UNCHECKED, 0);
 }
 
 void MultiReplace::loadSettings() {
@@ -2647,16 +2767,25 @@ void MultiReplace::loadSettings() {
     configDir[MAX_PATH - 1] = '\0';
 
     std::wstring iniFilePath = std::wstring(configDir) + L"\\MultiReplace.ini";
+    std::wstring csvFilePath = std::wstring(configDir) + L"\\MultiReplaceList.ini";
 
     // Verify that the settings file exists before attempting to read it
-    DWORD ftyp = GetFileAttributesW(iniFilePath.c_str());
-    if (ftyp == INVALID_FILE_ATTRIBUTES) {
+    DWORD ftypIni = GetFileAttributesW(iniFilePath.c_str());
+    if (ftypIni == INVALID_FILE_ATTRIBUTES) {
         // MessageBox(NULL, L"The settings file does not exist.", L"Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    // Verify that the list file exists before attempting to read it
+    DWORD ftypCsv = GetFileAttributesW(csvFilePath.c_str());
+    if (ftypCsv == INVALID_FILE_ATTRIBUTES) {
+        // MessageBox(NULL, L"The list file does not exist.", L"Error", MB_OK | MB_ICONERROR);
         return;
     }
 
     try {
         loadSettingsFromIni(iniFilePath);
+        loadListFromCsvSilent(csvFilePath, replaceListData);
     }
     catch (const std::exception& ex) {
         std::wstring errorMessage = L"An error occurred while loading the settings: ";
@@ -2670,9 +2799,37 @@ void MultiReplace::loadSettings() {
 }
 
 std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue) {
-    wchar_t buffer[1024];
-    ::GetPrivateProfileStringW(section.c_str(), key.c_str(), defaultValue.c_str(), buffer, 1024, iniFilePath.c_str());
-    return std::wstring(buffer);
+    std::wifstream iniFile(iniFilePath);
+    // Set the locale of the file stream for UTF-8 to UTF-16 conversion
+    iniFile.imbue(std::locale(iniFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
+    std::wstring line;
+    bool correctSection = false;
+    std::wstring requiredKey = key + L"=";
+    size_t keyLength = requiredKey.length();
+
+    if (iniFile.is_open()) {
+        while (std::getline(iniFile, line)) {
+            std::wstringstream linestream(line);
+            std::wstring segment;
+
+            if (line[0] == L'[') {
+                // This line contains section name
+                std::getline(linestream, segment, L']');
+                correctSection = (segment == L"[" + section);
+            }
+            else if (correctSection && line.compare(0, keyLength, requiredKey) == 0) {
+                // This line contains the key
+                std::wstring value = line.substr(keyLength);
+                // Remove prefix number and quotes from the value
+                size_t quotePos = value.find(L"\"");
+                if (quotePos != std::wstring::npos) {
+                    value = value.substr(quotePos + 1, value.length() - quotePos - 2);
+                }
+                return value;
+            }
+        }
+    }
+    return defaultValue;
 }
 
 bool MultiReplace::readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue) {
@@ -2687,22 +2844,6 @@ int MultiReplace::readIntFromIniFile(const std::wstring& iniFilePath, const std:
 
 void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {
     ::SetDlgItemTextW(hDlg, itemID, text.c_str());
-}
-
-std::wstring MultiReplace::encodeLengthPrefixedString(const std::wstring& str) {
-    return std::to_wstring(str.length()) + L"\"" + str + L"\"";
-}
-
-std::wstring MultiReplace::readLengthPrefixedString(const std::wstring& input, size_t& pos) {
-    size_t end = input.find(L"\"", pos);
-    if (end != std::wstring::npos) {
-        int len = std::stoi(input.substr(pos, end - pos));
-        pos = end + 1;
-        std::wstring result = input.substr(pos, len);
-        pos += len + 2;
-        return result;
-    }
-    return L"";
 }
 
 #pragma endregion

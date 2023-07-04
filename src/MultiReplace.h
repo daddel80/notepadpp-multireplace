@@ -63,12 +63,19 @@ struct ControlInfo
     LPCWSTR className;
     LPCWSTR windowName;
     DWORD style;
+    LPCWSTR tooltipText;
 };
 
 struct SearchResult {
-    LRESULT pos;
-    LRESULT length;
-    LRESULT nextPos;
+    LRESULT pos = -1;
+    LRESULT length = 0;
+    std::string foundText;
+};
+
+struct SelectionInfo {
+    std::string text;
+    Sci_Position startPos;
+    Sci_Position length;
 };
 
 enum class Direction { Up, Down };
@@ -140,7 +147,7 @@ private:
     static constexpr int FONT_SIZE = 16;
     size_t markedStringsCount = 0;
     int lastClickedComboBoxId = 0;    // for Combobox workaround
-    const int MAX_TEXT_LENGTH = 4096; // Set maximum Textlength for Find and Replace String
+    static const int MAX_TEXT_LENGTH = 4096; // Set maximum Textlength for Find and Replace String
     bool allSelected = true;
     std::unordered_map<long, int> colorToStyleMap;
     static const long MARKER_COLOR = 0x007F00; // Color for non-list Marker
@@ -171,7 +178,7 @@ private:
     void initializePluginStyle();
     void initializeListView();
     void moveAndResizeControls();
-    void updateFindAndMarkButtonVisibility();
+    void updateButtonVisibilityBasedOnMode();
     void updateUIVisibility();
 
     //ListView
@@ -190,13 +197,15 @@ private:
 
     //Replace
     void handleReplaceAllButton();
+    void handleReplaceButton();
     int replaceString(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
+    SelectionInfo getSelectionInfo();
 
     //Find
     void handleFindNextButton();
     void handleFindPrevButton();
-    SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start);
+    SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start, bool selectMatch);
     SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start);
     SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos);
     SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos);
@@ -224,7 +233,9 @@ private:
 
     //FileOperations
     std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
+    bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
+    bool loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
     void loadListFromCsv(const std::wstring& filePath);
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
@@ -244,8 +255,6 @@ private:
     bool readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue);
     int readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue);
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
-    std::wstring encodeLengthPrefixedString(const std::wstring& str);
-    std::wstring readLengthPrefixedString(const std::wstring& input, size_t& pos);
 
 };
 
