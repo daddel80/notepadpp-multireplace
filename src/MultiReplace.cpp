@@ -1026,16 +1026,25 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             BOOL isDarkModeEnabled = (BOOL)::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0);
 
+            
             if (!isDarkModeEnabled)
             {
+                // Get the current text
+                std::wstring currentText = getTextFromDialogItem(_hSelf, lastClickedComboBoxId);
+
                 HWND hComboBox = GetDlgItem(_hSelf, lastClickedComboBoxId);
                 int itemCount = (int)SendMessage(hComboBox, CB_GETCOUNT, 0, 0);
 
                 for (int i = itemCount - 1; i >= 0; i--)
                 {
                     SendMessage(hComboBox, CB_SETCURSEL, (WPARAM)i, 0);
+
+                    // Set the previous text back
+                    SetWindowTextW(GetDlgItem(_hSelf, lastClickedComboBoxId), currentText.c_str());
                 }
+
             }
+
         }
     }
     break;
