@@ -257,13 +257,11 @@ void MultiReplace::moveAndResizeControls() {
 
     // IDs of controls to be redrawn
     const int redrawIds[] = {
-        IDC_COPY_TO_LIST_BUTTON, IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX, IDC_NORMAL_RADIO,
-        IDC_EXTENDED_RADIO, IDC_REGEX_RADIO, IDC_USE_LIST_CHECKBOX,
-        IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_REPLACE_BUTTONS_MODE,
+        IDC_USE_LIST_CHECKBOX, IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_REPLACE_BUTTONS_MODE,
         IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_2_FIND_BUTTONS_MODE,
-        IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_2_MARK_BUTTONS_MODE,
+        IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, 
+        IDC_COPY_MARKED_TEXT_BUTTON, IDC_2_MARK_BUTTONS_MODE,
         IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT,
-        IDC_EXPORT_BASH_BUTTON
     };
 
     // Move and resize controls
@@ -317,13 +315,12 @@ void MultiReplace::updateUIVisibility() {
 
     // Define the UI element IDs to be shown or hidden based on the window size
     const int elementIds[] = {
-        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX,
-        IDC_STATIC_FRAME, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
-        IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_REPLACE_BUTTONS_MODE,
-        IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_2_FIND_BUTTONS_MODE,
+        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
+        IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX,IDC_STATIC_FRAME,
+        IDC_STATIC_FIND, IDC_STATIC_REPLACE, 
         IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
-        IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON,
-        IDC_CLEAR_MARKS_BUTTON, IDC_2_MARK_BUTTONS_MODE, IDC_COPY_MARKED_TEXT_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME,
+        IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+        IDC_CLEAR_MARKS_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME,
         IDC_SHIFT_TEXT, IDC_STATUS_MESSAGE, IDC_EXPORT_BASH_BUTTON
     };
 
@@ -1439,16 +1436,6 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
     return replaceCount;
 }
 
-/*
-Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
-{
-    ::SendMessage(_hScintilla, SCI_SETSEL, pos, pos + length);
-    ::SendMessage(_hScintilla, SCI_REPLACESEL, 0, (LPARAM)replaceTextUtf8.c_str());
-
-    return pos + static_cast<Sci_Position>(replaceTextUtf8.length());
-}
-*/
-
 Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
     // Set the target range for the replacement
@@ -2237,42 +2224,6 @@ void MultiReplace::updateHeader() {
     ListView_SetColumn(_replaceListView, 1, &lvc);
 }
 
-/*
-void MultiReplace::showStatusMessage(size_t count, const std::wstring& messageText, COLORREF color)
-{
-    const size_t MAX_DISPLAY_LENGTH = 60; // Maximum length of the message to be displayed
-
-    // Create the complete message
-    std::wstringstream ss;
-    if (count > 0) {
-        ss << count << " " << messageText;
-    }
-    else {
-        ss << messageText;
-    }
-
-    // Cut the message and add "..." if it's too long
-    std::wstring strMessage = ss.str();
-    if (strMessage.size() > MAX_DISPLAY_LENGTH) {
-        strMessage = strMessage.substr(0, MAX_DISPLAY_LENGTH - 3) + L"...";
-    }
-
-    // Get the handle for the status message control
-    HWND hStatusMessage = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
-
-    // Set the new message
-    _statusMessageColor = color;
-    SetWindowText(hStatusMessage, strMessage.c_str());
-
-    // Invalidate the area of the parent where the control resides
-    RECT rect;
-    GetWindowRect(hStatusMessage, &rect);
-    MapWindowPoints(HWND_DESKTOP, GetParent(hStatusMessage), (LPPOINT)&rect, 2);
-    InvalidateRect(GetParent(hStatusMessage), &rect, TRUE);
-    UpdateWindow(GetParent(hStatusMessage));
-}
-*/
-
 void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color)
 {
     const size_t MAX_DISPLAY_LENGTH = 60; // Maximum length of the message to be displayed
@@ -2303,33 +2254,6 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF c
 
 #pragma region StringHandling
 
-/*
-std::wstring MultiReplace::stringToWString(const std::string& encodedInput) {
-    int codePage = static_cast<int>(::SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
-
-    if (codePage == 0) {  // ANSI encoding
-        codePage = ::GetACP();  // Get the actual ANSI code page
-
-        int requiredSize = MultiByteToWideChar(codePage, 0, encodedInput.c_str(), -1, NULL, 0);
-        if (requiredSize == 0)
-            return std::wstring();
-
-        std::wstring wideStringResult(requiredSize, L'\0');
-        MultiByteToWideChar(codePage, 0, encodedInput.c_str(), -1, &wideStringResult[0], requiredSize);
-
-        return wideStringResult;
-    }
-    else if (codePage == 65001) {  // UTF-8 encoding
-        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-        return converter.from_bytes(encodedInput);
-    }
-    else {
-        // Handle unknown codePage if necessary
-        return std::wstring();
-    }
-}
-*/
-
 std::wstring MultiReplace::stringToWString(const std::string& rString) {
     int codePage = static_cast<int>(::SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
 
@@ -2342,32 +2266,6 @@ std::wstring MultiReplace::stringToWString(const std::string& rString) {
 
     return std::wstring(&wideStringResult[0]);
 }
-
-/*
-std::string MultiReplace::wstringToString(const std::wstring& input) {
-    if (input.empty()) return std::string();
-
-    int codePage = static_cast<int>(::SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
-
-    if (codePage == 0) {  // ANSI encoding
-        int size_needed = WideCharToMultiByte(CP_ACP, 0, &input[0], (int)input.size(), NULL, 0, NULL, NULL);
-        if (size_needed == 0)
-            return std::string();
-
-        std::string ansiStringResult(size_needed, 0);
-        WideCharToMultiByte(CP_ACP, 0, &input[0], (int)input.size(), &ansiStringResult[0], size_needed, NULL, NULL);
-        return ansiStringResult;
-    }
-    else if (codePage == 65001) {  // UTF-8 encoding
-        std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-        return converter.to_bytes(input);
-    }
-    else {
-        // Handle unknown codePage if necessary
-        return std::string();
-    }
-}
-*/
 
 std::string MultiReplace::wstringToString(const std::wstring& input) {
     if (input.empty()) return std::string();

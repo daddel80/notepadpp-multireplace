@@ -226,8 +226,6 @@ private:
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
     void setSelections(bool select, bool onlySelected = false);
     void updateHeader();
-    //void showStatusMessage(size_t count, const wchar_t* messageFormat, COLORREF color);
-    //void showStatusMessage(size_t count, const std::wstring& messageText, COLORREF color);
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
 
