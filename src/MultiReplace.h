@@ -63,17 +63,19 @@ struct ControlInfo
     LPCWSTR className;
     LPCWSTR windowName;
     DWORD style;
+    LPCWSTR tooltipText;
 };
 
 struct SearchResult {
-    LRESULT pos;
-    LRESULT length;
-    LRESULT nextPos;
+    LRESULT pos = -1;
+    LRESULT length = 0;
+    std::string foundText;
 };
 
-struct SortData {
-    int iSubItem;
-    bool sortAscending;
+struct SelectionInfo {
+    std::string text;
+    Sci_Position startPos;
+    Sci_Position length;
 };
 
 enum class Direction { Up, Down };
@@ -145,7 +147,7 @@ private:
     static constexpr int FONT_SIZE = 16;
     size_t markedStringsCount = 0;
     int lastClickedComboBoxId = 0;    // for Combobox workaround
-    const int MAX_TEXT_LENGTH = 4096; // Set maximum Textlength for Find and Replace String
+    static const int MAX_TEXT_LENGTH = 4096; // Set maximum Textlength for Find and Replace String
     bool allSelected = true;
     std::unordered_map<long, int> colorToStyleMap;
     static const long MARKER_COLOR = 0x007F00; // Color for non-list Marker
@@ -168,78 +170,93 @@ private:
     std::vector<ReplaceItemData> replaceListData;
     static std::map<int, ControlInfo> ctrlMap;
 
-    // Initialization
+    //Initialization
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();
     void initializeScintilla();
     void initializePluginStyle();
-    /*void createImageList();*/
     void initializeListView();
-    void createListViewToolTips(HWND listView);
     void moveAndResizeControls();
+    void updateButtonVisibilityBasedOnMode();
     void updateUIVisibility();
 
-    // ListView
+    //ListView
     void createListViewColumns(HWND listView);
     void insertReplaceListItem(const ReplaceItemData& itemData);
     void updateListViewAndColumns(HWND listView, LPARAM lParam);
-    void handleDeletion(NMITEMACTIVATE* pnmia);
     void handleSelection(NMITEMACTIVATE* pnmia);
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void shiftListItem(HWND listView, const Direction& direction);
+    void handleDeletion(NMITEMACTIVATE* pnmia);
     void deleteSelectedLines(HWND listView);
-    void showStatusMessage(size_t count, const wchar_t* messageFormat, COLORREF color);
-    void setSelections(bool select, bool onlySelected = false);
-    void updateHeader();
     void sortReplaceListData(int column);
     std::vector<ReplaceItemData> getSelectedRows();
     void selectRows(const std::vector<ReplaceItemData>& rowsToSelect);
+    void handleCopyToListButton();
 
-    // SearchReplace
-    int convertExtendedToString(const std::string& query, std::string& result);
-    long generateColorValue(const std::string& str);
-    std::string convertAndExtend(const std::wstring& input, bool extended);
+    //Replace
+    void handleReplaceAllButton();
+    void handleReplaceButton();
     int replaceString(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
-    SearchResult performSearch(const std::string& findTextUtf8, int searchFlags, LRESULT start);
+    SelectionInfo getSelectionInfo();
+    std::string utf8ToCodepage(const std::string& utf8Str, int codepage);
+
+    //Find
+    void handleFindNextButton();
+    void handleFindPrevButton();
+    SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start, bool selectMatch);
+    SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start);
+    SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos);
+    SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos);
+
+    //Mark
+    void handleMarkMatchesButton();
     int markString(const std::wstring& findText, bool wholeWord, bool matchCase, bool regex, bool extended);
     void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
-    void clearAllMarks();
-    void copyMarkedTextToClipboard();
-    void onCopyToListButtonClick();
+    long generateColorValue(const std::string& str);
+    void handleClearAllMarksButton();
+    void handleCopyMarkedTextToClipboardButton();
+
+    //Utilities
+    int convertExtendedToString(const std::string& query, std::string& result);
+    std::string convertAndExtend(const std::wstring& input, bool extended);
     static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 10);
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
+    void setSelections(bool select, bool onlySelected = false);
+    void updateHeader();
+    void showStatusMessage(const std::wstring& messageText, COLORREF color);
+    void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
 
-    // StringHandling
-    std::string wstringToString(const std::wstring& input);
+    //StringHandling
     std::wstring stringToWString(const std::string& encodedInput);
-    /*std::string convertEncodingToUtf8(const std::wstring& input);*/
+    std::string wstringToString(const std::wstring& input);
 
-    // FileOperations
+    //FileOperations
     std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
+    bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
+    bool loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
     void loadListFromCsv(const std::wstring& filePath);
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
 
-    // Export
+    //Export
     void exportToBashScript(const std::wstring& fileName);
     std::string escapeSpecialChars(const std::string& input, bool extended);
     void handleEscapeSequence(const std::regex& regex, const std::string& input, std::string& output, std::function<char(const std::string&)> converter);
     std::string translateEscapes(const std::string& input);
 
-    // INI
+    //INI
     void saveSettingsToIni(const std::wstring& iniFilePath);
     void saveSettings();
     void loadSettingsFromIni(const std::wstring& iniFilePath);
     void loadSettings();
     std::wstring readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue);
-    bool MultiReplace::readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue);
+    bool readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue);
     int readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue);
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
-    std::wstring encodeLengthPrefixedString(const std::wstring& str);
-    std::wstring readLengthPrefixedString(const std::wstring& input, size_t& pos);
 
 };
 
