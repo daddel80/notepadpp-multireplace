@@ -201,6 +201,7 @@ private:
     int replaceString(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     SelectionInfo getSelectionInfo();
+    std::string utf8ToCodepage(const std::string& utf8Str, int codepage);
 
     //Find
     void handleFindNextButton();
@@ -225,7 +226,10 @@ private:
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
     void setSelections(bool select, bool onlySelected = false);
     void updateHeader();
-    void showStatusMessage(size_t count, const wchar_t* messageFormat, COLORREF color);
+    //void showStatusMessage(size_t count, const wchar_t* messageFormat, COLORREF color);
+    //void showStatusMessage(size_t count, const std::wstring& messageText, COLORREF color);
+    void showStatusMessage(const std::wstring& messageText, COLORREF color);
+    void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput);
