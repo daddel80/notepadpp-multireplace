@@ -1017,6 +1017,20 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     }
     break;
 
+    case WM_SHOWWINDOW:
+    {
+        if (wParam == TRUE) {  // If the window is being made visible
+
+            std::wstring wstr = getSelectedText();
+
+            // Set selected text in IDC_FIND_EDIT
+            if (!wstr.empty()) {
+                SetWindowTextW(GetDlgItem(_hSelf, IDC_FIND_EDIT), wstr.c_str());
+            }
+        }
+    }
+    break;
+
     case WM_TIMER:
     {
         //Refresh of DropDown due to a Bug in Notepad++ Plugin implementation of Light Mode
@@ -2258,6 +2272,26 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF c
     InvalidateRect(GetParent(hStatusMessage), &rect, TRUE);
     UpdateWindow(GetParent(hStatusMessage));
 }
+
+std::wstring MultiReplace::getSelectedText() {
+    SIZE_T length = SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, 0);
+
+    if (length > MAX_TEXT_LENGTH) {
+        return L"";
+    }
+
+    char* buffer = new char[length + 1];  // Add 1 for null terminator
+    SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, (LPARAM)buffer);
+    buffer[length] = '\0';
+
+    std::string str(buffer);
+    std::wstring wstr = stringToWString(str);
+
+    delete[] buffer;
+
+    return wstr;
+}
+
 
 #pragma endregion
 

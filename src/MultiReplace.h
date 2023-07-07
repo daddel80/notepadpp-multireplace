@@ -228,6 +228,7 @@ private:
     void updateHeader();
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
+    std::wstring getSelectedText();
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput);

@@ -20,12 +20,6 @@
 #include "resource.h"
 #include <commctrl.h>
 
-/*
-DELETE_ICON ICON "delete.ico"
-ENABLED_ICON ICON "enabled.ico"
-COPYBACK_ICON ICON "copyback.ico"
-*/
-
 IDD_REPLACE_DIALOG DIALOGEX 92, 40, 500, 300
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION "MultiReplace"
