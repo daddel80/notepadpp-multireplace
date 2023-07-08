@@ -5,7 +5,7 @@ MultiReplace is a Notepad++ plugin allowing users to create, store, and manage s
 The plugin offers the following key features:
 
 - Allows multiple replacements in a single operation.
-- Toggles list entries for replacement or highlighting.
+- Toggles list entries for replacement, highlighting or searching.
 - Offers CSV-based string list storage.
 - Enables scripted text replacements through bash script export.
 - Highlights multiple find words in unique colors for better visual distinction.
@@ -18,7 +18,7 @@ MultiReplace is released under the same GNU General Public License as Notepad++ 
 
 ### String Handling and Visualization
 - Allows the creation and storage of search and replace strings in a list.
-- Allows enabling or disabling entries for replacement or highlighting.
+- Allows enabling or disabling entries for replacement, highlighting or searching.
 - Sets field limits of 4096 characters for "Find what:" and "Replace with:".
 - Utilizes the djb2 hash algorithm to ensure consistent color marking of unique words of a Findstring.
 - Supports over 20 distinct colors for marking.
