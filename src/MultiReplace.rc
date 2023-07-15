@@ -26,7 +26,7 @@
 #define VER_MAJOR   1
 #define VER_MINOR   0
 #define VER_RELEASE 0
-#define VER_BUILD   0
+#define VER_BUILD   1
 #define VER_STRING  STR(VER_MAJOR) "." STR(VER_MINOR) "." STR(VER_RELEASE) "." STR(VER_BUILD)
 
 VS_VERSION_INFO VERSIONINFO
@@ -49,10 +49,10 @@ BEGIN
 			VALUE	"CompanyName",	"Thomas Knoefel\0"
 			VALUE	"FileDescription",	"Plugin for Multiple Replace\0"
 			VALUE	"FileVersion",	VER_STRING
-			VALUE	"InternalName",	"NppMultiReplace.dll\0"
+			VALUE	"InternalName",	"MultiReplace.dll\0"
 			VALUE	"LegalCopyright",	"Copyright 2023 by Thomas Knoefel\0"
 			VALUE	"OriginalFilename",	"MultiReplace.dll\0"
-			VALUE	"ProductName",	"NppMultiReplace\0"
+			VALUE	"ProductName",	"MultiReplace\0"
 			VALUE	"ProductVersion",	VER_STRING
 		END
 	END
