@@ -1024,61 +1024,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     }
     break;
 
-    case WM_TIMER:
-    {
-        // Refresh of DropDown due to a Bug in Notepad++ Plugin implementation of Light Mode
-        if (wParam == 1)
-        {
-            KillTimer(_hSelf, 1);
-
-            BOOL isDarkModeEnabled = (BOOL)::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0);
-
-            if (!isDarkModeEnabled)
-            {
-                HWND hComboBox = GetDlgItem(_hSelf, lastClickedComboBoxId);
-                int itemCount = (int)SendMessage(hComboBox, CB_GETCOUNT, 0, 0);
-
-                // Get the current text
-                std::wstring currentText = getTextFromDialogItem(_hSelf, lastClickedComboBoxId);
-
-                // Get the selection
-                int startSelection, endSelection;
-                SendMessage(hComboBox, CB_GETEDITSEL, reinterpret_cast<WPARAM>(&startSelection), reinterpret_cast<LPARAM>(&endSelection));
-
-                for (int i = 0; i <= itemCount; i++)
-                {
-                    SendMessage(hComboBox, CB_SETCURSEL, static_cast<WPARAM>(i), 0);
-                }
-
-                // Deselect the last item
-                SendMessage(hComboBox, CB_SETCURSEL, static_cast<WPARAM>(-1), 0);
-
-                // Insert the selected text back
-                SetWindowTextW(GetDlgItem(_hSelf, lastClickedComboBoxId), currentText.c_str());
-
-                // Reset the selection to the selected text
-                SendMessage(hComboBox, CB_SETEDITSEL, 0, MAKELPARAM(startSelection, endSelection));
-            }
-        }
-    }
-    break;
-    break;
-
     case WM_COMMAND:
     {
-        switch (HIWORD(wParam))
-        {
-        case CBN_DROPDOWN:
-        {
-            //Refresh of DropDown due to a Bug in Notepad++ Plugin implementation of Light Mode
-            if (LOWORD(wParam) == IDC_FIND_EDIT || LOWORD(wParam) == IDC_REPLACE_EDIT)
-            {
-                lastClickedComboBoxId = LOWORD(wParam);
-                SetTimer(_hSelf, 1, 1, NULL);
-            }
-        }
-        break;
-        }
 
         switch (LOWORD(wParam))
         {
