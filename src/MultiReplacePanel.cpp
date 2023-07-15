@@ -55,7 +55,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int comboWidth = windowWidth - 360;
     int frameX = windowWidth  - 310;
     int listWidth = windowWidth - 255;
-    int listHeight = windowHeight - 309;
+    int listHeight = windowHeight - 274;
     int checkboxX = buttonX - 100;
 
     // Static positions and sizes
