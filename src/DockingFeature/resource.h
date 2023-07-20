@@ -67,6 +67,15 @@
 #define IDC_USE_LIST_CHECKBOX			5402
 #define IDC_REPLACE_LIST                5403
 
+#define IDC_SCOPE_GROUP                 5451
+#define IDC_ALL_TEXT_RADIO              5452
+#define IDC_SELECTION_RADIO             5453
+#define IDC_COLUMN_MODE_RADIO           5454
+#define IDC_DELIMITER_EDIT              5455
+#define IDC_COLUMN_NUM_EDIT             5456
+#define IDC_DELIMITER_STATIC            5457
+#define IDC_COLUMN_NUM_STATIC           5458
+
 #define DELETE_ICON                     5500
 #define ENABLED_ICON                    5501
 #define COPYBACK_ICON                   5502
@@ -79,7 +88,7 @@
 #define IDC_AUTHOR_STATIC               5605
 
 // Pixel Size of Window when hiding Controls
-#define MIN_WIDTH 700
+#define MIN_WIDTH 900
 #define MIN_HEIGHT 440
 
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace")
