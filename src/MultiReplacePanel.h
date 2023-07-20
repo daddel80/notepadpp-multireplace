@@ -78,6 +78,11 @@ struct SelectionInfo {
     Sci_Position length;
 };
 
+struct SelectionRange {
+    LRESULT start;
+    LRESULT end;
+};
+
 enum class Direction { Up, Down };
 
 typedef std::basic_string<TCHAR> generic_string;
@@ -206,6 +211,7 @@ private:
     //Find
     void handleFindNextButton();
     void handleFindPrevButton();
+    SearchResult performSingleSearch(int searchFlags, const std::string& findTextUtf8, SelectionRange range, bool selectMatch);
     SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start, bool selectMatch);
     SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start);
     SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos);
