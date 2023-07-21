@@ -778,7 +778,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         updateUIVisibility();
         initializeListView();
         loadSettings();
-
         return TRUE;
     }
     break;
@@ -834,10 +833,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_NOTIFY:
     {
         NMHDR* pnmh = (NMHDR*)lParam;
-
         if (pnmh->idFrom == IDC_REPLACE_LIST) {
             switch (pnmh->code) {
-            case NM_CLICK: 
+            case NM_CLICK:
             {
                 NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
                 if (pnmia->iSubItem == 9) { // Delete button column
@@ -869,7 +867,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // Display the data based on the subitem
                 switch (plvdi->item.iSubItem)
                 {
-              
+
                 case 1:
                     if (itemData.isSelected) {
                         plvdi->item.pszText = L"\u25A0";
@@ -1015,8 +1013,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
             }
             break;
-
-
             }
         }
         else
@@ -1369,17 +1365,17 @@ void MultiReplace::handleReplaceButton() {
             showStatusMessage((L"Replaced '" + findText + L"' with '" + replaceText + L"'.").c_str(), RGB(0, 128, 0));
 
             // Continue search after replace
-            searchResult = performSearchForward(findTextUtf8, searchFlags, cursorPos + searchResult.length, true);
+            searchResult = performSearchForward(findTextUtf8, searchFlags, true, cursorPos + searchResult.length);
         }
         else {
             // If it does not match, perform a new search
-            searchResult = performSearchForward(findTextUtf8, searchFlags, cursorPos, true);
+            searchResult = performSearchForward(findTextUtf8, searchFlags, true, cursorPos);
         }
 
         // Check search results and handle wrap-around
         if (searchResult.pos < 0 && wrapAroundEnabled) {
             // If no match was found, and wrap-around is enabled, start the search again from the start
-            searchResult = performSearchForward(findTextUtf8, searchFlags, 0, true);
+            searchResult = performSearchForward(findTextUtf8, searchFlags, true, 0);
             if (searchResult.pos >= 0) {
                 showStatusMessage((L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
             }
@@ -1409,13 +1405,13 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
     std::string replaceTextUtf8 = convertAndExtend(replaceText, extended);
 
     int replaceCount = 0;  // Counter for replacements
-    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, 0, false);
+    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, false, 0);
     while (searchResult.pos >= 0)
     {
         Sci_Position newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
         replaceCount++;
 
-        searchResult = performSearchForward(findTextUtf8, searchFlags, newPos, false);
+        searchResult = performSearchForward(findTextUtf8, searchFlags, false, newPos);
     }
 
     return replaceCount;
@@ -1519,14 +1515,14 @@ void MultiReplace::handleFindNextButton() {
         int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
 
         std::string findTextUtf8 = convertAndExtend(findText, extended);
-        SearchResult result = performSearchForward(findTextUtf8, searchFlags, searchPos, true);
+        SearchResult result = performSearchForward(findTextUtf8, searchFlags, true, searchPos);
 
         if (result.pos >= 0) {
             showStatusMessage(L"", RGB(0, 128, 0));
         }
         else if (wrapAroundEnabled)
         {
-            result = performSearchForward(findTextUtf8, searchFlags, 0, true);
+            result = performSearchForward(findTextUtf8, searchFlags, true, 0);
             if (result.pos >= 0) {
                 showStatusMessage((L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
             }
@@ -1610,7 +1606,7 @@ void MultiReplace::handleFindPrevButton() {
     }
 }
 
-SearchResult MultiReplace::performSingleSearch(int searchFlags, const std::string& findTextUtf8, SelectionRange range, bool selectMatch) {
+SearchResult MultiReplace::performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range) {
     ::SendMessage(_hScintilla, SCI_SETTARGETSTART, range.start, 0);
     ::SendMessage(_hScintilla, SCI_SETTARGETEND, range.end, 0);
     ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
@@ -1636,15 +1632,11 @@ SearchResult MultiReplace::performSingleSearch(int searchFlags, const std::strin
     return result;
 }
 
-SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start, bool selectMatch)
+SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start)
 {
     SearchResult result;
     result.pos = -1;
-
-    // Define initial search range
     SelectionRange targetRange;
-    targetRange.start = start;
-    targetRange.end = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
 
     // Check if IDC_SELECTION_RADIO is enabled and selectMatch is false
     if (!selectMatch && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
@@ -1663,18 +1655,28 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
 
         // Perform search within each selection
         for (const auto& selection : selections) {
-            if (selection.start >= start) {
-                result = performSingleSearch(searchFlags, findTextUtf8, selection, selectMatch);
+            if (start >= selection.start && start < selection.end) {
+                // If the start position is within the current selection
+                targetRange = { start, selection.end };
+                result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
+            }
+            else if (start < selection.start) {
+                // If the start position is lower than the current selection
+                targetRange = selection;
+                result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
+            }
 
-                if (result.pos >= 0) {
-                    return result;
-                }
+            // Check if a match was found
+            if (result.pos >= 0) {
+                return result;
             }
         }
     }
     else {
         // If IDC_SELECTION_RADIO is not enabled or selectMatch is true, perform search within the whole document
-        result = performSingleSearch(searchFlags, findTextUtf8, targetRange, selectMatch);
+        targetRange.start = start;
+        targetRange.end = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+        result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
     }
 
     return result;
@@ -1717,7 +1719,7 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
         if (itemData.isSelected) {
             int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
             std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
-            SearchResult result = performSearchForward(findTextUtf8, searchFlags, cursorPos, false);
+            SearchResult result = performSearchForward(findTextUtf8, searchFlags, false, cursorPos);
 
             // If a match was found and it's closer to the cursor than the current closest match, update the closest match
             if (result.pos >= 0 && (closestMatch.pos < 0 || result.pos < closestMatch.pos)) {
@@ -1837,12 +1839,12 @@ int MultiReplace::markString(const std::wstring& findText, bool wholeWord, bool 
     std::string findTextUtf8 = convertAndExtend(findText, extended);
 
     int markCount = 0;  // Counter for marked matches
-    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, 0, false);
+    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, false, 0);
     while (searchResult.pos >= 0)
     {
         highlightTextRange(searchResult.pos, searchResult.length, findTextUtf8);
         markCount++;
-        searchResult = performSearchForward(findTextUtf8, searchFlags, searchResult.pos + searchResult.length, false); // Use nextPos for the next search
+        searchResult = performSearchForward(findTextUtf8, searchFlags, false, searchResult.pos + searchResult.length); // Use nextPos for the next search
     }
 
     if (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED && markCount > 0) {
