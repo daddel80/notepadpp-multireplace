@@ -124,11 +124,40 @@ public:
 		return _isFloating;
 	};
 
+    static HWND getScintillaHandle() {
+        return s_hScintilla;
+    }
+
+    static HWND getDialogHandle() {
+        return s_hDlg;
+    }
+
+    static bool isWindowOpen;
+    static void onSelectionChanged() {
+
+        // Get the start and end of the selection
+        Sci_Position start = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
+        Sci_Position end = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
+
+        // Enable or disable IDC_SELECTION_RADIO depending on whether text is selected
+        bool isTextSelected = (start != end);
+        ::EnableWindow(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), isTextSelected);
+
+        // If no text is selected and IDC_SELECTION_RADIO is checked, check IDC_ALL_TEXT_RADIO instead
+        if (!isTextSelected && (::SendMessage(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED)) {
+            ::SendMessage(::GetDlgItem(getDialogHandle(), IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+            ::SendMessage(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+        }
+    }
+
+
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam);
 
 private:
     static const int RESIZE_TIMER_ID = 1;
+    static HWND s_hScintilla;
+    static HWND s_hDlg;
     HINSTANCE hInstance;
     HWND _hScintilla;
     HWND _replaceListView;

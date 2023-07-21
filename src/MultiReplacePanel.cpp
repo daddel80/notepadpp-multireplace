@@ -43,6 +43,9 @@
 #endif
 
 std::map<int, ControlInfo> MultiReplace::ctrlMap;
+bool MultiReplace::isWindowOpen = false;
+HWND MultiReplace::s_hScintilla = nullptr;
+HWND MultiReplace::s_hDlg = nullptr;
 
 
 #pragma region Initialization
@@ -113,6 +116,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 void MultiReplace::initializeCtrlMap()
 {
     hInstance = (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE);
+    s_hDlg = _hSelf;
 
     // Get the client rectangle
     RECT rcClient;
@@ -129,7 +133,6 @@ void MultiReplace::initializeCtrlMap()
         return;
     }
 
-    
     // Create the font
     hFont = CreateFont(FONT_SIZE, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, FONT_NAME);
 
@@ -152,6 +155,12 @@ void MultiReplace::initializeCtrlMap()
 
     // CheckBox to All Text
     CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_ALL_TEXT_RADIO);
+    
+    // Enable IDC_SELECTION_RADIO based on text selection
+    Sci_Position start = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
+    Sci_Position end = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
+    bool isTextSelected = (start != end);
+    ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), isTextSelected);
 
     // Hide Hint Text
     ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_HIDE);
@@ -159,6 +168,7 @@ void MultiReplace::initializeCtrlMap()
     // Enable the checkbox ID IDC_USE_LIST_CHECKBOX
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
 
+    isWindowOpen = true;
 }
 
 bool MultiReplace::createAndShowWindows() {
@@ -229,6 +239,7 @@ void MultiReplace::initializeScintilla() {
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
     if (which != -1) {
         _hScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+        s_hScintilla = _hScintilla;
     }
 }
 

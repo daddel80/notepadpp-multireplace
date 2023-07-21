@@ -16,6 +16,7 @@
 //Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 #include "PluginDefinition.h"
+#include "MultiReplacePanel.h"
 
 extern FuncItem funcItem[nbFunc];
 extern NppData nppData;
@@ -73,6 +74,14 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification *notifyCode)
 		case NPPN_SHUTDOWN:
 		{
 			commandMenuCleanUp();
+		}
+		break;
+		case SCN_UPDATEUI:
+		{
+			if (MultiReplace::isWindowOpen)
+			{
+				MultiReplace::onSelectionChanged();
+			}
 		}
 		break;
 
