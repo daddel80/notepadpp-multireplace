@@ -75,6 +75,7 @@
 #define IDC_COLUMN_NUM_EDIT             5456
 #define IDC_DELIMITER_STATIC            5457
 #define IDC_COLUMN_NUM_STATIC           5458
+#define IDC_COLUMN_HIGHLIGHT_BUTTON     5459
 
 #define DELETE_ICON                     5500
 #define ENABLED_ICON                    5501

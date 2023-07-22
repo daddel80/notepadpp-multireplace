@@ -33,6 +33,7 @@
 #include <functional>
 #include <algorithm>
 #include <unordered_map>
+#include <set>
 
 #ifdef UNICODE
 #define generic_strtoul wcstoul
@@ -72,14 +73,15 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_EXTENDED_RADIO] = { 210, 150, 175, 20, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REGEX_RADIO] = { 210, 175, 175, 20, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     
-    ctrlMap[IDC_SCOPE_GROUP] = { 400, 105, 190, 100, WC_BUTTON, L"Scope", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_SCOPE_GROUP] = { 400, 105, 230, 100, WC_BUTTON, L"Scope", BS_GROUPBOX, NULL };
     ctrlMap[IDC_ALL_TEXT_RADIO] = { 410, 125, 100, 20, WC_BUTTON, L"All Text", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SELECTION_RADIO] = { 410, 150, 100, 20, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SELECTION_RADIO] = { 410, 150, 100, 20, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP,  L"Selection works with 'Replace All' and 'Mark Matches'"  };
     ctrlMap[IDC_COLUMN_MODE_RADIO] = { 410, 175, 20, 20, WC_BUTTON, L"", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 425, 175, 30, 20, WC_STATIC, L"Col.:", SS_RIGHT, NULL };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 455, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP, NULL };
-    ctrlMap[IDC_DELIMITER_STATIC] = { 500, 175, 40, 20, WC_STATIC, L"Delim.:", SS_RIGHT, NULL };
-    ctrlMap[IDC_DELIMITER_EDIT] = { 540, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 426, 175, 30, 20, WC_STATIC, L"Col.:", SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 456, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , NULL };
+    ctrlMap[IDC_DELIMITER_STATIC] = { 501, 175, 40, 20, WC_STATIC, L"Delim.:", SS_RIGHT, NULL };
+    ctrlMap[IDC_DELIMITER_EDIT] = { 541, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , NULL };
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 590, 173, 30, 25, WC_BUTTON, L"H", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_STATIC_HINT] = { 14, 100, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER, NULL };
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 224, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
@@ -1091,6 +1093,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
+        case IDC_COLUMN_HIGHLIGHT_BUTTON:
+        {
+            parseColumnAndDelimiterData();
+            findAllDelimitersInDocument();
+        }
+        break;
+
         case IDC_NORMAL_RADIO:
         case IDC_EXTENDED_RADIO:
         {
@@ -2015,6 +2024,185 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
     {
         showStatusMessage(L"No marked text to copy.", RGB(255, 0, 0));
     }
+}
+
+#pragma endregion
+
+
+#pragma region Scope
+
+void MultiReplace::parseColumnAndDelimiterData() {
+    std::wstring columnDataString = getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT);
+    std::wstring delimiterData = getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT);
+
+    columnDataString.erase(0, columnDataString.find_first_not_of(L','));
+    columnDataString.erase(columnDataString.find_last_not_of(L',') + 1);
+    bool errorDetected = false;
+
+    if (columnDataString.empty() || delimiterData.empty()) {
+        showStatusMessage(L"Column data or delimiter data is missing", RGB(255, 0, 0));
+        return;
+    }
+
+    std::set<int> columns;
+    std::wstring::size_type start = 0;
+    std::wstring::size_type end = columnDataString.find(',', start);
+
+    while (end != std::wstring::npos) {
+        std::wstring block = columnDataString.substr(start, end - start);
+        size_t dashPos = block.find('-');
+
+        if (dashPos != std::wstring::npos) {
+            try {
+                int startRange = std::stoi(block.substr(0, dashPos));
+                int endRange = std::stoi(block.substr(dashPos + 1));
+
+                if (startRange < 1 || endRange < startRange) {
+                    showStatusMessage(L"Invalid range in column data", RGB(255, 0, 0));
+                    errorDetected = true;
+                    return;
+                }
+
+                for (int i = startRange; i <= endRange; ++i) {
+                    columns.insert(i);
+                }
+            }
+            catch (const std::exception&) {
+                showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
+                errorDetected = true;
+                return;
+            }
+        }
+        else {
+            try {
+                int column = std::stoi(block);
+
+                if (column < 1) {
+                    showStatusMessage(L"Invalid column number", RGB(255, 0, 0));
+                    errorDetected = true;
+                    return;
+                }
+
+                columns.insert(column);
+            }
+            catch (const std::exception&) {
+                showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
+                errorDetected = true;
+                return;
+            }
+        }
+
+        start = end + 1;
+        end = columnDataString.find(',', start);
+    }
+
+    std::wstring lastBlock = columnDataString.substr(start);
+    size_t dashPos = lastBlock.find('-');
+
+    if (dashPos != std::wstring::npos) {
+        try {
+            int startRange = std::stoi(lastBlock.substr(0, dashPos));
+            int endRange = std::stoi(lastBlock.substr(dashPos + 1));
+
+            if (startRange < 1 || endRange < startRange) {
+                showStatusMessage(L"Invalid range in column data", RGB(255, 0, 0));
+                errorDetected = true;
+                return;
+            }
+
+            for (int i = startRange; i <= endRange; ++i) {
+                columns.insert(i);
+            }
+        }
+        catch (const std::exception&) {
+            showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
+            errorDetected = true;
+            return;
+        }
+    }
+    else {
+        try {
+            int column = std::stoi(lastBlock);
+
+            if (column < 1) {
+                showStatusMessage(L"Invalid column number", RGB(255, 0, 0));
+                errorDetected = true;
+                return;
+            }
+
+            columns.insert(column);
+        }
+        catch (const std::exception&) {
+            showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
+            errorDetected = true;
+            return;
+        }
+    }
+
+    columnDelimiterData.columns = columns;
+    columnDelimiterData.delimiter = delimiterData;
+
+    std::wstring messageBoxText = L"Columns: ";
+    for (const auto& column : columnDelimiterData.columns) {
+        messageBoxText += std::to_wstring(column) + L", ";
+    }
+    messageBoxText += L"\nDelimiter: " + columnDelimiterData.delimiter;
+    MessageBox(NULL, messageBoxText.c_str(), L"Column and Delimiter Data", MB_OK);
+
+    if (!errorDetected) {
+        showStatusMessage(L"All column data and delimiters were read successfully.", RGB(0, 128, 0));
+    }
+}
+
+void MultiReplace::findAllDelimitersInDocument() {
+
+    // Clear the map for fresh usage
+    delimiterPositionsMap.clear();
+
+    // Get the total number of lines in the document
+    LRESULT totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
+
+    // Define the structure to store the delimiter position data
+    delimiterPositionData.length = columnDelimiterData.delimiter.length();
+
+    // Find and store delimiter positions for each line
+    for (LRESULT line = 0; line < totalLines; ++line) {
+        LRESULT lineStart = ::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, line, 0);
+        LRESULT lineEnd = ::SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, line, 0);
+
+        SearchResult result;
+        result.pos = lineStart;
+        result.length = 0;
+
+        do {
+            // Define the range for the search within the line
+            SelectionRange range;
+            range.start = result.pos + result.length;
+            range.end = lineEnd;
+
+            // Perform the search for the delimiter
+            result = performSingleSearch(convertAndExtend(columnDelimiterData.delimiter, true), SCFIND_MATCHCASE, false, range);
+
+            if (result.pos >= 0) {
+                // If a delimiter is found, store its position and associated line number
+                delimiterPositionData.line = line;
+                delimiterPositionData.position = result.pos;
+                delimiterPositionsMap[line].push_back(delimiterPositionData);
+
+                // Update start position for next search within this line
+                result.pos += result.length;
+            }
+        } while (result.pos >= 0 && result.pos < lineEnd);
+    }
+
+    // Display a message box with all the found delimiter positions for testing
+    std::wstring messageBoxText = L"Delimiter positions:\n";
+    for (const auto& lineEntry : delimiterPositionsMap) {
+        for (const auto& delimiterPosition : lineEntry.second) {
+            messageBoxText += L"Line " + std::to_wstring(delimiterPosition.line) + L": Position " + std::to_wstring(delimiterPosition.position) + L"\n";
+        }
+    }
+    MessageBox(NULL, messageBoxText.c_str(), L"Delimiter Positions", MB_OK);
 }
 
 #pragma endregion

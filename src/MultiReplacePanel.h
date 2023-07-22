@@ -27,7 +27,7 @@
 #include <regex>
 #include <algorithm>
 #include <unordered_map>
-
+#include <set>
 
 extern NppData nppData;
 
@@ -81,6 +81,17 @@ struct SelectionInfo {
 struct SelectionRange {
     LRESULT start;
     LRESULT end;
+};
+
+struct ColumnDelimiterData {
+    std::set<int> columns;
+    std::wstring delimiter;
+};
+
+struct DelimiterPositionData {
+    LRESULT line;
+    LRESULT position;
+    SIZE_T length;
 };
 
 enum class Direction { Up, Down };
@@ -187,6 +198,8 @@ private:
     static const long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     int lastColumn = -1;
     bool ascending = true;
+    ColumnDelimiterData columnDelimiterData;
+    DelimiterPositionData delimiterPositionData = { 0, 0, 0 };
     
     /*
        Available styles (self-tested):
@@ -203,6 +216,7 @@ private:
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
     static std::map<int, ControlInfo> ctrlMap;
+    std::map<LRESULT, std::vector<DelimiterPositionData>> delimiterPositionsMap;
 
     //Initialization
     void positionAndResizeControls(int windowWidth, int windowHeight);
@@ -253,6 +267,10 @@ private:
     long generateColorValue(const std::string& str);
     void handleClearAllMarksButton();
     void handleCopyMarkedTextToClipboardButton();
+
+    //Scope
+    void parseColumnAndDelimiterData();
+    void findAllDelimitersInDocument();
 
     //Utilities
     int convertExtendedToString(const std::string& query, std::string& result);
