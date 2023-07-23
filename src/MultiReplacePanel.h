@@ -210,13 +210,16 @@ private:
        Styles 0 - 7 are reserved for syntax style.
        Styles 21 - 29, 31 are reserved bei N++ (see SciLexer.h).
     */
-    std::vector<int> validStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 
-                                    30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
+    // std::vector<int> validStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
+    std::vector<int> textStyles = { 9, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
+    std::vector<int> columnStyles = { 10, 11, 12, 13, 14 };
+    std::vector<long> columnColors = { 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF };
 
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
     static std::map<int, ControlInfo> ctrlMap;
     std::map<LRESULT, std::vector<DelimiterPositionData>> delimiterPositionsMap;
+    bool isColumnHighlighted = false;
 
     //Initialization
     void positionAndResizeControls(int windowWidth, int windowHeight);
@@ -265,12 +268,15 @@ private:
     int markString(const std::wstring& findText, bool wholeWord, bool matchCase, bool regex, bool extended);
     void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
     long generateColorValue(const std::string& str);
-    void handleClearAllMarksButton();
+    void handleClearTextMarksButton();
     void handleCopyMarkedTextToClipboardButton();
 
     //Scope
     void parseColumnAndDelimiterData();
     void findAllDelimitersInDocument();
+    void highlightColumnRange(LRESULT start, LRESULT end, int indicatorStyle);
+    void MultiReplace::highlightColumns();
+    void MultiReplace::handleClearColumnMarks();
 
     //Utilities
     int convertExtendedToString(const std::string& query, std::string& result);

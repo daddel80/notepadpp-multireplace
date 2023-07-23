@@ -249,7 +249,7 @@ void MultiReplace::initializePluginStyle()
 {
     // Initialize for non-list marker
     long standardMarkerColor = MARKER_COLOR;
-    int standardMarkerStyle = validStyles[0];
+    int standardMarkerStyle = textStyles[0];
     colorToStyleMap[standardMarkerColor] = standardMarkerStyle;
 
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, standardMarkerStyle, 0);
@@ -1093,18 +1093,42 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
-        case IDC_COLUMN_HIGHLIGHT_BUTTON:
-        {
-            parseColumnAndDelimiterData();
-            findAllDelimitersInDocument();
-        }
-        break;
-
         case IDC_NORMAL_RADIO:
         case IDC_EXTENDED_RADIO:
         {
             // Enable the Whole word checkbox
             EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), TRUE);
+        }
+        break;
+
+        case IDC_ALL_TEXT_RADIO:
+        case IDC_SELECTION_RADIO:
+        {
+            EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_NUM_EDIT), FALSE);
+            EnableWindow(GetDlgItem(_hSelf, IDC_DELIMITER_EDIT), FALSE);
+            EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), FALSE);
+            handleClearColumnMarks();
+        }
+        break;
+
+        case IDC_COLUMN_MODE_RADIO:
+        {
+            EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_NUM_EDIT), TRUE);
+            EnableWindow(GetDlgItem(_hSelf, IDC_DELIMITER_EDIT), TRUE);
+            EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), TRUE);
+        }
+        break;
+
+        case IDC_COLUMN_HIGHLIGHT_BUTTON:
+        {
+            if (!isColumnHighlighted) {
+                parseColumnAndDelimiterData();
+                findAllDelimitersInDocument();
+                highlightColumns();
+            }
+            else {
+                handleClearColumnMarks();
+            }
         }
         break;
 
@@ -1165,14 +1189,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
         {
-            handleClearAllMarksButton();
+            handleClearTextMarksButton();
             handleMarkMatchesButton();
         }
         break;
 
         case IDC_CLEAR_MARKS_BUTTON:
         {
-            handleClearAllMarksButton();
+            handleClearTextMarksButton();
         }
         break;
 
@@ -1883,7 +1907,7 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::strin
     int indicatorStyle;
     if (colorToStyleMap.find(color) == colorToStyleMap.end()) {
         // If not, assign a new style and store it in the map
-        indicatorStyle = useListEnabled ? validStyles[(colorToStyleMap.size() % (validStyles.size() - 1)) + 1] : validStyles[0];
+        indicatorStyle = useListEnabled ? textStyles[(colorToStyleMap.size() % (textStyles.size() - 1)) + 1] : textStyles[0];
         colorToStyleMap[color] = indicatorStyle;
     }
     else {
@@ -1895,7 +1919,7 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::strin
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicatorStyle, 0);
     ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
 
-    if (colorToStyleMap.size() < validStyles.size()) {
+    if (colorToStyleMap.size() < textStyles.size()) {
         ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicatorStyle, color);
     }
 
@@ -1921,9 +1945,9 @@ long MultiReplace::generateColorValue(const std::string& str) {
     return color;
 }
 
-void MultiReplace::handleClearAllMarksButton()
+void MultiReplace::handleClearTextMarksButton()
 {
-    for (int style : validStyles)
+    for (int style : textStyles)
     {
         ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
         ::SendMessage(_hScintilla, SCI_INDICATORCLEARRANGE, 0, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
@@ -1942,7 +1966,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
     std::string markedText;
     std::string styleText;
 
-    for (int style : validStyles)
+    for (int style : textStyles)
     {
         ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
         LRESULT pos = 0;
@@ -2032,6 +2056,10 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
 #pragma region Scope
 
 void MultiReplace::parseColumnAndDelimiterData() {
+    // Clear previous data
+    columnDelimiterData = ColumnDelimiterData();
+    delimiterPositionData = DelimiterPositionData{ 0, 0, 0 };
+
     std::wstring columnDataString = getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT);
     std::wstring delimiterData = getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT);
 
@@ -2048,12 +2076,15 @@ void MultiReplace::parseColumnAndDelimiterData() {
     std::wstring::size_type start = 0;
     std::wstring::size_type end = columnDataString.find(',', start);
 
+    // Parse column data
     while (end != std::wstring::npos) {
         std::wstring block = columnDataString.substr(start, end - start);
         size_t dashPos = block.find('-');
 
+        // Check if block has range of columns (e.g., 1-3)
         if (dashPos != std::wstring::npos) {
             try {
+                // Parse range and add each column to set
                 int startRange = std::stoi(block.substr(0, dashPos));
                 int endRange = std::stoi(block.substr(dashPos + 1));
 
@@ -2074,6 +2105,7 @@ void MultiReplace::parseColumnAndDelimiterData() {
             }
         }
         else {
+            // Parse single column and add to set
             try {
                 int column = std::stoi(block);
 
@@ -2096,9 +2128,11 @@ void MultiReplace::parseColumnAndDelimiterData() {
         end = columnDataString.find(',', start);
     }
 
+    // Handle last block of column data
     std::wstring lastBlock = columnDataString.substr(start);
     size_t dashPos = lastBlock.find('-');
 
+    // Similar processing to above, but for last block
     if (dashPos != std::wstring::npos) {
         try {
             int startRange = std::stoi(lastBlock.substr(0, dashPos));
@@ -2142,12 +2176,14 @@ void MultiReplace::parseColumnAndDelimiterData() {
     columnDelimiterData.columns = columns;
     columnDelimiterData.delimiter = delimiterData;
 
+    /*
     std::wstring messageBoxText = L"Columns: ";
     for (const auto& column : columnDelimiterData.columns) {
         messageBoxText += std::to_wstring(column) + L", ";
     }
     messageBoxText += L"\nDelimiter: " + columnDelimiterData.delimiter;
     MessageBox(NULL, messageBoxText.c_str(), L"Column and Delimiter Data", MB_OK);
+    */
 
     if (!errorDetected) {
         showStatusMessage(L"All column data and delimiters were read successfully.", RGB(0, 128, 0));
@@ -2155,15 +2191,22 @@ void MultiReplace::parseColumnAndDelimiterData() {
 }
 
 void MultiReplace::findAllDelimitersInDocument() {
+    // Return early if columnDelimiterData is empty
+    if (columnDelimiterData.columns.empty() || columnDelimiterData.delimiter.empty()) {
+        return;
+    }
 
-    // Clear the map for fresh usage
+    // Clear map for new data
     delimiterPositionsMap.clear();
 
-    // Get the total number of lines in the document
+    // Get total line count in document
     LRESULT totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
 
-    // Define the structure to store the delimiter position data
-    delimiterPositionData.length = columnDelimiterData.delimiter.length();
+    // Convert and extend the delimiter
+    std::string extendedDelimiter = convertAndExtend(columnDelimiterData.delimiter, true);
+
+    // Define structure to store delimiter position
+    delimiterPositionData.length = extendedDelimiter.length();
 
     // Find and store delimiter positions for each line
     for (LRESULT line = 0; line < totalLines; ++line) {
@@ -2175,27 +2218,32 @@ void MultiReplace::findAllDelimitersInDocument() {
         result.length = 0;
 
         do {
-            // Define the range for the search within the line
+            // Set search range within line
             SelectionRange range;
             range.start = result.pos + result.length;
             range.end = lineEnd;
 
-            // Perform the search for the delimiter
-            result = performSingleSearch(convertAndExtend(columnDelimiterData.delimiter, true), SCFIND_MATCHCASE, false, range);
+            // Search for delimiter
+            result = performSingleSearch(extendedDelimiter, SCFIND_MATCHCASE, false, range);
 
+            // Store position of found delimiter
             if (result.pos >= 0) {
-                // If a delimiter is found, store its position and associated line number
                 delimiterPositionData.line = line;
                 delimiterPositionData.position = result.pos;
                 delimiterPositionsMap[line].push_back(delimiterPositionData);
-
-                // Update start position for next search within this line
-                result.pos += result.length;
             }
+
         } while (result.pos >= 0 && result.pos < lineEnd);
+
+        // Insert position -1 if no delimiter found
+        if (delimiterPositionsMap[line].empty()) {
+            delimiterPositionData.line = line;
+            delimiterPositionData.position = -1;
+            delimiterPositionsMap[line].push_back(delimiterPositionData);
+        }
     }
 
-    // Display a message box with all the found delimiter positions for testing
+    /*
     std::wstring messageBoxText = L"Delimiter positions:\n";
     for (const auto& lineEntry : delimiterPositionsMap) {
         for (const auto& delimiterPosition : lineEntry.second) {
@@ -2203,6 +2251,84 @@ void MultiReplace::findAllDelimitersInDocument() {
         }
     }
     MessageBox(NULL, messageBoxText.c_str(), L"Delimiter Positions", MB_OK);
+    */
+}
+
+void MultiReplace::highlightColumnRange(LRESULT start, LRESULT end, int column) {
+    // Calculate the indicator style based on the column index
+    int indicatorStyle = columnStyles[(column - 1) % columnStyles.size()];
+
+    // Assign the predefined color for the style
+    long color = columnColors[(column - 1) % columnColors.size()];
+    if (colorToStyleMap.find(color) == colorToStyleMap.end()) {
+        colorToStyleMap[color] = indicatorStyle;
+    }
+    else {
+        indicatorStyle = colorToStyleMap[color];
+    }
+
+    // Set and apply highlighting style
+    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicatorStyle, 0);
+    ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
+    ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicatorStyle, color);
+    ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicatorStyle, 100);
+    ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, start, end - start);
+}
+
+void MultiReplace::highlightColumns() {
+    // Return early if columnDelimiterData is empty
+    if (columnDelimiterData.columns.empty() || columnDelimiterData.delimiter.empty()) {
+        return;
+    }
+    // Iterate over each line's delimiter positions
+    for (const auto& lineEntry : delimiterPositionsMap) {
+        // If no delimiter present, highlight whole line as first column
+        if (lineEntry.second[0].position == -1 && std::find(columnDelimiterData.columns.begin(), columnDelimiterData.columns.end(), 1) != columnDelimiterData.columns.end()) {
+            LRESULT start = ::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, lineEntry.first, 0);
+            LRESULT end = ::SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, lineEntry.first, 0);
+
+            // Highlight text range
+            highlightColumnRange(start, end, 1);
+        }
+        else {
+            // Highlight specific columns from columnDelimiterData
+            for (int column : columnDelimiterData.columns) {
+                if (column <= lineEntry.second.size() + 1) {
+                    LRESULT start = 0;
+                    LRESULT end = 0;
+
+                    // Set start and end positions based on column index
+                    if (column == 1) {
+                        start = ::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, lineEntry.first, 0);
+                    }
+                    else {
+                        start = lineEntry.second[column - 2].position + lineEntry.second[column - 2].length;
+                    }
+
+                    if (column == lineEntry.second.size() + 1) {
+                        end = ::SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, lineEntry.first, 0);
+                    }
+                    else {
+                        end = lineEntry.second[column - 1].position;
+                    }
+
+                    // Highlight the text range
+                    highlightColumnRange(start, end, column);
+                }
+            }
+        }
+    }
+    isColumnHighlighted = true;
+}
+
+void MultiReplace::handleClearColumnMarks() {
+    for (int style : columnStyles) {
+        ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
+        ::SendMessage(_hScintilla, SCI_INDICATORCLEARRANGE, 0, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+    }
+
+    showStatusMessage(L"Column marks cleared.", RGB(0, 128, 0));
+    isColumnHighlighted = false;
 }
 
 #pragma endregion
@@ -2963,6 +3089,19 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << L"ButtonsMode=" << ButtonsMode << L"\n";
     outFile << L"UseList=" << useList << L"\n";
 
+    // Prepare and Store the scope options
+    int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
+    int columnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED ? 1 : 0;
+    std::wstring columnNum = L"\"" + getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT) + L"\"";
+    std::wstring delimiter = L"\"" + getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT) + L"\"";
+
+    // Store Scope
+    outFile << L"[Scope]\n";
+    outFile << L"Selection=" << selection << L"\n";
+    outFile << L"ColumnMode=" << columnMode << L"\n";
+    outFile << L"ColumnNum=" << columnNum << L"\n";
+    outFile << L"Delimiter=" << delimiter << L"\n";
+
     // Store "Find what" history
     LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
     outFile << L"[History]\n";
@@ -3071,6 +3210,33 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
     bool useList = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", false);
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, useList ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    // Load Scope
+    int selection = readIntFromIniFile(iniFilePath, L"Scope", L"Selection", 0);
+    int columnMode = readIntFromIniFile(iniFilePath, L"Scope", L"ColumnMode", 0);
+    BOOL isEnabled = ::IsWindowEnabled(GetDlgItem(_hSelf, IDC_SELECTION_RADIO));
+
+    if (selection && isEnabled) {
+        CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_SELECTION_RADIO);
+    }
+    else if (columnMode) {
+        CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_COLUMN_MODE_RADIO);
+    }
+    else {
+        CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_ALL_TEXT_RADIO);
+    }
+
+    BOOL columnModeSelected = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_NUM_EDIT), columnModeSelected);
+    EnableWindow(GetDlgItem(_hSelf, IDC_DELIMITER_EDIT), columnModeSelected);
+    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), columnModeSelected);
+
+    std::wstring columnNum = readStringFromIniFile(iniFilePath, L"Scope", L"ColumnNum", L"");
+    setTextInDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT, columnNum);
+
+    std::wstring delimiter = readStringFromIniFile(iniFilePath, L"Scope", L"Delimiter", L"");
+    setTextInDialogItem(_hSelf, IDC_DELIMITER_EDIT, delimiter);
+
 }
 
 void MultiReplace::loadSettings() {
