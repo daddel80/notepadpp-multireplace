@@ -274,7 +274,7 @@ private:
     //Scope
     void parseColumnAndDelimiterData();
     void findAllDelimitersInDocument();
-    void highlightColumnRange(LRESULT start, LRESULT end, int indicatorStyle);
+    void highlightColumnRange(LRESULT start, LRESULT end, SIZE_T column);
     void MultiReplace::highlightColumns();
     void MultiReplace::handleClearColumnMarks();
 

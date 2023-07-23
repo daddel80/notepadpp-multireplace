@@ -2254,7 +2254,7 @@ void MultiReplace::findAllDelimitersInDocument() {
     */
 }
 
-void MultiReplace::highlightColumnRange(LRESULT start, LRESULT end, int column) {
+void MultiReplace::highlightColumnRange(LRESULT start, LRESULT end, SIZE_T column) {
     // Calculate the indicator style based on the column index
     int indicatorStyle = columnStyles[(column - 1) % columnStyles.size()];
 
@@ -2292,7 +2292,7 @@ void MultiReplace::highlightColumns() {
         }
         else {
             // Highlight specific columns from columnDelimiterData
-            for (int column : columnDelimiterData.columns) {
+            for (SIZE_T column : columnDelimiterData.columns) {
                 if (column <= lineEntry.second.size() + 1) {
                     LRESULT start = 0;
                     LRESULT end = 0;
