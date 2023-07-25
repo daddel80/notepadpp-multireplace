@@ -77,10 +77,10 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_ALL_TEXT_RADIO] = { 410, 125, 100, 20, WC_BUTTON, L"All Text", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
     ctrlMap[IDC_SELECTION_RADIO] = { 410, 150, 100, 20, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP,  L"Selection works with 'Replace All' and 'Mark Matches'"  };
     ctrlMap[IDC_COLUMN_MODE_RADIO] = { 410, 175, 20, 20, WC_BUTTON, L"", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 426, 175, 30, 20, WC_STATIC, L"Col.:", SS_RIGHT, L"Columns: '1,3,5-12' (individuals, ranges)" };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 456, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , NULL };
-    ctrlMap[IDC_DELIMITER_STATIC] = { 501, 175, 40, 20, WC_STATIC, L"Delim.:", SS_RIGHT, L"Delimiter: Single/combined chars, \t for Tab" };
-    ctrlMap[IDC_DELIMITER_EDIT] = { 541, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , NULL };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 426, 175, 30, 20, WC_STATIC, L"Col.:", SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 456, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Columns: '1,3,5-12' (individuals, ranges)" };
+    ctrlMap[IDC_DELIMITER_STATIC] = { 501, 175, 40, 20, WC_STATIC, L"Delim.:", SS_RIGHT, NULL };
+    ctrlMap[IDC_DELIMITER_EDIT] = { 541, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL ,  L"Delimiter: Single/combined chars, \t for Tab" };
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 590, 173, 30, 25, WC_BUTTON, L"H", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
 
     ctrlMap[IDC_STATIC_HINT] = { 14, 100, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER, NULL };
@@ -1189,9 +1189,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
         {
-            parseColumnAndDelimiterData();
-            findAllDelimitersInDocument();
-
             handleClearTextMarksButton();
             handleMarkMatchesButton();
         }
@@ -1265,6 +1262,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
 void MultiReplace::handleReplaceAllButton() {
 
+    // Read the column and delimiter data for IDC_COLUMN_MODE_RADIO in performSearchForward().
+    parseColumnAndDelimiterData();
+    findAllDelimitersInDocument();
+
     // First check if the document is read-only
     LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
@@ -1318,6 +1319,11 @@ void MultiReplace::handleReplaceAllButton() {
 }
 
 void MultiReplace::handleReplaceButton() {
+
+    // Update the column and delimiter data for IDC_COLUMN_MODE_RADIO in performSearchForward().
+    parseColumnAndDelimiterData();
+    findAllDelimitersInDocument();
+
     // First check if the document is read-only
     LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
@@ -1455,8 +1461,12 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
     SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, false, 0);
     while (searchResult.pos >= 0)
     {
+        
         Sci_Position newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
         replaceCount++;
+
+        // Update the column and delimiter data for IDC_COLUMN_MODE_RADIO in performSearchForward().
+        findAllDelimitersInDocument();
 
         searchResult = performSearchForward(findTextUtf8, searchFlags, false, newPos);
     }
@@ -1528,6 +1538,10 @@ void MultiReplace::handleFindNextButton() {
 
     LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
 
+    // Update the column and delimiter data for IDC_COLUMN_MODE_RADIO in performSearchForward().
+    parseColumnAndDelimiterData();
+    findAllDelimitersInDocument();
+
     if (useListEnabled)
     {
         if (replaceListData.empty()) {
@@ -1584,72 +1598,75 @@ void MultiReplace::handleFindNextButton() {
 }
 
 void MultiReplace::handleFindPrevButton() {
+
+    // Update the column and delimiter data for IDC_COLUMN_MODE_RADIO in performSearchForward().
+    parseColumnAndDelimiterData();
+    findAllDelimitersInDocument();
+
+    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+    bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+
+    LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+    searchPos = (searchPos > 0) ? ::SendMessage(_hScintilla, SCI_POSITIONBEFORE, searchPos, 0) : searchPos;
+
+    if (useListEnabled)
     {
-        bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
-        bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+        if (replaceListData.empty()) {
+            showStatusMessage(L"Add values into the list. Or uncheck 'Use in List' to find directly.", RGB(255, 0, 0));
+            return;
+        }
 
-        LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
-        searchPos = (searchPos > 0) ? ::SendMessage(_hScintilla, SCI_POSITIONBEFORE, searchPos, 0) : searchPos;
+        SearchResult result = performListSearchBackward(replaceListData, searchPos);
 
-        if (useListEnabled)
+        if (result.pos >= 0) {
+            showStatusMessage(L"", RGB(0, 128, 0));
+        }
+        else if (wrapAroundEnabled)
         {
-            if (replaceListData.empty()) {
-                showStatusMessage(L"Add values into the list. Or uncheck 'Use in List' to find directly.", RGB(255, 0, 0));
-                return;
-            }
-
-            SearchResult result = performListSearchBackward(replaceListData, searchPos);
-
+            result = performListSearchBackward(replaceListData, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
             if (result.pos >= 0) {
-                showStatusMessage(L"", RGB(0, 128, 0));
+                showStatusMessage(L"Wrapped, found match.", RGB(0, 128, 0));
             }
-            else if (wrapAroundEnabled)
-            {
-                result = performListSearchBackward(replaceListData, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
-                if (result.pos >= 0) {
-                    showStatusMessage(L"Wrapped, found match.", RGB(0, 128, 0));
-                }
-                else {
-                    showStatusMessage(L"No matches found after wrap.", RGB(255, 0, 0));
-                }
-            }
-            else
-            {
-                showStatusMessage(L"No matches found.", RGB(255, 0, 0));
+            else {
+                showStatusMessage(L"No matches found after wrap.", RGB(255, 0, 0));
             }
         }
         else
         {
-            std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-            bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-            bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-            bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-            bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-            int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
-
-            std::string findTextUtf8 = convertAndExtend(findText, extended);
-            SearchResult result = performSearchBackward(findTextUtf8, searchFlags, searchPos);
-
-            if (result.pos >= 0) {
-                showStatusMessage(L"", RGB(0, 128, 0));
-            }
-            else if (wrapAroundEnabled)
-            {
-                result = performSearchBackward(findTextUtf8, searchFlags, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
-                if (result.pos >= 0) {
-                    showStatusMessage((L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
-                }
-                else {
-                    showStatusMessage((L"No matches found for '" + findText + L"' after wrap.").c_str(), RGB(255, 0, 0));
-                }
-            }
-            else
-            {
-                showStatusMessage((L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
-            }
-
-            addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+            showStatusMessage(L"No matches found.", RGB(255, 0, 0));
         }
+    }
+    else
+    {
+        std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+        bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+        bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+        bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+        int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
+
+        std::string findTextUtf8 = convertAndExtend(findText, extended);
+        SearchResult result = performSearchBackward(findTextUtf8, searchFlags, searchPos);
+
+        if (result.pos >= 0) {
+            showStatusMessage(L"", RGB(0, 128, 0));
+        }
+        else if (wrapAroundEnabled)
+        {
+            result = performSearchBackward(findTextUtf8, searchFlags, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+            if (result.pos >= 0) {
+                showStatusMessage((L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
+            }
+            else {
+                showStatusMessage((L"No matches found for '" + findText + L"' after wrap.").c_str(), RGB(255, 0, 0));
+            }
+        }
+        else
+        {
+            showStatusMessage((L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
+        }
+
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
 }
 
@@ -1719,7 +1736,7 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
         }
     }
     // Check if IDC_COLUMN_MODE_RADIO is enabled, selectMatch is false, and column delimiter data is set
-    else if (!selectMatch && IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED &&
+    else if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED &&
         !(columnDelimiterData.columns.empty() || columnDelimiterData.delimiter.empty())) {
 
         LRESULT totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
@@ -1777,7 +1794,7 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
                         if (start >= startColumn && start <= endColumn) {
                             startColumn = start;
                         }
-
+                        
                         // Perform search within the column range
                         if (start <= startColumn) {
                             targetRange = { startColumn, endColumn };
@@ -1799,7 +1816,7 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
 
 
     else {
-        // If neither IDC_SELECTION_RADIO nor IDC_COLUMN_MODE_RADIO is enabled or selectMatch is true, perform search within the whole document
+        // If neither IDC_SELECTION_RADIO nor IDC_COLUMN_MODE_RADIO, perform search within the whole document
         targetRange.start = start;
         targetRange.end = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
         result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
@@ -1815,19 +1832,99 @@ SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8
     result.length = 0;
     result.foundText = "";
 
-    ::SendMessage(_hScintilla, SCI_SETTARGETSTART, start, 0);
-    ::SendMessage(_hScintilla, SCI_SETTARGETEND, 0, 0);
-    ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
-    LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
-    result.pos = pos;
+    SelectionRange targetRange;
 
-    if (pos >= 0) {
-        result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
-        result.foundText = findTextUtf8;
-        displayResultCentered(result.pos, result.pos + result.length, false);
+    // Check if IDC_COLUMN_MODE_RADIO is enabled, and column delimiter data is set
+    if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED &&
+        !(columnDelimiterData.columns.empty() || columnDelimiterData.delimiter.empty())) {
+
+        LRESULT totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
+        LRESULT startLine = ::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, start, 0);
+        // calculate startColumnIndex
+        SIZE_T startColumnIndex = 1;
+        auto lineEntry = delimiterPositionsMap.find(startLine);
+        if (startLine < totalLines && lineEntry != delimiterPositionsMap.end()) {
+            for (SIZE_T i = 0; i < lineEntry->second.size(); ++i) {
+                if (start < lineEntry->second[i].position) {
+                    startColumnIndex = i + 1;
+                    break;
+                }
+                else if (i == lineEntry->second.size() - 1 && start >= lineEntry->second[i].position) {
+                    startColumnIndex = i + 2;  // We're in the last column
+                    break;
+                }
+            }
+        }
+
+        // Iterate over each line in reverse
+        for (LRESULT line = startLine; line >= 0; --line) {
+            lineEntry = delimiterPositionsMap.find(line);
+            if (lineEntry != delimiterPositionsMap.end()) {
+                SIZE_T totalColumns = lineEntry->second.size() + 1;
+
+                // Handle search for specific columns from columnDelimiterData
+                for (SIZE_T column = (line == startLine ? startColumnIndex : totalColumns); column >= 1; --column) {
+
+                    // Set start and end positions based on column index
+                    LRESULT startColumn = 0;
+                    LRESULT endColumn = 0;
+
+                    if (column == 1) {
+                        startColumn = ::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, line, 0);
+                    }
+                    else {
+                        startColumn = lineEntry->second[column - 2].position + lineEntry->second[column - 2].length;
+                    }
+
+                    if (column == lineEntry->second.size() + 1) {
+                        endColumn = ::SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, line, 0);
+                    }
+                    else {
+                        endColumn = lineEntry->second[column - 1].position;
+                    }
+
+                    // Adjust the endColumn to the start position for the first search in the column where cursor stands
+                    if (line == startLine && column == startColumnIndex) {
+                        endColumn = start;
+                    }
+
+                    // Check if the current column is included in the specified columns
+                    if (columnDelimiterData.columns.find(static_cast<int>(column)) == columnDelimiterData.columns.end()) {
+                        // If it's not included, skip this iteration
+                        continue;
+                    }
+
+                    // Perform search within the column range
+                    if (start >= startColumn) {
+                        targetRange = { endColumn, startColumn };  // Here, end comes before start to signify a backward search
+                        result = performSingleSearch(findTextUtf8, searchFlags, false, targetRange);
+
+                        // Check if a match was found
+                        if (result.pos >= 0) {
+                            displayResultCentered(result.pos, result.pos + result.length, false);
+                            return result;
+                        }
+                    }
+                }
+            }
+        }
     }
     else {
-        result.length = 0;
+
+        ::SendMessage(_hScintilla, SCI_SETTARGETSTART, start, 0);
+        ::SendMessage(_hScintilla, SCI_SETTARGETEND, 0, 0);
+        ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
+        LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
+        result.pos = pos;
+
+        if (pos >= 0) {
+            result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
+            result.foundText = findTextUtf8;
+            displayResultCentered(result.pos, result.pos + result.length, false);
+        }
+        else {
+            result.length = 0;
+        }
     }
 
     return result;
@@ -1924,6 +2021,10 @@ void MultiReplace::handleMarkMatchesButton() {
     int matchCount = 0;
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     markedStringsCount = 0;
+
+    // Update the column and delimiter data for IDC_COLUMN_MODE_RADIO in performSearchForward().
+    parseColumnAndDelimiterData();
+    findAllDelimitersInDocument();
 
     if (useListEnabled)
     {
