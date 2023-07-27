@@ -94,6 +94,12 @@ struct DelimiterPositionData {
     SIZE_T length;
 };
 
+struct StartColumnInfo {
+    LRESULT totalLines;
+    LRESULT startLine;
+    SIZE_T startColumnIndex;
+};
+
 enum class Direction { Up, Down };
 
 typedef std::basic_string<TCHAR> generic_string;
@@ -145,6 +151,9 @@ public:
 
     static bool isWindowOpen;
     static void onSelectionChanged() {
+        if (!isWindowOpen) {
+            return;
+        }
 
         // Get the start and end of the selection
         Sci_Position start = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
@@ -159,6 +168,11 @@ public:
             ::SendMessage(::GetDlgItem(getDialogHandle(), IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
             ::SendMessage(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
         }
+    }
+
+    static bool textModified;
+    static void onTextChanged() {
+        textModified = true;
     }
 
 
@@ -273,10 +287,12 @@ private:
 
     //Scope
     void parseColumnAndDelimiterData();
-    void findAllDelimitersInDocument();
+    void findAllDelimitersInDocument(bool findCompleteColumns);
+    StartColumnInfo getStartColumnInfo(LRESULT startPosition);
     void highlightColumnRange(LRESULT start, LRESULT end, SIZE_T column);
     void MultiReplace::highlightColumns();
     void MultiReplace::handleClearColumnMarks();
+    std::wstring addLineAndColumnMessage(LRESULT pos);
 
     //Utilities
     int convertExtendedToString(const std::string& query, std::string& result);

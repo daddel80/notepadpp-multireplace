@@ -67,27 +67,36 @@ extern "C" __declspec(dllexport) FuncItem * getFuncsArray(int *nbF)
 }
 
 
-extern "C" __declspec(dllexport) void beNotified(SCNotification *notifyCode)
+extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
 {
-	switch (notifyCode->nmhdr.code) 
-	{
-		case NPPN_SHUTDOWN:
-		{
-			commandMenuCleanUp();
-		}
-		break;
-		case SCN_UPDATEUI:
-		{
-			if (MultiReplace::isWindowOpen)
-			{
-				MultiReplace::onSelectionChanged();
-			}
-		}
-		break;
+    switch (notifyCode->nmhdr.code)
+    {
+    case NPPN_SHUTDOWN:
+    {
+        commandMenuCleanUp();
+    }
+    break;
+    case SCN_UPDATEUI:
+    {
+        if (notifyCode->updated & SC_UPDATE_SELECTION)
+        {
+            MultiReplace::onSelectionChanged();
+        }
+    }
+    break;
+    case SCN_MODIFIED:
+    {
+        if (notifyCode->modificationType & SC_MOD_INSERTTEXT ||
+            notifyCode->modificationType & SC_MOD_DELETETEXT)
+        {
+            MultiReplace::onTextChanged();
+        }
+    }
+    break;
 
-		default:
-			return;
-	}
+    default:
+        return;
+    }
 }
 
 
