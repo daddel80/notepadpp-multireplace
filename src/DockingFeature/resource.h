@@ -89,7 +89,7 @@
 #define IDC_AUTHOR_STATIC               5605
 
 // Pixel Size of Window when hiding Controls
-#define MIN_WIDTH 900
+#define MIN_WIDTH 940
 #define MIN_HEIGHT 440
 
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace")
