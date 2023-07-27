@@ -1130,7 +1130,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 if (!columnDelimiterData.columns.empty() && !columnDelimiterData.delimiter.empty()) {
                     highlightColumns();
                     LRESULT startPosition = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
-                    showStatusMessage(addLineAndColumnMessage(startPosition), RGB(0, 128, 0));
+                    showStatusMessage(L"Actual Position " + addLineAndColumnMessage(startPosition), RGB(0, 128, 0));
                 }
             }
             else {
@@ -2232,6 +2232,8 @@ void MultiReplace::parseColumnAndDelimiterData() {
 
     if (columnDataString.empty() || delimiterData.empty()) {
         showStatusMessage(L"Column data or delimiter data is missing", RGB(255, 0, 0));
+        columnDelimiterData.columns.clear();
+        columnDelimiterData.delimiter = L"";
         return;
     }
 
