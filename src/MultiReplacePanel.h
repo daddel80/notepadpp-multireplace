@@ -86,6 +86,10 @@ struct SelectionRange {
 struct ColumnDelimiterData {
     std::set<int> columns;
     std::wstring delimiter;
+    bool dataChanged;
+
+    // Default constructor
+    ColumnDelimiterData() : dataChanged(false) {}
 };
 
 struct DelimiterPositionData {

@@ -1125,10 +1125,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (!isColumnHighlighted) {
                 parseColumnAndDelimiterData();
                 findAllDelimitersInDocument(true);
-                highlightColumns();
-
-                LRESULT startPosition = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
-                showStatusMessage(addLineAndColumnMessage(startPosition), RGB(0, 128, 0));
+                if (!columnDelimiterData.columns.empty() && !columnDelimiterData.delimiter.empty()) {
+                    highlightColumns();
+                    LRESULT startPosition = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+                    showStatusMessage(addLineAndColumnMessage(startPosition), RGB(0, 128, 0));
+                }
             }
             else {
                 handleClearColumnMarks();
@@ -2219,15 +2220,13 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
 
 void MultiReplace::parseColumnAndDelimiterData() {
     // Clear previous data
-    columnDelimiterData = ColumnDelimiterData();
-    delimiterPositionData = DelimiterPositionData{ 0, 0, 0 };
+    // delimiterPositionData = DelimiterPositionData{ 0, 0, 0 };
 
     std::wstring columnDataString = getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT);
     std::wstring delimiterData = getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT);
 
     columnDataString.erase(0, columnDataString.find_first_not_of(L','));
     columnDataString.erase(columnDataString.find_last_not_of(L',') + 1);
-    bool errorDetected = false;
 
     if (columnDataString.empty() || delimiterData.empty()) {
         showStatusMessage(L"Column data or delimiter data is missing", RGB(255, 0, 0));
@@ -2252,7 +2251,8 @@ void MultiReplace::parseColumnAndDelimiterData() {
 
                 if (startRange < 1 || endRange < startRange) {
                     showStatusMessage(L"Invalid range in column data", RGB(255, 0, 0));
-                    errorDetected = true;
+                    columnDelimiterData.columns.clear();
+                    columnDelimiterData.delimiter = L"";
                     return;
                 }
 
@@ -2262,7 +2262,8 @@ void MultiReplace::parseColumnAndDelimiterData() {
             }
             catch (const std::exception&) {
                 showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
-                errorDetected = true;
+                columnDelimiterData.columns.clear();
+                columnDelimiterData.delimiter = L"";
                 return;
             }
         }
@@ -2273,7 +2274,8 @@ void MultiReplace::parseColumnAndDelimiterData() {
 
                 if (column < 1) {
                     showStatusMessage(L"Invalid column number", RGB(255, 0, 0));
-                    errorDetected = true;
+                    columnDelimiterData.columns.clear();
+                    columnDelimiterData.delimiter = L"";
                     return;
                 }
 
@@ -2281,7 +2283,8 @@ void MultiReplace::parseColumnAndDelimiterData() {
             }
             catch (const std::exception&) {
                 showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
-                errorDetected = true;
+                columnDelimiterData.columns.clear();
+                columnDelimiterData.delimiter = L"";
                 return;
             }
         }
@@ -2302,7 +2305,8 @@ void MultiReplace::parseColumnAndDelimiterData() {
 
             if (startRange < 1 || endRange < startRange) {
                 showStatusMessage(L"Invalid range in column data", RGB(255, 0, 0));
-                errorDetected = true;
+                columnDelimiterData.columns.clear();
+                columnDelimiterData.delimiter = L"";
                 return;
             }
 
@@ -2312,7 +2316,8 @@ void MultiReplace::parseColumnAndDelimiterData() {
         }
         catch (const std::exception&) {
             showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
-            errorDetected = true;
+            columnDelimiterData.columns.clear();
+            columnDelimiterData.delimiter = L"";
             return;
         }
     }
@@ -2322,7 +2327,8 @@ void MultiReplace::parseColumnAndDelimiterData() {
 
             if (column < 1) {
                 showStatusMessage(L"Invalid column number", RGB(255, 0, 0));
-                errorDetected = true;
+                columnDelimiterData.columns.clear();
+                columnDelimiterData.delimiter = L"";
                 return;
             }
 
@@ -2330,19 +2336,23 @@ void MultiReplace::parseColumnAndDelimiterData() {
         }
         catch (const std::exception&) {
             showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
-            errorDetected = true;
+            columnDelimiterData.columns.clear();
+            columnDelimiterData.delimiter = L"";
             return;
         }
     }
 
+    // Set dataChanged flag
+    columnDelimiterData.dataChanged = !(columnDelimiterData.columns == columns && columnDelimiterData.delimiter == delimiterData);
+
     columnDelimiterData.columns = columns;
     columnDelimiterData.delimiter = delimiterData;
-
 }
 
 void MultiReplace::findAllDelimitersInDocument(bool findCompleteColumns) {
     // Return early if textModified is false or if columnDelimiterData is empty
-    if (!textModified || columnDelimiterData.columns.empty() || columnDelimiterData.delimiter.empty()) {
+    if (columnDelimiterData.columns.empty() || columnDelimiterData.delimiter.empty() ||
+        (!textModified && !columnDelimiterData.dataChanged)) {
         return;
     }
 
@@ -2399,6 +2409,7 @@ void MultiReplace::findAllDelimitersInDocument(bool findCompleteColumns) {
 }
 
 StartColumnInfo MultiReplace::getStartColumnInfo(LRESULT startPosition) {
+
     if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) != BST_CHECKED ||
         columnDelimiterData.columns.empty() || columnDelimiterData.delimiter.empty()) {
         return { 0, 0, 0 };
