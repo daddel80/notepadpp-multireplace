@@ -308,6 +308,8 @@ private:
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
+    std::wstring addProgressBarMessage(LRESULT currentLine, LRESULT totalLines, const std::wstring& message, LRESULT threshold);
+    void displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput);

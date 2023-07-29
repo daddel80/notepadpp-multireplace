@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <set>
+#include <chrono>
 
 #ifdef UNICODE
 #define generic_strtoul wcstoul
@@ -114,7 +115,6 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 364 + 20, 60, 20, WC_STATIC, L"Shift Lines", SS_LEFT, NULL };
     ctrlMap[IDC_STATIC_FRAME] = { frameX, 80, 280, 155, WC_BUTTON, L"", BS_GROUPBOX, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { 14, 244, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 170, 180, 28, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 150, 80, 20, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 }
 
@@ -1099,7 +1099,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_NORMAL_RADIO:
         case IDC_EXTENDED_RADIO:
         {
-            // Enable the Whole word checkbox
             EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), TRUE);
         }
         break;
@@ -2347,7 +2346,7 @@ void MultiReplace::parseColumnAndDelimiterData() {
     }
 
     // Set dataChanged flag
-    columnDelimiterData.dataChanged = !(columnDelimiterData.columns == columns && columnDelimiterData.delimiter == delimiterData);
+    columnDelimiterData.dataChanged = !(columnDelimiterData.delimiter == delimiterData);
 
     columnDelimiterData.columns = columns;
     columnDelimiterData.delimiter = delimiterData;
@@ -2405,6 +2404,8 @@ void MultiReplace::findAllDelimitersInDocument(bool findCompleteColumns) {
                 delimiterPositionsMap[line].push_back(delimiterPositionData);
                 delimiterCount++;
             }
+
+            displayProgressInStatus(line, totalLines, L"Reading CSV Structur");
 
         } while (result.pos >= 0 && result.pos < lineEnd && (findCompleteColumns || delimiterCount < maxColumn));
     }
@@ -2819,6 +2820,70 @@ std::wstring MultiReplace::getSelectedText() {
     delete[] buffer;
 
     return wstr;
+}
+
+std::wstring MultiReplace::addProgressBarMessage(LRESULT currentLine, LRESULT totalLines, const std::wstring& message, LRESULT threshold) {
+    static std::wstring lastProgressBarMessage;
+    const int progressBarWidth = 10;  // Width of the progress bar in characters
+
+    if (totalLines > threshold && currentLine % (totalLines / 100) == 0) {
+        int percentageComplete = static_cast<int>((static_cast<double>(currentLine) / totalLines) * 100);
+        if (percentageComplete % 5 == 0) { // Only update every 5%
+            // Only construct a new message when the percentage changes
+            std::wstring progressBar = L"[" + std::wstring((percentageComplete / 10), '#') +
+                std::wstring((progressBarWidth - (percentageComplete / 10)), ' ') + L"]";
+            lastProgressBarMessage = message + progressBar + std::to_wstring(percentageComplete) + L"%";
+        }
+    }
+    // Return the last message constructed, regardless of whether it changed this iteration
+    return lastProgressBarMessage;
+}
+
+void MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message) {
+    static std::wstring lastProgressBarMessage;
+    static auto startTime = std::chrono::steady_clock::now();
+    static bool showProgressBar = false;
+    static bool progressBarDecided = false;
+    static int lastPercentage = -1;  // Store the last percentage value to prevent flickering
+
+    const int progressBarWidth = 15;  // Width of the progress bar in characters
+    const int maxTimeInMilliseconds = 5 * 1000;  // Time limit before showing progress bar in milliseconds
+
+    if (current == 2) {
+        // Reset the progress bar and decision when a new process starts
+        showProgressBar = false;
+        progressBarDecided = false;
+        startTime = std::chrono::steady_clock::now();
+        lastPercentage = -1;
+
+        // Show the initial status message
+        lastProgressBarMessage = message;
+        showStatusMessage(message, RGB(0, 0, 128));
+    }
+
+        
+    int percentageComplete = static_cast<int>((static_cast<double>(current) / total) * 100);
+
+    if (!progressBarDecided && percentageComplete >= 1) {
+        auto elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count();
+        long long estimatedTotalTime = elapsedMillis / percentageComplete * 100;
+        if (estimatedTotalTime > maxTimeInMilliseconds) {
+            showProgressBar = true;
+            progressBarDecided = true;
+        }
+    }
+
+    if (showProgressBar && percentageComplete / 5 > lastPercentage / 5) {  // Only update every 5% if showing progress bar
+        lastPercentage = percentageComplete;
+        int progressBlocks = static_cast<int>((static_cast<double>(percentageComplete) / 100) * progressBarWidth);
+        std::wstring progressBar =
+            std::wstring(progressBlocks, L'█') +
+            std::wstring(progressBarWidth - progressBlocks, L'▒');
+
+        lastProgressBarMessage = message + L" " + progressBar + L" " + std::to_wstring(percentageComplete) + L"%";
+        showStatusMessage(lastProgressBarMessage, RGB(0, 0, 128));
+    }
+
 }
 
 #pragma endregion
@@ -3408,6 +3473,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
     bool useList = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", false);
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, useList ? BST_CHECKED : BST_UNCHECKED, 0);
+    EnableWindow(_replaceListView, useList);
 
     // Load Scope
     int selection = readIntFromIniFile(iniFilePath, L"Scope", L"Selection", 0);
