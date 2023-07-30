@@ -85,17 +85,17 @@ struct SelectionRange {
 
 struct ColumnDelimiterData {
     std::set<int> columns;
-    std::wstring delimiter;
-    bool dataChanged;
+    std::string extendedDelimiter;
+    SIZE_T delimiterLength;
+    bool delimiterChanged;
 
     // Default constructor
-    ColumnDelimiterData() : dataChanged(false) {}
+    ColumnDelimiterData() : delimiterLength(0), delimiterChanged(false) {}
 };
 
 struct DelimiterPositionData {
     LRESULT line;
     LRESULT position;
-    SIZE_T length;
 };
 
 struct StartColumnInfo {
@@ -179,6 +179,60 @@ public:
         textModified = true;
     }
 
+    enum class ChangeType { Insert, Delete, Modify };
+
+    struct LogEntry {
+        ChangeType changeType;
+        Sci_Position lineNumber;
+    };
+
+    static std::vector<LogEntry> logChanges;
+
+    static bool isLoggingEnabled;
+    static void processTextChange(SCNotification* notifyCode) {
+        if (!isWindowOpen || !isLoggingEnabled) {
+            return;
+        }
+
+        Sci_Position cursorPosition = notifyCode->position;
+        Sci_Position addedLines = notifyCode->linesAdded;
+
+        Sci_Position lineNumber = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_LINEFROMPOSITION, cursorPosition, 0);
+        if (notifyCode->modificationType & SC_MOD_INSERTTEXT) {
+            if (addedLines != 0) {
+                // Set the first entry as Modify
+                MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
+                for (Sci_Position i = 1; i <= abs(addedLines); i++) {
+                    MultiReplace::logChanges.push_back({ ChangeType::Insert, lineNumber + i });
+                }
+            }
+            else {
+                // Check if the last entry is a Modify on the same line
+                if (MultiReplace::logChanges.empty() || MultiReplace::logChanges.back().changeType != ChangeType::Modify || MultiReplace::logChanges.back().lineNumber != lineNumber) {
+                    MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
+                }
+            }
+        }
+        else if (notifyCode->modificationType & SC_MOD_DELETETEXT) {
+            if (addedLines != 0) {
+                // Set the first entry as Modify
+                MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
+                for (Sci_Position i = 1; i <= abs(addedLines); i++) {
+                    MultiReplace::logChanges.push_back({ ChangeType::Delete, lineNumber + i });
+                }
+            }
+            else {
+                // Check if the last entry is a Modify on the same line
+                if (MultiReplace::logChanges.empty() || MultiReplace::logChanges.back().changeType != ChangeType::Modify || MultiReplace::logChanges.back().lineNumber != lineNumber) {
+                    MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
+                }
+            }
+        }
+    }
+
+
+
+    void displayLogChangesInMessageBox();
 
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam);
@@ -217,7 +271,7 @@ private:
     int lastColumn = -1;
     bool ascending = true;
     ColumnDelimiterData columnDelimiterData;
-    DelimiterPositionData delimiterPositionData = { 0, 0, 0 };
+    DelimiterPositionData delimiterPositionData = { 0, 0 };
     
     /*
        Available styles (self-tested):
@@ -297,6 +351,10 @@ private:
     void MultiReplace::highlightColumns();
     void MultiReplace::handleClearColumnMarks();
     std::wstring addLineAndColumnMessage(LRESULT pos);
+    void optimizeLogChanges();
+    void findDelimitersInLine(LRESULT line, bool findCompleteColumns);
+    void processLogChanges();
+    void updateDelimitersInDocument(int lineNumber, ChangeType changeType);
 
     //Utilities
     int convertExtendedToString(const std::string& query, std::string& result);

@@ -90,6 +90,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
             notifyCode->modificationType & SC_MOD_DELETETEXT)
         {
             MultiReplace::onTextChanged();
+            MultiReplace::processTextChange(notifyCode);
         }
     }
     break;
