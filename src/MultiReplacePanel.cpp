@@ -68,6 +68,16 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_NORMAL_RADIO] = { 210, 125, 100, 20, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
     ctrlMap[IDC_EXTENDED_RADIO] = { 210, 150, 175, 20, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REGEX_RADIO] = { 210, 175, 175, 20, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    
+    ctrlMap[IDC_SCOPE_GROUP] = { 400, 105, 190, 100, WC_BUTTON, L"Scope", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_ALL_TEXT_RADIO] = { 410, 125, 100, 20, WC_BUTTON, L"All Text", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SELECTION_RADIO] = { 410, 150, 100, 20, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_MODE_RADIO] = { 410, 175, 20, 20, WC_BUTTON, L"", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 425, 175, 30, 20, WC_STATIC, L"Col.:", SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 455, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP, NULL };
+    ctrlMap[IDC_DELIMITER_STATIC] = { 500, 175, 40, 20, WC_STATIC, L"Delim.:", SS_RIGHT, NULL };
+    ctrlMap[IDC_DELIMITER_EDIT] = { 540, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP, NULL };
+
     ctrlMap[IDC_STATIC_HINT] = { 14, 100, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER, NULL };
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 224, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
@@ -139,6 +149,9 @@ void MultiReplace::initializeCtrlMap()
 
     // CheckBox to Normal
     CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_NORMAL_RADIO);
+
+    // CheckBox to All Text
+    CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_ALL_TEXT_RADIO);
 
     // Hide Hint Text
     ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_HIDE);
@@ -309,6 +322,7 @@ void MultiReplace::updateUIVisibility() {
     // Define the UI element IDs to be shown or hidden based on the window size
     const int elementIds[] = {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
+        IDC_SCOPE_GROUP, IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO ,IDC_DELIMITER_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_STATIC, IDC_COLUMN_NUM_STATIC,
         IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX,IDC_STATIC_FRAME,
         IDC_STATIC_FIND, IDC_STATIC_REPLACE, 
         IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
@@ -1592,29 +1606,71 @@ void MultiReplace::handleFindPrevButton() {
     }
 }
 
+SearchResult MultiReplace::performSingleSearch(int searchFlags, const std::string& findTextUtf8, SelectionRange range, bool selectMatch) {
+    ::SendMessage(_hScintilla, SCI_SETTARGETSTART, range.start, 0);
+    ::SendMessage(_hScintilla, SCI_SETTARGETEND, range.end, 0);
+    ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
+
+    LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
+
+    SearchResult result;
+    result.pos = pos;
+    result.length = 0;
+    result.foundText = "";
+
+    if (pos >= 0) {
+        // If a match is found, set additional result data
+        result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
+        result.foundText = findTextUtf8;
+
+        // If selectMatch is true, highlight the found text
+        if (selectMatch) {
+            displayResultCentered(result.pos, result.pos + result.length, true);
+        }
+    }
+
+    return result;
+}
+
 SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start, bool selectMatch)
 {
     SearchResult result;
     result.pos = -1;
-    result.length = 0;
-    result.foundText = "";
 
-    LRESULT targetEnd = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
-    ::SendMessage(_hScintilla, SCI_SETTARGETSTART, start, 0);
-    ::SendMessage(_hScintilla, SCI_SETTARGETEND, targetEnd, 0);
-    ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
-    LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
-    result.pos = pos;
+    // Define initial search range
+    SelectionRange targetRange;
+    targetRange.start = start;
+    targetRange.end = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
 
-    if (pos >= 0) {
-        result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
-        result.foundText = findTextUtf8;
+    // Check if IDC_SELECTION_RADIO is enabled and selectMatch is false
+    if (!selectMatch && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+        LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
+        std::vector<SelectionRange> selections(selectionCount);
 
-        // If selectMatch is true, set the selection
-        selectMatch ? displayResultCentered(result.pos, result.pos + result.length, true) : NULL;
+        for (int i = 0; i < selectionCount; i++) {
+            selections[i].start = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
+            selections[i].end = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
+        }
+
+        // Sort selections based on their start position
+        std::sort(selections.begin(), selections.end(), [](const SelectionRange& a, const SelectionRange& b) {
+            return a.start < b.start;
+            });
+
+        // Perform search within each selection
+        for (const auto& selection : selections) {
+            if (selection.start >= start) {
+                result = performSingleSearch(searchFlags, findTextUtf8, selection, selectMatch);
+
+                if (result.pos >= 0) {
+                    return result;
+                }
+            }
+        }
     }
     else {
-        result.length = 0;
+        // If IDC_SELECTION_RADIO is not enabled or selectMatch is true, perform search within the whole document
+        result = performSingleSearch(searchFlags, findTextUtf8, targetRange, selectMatch);
     }
 
     return result;
