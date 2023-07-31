@@ -1262,6 +1262,7 @@ void MultiReplace::handleReplaceAllButton() {
 
 void MultiReplace::handleReplaceButton() {
     // First check if the document is read-only
+
     LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
         showStatusMessage(L"Cannot replace. Document is read-only.", RGB(255, 0, 0));
@@ -1278,6 +1279,7 @@ void MultiReplace::handleReplaceButton() {
 
     // Get the cursor position
     LRESULT cursorPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
@@ -1342,24 +1344,18 @@ void MultiReplace::handleReplaceButton() {
         SelectionInfo selection = getSelectionInfo();
         std::string findTextUtf8 = convertAndExtend(findText, extended);
 
-        // Check if currently selected text matches the searched text
-        bool textMatch = (selection.text == findTextUtf8);
-
         // Define searchFlags before if block
         int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
+        searchResult = performSearchForward(findTextUtf8, searchFlags, selection.startPos, true);
 
-        if (textMatch) {
+        if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
             // If it does match, replace the selected string
             std::string replaceTextUtf8 = convertAndExtend(replaceText, extended);
             performReplace(replaceTextUtf8, selection.startPos, selection.length);
             showStatusMessage((L"Replaced '" + findText + L"' with '" + replaceText + L"'.").c_str(), RGB(0, 128, 0));
 
             // Continue search after replace
-            searchResult = performSearchForward(findTextUtf8, searchFlags, cursorPos + searchResult.length, true);
-        }
-        else {
-            // If it does not match, perform a new search
-            searchResult = performSearchForward(findTextUtf8, searchFlags, cursorPos, true);
+            searchResult = performSearchForward(findTextUtf8, searchFlags, searchResult.pos + searchResult.length, true);
         }
 
         // Check search results and handle wrap-around
@@ -2814,6 +2810,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
     bool useList = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", false);
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, useList ? BST_CHECKED : BST_UNCHECKED, 0);
+    EnableWindow(_replaceListView, useList);
 }
 
 void MultiReplace::loadSettings() {
