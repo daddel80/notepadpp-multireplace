@@ -53,7 +53,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int checkbox2X = buttonX + 173;
     int swapButtonX = windowWidth - 40 - 160 - 37;
     int comboWidth = windowWidth - 360;
-    int frameX = windowWidth  - 310;
+    int frameX = windowWidth - 310;
     int listWidth = windowWidth - 255;
     int listHeight = windowHeight - 274;
     int checkboxX = buttonX - 100;
@@ -68,16 +68,6 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_NORMAL_RADIO] = { 210, 125, 100, 20, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
     ctrlMap[IDC_EXTENDED_RADIO] = { 210, 150, 175, 20, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REGEX_RADIO] = { 210, 175, 175, 20, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    
-    ctrlMap[IDC_SCOPE_GROUP] = { 400, 105, 190, 100, WC_BUTTON, L"Scope", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_ALL_TEXT_RADIO] = { 410, 125, 100, 20, WC_BUTTON, L"All Text", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SELECTION_RADIO] = { 410, 150, 100, 20, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_MODE_RADIO] = { 410, 175, 20, 20, WC_BUTTON, L"", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 425, 175, 30, 20, WC_STATIC, L"Col.:", SS_RIGHT, NULL };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 455, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP, NULL };
-    ctrlMap[IDC_DELIMITER_STATIC] = { 500, 175, 40, 20, WC_STATIC, L"Delim.:", SS_RIGHT, NULL };
-    ctrlMap[IDC_DELIMITER_EDIT] = { 540, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP, NULL };
-
     ctrlMap[IDC_STATIC_HINT] = { 14, 100, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER, NULL };
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 224, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
@@ -129,7 +119,7 @@ void MultiReplace::initializeCtrlMap()
         return;
     }
 
-    
+
     // Create the font
     hFont = CreateFont(FONT_SIZE, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, FONT_NAME);
 
@@ -149,9 +139,6 @@ void MultiReplace::initializeCtrlMap()
 
     // CheckBox to Normal
     CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_NORMAL_RADIO);
-
-    // CheckBox to All Text
-    CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_ALL_TEXT_RADIO);
 
     // Hide Hint Text
     ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_HIDE);
@@ -259,7 +246,7 @@ void MultiReplace::moveAndResizeControls() {
         IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE,
         IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON,
         IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
-        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, 
+        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT,
         IDC_EXPORT_BASH_BUTTON
     };
 
@@ -322,13 +309,12 @@ void MultiReplace::updateUIVisibility() {
     // Define the UI element IDs to be shown or hidden based on the window size
     const int elementIds[] = {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
-        IDC_SCOPE_GROUP, IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO ,IDC_DELIMITER_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_STATIC, IDC_COLUMN_NUM_STATIC,
         IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX,IDC_STATIC_FRAME,
-        IDC_STATIC_FIND, IDC_STATIC_REPLACE, 
+        IDC_STATIC_FIND, IDC_STATIC_REPLACE,
         IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
         IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
         IDC_CLEAR_MARKS_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME,
-        IDC_SHIFT_TEXT, IDC_STATUS_MESSAGE, IDC_EXPORT_BASH_BUTTON, 
+        IDC_SHIFT_TEXT, IDC_STATUS_MESSAGE, IDC_EXPORT_BASH_BUTTON,
         IDC_2_BUTTONS_MODE
     };
 
@@ -547,7 +533,7 @@ void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
     if (pnmia == nullptr || static_cast<size_t>(pnmia->iItem) >= replaceListData.size()) {
         return;
     }
-    
+
     // Copy the data from the selected item back to the source interfaces
     ReplaceItemData& itemData = replaceListData[pnmia->iItem];
 
@@ -562,11 +548,11 @@ void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
 }
 
 void MultiReplace::shiftListItem(HWND listView, const Direction& direction) {
-    
+
     // Enable the ListView accordingly
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
     EnableWindow(_replaceListView, TRUE);
-    
+
     std::vector<size_t> selectedIndices;
     int i = -1;
     while ((i = ListView_GetNextItem(listView, i, LVNI_SELECTED)) != -1) {
@@ -837,7 +823,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         if (pnmh->idFrom == IDC_REPLACE_LIST) {
             switch (pnmh->code) {
-            case NM_CLICK: 
+            case NM_CLICK:
             {
                 NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
                 if (pnmia->iSubItem == 9) { // Delete button column
@@ -869,7 +855,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // Display the data based on the subitem
                 switch (plvdi->item.iSubItem)
                 {
-              
+
                 case 1:
                     if (itemData.isSelected) {
                         plvdi->item.pszText = L"\u25A0";
@@ -1020,7 +1006,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             }
         }
         else
-            DockingDlgInterface::run_dlgProc( message, wParam, lParam );
+            DockingDlgInterface::run_dlgProc(message, wParam, lParam);
     }
     break;
 
@@ -1044,7 +1030,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         switch (LOWORD(wParam))
         {
 
-        case IDCANCEL :
+        case IDCANCEL:
         {
             if (_MultiReplace.isFloating())
             {
@@ -1053,7 +1039,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             }
             else
             {
-                ::SetFocus( getCurScintilla() );
+                ::SetFocus(getCurScintilla());
             }
         }
         break;
@@ -1115,7 +1101,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         break;
 
         case IDC_COPY_TO_LIST_BUTTON:
-        {            
+        {
             handleCopyToListButton();
         }
         break;
@@ -1276,7 +1262,6 @@ void MultiReplace::handleReplaceAllButton() {
 
 void MultiReplace::handleReplaceButton() {
     // First check if the document is read-only
-
     LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
         showStatusMessage(L"Cannot replace. Document is read-only.", RGB(255, 0, 0));
@@ -1294,7 +1279,6 @@ void MultiReplace::handleReplaceButton() {
     // Get the cursor position
     LRESULT cursorPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
 
-
     if (useListEnabled) {
         if (replaceListData.empty()) {
             showStatusMessage(L"Add values into the list. Or uncheck 'Use in List' to replace directly.", RGB(255, 0, 0));
@@ -1305,28 +1289,35 @@ void MultiReplace::handleReplaceButton() {
         SelectionInfo selection = getSelectionInfo();
 
         // Search through replaceListData to find a match with the selected text
-        bool matchFound = false;
         for (const ReplaceItemData& itemData : replaceListData) {
-            std::string itemDataUtf8 = convertAndExtend(itemData.findText, itemData.extended);
-            if (itemDataUtf8 == selection.text) {
-                // If it does match, replace the selected string
-                std::string replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
-                performReplace(replaceTextUtf8, selection.startPos, selection.length);
-                showStatusMessage((L"Replaced '" + stringToWString(selection.text) + L"' with '" + itemData.replaceText + L"'.").c_str(), RGB(0, 128, 0));
-                matchFound = true;
-                break;
+            // Only perform the search if the item is selected
+            if (itemData.isSelected) {
+                std::wstring findText = itemData.findText;
+                std::wstring replaceText = itemData.replaceText;
+                bool wholeWord = itemData.wholeWord;
+                bool matchCase = itemData.matchCase;
+                bool regex = itemData.regex;
+                bool extended = itemData.extended;
+
+                std::string findTextUtf8 = convertAndExtend(findText, extended);
+
+                // Define searchFlags
+                int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
+
+                // Search from the selection position
+                searchResult = performSearchForward(findTextUtf8, searchFlags, selection.startPos, true);
+
+                if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
+                    // If it does match, replace the selected string
+                    std::string replaceTextUtf8 = convertAndExtend(replaceText, extended);
+                    performReplace(replaceTextUtf8, selection.startPos, selection.length);
+                    showStatusMessage((L"Replaced '" + stringToWString(selection.text) + L"' with '" + replaceText + L"'.").c_str(), RGB(0, 128, 0));
+                    break;
+                }
             }
         }
 
-        // If no match was found in the list, perform list search forward
-        if (!matchFound) {
-            searchResult = performListSearchForward(replaceListData, cursorPos);
-        }
-
-        // After replacement, perform the search again
-        if (matchFound) {
-            searchResult = performListSearchForward(replaceListData, cursorPos);
-        }
+        searchResult = performListSearchForward(replaceListData, cursorPos);
 
         // Check search results and handle wrap-around
         if (searchResult.pos < 0 && wrapAroundEnabled) {
@@ -1346,7 +1337,6 @@ void MultiReplace::handleReplaceButton() {
             showStatusMessage(L"No matches found.", RGB(255, 0, 0));
         }
     }
-
     else {
         std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         std::wstring replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
@@ -1529,7 +1519,7 @@ void MultiReplace::handleFindNextButton() {
         }
         else
         {
-             showStatusMessage((L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
+            showStatusMessage((L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
         }
 
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
@@ -1606,71 +1596,29 @@ void MultiReplace::handleFindPrevButton() {
     }
 }
 
-SearchResult MultiReplace::performSingleSearch(int searchFlags, const std::string& findTextUtf8, SelectionRange range, bool selectMatch) {
-    ::SendMessage(_hScintilla, SCI_SETTARGETSTART, range.start, 0);
-    ::SendMessage(_hScintilla, SCI_SETTARGETEND, range.end, 0);
-    ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
-
-    LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
-
-    SearchResult result;
-    result.pos = pos;
-    result.length = 0;
-    result.foundText = "";
-
-    if (pos >= 0) {
-        // If a match is found, set additional result data
-        result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
-        result.foundText = findTextUtf8;
-
-        // If selectMatch is true, highlight the found text
-        if (selectMatch) {
-            displayResultCentered(result.pos, result.pos + result.length, true);
-        }
-    }
-
-    return result;
-}
-
 SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start, bool selectMatch)
 {
     SearchResult result;
     result.pos = -1;
+    result.length = 0;
+    result.foundText = "";
 
-    // Define initial search range
-    SelectionRange targetRange;
-    targetRange.start = start;
-    targetRange.end = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+    LRESULT targetEnd = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+    ::SendMessage(_hScintilla, SCI_SETTARGETSTART, start, 0);
+    ::SendMessage(_hScintilla, SCI_SETTARGETEND, targetEnd, 0);
+    ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
+    LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
+    result.pos = pos;
 
-    // Check if IDC_SELECTION_RADIO is enabled and selectMatch is false
-    if (!selectMatch && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
-        std::vector<SelectionRange> selections(selectionCount);
+    if (pos >= 0) {
+        result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
+        result.foundText = findTextUtf8;
 
-        for (int i = 0; i < selectionCount; i++) {
-            selections[i].start = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
-            selections[i].end = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
-        }
-
-        // Sort selections based on their start position
-        std::sort(selections.begin(), selections.end(), [](const SelectionRange& a, const SelectionRange& b) {
-            return a.start < b.start;
-            });
-
-        // Perform search within each selection
-        for (const auto& selection : selections) {
-            if (selection.start >= start) {
-                result = performSingleSearch(searchFlags, findTextUtf8, selection, selectMatch);
-
-                if (result.pos >= 0) {
-                    return result;
-                }
-            }
-        }
+        // If selectMatch is true, set the selection
+        selectMatch ? displayResultCentered(result.pos, result.pos + result.length, true) : NULL;
     }
     else {
-        // If IDC_SELECTION_RADIO is not enabled or selectMatch is true, perform search within the whole document
-        result = performSingleSearch(searchFlags, findTextUtf8, targetRange, selectMatch);
+        result.length = 0;
     }
 
     return result;
@@ -2195,7 +2143,7 @@ std::wstring MultiReplace::getTextFromDialogItem(HWND hwnd, int itemID) {
 
 void MultiReplace::setSelections(bool select, bool onlySelected) {
     if (replaceListData.empty()) {
-        return; 
+        return;
     }
 
     int i = 0;
@@ -2242,7 +2190,6 @@ void MultiReplace::updateHeader() {
         lvc.pszText = L"\u25A3"; // Black square containing small white square
     }
     else {
-        lvc.pszText = L"\u2610"; // Ballot box
     }
 
     ListView_SetColumn(_replaceListView, 1, &lvc);
