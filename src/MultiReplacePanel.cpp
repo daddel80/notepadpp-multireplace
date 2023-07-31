@@ -2567,9 +2567,9 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
         findString='\b'${findString}'\b'
     fi
     if [[ "$matchCase" -eq 1 ]]; then
-        template='s/'${findString}'/'${replaceString}'/g'
+        template='s|'${findString}'|'${replaceString}'|g'
     else
-        template='s/'${findString}'/'${replaceString}'/gi'
+        template='s|'${findString}'|'${replaceString}'|gi'
     fi
     case 1 in
         $normal)
