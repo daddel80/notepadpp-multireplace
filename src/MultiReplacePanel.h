@@ -93,8 +93,13 @@ struct ColumnDelimiterData {
     ColumnDelimiterData() : delimiterLength(0), delimiterChanged(false) {}
 };
 
+/*
 struct DelimiterPositionData {
     LRESULT line;
+    LRESULT position;
+};*/
+
+struct DelimiterPosition {
     LRESULT position;
 };
 
@@ -215,11 +220,17 @@ public:
         }
         else if (notifyCode->modificationType & SC_MOD_DELETETEXT) {
             if (addedLines != 0) {
-                // Set the first entry as Modify
-                MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
-                for (Sci_Position i = 1; i <= abs(addedLines); i++) {
+                // Special handling for deletions at position 0
+                if (cursorPosition == 0) {
+                    MultiReplace::logChanges.push_back({ ChangeType::Delete, 0 });
+                    return;
+                }
+                // Then, log the deletes in descending order
+                for (Sci_Position i = abs(addedLines); i > 0; i--) {
                     MultiReplace::logChanges.push_back({ ChangeType::Delete, lineNumber + i });
                 }
+                // Set the first entry as Modify for the smallest lineNumber
+                MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
             }
             else {
                 // Check if the last entry is a Modify on the same line
@@ -229,8 +240,6 @@ public:
             }
         }
     }
-
-
 
     void displayLogChangesInMessageBox();
 
@@ -271,7 +280,7 @@ private:
     int lastColumn = -1;
     bool ascending = true;
     ColumnDelimiterData columnDelimiterData;
-    DelimiterPositionData delimiterPositionData = { 0, 0 };
+    // DelimiterPositionData delimiterPositionData = { 0, 0 };
     
     /*
        Available styles (self-tested):
@@ -290,7 +299,9 @@ private:
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
     static std::map<int, ControlInfo> ctrlMap;
-    std::map<LRESULT, std::vector<DelimiterPositionData>> delimiterPositionsMap;
+    // std::map<LRESULT, std::vector<DelimiterPositionData>> delimiterPositionsMap;
+    using LinePositions = std::vector<DelimiterPosition>;
+    std::vector<LinePositions> delimiterPositionsList;
     bool isColumnHighlighted = false;
 
     //Initialization
