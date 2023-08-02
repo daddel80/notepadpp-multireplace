@@ -2617,7 +2617,7 @@ void MultiReplace::processLogForDelimiters()
     logChanges.clear();
 }
 
-void MultiReplace::updateDelimitersInDocument(int lineNumber, ChangeType changeType) {
+void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType) {
 
     LineInfo lineInfo;
     switch (changeType) {
@@ -2645,7 +2645,7 @@ void MultiReplace::updateDelimitersInDocument(int lineNumber, ChangeType changeT
             lineDelimiterPositions.erase(lineDelimiterPositions.begin() + lineNumber);
 
             // Update positions for subsequent lines
-            for (int i = lineNumber; i < lineDelimiterPositions.size(); ++i) {
+            for (SIZE_T i = lineNumber; i < lineDelimiterPositions.size(); ++i) {
                 lineDelimiterPositions[i].startPosition -= deletedLineLength;
                 lineDelimiterPositions[i].endPosition -= deletedLineLength;
                 for (auto& delim : lineDelimiterPositions[i].positions) {
@@ -2672,7 +2672,7 @@ void MultiReplace::updateDelimitersInDocument(int lineNumber, ChangeType changeT
                 LRESULT positionDifference = lineDelimiterPositions[lineNumber + 1].startPosition - lineDelimiterPositions[lineNumber].endPosition - eolLength;
 
                 // Update positions for subsequent lines
-                for (int i = lineNumber + 1; i < lineDelimiterPositions.size(); ++i) {
+                for (SIZE_T i = lineNumber + 1; i < lineDelimiterPositions.size(); ++i) {
                     if (positionDifference > 0) { // The distance is too large, need to reduce
                         lineDelimiterPositions[i].startPosition -= positionDifference;
                         lineDelimiterPositions[i].endPosition -= positionDifference;

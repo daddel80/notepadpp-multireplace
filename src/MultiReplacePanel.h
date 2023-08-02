@@ -364,7 +364,7 @@ private:
     void MultiReplace::handleClearColumnMarks();
     std::wstring addLineAndColumnMessage(LRESULT pos);
     void optimizeLogChanges();
-    void updateDelimitersInDocument(int lineNumber, ChangeType changeType);
+    void updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType);
     void processLogForDelimiters();
     void handleDelimiterPositions();
     void displayLogChangesInMessageBox();
