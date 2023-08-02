@@ -93,14 +93,14 @@ struct ColumnDelimiterData {
     ColumnDelimiterData() : delimiterLength(0), delimiterChanged(false) {}
 };
 
-/*
-struct DelimiterPositionData {
-    LRESULT line;
-    LRESULT position;
-};*/
-
 struct DelimiterPosition {
     LRESULT position;
+};
+
+struct LineInfo {
+    std::vector<DelimiterPosition> positions;
+    LRESULT startPosition = 0;
+    LRESULT endPosition = 0;
 };
 
 struct StartColumnInfo {
@@ -158,6 +158,7 @@ public:
         return s_hDlg;
     }
 
+    // static Functions used in beNotified in MultiReplace.cpp
     static bool isWindowOpen;
     static void onSelectionChanged() {
         if (!isWindowOpen) {
@@ -185,14 +186,11 @@ public:
     }
 
     enum class ChangeType { Insert, Delete, Modify };
-
     struct LogEntry {
         ChangeType changeType;
         Sci_Position lineNumber;
     };
-
     static std::vector<LogEntry> logChanges;
-
     static bool isLoggingEnabled;
     static void processTextChange(SCNotification* notifyCode) {
         if (!isWindowOpen || !isLoggingEnabled) {
@@ -201,6 +199,7 @@ public:
 
         Sci_Position cursorPosition = notifyCode->position;
         Sci_Position addedLines = notifyCode->linesAdded;
+        Sci_Position notifyLength = notifyCode->length;
 
         Sci_Position lineNumber = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_LINEFROMPOSITION, cursorPosition, 0);
         if (notifyCode->modificationType & SC_MOD_INSERTTEXT) {
@@ -221,7 +220,7 @@ public:
         else if (notifyCode->modificationType & SC_MOD_DELETETEXT) {
             if (addedLines != 0) {
                 // Special handling for deletions at position 0
-                if (cursorPosition == 0) {
+                if (cursorPosition == 0  && notifyLength == 0) {
                     MultiReplace::logChanges.push_back({ ChangeType::Delete, 0 });
                     return;
                 }
@@ -240,8 +239,6 @@ public:
             }
         }
     }
-
-    void displayLogChangesInMessageBox();
 
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam);
@@ -280,7 +277,7 @@ private:
     int lastColumn = -1;
     bool ascending = true;
     ColumnDelimiterData columnDelimiterData;
-    // DelimiterPositionData delimiterPositionData = { 0, 0 };
+    LRESULT eolLength = -1; // Stores the length of the EOL character sequence
     
     /*
        Available styles (self-tested):
@@ -299,10 +296,12 @@ private:
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
     static std::map<int, ControlInfo> ctrlMap;
-    // std::map<LRESULT, std::vector<DelimiterPositionData>> delimiterPositionsMap;
     using LinePositions = std::vector<DelimiterPosition>;
-    std::vector<LinePositions> delimiterPositionsList;
+    std::vector<LineInfo> lineDelimiterPositions;
+
     bool isColumnHighlighted = false;
+    int scannedDelimiterBufferID = -1;
+    std::string messageBoxContent;  // jsut for temporyry debugging usage
 
     //Initialization
     void positionAndResizeControls(int windowWidth, int windowHeight);
@@ -355,17 +354,21 @@ private:
     void handleCopyMarkedTextToClipboardButton();
 
     //Scope
-    void parseColumnAndDelimiterData();
+    bool parseColumnAndDelimiterData();
     void findAllDelimitersInDocument(bool findCompleteColumns);
+    void findDelimitersInLine(LRESULT line, bool findCompleteColumns);
     StartColumnInfo getStartColumnInfo(LRESULT startPosition);
     void highlightColumnRange(LRESULT start, LRESULT end, SIZE_T column);
-    void MultiReplace::highlightColumns();
+    void handleHighlightColumnsInDocument();
+    void highlightColumnsInLine(LRESULT line);
     void MultiReplace::handleClearColumnMarks();
     std::wstring addLineAndColumnMessage(LRESULT pos);
     void optimizeLogChanges();
-    void findDelimitersInLine(LRESULT line, bool findCompleteColumns);
-    void processLogChanges();
     void updateDelimitersInDocument(int lineNumber, ChangeType changeType);
+    void processLogForDelimiters();
+    void handleDelimiterPositions();
+    void displayLogChangesInMessageBox();
+
 
     //Utilities
     int convertExtendedToString(const std::string& query, std::string& result);
@@ -379,6 +382,7 @@ private:
     std::wstring getSelectedText();
     std::wstring addProgressBarMessage(LRESULT currentLine, LRESULT totalLines, const std::wstring& message, LRESULT threshold);
     void displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message);
+    LRESULT updateEOLLength();
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput);
