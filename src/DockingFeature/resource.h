@@ -76,10 +76,7 @@
 #define IDC_DELIMITER_STATIC            5457
 #define IDC_COLUMN_NUM_STATIC           5458
 #define IDC_COLUMN_HIGHLIGHT_BUTTON     5459
-
-#define DELETE_ICON                     5500
-#define ENABLED_ICON                    5501
-#define COPYBACK_ICON                   5502
+#define IDC_CANCEL_LONGRUN_BUTTON		5460
 
 #define IDD_ABOUT_DIALOG                5600
 #define IDC_NAME_STATIC	                5601

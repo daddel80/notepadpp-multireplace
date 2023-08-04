@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <set>
+#include "ProgressDialog.h"
 
 extern NppData nppData;
 
@@ -289,8 +290,8 @@ private:
        Styles 21 - 29, 31 are reserved bei N++ (see SciLexer.h).
     */
     // std::vector<int> validStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
-    std::vector<int> textStyles = { 9, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
-    std::vector<int> columnStyles = { 10, 11, 12, 13, 14 };
+    std::vector<int> textStyles = { 9, 11, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
+    std::vector<int> columnStyles = { 10, 12, 13, 14, 15 };
     std::vector<long> columnColors = { 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF };
 
     HIMAGELIST _himl;
@@ -301,7 +302,8 @@ private:
 
     bool isColumnHighlighted = false;
     int scannedDelimiterBufferID = -1;
-    std::string messageBoxContent;  // jsut for temporyry debugging usage
+    std::string messageBoxContent;  // just for temporyry debugging usage
+    bool isLongRunCancelled = false;
 
     //Initialization
     void positionAndResizeControls(int windowWidth, int windowHeight);
@@ -358,10 +360,12 @@ private:
     void findAllDelimitersInDocument(bool findCompleteColumns);
     void findDelimitersInLine(LRESULT line, bool findCompleteColumns);
     StartColumnInfo getStartColumnInfo(LRESULT startPosition);
+    void initializeColumnStyles();
     void highlightColumnRange(LRESULT start, LRESULT end, SIZE_T column);
     void handleHighlightColumnsInDocument();
     void highlightColumnsInLine(LRESULT line);
-    void MultiReplace::handleClearColumnMarks();
+    void clearMarksInLine(LRESULT line);
+    void handleClearColumnMarks();
     std::wstring addLineAndColumnMessage(LRESULT pos);
     void optimizeLogChanges();
     void updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType);

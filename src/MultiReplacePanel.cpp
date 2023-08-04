@@ -90,7 +90,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 590, 173, 30, 25, WC_BUTTON, L"H", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
 
     ctrlMap[IDC_STATIC_HINT] = { 14, 100, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER, NULL };
-    ctrlMap[IDC_STATUS_MESSAGE] = { 14, 224, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
+    ctrlMap[IDC_STATUS_MESSAGE] = { 14, 220, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
+    ctrlMap[IDC_CANCEL_LONGRUN_BUTTON] = { 470, 215, 50, 25, WC_BUTTON, L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -382,6 +383,9 @@ void MultiReplace::updateUIVisibility() {
         ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), SW_HIDE);
     }
+
+    // Always hide Cancel Longrun Button, Progressbar will make it visisble if needed
+    ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_HIDE);
 }
 
 #pragma endregion
@@ -1261,6 +1265,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (!filePath.empty()) {
                 exportToBashScript(filePath);
             }
+        }
+        break;
+
+        case IDC_CANCEL_LONGRUN_BUTTON:
+        {
+            isLongRunCancelled = true;
         }
         break;
 
@@ -2325,6 +2335,10 @@ void MultiReplace::findAllDelimitersInDocument(bool findCompleteColumns) {
     // Clear list for new data
     lineDelimiterPositions.clear();
 
+    // Reset TextModiefeid Trigger
+    textModified = false;
+    logChanges.clear();
+
     // Get total line count in document
     LRESULT totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
 
@@ -2336,6 +2350,22 @@ void MultiReplace::findAllDelimitersInDocument(bool findCompleteColumns) {
 
     // Find and store delimiter positions for each line
     for (LRESULT line = 0; line < totalLines; ++line) {
+
+        processLogForDelimiters();
+
+        // If isLongRunCancelled is true, clear lineDelimiterPositions and break the loop
+        if (isLongRunCancelled) {
+            lineDelimiterPositions.clear();
+            break;
+        }
+
+        // Adjust totalLines according to changes in document
+        LRESULT newTotalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
+        if (newTotalLines != totalLines) {
+            lineDelimiterPositions.resize(newTotalLines);
+            totalLines = newTotalLines;
+        }
+
         LRESULT lineStart = ::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, line, 0);
         LRESULT lineEnd = ::SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, line, 0);
 
@@ -2373,10 +2403,15 @@ void MultiReplace::findAllDelimitersInDocument(bool findCompleteColumns) {
             if (!(findCompleteColumns || delimiterCount < maxColumn))
                 break;
         }
+        // Adjust totalLines according to changes in document
+        totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
     }
 
     // Clear log queue
     logChanges.clear();
+
+    // Reset isLongRunCancelled to false
+    isLongRunCancelled = false;
 }
 
 void MultiReplace::findDelimitersInLine(LRESULT line, bool findCompleteColumns) {
@@ -2460,6 +2495,24 @@ StartColumnInfo MultiReplace::getStartColumnInfo(LRESULT startPosition) {
     return { totalLines, startLine, startColumnIndex };
 }
 
+void MultiReplace::initializeColumnStyles() {
+    for (SIZE_T column = 1; column <= columnStyles.size(); column++) {
+        // Calculate indicator style
+        int indicatorStyle = columnStyles[(column - 1) % columnStyles.size()];
+
+        // Assign color for the style
+        long color = columnColors[(column - 1) % columnColors.size()];
+        if (colorToStyleMap.find(color) == colorToStyleMap.end()) {
+            colorToStyleMap[color] = indicatorStyle;
+        }
+
+        // Set the indicator style
+        ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
+        ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicatorStyle, color);
+        ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicatorStyle, 100);
+    }
+}
+
 void MultiReplace::handleHighlightColumnsInDocument() {
     // Return early if columnDelimiterData is empty
     if (columnDelimiterData.columns.empty() || columnDelimiterData.extendedDelimiter.empty()) {
@@ -2469,10 +2522,21 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     // Convert size of lineDelimiterPositions to signed integer
     LRESULT listSize = static_cast<LRESULT>(lineDelimiterPositions.size());
 
+    // Initialize column styles
+    initializeColumnStyles();
+
     // Iterate over each line's delimiter positions
-    for (LRESULT line = 0; line < listSize; line++) {
+    LRESULT line = 0;
+    while (line < static_cast<LRESULT>(lineDelimiterPositions.size()) && !isLongRunCancelled) {
+        processLogForDelimiters();
         highlightColumnsInLine(line);
+        displayProgressInStatus(line, listSize, L"Higlight Columns");
+        ++line;
     }
+
+    // Hide the cancel button and reset the cancellation flag
+    ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_HIDE);
+    isLongRunCancelled = false;
 
     isColumnHighlighted = true;
 }
@@ -2516,24 +2580,27 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
     }
 }
 
+void MultiReplace::clearMarksInLine(LRESULT line) {
+    LRESULT startPos = ::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, line, 0);
+    LRESULT lineLength = ::SendMessage(_hScintilla, SCI_LINELENGTH, line, 0);
+
+    for (int style : columnStyles) {
+        ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
+        ::SendMessage(_hScintilla, SCI_INDICATORCLEARRANGE, startPos, lineLength);
+    }
+}
+
 void MultiReplace::highlightColumnRange(LRESULT start, LRESULT end, SIZE_T column) {
-    // Calculate the indicator style based on the column index
-    int indicatorStyle = columnStyles[(column - 1) % columnStyles.size()];
-
-    // Assign the predefined color for the style
-    long color = columnColors[(column - 1) % columnColors.size()];
-    if (colorToStyleMap.find(color) == colorToStyleMap.end()) {
-        colorToStyleMap[color] = indicatorStyle;
-    }
-    else {
-        indicatorStyle = colorToStyleMap[color];
+    // Skip if end is only one position higher than start
+    if (end - start <= 1) {
+        return;
     }
 
-    // Set and apply highlighting style
+    // Get the indicator style for the column
+    int indicatorStyle = colorToStyleMap[columnColors[(column - 1) % columnColors.size()]];
+
+    // Set the current indicator and apply highlighting style
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicatorStyle, 0);
-    ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
-    ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicatorStyle, color);
-    ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicatorStyle, 100);
     ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, start, end - start);
 }
 
@@ -2560,6 +2627,11 @@ std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
 
 void MultiReplace::processLogForDelimiters()
 {
+    // Check if logChanges is accessible
+    if (!textModified || logChanges.empty()) {
+        return;
+    }
+
     std::vector<LogEntry> modifyLogEntries;
 
     // Loop through the log entries in chronological order
@@ -2607,6 +2679,7 @@ void MultiReplace::processLogForDelimiters()
         if (modifyLogEntry.lineNumber != -1) {
             updateDelimitersInDocument(static_cast<int>(modifyLogEntry.lineNumber), ChangeType::Modify);
             if (isColumnHighlighted) {
+                clearMarksInLine(modifyLogEntry.lineNumber);
                 highlightColumnsInLine(modifyLogEntry.lineNumber);
             }
             this->messageBoxContent += "Line " + std::to_string(static_cast<int>(modifyLogEntry.lineNumber)) + " modified.\n";
@@ -2615,9 +2688,14 @@ void MultiReplace::processLogForDelimiters()
 
     // Clear Log queue
     logChanges.clear();
+    textModified = false;
 }
 
 void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType) {
+
+    if (lineNumber > lineDelimiterPositions.size()) {
+        return; // invalid line number
+    }
 
     LineInfo lineInfo;
     switch (changeType) {
@@ -2701,7 +2779,7 @@ void MultiReplace::handleDelimiterPositions() {
     if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) != BST_CHECKED) {
         lineDelimiterPositions.clear();
         isLoggingEnabled = false;
-        textModified = true;
+        textModified = false;
         logChanges.clear();  // not really necessary
         return;
     }
@@ -2728,12 +2806,10 @@ void MultiReplace::handleDelimiterPositions() {
     if (eolLengthChanged) eolLength = updatedEolLength;
 
     if (eolLengthChanged || currentBufferID != scannedDelimiterBufferID || lineDelimiterPositions.empty() || columnDelimiterData.delimiterChanged) {
-        findAllDelimitersInDocument(true);
         isLoggingEnabled = true;  // Enable detailed logging
+        findAllDelimitersInDocument(true);
         scannedDelimiterBufferID = currentBufferID;
-    }
-
-    if (textModified) {
+    } else {
         processLogForDelimiters();
         textModified = false; // Reset the textModified flag after processing changes
     }
@@ -3109,7 +3185,7 @@ void MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const
     static bool progressBarDecided = false;
     static int lastPercentage = -1;  // Store the last percentage value to prevent flickering
 
-    const int progressBarWidth = 15;  // Width of the progress bar in characters
+    const int progressBarWidth = 25;  // Width of the progress bar in characters
     const int maxTimeInMilliseconds = 5 * 1000;  // Time limit before showing progress bar in milliseconds
 
     if (current == 2) {
@@ -3124,7 +3200,6 @@ void MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const
         showStatusMessage(message, RGB(0, 0, 128));
     }
 
-        
     int percentageComplete = static_cast<int>((static_cast<double>(current) / total) * 100);
 
     if (!progressBarDecided && percentageComplete >= 1) {
@@ -3133,6 +3208,9 @@ void MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const
         if (estimatedTotalTime > maxTimeInMilliseconds) {
             showProgressBar = true;
             progressBarDecided = true;
+
+            // Show the cancel button when the progress bar is decided to be shown
+            ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_SHOW);
         }
     }
 
@@ -3145,6 +3223,13 @@ void MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const
 
         lastProgressBarMessage = message + L" " + progressBar + L" " + std::to_wstring(percentageComplete) + L"%";
         showStatusMessage(lastProgressBarMessage, RGB(0, 0, 128));
+    }
+
+    // Process all pending messages
+    MSG msg;
+    while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
     }
 
 }
@@ -3168,6 +3253,22 @@ LRESULT MultiReplace::updateEOLLength() {
 
     return currentEolLength;
 }
+
+/*
+void MultiReplace::displayProgressInStatus(LRESULT currentLine, LRESULT totalLines, const std::wstring& message)
+{
+    std::wstringstream ss;
+    ss << message << L" (" << currentLine << L" / " << totalLines << L")";
+
+    // Assuming _progressBar is an instance of your ProgressBarWindow class
+    // and is visible, you can simply update the progress like this:
+    int progress = static_cast<int>((static_cast<double>(currentLine) / static_cast<double>(totalLines)) * 100);
+    _progressBar.UpdateProgress(progress);
+
+    // Now update the status bar
+    ::SendMessage(_hNpp, NPPM_SETSTATUSBAR, STATUSBAR_DOC_TYPE, reinterpret_cast<LPARAM>(ss.str().c_str()));
+}
+*/
 
 #pragma endregion
 
