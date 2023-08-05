@@ -35,6 +35,8 @@
 #include <unordered_map>
 #include <set>
 #include <chrono>
+#include <sstream>
+
 
 #ifdef UNICODE
 #define generic_strtoul wcstoul
@@ -91,7 +93,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_STATIC_HINT] = { 14, 100, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER, NULL };
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 220, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
-    ctrlMap[IDC_CANCEL_LONGRUN_BUTTON] = { 470, 215, 50, 25, WC_BUTTON, L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_ACTION_DESCRIPTION] = { 14, 220, 100, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
+    ctrlMap[IDC_PROGRESS_BAR] = { 120, 222, 330, 12, PROGRESS_CLASS, L"", WS_VISIBLE | WS_CHILD, NULL };
+    ctrlMap[IDC_CANCEL_LONGRUN_BUTTON] = { 460, 215, 50, 25, WC_BUTTON, L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -384,8 +388,11 @@ void MultiReplace::updateUIVisibility() {
         ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), SW_HIDE);
     }
 
-    // Always hide Cancel Longrun Button, Progressbar will make it visisble if needed
-    ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_HIDE);
+    // Show or hide the "Cancel Longrun Button" based on the active state
+    ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), progressDisplayActive ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), progressDisplayActive ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), progressDisplayActive ? SW_HIDE : SW_SHOW);
+    ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), progressDisplayActive ? SW_SHOW : SW_HIDE);
 }
 
 #pragma endregion
@@ -809,7 +816,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         HDC hdcStatic = reinterpret_cast<HDC>(wParam);
         HWND hwndStatic = reinterpret_cast<HWND>(lParam);
 
-        if (hwndStatic == GetDlgItem(_hSelf, IDC_STATUS_MESSAGE)) {
+        if (hwndStatic == GetDlgItem(_hSelf, IDC_STATUS_MESSAGE) ||
+            hwndStatic == GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION)) {
             SetTextColor(hdcStatic, _statusMessageColor);
             SetBkMode(hdcStatic, TRANSPARENT);
             return (LRESULT)GetStockObject(NULL_BRUSH);
@@ -821,11 +829,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_DESTROY:
     {
+        isLongRunCancelled = true;
         saveSettings();
-        DestroyIcon(_hDeleteIcon);
-        DestroyIcon(_hEnabledIcon);
-        DestroyIcon(_hCopyBackIcon);
-        ImageList_Destroy(_himl);
         DestroyWindow(_hSelf);
         DeleteObject(hFont);
     }
@@ -1034,7 +1039,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     }
                 }
                 else if (pnkd->wVKey == VK_F10) {
-                    findAllDelimitersInDocument(true);
+                    findAllDelimitersInDocument();
                     isLoggingEnabled = true;
                     MessageBox(NULL, L"Delimiter List initialized", L"Notification", MB_OK);
                 }
@@ -1052,17 +1057,21 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_SHOWWINDOW:
     {
-        if (wParam == TRUE) {  // If the window is being made visible
-
+        if (wParam == TRUE) {
             std::wstring wstr = getSelectedText();
 
             // Set selected text in IDC_FIND_EDIT
             if (!wstr.empty()) {
                 SetWindowTextW(GetDlgItem(_hSelf, IDC_FIND_EDIT), wstr.c_str());
             }
+            isLongRunCancelled = false;
+        }
+        else {
+            isLongRunCancelled = true;
         }
     }
     break;
+
 
     case WM_COMMAND:
     {
@@ -1074,6 +1083,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             if (_MultiReplace.isFloating())
             {
+                isLongRunCancelled = true;
                 EndDialog(_hSelf, 0);
                 _MultiReplace.display(false);
             }
@@ -1714,7 +1724,8 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
 {
     SearchResult result;
     result.pos = -1;
-    SelectionRange targetRange;
+    SelectionRange targetRange = { 0, 0 };
+
     // Check if IDC_SELECTION_RADIO is enabled and selectMatch is false
     if (!selectMatch && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
@@ -1786,7 +1797,27 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
                             endColumn = linePositions[column - 1].position;
                         }
 
-                        // Rest of the code remains the same
+                        // Check if the current column is included in the specified columns
+                        if (columnDelimiterData.columns.find(static_cast<int>(column)) == columnDelimiterData.columns.end()) {
+                            // If it's not included, skip this iteration
+                            continue;
+                        }
+
+                        // If start position is within the column range, adjust startColumn
+                        if (start >= startColumn && start <= endColumn) {
+                            startColumn = start;
+                        }
+
+                        // Perform search within the column range
+                        if (start <= startColumn) {
+                            targetRange = { startColumn, endColumn };
+                            result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
+
+                            // Check if a match was found
+                            if (result.pos >= 0) {
+                                return result;
+                            }
+                        }
                     }
                 }
                 // Reset startColumnIndex for the next lines
@@ -2330,7 +2361,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     return true;
 }
 
-void MultiReplace::findAllDelimitersInDocument(bool findCompleteColumns) {
+void MultiReplace::findAllDelimitersInDocument() {
 
     // Clear list for new data
     lineDelimiterPositions.clear();
@@ -2341,9 +2372,6 @@ void MultiReplace::findAllDelimitersInDocument(bool findCompleteColumns) {
 
     // Get total line count in document
     LRESULT totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
-
-    // Get the maximum column we need to find
-    SIZE_T maxColumn = *std::max_element(columnDelimiterData.columns.begin(), columnDelimiterData.columns.end());
 
     // Resize the list to fit total lines
     lineDelimiterPositions.resize(totalLines);
@@ -2366,43 +2394,12 @@ void MultiReplace::findAllDelimitersInDocument(bool findCompleteColumns) {
             totalLines = newTotalLines;
         }
 
-        LRESULT lineStart = ::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, line, 0);
-        LRESULT lineEnd = ::SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, line, 0);
+        // Find delimiters in line
+        findDelimitersInLine(line);
 
-        // Get line length and allocate buffer
-        LRESULT lineLength = ::SendMessage(_hScintilla, SCI_LINELENGTH, line, 0);
-        char* buf = new char[lineLength + 1];
+        // Update progress in status
+        displayProgressInStatus(line, totalLines, L"Loading CSV");
 
-        // Get line content
-        ::SendMessage(_hScintilla, SCI_GETLINE, line, reinterpret_cast<LPARAM>(buf));
-
-        std::string lineContent = buf;
-        delete[] buf;
-
-        // Prepare for new line in lineDelimiterPositions
-        lineDelimiterPositions[line].positions = std::vector<DelimiterPosition>();
-        lineDelimiterPositions[line].startPosition = lineStart;
-        lineDelimiterPositions[line].endPosition = lineEnd;
-
-        SearchResult result;
-        result.pos = 0;
-        result.length = 0;
-
-        SIZE_T delimiterCount = 0;
-        std::string::size_type pos = 0;
-
-        while ((pos = lineContent.find(columnDelimiterData.extendedDelimiter, pos)) != std::string::npos) {
-            DelimiterPosition delimiterPosition;
-            delimiterPosition.position = pos + lineStart;
-            lineDelimiterPositions[line].positions.push_back(delimiterPosition);
-            delimiterCount++;
-            pos += columnDelimiterData.extendedDelimiter.size();
-
-            displayProgressInStatus(line, totalLines, L"Reading CSV Structure");
-
-            if (!(findCompleteColumns || delimiterCount < maxColumn))
-                break;
-        }
         // Adjust totalLines according to changes in document
         totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
     }
@@ -2410,11 +2407,11 @@ void MultiReplace::findAllDelimitersInDocument(bool findCompleteColumns) {
     // Clear log queue
     logChanges.clear();
 
-    // Reset isLongRunCancelled to false
-    isLongRunCancelled = false;
+    // Hide the cancel button and reset the cancellation flag
+    resetProgressBar();
 }
 
-void MultiReplace::findDelimitersInLine(LRESULT line, bool findCompleteColumns) {
+void MultiReplace::findDelimitersInLine(LRESULT line) {
     // Initialize LineInfo for this line
     LineInfo lineInfo;
 
@@ -2422,34 +2419,34 @@ void MultiReplace::findDelimitersInLine(LRESULT line, bool findCompleteColumns) 
     lineInfo.startPosition = ::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, line, 0);
     lineInfo.endPosition = ::SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, line, 0);
 
+    // Get line length and allocate buffer
+    LRESULT lineLength = ::SendMessage(_hScintilla, SCI_LINELENGTH, line, 0);
+    char* buf = new char[lineLength + 1];
+
+    // Get line content
+    ::SendMessage(_hScintilla, SCI_GETLINE, line, reinterpret_cast<LPARAM>(buf));
+    std::string lineContent = buf;
+    delete[] buf;
+
     // Define structure to store delimiter position
     DelimiterPosition delimiterPos;
 
-    // Get the maximum column we need to find
-    SIZE_T maxColumn = *std::max_element(columnDelimiterData.columns.begin(), columnDelimiterData.columns.end());
+    bool inQuotes = false;
+    std::string::size_type pos = 0;
 
-    SearchResult result;
-    result.pos = lineInfo.startPosition;
-    result.length = 0;
-
-    SIZE_T delimiterCount = 0;
-
-    do {
-        // Set search range within line
-        SelectionRange range;
-        range.start = result.pos + result.length;
-        range.end = lineInfo.endPosition;
-
-        // Search for delimiter
-        result = performSingleSearch(columnDelimiterData.extendedDelimiter, SCFIND_MATCHCASE, false, range);
-
-        // Store position of found delimiter
-        if (result.pos >= 0) {
-            delimiterPos.position = result.pos;
-            lineInfo.positions.push_back(delimiterPos);
-            delimiterCount++;
+    while (pos < lineContent.size()) {
+        if (lineContent[pos] == '\"') {
+            // Toggle the flag if quote is found
+            inQuotes = !inQuotes;
         }
-    } while (result.pos >= 0 && result.pos < lineInfo.endPosition && (findCompleteColumns || delimiterCount < maxColumn));
+        else if (!inQuotes && lineContent.compare(pos, columnDelimiterData.extendedDelimiter.size(), columnDelimiterData.extendedDelimiter) == 0) {
+            // Only store position of delimiter if it's not inside quotes
+            delimiterPos.position = pos + lineInfo.startPosition;
+            lineInfo.positions.push_back(delimiterPos);
+            pos += columnDelimiterData.extendedDelimiter.size() - 1; // Skip delimiter for next iteration
+        }
+        pos++;
+    }
 
     // Convert size of lineDelimiterPositions to signed integer
     LRESULT listSize = static_cast<LRESULT>(lineDelimiterPositions.size());
@@ -2535,8 +2532,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     }
 
     // Hide the cancel button and reset the cancellation flag
-    ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_HIDE);
-    isLongRunCancelled = false;
+    resetProgressBar();
 
     isColumnHighlighted = true;
 }
@@ -2737,7 +2733,7 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
         // Modify the content of the specified line
         if (lineNumber < lineDelimiterPositions.size()) {
             // Re-analyze the line to find delimiters
-            findDelimitersInLine(lineNumber, true);
+            findDelimitersInLine(lineNumber);
 
             // Update the highlight if necessary
             if (isColumnHighlighted) {
@@ -2807,7 +2803,7 @@ void MultiReplace::handleDelimiterPositions() {
 
     if (eolLengthChanged || currentBufferID != scannedDelimiterBufferID || lineDelimiterPositions.empty() || columnDelimiterData.delimiterChanged) {
         isLoggingEnabled = true;  // Enable detailed logging
-        findAllDelimitersInDocument(true);
+        findAllDelimitersInDocument();
         scannedDelimiterBufferID = currentBufferID;
     } else {
         processLogForDelimiters();
@@ -3180,49 +3176,30 @@ std::wstring MultiReplace::addProgressBarMessage(LRESULT currentLine, LRESULT to
 
 void MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message) {
     static std::wstring lastProgressBarMessage;
-    static auto startTime = std::chrono::steady_clock::now();
     static bool showProgressBar = false;
-    static bool progressBarDecided = false;
-    static int lastPercentage = -1;  // Store the last percentage value to prevent flickering
-
-    const int progressBarWidth = 25;  // Width of the progress bar in characters
-    const int maxTimeInMilliseconds = 5 * 1000;  // Time limit before showing progress bar in milliseconds
 
     if (current == 2) {
         // Reset the progress bar and decision when a new process starts
-        showProgressBar = false;
-        progressBarDecided = false;
-        startTime = std::chrono::steady_clock::now();
-        lastPercentage = -1;
+        progressDisplayActive = total >= 100;
 
-        // Show the initial status message
-        lastProgressBarMessage = message;
-        showStatusMessage(message, RGB(0, 0, 128));
+        // Set the text color
+        _statusMessageColor = RGB(0, 0, 128);
+
+        // Show or hide the progress display components
+        ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), progressDisplayActive ? SW_SHOW : SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), progressDisplayActive ? SW_SHOW : SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), progressDisplayActive ? SW_HIDE : SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), progressDisplayActive ? SW_SHOW : SW_HIDE);
+
+        // Update the action description message
+        ::SetWindowText(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), message.c_str());
     }
 
-    int percentageComplete = static_cast<int>((static_cast<double>(current) / total) * 100);
+    if (progressDisplayActive) {
+        int percentageComplete = static_cast<int>((static_cast<double>(current) / total) * 100);
 
-    if (!progressBarDecided && percentageComplete >= 1) {
-        auto elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count();
-        long long estimatedTotalTime = elapsedMillis / percentageComplete * 100;
-        if (estimatedTotalTime > maxTimeInMilliseconds) {
-            showProgressBar = true;
-            progressBarDecided = true;
-
-            // Show the cancel button when the progress bar is decided to be shown
-            ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_SHOW);
-        }
-    }
-
-    if (showProgressBar && percentageComplete / 5 > lastPercentage / 5) {  // Only update every 5% if showing progress bar
-        lastPercentage = percentageComplete;
-        int progressBlocks = static_cast<int>((static_cast<double>(percentageComplete) / 100) * progressBarWidth);
-        std::wstring progressBar =
-            std::wstring(progressBlocks, L'█') +
-            std::wstring(progressBarWidth - progressBlocks, L'▒');
-
-        lastProgressBarMessage = message + L" " + progressBar + L" " + std::to_wstring(percentageComplete) + L"%";
-        showStatusMessage(lastProgressBarMessage, RGB(0, 0, 128));
+        // Update the progress bar
+        ::SendMessage(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), PBM_SETPOS, (WPARAM)percentageComplete, 0);
     }
 
     // Process all pending messages
@@ -3231,7 +3208,22 @@ void MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
+}
 
+void MultiReplace::resetProgressBar() {
+    // Reset isLongRunCancelled to false, hide Button
+    isLongRunCancelled = false;
+    progressDisplayActive = false;
+    ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_HIDE);
+
+    // Hide the progress bar
+    ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), SW_HIDE);
+
+    // Hide the action description
+    ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), SW_HIDE);
+
+    // Show the status message control
+    ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), SW_SHOW);
 }
 
 LRESULT MultiReplace::updateEOLLength() {
@@ -3253,22 +3245,6 @@ LRESULT MultiReplace::updateEOLLength() {
 
     return currentEolLength;
 }
-
-/*
-void MultiReplace::displayProgressInStatus(LRESULT currentLine, LRESULT totalLines, const std::wstring& message)
-{
-    std::wstringstream ss;
-    ss << message << L" (" << currentLine << L" / " << totalLines << L")";
-
-    // Assuming _progressBar is an instance of your ProgressBarWindow class
-    // and is visible, you can simply update the progress like this:
-    int progress = static_cast<int>((static_cast<double>(currentLine) / static_cast<double>(totalLines)) * 100);
-    _progressBar.UpdateProgress(progress);
-
-    // Now update the status bar
-    ::SendMessage(_hNpp, NPPM_SETSTATUSBAR, STATUSBAR_DOC_TYPE, reinterpret_cast<LPARAM>(ss.str().c_str()));
-}
-*/
 
 #pragma endregion
 

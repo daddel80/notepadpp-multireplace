@@ -304,6 +304,7 @@ private:
     int scannedDelimiterBufferID = -1;
     std::string messageBoxContent;  // just for temporyry debugging usage
     bool isLongRunCancelled = false;
+    bool progressDisplayActive = false;
 
     //Initialization
     void positionAndResizeControls(int windowWidth, int windowHeight);
@@ -357,8 +358,8 @@ private:
 
     //Scope
     bool parseColumnAndDelimiterData();
-    void findAllDelimitersInDocument(bool findCompleteColumns);
-    void findDelimitersInLine(LRESULT line, bool findCompleteColumns);
+    void findAllDelimitersInDocument();
+    void findDelimitersInLine(LRESULT line);
     StartColumnInfo getStartColumnInfo(LRESULT startPosition);
     void initializeColumnStyles();
     void highlightColumnRange(LRESULT start, LRESULT end, SIZE_T column);
@@ -386,6 +387,7 @@ private:
     std::wstring getSelectedText();
     std::wstring addProgressBarMessage(LRESULT currentLine, LRESULT totalLines, const std::wstring& message, LRESULT threshold);
     void displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message);
+    void resetProgressBar();
     LRESULT updateEOLLength();
 
     //StringHandling

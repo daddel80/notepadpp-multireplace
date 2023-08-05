@@ -77,6 +77,8 @@
 #define IDC_COLUMN_NUM_STATIC           5458
 #define IDC_COLUMN_HIGHLIGHT_BUTTON     5459
 #define IDC_CANCEL_LONGRUN_BUTTON		5460
+#define IDC_ACTION_DESCRIPTION          5461
+#define IDC_PROGRESS_BAR				5462
 
 #define IDD_ABOUT_DIALOG                5600
 #define IDC_NAME_STATIC	                5601
