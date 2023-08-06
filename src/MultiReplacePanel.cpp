@@ -1083,7 +1083,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             if (_MultiReplace.isFloating())
             {
-                isLongRunCancelled = true;
                 EndDialog(_hSelf, 0);
                 _MultiReplace.display(false);
             }
@@ -2533,7 +2532,9 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     while (line < static_cast<LRESULT>(lineDelimiterPositions.size()) && !isLongRunCancelled) {
         processLogForDelimiters();
         highlightColumnsInLine(line);
-        displayProgressInStatus(line, listSize, L"Higlight Columns");
+        if (!displayProgressInStatus(line, listSize, L"Higlight Columns")) {
+            break;
+        }
         ++line;
     }
 
@@ -2786,11 +2787,7 @@ void MultiReplace::handleDelimiterPositions() {
         return;
     }
 
-    int currentBufferID = static_cast<int>(::SendMessage(_hScintilla, NPPM_GETCURRENTBUFFERID, 0, 0));
-
-    // Create a message box to display the current buffer ID
-    std::wstring bufferIDMessage = L"Current Buffer ID: " + std::to_wstring(currentBufferID);
-    //MessageBox(NULL, bufferIDMessage.c_str(), L"Buffer ID Information", MB_OK);
+    int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
 
     if (!parseColumnAndDelimiterData()) {
         return;
@@ -3180,7 +3177,7 @@ std::wstring MultiReplace::addProgressBarMessage(LRESULT currentLine, LRESULT to
     return lastProgressBarMessage;
 }
 
-void MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message) {
+bool MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message) {
     static std::wstring lastProgressBarMessage;
     static bool showProgressBar = false;
 
@@ -3214,9 +3211,14 @@ void MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const
     // Process all pending messages
     MSG msg;
     while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+        if (isLongRunCancelled) {
+            return false;
+        }
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
+
+    return true;
 }
 
 void MultiReplace::resetProgressBar() {

@@ -410,7 +410,7 @@ private:
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
     std::wstring addProgressBarMessage(LRESULT currentLine, LRESULT totalLines, const std::wstring& message, LRESULT threshold);
-    void displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message);
+    bool displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message);
     void resetProgressBar();
     LRESULT updateEOLLength();
     void setElementsState(const std::vector<int>& elements, bool enable, bool restoreOriginalState = false);
