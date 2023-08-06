@@ -303,8 +303,32 @@ private:
     bool isColumnHighlighted = false;
     int scannedDelimiterBufferID = -1;
     std::string messageBoxContent;  // just for temporyry debugging usage
-    bool isLongRunCancelled = false;
+    std::atomic<bool> isLongRunCancelled = false;
     bool progressDisplayActive = false;
+    std::map<int, bool> stateSnapshot; // map to store the state
+    
+    const std::vector<int> allElementsExceptCancelLongRun = {
+    IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO,
+    IDC_REGEX_RADIO, IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO,
+    IDC_DELIMITER_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_STATIC, IDC_COLUMN_NUM_STATIC,
+    IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON,IDC_REPLACE_ALL_SMALL_BUTTON, 
+    IDC_USE_LIST_CHECKBOX,IDC_STATIC_FRAME, IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_COLUMN_HIGHLIGHT_BUTTON,
+    IDC_SCOPE_GROUP, IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
+    IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+    IDC_CLEAR_MARKS_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME,
+    IDC_SHIFT_TEXT, IDC_STATUS_MESSAGE, IDC_EXPORT_BASH_BUTTON,
+    IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON,
+    IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON,
+    IDC_COPY_MARKED_TEXT_BUTTON
+    };
+
+    const std::vector<int> selectionRadioDisabledButtons = {
+    IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
+    };
+
+    const std::vector<int> columnRadioDependentElements = {
+    IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_COLUMN_HIGHLIGHT_BUTTON
+    };
 
     //Initialization
     void positionAndResizeControls(int windowWidth, int windowHeight);
@@ -389,6 +413,7 @@ private:
     void displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message);
     void resetProgressBar();
     LRESULT updateEOLLength();
+    void setElementsState(const std::vector<int>& elements, bool enable, bool restoreOriginalState = false);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput);

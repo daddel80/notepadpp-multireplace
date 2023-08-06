@@ -1128,11 +1128,18 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         break;
 
         case IDC_ALL_TEXT_RADIO:
+        {
+            setElementsState(columnRadioDependentElements, false);
+            setElementsState(selectionRadioDisabledButtons, true);
+            handleClearColumnMarks();
+            handleDelimiterPositions();
+        }
+        break;
+
         case IDC_SELECTION_RADIO:
         {
-            EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_NUM_EDIT), FALSE);
-            EnableWindow(GetDlgItem(_hSelf, IDC_DELIMITER_EDIT), FALSE);
-            EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), FALSE);
+            setElementsState(columnRadioDependentElements, false);
+            setElementsState(selectionRadioDisabledButtons, false);
             handleClearColumnMarks();
             handleDelimiterPositions();
         }
@@ -1140,9 +1147,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_MODE_RADIO:
         {
-            EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_NUM_EDIT), TRUE);
-            EnableWindow(GetDlgItem(_hSelf, IDC_DELIMITER_EDIT), TRUE);
-            EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), TRUE);
+            setElementsState(columnRadioDependentElements, true);
+            setElementsState(selectionRadioDisabledButtons, true);
         }
         break;
 
@@ -3178,7 +3184,7 @@ void MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const
     static std::wstring lastProgressBarMessage;
     static bool showProgressBar = false;
 
-    if (current == 2) {
+    if (current == 0) {
         // Reset the progress bar and decision when a new process starts
         progressDisplayActive = total >= 100;
 
@@ -3193,6 +3199,9 @@ void MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const
 
         // Update the action description message
         ::SetWindowText(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), message.c_str());
+
+        // Disable all elements except the Cancel Long Run button
+        setElementsState(allElementsExceptCancelLongRun, false, true);
     }
 
     if (progressDisplayActive) {
@@ -3224,6 +3233,9 @@ void MultiReplace::resetProgressBar() {
 
     // Show the status message control
     ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), SW_SHOW);
+
+    // Enable all elements except the Cancel Long Run button
+    setElementsState(allElementsExceptCancelLongRun, true, true);
 }
 
 LRESULT MultiReplace::updateEOLLength() {
@@ -3244,6 +3256,40 @@ LRESULT MultiReplace::updateEOLLength() {
     }
 
     return currentEolLength;
+}
+
+void MultiReplace::setElementsState(const std::vector<int>& elements, bool enable, bool restoreOriginalState) {
+    // Store the state and disable the elements if restoreOriginalState is true and enable is false
+    if (restoreOriginalState && !enable) {
+        for (int id : elements) {
+            bool isEnabled = IsWindowEnabled(GetDlgItem(_hSelf, id));
+            stateSnapshot[id] = isEnabled;
+            // Disable the current element
+            EnableWindow(GetDlgItem(_hSelf, id), FALSE);
+        }
+    }
+    // Enable or disable the elements if restoreOriginalState is false
+    else if (!restoreOriginalState) {
+        for (int id : elements) {
+            if (enable) {
+                // Enable the current element
+                EnableWindow(GetDlgItem(_hSelf, id), TRUE);
+            }
+            else {
+                // Disable the current element
+                EnableWindow(GetDlgItem(_hSelf, id), FALSE);
+            }
+        }
+    }
+
+    // Restore the state if restoreOriginalState is true and enable is true
+    if (restoreOriginalState && enable) {
+        for (const auto& item : stateSnapshot) {
+            EnableWindow(GetDlgItem(_hSelf, item.first), item.second ? TRUE : FALSE);
+        }
+        // Clear the snapshot after restoring it
+        stateSnapshot.clear();
+    }
 }
 
 #pragma endregion
