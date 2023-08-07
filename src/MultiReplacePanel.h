@@ -110,6 +110,8 @@ struct StartColumnInfo {
     SIZE_T startColumnIndex;
 };
 
+enum class DelimiterOperation { LoadAll, Update };
+
 enum class Direction { Up, Down };
 
 typedef std::basic_string<TCHAR> generic_string;
@@ -137,7 +139,15 @@ public:
         hFont(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
-    {};
+    {
+        setInstance(this);
+    };
+
+    static MultiReplace* instance; // Static instance of the class
+
+    static void setInstance(MultiReplace* inst) {
+        instance = inst;
+    }
 
     virtual void display(bool toShow = true) const {
         DockingDlgInterface::display(toShow);
@@ -184,6 +194,16 @@ public:
     static bool textModified;
     static void onTextChanged() {
         textModified = true;
+    }
+
+    static void processLog() {
+        if (!isWindowOpen) {
+            return;
+        }
+
+        if (instance != nullptr) {
+            instance->handleDelimiterPositions(DelimiterOperation::Update);
+        }
     }
 
     enum class ChangeType { Insert, Delete, Modify };
@@ -395,7 +415,8 @@ private:
     void optimizeLogChanges();
     void updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType);
     void processLogForDelimiters();
-    void handleDelimiterPositions();
+    void handleDelimiterPositions(DelimiterOperation operation);
+    void handleClearDelimiterState();
     void displayLogChangesInMessageBox();
 
 

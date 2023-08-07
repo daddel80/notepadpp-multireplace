@@ -53,6 +53,7 @@ bool MultiReplace::textModified = true;
 HWND MultiReplace::s_hScintilla = nullptr;
 HWND MultiReplace::s_hDlg = nullptr;
 std::vector<MultiReplace::LogEntry> MultiReplace::logChanges;
+MultiReplace* MultiReplace::instance = nullptr;
 
 
 #pragma region Initialization
@@ -83,7 +84,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     
     ctrlMap[IDC_SCOPE_GROUP] = { 400, 105, 230, 100, WC_BUTTON, L"Scope", BS_GROUPBOX, NULL };
     ctrlMap[IDC_ALL_TEXT_RADIO] = { 410, 125, 100, 20, WC_BUTTON, L"All Text", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SELECTION_RADIO] = { 410, 150, 100, 20, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP,  L"Selection works with 'Replace All' and 'Mark Matches'"  };
+    ctrlMap[IDC_SELECTION_RADIO] = { 410, 150, 100, 20, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP,  NULL  };
     ctrlMap[IDC_COLUMN_MODE_RADIO] = { 410, 175, 20, 20, WC_BUTTON, L"", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COLUMN_NUM_STATIC] = { 426, 175, 30, 20, WC_STATIC, L"Col.:", SS_RIGHT, NULL };
     ctrlMap[IDC_COLUMN_NUM_EDIT] = { 456, 175, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Columns: '1,3,5-12' (individuals, ranges)" };
@@ -1068,6 +1069,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         else {
             isLongRunCancelled = true;
+            handleClearTextMarksButton();
+            handleClearDelimiterState();
         }
     }
     break;
@@ -1130,8 +1133,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             setElementsState(columnRadioDependentElements, false);
             setElementsState(selectionRadioDisabledButtons, true);
-            handleClearColumnMarks();
-            handleDelimiterPositions();
+            handleClearDelimiterState();
         }
         break;
 
@@ -1139,8 +1141,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             setElementsState(columnRadioDependentElements, false);
             setElementsState(selectionRadioDisabledButtons, false);
-            handleClearColumnMarks();
-            handleDelimiterPositions();
+            handleClearDelimiterState();
         }
         break;
 
@@ -1154,7 +1155,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_COLUMN_HIGHLIGHT_BUTTON:
         {
             if (!isColumnHighlighted) {
-                handleDelimiterPositions();
+                handleDelimiterPositions(DelimiterOperation::LoadAll);
                 if (!columnDelimiterData.columns.empty() && !columnDelimiterData.extendedDelimiter.empty()) {
                     handleHighlightColumnsInDocument();
                     LRESULT startPosition = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
@@ -1198,14 +1199,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_FIND_BUTTON:
         case IDC_FIND_NEXT_BUTTON:
         {
-            handleDelimiterPositions();
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleFindNextButton();
         }
         break;
 
         case IDC_FIND_PREV_BUTTON:
         {
-            handleDelimiterPositions();
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleFindPrevButton(); 
         }
         break;
@@ -1219,7 +1220,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_REPLACE_ALL_SMALL_BUTTON:
         case IDC_REPLACE_ALL_BUTTON:
         {
-            handleDelimiterPositions();
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleReplaceAllButton();
         }
         break;
@@ -1227,7 +1228,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
         {
-            handleDelimiterPositions();
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleClearTextMarksButton();
             handleMarkMatchesButton();
         }
@@ -1502,7 +1503,7 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
         replaceCount++;
 
         // Update Delimiter and Marking if enabled
-        handleDelimiterPositions();
+        // handleDelimiterPositions();
 
         searchResult = performSearchForward(findTextUtf8, searchFlags, false, newPos);
     }
@@ -2363,6 +2364,12 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     columnDelimiterData.columns = columns;
     columnDelimiterData.extendedDelimiter = convertAndExtend(delimiterData, true);
     columnDelimiterData.delimiterLength = columnDelimiterData.extendedDelimiter.length();
+    
+    // Check delimiter data
+    if (columnDelimiterData.extendedDelimiter.empty()) {
+        showStatusMessage(L"Extended delimiter is empty", RGB(255, 0, 0));
+        return false;
+    }
     return true;
 }
 
@@ -2778,14 +2785,7 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
     }
 }
 
-void MultiReplace::handleDelimiterPositions() {
-    if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) != BST_CHECKED) {
-        lineDelimiterPositions.clear();
-        isLoggingEnabled = false;
-        textModified = false;
-        logChanges.clear();  // not really necessary
-        return;
-    }
+void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
 
     int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
 
@@ -2804,14 +2804,25 @@ void MultiReplace::handleDelimiterPositions() {
 
     if (eolLengthChanged) eolLength = updatedEolLength;
 
-    if (eolLengthChanged || currentBufferID != scannedDelimiterBufferID || lineDelimiterPositions.empty() || columnDelimiterData.delimiterChanged) {
-        isLoggingEnabled = true;  // Enable detailed logging
-        findAllDelimitersInDocument();
-        scannedDelimiterBufferID = currentBufferID;
-    } else {
+    if (operation == DelimiterOperation::LoadAll) {
+        if (eolLengthChanged || currentBufferID != scannedDelimiterBufferID || lineDelimiterPositions.empty() || columnDelimiterData.delimiterChanged) {
+            isLoggingEnabled = true;  // Enable detailed logging
+            findAllDelimitersInDocument();
+            scannedDelimiterBufferID = currentBufferID;
+        }
+    }
+    else if (operation == DelimiterOperation::Update) {
         processLogForDelimiters();
         textModified = false; // Reset the textModified flag after processing changes
     }
+}
+
+void MultiReplace::handleClearDelimiterState() {
+    lineDelimiterPositions.clear();
+    isLoggingEnabled = false;
+    textModified = false;
+    logChanges.clear();
+    handleClearColumnMarks();
 }
 
 void MultiReplace::displayLogChangesInMessageBox() {
