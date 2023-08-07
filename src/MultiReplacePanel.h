@@ -430,7 +430,6 @@ private:
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
-    std::wstring addProgressBarMessage(LRESULT currentLine, LRESULT totalLines, const std::wstring& message, LRESULT threshold);
     bool displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message);
     void resetProgressBar();
     LRESULT updateEOLLength();

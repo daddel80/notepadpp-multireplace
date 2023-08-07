@@ -2382,6 +2382,9 @@ void MultiReplace::findAllDelimitersInDocument() {
     textModified = false;
     logChanges.clear();
 
+    // Enable detailed logging for capturing delimiter positions
+    isLoggingEnabled = true;
+
     // Get total line count in document
     LRESULT totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
 
@@ -2786,34 +2789,38 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
 }
 
 void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
-
     int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
-
-    if (!parseColumnAndDelimiterData()) {
-        return;
-    }
-
-    // Prevent executing the operations if the columns set or extendedDelimiter string is empty
-    if (columnDelimiterData.columns.empty() || columnDelimiterData.extendedDelimiter.empty()) {
-        return;
-    }
-
-    // Check and update EOL length if necessary
     LRESULT updatedEolLength = updateEOLLength();
-    bool eolLengthChanged = (updatedEolLength != eolLength);
 
-    if (eolLengthChanged) eolLength = updatedEolLength;
+    // If EOL length has changed or if there's been a change in the active window within Notepad++, reset all delimiter settings
+    if (updatedEolLength != eolLength || currentBufferID != scannedDelimiterBufferID) {
+        handleClearDelimiterState();
+    }
+
+    eolLength = updatedEolLength;
+    scannedDelimiterBufferID = currentBufferID;
 
     if (operation == DelimiterOperation::LoadAll) {
-        if (eolLengthChanged || currentBufferID != scannedDelimiterBufferID || lineDelimiterPositions.empty() || columnDelimiterData.delimiterChanged) {
-            isLoggingEnabled = true;  // Enable detailed logging
+        // Parse column and delimiter data; exit if parsing fails or if delimiter is empty
+        if (!parseColumnAndDelimiterData()) {
+            return;
+        }
+
+        // Ensure the columns and delimiter data is present before proceeding
+        if (columnDelimiterData.columns.empty() || columnDelimiterData.extendedDelimiter.empty()) {
+            return;
+        }
+
+        // If any conditions that warrant a refresh of delimiters are met, proceed
+        if (lineDelimiterPositions.empty() || columnDelimiterData.delimiterChanged) {
             findAllDelimitersInDocument();
-            scannedDelimiterBufferID = currentBufferID;
         }
     }
     else if (operation == DelimiterOperation::Update) {
-        processLogForDelimiters();
-        textModified = false; // Reset the textModified flag after processing changes
+        // Ensure the columns and delimiter data is present before processing updates
+        if (!columnDelimiterData.columns.empty() && !columnDelimiterData.extendedDelimiter.empty()) {
+            processLogForDelimiters();
+        }
     }
 }
 
@@ -3169,23 +3176,6 @@ std::wstring MultiReplace::getSelectedText() {
     delete[] buffer;
 
     return wstr;
-}
-
-std::wstring MultiReplace::addProgressBarMessage(LRESULT currentLine, LRESULT totalLines, const std::wstring& message, LRESULT threshold) {
-    static std::wstring lastProgressBarMessage;
-    const int progressBarWidth = 10;  // Width of the progress bar in characters
-
-    if (totalLines > threshold && currentLine % (totalLines / 100) == 0) {
-        int percentageComplete = static_cast<int>((static_cast<double>(currentLine) / totalLines) * 100);
-        if (percentageComplete % 5 == 0) { // Only update every 5%
-            // Only construct a new message when the percentage changes
-            std::wstring progressBar = L"[" + std::wstring((percentageComplete / 10), '#') +
-                std::wstring((progressBarWidth - (percentageComplete / 10)), ' ') + L"]";
-            lastProgressBarMessage = message + progressBar + std::to_wstring(percentageComplete) + L"%";
-        }
-    }
-    // Return the last message constructed, regardless of whether it changed this iteration
-    return lastProgressBarMessage;
 }
 
 bool MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message) {
