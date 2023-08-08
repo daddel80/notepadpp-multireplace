@@ -2605,7 +2605,7 @@ void MultiReplace::clearMarksInLine(LRESULT line) {
 
 void MultiReplace::highlightColumnRange(LRESULT start, LRESULT end, SIZE_T column) {
     // Skip if end is only one position higher than start
-    if (end - start <= 1) {
+    if (end - start < 1) {
         return;
     }
 
