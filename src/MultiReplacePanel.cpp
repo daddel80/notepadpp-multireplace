@@ -1416,7 +1416,6 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
         else {
             newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
         }
-        Sci_Position newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
         replaceCount++;
 
         searchResult = performSearchForward(findTextUtf8, searchFlags, newPos, false);
