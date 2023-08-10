@@ -1549,14 +1549,20 @@ Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf
     // Set the target range for the replacement
     ::SendMessage(_hScintilla, SCI_SETTARGETRANGE, pos, pos + length);
 
+    // Get the codepage of the document
+    int cp = static_cast<int>(::SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
+
+    // Convert the string from UTF-8 to the codepage of the document
+    std::string replaceTextCp = utf8ToCodepage(replaceTextUtf8, cp);
+
     // Perform the regex replacement
-    ::SendMessage(_hScintilla, SCI_REPLACETARGETRE, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(replaceTextUtf8.c_str()));
+    ::SendMessage(_hScintilla, SCI_REPLACETARGETRE, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(replaceTextCp.c_str()));
 
     // We need to return the new position after the replacement. 
     // Note: The length of the replaced string may differ from the length of the original match.
-    int newLength = static_cast<int>(replaceTextUtf8.length());
-    return pos + newLength;
+    return pos + static_cast<Sci_Position>(replaceTextCp.length());
 }
+
 
 std::string MultiReplace::utf8ToCodepage(const std::string& utf8Str, int codepage) {
     // Convert the UTF-8 string to a wide string
