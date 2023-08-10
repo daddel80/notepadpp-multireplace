@@ -1310,8 +1310,14 @@ void MultiReplace::handleReplaceButton() {
                 if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
                     // If it does match, replace the selected string
                     std::string replaceTextUtf8 = convertAndExtend(replaceText, extended);
-                    performReplace(replaceTextUtf8, selection.startPos, selection.length);
+                    if (regex) {
+                        performRegexReplace(replaceTextUtf8, selection.startPos, selection.length);
+                    }
+                    else {
+                        performReplace(replaceTextUtf8, selection.startPos, selection.length);
+                    }
                     showStatusMessage((L"Replaced '" + stringToWString(selection.text) + L"' with '" + replaceText + L"'.").c_str(), RGB(0, 128, 0));
+
                     break;
                 }
             }
@@ -1355,7 +1361,12 @@ void MultiReplace::handleReplaceButton() {
         if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
             // If it does match, replace the selected string
             std::string replaceTextUtf8 = convertAndExtend(replaceText, extended);
-            performReplace(replaceTextUtf8, selection.startPos, selection.length);
+            if (regex) {
+                performRegexReplace(replaceTextUtf8, selection.startPos, selection.length);
+            }
+            else {
+                performReplace(replaceTextUtf8, selection.startPos, selection.length);
+            }
             showStatusMessage((L"Replaced '" + findText + L"' with '" + replaceText + L"'.").c_str(), RGB(0, 128, 0));
 
             // Continue search after replace
@@ -1398,6 +1409,13 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
     SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, 0, false);
     while (searchResult.pos >= 0)
     {
+        Sci_Position newPos;
+        if (regex) {
+            newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+        }
+        else {
+            newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+        }
         Sci_Position newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
         replaceCount++;
 
@@ -1422,6 +1440,20 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
     ::SendMessage(_hScintilla, SCI_REPLACETARGET, replaceTextCp.size(), reinterpret_cast<LPARAM>(replaceTextCp.c_str()));
 
     return pos + static_cast<Sci_Position>(replaceTextCp.length());
+}
+
+Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
+{
+    // Set the target range for the replacement
+    ::SendMessage(_hScintilla, SCI_SETTARGETRANGE, pos, pos + length);
+
+    // Perform the regex replacement
+    ::SendMessage(_hScintilla, SCI_REPLACETARGETRE, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(replaceTextUtf8.c_str()));
+
+    // We need to return the new position after the replacement. 
+    // Note: The length of the replaced string may differ from the length of the original match.
+    int newLength = static_cast<int>(replaceTextUtf8.length());
+    return pos + newLength;
 }
 
 std::string MultiReplace::utf8ToCodepage(const std::string& utf8Str, int codepage) {
