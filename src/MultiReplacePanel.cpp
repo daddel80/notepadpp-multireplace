@@ -816,9 +816,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializeScintilla();
         initializePluginStyle();
         initializeCtrlMap();
-        updateUIVisibility();
         initializeListView();
         loadSettings();
+        updateUIVisibility();
         return TRUE;
     }
     break;
