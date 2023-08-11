@@ -54,6 +54,9 @@ HWND MultiReplace::s_hScintilla = nullptr;
 HWND MultiReplace::s_hDlg = nullptr;
 std::vector<MultiReplace::LogEntry> MultiReplace::logChanges;
 MultiReplace* MultiReplace::instance = nullptr;
+bool MultiReplace::documentSwitched = false;
+int MultiReplace::scannedDelimiterBufferID = -1;
+bool MultiReplace::isLongRunCancelled = false;
 
 
 #pragma region Initialization
@@ -390,10 +393,18 @@ void MultiReplace::updateUIVisibility() {
     }
 
     // Show or hide the "Cancel Longrun Button" based on the active state
-    ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), progressDisplayActive ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), progressDisplayActive ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), progressDisplayActive ? SW_HIDE : SW_SHOW);
-    ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), progressDisplayActive ? SW_SHOW : SW_HIDE);
+    if (!isSmallerThanMinSize) {
+        ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), SW_HIDE);
+    }
+    else {
+        ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), progressDisplayActive ? SW_SHOW : SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), progressDisplayActive ? SW_SHOW : SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), progressDisplayActive ? SW_HIDE : SW_SHOW);
+        ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), progressDisplayActive ? SW_SHOW : SW_HIDE);
+    }
 }
 
 #pragma endregion
@@ -1563,7 +1574,6 @@ Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf
     return pos + static_cast<Sci_Position>(replaceTextCp.length());
 }
 
-
 std::string MultiReplace::utf8ToCodepage(const std::string& utf8Str, int codepage) {
     // Convert the UTF-8 string to a wide string
     int lenWc = MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(), -1, nullptr, 0);
@@ -2432,12 +2442,6 @@ void MultiReplace::findAllDelimitersInDocument() {
 
         processLogForDelimiters();
 
-        // If isLongRunCancelled is true, clear lineDelimiterPositions and break the loop
-        if (isLongRunCancelled) {
-            lineDelimiterPositions.clear();
-            break;
-        }
-
         // Adjust totalLines according to changes in document
         LRESULT newTotalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
         if (newTotalLines != totalLines) {
@@ -2449,7 +2453,10 @@ void MultiReplace::findAllDelimitersInDocument() {
         findDelimitersInLine(line);
 
         // Update progress in status
-        displayProgressInStatus(line, totalLines, L"Loading CSV");
+        if (!displayProgressInStatus(line, totalLines, L"HLoading CSV")) {
+            lineDelimiterPositions.clear();
+            break;
+        }
 
         // Adjust totalLines according to changes in document
         totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
@@ -2825,25 +2832,21 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
 }
 
 void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
-    int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+    //int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
     LRESULT updatedEolLength = updateEOLLength();
 
     // If EOL length has changed or if there's been a change in the active window within Notepad++, reset all delimiter settings
-    if (updatedEolLength != eolLength || currentBufferID != scannedDelimiterBufferID) {
+    if (updatedEolLength != eolLength || documentSwitched) {
         handleClearDelimiterState();
+        documentSwitched = false;
     }
 
     eolLength = updatedEolLength;
-    scannedDelimiterBufferID = currentBufferID;
+    //scannedDelimiterBufferID = currentBufferID;
 
     if (operation == DelimiterOperation::LoadAll) {
         // Parse column and delimiter data; exit if parsing fails or if delimiter is empty
         if (!parseColumnAndDelimiterData()) {
-            return;
-        }
-
-        // Ensure the columns and delimiter data is present before proceeding
-        if (columnDelimiterData.columns.empty() || columnDelimiterData.extendedDelimiter.empty()) {
             return;
         }
 
@@ -3217,6 +3220,7 @@ std::wstring MultiReplace::getSelectedText() {
 bool MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message) {
     static std::wstring lastProgressBarMessage;
     static bool showProgressBar = false;
+    isLongRunCancelled = false;
 
     if (current == 0) {
         // Reset the progress bar and decision when a new process starts

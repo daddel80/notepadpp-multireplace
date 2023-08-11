@@ -196,6 +196,22 @@ public:
         textModified = true;
     }
 
+    static bool documentSwitched;
+    static int scannedDelimiterBufferID;
+    static bool isLongRunCancelled;
+    static void onDocumentSwitched() {
+        if (!isWindowOpen) {
+            return;
+        }
+
+        int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+        if (currentBufferID != scannedDelimiterBufferID) {
+            documentSwitched = true;
+            isLongRunCancelled = true;
+            scannedDelimiterBufferID = currentBufferID;
+        }
+    }
+
     static void processLog() {
         if (!isWindowOpen) {
             return;
@@ -321,9 +337,7 @@ private:
     std::vector<LineInfo> lineDelimiterPositions;
 
     bool isColumnHighlighted = false;
-    int scannedDelimiterBufferID = -1;
     std::string messageBoxContent;  // just for temporyry debugging usage
-    std::atomic<bool> isLongRunCancelled = false;
     bool progressDisplayActive = false;
     std::map<int, bool> stateSnapshot; // map to store the state
     
