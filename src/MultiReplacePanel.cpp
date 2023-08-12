@@ -1541,16 +1541,16 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
 Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
     // Set the target range for the replacement
-    ::SendMessage(_hScintilla, SCI_SETTARGETRANGE, pos, pos + length);
+    send(SCI_SETTARGETRANGE, pos, pos + length);
 
     // Get the codepage of the document
-    int cp = static_cast<int>(::SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
+    int cp = static_cast<int>(send(SCI_GETCODEPAGE, 0, 0));
 
     // Convert the string from UTF-8 to the codepage of the document
     std::string replaceTextCp = utf8ToCodepage(replaceTextUtf8, cp);
 
     // Perform the replacement
-    ::SendMessage(_hScintilla, SCI_REPLACETARGET, replaceTextCp.size(), reinterpret_cast<LPARAM>(replaceTextCp.c_str()));
+    send(SCI_REPLACETARGET, replaceTextCp.size(), reinterpret_cast<sptr_t>(replaceTextCp.c_str()));
 
     return pos + static_cast<Sci_Position>(replaceTextCp.length());
 }
@@ -1558,19 +1558,19 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
 Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
     // Set the target range for the replacement
-    ::SendMessage(_hScintilla, SCI_SETTARGETRANGE, pos, pos + length);
+    send(SCI_SETTARGETRANGE, pos, pos + length);
 
     // Get the codepage of the document
-    int cp = static_cast<int>(::SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
+    int cp = static_cast<int>(send(SCI_GETCODEPAGE, 0, 0));
 
     // Convert the string from UTF-8 to the codepage of the document
     std::string replaceTextCp = utf8ToCodepage(replaceTextUtf8, cp);
 
     // Perform the regex replacement
-    ::SendMessage(_hScintilla, SCI_REPLACETARGETRE, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(replaceTextCp.c_str()));
+    send(SCI_REPLACETARGETRE, static_cast<WPARAM>(-1), reinterpret_cast<sptr_t>(replaceTextCp.c_str()));
 
-    // We need to return the new position after the replacement. 
-    // Note: The length of the replaced string may differ from the length of the original match.
+    // Return the new position after the replacement. The replaced string's length 
+    // may differ from the original match. For now, we approximate using the replacement string's length.
     return pos + static_cast<Sci_Position>(replaceTextCp.length());
 }
 
@@ -1721,6 +1721,7 @@ void MultiReplace::handleFindPrevButton() {
         int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
 
         std::string findTextUtf8 = convertAndExtend(findText, extended);
+
         SearchResult result = performSearchBackward(findTextUtf8, searchFlags, searchPos);
 
         if (result.pos >= 0) {
@@ -1747,11 +1748,11 @@ void MultiReplace::handleFindPrevButton() {
 
 SearchResult MultiReplace::performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range) {
 
-    ::SendMessage(_hScintilla, SCI_SETTARGETSTART, range.start, 0);
-    ::SendMessage(_hScintilla, SCI_SETTARGETEND, range.end, 0);
-    ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
+    send(SCI_SETTARGETSTART, range.start, 0);
+    send(SCI_SETTARGETEND, range.end, 0);
+    send(SCI_SETSEARCHFLAGS, searchFlags, 0);
 
-    LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
+    LRESULT pos = send(SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<sptr_t>(findTextUtf8.c_str()));
 
     SearchResult result;
     result.pos = pos;
@@ -1760,7 +1761,7 @@ SearchResult MultiReplace::performSingleSearch(const std::string& findTextUtf8, 
 
     if (pos >= 0) {
         // If a match is found, set additional result data
-        result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
+        result.length = send(SCI_GETTARGETEND, 0, 0) - pos;
         result.foundText = findTextUtf8;
 
         // If selectMatch is true, highlight the found text
@@ -1948,6 +1949,7 @@ SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8
 
                     // Check if a match was found
                     if (result.pos >= 0) {
+                        displayResultCentered(result.pos, result.pos + result.length, false);
                         return result;
                     }
                 }
@@ -1955,23 +1957,52 @@ SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8
         }
     }
     else {
-        ::SendMessage(_hScintilla, SCI_SETTARGETSTART, start, 0);
-        ::SendMessage(_hScintilla, SCI_SETTARGETEND, 0, 0);
-        ::SendMessage(_hScintilla, SCI_SETSEARCHFLAGS, searchFlags, 0);
-        LRESULT pos = ::SendMessage(_hScintilla, SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<LPARAM>(findTextUtf8.c_str()));
+        send(SCI_SETTARGETSTART, start, 0);
+        send(SCI_SETTARGETEND, 0, 0);
+        send(SCI_SETSEARCHFLAGS, searchFlags, 0);
+
+        LRESULT pos = send(SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<sptr_t>(findTextUtf8.c_str()));
         result.pos = pos;
 
         if (pos >= 0) {
-            result.length = ::SendMessage(_hScintilla, SCI_GETTARGETEND, 0, 0) - pos;
+            result.length = send(SCI_GETTARGETEND, 0, 0) - pos;
             result.foundText = findTextUtf8;
             displayResultCentered(result.pos, result.pos + result.length, false);
         }
         else {
             result.length = 0;
         }
+
     }
 
     return result;
+}
+
+SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos)
+{
+    SearchResult closestMatch;
+    closestMatch.pos = -1;
+    closestMatch.length = 0;
+    closestMatch.foundText = "";
+
+    for (const ReplaceItemData& itemData : list)
+    {
+        if (itemData.isSelected) {
+            int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
+            std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
+            SearchResult result = performSearchForward(findTextUtf8, searchFlags, false, cursorPos);
+
+            // If a match was found and it's closer to the cursor than the current closest match, update the closest match
+            if (result.pos >= 0 && (closestMatch.pos < 0 || (result.pos + result.length) >(closestMatch.pos + closestMatch.length))) {
+                closestMatch = result;
+            }
+        }
+    }
+    if (closestMatch.pos >= 0) { // Check if a match was found
+        displayResultCentered(closestMatch.pos, closestMatch.pos + closestMatch.length, false);
+    }
+
+    return closestMatch;
 }
 
 SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos)
@@ -1997,33 +2028,6 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
     if (closestMatch.pos >= 0) { // Check if a match was found
         displayResultCentered(closestMatch.pos, closestMatch.pos + closestMatch.length, true);
     }
-    return closestMatch;
-}
-
-SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos)
-{
-    SearchResult closestMatch;
-    closestMatch.pos = -1;
-    closestMatch.length = 0;
-    closestMatch.foundText = "";
-
-    for (const ReplaceItemData& itemData : list)
-    {
-        if (itemData.isSelected) {
-            int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
-            std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
-            SearchResult result = performSearchBackward(findTextUtf8, searchFlags, cursorPos);
-
-            // If a match was found and it's closer to the cursor than the current closest match, update the closest match
-            if (result.pos >= 0 && (closestMatch.pos < 0 || (result.pos + result.length) >(closestMatch.pos + closestMatch.length))) {
-                closestMatch = result;
-            }
-        }
-    }
-    if (closestMatch.pos >= 0) { // Check if a match was found
-        displayResultCentered(closestMatch.pos, closestMatch.pos + closestMatch.length, false);
-    }
-
     return closestMatch;
 }
 
@@ -2656,8 +2660,8 @@ void MultiReplace::highlightColumnRange(LRESULT start, LRESULT end, SIZE_T colum
     int indicatorStyle = colorToStyleMap[columnColors[(column - 1) % columnColors.size()]];
 
     // Set the current indicator and apply highlighting style
-    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicatorStyle, 0);
-    ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, start, end - start);
+    send(SCI_SETINDICATORCURRENT, indicatorStyle, 0);
+    send(SCI_INDICATORFILLRANGE, start, end - start);
 }
 
 void MultiReplace::handleClearColumnMarks() {
@@ -2832,6 +2836,10 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
 }
 
 void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
+    // Check if IDC_COLUMN_MODE_RADIO checkbox is not checked, and if so, return early
+    if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) != BST_CHECKED) {
+        return;
+    }
     //int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
     LRESULT updatedEolLength = updateEOLLength();
 
@@ -3332,6 +3340,15 @@ void MultiReplace::setElementsState(const std::vector<int>& elements, bool enabl
         }
         // Clear the snapshot after restoring it
         stateSnapshot.clear();
+    }
+}
+
+sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, bool useDirect) {
+    if (useDirect && pSciMsg) {
+        return pSciMsg(pSciWndData, iMessage, wParam, lParam);
+    }
+    else {
+        return ::SendMessage(_hScintilla, iMessage, wParam, lParam);
     }
 }
 

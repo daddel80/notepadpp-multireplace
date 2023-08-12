@@ -141,6 +141,11 @@ public:
         _statusMessageColor(RGB(0, 0, 0))
     {
         setInstance(this);
+        if (_hScintilla) { // just to supress Warning
+            pSciMsg = (SciFnDirect)::SendMessage(_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0);
+            pSciWndData = (sptr_t)::SendMessage(_hScintilla, SCI_GETDIRECTPOINTER, 0, 0);
+        }
+
     };
 
     static MultiReplace* instance; // Static instance of the class
@@ -340,6 +345,9 @@ private:
     std::string messageBoxContent;  // just for temporyry debugging usage
     bool progressDisplayActive = false;
     std::map<int, bool> stateSnapshot; // map to store the state
+
+    SciFnDirect pSciMsg = nullptr;
+    sptr_t pSciWndData = 0;
     
     const std::vector<int> allElementsExceptCancelLongRun = {
     IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO,
@@ -449,6 +457,7 @@ private:
     void resetProgressBar();
     LRESULT updateEOLLength();
     void setElementsState(const std::vector<int>& elements, bool enable, bool restoreOriginalState = false);
+    sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput);
