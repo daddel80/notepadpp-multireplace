@@ -2457,7 +2457,7 @@ void MultiReplace::findAllDelimitersInDocument() {
         findDelimitersInLine(line);
 
         // Update progress in status
-        if (!displayProgressInStatus(line, totalLines, L"HLoading CSV")) {
+        if (!displayProgressInStatus(line, totalLines, L"Loading CSV")) {
             lineDelimiterPositions.clear();
             break;
         }
