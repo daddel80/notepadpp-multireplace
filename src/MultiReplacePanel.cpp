@@ -292,7 +292,7 @@ void MultiReplace::moveAndResizeControls() {
 
     // IDs of controls to be redrawn
     const int redrawIds[] = {
-        IDC_USE_LIST_CHECKBOX, IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE,
+        IDC_USE_LIST_CHECKBOX, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE,
         IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON,
         IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON,
         IDC_COPY_MARKED_TEXT_BUTTON,
@@ -355,7 +355,7 @@ void MultiReplace::updateUIVisibility() {
         IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
         IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
         IDC_CLEAR_MARKS_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME,
-        IDC_SHIFT_TEXT, IDC_STATUS_MESSAGE, IDC_EXPORT_BASH_BUTTON, 
+        IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, 
         IDC_2_BUTTONS_MODE
     };
 
@@ -394,16 +394,16 @@ void MultiReplace::updateUIVisibility() {
 
     // Show or hide the "Cancel Longrun Button" based on the active state
     if (!isSmallerThanMinSize) {
-        ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), SW_SHOW);
-        ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), SW_HIDE);
-    }
-    else {
         ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), progressDisplayActive ? SW_SHOW : SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), progressDisplayActive ? SW_SHOW : SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), progressDisplayActive ? SW_HIDE : SW_SHOW);
         ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), progressDisplayActive ? SW_SHOW : SW_HIDE);
+    }
+    else {
+        ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), SW_HIDE);
     }
 }
 
