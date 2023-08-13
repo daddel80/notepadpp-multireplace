@@ -82,6 +82,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
         {
             MultiReplace::onSelectionChanged();
         }
+        MultiReplace::onCaretPositionChanged();
     }
     break;
     case SCN_MODIFIED:

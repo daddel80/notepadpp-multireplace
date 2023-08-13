@@ -57,6 +57,7 @@ MultiReplace* MultiReplace::instance = nullptr;
 bool MultiReplace::documentSwitched = false;
 int MultiReplace::scannedDelimiterBufferID = -1;
 bool MultiReplace::isLongRunCancelled = false;
+bool MultiReplace::isCaretPositionEnabled = false;
 
 
 #pragma region Initialization
@@ -1527,9 +1528,6 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
         }
         replaceCount++;
 
-        // Update Delimiter and Marking if enabled
-        // handleDelimiterPositions();
-
         searchResult = performSearchForward(findTextUtf8, searchFlags, false, newPos);
     }
 
@@ -2469,6 +2467,7 @@ void MultiReplace::findAllDelimitersInDocument() {
 
     // Hide the cancel button and reset the cancellation flag
     resetProgressBar(L"Scanning Data");
+
 }
 
 void MultiReplace::findDelimitersInLine(LRESULT line) {
@@ -2525,7 +2524,8 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
 
 StartColumnInfo MultiReplace::getStartColumnInfo(LRESULT startPosition) {
     if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) != BST_CHECKED ||
-        columnDelimiterData.columns.empty() || columnDelimiterData.extendedDelimiter.empty()) {
+        columnDelimiterData.columns.empty() || columnDelimiterData.extendedDelimiter.empty() ||
+        lineDelimiterPositions.empty()) {
         return { 0, 0, 0 };
     }
 
@@ -2603,6 +2603,9 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     resetProgressBar(L"Highlight Columns");
 
     isColumnHighlighted = true;
+
+    // Enable Position detection
+    isCaretPositionEnabled = true;
 }
 
 void MultiReplace::highlightColumnsInLine(LRESULT line) {
@@ -2676,6 +2679,7 @@ void MultiReplace::handleClearColumnMarks() {
 
     showStatusMessage(L"Column marks cleared.", RGB(0, 128, 0));
     isColumnHighlighted = false;
+    isCaretPositionEnabled = false;
 }
 
 std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
@@ -2881,6 +2885,8 @@ void MultiReplace::handleClearDelimiterState() {
     textModified = false;
     logChanges.clear();
     handleClearColumnMarks();
+    isColumnHighlighted = false;
+    isCaretPositionEnabled = false;
 }
 
 void MultiReplace::displayLogChangesInMessageBox() {

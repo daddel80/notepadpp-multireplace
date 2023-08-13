@@ -213,6 +213,7 @@ public:
         if (currentBufferID != scannedDelimiterBufferID) {
             documentSwitched = true;
             isLongRunCancelled = true;
+            isCaretPositionEnabled = false;
             scannedDelimiterBufferID = currentBufferID;
         }
     }
@@ -280,6 +281,20 @@ public:
                 }
             }
         }
+    }
+
+    static bool isCaretPositionEnabled;
+    static void onCaretPositionChanged()
+    {
+        if (!isWindowOpen || !isCaretPositionEnabled) {
+            return;
+        }
+
+        LRESULT startPosition = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETCURRENTPOS, 0, 0);
+        if (instance != nullptr) {
+            instance->showStatusMessage(L"Actual Position " + instance->addLineAndColumnMessage(startPosition), RGB(0, 128, 0));
+        }
+
     }
 
 protected:
