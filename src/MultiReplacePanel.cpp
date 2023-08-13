@@ -2539,7 +2539,7 @@ StartColumnInfo MultiReplace::getStartColumnInfo(LRESULT startPosition) {
         const auto& linePositions = lineDelimiterPositions[startLine].positions;
 
         for (SIZE_T i = 0; i < linePositions.size(); ++i) {
-            if (startPosition < linePositions[i].position) {
+            if (startPosition <= linePositions[i].position) {
                 startColumnIndex = i + 1;
                 break;
             }
