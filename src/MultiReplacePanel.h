@@ -442,7 +442,6 @@ private:
     void handleClearDelimiterState();
     void displayLogChangesInMessageBox();
 
-
     //Utilities
     int convertExtendedToString(const std::string& query, std::string& result);
     std::string convertAndExtend(const std::wstring& input, bool extended);
@@ -454,7 +453,7 @@ private:
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
     bool displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message);
-    void resetProgressBar();
+    void resetProgressBar(const std::wstring& processName = L"");
     LRESULT updateEOLLength();
     void setElementsState(const std::vector<int>& elements, bool enable, bool restoreOriginalState = false);
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);

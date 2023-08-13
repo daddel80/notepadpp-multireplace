@@ -1169,8 +1169,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
                 if (!columnDelimiterData.columns.empty() && !columnDelimiterData.extendedDelimiter.empty()) {
                     handleHighlightColumnsInDocument();
-                    LRESULT startPosition = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
-                    showStatusMessage(L"Actual Position " + addLineAndColumnMessage(startPosition), RGB(0, 128, 0));
                 }
             }
             else {
@@ -2457,7 +2455,7 @@ void MultiReplace::findAllDelimitersInDocument() {
         findDelimitersInLine(line);
 
         // Update progress in status
-        if (!displayProgressInStatus(line, totalLines, L"Loading CSV")) {
+        if (!displayProgressInStatus(line, totalLines, L"Scanning Data")) {
             lineDelimiterPositions.clear();
             break;
         }
@@ -2470,7 +2468,7 @@ void MultiReplace::findAllDelimitersInDocument() {
     logChanges.clear();
 
     // Hide the cancel button and reset the cancellation flag
-    resetProgressBar();
+    resetProgressBar(L"Scanning Data");
 }
 
 void MultiReplace::findDelimitersInLine(LRESULT line) {
@@ -2595,8 +2593,14 @@ void MultiReplace::handleHighlightColumnsInDocument() {
         ++line;
     }
 
+    // Show Row and Column Position if not canceled
+    if (!lineDelimiterPositions.empty() && !isLongRunCancelled) {
+        LRESULT startPosition = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+        showStatusMessage(L"Actual Position " + addLineAndColumnMessage(startPosition), RGB(0, 128, 0));
+    }
+
     // Hide the cancel button and reset the cancellation flag
-    resetProgressBar();
+    resetProgressBar(L"Highlight Columns");
 
     isColumnHighlighted = true;
 }
@@ -3270,10 +3274,16 @@ bool MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const
     return true;
 }
 
-void MultiReplace::resetProgressBar() {
-    // Reset isLongRunCancelled to false, hide Button
+void MultiReplace::resetProgressBar(const std::wstring& processName) {
+    // If the process was canceled
+    if (isLongRunCancelled) {
+        std::wstring cancelMessage = processName.empty() ? L"Process canceled" : processName + L" canceled";
+        showStatusMessage(cancelMessage, RGB(255, 0, 0));  // RGB for red color
+    }
     isLongRunCancelled = false;
     progressDisplayActive = false;
+
+    // Hide the Cancel Long Run button
     ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_HIDE);
 
     // Hide the progress bar
