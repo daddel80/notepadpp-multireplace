@@ -215,6 +215,9 @@ public:
             isLongRunCancelled = true;
             isCaretPositionEnabled = false;
             scannedDelimiterBufferID = currentBufferID;
+            if (instance != nullptr) {
+                instance->showStatusMessage(L"", RGB(0, 0, 0));
+            }
         }
     }
 
