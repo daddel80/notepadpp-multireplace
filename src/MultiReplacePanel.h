@@ -177,9 +177,15 @@ public:
     // static Functions used in beNotified in MultiReplace.cpp
     static bool isWindowOpen;
     static void onSelectionChanged() {
+
         if (!isWindowOpen) {
             return;
         }
+
+        static bool wasTextSelected = false;  // This stores the previous state
+        const std::vector<int> selectionRadioDisabledButtons = {
+        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
+        };
 
         // Get the start and end of the selection
         Sci_Position start = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
@@ -194,7 +200,16 @@ public:
             ::SendMessage(::GetDlgItem(getDialogHandle(), IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
             ::SendMessage(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
         }
+
+        // Check if there was a switch from selected to not selected
+        if (wasTextSelected && !isTextSelected) {
+            if (instance != nullptr) {
+                instance->setElementsState(selectionRadioDisabledButtons, true);
+            }
+        }
+        wasTextSelected = isTextSelected;  // Update the previous state
     }
+
 
     static bool textModified;
     static void onTextChanged() {
