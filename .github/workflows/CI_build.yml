@@ -21,7 +21,7 @@ jobs:
 
     - name: MSBuild of plugin dll
       working-directory: .\vs.proj
-      run: msbuild MultiReplace.vcxproj /m /p:configuration="${{ matrix.build_configuration }}" /p:platform="${{ matrix.build_platform }}" /p:PlatformToolset="v143" /target:zip
+      run: msbuild MultiReplace.vcxproj /m /p:configuration="${{ matrix.build_configuration }}" /p:platform="${{ matrix.build_platform }}" /p:PlatformToolset="v143" /p:CppStandard=17 /target:zip
       env:
           ZIPCMD: 7z a -tzip
 
