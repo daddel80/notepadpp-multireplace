@@ -415,6 +415,7 @@ void MultiReplace::updateUIVisibility() {
 
 void MultiReplace::createListViewColumns(HWND listView) {
     LVCOLUMN lvc;
+    ZeroMemory(&lvc, sizeof(lvc));
 
     lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
     lvc.fmt = LVCFMT_LEFT;
@@ -1003,6 +1004,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     int iItem = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED);
                     if (iItem >= 0) {
                         NMITEMACTIVATE nmia;
+                        ZeroMemory(&nmia, sizeof(nmia));
                         nmia.iItem = iItem;
                         handleCopyBack(&nmia);
                     }
@@ -2488,7 +2490,7 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
     delete[] buf;
 
     // Define structure to store delimiter position
-    DelimiterPosition delimiterPos;
+    DelimiterPosition delimiterPos = { 0 };
 
     bool inQuotes = false;
     std::string::size_type pos = 0;
@@ -2891,6 +2893,15 @@ void MultiReplace::handleClearDelimiterState() {
 
 void MultiReplace::displayLogChangesInMessageBox() {
 
+    // Helper function to convert std::string to std::wstring using Windows API
+    auto stringToWString = [](const std::string& input) -> std::wstring {
+        if (input.empty()) return std::wstring();
+        int size = MultiByteToWideChar(CP_UTF8, 0, input.c_str(), -1, 0, 0);
+        std::wstring result(size, 0);
+        MultiByteToWideChar(CP_UTF8, 0, input.c_str(), -1, &result[0], size);
+        return result;
+        };
+
     // Create a helper function to convert list to string
     auto listToString = [this](const std::vector<LineInfo>& list) {
         std::stringstream ss;
@@ -2903,10 +2914,10 @@ void MultiReplace::displayLogChangesInMessageBox() {
             ss << " End: " << list[i].endPosition << "\n";
         }
         return ss.str();
-    };
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+        };
+
     std::string startContent = listToString(lineDelimiterPositions);
-    std::wstring wideStartContent = converter.from_bytes(startContent);
+    std::wstring wideStartContent = stringToWString(startContent);
     MessageBox(NULL, wideStartContent.c_str(), L"Content at the beginning", MB_OK);
 
     std::ostringstream oss;
@@ -2927,17 +2938,16 @@ void MultiReplace::displayLogChangesInMessageBox() {
     }
 
     std::string logChangesStr = oss.str();
-
-    std::wstring logChangesWStr(logChangesStr.begin(), logChangesStr.end());
+    std::wstring logChangesWStr = stringToWString(logChangesStr);
     MessageBox(NULL, logChangesWStr.c_str(), L"Log Changes", MB_OK);
 
     processLogForDelimiters();
-    std::wstring wideMessageBoxContent = converter.from_bytes(messageBoxContent);
+    std::wstring wideMessageBoxContent = stringToWString(messageBoxContent);
     MessageBox(NULL, wideMessageBoxContent.c_str(), L"Final Result", MB_OK);
     messageBoxContent.clear();
 
     std::string endContent = listToString(lineDelimiterPositions);
-    std::wstring wideEndContent = converter.from_bytes(endContent);
+    std::wstring wideEndContent = stringToWString(endContent);
     MessageBox(NULL, wideEndContent.c_str(), L"Content at the end", MB_OK);
 
     logChanges.clear();
@@ -3054,7 +3064,7 @@ int MultiReplace::convertExtendedToString(const std::string& query, std::string&
                 }
                 // not enough chars to make parameter, use default method as fallback
             }
-
+            [[fallthrough]];
             default:
                 // unknown sequence, treat as regular text
                 result[j] = '\\';
@@ -3435,22 +3445,27 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const WCHAR* filter, co
 }
 
 bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
-    std::wofstream outFile(filePath);
-    outFile.imbue(std::locale(outFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>()));
+    std::ofstream outFile(filePath);
 
     if (!outFile.is_open()) {
         return false;
     }
 
-    // Write CSV header
-    outFile << L"Selected,Find,Replace,WholeWord,MatchCase,Regex,Extended" << std::endl;
+    // Convert and Write CSV header
+    std::string utf8Header = wstringToString(L"Selected,Find,Replace,WholeWord,MatchCase,Regex,Extended\n");
+    outFile << utf8Header;
 
-    // If list is empty, only the header will be written to the file
-    if (!list.empty()) {
-        // Write list items to CSV file
-        for (const ReplaceItemData& item : list) {
-            outFile << item.isSelected << L"," << escapeCsvValue(item.findText) << L"," << escapeCsvValue(item.replaceText) << L"," << item.wholeWord << L"," << item.matchCase << L"," << item.extended << L"," << item.regex << std::endl;
-        }
+    // Write list items to CSV file
+    for (const ReplaceItemData& item : list) {
+        std::wstring line = std::to_wstring(item.isSelected) + L"," +
+            escapeCsvValue(item.findText) + L"," +
+            escapeCsvValue(item.replaceText) + L"," +
+            std::to_wstring(item.wholeWord) + L"," +
+            std::to_wstring(item.matchCase) + L"," +
+            std::to_wstring(item.extended) + L"," +
+            std::to_wstring(item.regex) + L"\n";
+        std::string utf8Line = wstringToString(line);
+        outFile << utf8Line;
     }
 
     outFile.close();
@@ -3471,20 +3486,25 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
 }
 
 bool MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list) {
-    std::wifstream inFile(filePath);
-    inFile.imbue(std::locale(inFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>()));
-
+    // Open file in binary mode to read UTF-8 data
+    std::ifstream inFile(filePath);
     if (!inFile.is_open()) {
         return false;
     }
 
     list.clear(); // Clear the existing list
 
-    std::wstring line;
-    std::getline(inFile, line); // Skip the CSV header
+    // Read the file content into a std::string
+    std::string utf8Content((std::istreambuf_iterator<char>(inFile)), std::istreambuf_iterator<char>());
+    // Convert the UTF-8 string into a wstring
+    std::wstring content = stringToWString(utf8Content);
+    std::wstringstream contentStream(content);
 
-    // Read list items from CSV file
-    while (std::getline(inFile, line)) {
+    std::wstring line;
+    std::getline(contentStream, line); // Skip the CSV header
+
+    // Read list items from the wstring stream
+    while (std::getline(contentStream, line)) {
         std::wstringstream lineStream(line);
         std::vector<std::wstring> columns;
 
@@ -3613,7 +3633,7 @@ std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
 #pragma region Export
 
 void MultiReplace::exportToBashScript(const std::wstring& fileName) {
-    std::ofstream file(wstringToString(fileName));
+    std::ofstream file(fileName);
     if (!file.is_open()) {
         return;
     }
@@ -3782,11 +3802,14 @@ std::string MultiReplace::translateEscapes(const std::string& input) {
         return static_cast<char>(std::bitset<8>(binaryEscape.substr(2)).to_ulong());
         });
 
-    handleEscapeSequence(unicodeRegex, input, output, [](const std::string& unicodeEscape) {
+    handleEscapeSequence(unicodeRegex, input, output, [this](const std::string& unicodeEscape) -> char {
         int codepoint = std::stoi(unicodeEscape.substr(2), nullptr, 16);
-        std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> convert;
-        return convert.to_bytes(static_cast<char32_t>(codepoint)).front();
+        wchar_t unicodeChar = static_cast<wchar_t>(codepoint);
+        std::wstring unicodeString = { unicodeChar };
+        std::string result = wstringToString(unicodeString);
+        return result.empty() ? 0 : result.front();
         });
+
 
     output = std::regex_replace(output, newlineRegex, "__NEWLINE__");
     output = std::regex_replace(output, carriageReturnRegex, "__CARRIAGERETURN__");
@@ -3801,19 +3824,19 @@ std::string MultiReplace::translateEscapes(const std::string& input) {
 #pragma region INI
 
 void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
-    std::wofstream outFile(iniFilePath);
-    outFile.imbue(std::locale(outFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>()));
+    std::ofstream outFile(iniFilePath);
 
     if (!outFile.is_open()) {
         throw std::runtime_error("Could not open settings file for writing.");
     }
 
-    // Store the current "Find what" and "Replace with" texts
+    // Convert and Store the current "Find what" and "Replace with" texts
     std::wstring currentFindTextData = L"\"" + getTextFromDialogItem(_hSelf, IDC_FIND_EDIT) + L"\"";
     std::wstring currentReplaceTextData = L"\"" + getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT) + L"\"";
-    outFile << L"[Current]\n";
-    outFile << L"FindText=" << currentFindTextData << L"\n";
-    outFile << L"ReplaceText=" << currentReplaceTextData << L"\n";
+
+    outFile << wstringToString(L"[Current]\n");
+    outFile << wstringToString(L"FindText=" + currentFindTextData + L"\n");
+    outFile << wstringToString(L"ReplaceText=" + currentReplaceTextData + L"\n");
 
     // Prepare and Store the current options
     int wholeWord = IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? 1 : 0;
@@ -3824,50 +3847,48 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int ButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
     int useList = IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED ? 1 : 0;
 
-    // Store Options
-    outFile << L"[Options]\n";
-    outFile << L"WholeWord=" << wholeWord << L"\n";
-    outFile << L"MatchCase=" << matchCase << L"\n";
-    outFile << L"Extended=" << extended << L"\n";
-    outFile << L"Regex=" << regex << L"\n";
-    outFile << L"WrapAround=" << wrapAround << L"\n";
-    outFile << L"ButtonsMode=" << ButtonsMode << L"\n";
-    outFile << L"UseList=" << useList << L"\n";
+    outFile << wstringToString(L"[Options]\n");
+    outFile << wstringToString(L"WholeWord=" + std::to_wstring(wholeWord) + L"\n");
+    outFile << wstringToString(L"MatchCase=" + std::to_wstring(matchCase) + L"\n");
+    outFile << wstringToString(L"Extended=" + std::to_wstring(extended) + L"\n");
+    outFile << wstringToString(L"Regex=" + std::to_wstring(regex) + L"\n");
+    outFile << wstringToString(L"WrapAround=" + std::to_wstring(wrapAround) + L"\n");
+    outFile << wstringToString(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
+    outFile << wstringToString(L"UseList=" + std::to_wstring(useList) + L"\n");
 
-    // Prepare and Store the scope options
+    // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
     int columnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED ? 1 : 0;
     std::wstring columnNum = L"\"" + getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT) + L"\"";
     std::wstring delimiter = L"\"" + getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT) + L"\"";
 
-    // Store Scope
-    outFile << L"[Scope]\n";
-    outFile << L"Selection=" << selection << L"\n";
-    outFile << L"ColumnMode=" << columnMode << L"\n";
-    outFile << L"ColumnNum=" << columnNum << L"\n";
-    outFile << L"Delimiter=" << delimiter << L"\n";
+    outFile << wstringToString(L"[Scope]\n");
+    outFile << wstringToString(L"Selection=" + std::to_wstring(selection) + L"\n");
+    outFile << wstringToString(L"ColumnMode=" + std::to_wstring(columnMode) + L"\n");
+    outFile << wstringToString(L"ColumnNum=" + columnNum + L"\n");
+    outFile << wstringToString(L"Delimiter=" + delimiter + L"\n");
 
-    // Store "Find what" history
+    // Convert and Store "Find what" history
     LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
-    outFile << L"[History]\n";
-    outFile << L"FindTextHistoryCount=" << findWhatCount << L"\n";
+    outFile << wstringToString(L"[History]\n");
+    outFile << wstringToString(L"FindTextHistoryCount=" + std::to_wstring(findWhatCount) + L"\n");
     for (LRESULT i = 0; i < findWhatCount; i++) {
         LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
         SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
         std::wstring findTextData = L"\"" + std::wstring(buffer.data()) + L"\"";
-        outFile << L"FindTextHistory" << i << L"=" << findTextData << L"\n";
+        outFile << wstringToString(L"FindTextHistory" + std::to_wstring(i) + L"=" + findTextData + L"\n");
     }
 
     // Store "Replace with" history
     LRESULT replaceWithCount = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETCOUNT, 0, 0);
-    outFile << L"ReplaceTextHistoryCount=" << replaceWithCount << L"\n";
+    outFile << wstringToString(L"ReplaceTextHistoryCount=" + std::to_wstring(replaceWithCount) + L"\n");
     for (LRESULT i = 0; i < replaceWithCount; i++) {
         LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
         SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
         std::wstring replaceTextData = L"\"" + std::wstring(buffer.data()) + L"\"";
-        outFile << L"ReplaceTextHistory" << i << L"=" << replaceTextData << L"\n";
+        outFile << wstringToString(L"ReplaceTextHistory" + std::to_wstring(i) + L"=" + replaceTextData + L"\n");
     }
 
     outFile.close();
@@ -3904,9 +3925,6 @@ void MultiReplace::saveSettings() {
 
 void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
-    std::wifstream inFile(iniFilePath);
-    inFile.imbue(std::locale(inFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>()));
-
     // Load combo box histories
     int findHistoryCount = readIntFromIniFile(iniFilePath, L"History", L"FindTextHistoryCount", 0);
     for (int i = 0; i < findHistoryCount; i++) {
@@ -3939,6 +3957,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     // Select the appropriate radio button based on the settings
     if (regex) {
         CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_REGEX_RADIO);
+        EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), SW_HIDE);
     }
     else if (extended) {
         CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_EXTENDED_RADIO);
@@ -3986,6 +4005,11 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 }
 
 void MultiReplace::loadSettings() {
+    static bool settingsLoaded = false;
+    if (settingsLoaded) {
+        return;  // Check as it wil be triggered many times when loading
+    }
+
     // Initialize configDir with all elements set to 0
     wchar_t configDir[MAX_PATH] = {};
 
@@ -4025,19 +4049,21 @@ void MultiReplace::loadSettings() {
 
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
+
+    settingsLoaded = true;
 }
 
 std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue) {
-    std::wifstream iniFile(iniFilePath);
-    // Set the locale of the file stream for UTF-8 to UTF-16 conversion
-    iniFile.imbue(std::locale(iniFile.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
+    std::ifstream iniFile(iniFilePath);
     std::wstring line;
     bool correctSection = false;
     std::wstring requiredKey = key + L"=";
     size_t keyLength = requiredKey.length();
 
     if (iniFile.is_open()) {
-        while (std::getline(iniFile, line)) {
+        std::string strLine;
+        while (std::getline(iniFile, strLine)) {
+            line = stringToWString(strLine);
             std::wstringstream linestream(line);
             std::wstring segment;
 
@@ -4054,9 +4080,11 @@ std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath
                 if (quotePos != std::wstring::npos) {
                     value = value.substr(quotePos + 1, value.length() - quotePos - 2);
                 }
+
                 return value;
             }
         }
+        iniFile.close();
     }
     return defaultValue;
 }

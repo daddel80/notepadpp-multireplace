@@ -114,8 +114,6 @@ enum class DelimiterOperation { LoadAll, Update };
 
 enum class Direction { Up, Down };
 
-typedef std::basic_string<TCHAR> generic_string;
-
 class MultiReplace : public DockingDlgInterface
 {
 public:
@@ -366,7 +364,8 @@ private:
     // std::vector<int> validStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
     std::vector<int> textStyles = { 9, 11, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
     std::vector<int> columnStyles = { 10, 12, 13, 14, 15 };
-    std::vector<long> columnColors = { 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF };
+    std::vector<long> columnColors = { 0xFF4040, 0x40FF40, 0x4040FF, 0xFFFF40, 0xFF40FF };
+    //{ 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF };
 
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
