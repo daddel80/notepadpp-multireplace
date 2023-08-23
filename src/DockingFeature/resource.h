@@ -63,22 +63,22 @@
 #define IDC_EXTENDED_RADIO              5302
 #define IDC_REGEX_RADIO                 5303
 
-#define IDC_STATIC_FRAME                5401
-#define IDC_USE_LIST_CHECKBOX			5402
-#define IDC_REPLACE_LIST                5403
-
 #define IDC_SCOPE_GROUP                 5451
 #define IDC_ALL_TEXT_RADIO              5452
 #define IDC_SELECTION_RADIO             5453
 #define IDC_COLUMN_MODE_RADIO           5454
-#define IDC_DELIMITER_EDIT              5455
-#define IDC_COLUMN_NUM_EDIT             5456
-#define IDC_DELIMITER_STATIC            5457
-#define IDC_COLUMN_NUM_STATIC           5458
-#define IDC_COLUMN_HIGHLIGHT_BUTTON     5459
+#define IDC_COLUMN_NUM_EDIT             5455
+#define IDC_DELIMITER_EDIT              5456
+#define IDC_COLUMN_HIGHLIGHT_BUTTON     5457
+#define IDC_DELIMITER_STATIC            5458
+#define IDC_COLUMN_NUM_STATIC           5459
 #define IDC_CANCEL_LONGRUN_BUTTON		5460
 #define IDC_ACTION_DESCRIPTION          5461
 #define IDC_PROGRESS_BAR				5462
+
+#define IDC_STATIC_FRAME                5501
+#define IDC_USE_LIST_CHECKBOX			5502
+#define IDC_REPLACE_LIST                5503
 
 #define IDD_ABOUT_DIALOG                5600
 #define IDC_NAME_STATIC	                5601
@@ -86,6 +86,17 @@
 #define IDC_VERSION_STATIC              5603
 #define IDC_LICENSE_STATIC              5604
 #define IDC_AUTHOR_STATIC               5605
+
+#define STYLE1							60
+#define STYLE2							61
+#define STYLE3							62
+#define STYLE4							63
+#define STYLE5							64
+#define STYLE6							65
+#define STYLE7							66
+#define STYLE8							67
+#define STYLE9							68
+#define STYLE10							69
 
 // Pixel Size of Window when hiding Controls
 #define MIN_WIDTH 940

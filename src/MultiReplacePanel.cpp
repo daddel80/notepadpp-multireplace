@@ -36,6 +36,8 @@
 #include <set>
 #include <chrono>
 #include <sstream>
+#include "Scintilla.h"
+
 
 
 #ifdef UNICODE
@@ -251,12 +253,17 @@ bool MultiReplace::createAndShowWindows() {
     return true;
 }
 
-void MultiReplace::initializeScintilla() {
+void MultiReplace::setupScintilla() {
     int which = -1;
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
     if (which != -1) {
         _hScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
         s_hScintilla = _hScintilla;
+    }
+
+    if (_hScintilla) { // just to supress Warning
+        pSciMsg = (SciFnDirect)::SendMessage(_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0);
+        pSciWndData = (sptr_t)::SendMessage(_hScintilla, SCI_GETDIRECTPOINTER, 0, 0);
     }
 }
 
@@ -815,7 +822,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
     case WM_INITDIALOG:
     {
-        initializeScintilla();
+        setupScintilla();
         initializePluginStyle();
         initializeCtrlMap();
         initializeListView();
@@ -2408,6 +2415,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
 
     // Set dataChanged flag
     columnDelimiterData.delimiterChanged = !(columnDelimiterData.extendedDelimiter == convertAndExtend(delimiterData, true));
+    columnDelimiterData.columnChanged = !(columnDelimiterData.columns == columns);
 
     columnDelimiterData.columns = columns;
     columnDelimiterData.extendedDelimiter = convertAndExtend(delimiterData, true);
@@ -2477,16 +2485,16 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
     LineInfo lineInfo;
 
     // Get start and end positions of the line
-    lineInfo.startPosition = ::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, line, 0);
-    lineInfo.endPosition = ::SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, line, 0);
+    lineInfo.startPosition = send(SCI_POSITIONFROMLINE, line, 0);
+    lineInfo.endPosition = send(SCI_GETLINEENDPOSITION, line, 0);
 
     // Get line length and allocate buffer
-    LRESULT lineLength = ::SendMessage(_hScintilla, SCI_LINELENGTH, line, 0);
+    LRESULT lineLength = send(SCI_LINELENGTH, line, 0);
     char* buf = new char[lineLength + 1];
 
     // Get line content
-    ::SendMessage(_hScintilla, SCI_GETLINE, line, reinterpret_cast<LPARAM>(buf));
-    std::string lineContent = buf;
+    send(SCI_GETLINE, line, reinterpret_cast<sptr_t>(buf));
+    std::string lineContent(buf, lineLength);
     delete[] buf;
 
     // Define structure to store delimiter position
@@ -2555,22 +2563,24 @@ StartColumnInfo MultiReplace::getStartColumnInfo(LRESULT startPosition) {
 }
 
 void MultiReplace::initializeColumnStyles() {
-    for (SIZE_T column = 1; column <= columnStyles.size(); column++) {
-        // Calculate indicator style
-        int indicatorStyle = columnStyles[(column - 1) % columnStyles.size()];
 
-        // Assign color for the style
-        long color = columnColors[(column - 1) % columnColors.size()];
-        if (colorToStyleMap.find(color) == colorToStyleMap.end()) {
-            colorToStyleMap[color] = indicatorStyle;
-        }
+    int IDM_LANG_TEXT = 46016;  // Switch off Languages - > Normal Text
+    ::SendMessage(nppData._nppHandle, NPPM_MENUCOMMAND, 0, IDM_LANG_TEXT);
 
-        // Set the indicator style
-        ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
-        ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicatorStyle, color);
-        ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicatorStyle, 100);
+   for (SIZE_T column = 0; column < hColumnStyles.size(); column++) {
+        int style = hColumnStyles[column];
+        long color = columnColors[column];
+        long fgColor = 0x000000;  // set Foreground always on black
+
+        // Set the style background color
+        ::SendMessage(_hScintilla, SCI_STYLESETBACK, style, color);
+
+        // Set the style foreground color to black
+        ::SendMessage(_hScintilla, SCI_STYLESETFORE, style, fgColor);
+
     }
-}
+
+} 
 
 void MultiReplace::handleHighlightColumnsInDocument() {
     // Return early if columnDelimiterData is empty
@@ -2584,6 +2594,9 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     // Initialize column styles
     initializeColumnStyles();
 
+    HWND hMainWnd = ::GetParent(_hScintilla);
+    ::EnableWindow(hMainWnd, FALSE);
+    ShowWindow(_hScintilla, SW_HIDE);
     // Iterate over each line's delimiter positions
     LRESULT line = 0;
     while (line < static_cast<LRESULT>(lineDelimiterPositions.size()) && !isLongRunCancelled) {
@@ -2594,6 +2607,8 @@ void MultiReplace::handleHighlightColumnsInDocument() {
         }
         ++line;
     }
+    ShowWindow(_hScintilla, SW_SHOW);
+    ::EnableWindow(hMainWnd, TRUE);
 
     // Show Row and Column Position if not canceled
     if (!lineDelimiterPositions.empty() && !isLongRunCancelled) {
@@ -2613,12 +2628,20 @@ void MultiReplace::handleHighlightColumnsInDocument() {
 void MultiReplace::highlightColumnsInLine(LRESULT line) {
     const auto& lineInfo = lineDelimiterPositions[line];
 
+    // Check for empty line
+    if (lineInfo.endPosition - lineInfo.startPosition == 0) {
+        return; // It's an empty line, so exit early
+    }
+
+    // Prepare a vector for styles
+    std::vector<char> styles((lineInfo.endPosition) - lineInfo.startPosition, 0);
+
     // If no delimiter present, highlight whole line as first column
     if (lineInfo.positions.empty() &&
         std::find(columnDelimiterData.columns.begin(), columnDelimiterData.columns.end(), 1) != columnDelimiterData.columns.end())
     {
-        // Highlight text range
-        highlightColumnRange(lineInfo.startPosition, lineInfo.endPosition, 1);
+        char style = static_cast<char>(hColumnStyles[0 % hColumnStyles.size()]);
+        std::fill(styles.begin(), styles.end(), style);
     }
     else {
         // Highlight specific columns from columnDelimiterData
@@ -2629,59 +2652,40 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
 
                 // Set start and end positions based on column index
                 if (column == 1) {
-                    start = lineInfo.startPosition;
+                    start = 0;
                 }
                 else {
-                    start = lineInfo.positions[column - 2].position + columnDelimiterData.delimiterLength;
+                    start = lineInfo.positions[column - 2].position + columnDelimiterData.delimiterLength - lineInfo.startPosition;
                 }
 
                 if (column == lineInfo.positions.size() + 1) {
-                    end = lineInfo.endPosition;
+                    end = (lineInfo.endPosition )- lineInfo.startPosition;
                 }
                 else {
-                    end = lineInfo.positions[column - 1].position;
+                    end = lineInfo.positions[column - 1].position - lineInfo.startPosition;
                 }
 
-                // Highlight the text range
-                highlightColumnRange(start, end, column);
+                // Apply style to the specific range within the styles vector
+                char style = static_cast<char>(hColumnStyles[(column - 1) % hColumnStyles.size()]);
+                std::fill(styles.begin() + start, styles.begin() + end, style);
             }
+
         }
     }
-}
 
-void MultiReplace::clearMarksInLine(LRESULT line) {
-    LRESULT startPos = ::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, line, 0);
-    LRESULT lineLength = ::SendMessage(_hScintilla, SCI_LINELENGTH, line, 0);
-
-    for (int style : columnStyles) {
-        ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
-        ::SendMessage(_hScintilla, SCI_INDICATORCLEARRANGE, startPos, lineLength);
-    }
-}
-
-void MultiReplace::highlightColumnRange(LRESULT start, LRESULT end, SIZE_T column) {
-    // Skip if end is only one position higher than start
-    if (end - start < 1) {
-        return;
-    }
-
-    // Get the indicator style for the column
-    int indicatorStyle = colorToStyleMap[columnColors[(column - 1) % columnColors.size()]];
-
-    // Set the current indicator and apply highlighting style
-    send(SCI_SETINDICATORCURRENT, indicatorStyle, 0);
-    send(SCI_INDICATORFILLRANGE, start, end - start);
+    send(SCI_STARTSTYLING, lineInfo.startPosition, 0);
+    send(SCI_SETSTYLINGEX, styles.size(), reinterpret_cast<sptr_t>(&styles[0]));
 }
 
 void MultiReplace::handleClearColumnMarks() {
-    for (int style : columnStyles) {
-        ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
-        ::SendMessage(_hScintilla, SCI_INDICATORCLEARRANGE, 0, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
-    }
+    LRESULT textLength = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+
+    send(SCI_STARTSTYLING, 0, 0);
+    send(SCI_SETSTYLING, textLength, STYLE_DEFAULT);
+
+    isColumnHighlighted = false;
 
     showStatusMessage(L"Column marks cleared.", RGB(0, 128, 0));
-    isColumnHighlighted = false;
-    isCaretPositionEnabled = false;
 }
 
 std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
@@ -2749,7 +2753,7 @@ void MultiReplace::processLogForDelimiters()
         if (modifyLogEntry.lineNumber != -1) {
             updateDelimitersInDocument(static_cast<int>(modifyLogEntry.lineNumber), ChangeType::Modify);
             if (isColumnHighlighted) {
-                clearMarksInLine(modifyLogEntry.lineNumber);
+                //clearMarksInLine(modifyLogEntry.lineNumber);
                 highlightColumnsInLine(modifyLogEntry.lineNumber);
             }
             this->messageBoxContent += "Line " + std::to_string(static_cast<int>(modifyLogEntry.lineNumber)) + " modified.\n";
@@ -3204,7 +3208,6 @@ void MultiReplace::updateHeader() {
 void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color)
 {
     const size_t MAX_DISPLAY_LENGTH = 60; // Maximum length of the message to be displayed
-
     // Cut the message and add "..." if it's too long
     std::wstring strMessage = messageText;
     if (strMessage.size() > MAX_DISPLAY_LENGTH) {
@@ -3251,6 +3254,7 @@ bool MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const
     isLongRunCancelled = false;
 
     if (current == 0) {
+
         // Reset the progress bar and decision when a new process starts
         progressDisplayActive = total >= 100;
 
@@ -3275,6 +3279,7 @@ bool MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const
 
         // Update the progress bar
         ::SendMessage(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), PBM_SETPOS, (WPARAM)percentageComplete, 0);
+
     }
 
     // Process all pending messages

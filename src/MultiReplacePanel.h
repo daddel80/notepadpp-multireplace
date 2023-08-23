@@ -89,9 +89,10 @@ struct ColumnDelimiterData {
     std::string extendedDelimiter;
     SIZE_T delimiterLength;
     bool delimiterChanged;
+    bool columnChanged;
 
     // Default constructor
-    ColumnDelimiterData() : delimiterLength(0), delimiterChanged(false) {}
+    ColumnDelimiterData() : delimiterLength(0), delimiterChanged(false), columnChanged(false) {}
 };
 
 struct DelimiterPosition {
@@ -139,10 +140,6 @@ public:
         _statusMessageColor(RGB(0, 0, 0))
     {
         setInstance(this);
-        if (_hScintilla) { // just to supress Warning
-            pSciMsg = (SciFnDirect)::SendMessage(_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0);
-            pSciWndData = (sptr_t)::SendMessage(_hScintilla, SCI_GETDIRECTPOINTER, 0, 0);
-        }
 
     };
 
@@ -228,6 +225,7 @@ public:
             isLongRunCancelled = true;
             isCaretPositionEnabled = false;
             scannedDelimiterBufferID = currentBufferID;
+            instance->isColumnHighlighted = false;
             if (instance != nullptr) {
                 instance->showStatusMessage(L"", RGB(0, 0, 0));
             }
@@ -361,11 +359,9 @@ private:
        Styles 0 - 7 are reserved for syntax style.
        Styles 21 - 29, 31 are reserved bei N++ (see SciLexer.h).
     */
-    // std::vector<int> validStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
-    std::vector<int> textStyles = { 9, 11, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
-    std::vector<int> columnStyles = { 10, 12, 13, 14, 15 };
-    std::vector<long> columnColors = { 0xFF4040, 0x40FF40, 0x4040FF, 0xFFFF40, 0xFF40FF };
-    //{ 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF };
+    std::vector<int> textStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
+    std::vector<int> hColumnStyles = { STYLE1, STYLE2, STYLE3, STYLE4, STYLE5, STYLE6, STYLE7, STYLE8, STYLE9, STYLE10 };
+    std::vector<long> columnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
 
     HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
@@ -404,11 +400,12 @@ private:
     IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
 
+
     //Initialization
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();
-    void initializeScintilla();
+    void setupScintilla();
     void initializePluginStyle();
     void initializeListView();
     void moveAndResizeControls();
@@ -461,10 +458,8 @@ private:
     void findDelimitersInLine(LRESULT line);
     StartColumnInfo getStartColumnInfo(LRESULT startPosition);
     void initializeColumnStyles();
-    void highlightColumnRange(LRESULT start, LRESULT end, SIZE_T column);
     void handleHighlightColumnsInDocument();
     void highlightColumnsInLine(LRESULT line);
-    void clearMarksInLine(LRESULT line);
     void handleClearColumnMarks();
     std::wstring addLineAndColumnMessage(LRESULT pos);
     void optimizeLogChanges();
