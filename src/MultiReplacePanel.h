@@ -18,19 +18,23 @@
 
 #include "DockingFeature\DockingDlgInterface.h"
 #include "DockingFeature\resource.h"
+#include "PluginInterface.h"
+#include "ProgressDialog.h"
+
 #include <string>
 #include <vector>
 #include <map>
-#include <commctrl.h>
-#include "PluginInterface.h"
 #include <functional>
 #include <regex>
 #include <algorithm>
 #include <unordered_map>
 #include <set>
-#include "ProgressDialog.h"
+#include <commctrl.h>
 
 extern NppData nppData;
+
+enum class DelimiterOperation { LoadAll, Update };
+enum class Direction { Up, Down };
 
 struct ReplaceItemData
 {
@@ -43,7 +47,7 @@ struct ReplaceItemData
     bool regex = false;
 
     bool operator==(const ReplaceItemData& rhs) const {
-        return 
+        return
             isSelected == rhs.isSelected &&
             findText == rhs.findText &&
             replaceText == rhs.replaceText &&
@@ -87,12 +91,9 @@ struct SelectionRange {
 struct ColumnDelimiterData {
     std::set<int> columns;
     std::string extendedDelimiter;
-    SIZE_T delimiterLength;
-    bool delimiterChanged;
-    bool columnChanged;
-
-    // Default constructor
-    ColumnDelimiterData() : delimiterLength(0), delimiterChanged(false), columnChanged(false) {}
+    SIZE_T delimiterLength = 0;
+    bool delimiterChanged = false;
+    bool columnChanged = false;
 };
 
 struct DelimiterPosition {
@@ -111,9 +112,6 @@ struct StartColumnInfo {
     SIZE_T startColumnIndex;
 };
 
-enum class DelimiterOperation { LoadAll, Update };
-
-enum class Direction { Up, Down };
 
 class MultiReplace : public DockingDlgInterface
 {
@@ -122,25 +120,17 @@ public:
         hInstance(NULL),
         _hScintilla(0),
         _hClearMarksButton(nullptr),
-        _hCopyBackIcon(nullptr),
         _hCopyMarkedTextButton(nullptr),
         _hInListCheckbox(nullptr),
         _hMarkMatchesButton(nullptr),
         _hReplaceAllButton(nullptr),
         DockingDlgInterface(IDD_REPLACE_DIALOG),
         _replaceListView(NULL),
-        _hDeleteIcon(NULL),
-        _hEnabledIcon(NULL),
-        copyBackIconIndex(-1),
-        deleteIconIndex(-1),
-        enabledIconIndex(-1),
-        _himl(NULL),
-        hFont(nullptr),
+        _hFont(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
     {
         setInstance(this);
-
     };
 
     static MultiReplace* instance; // Static instance of the class
@@ -157,9 +147,9 @@ public:
         _hParent = parent2set;
     };
 
-	bool isFloating() const {
-		return _isFloating;
-	};
+    bool isFloating() const {
+        return _isFloating;
+    };
 
     static HWND getScintillaHandle() {
         return s_hScintilla;
@@ -169,155 +159,44 @@ public:
         return s_hDlg;
     }
 
-    // static Functions used in beNotified in MultiReplace.cpp
     static bool isWindowOpen;
-    static void onSelectionChanged() {
-
-        if (!isWindowOpen) {
-            return;
-        }
-
-        static bool wasTextSelected = false;  // This stores the previous state
-        const std::vector<int> selectionRadioDisabledButtons = {
-        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
-        };
-
-        // Get the start and end of the selection
-        Sci_Position start = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
-        Sci_Position end = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
-
-        // Enable or disable IDC_SELECTION_RADIO depending on whether text is selected
-        bool isTextSelected = (start != end);
-        ::EnableWindow(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), isTextSelected);
-
-        // If no text is selected and IDC_SELECTION_RADIO is checked, check IDC_ALL_TEXT_RADIO instead
-        if (!isTextSelected && (::SendMessage(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED)) {
-            ::SendMessage(::GetDlgItem(getDialogHandle(), IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-            ::SendMessage(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
-        }
-
-        // Check if there was a switch from selected to not selected
-        if (wasTextSelected && !isTextSelected) {
-            if (instance != nullptr) {
-                instance->setElementsState(selectionRadioDisabledButtons, true);
-            }
-        }
-        wasTextSelected = isTextSelected;  // Update the previous state
-    }
-
-
     static bool textModified;
-    static void onTextChanged() {
-        textModified = true;
-    }
-
     static bool documentSwitched;
     static int scannedDelimiterBufferID;
     static bool isLongRunCancelled;
-    static void onDocumentSwitched() {
-        if (!isWindowOpen) {
-            return;
-        }
+    static bool isLoggingEnabled;
+    static bool isCaretPositionEnabled;
 
-        int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
-        if (currentBufferID != scannedDelimiterBufferID) {
-            documentSwitched = true;
-            isLongRunCancelled = true;
-            isCaretPositionEnabled = false;
-            scannedDelimiterBufferID = currentBufferID;
-            instance->isColumnHighlighted = false;
-            if (instance != nullptr) {
-                instance->showStatusMessage(L"", RGB(0, 0, 0));
-            }
-        }
-    }
-
-    static void processLog() {
-        if (!isWindowOpen) {
-            return;
-        }
-
-        if (instance != nullptr) {
-            instance->handleDelimiterPositions(DelimiterOperation::Update);
-        }
-    }
+    // Static methods for Event Handling
+    static void onSelectionChanged();
+    static void onTextChanged();
+    static void onDocumentSwitched();
+    static void processLog();
+    static void processTextChange(SCNotification* notifyCode);
+    static void onCaretPositionChanged();
 
     enum class ChangeType { Insert, Delete, Modify };
+
     struct LogEntry {
         ChangeType changeType;
         Sci_Position lineNumber;
     };
+
     static std::vector<LogEntry> logChanges;
-    static bool isLoggingEnabled;
-    static void processTextChange(SCNotification* notifyCode) {
-        if (!isWindowOpen || !isLoggingEnabled) {
-            return;
-        }
-
-        Sci_Position cursorPosition = notifyCode->position;
-        Sci_Position addedLines = notifyCode->linesAdded;
-        Sci_Position notifyLength = notifyCode->length;
-
-        Sci_Position lineNumber = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_LINEFROMPOSITION, cursorPosition, 0);
-        if (notifyCode->modificationType & SC_MOD_INSERTTEXT) {
-            if (addedLines != 0) {
-                // Set the first entry as Modify
-                MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
-                for (Sci_Position i = 1; i <= abs(addedLines); i++) {
-                    MultiReplace::logChanges.push_back({ ChangeType::Insert, lineNumber + i });
-                }
-            }
-            else {
-                // Check if the last entry is a Modify on the same line
-                if (MultiReplace::logChanges.empty() || MultiReplace::logChanges.back().changeType != ChangeType::Modify || MultiReplace::logChanges.back().lineNumber != lineNumber) {
-                    MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
-                }
-            }
-        }
-        else if (notifyCode->modificationType & SC_MOD_DELETETEXT) {
-            if (addedLines != 0) {
-                // Special handling for deletions at position 0
-                if (cursorPosition == 0  && notifyLength == 0) {
-                    MultiReplace::logChanges.push_back({ ChangeType::Delete, 0 });
-                    return;
-                }
-                // Then, log the deletes in descending order
-                for (Sci_Position i = abs(addedLines); i > 0; i--) {
-                    MultiReplace::logChanges.push_back({ ChangeType::Delete, lineNumber + i });
-                }
-                // Set the first entry as Modify for the smallest lineNumber
-                MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
-            }
-            else {
-                // Check if the last entry is a Modify on the same line
-                if (MultiReplace::logChanges.empty() || MultiReplace::logChanges.back().changeType != ChangeType::Modify || MultiReplace::logChanges.back().lineNumber != lineNumber) {
-                    MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
-                }
-            }
-        }
-    }
-
-    static bool isCaretPositionEnabled;
-    static void onCaretPositionChanged()
-    {
-        if (!isWindowOpen || !isCaretPositionEnabled) {
-            return;
-        }
-
-        LRESULT startPosition = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETCURRENTPOS, 0, 0);
-        if (instance != nullptr) {
-            instance->showStatusMessage(L"Actual Position " + instance->addLineAndColumnMessage(startPosition), RGB(0, 128, 0));
-        }
-
-    }
 
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam);
 
 private:
     static const int RESIZE_TIMER_ID = 1;
+    static const int MAX_TEXT_LENGTH = 4096; // Maximum Textlength for Find and Replace String
+    static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
+    static constexpr int FONT_SIZE = 16;
+    static const long MARKER_COLOR = 0x007F00; // Color for non-list Marker
+
     static HWND s_hScintilla;
     static HWND s_hDlg;
+
     HINSTANCE hInstance;
     HWND _hScintilla;
     HWND _replaceListView;
@@ -327,24 +206,14 @@ private:
     HWND _hMarkMatchesButton;
     HWND _hClearMarksButton;
     HWND _hCopyMarkedTextButton;
-
-    HICON _hCopyBackIcon;
-    HICON _hDeleteIcon;
-    HICON _hEnabledIcon;
     HWND _hStatusMessage;
+
     COLORREF _statusMessageColor;
-    HFONT hFont;
-    int copyBackIconIndex;
-    int deleteIconIndex;
-    int enabledIconIndex;
-    static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
-    static constexpr int FONT_SIZE = 16;
+    HFONT _hFont;
+
     size_t markedStringsCount = 0;
-    int lastClickedComboBoxId = 0;    // for Combobox workaround
-    static const int MAX_TEXT_LENGTH = 4096; // Set maximum Textlength for Find and Replace String
     bool allSelected = true;
     std::unordered_map<long, int> colorToStyleMap;
-    static const long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     int lastColumn = -1;
     bool ascending = true;
     ColumnDelimiterData columnDelimiterData;
@@ -352,8 +221,7 @@ private:
     
     /*
        Available styles (self-tested):
-       { 0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-         22, 23, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 }
+       { 0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 }
        Note: Gaps in the list are intentional. 
 
        Styles 0 - 7 are reserved for syntax style.
@@ -363,7 +231,6 @@ private:
     std::vector<int> hColumnStyles = { STYLE1, STYLE2, STYLE3, STYLE4, STYLE5, STYLE6, STYLE7, STYLE8, STYLE9, STYLE10 };
     std::vector<long> columnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
 
-    HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
     static std::map<int, ControlInfo> ctrlMap;
     using LinePositions = std::vector<DelimiterPosition>;
@@ -372,34 +239,28 @@ private:
     bool isColumnHighlighted = false;
     std::string messageBoxContent;  // just for temporyry debugging usage
     bool progressDisplayActive = false;
-    std::map<int, bool> stateSnapshot; // map to store the state
+    std::map<int, bool> stateSnapshot; // stores the state of the Elements
 
     SciFnDirect pSciMsg = nullptr;
     sptr_t pSciWndData = 0;
     
     const std::vector<int> allElementsExceptCancelLongRun = {
-    IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO,
-    IDC_REGEX_RADIO, IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO,
-    IDC_DELIMITER_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_STATIC, IDC_COLUMN_NUM_STATIC,
-    IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON,IDC_REPLACE_ALL_SMALL_BUTTON, 
-    IDC_USE_LIST_CHECKBOX, IDC_COLUMN_HIGHLIGHT_BUTTON,
-    IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
-    IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-    IDC_CLEAR_MARKS_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON,
-    IDC_STATUS_MESSAGE, IDC_EXPORT_BASH_BUTTON,
-    IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON,
-    IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON,
-    IDC_COPY_MARKED_TEXT_BUTTON
+        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO, IDC_ALL_TEXT_RADIO,
+        IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO, IDC_DELIMITER_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_STATIC,
+        IDC_COLUMN_NUM_STATIC, IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
+        IDC_USE_LIST_CHECKBOX, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
+        IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON,
+        IDC_STATUS_MESSAGE, IDC_EXPORT_BASH_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON,
+        IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON
     };
 
     const std::vector<int> selectionRadioDisabledButtons = {
-    IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
+        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
     };
 
     const std::vector<int> columnRadioDependentElements = {
-    IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_COLUMN_HIGHLIGHT_BUTTON
+        IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
-
 
     //Initialization
     void positionAndResizeControls(int windowWidth, int windowHeight);
@@ -462,12 +323,11 @@ private:
     void highlightColumnsInLine(LRESULT line);
     void handleClearColumnMarks();
     std::wstring addLineAndColumnMessage(LRESULT pos);
-    void optimizeLogChanges();
     void updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType);
     void processLogForDelimiters();
     void handleDelimiterPositions(DelimiterOperation operation);
     void handleClearDelimiterState();
-    void displayLogChangesInMessageBox();
+    //void displayLogChangesInMessageBox();
 
     //Utilities
     int convertExtendedToString(const std::string& query, std::string& result);

@@ -15,29 +15,29 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #define NOMINMAX
+
+
 #include "MultiReplacePanel.h"
-#include "PluginDefinition.h"
-#include <codecvt>
-#include <locale>
-#include <regex>
-#include <windows.h>
-#include <sstream>
-#include <Commctrl.h>
-#include <vector>
-#include <fstream>
-#include <iostream>
-#include <map>
 #include "Notepad_plus_msgs.h"
-#include <bitset>
-#include <string>
-#include <functional>
-#include <algorithm>
-#include <unordered_map>
-#include <set>
-#include <chrono>
-#include <sstream>
+#include "PluginDefinition.h"
 #include "Scintilla.h"
 
+#include <algorithm>
+#include <bitset>
+#include <codecvt>
+#include <Commctrl.h>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <locale>
+#include <map>
+#include <regex>
+#include <set>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include <windows.h>
 
 
 #ifdef UNICODE
@@ -48,18 +48,18 @@
 #define generic_sprintf sprintf
 #endif
 
-std::map<int, ControlInfo> MultiReplace::ctrlMap;
+HWND MultiReplace::s_hScintilla = nullptr;
+HWND MultiReplace::s_hDlg = nullptr;
 bool MultiReplace::isWindowOpen = false;
 bool MultiReplace::isLoggingEnabled = true;
 bool MultiReplace::textModified = true;
-HWND MultiReplace::s_hScintilla = nullptr;
-HWND MultiReplace::s_hDlg = nullptr;
-std::vector<MultiReplace::LogEntry> MultiReplace::logChanges;
-MultiReplace* MultiReplace::instance = nullptr;
 bool MultiReplace::documentSwitched = false;
-int MultiReplace::scannedDelimiterBufferID = -1;
 bool MultiReplace::isLongRunCancelled = false;
 bool MultiReplace::isCaretPositionEnabled = false;
+int MultiReplace::scannedDelimiterBufferID = -1;
+std::map<int, ControlInfo> MultiReplace::ctrlMap;
+std::vector<MultiReplace::LogEntry> MultiReplace::logChanges;
+MultiReplace* MultiReplace::instance = nullptr;
 
 
 #pragma region Initialization
@@ -79,24 +79,24 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_STATIC_FIND] = { 14, 19, 100, 24, WC_STATIC, L"Find what : ", SS_RIGHT, NULL };
     ctrlMap[IDC_STATIC_REPLACE] = { 14, 54, 100, 24, WC_STATIC, L"Replace with : ", SS_RIGHT };
 
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 122, 155, 28, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 146, 100, 28, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 170, 155, 28, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 120, 160, 25, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 146, 100, 25, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 172, 155, 25, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SEARCH_MODE_GROUP] = { 192, 105, 190, 100, WC_BUTTON, L"Search Mode", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_NORMAL_RADIO] = { 202, 125, 100, 20, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXTENDED_RADIO] = { 202, 150, 175, 20, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REGEX_RADIO] = { 202, 175, 175, 20, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SEARCH_MODE_GROUP] = { 195, 101, 200, 110, WC_BUTTON, L"Search Mode", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_NORMAL_RADIO] = { 205, 123, 100, 25, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXTENDED_RADIO] = { 205, 150, 180, 25, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REGEX_RADIO] = { 205, 177, 175, 25, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     
-    ctrlMap[IDC_SCOPE_GROUP] = { 410, 101, 230, 100, WC_BUTTON, L"Scope", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_SCOPE_GROUP] = { 410, 101, 240, 110, WC_BUTTON, L"Scope", BS_GROUPBOX, NULL };
     ctrlMap[IDC_ALL_TEXT_RADIO] = { 420, 123, 100, 25, WC_BUTTON, L"All Text", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
     ctrlMap[IDC_SELECTION_RADIO] = { 420, 150, 100, 25, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP,  NULL  };
     ctrlMap[IDC_COLUMN_MODE_RADIO] = { 420, 177, 20, 25, WC_BUTTON, L"", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 438, 177, 30, 25, WC_STATIC, L"Col.:", SS_RIGHT, NULL };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 470, 177, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Columns: '1,3,5-12' (individuals, ranges)" };
-    ctrlMap[IDC_DELIMITER_STATIC] = { 595, 177, 40, 25, WC_STATIC, L"Delim.:", SS_RIGHT, NULL };
-    ctrlMap[IDC_DELIMITER_EDIT] = { 555, 177, 40, 25, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL ,  L"Delimiter: Single/combined chars, \\t for Tab" };
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 609, 173, 30, 25, WC_BUTTON, L"H", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 438, 181, 30, 25, WC_STATIC, L"Col.:", SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 470, 179, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Columns: '1,3,5-12' (individuals, ranges)" };
+    ctrlMap[IDC_DELIMITER_STATIC] = { 517, 181, 40, 25, WC_STATIC, L"Delim.:", SS_RIGHT, NULL };
+    ctrlMap[IDC_DELIMITER_EDIT] = { 559, 179, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL ,  L"Delimiter: Single/combined chars, \\t for Tab" };
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 609, 175, 30, 25, WC_BUTTON, L"H", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
 
     ctrlMap[IDC_STATIC_HINT] = { 14, 100, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER, NULL };
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 220, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
@@ -129,7 +129,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 364 + 20, 60, 20, WC_STATIC, L"Shift Lines", SS_LEFT, NULL };
     ctrlMap[IDC_STATIC_FRAME] = { frameX, 80, 280, 155, WC_BUTTON, L"", BS_GROUPBOX, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { 14, 244, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
-    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 150, 80, 20, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 150, 80, 25, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 }
 
 void MultiReplace::initializeCtrlMap()
@@ -153,12 +153,12 @@ void MultiReplace::initializeCtrlMap()
     }
 
     // Create the font
-    hFont = CreateFont(FONT_SIZE, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, FONT_NAME);
+    _hFont = CreateFont(FONT_SIZE, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, FONT_NAME);
 
     // Set the font for each control in ctrlMap
     for (auto& pair : ctrlMap)
     {
-        SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)hFont, TRUE);
+        SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)_hFont, TRUE);
     }
 
     // Set the larger, bolder font for the swap, copy and refresh button
@@ -290,21 +290,18 @@ void MultiReplace::initializeListView() {
 void MultiReplace::moveAndResizeControls() {
     // IDs of controls to be moved or resized
     const int controlIds[] = {
-        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON,
-        IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE,
-        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON,
-        IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
-        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, 
-        IDC_EXPORT_BASH_BUTTON
+        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON,
+        IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON,
+        IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
+        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, 
+        IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON
     };
 
     // IDs of controls to be redrawn
     const int redrawIds[] = {
-        IDC_USE_LIST_CHECKBOX, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE,
-        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON,
-        IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON,
-        IDC_COPY_MARKED_TEXT_BUTTON,
-        IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT,
+        IDC_USE_LIST_CHECKBOX, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
+        IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON,
+        IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT
     };
 
     // Move and resize controls
@@ -356,15 +353,13 @@ void MultiReplace::updateUIVisibility() {
 
     // Define the UI element IDs to be shown or hidden based on the window size
     const int elementIds[] = {
-        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
-        IDC_SCOPE_GROUP, IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO ,IDC_DELIMITER_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_STATIC, IDC_COLUMN_NUM_STATIC,
-        IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX,IDC_STATIC_FRAME,
-        IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_COLUMN_HIGHLIGHT_BUTTON,
-        IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
-        IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-        IDC_CLEAR_MARKS_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME,
-        IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, 
-        IDC_2_BUTTONS_MODE
+        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO,
+        IDC_REGEX_RADIO, IDC_SCOPE_GROUP, IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO,
+        IDC_DELIMITER_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_STATIC, IDC_COLUMN_NUM_STATIC, IDC_SWAP_BUTTON,
+        IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX, IDC_STATIC_FRAME, IDC_STATIC_FIND,
+        IDC_STATIC_REPLACE, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX,
+        IDC_WRAP_AROUND_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_CLEAR_MARKS_BUTTON,
+        IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, IDC_2_BUTTONS_MODE
     };
 
     // Show or hide elements based on the window size
@@ -853,7 +848,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         isLongRunCancelled = true;
         saveSettings();
         DestroyWindow(_hSelf);
-        DeleteObject(hFont);
+        DeleteObject(_hFont);
     }
     break;
 
@@ -1060,6 +1055,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         setSelections(!currentSelectionStatus, true);
                     }
                 }
+                /* For testing purpuses only!
                 else if (pnkd->wVKey == VK_F10) {
                     findAllDelimitersInDocument();
                     isLoggingEnabled = true;
@@ -1068,6 +1064,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 else if (pnkd->wVKey == VK_F11) {
                     displayLogChangesInMessageBox();
                 }
+                */
             }
             break;
             }
@@ -2597,6 +2594,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     HWND hMainWnd = ::GetParent(_hScintilla);
     ::EnableWindow(hMainWnd, FALSE);
     ShowWindow(_hScintilla, SW_HIDE);
+
     // Iterate over each line's delimiter positions
     LRESULT line = 0;
     while (line < static_cast<LRESULT>(lineDelimiterPositions.size()) && !isLongRunCancelled) {
@@ -2607,6 +2605,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
         }
         ++line;
     }
+
     ShowWindow(_hScintilla, SW_SHOW);
     ::EnableWindow(hMainWnd, TRUE);
 
@@ -2723,7 +2722,7 @@ void MultiReplace::processLogForDelimiters()
                 }
             }
             updateDelimitersInDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Insert);
-            this->messageBoxContent += "Line " + std::to_string(static_cast<int>(logEntry.lineNumber)) + " inserted.\n";
+            // this->messageBoxContent += "Line " + std::to_string(static_cast<int>(logEntry.lineNumber)) + " inserted.\n";
             // Add Insert entry as a Modify entry in modifyLogEntries
             logEntry.changeType = ChangeType::Modify;  // Convert Insert to Modify
             modifyLogEntries.push_back(logEntry);
@@ -2738,7 +2737,7 @@ void MultiReplace::processLogForDelimiters()
                 }
             }
             updateDelimitersInDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Delete);
-            this->messageBoxContent += "Line " + std::to_string(static_cast<int>(logEntry.lineNumber)) + " deleted.\n";
+            // this->messageBoxContent += "Line " + std::to_string(static_cast<int>(logEntry.lineNumber)) + " deleted.\n";
             break;
         case ChangeType::Modify:
             modifyLogEntries.push_back(logEntry);
@@ -2756,7 +2755,7 @@ void MultiReplace::processLogForDelimiters()
                 //clearMarksInLine(modifyLogEntry.lineNumber);
                 highlightColumnsInLine(modifyLogEntry.lineNumber);
             }
-            this->messageBoxContent += "Line " + std::to_string(static_cast<int>(modifyLogEntry.lineNumber)) + " modified.\n";
+            //this->messageBoxContent += "Line " + std::to_string(static_cast<int>(modifyLogEntry.lineNumber)) + " modified.\n";
         }
     }
 
@@ -2895,6 +2894,7 @@ void MultiReplace::handleClearDelimiterState() {
     isCaretPositionEnabled = false;
 }
 
+/* For testing purposes only
 void MultiReplace::displayLogChangesInMessageBox() {
 
     // Helper function to convert std::string to std::wstring using Windows API
@@ -2956,6 +2956,7 @@ void MultiReplace::displayLogChangesInMessageBox() {
 
     logChanges.clear();
 }
+*/
 
 #pragma endregion
 
@@ -4106,6 +4107,138 @@ int MultiReplace::readIntFromIniFile(const std::wstring& iniFilePath, const std:
 
 void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {
     ::SetDlgItemTextW(hDlg, itemID, text.c_str());
+}
+
+#pragma endregion
+
+
+#pragma region Event Handling -- triggered in beNotified() in MultiReplace.cpp
+
+void MultiReplace::processTextChange(SCNotification* notifyCode) {
+    if (!isWindowOpen || !isLoggingEnabled) {
+        return;
+    }
+
+    Sci_Position cursorPosition = notifyCode->position;
+    Sci_Position addedLines = notifyCode->linesAdded;
+    Sci_Position notifyLength = notifyCode->length;
+
+    Sci_Position lineNumber = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_LINEFROMPOSITION, cursorPosition, 0);
+    if (notifyCode->modificationType & SC_MOD_INSERTTEXT) {
+        if (addedLines != 0) {
+            // Set the first entry as Modify
+            MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
+            for (Sci_Position i = 1; i <= abs(addedLines); i++) {
+                MultiReplace::logChanges.push_back({ ChangeType::Insert, lineNumber + i });
+            }
+        }
+        else {
+            // Check if the last entry is a Modify on the same line
+            if (MultiReplace::logChanges.empty() || MultiReplace::logChanges.back().changeType != ChangeType::Modify || MultiReplace::logChanges.back().lineNumber != lineNumber) {
+                MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
+            }
+        }
+    }
+    else if (notifyCode->modificationType & SC_MOD_DELETETEXT) {
+        if (addedLines != 0) {
+            // Special handling for deletions at position 0
+            if (cursorPosition == 0 && notifyLength == 0) {
+                MultiReplace::logChanges.push_back({ ChangeType::Delete, 0 });
+                return;
+            }
+            // Then, log the deletes in descending order
+            for (Sci_Position i = abs(addedLines); i > 0; i--) {
+                MultiReplace::logChanges.push_back({ ChangeType::Delete, lineNumber + i });
+            }
+            // Set the first entry as Modify for the smallest lineNumber
+            MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
+        }
+        else {
+            // Check if the last entry is a Modify on the same line
+            if (MultiReplace::logChanges.empty() || MultiReplace::logChanges.back().changeType != ChangeType::Modify || MultiReplace::logChanges.back().lineNumber != lineNumber) {
+                MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
+            }
+        }
+    }
+}
+
+void MultiReplace::processLog() {
+    if (!isWindowOpen) {
+        return;
+    }
+
+    if (instance != nullptr) {
+        instance->handleDelimiterPositions(DelimiterOperation::Update);
+    }
+}
+
+void MultiReplace::onDocumentSwitched() {
+    if (!isWindowOpen) {
+        return;
+    }
+
+    int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+    if (currentBufferID != scannedDelimiterBufferID) {
+        documentSwitched = true;
+        isLongRunCancelled = true;
+        isCaretPositionEnabled = false;
+        scannedDelimiterBufferID = currentBufferID;
+        instance->isColumnHighlighted = false;
+        if (instance != nullptr) {
+            instance->showStatusMessage(L"", RGB(0, 0, 0));
+        }
+    }
+}
+
+void MultiReplace::onSelectionChanged() {
+
+    if (!isWindowOpen) {
+        return;
+    }
+
+    static bool wasTextSelected = false;  // This stores the previous state
+    const std::vector<int> selectionRadioDisabledButtons = {
+    IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
+    };
+
+    // Get the start and end of the selection
+    Sci_Position start = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
+    Sci_Position end = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
+
+    // Enable or disable IDC_SELECTION_RADIO depending on whether text is selected
+    bool isTextSelected = (start != end);
+    ::EnableWindow(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), isTextSelected);
+
+    // If no text is selected and IDC_SELECTION_RADIO is checked, check IDC_ALL_TEXT_RADIO instead
+    if (!isTextSelected && (::SendMessage(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED)) {
+        ::SendMessage(::GetDlgItem(getDialogHandle(), IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+        ::SendMessage(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+    }
+
+    // Check if there was a switch from selected to not selected
+    if (wasTextSelected && !isTextSelected) {
+        if (instance != nullptr) {
+            instance->setElementsState(selectionRadioDisabledButtons, true);
+        }
+    }
+    wasTextSelected = isTextSelected;  // Update the previous state
+}
+
+void MultiReplace::onTextChanged() {
+    textModified = true;
+}
+
+void MultiReplace::onCaretPositionChanged()
+{
+    if (!isWindowOpen || !isCaretPositionEnabled) {
+        return;
+    }
+
+    LRESULT startPosition = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETCURRENTPOS, 0, 0);
+    if (instance != nullptr) {
+        instance->showStatusMessage(L"Actual Position " + instance->addLineAndColumnMessage(startPosition), RGB(0, 128, 0));
+    }
+
 }
 
 #pragma endregion
