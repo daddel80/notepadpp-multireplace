@@ -543,7 +543,7 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
 
     // If the window is horizontally maximized, update the IDC_REPLACE_LIST size first
     if (newWidth > prevWidth) {
-        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 244, newWidth - 255, newHeight - 274, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 264, newWidth - 260, newHeight - 280, TRUE);
     }
 
     ListView_SetColumnWidth(listView, 2, remainingWidth / 2);
