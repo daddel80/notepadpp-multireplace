@@ -54,7 +54,6 @@ bool MultiReplace::isWindowOpen = false;
 bool MultiReplace::isLoggingEnabled = true;
 bool MultiReplace::textModified = true;
 bool MultiReplace::documentSwitched = false;
-bool MultiReplace::isLongRunCancelled = false;
 bool MultiReplace::isCaretPositionEnabled = false;
 int MultiReplace::scannedDelimiterBufferID = -1;
 std::map<int, ControlInfo> MultiReplace::ctrlMap;
@@ -100,9 +99,6 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_STATIC_HINT] = { 14, 120, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER, NULL };
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 240, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
-    ctrlMap[IDC_ACTION_DESCRIPTION] = { 14, 240, 100, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
-    ctrlMap[IDC_PROGRESS_BAR] = { 120, 242, 330, 12, PROGRESS_CLASS, L"", WS_VISIBLE | WS_CHILD, NULL };
-    ctrlMap[IDC_CANCEL_LONGRUN_BUTTON] = { 460, 235, 50, 25, WC_BUTTON, L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -353,7 +349,7 @@ void MultiReplace::updateUIVisibility() {
 
     // Define the UI element IDs to be shown or hidden based on the window size
     const int elementIds[] = {
-        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO,
+        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_STATUS_MESSAGE,
         IDC_REGEX_RADIO, IDC_SCOPE_GROUP, IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO,
         IDC_DELIMITER_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_STATIC, IDC_COLUMN_NUM_STATIC, IDC_SWAP_BUTTON,
         IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX, IDC_STATIC_FRAME, IDC_STATIC_FIND,
@@ -393,21 +389,9 @@ void MultiReplace::updateUIVisibility() {
         ShowWindow(GetDlgItem(_hSelf, IDC_MARK_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), SW_HIDE);
+
     }
 
-    // Show or hide the "Cancel Longrun Button" based on the active state
-    if (!isSmallerThanMinSize) {
-        ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), progressDisplayActive ? SW_SHOW : SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), progressDisplayActive ? SW_SHOW : SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), progressDisplayActive ? SW_HIDE : SW_SHOW);
-        ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), progressDisplayActive ? SW_SHOW : SW_HIDE);
-    }
-    else {
-        ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), SW_HIDE);
-    }
 }
 
 #pragma endregion
@@ -832,8 +816,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         HDC hdcStatic = reinterpret_cast<HDC>(wParam);
         HWND hwndStatic = reinterpret_cast<HWND>(lParam);
 
-        if (hwndStatic == GetDlgItem(_hSelf, IDC_STATUS_MESSAGE) ||
-            hwndStatic == GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION)) {
+        if (hwndStatic == GetDlgItem(_hSelf, IDC_STATUS_MESSAGE) ) {
             SetTextColor(hdcStatic, _statusMessageColor);
             SetBkMode(hdcStatic, TRANSPARENT);
             return (LRESULT)GetStockObject(NULL_BRUSH);
@@ -845,7 +828,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_DESTROY:
     {
-        isLongRunCancelled = true;
         saveSettings();
         DestroyWindow(_hSelf);
         DeleteObject(_hFont);
@@ -1083,10 +1065,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (!wstr.empty()) {
                 SetWindowTextW(GetDlgItem(_hSelf, IDC_FIND_EDIT), wstr.c_str());
             }
-            isLongRunCancelled = false;
         }
         else {
-            isLongRunCancelled = true;
             handleClearTextMarksButton();
             handleClearDelimiterState();
         }
@@ -1180,6 +1160,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             }
             else {
                 handleClearColumnMarks();
+                showStatusMessage(L"Column marks cleared.", RGB(0, 128, 0));
             }
         }
         break;
@@ -1253,6 +1234,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_CLEAR_MARKS_BUTTON:
         {
             handleClearTextMarksButton();
+            showStatusMessage(L"All marks cleared.", RGB(0, 128, 0));
         }
         break;
 
@@ -1297,12 +1279,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (!filePath.empty()) {
                 exportToBashScript(filePath);
             }
-        }
-        break;
-
-        case IDC_CANCEL_LONGRUN_BUTTON:
-        {
-            isLongRunCancelled = true;
         }
         break;
 
@@ -2183,8 +2159,7 @@ void MultiReplace::handleClearTextMarksButton()
     }
 
     markedStringsCount = 0;
-    colorToStyleMap.clear();
-    showStatusMessage(L"All marks cleared.", RGB(0, 128, 0));
+    colorToStyleMap.clear();    
 }
 
 void MultiReplace::handleCopyMarkedTextToClipboardButton()
@@ -2447,33 +2422,13 @@ void MultiReplace::findAllDelimitersInDocument() {
     // Find and store delimiter positions for each line
     for (LRESULT line = 0; line < totalLines; ++line) {
 
-        processLogForDelimiters();
-
-        // Adjust totalLines according to changes in document
-        LRESULT newTotalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
-        if (newTotalLines != totalLines) {
-            lineDelimiterPositions.resize(newTotalLines);
-            totalLines = newTotalLines;
-        }
-
         // Find delimiters in line
         findDelimitersInLine(line);
 
-        // Update progress in status
-        if (!displayProgressInStatus(line, totalLines, L"Scanning Data")) {
-            lineDelimiterPositions.clear();
-            break;
-        }
-
-        // Adjust totalLines according to changes in document
-        totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
     }
 
     // Clear log queue
     logChanges.clear();
-
-    // Hide the cancel button and reset the cancellation flag
-    resetProgressBar(L"Scanning Data");
 
 }
 
@@ -2585,38 +2540,21 @@ void MultiReplace::handleHighlightColumnsInDocument() {
         return;
     }
 
-    // Convert size of lineDelimiterPositions to signed integer
-    LRESULT listSize = static_cast<LRESULT>(lineDelimiterPositions.size());
-
     // Initialize column styles
     initializeColumnStyles();
 
-    HWND hMainWnd = ::GetParent(_hScintilla);
-    ::EnableWindow(hMainWnd, FALSE);
-    ShowWindow(_hScintilla, SW_HIDE);
-
     // Iterate over each line's delimiter positions
     LRESULT line = 0;
-    while (line < static_cast<LRESULT>(lineDelimiterPositions.size()) && !isLongRunCancelled) {
-        processLogForDelimiters();
+    while (line < static_cast<LRESULT>(lineDelimiterPositions.size()) ) {
         highlightColumnsInLine(line);
-        if (!displayProgressInStatus(line, listSize, L"Higlight Columns")) {
-            break;
-        }
         ++line;
     }
 
-    ShowWindow(_hScintilla, SW_SHOW);
-    ::EnableWindow(hMainWnd, TRUE);
-
     // Show Row and Column Position if not canceled
-    if (!lineDelimiterPositions.empty() && !isLongRunCancelled) {
+    if (!lineDelimiterPositions.empty() ) {
         LRESULT startPosition = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
         showStatusMessage(L"Actual Position " + addLineAndColumnMessage(startPosition), RGB(0, 128, 0));
     }
-
-    // Hide the cancel button and reset the cancellation flag
-    resetProgressBar(L"Highlight Columns");
 
     isColumnHighlighted = true;
 
@@ -2683,8 +2621,6 @@ void MultiReplace::handleClearColumnMarks() {
     send(SCI_SETSTYLING, textLength, STYLE_DEFAULT);
 
     isColumnHighlighted = false;
-
-    showStatusMessage(L"Column marks cleared.", RGB(0, 128, 0));
 }
 
 std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
@@ -3249,78 +3185,6 @@ std::wstring MultiReplace::getSelectedText() {
     return wstr;
 }
 
-bool MultiReplace::displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message) {
-    static std::wstring lastProgressBarMessage;
-    static bool showProgressBar = false;
-    isLongRunCancelled = false;
-
-    if (current == 0) {
-
-        // Reset the progress bar and decision when a new process starts
-        progressDisplayActive = total >= 100;
-
-        // Set the text color
-        _statusMessageColor = RGB(0, 0, 128);
-
-        // Show or hide the progress display components
-        ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), progressDisplayActive ? SW_SHOW : SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), progressDisplayActive ? SW_SHOW : SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), progressDisplayActive ? SW_HIDE : SW_SHOW);
-        ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), progressDisplayActive ? SW_SHOW : SW_HIDE);
-
-        // Update the action description message
-        ::SetWindowText(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), message.c_str());
-
-        // Disable all elements except the Cancel Long Run button
-        setElementsState(allElementsExceptCancelLongRun, false, true);
-    }
-
-    if (progressDisplayActive) {
-        int percentageComplete = static_cast<int>((static_cast<double>(current) / total) * 100);
-
-        // Update the progress bar
-        ::SendMessage(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), PBM_SETPOS, (WPARAM)percentageComplete, 0);
-
-    }
-
-    // Process all pending messages
-    MSG msg;
-    while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-        if (isLongRunCancelled) {
-            return false;
-        }
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
-
-    return true;
-}
-
-void MultiReplace::resetProgressBar(const std::wstring& processName) {
-    // If the process was canceled
-    if (isLongRunCancelled) {
-        std::wstring cancelMessage = processName.empty() ? L"Process canceled" : processName + L" canceled";
-        showStatusMessage(cancelMessage, RGB(255, 0, 0));  // RGB for red color
-    }
-    isLongRunCancelled = false;
-    progressDisplayActive = false;
-
-    // Hide the Cancel Long Run button
-    ShowWindow(GetDlgItem(_hSelf, IDC_CANCEL_LONGRUN_BUTTON), SW_HIDE);
-
-    // Hide the progress bar
-    ShowWindow(GetDlgItem(_hSelf, IDC_PROGRESS_BAR), SW_HIDE);
-
-    // Hide the action description
-    ShowWindow(GetDlgItem(_hSelf, IDC_ACTION_DESCRIPTION), SW_HIDE);
-
-    // Show the status message control
-    ShowWindow(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), SW_SHOW);
-
-    // Enable all elements except the Cancel Long Run button
-    setElementsState(allElementsExceptCancelLongRun, true, true);
-}
-
 LRESULT MultiReplace::updateEOLLength() {
     LRESULT eolMode = ::SendMessage(getScintillaHandle(), SCI_GETEOLMODE, 0, 0);
     LRESULT currentEolLength;
@@ -3341,37 +3205,9 @@ LRESULT MultiReplace::updateEOLLength() {
     return currentEolLength;
 }
 
-void MultiReplace::setElementsState(const std::vector<int>& elements, bool enable, bool restoreOriginalState) {
-    // Store the state and disable the elements if restoreOriginalState is true and enable is false
-    if (restoreOriginalState && !enable) {
-        for (int id : elements) {
-            bool isEnabled = IsWindowEnabled(GetDlgItem(_hSelf, id));
-            stateSnapshot[id] = isEnabled;
-            // Disable the current element
-            EnableWindow(GetDlgItem(_hSelf, id), FALSE);
-        }
-    }
-    // Enable or disable the elements if restoreOriginalState is false
-    else if (!restoreOriginalState) {
-        for (int id : elements) {
-            if (enable) {
-                // Enable the current element
-                EnableWindow(GetDlgItem(_hSelf, id), TRUE);
-            }
-            else {
-                // Disable the current element
-                EnableWindow(GetDlgItem(_hSelf, id), FALSE);
-            }
-        }
-    }
-
-    // Restore the state if restoreOriginalState is true and enable is true
-    if (restoreOriginalState && enable) {
-        for (const auto& item : stateSnapshot) {
-            EnableWindow(GetDlgItem(_hSelf, item.first), item.second ? TRUE : FALSE);
-        }
-        // Clear the snapshot after restoring it
-        stateSnapshot.clear();
+void MultiReplace::setElementsState(const std::vector<int>& elements, bool enable) {
+    for (int id : elements) {
+        EnableWindow(GetDlgItem(_hSelf, id), enable ? TRUE : FALSE);
     }
 }
 
@@ -4180,7 +4016,6 @@ void MultiReplace::onDocumentSwitched() {
     int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
     if (currentBufferID != scannedDelimiterBufferID) {
         documentSwitched = true;
-        isLongRunCancelled = true;
         isCaretPositionEnabled = false;
         scannedDelimiterBufferID = currentBufferID;
         instance->isColumnHighlighted = false;

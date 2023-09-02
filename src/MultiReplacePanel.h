@@ -112,7 +112,6 @@ struct StartColumnInfo {
     SIZE_T startColumnIndex;
 };
 
-
 class MultiReplace : public DockingDlgInterface
 {
 public:
@@ -163,7 +162,6 @@ public:
     static bool textModified;
     static bool documentSwitched;
     static int scannedDelimiterBufferID;
-    static bool isLongRunCancelled;
     static bool isLoggingEnabled;
     static bool isCaretPositionEnabled;
 
@@ -188,11 +186,11 @@ protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam);
 
 private:
-    static const int RESIZE_TIMER_ID = 1;
-    static const int MAX_TEXT_LENGTH = 4096; // Maximum Textlength for Find and Replace String
+    static constexpr int MAX_TEXT_LENGTH = 4096; // Maximum Textlength for Find and Replace String
     static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
     static constexpr int FONT_SIZE = 16;
-    static const long MARKER_COLOR = 0x007F00; // Color for non-list Marker
+    static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
+    static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
 
     static HWND s_hScintilla;
     static HWND s_hDlg;
@@ -238,21 +236,10 @@ private:
 
     bool isColumnHighlighted = false;
     std::string messageBoxContent;  // just for temporyry debugging usage
-    bool progressDisplayActive = false;
     std::map<int, bool> stateSnapshot; // stores the state of the Elements
 
     SciFnDirect pSciMsg = nullptr;
     sptr_t pSciWndData = 0;
-    
-    const std::vector<int> allElementsExceptCancelLongRun = {
-        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO, IDC_ALL_TEXT_RADIO,
-        IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO, IDC_DELIMITER_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_STATIC,
-        IDC_COLUMN_NUM_STATIC, IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
-        IDC_USE_LIST_CHECKBOX, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
-        IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON,
-        IDC_STATUS_MESSAGE, IDC_EXPORT_BASH_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON,
-        IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON
-    };
 
     const std::vector<int> selectionRadioDisabledButtons = {
         IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
@@ -339,10 +326,8 @@ private:
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
-    bool displayProgressInStatus(LRESULT current, LRESULT total, const std::wstring& message);
-    void resetProgressBar(const std::wstring& processName = L"");
     LRESULT updateEOLLength();
-    void setElementsState(const std::vector<int>& elements, bool enable, bool restoreOriginalState = false);
+    void setElementsState(const std::vector<int>& elements, bool enable);
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
 
     //StringHandling
