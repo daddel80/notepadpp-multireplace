@@ -537,7 +537,7 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
     columns3to7Width += 30; // for the first column
 
     // Calculate the remaining width for the first two columns
-    int remainingWidth = newWidth - 280 - columns3to7Width;
+    int remainingWidth = newWidth - 281 - columns3to7Width;
 
     static int prevWidth = newWidth; // Store the previous width
 
