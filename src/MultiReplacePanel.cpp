@@ -71,61 +71,64 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int comboWidth = windowWidth - 365;
     int frameX = windowWidth  - 320;
     int listWidth = windowWidth - 260;
-    int listHeight = windowHeight - 280;
+    int listHeight = windowHeight - 290;
     int checkboxX = buttonX - 105;
 
     // Static positions and sizes
     ctrlMap[IDC_STATIC_FIND] = { 14, 19, 100, 24, WC_STATIC, L"Find what : ", SS_RIGHT, NULL };
     ctrlMap[IDC_STATIC_REPLACE] = { 14, 54, 100, 24, WC_STATIC, L"Replace with : ", SS_RIGHT };
 
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 130, 163, 25, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 159, 100, 25, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 188, 155, 25, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 114, 163, 25, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 143, 100, 25, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 172, 155, 25, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SEARCH_MODE_GROUP] = { 195, 106, 200, 116, WC_BUTTON, L"Search Mode", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_NORMAL_RADIO] = { 205, 130, 100, 25, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXTENDED_RADIO] = { 205, 159, 180, 25, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REGEX_RADIO] = { 205, 188, 175, 25, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SEARCH_MODE_GROUP] = { 195, 90, 200, 116, WC_BUTTON, L"Search Mode", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_NORMAL_RADIO] = { 205, 114, 100, 25, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXTENDED_RADIO] = { 205, 143, 180, 25, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REGEX_RADIO] = { 205, 172, 175, 25, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     
-    ctrlMap[IDC_SCOPE_GROUP] = { 410, 106, 247, 116, WC_BUTTON, L"Scope", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_ALL_TEXT_RADIO] = { 420, 130, 100, 25, WC_BUTTON, L"All Text", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SELECTION_RADIO] = { 420, 159, 100, 25, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP,  NULL  };
-    ctrlMap[IDC_COLUMN_MODE_RADIO] = { 420, 188, 25, 25, WC_BUTTON, L"", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 445, 192, 30, 25, WC_STATIC, L"Col.:", SS_RIGHT, NULL };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 477, 190, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Columns: '1,3,5-12' (individuals, ranges)" };
-    ctrlMap[IDC_DELIMITER_STATIC] = { 524, 192, 40, 25, WC_STATIC, L"Delim.:", SS_RIGHT, NULL };
-    ctrlMap[IDC_DELIMITER_EDIT] = { 566, 190, 40, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL ,  L"Delimiter: Single/combined chars, \\t for Tab" };
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 616, 186, 30, 25, WC_BUTTON, L"H", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
+    ctrlMap[IDC_SCOPE_GROUP] = { 410, 90, 247, 145, WC_BUTTON, L"Scope", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_ALL_TEXT_RADIO] = { 420, 114, 100, 25, WC_BUTTON, L"All Text", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SELECTION_RADIO] = { 420, 143, 100, 25, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP,  NULL  };
+    ctrlMap[IDC_COLUMN_MODE_RADIO] = { 420, 172, 50, 25, WC_BUTTON, L"CSV", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 420, 205, 30, 25, WC_STATIC, L"Cols:", SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 452, 205, 50, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Columns: '1,3,5-12' (individuals, ranges)" };
+    ctrlMap[IDC_DELIMITER_STATIC] = { 508, 205, 40, 25, WC_STATIC, L"Delim:", SS_RIGHT, NULL };
+    ctrlMap[IDC_DELIMITER_EDIT] = { 550, 205, 30, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL ,  L"Delimiter: Single/combined chars, \\t for Tab" };
+    ctrlMap[IDC_QUOTECHAR_STATIC] = { 586, 205, 40, 25, WC_STATIC, L"Quote:", SS_RIGHT, NULL };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { 628, 205, 15, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Quote: ', \", or empty" };
+
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 580, 173, 66, 25, WC_BUTTON, L"Show", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
 
     ctrlMap[IDC_STATIC_HINT] = { 14, 120, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER, NULL };
-    ctrlMap[IDC_STATUS_MESSAGE] = { 14, 240, 450, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
+    ctrlMap[IDC_STATUS_MESSAGE] = { 14, 250, 600, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_EDIT] = { 120, 54, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, 33, 28, 34, WC_BUTTON, L"\u21C5", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, L"Add into List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 103, 160, 30, WC_BUTTON, L"Replace All", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, 103, 120, 30, WC_BUTTON, L"Replace", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 103, 35, 30, WC_BUTTON, L"\u066D", BS_PUSHBUTTON | WS_TABSTOP, L"Replace All" };
-    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, 103, 25, 25, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, L"2 buttons mode" };
-    ctrlMap[IDC_FIND_BUTTON] = { buttonX, 138, 160, 30, WC_BUTTON, L"Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_FIND_NEXT_BUTTON] = { buttonX + 40, 138, 120, 30, WC_BUTTON, L"\u25BC Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 138, 35, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_BUTTON] = { buttonX, 173, 160, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 173, 120, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 173, 35, 30, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP, L"Copy to Clipboard" };
-    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 208, 160, 30, WC_BUTTON, L"Clear all marks", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 264, 160, 30, WC_BUTTON, L"Load from CSV", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 299, 160, 30, WC_BUTTON, L"Save to CSV", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 334, 160, 30, WC_BUTTON, L"Export to Bash", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 384, 30, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
-    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 384 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
-    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 384 - 14, 160, 85, WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 384 + 20, 60, 20, WC_STATIC, L"Shift Lines", SS_LEFT, NULL };
-    ctrlMap[IDC_STATIC_FRAME] = { frameX, 85, 285, 165, WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_REPLACE_LIST] = { 14, 264, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
-    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 160, 80, 25, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 108, 160, 30, WC_BUTTON, L"Replace All", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, 108, 120, 30, WC_BUTTON, L"Replace", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 108, 35, 30, WC_BUTTON, L"\u066D", BS_PUSHBUTTON | WS_TABSTOP, L"Replace All" };
+    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, 108, 25, 25, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, L"2 buttons mode" };
+    ctrlMap[IDC_FIND_BUTTON] = { buttonX, 143, 160, 30, WC_BUTTON, L"Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_NEXT_BUTTON] = { buttonX + 40, 143, 120, 30, WC_BUTTON, L"\u25BC Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 143, 35, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_BUTTON] = { buttonX, 178, 160, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 178, 120, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 178, 35, 30, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP, L"Copy to Clipboard" };
+    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 213, 160, 30, WC_BUTTON, L"Clear all marks", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 269, 160, 30, WC_BUTTON, L"Load from CSV", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 304, 160, 30, WC_BUTTON, L"Save to CSV", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 339, 160, 30, WC_BUTTON, L"Export to Bash", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 389, 30, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
+    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 389 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
+    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 389 - 14, 160, 85, WC_BUTTON, L"", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 389 + 20, 60, 20, WC_STATIC, L"Shift Lines", SS_LEFT, NULL };
+    ctrlMap[IDC_STATIC_FRAME] = { frameX, 90, 285, 165, WC_BUTTON, L"", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_REPLACE_LIST] = { 14, 274, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
+    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 165, 80, 25, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 }
 
 void MultiReplace::initializeCtrlMap()
@@ -157,6 +160,9 @@ void MultiReplace::initializeCtrlMap()
         SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)_hFont, TRUE);
     }
 
+    // Limit the input for IDC_QUOTECHAR_EDIT to one character
+    SendMessage(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), EM_SETLIMITTEXT, (WPARAM)1, 0);
+
     // Set the larger, bolder font for the swap, copy and refresh button
     HFONT hLargerBolderFont = CreateFont(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("Courier New"));
     SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont, TRUE);
@@ -170,6 +176,7 @@ void MultiReplace::initializeCtrlMap()
 
     // CheckBox to All Text
     CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_ALL_TEXT_RADIO);
+    setElementsState(columnRadioDependentElements, false);
     
     // Enable IDC_SELECTION_RADIO based on text selection
     Sci_Position start = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
@@ -182,6 +189,11 @@ void MultiReplace::initializeCtrlMap()
 
     // Enable the checkbox ID IDC_USE_LIST_CHECKBOX
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
+
+    // Prepopulate default values for CSV
+    SetDlgItemText(_hSelf, IDC_COLUMN_NUM_EDIT, L"1-20");
+    SetDlgItemText(_hSelf, IDC_DELIMITER_EDIT, L",");
+    SetDlgItemText(_hSelf, IDC_QUOTECHAR_EDIT, L"\"");
 
     isWindowOpen = true;
 }
@@ -351,10 +363,10 @@ void MultiReplace::updateUIVisibility() {
     const int elementIds[] = {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_STATUS_MESSAGE,
         IDC_REGEX_RADIO, IDC_SCOPE_GROUP, IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO,
-        IDC_DELIMITER_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_STATIC, IDC_COLUMN_NUM_STATIC, IDC_SWAP_BUTTON,
-        IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX, IDC_STATIC_FRAME, IDC_STATIC_FIND,
-        IDC_STATIC_REPLACE, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_MATCH_CASE_CHECKBOX, IDC_WHOLE_WORD_CHECKBOX,
-        IDC_WRAP_AROUND_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_CLEAR_MARKS_BUTTON,
+        IDC_DELIMITER_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_STATIC, IDC_COLUMN_NUM_STATIC, IDC_QUOTECHAR_STATIC,
+        IDC_QUOTECHAR_EDIT, IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX, 
+        IDC_STATIC_FRAME, IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_MATCH_CASE_CHECKBOX, 
+        IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_CLEAR_MARKS_BUTTON,
         IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, IDC_2_BUTTONS_MODE
     };
 
@@ -413,7 +425,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     int windowWidth = rcClient.right - rcClient.left;
 
     // Calculate the remaining width for the first two columns
-    int remainingWidth = windowWidth - 280;
+    int remainingWidth = windowWidth - 290;
 
     // Calculate the total width of columns 3 to 7
     int columns3to7Width = 30 * 7; // Assuming fixed width of 30 for columns 3 to 7
@@ -543,14 +555,14 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
 
     // If the window is horizontally maximized, update the IDC_REPLACE_LIST size first
     if (newWidth > prevWidth) {
-        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 264, newWidth - 260, newHeight - 280, TRUE);
+        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 274, newWidth - 260, newHeight - 290, TRUE);
     }
 
     ListView_SetColumnWidth(listView, 2, remainingWidth / 2);
     ListView_SetColumnWidth(listView, 3, remainingWidth / 2);
 
     // If the window is horizontally minimized or vetically changed the size
-    MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 264, newWidth - 255, newHeight - 280, TRUE);
+    MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 274, newWidth - 260, newHeight - 290, TRUE);
 
     // If the window size hasn't changed, no need to do anything
 
@@ -1154,7 +1166,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             if (!isColumnHighlighted) {
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
-                if (!columnDelimiterData.columns.empty() && !columnDelimiterData.extendedDelimiter.empty()) {
+                if (columnDelimiterData.isValid()) {
                     handleHighlightColumnsInDocument();
                 }
             }
@@ -1792,8 +1804,7 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
         }
     }
     // Check if IDC_COLUMN_MODE_RADIO is enabled, selectMatch is false, and column delimiter data is set
-    else if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED &&
-        !(columnDelimiterData.columns.empty() || columnDelimiterData.extendedDelimiter.empty())) {
+    else if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED && columnDelimiterData.isValid()) {
 
         // Identify Column to Start
         StartColumnInfo columnInfo = getStartColumnInfo(start);
@@ -1876,8 +1887,7 @@ SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8
     SelectionRange targetRange;
 
     // Check if IDC_COLUMN_MODE_RADIO is enabled, and column delimiter data is set
-    if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED &&
-        !(columnDelimiterData.columns.empty() || columnDelimiterData.extendedDelimiter.empty())) {
+    if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED && columnDelimiterData.isValid()) {
 
         // Identify Column to Start
         StartColumnInfo columnInfo = getStartColumnInfo(start);
@@ -2260,12 +2270,22 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
 #pragma region Scope
 
 bool MultiReplace::parseColumnAndDelimiterData() {
-    // Clear previous data
-    // delimiterPositionData = DelimiterPositionData{ 0, 0, 0 };
 
     std::wstring columnDataString = getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT);
     std::wstring delimiterData = getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT);
+    std::wstring quoteCharString = getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT);
 
+    std::string tempExtendedDelimiter = convertAndExtend(delimiterData, true);
+
+    columnDelimiterData.delimiterChanged = !(columnDelimiterData.extendedDelimiter == convertAndExtend(delimiterData, true));
+    columnDelimiterData.quoteCharChanged = !(columnDelimiterData.quoteChar == wstringToString(quoteCharString) );
+
+    // Initilaize values in case it will return with an error
+    columnDelimiterData.extendedDelimiter = "";
+    columnDelimiterData.quoteChar = "";
+    columnDelimiterData.delimiterLength = 0;
+
+    // Parse column data
     columnDataString.erase(0, columnDataString.find_first_not_of(L','));
     columnDataString.erase(columnDataString.find_last_not_of(L',') + 1);
 
@@ -2280,7 +2300,6 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     std::wstring::size_type start = 0;
     std::wstring::size_type end = columnDataString.find(',', start);
 
-    // Parse column data
     while (end != std::wstring::npos) {
         std::wstring block = columnDataString.substr(start, end - start);
         size_t dashPos = block.find('-');
@@ -2295,7 +2314,6 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                 if (startRange < 1 || endRange < startRange) {
                     showStatusMessage(L"Invalid range in column data", RGB(255, 0, 0));
                     columnDelimiterData.columns.clear();
-                    columnDelimiterData.extendedDelimiter = "";
                     return false;
                 }
 
@@ -2306,7 +2324,6 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             catch (const std::exception&) {
                 showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
                 columnDelimiterData.columns.clear();
-                columnDelimiterData.extendedDelimiter = "";
                 return false;
             }
         }
@@ -2318,7 +2335,6 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                 if (column < 1) {
                     showStatusMessage(L"Invalid column number", RGB(255, 0, 0));
                     columnDelimiterData.columns.clear();
-                    columnDelimiterData.extendedDelimiter = "";
                     return false;
                 }
 
@@ -2327,7 +2343,6 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             catch (const std::exception&) {
                 showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
                 columnDelimiterData.columns.clear();
-                columnDelimiterData.extendedDelimiter = "";
                 return false;
             }
         }
@@ -2349,7 +2364,6 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             if (startRange < 1 || endRange < startRange) {
                 showStatusMessage(L"Invalid range in column data", RGB(255, 0, 0));
                 columnDelimiterData.columns.clear();
-                columnDelimiterData.extendedDelimiter = "";
                 return false;
             }
 
@@ -2360,7 +2374,6 @@ bool MultiReplace::parseColumnAndDelimiterData() {
         catch (const std::exception&) {
             showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
             columnDelimiterData.columns.clear();
-            columnDelimiterData.extendedDelimiter = "";
             return false;
         }
     }
@@ -2371,7 +2384,6 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             if (column < 1) {
                 showStatusMessage(L"Invalid column number", RGB(255, 0, 0));
                 columnDelimiterData.columns.clear();
-                columnDelimiterData.extendedDelimiter = "";
                 return false;
             }
 
@@ -2380,24 +2392,32 @@ bool MultiReplace::parseColumnAndDelimiterData() {
         catch (const std::exception&) {
             showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
             columnDelimiterData.columns.clear();
-            columnDelimiterData.extendedDelimiter = "";
             return false;
         }
     }
 
-    // Set dataChanged flag
-    columnDelimiterData.delimiterChanged = !(columnDelimiterData.extendedDelimiter == convertAndExtend(delimiterData, true));
-    columnDelimiterData.columnChanged = !(columnDelimiterData.columns == columns);
 
-    columnDelimiterData.columns = columns;
-    columnDelimiterData.extendedDelimiter = convertAndExtend(delimiterData, true);
-    columnDelimiterData.delimiterLength = columnDelimiterData.extendedDelimiter.length();
-    
     // Check delimiter data
-    if (columnDelimiterData.extendedDelimiter.empty()) {
+    if (tempExtendedDelimiter.empty()) {
         showStatusMessage(L"Extended delimiter is empty", RGB(255, 0, 0));
         return false;
     }
+
+    // Check Quote Character
+    if (!quoteCharString.empty() && (quoteCharString.length() != 1 || !(quoteCharString[0] == L'"' || quoteCharString[0] == L'\''))) {
+        showStatusMessage(L"Invalid quote character. Use \", ' or leave it empty.", RGB(255, 0, 0));
+        return false;
+    }
+
+    // Set dataChanged flag
+    columnDelimiterData.columnChanged = !(columnDelimiterData.columns == columns);
+
+    // Set columnDelimiterData values
+    columnDelimiterData.columns = columns;
+    columnDelimiterData.extendedDelimiter = tempExtendedDelimiter;
+    columnDelimiterData.delimiterLength = tempExtendedDelimiter.length();
+    columnDelimiterData.quoteChar = wstringToString(quoteCharString);
+
     return true;
 }
 
@@ -2455,18 +2475,24 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
     bool inQuotes = false;
     std::string::size_type pos = 0;
 
+    bool hasQuoteChar = !columnDelimiterData.quoteChar.empty();
+    char currentQuoteChar = hasQuoteChar ? columnDelimiterData.quoteChar[0] : 0;
+
     while (pos < lineContent.size()) {
-        if (lineContent[pos] == '\"') {
-            // Toggle the flag if quote is found
+        // If there's a defined quote character and it matches, toggle inQuotes
+        if (hasQuoteChar && lineContent[pos] == currentQuoteChar) {
             inQuotes = !inQuotes;
+            ++pos;
+            continue;
         }
-        else if (!inQuotes && lineContent.compare(pos, columnDelimiterData.extendedDelimiter.size(), columnDelimiterData.extendedDelimiter) == 0) {
-            // Only store position of delimiter if it's not inside quotes
+
+        if (!inQuotes && lineContent.compare(pos, columnDelimiterData.delimiterLength, columnDelimiterData.extendedDelimiter) == 0) {
             delimiterPos.position = pos + lineInfo.startPosition;
             lineInfo.positions.push_back(delimiterPos);
-            pos += columnDelimiterData.extendedDelimiter.size() - 1; // Skip delimiter for next iteration
+            pos += columnDelimiterData.delimiterLength;  // Skip delimiter for next iteration
+            continue;
         }
-        pos++;
+        ++pos;
     }
 
     // Convert size of lineDelimiterPositions to signed integer
@@ -2550,11 +2576,13 @@ void MultiReplace::handleHighlightColumnsInDocument() {
         ++line;
     }
 
-    // Show Row and Column Position if not canceled
+    // Show Row and Column Position
     if (!lineDelimiterPositions.empty() ) {
         LRESULT startPosition = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
         showStatusMessage(L"Actual Position " + addLineAndColumnMessage(startPosition), RGB(0, 128, 0));
     }
+
+    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"Hide");
 
     isColumnHighlighted = true;
 
@@ -2620,11 +2648,13 @@ void MultiReplace::handleClearColumnMarks() {
     send(SCI_STARTSTYLING, 0, 0);
     send(SCI_SETSTYLING, textLength, STYLE_DEFAULT);
 
+    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"Show");
+
     isColumnHighlighted = false;
 }
 
 std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
-    if (columnDelimiterData.columns.empty() && columnDelimiterData.extendedDelimiter.empty()) {
+    if (!columnDelimiterData.isValid()) {
         return L"";
     }
     std::wstring lineAndColumnMessage;
@@ -2808,13 +2838,13 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         }
 
         // If any conditions that warrant a refresh of delimiters are met, proceed
-        if (lineDelimiterPositions.empty() || columnDelimiterData.delimiterChanged) {
+        if (columnDelimiterData.isValid()) {
             findAllDelimitersInDocument();
         }
     }
     else if (operation == DelimiterOperation::Update) {
         // Ensure the columns and delimiter data is present before processing updates
-        if (!columnDelimiterData.columns.empty() && !columnDelimiterData.extendedDelimiter.empty()) {
+        if (columnDelimiterData.isValid()) {
             processLogForDelimiters();
         }
     }
@@ -2826,7 +2856,6 @@ void MultiReplace::handleClearDelimiterState() {
     textModified = false;
     logChanges.clear();
     handleClearColumnMarks();
-    isColumnHighlighted = false;
     isCaretPositionEnabled = false;
 }
 
@@ -3144,7 +3173,7 @@ void MultiReplace::updateHeader() {
 
 void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color)
 {
-    const size_t MAX_DISPLAY_LENGTH = 60; // Maximum length of the message to be displayed
+    const size_t MAX_DISPLAY_LENGTH = 72; // Maximum length of the message to be displayed
     // Cut the message and add "..." if it's too long
     std::wstring strMessage = messageText;
     if (strMessage.size() > MAX_DISPLAY_LENGTH) {
@@ -3703,12 +3732,14 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int columnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED ? 1 : 0;
     std::wstring columnNum = L"\"" + getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT) + L"\"";
     std::wstring delimiter = L"\"" + getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT) + L"\"";
+    std::wstring quoteChar = L"\"" + getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT) + L"\"";
 
     outFile << wstringToString(L"[Scope]\n");
     outFile << wstringToString(L"Selection=" + std::to_wstring(selection) + L"\n");
     outFile << wstringToString(L"ColumnMode=" + std::to_wstring(columnMode) + L"\n");
     outFile << wstringToString(L"ColumnNum=" + columnNum + L"\n");
     outFile << wstringToString(L"Delimiter=" + delimiter + L"\n");
+    outFile << wstringToString(L"QuoteChar=" + quoteChar + L"\n");
 
     // Convert and Store "Find what" history
     LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
@@ -3836,6 +3867,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     BOOL columnModeSelected = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
     EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_NUM_EDIT), columnModeSelected);
     EnableWindow(GetDlgItem(_hSelf, IDC_DELIMITER_EDIT), columnModeSelected);
+    EnableWindow(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), columnModeSelected);
     EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), columnModeSelected);
 
     std::wstring columnNum = readStringFromIniFile(iniFilePath, L"Scope", L"ColumnNum", L"");
@@ -3843,6 +3875,9 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
     std::wstring delimiter = readStringFromIniFile(iniFilePath, L"Scope", L"Delimiter", L"");
     setTextInDialogItem(_hSelf, IDC_DELIMITER_EDIT, delimiter);
+
+    std::wstring quoteChar = readStringFromIniFile(iniFilePath, L"Scope", L"QuoteChar", L"");
+    setTextInDialogItem(_hSelf, IDC_QUOTECHAR_EDIT, quoteChar);
 
 }
 
@@ -4018,6 +4053,7 @@ void MultiReplace::onDocumentSwitched() {
         documentSwitched = true;
         isCaretPositionEnabled = false;
         scannedDelimiterBufferID = currentBufferID;
+        SetDlgItemText(s_hDlg, IDC_COLUMN_HIGHLIGHT_BUTTON, L"Show");
         instance->isColumnHighlighted = false;
         if (instance != nullptr) {
             instance->showStatusMessage(L"", RGB(0, 0, 0));

@@ -91,9 +91,17 @@ struct SelectionRange {
 struct ColumnDelimiterData {
     std::set<int> columns;
     std::string extendedDelimiter;
+    std::string quoteChar;
     SIZE_T delimiterLength = 0;
     bool delimiterChanged = false;
+    bool quoteCharChanged = false;
     bool columnChanged = false;
+
+    bool isValid() const {
+        bool isQuoteCharValid = quoteChar.empty() ||
+            (quoteChar.length() == 1 && (quoteChar[0] == '"' || quoteChar[0] == '\''));
+        return !columns.empty() && !extendedDelimiter.empty() && isQuoteCharValid;
+    }
 };
 
 struct DelimiterPosition {
@@ -246,7 +254,7 @@ private:
     };
 
     const std::vector<int> columnRadioDependentElements = {
-        IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_COLUMN_HIGHLIGHT_BUTTON
+        IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
 
     //Initialization
