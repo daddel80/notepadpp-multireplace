@@ -63,6 +63,22 @@ MultiReplace* MultiReplace::instance = nullptr;
 
 #pragma region Initialization
 
+void MultiReplace::initializeWindowSize() {
+    // Measure the window's borders and title bar
+    RECT clientRect, windowRect;
+    GetClientRect(_hSelf, &clientRect);
+    GetWindowRect(_hSelf, &windowRect);
+
+    int borderWidth = ((windowRect.right - windowRect.left) - (clientRect.right - clientRect.left)) / 2;
+    int titleBarHeight = (windowRect.bottom - windowRect.top) - (clientRect.bottom - clientRect.top) - borderWidth;
+ 
+    // Adjust the window size based on the desired client area dimensions and the measured borders/title bar
+    SetWindowPos(_hSelf, NULL, 0, 0,
+        INIT_WIDTH + 2 * borderWidth,
+        INIT_HEIGHT + borderWidth + titleBarHeight,
+        SWP_NOZORDER | SWP_NOMOVE);
+}
+
 void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 {
     int buttonX = windowWidth - 45 - 160;
@@ -133,6 +149,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
 void MultiReplace::initializeCtrlMap()
 {
+
     hInstance = (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE);
     s_hDlg = _hSelf;
 
@@ -354,7 +371,6 @@ void MultiReplace::updateUIVisibility() {
     // Set the minimum width and height in resourece.h 
     int minWidth = MIN_WIDTH;
     int minHeight = MIN_HEIGHT;
-
 
     // Determine if the window is smaller than the minimum size
     bool isSmallerThanMinSize = (currentWidth < minWidth) || (currentHeight < minHeight);
@@ -813,6 +829,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
     case WM_INITDIALOG:
     {
+        initializeWindowSize();
         setupScintilla();
         initializePluginStyle();
         initializeCtrlMap();

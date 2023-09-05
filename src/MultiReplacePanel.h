@@ -258,6 +258,7 @@ private:
     };
 
     //Initialization
+    void initializeWindowSize();
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();

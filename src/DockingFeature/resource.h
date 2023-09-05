@@ -101,6 +101,10 @@
 #define MIN_WIDTH 977
 #define MIN_HEIGHT 460
 
+// Initial window size when the plugin is first opened
+#define INIT_WIDTH 993
+#define INIT_HEIGHT 475
+
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace")
 
 #endif // RESOURCE_H
