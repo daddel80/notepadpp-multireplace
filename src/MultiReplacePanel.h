@@ -19,7 +19,6 @@
 #include "DockingFeature\DockingDlgInterface.h"
 #include "DockingFeature\resource.h"
 #include "PluginInterface.h"
-#include "ProgressDialog.h"
 
 #include <string>
 #include <vector>
