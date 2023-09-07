@@ -38,6 +38,7 @@
 #include <unordered_map>
 #include <vector>
 #include <windows.h>
+#include <filesystem> 
 
 
 #ifdef UNICODE
@@ -135,8 +136,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 178, 120, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 178, 35, 30, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP, L"Copy to Clipboard" };
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 213, 160, 30, WC_BUTTON, L"Clear all marks", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 269, 160, 30, WC_BUTTON, L"Load from CSV", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 304, 160, 30, WC_BUTTON, L"Save to CSV", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 269, 160, 30, WC_BUTTON, L"Load List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 304, 160, 30, WC_BUTTON, L"Save List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 339, 160, 30, WC_BUTTON, L"Export to Bash", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 389, 30, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 389 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
@@ -3370,14 +3371,16 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     EnableWindow(_replaceListView, TRUE);
 }
 
-bool MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list) {
+void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list) {
     // Open file in binary mode to read UTF-8 data
     std::ifstream inFile(filePath);
+    std::filesystem::path fullPath(filePath);
+    std::wstring fileName = fullPath.filename().wstring();
     if (!inFile.is_open()) {
-        return false;
+        throw CsvLoadException("Failed to open '" + wstringToString(fileName) + "'.");
     }
 
-    list.clear(); // Clear the existing list
+    std::vector<ReplaceItemData> tempList;  // Temporary list to hold items
 
     // Read the file content into a std::string
     std::string utf8Content((std::istreambuf_iterator<char>(inFile)), std::istreambuf_iterator<char>());
@@ -3413,31 +3416,39 @@ bool MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
         // Check if the row has the correct number of columns
         if (columns.size() != 7) {
-            continue;
+            throw CsvLoadException("Invalid number of columns in CSV file '" + wstringToString(fileName) + "'.");
         }
 
         ReplaceItemData item;
 
-        // Assign columns to item properties
-        item.isSelected = std::stoi(columns[0]) != 0;
-        item.findText = columns[1];
-        item.replaceText = columns[2];
-        item.wholeWord = std::stoi(columns[3]) != 0;
-        item.matchCase = std::stoi(columns[4]) != 0;
-        item.extended = std::stoi(columns[5]) != 0;
-        item.regex = std::stoi(columns[6]) != 0;
+        try {
+            item.isSelected = std::stoi(columns[0]) != 0;
+            item.findText = columns[1];
+            item.replaceText = columns[2];
+            item.wholeWord = std::stoi(columns[3]) != 0;
+            item.matchCase = std::stoi(columns[4]) != 0;
+            item.extended = std::stoi(columns[5]) != 0;
+            item.regex = std::stoi(columns[6]) != 0;
 
-        // Add the item to the list
-        list.push_back(item);
+            tempList.push_back(item);
+        }
+        catch (const std::invalid_argument&) {
+            throw CsvLoadException("Invalid data in columns.");
+        }
     }
 
     inFile.close();
-    return true;
+
+    list = tempList;  // Transfer data from temporary list to the final list
 }
 
 void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
-    if (!loadListFromCsvSilent(filePath, replaceListData)) {
-        showStatusMessage(L"Error: Unable to open file for reading.", RGB(255, 0, 0));
+
+    try {
+        loadListFromCsvSilent(filePath, replaceListData);
+    }
+    catch (const CsvLoadException& ex) {
+        showStatusMessage(stringToWString(ex.what()), RGB(255, 0, 0));
         return;
     }
 
@@ -3931,7 +3942,7 @@ void MultiReplace::loadSettings() {
         loadSettingsFromIni(iniFilePath);
         loadListFromCsvSilent(csvFilePath, replaceListData);
     }
-    catch (const std::exception& ex) {
+    catch (const CsvLoadException& ex) {
         std::wstring errorMessage = L"An error occurred while loading the settings: ";
         errorMessage += std::wstring(ex.what(), ex.what() + strlen(ex.what()));
         // MessageBox(NULL, errorMessage.c_str(), L"Error", MB_OK | MB_ICONERROR);

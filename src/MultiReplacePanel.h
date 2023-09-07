@@ -119,6 +119,16 @@ struct StartColumnInfo {
     SIZE_T startColumnIndex;
 };
 
+class CsvLoadException : public std::exception {
+public:
+    CsvLoadException(const std::string& message) : message_(message) {}
+    const char* what() const noexcept override {
+        return message_.c_str();
+    }
+private:
+    std::string message_;
+};
+
 class MultiReplace : public DockingDlgInterface
 {
 public:
@@ -188,6 +198,7 @@ public:
     };
 
     static std::vector<LogEntry> logChanges;
+
 
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam);
@@ -346,7 +357,7 @@ private:
     std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
-    bool loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
+    void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
     void loadListFromCsv(const std::wstring& filePath);
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
