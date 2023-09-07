@@ -20,3 +20,4 @@ vs.proj/.vs/
 /src/DUCalculator
 *.exp
 *.lib
+/.vs/VSWorkspaceState.json

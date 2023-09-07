@@ -18,18 +18,23 @@
 
 #include "DockingFeature\DockingDlgInterface.h"
 #include "DockingFeature\resource.h"
+#include "PluginInterface.h"
+#include "ProgressDialog.h"
+
 #include <string>
 #include <vector>
 #include <map>
-#include <commctrl.h>
-#include "PluginInterface.h"
 #include <functional>
 #include <regex>
 #include <algorithm>
 #include <unordered_map>
-
+#include <set>
+#include <commctrl.h>
 
 extern NppData nppData;
+
+enum class DelimiterOperation { LoadAll, Update };
+enum class Direction { Up, Down };
 
 struct ReplaceItemData
 {
@@ -83,9 +88,37 @@ struct SelectionRange {
     LRESULT end;
 };
 
-enum class Direction { Up, Down };
+struct ColumnDelimiterData {
+    std::set<int> columns;
+    std::string extendedDelimiter;
+    std::string quoteChar;
+    SIZE_T delimiterLength = 0;
+    bool delimiterChanged = false;
+    bool quoteCharChanged = false;
+    bool columnChanged = false;
 
-typedef std::basic_string<TCHAR> generic_string;
+    bool isValid() const {
+        bool isQuoteCharValid = quoteChar.empty() ||
+            (quoteChar.length() == 1 && (quoteChar[0] == '"' || quoteChar[0] == '\''));
+        return !columns.empty() && !extendedDelimiter.empty() && isQuoteCharValid;
+    }
+};
+
+struct DelimiterPosition {
+    LRESULT position;
+};
+
+struct LineInfo {
+    std::vector<DelimiterPosition> positions;
+    LRESULT startPosition = 0;
+    LRESULT endPosition = 0;
+};
+
+struct StartColumnInfo {
+    LRESULT totalLines;
+    LRESULT startLine;
+    SIZE_T startColumnIndex;
+};
 
 class MultiReplace : public DockingDlgInterface
 {
@@ -94,23 +127,24 @@ public:
         hInstance(NULL),
         _hScintilla(0),
         _hClearMarksButton(nullptr),
-        _hCopyBackIcon(nullptr),
         _hCopyMarkedTextButton(nullptr),
         _hInListCheckbox(nullptr),
         _hMarkMatchesButton(nullptr),
         _hReplaceAllButton(nullptr),
         DockingDlgInterface(IDD_REPLACE_DIALOG),
         _replaceListView(NULL),
-        _hDeleteIcon(NULL),
-        _hEnabledIcon(NULL),
-        copyBackIconIndex(-1),
-        deleteIconIndex(-1),
-        enabledIconIndex(-1),
-        _himl(NULL),
-        hFont(nullptr),
+        _hFont(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
-    {};
+    {
+        setInstance(this);
+    };
+
+    static MultiReplace* instance; // Static instance of the class
+
+    static void setInstance(MultiReplace* inst) {
+        instance = inst;
+    }
 
     virtual void display(bool toShow = true) const {
         DockingDlgInterface::display(toShow);
@@ -124,11 +158,51 @@ public:
         return _isFloating;
     };
 
+    static HWND getScintillaHandle() {
+        return s_hScintilla;
+    }
+
+    static HWND getDialogHandle() {
+        return s_hDlg;
+    }
+
+    static bool isWindowOpen;
+    static bool textModified;
+    static bool documentSwitched;
+    static int scannedDelimiterBufferID;
+    static bool isLoggingEnabled;
+    static bool isCaretPositionEnabled;
+
+    // Static methods for Event Handling
+    static void onSelectionChanged();
+    static void onTextChanged();
+    static void onDocumentSwitched();
+    static void processLog();
+    static void processTextChange(SCNotification* notifyCode);
+    static void onCaretPositionChanged();
+
+    enum class ChangeType { Insert, Delete, Modify };
+
+    struct LogEntry {
+        ChangeType changeType;
+        Sci_Position lineNumber;
+    };
+
+    static std::vector<LogEntry> logChanges;
+
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam);
 
 private:
-    static const int RESIZE_TIMER_ID = 1;
+    static constexpr int MAX_TEXT_LENGTH = 4096; // Maximum Textlength for Find and Replace String
+    static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
+    static constexpr int FONT_SIZE = 16;
+    static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
+    static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
+
+    static HWND s_hScintilla;
+    static HWND s_hDlg;
+
     HINSTANCE hInstance;
     HWND _hScintilla;
     HWND _replaceListView;
@@ -138,48 +212,57 @@ private:
     HWND _hMarkMatchesButton;
     HWND _hClearMarksButton;
     HWND _hCopyMarkedTextButton;
-
-    HICON _hCopyBackIcon;
-    HICON _hDeleteIcon;
-    HICON _hEnabledIcon;
     HWND _hStatusMessage;
+
     COLORREF _statusMessageColor;
-    HFONT hFont;
-    int copyBackIconIndex;
-    int deleteIconIndex;
-    int enabledIconIndex;
-    static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
-    static constexpr int FONT_SIZE = 16;
+    HFONT _hFont;
+
     size_t markedStringsCount = 0;
-    int lastClickedComboBoxId = 0;    // for Combobox workaround
-    static const int MAX_TEXT_LENGTH = 4096; // Set maximum Textlength for Find and Replace String
     bool allSelected = true;
     std::unordered_map<long, int> colorToStyleMap;
-    static const long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     int lastColumn = -1;
     bool ascending = true;
-
+    ColumnDelimiterData columnDelimiterData;
+    LRESULT eolLength = -1; // Stores the length of the EOL character sequence
+    
     /*
        Available styles (self-tested):
-       { 0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-         22, 23, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 }
-       Note: Gaps in the list are intentional.
+       { 0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 }
+       Note: Gaps in the list are intentional. 
 
        Styles 0 - 7 are reserved for syntax style.
        Styles 21 - 29, 31 are reserved bei N++ (see SciLexer.h).
     */
-    std::vector<int> validStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-                                    30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
+    std::vector<int> textStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
+    std::vector<int> hColumnStyles = { STYLE1, STYLE2, STYLE3, STYLE4, STYLE5, STYLE6, STYLE7, STYLE8, STYLE9, STYLE10 };
+    std::vector<long> columnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
 
-    HIMAGELIST _himl;
     std::vector<ReplaceItemData> replaceListData;
     static std::map<int, ControlInfo> ctrlMap;
+    using LinePositions = std::vector<DelimiterPosition>;
+    std::vector<LineInfo> lineDelimiterPositions;
+
+    bool isColumnHighlighted = false;
+    std::string messageBoxContent;  // just for temporyry debugging usage
+    std::map<int, bool> stateSnapshot; // stores the state of the Elements
+
+    SciFnDirect pSciMsg = nullptr;
+    sptr_t pSciWndData = 0;
+
+    const std::vector<int> selectionRadioDisabledButtons = {
+        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
+    };
+
+    const std::vector<int> columnRadioDependentElements = {
+        IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT, IDC_COLUMN_HIGHLIGHT_BUTTON
+    };
 
     //Initialization
+    void initializeWindowSize();
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();
-    void initializeScintilla();
+    void setupScintilla();
     void initializePluginStyle();
     void initializeListView();
     void moveAndResizeControls();
@@ -212,8 +295,8 @@ private:
     //Find
     void handleFindNextButton();
     void handleFindPrevButton();
-    SearchResult performSingleSearch(int searchFlags, const std::string& findTextUtf8, SelectionRange range, bool selectMatch);
-    SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, LRESULT start, bool selectMatch);
+    SearchResult performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range);
+    SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
     SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start);
     SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos);
     SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos);
@@ -223,8 +306,24 @@ private:
     int markString(const std::wstring& findText, bool wholeWord, bool matchCase, bool regex, bool extended);
     void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
     long generateColorValue(const std::string& str);
-    void handleClearAllMarksButton();
+    void handleClearTextMarksButton();
     void handleCopyMarkedTextToClipboardButton();
+
+    //Scope
+    bool parseColumnAndDelimiterData();
+    void findAllDelimitersInDocument();
+    void findDelimitersInLine(LRESULT line);
+    StartColumnInfo getStartColumnInfo(LRESULT startPosition);
+    void initializeColumnStyles();
+    void handleHighlightColumnsInDocument();
+    void highlightColumnsInLine(LRESULT line);
+    void handleClearColumnMarks();
+    std::wstring addLineAndColumnMessage(LRESULT pos);
+    void updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType);
+    void processLogForDelimiters();
+    void handleDelimiterPositions(DelimiterOperation operation);
+    void handleClearDelimiterState();
+    //void displayLogChangesInMessageBox();
 
     //Utilities
     int convertExtendedToString(const std::string& query, std::string& result);
@@ -236,6 +335,9 @@ private:
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
+    LRESULT updateEOLLength();
+    void setElementsState(const std::vector<int>& elements, bool enable);
+    sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput);

@@ -16,6 +16,7 @@
 //Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 #include "PluginDefinition.h"
+#include "MultiReplacePanel.h"
 
 extern FuncItem funcItem[nbFunc];
 extern NppData nppData;
@@ -66,19 +67,45 @@ extern "C" __declspec(dllexport) FuncItem * getFuncsArray(int *nbF)
 }
 
 
-extern "C" __declspec(dllexport) void beNotified(SCNotification *notifyCode)
+extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
 {
-	switch (notifyCode->nmhdr.code) 
-	{
-		case NPPN_SHUTDOWN:
-		{
-			commandMenuCleanUp();
-		}
-		break;
+    switch (notifyCode->nmhdr.code)
+    {
+    case NPPN_SHUTDOWN:
+    {
+        commandMenuCleanUp();
+    }
+    break;
+    case SCN_UPDATEUI:
+    {
+        if (notifyCode->updated & SC_UPDATE_SELECTION)
+        {
+            MultiReplace::onSelectionChanged();
+        }
+        MultiReplace::onCaretPositionChanged();
+    }
+    break;
+    case SCN_MODIFIED:
+    {
+        if (notifyCode->modificationType & SC_MOD_INSERTTEXT ||
+            notifyCode->modificationType & SC_MOD_DELETETEXT)
+        {
+            MultiReplace::onTextChanged();
+            MultiReplace::processTextChange(notifyCode);
+            MultiReplace::processLog();
+        }
+    }
+    break;
 
-		default:
-			return;
-	}
+    case NPPN_BUFFERACTIVATED:
+    {
+        MultiReplace::onDocumentSwitched();
+    }
+    break;
+
+    default:
+        return;
+    }
 }
 
 

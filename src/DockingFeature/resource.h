@@ -63,13 +63,21 @@
 #define IDC_EXTENDED_RADIO              5302
 #define IDC_REGEX_RADIO                 5303
 
-#define IDC_STATIC_FRAME                5401
-#define IDC_USE_LIST_CHECKBOX			5402
-#define IDC_REPLACE_LIST                5403
+#define IDC_SCOPE_GROUP                 5451
+#define IDC_ALL_TEXT_RADIO              5452
+#define IDC_SELECTION_RADIO             5453
+#define IDC_COLUMN_MODE_RADIO           5454
+#define IDC_COLUMN_NUM_EDIT             5455
+#define IDC_DELIMITER_EDIT              5456
+#define IDC_QUOTECHAR_EDIT              5457
+#define IDC_COLUMN_HIGHLIGHT_BUTTON     5458
+#define IDC_DELIMITER_STATIC            5459
+#define IDC_COLUMN_NUM_STATIC           5460
+#define IDC_QUOTECHAR_STATIC            5461
 
-#define DELETE_ICON                     5500
-#define ENABLED_ICON                    5501
-#define COPYBACK_ICON                   5502
+#define IDC_STATIC_FRAME                5501
+#define IDC_USE_LIST_CHECKBOX			5502
+#define IDC_REPLACE_LIST                5503
 
 #define IDD_ABOUT_DIALOG                5600
 #define IDC_NAME_STATIC	                5601
@@ -78,9 +86,24 @@
 #define IDC_LICENSE_STATIC              5604
 #define IDC_AUTHOR_STATIC               5605
 
+#define STYLE1							60
+#define STYLE2							61
+#define STYLE3							62
+#define STYLE4							63
+#define STYLE5							64
+#define STYLE6							65
+#define STYLE7							66
+#define STYLE8							67
+#define STYLE9							68
+#define STYLE10							69
+
 // Pixel Size of Window when hiding Controls
-#define MIN_WIDTH 700
-#define MIN_HEIGHT 440
+#define MIN_WIDTH 977
+#define MIN_HEIGHT 460
+
+// Initial window size when the plugin is first opened
+#define INIT_WIDTH 993
+#define INIT_HEIGHT 475
 
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace")
 
