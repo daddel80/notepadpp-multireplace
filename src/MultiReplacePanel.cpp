@@ -1067,7 +1067,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         setSelections(!currentSelectionStatus, true);
                     }
                 }
-                /* For testing purpuses only!
+                /* For testing purposes only!
                 else if (pnkd->wVKey == VK_F10) {
                     findAllDelimitersInDocument();
                     isLoggingEnabled = true;
