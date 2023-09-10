@@ -866,21 +866,22 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_SIZE:
     {
-        int newWidth = LOWORD(lParam);
-        int newHeight = HIWORD(lParam);
+        if (isWindowOpen) {
+            int newWidth = LOWORD(lParam);
+            int newHeight = HIWORD(lParam);
 
-        // Show Hint Message if not releted to the Window Size
-        updateUIVisibility();
+            // Show Hint Message if not releted to the Window Size
+            updateUIVisibility();
 
-        // Move and resize the List
-        updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), lParam);
+            // Move and resize the List
+            updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), lParam);
 
-        // Calculate Position for all Elements
-        positionAndResizeControls(newWidth, newHeight);
+            // Calculate Position for all Elements
+            positionAndResizeControls(newWidth, newHeight);
 
-        // Move all Elements
-        moveAndResizeControls();
-
+            // Move all Elements
+            moveAndResizeControls();
+        }
         return 0;
     }
     break;
@@ -3907,10 +3908,6 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 }
 
 void MultiReplace::loadSettings() {
-    static bool settingsLoaded = false;
-    if (settingsLoaded) {
-        return;  // Check as it wil be triggered many times when loading
-    }
 
     // Initialize configDir with all elements set to 0
     wchar_t configDir[MAX_PATH] = {};
@@ -3952,7 +3949,6 @@ void MultiReplace::loadSettings() {
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
 
-    settingsLoaded = true;
 }
 
 std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue) {
