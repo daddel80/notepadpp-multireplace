@@ -87,7 +87,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 {
     int buttonX = windowWidth - 45 - 160;
     int checkbox2X = buttonX + 173;
-    int swapButtonX = windowWidth - 45 - 160 - 37;
+    int swapButtonX = windowWidth - 45 - 160 - 33;
     int comboWidth = windowWidth - 365;
     int frameX = windowWidth  - 320;
     int listWidth = windowWidth - 260;
@@ -318,7 +318,7 @@ void MultiReplace::moveAndResizeControls() {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON,
         IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON,
         IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
-        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, 
+        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON,
         IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON
     };
 
@@ -332,7 +332,17 @@ void MultiReplace::moveAndResizeControls() {
     // Move and resize controls
     for (int ctrlId : controlIds) {
         const ControlInfo& ctrlInfo = ctrlMap[ctrlId];
-        MoveWindow(GetDlgItem(_hSelf, ctrlId), ctrlInfo.x, ctrlInfo.y, ctrlInfo.cx, ctrlInfo.cy, TRUE);
+        int height = ctrlInfo.cy;
+
+        // Adjust ComboBox height to its edit part
+        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT) {
+            COMBOBOXINFO cbi = { sizeof(COMBOBOXINFO) };
+            if (GetComboBoxInfo(GetDlgItem(_hSelf, ctrlId), &cbi)) {
+                height = cbi.rcItem.bottom - cbi.rcItem.top;
+            }
+        }
+
+        MoveWindow(GetDlgItem(_hSelf, ctrlId), ctrlInfo.x, ctrlInfo.y, ctrlInfo.cx, height, TRUE);
     }
 
     // Redraw controls
@@ -1570,7 +1580,6 @@ SelectionInfo MultiReplace::getSelectionInfo() {
 void MultiReplace::handleFindNextButton() {
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
-    bool columnScopeChecked = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
     LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
 
@@ -1590,12 +1599,7 @@ void MultiReplace::handleFindNextButton() {
         }
 
         if (result.pos >= 0) {
-            if (columnScopeChecked) {
-                showStatusMessage(L"" + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
-            }
-            else {
-                showStatusMessage(L"", RGB(0, 128, 0));
-            }
+            showStatusMessage(L"", RGB(0, 128, 0));
         }
         else {
             showStatusMessage(L"No matches found.", RGB(255, 0, 0));
@@ -1620,12 +1624,7 @@ void MultiReplace::handleFindNextButton() {
         }
 
         if (result.pos >= 0) {
-            if (columnScopeChecked) {
-                showStatusMessage(L"" + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
-            }
-            else {
-                showStatusMessage(L"" , RGB(0, 128, 0));
-            }
+            showStatusMessage(L"", RGB(0, 128, 0));
         }
         else {
             showStatusMessage((L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
@@ -2617,6 +2616,9 @@ void MultiReplace::handleClearColumnMarks() {
     SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"Show");
 
     isColumnHighlighted = false;
+
+    // Disable Position detection
+    isCaretPositionEnabled = false;
 }
 
 std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
