@@ -129,7 +129,7 @@ private:
     std::string message_;
 };
 
-class MultiReplace : public DockingDlgInterface
+class MultiReplace : public StaticDialog
 {
 public:
     MultiReplace() :
@@ -140,7 +140,6 @@ public:
         _hInListCheckbox(nullptr),
         _hMarkMatchesButton(nullptr),
         _hReplaceAllButton(nullptr),
-        DockingDlgInterface(IDD_REPLACE_DIALOG),
         _replaceListView(NULL),
         _hFont(nullptr),
         _hStatusMessage(nullptr),
@@ -156,15 +155,11 @@ public:
     }
 
     virtual void display(bool toShow = true) const {
-        DockingDlgInterface::display(toShow);
+        StaticDialog::display(toShow);
     };
 
     void setParent(HWND parent2set) {
         _hParent = parent2set;
-    };
-
-    bool isFloating() const {
-        return _isFloating;
     };
 
     static HWND getScintillaHandle() {
@@ -269,6 +264,7 @@ private:
 
     //Initialization
     void initializeWindowSize();
+    RECT calculateMinWindowFrame(HWND hwnd);
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();
@@ -277,7 +273,6 @@ private:
     void initializeListView();
     void moveAndResizeControls();
     void updateButtonVisibilityBasedOnMode();
-    void updateUIVisibility();
 
     //ListView
     void createListViewColumns(HWND listView);

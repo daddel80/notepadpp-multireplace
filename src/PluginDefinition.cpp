@@ -22,7 +22,7 @@
 
 MultiReplace _MultiReplace;
 
-INT_PTR CALLBACK DialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
+//INT_PTR CALLBACK DialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 
 //
@@ -114,21 +114,9 @@ HWND getCurScintilla()
 void multiReplace()
 {
     _MultiReplace.setParent(nppData._nppHandle);
-    tTbData	data = { 0 };
-
     if (!_MultiReplace.isCreated())
     {
-        _MultiReplace.create(&data);
-
-        // define the default docking behaviour
-        data.uMask = DWS_DF_FLOATING;
-
-        data.pszModuleName = _MultiReplace.getPluginFileName();
-
-        // the dlgDlg should be the index of funcItem where the current function pointer is
-        // in this case is DOCKABLE_DEMO_INDEX
-        data.dlgID = 0;
-        ::SendMessage(nppData._nppHandle, NPPM_DMMREGASDCKDLG, 0, (LPARAM)&data);
+        _MultiReplace.create(IDD_REPLACE_DIALOG);
     }
     _MultiReplace.display();
 }

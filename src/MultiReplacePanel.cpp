@@ -65,19 +65,22 @@ MultiReplace* MultiReplace::instance = nullptr;
 #pragma region Initialization
 
 void MultiReplace::initializeWindowSize() {
+    RECT adjustedSize = calculateMinWindowFrame(_hSelf);
+    SetWindowPos(_hSelf, NULL, 0, 0, adjustedSize.right, adjustedSize.bottom, SWP_NOZORDER | SWP_NOMOVE);
+}
+
+RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     // Measure the window's borders and title bar
     RECT clientRect, windowRect;
-    GetClientRect(_hSelf, &clientRect);
-    GetWindowRect(_hSelf, &windowRect);
+    GetClientRect(hwnd, &clientRect);
+    GetWindowRect(hwnd, &windowRect);
 
     int borderWidth = ((windowRect.right - windowRect.left) - (clientRect.right - clientRect.left)) / 2;
     int titleBarHeight = (windowRect.bottom - windowRect.top) - (clientRect.bottom - clientRect.top) - borderWidth;
- 
-    // Adjust the window size based on the desired client area dimensions and the measured borders/title bar
-    SetWindowPos(_hSelf, NULL, 0, 0,
-        INIT_WIDTH + 2 * borderWidth,
-        INIT_HEIGHT + borderWidth + titleBarHeight,
-        SWP_NOZORDER | SWP_NOMOVE);
+
+    RECT adjustedSize = { 0, 0, MIN_WIDTH + 2 * borderWidth, MIN_HEIGHT + borderWidth + titleBarHeight };
+
+    return adjustedSize;
 }
 
 void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
@@ -117,7 +120,6 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 580, 173, 66, 25, WC_BUTTON, L"Show", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
 
-    ctrlMap[IDC_STATIC_HINT] = { 14, 120, 500, 60, WC_STATIC, L"Please enlarge the window to view the controls.", SS_CENTER, NULL };
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 250, 600, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
     // Dynamic positions and sizes
@@ -201,9 +203,6 @@ void MultiReplace::initializeCtrlMap()
     Sci_Position end = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
     bool isTextSelected = (start != end);
     ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), isTextSelected);
-
-    // Hide Hint Text
-    ShowWindow(GetDlgItem(_hSelf, IDC_STATIC_HINT), SW_HIDE);
 
     // Enable the checkbox ID IDC_USE_LIST_CHECKBOX
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
@@ -360,67 +359,6 @@ void MultiReplace::updateButtonVisibilityBasedOnMode() {
     ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
     ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
     ShowWindow(GetDlgItem(_hSelf, IDC_MARK_BUTTON), twoButtonsMode ? SW_HIDE : SW_SHOW);
-}
-
-void MultiReplace::updateUIVisibility() {
-    // Get the current window size
-    RECT rect;
-    GetClientRect(_hSelf, &rect);
-    int currentWidth = rect.right - rect.left;
-    int currentHeight = rect.bottom - rect.top;
-
-    // Set the minimum width and height in resourece.h 
-    int minWidth = MIN_WIDTH;
-    int minHeight = MIN_HEIGHT;
-
-    // Determine if the window is smaller than the minimum size
-    bool isSmallerThanMinSize = (currentWidth < minWidth) || (currentHeight < minHeight);
-
-    // Define the UI element IDs to be shown or hidden based on the window size
-    const int elementIds[] = {
-        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SEARCH_MODE_GROUP, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_STATUS_MESSAGE,
-        IDC_REGEX_RADIO, IDC_SCOPE_GROUP, IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO,
-        IDC_DELIMITER_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_STATIC, IDC_COLUMN_NUM_STATIC, IDC_QUOTECHAR_STATIC,
-        IDC_QUOTECHAR_EDIT, IDC_SWAP_BUTTON, IDC_REPLACE_LIST, IDC_COPY_TO_LIST_BUTTON, IDC_USE_LIST_CHECKBOX, 
-        IDC_STATIC_FRAME, IDC_STATIC_FIND, IDC_STATIC_REPLACE, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_MATCH_CASE_CHECKBOX, 
-        IDC_WHOLE_WORD_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_CLEAR_MARKS_BUTTON,
-        IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_FRAME, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, IDC_2_BUTTONS_MODE
-    };
-
-    // Show or hide elements based on the window size
-    for (int id : elementIds) {
-        ShowWindow(GetDlgItem(_hSelf, id), isSmallerThanMinSize ? SW_HIDE : SW_SHOW);
-    }
-
-    // Define the UI element IDs to be shown or hidden contrary to the window size
-    const int oppositeElementIds[] = {
-        IDC_STATIC_HINT
-    };
-
-    // Show or hide elements contrary to the window size
-    for (int id : oppositeElementIds) {
-        ShowWindow(GetDlgItem(_hSelf, id), isSmallerThanMinSize ? SW_SHOW : SW_HIDE);
-    }
-
-    // Check the checkbox state and decide which buttons to show
-    if (!isSmallerThanMinSize) {
-        updateButtonVisibilityBasedOnMode();
-    }
-    else {
-        ShowWindow(GetDlgItem(_hSelf, IDC_FIND_BUTTON), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_FIND_NEXT_BUTTON), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), SW_HIDE);
-
-        ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_BUTTON), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), SW_HIDE);
-
-        ShowWindow(GetDlgItem(_hSelf, IDC_MARK_BUTTON), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), SW_HIDE);
-
-    }
-
 }
 
 #pragma endregion
@@ -836,10 +774,22 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializeCtrlMap();
         initializeListView();
         loadSettings();
-        updateUIVisibility();
-        return TRUE;
+        updateButtonVisibilityBasedOnMode();
+
+        // Activate Dark Mode
+        ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
+
+         return TRUE;
     }
     break;
+
+    case WM_GETMINMAXINFO: {
+        MINMAXINFO* pMMI = (MINMAXINFO*)lParam;
+        RECT adjustedSize = calculateMinWindowFrame(_hSelf);
+        pMMI->ptMinTrackSize.x = adjustedSize.right;
+        pMMI->ptMinTrackSize.y = adjustedSize.bottom;
+        return 0;
+    }
 
     case WM_CTLCOLORSTATIC:
     {
@@ -870,8 +820,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             int newWidth = LOWORD(lParam);
             int newHeight = HIWORD(lParam);
 
-            // Show Hint Message if not releted to the Window Size
-            updateUIVisibility();
+            // Update Button visibility based on 2ButtonMode
+            updateButtonVisibilityBasedOnMode();
 
             // Move and resize the List
             updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), lParam);
@@ -1082,9 +1032,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             break;
             }
         }
-        else
-            DockingDlgInterface::run_dlgProc(message, wParam, lParam);
-    }
+     }
     break;
 
     case WM_SHOWWINDOW:
@@ -1113,15 +1061,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDCANCEL:
         {
-            if (_MultiReplace.isFloating())
-            {
-                EndDialog(_hSelf, 0);
-                _MultiReplace.display(false);
-            }
-            else
-            {
-                ::SetFocus(getCurScintilla());
-            }
+
+            EndDialog(_hSelf, 0);
+            _MultiReplace.display(false);
+
         }
         break;
 
@@ -1627,35 +1570,38 @@ SelectionInfo MultiReplace::getSelectionInfo() {
 void MultiReplace::handleFindNextButton() {
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+    bool columnScopeChecked = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
     LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
 
-    if (useListEnabled)
-    {
+    if (useListEnabled) {
         if (replaceListData.empty()) {
             showStatusMessage(L"Add values into the list. Or uncheck 'Use in List' to find directly.", RGB(255, 0, 0));
             return;
         }
 
         SearchResult result = performListSearchForward(replaceListData, searchPos);
-
-        if (result.pos >= 0) {
-            showStatusMessage(L"" + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
-        }
-        else if (wrapAroundEnabled)
-        {
+        if (result.pos < 0 && wrapAroundEnabled) {
             result = performListSearchForward(replaceListData, 0);
             if (result.pos >= 0) {
-                showStatusMessage(L"Wrapped " + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
+                showStatusMessage(L"Wrapped", RGB(0, 128, 0));
+                return;
             }
         }
-        else
-        {
+
+        if (result.pos >= 0) {
+            if (columnScopeChecked) {
+                showStatusMessage(L"" + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
+            }
+            else {
+                showStatusMessage(L"", RGB(0, 128, 0));
+            }
+        }
+        else {
             showStatusMessage(L"No matches found.", RGB(255, 0, 0));
         }
     }
-    else
-    {
+    else {
         std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
         bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
@@ -1665,22 +1611,25 @@ void MultiReplace::handleFindNextButton() {
 
         std::string findTextUtf8 = convertAndExtend(findText, extended);
         SearchResult result = performSearchForward(findTextUtf8, searchFlags, true, searchPos);
-
-        if (result.pos >= 0) {
-            showStatusMessage(L"" + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
-        }
-        else if (wrapAroundEnabled)
-        {
+        if (result.pos < 0 && wrapAroundEnabled) {
             result = performSearchForward(findTextUtf8, searchFlags, true, 0);
             if (result.pos >= 0) {
-                showStatusMessage((L"Wrapped " + addLineAndColumnMessage(result.pos)).c_str(), RGB(0, 128, 0));
+                showStatusMessage(L"Wrapped ", RGB(0, 128, 0));
+                return;
             }
         }
-        else
-        {
+
+        if (result.pos >= 0) {
+            if (columnScopeChecked) {
+                showStatusMessage(L"" + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
+            }
+            else {
+                showStatusMessage(L"" , RGB(0, 128, 0));
+            }
+        }
+        else {
             showStatusMessage((L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
         }
-
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
 }

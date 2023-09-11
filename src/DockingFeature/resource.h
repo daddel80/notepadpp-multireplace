@@ -51,8 +51,7 @@
 
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101
-#define IDC_STATIC_HINT                 5102
-#define IDC_STATUS_MESSAGE				5103
+#define IDC_STATUS_MESSAGE				5102
 
 #define IDC_WHOLE_WORD_CHECKBOX         5200
 #define IDC_MATCH_CASE_CHECKBOX         5201
@@ -97,13 +96,9 @@
 #define STYLE9							68
 #define STYLE10							69
 
-// Pixel Size of Window when hiding Controls
-#define MIN_WIDTH 977
-#define MIN_HEIGHT 460
-
-// Initial window size when the plugin is first opened
-#define INIT_WIDTH 993
-#define INIT_HEIGHT 475
+// Minimum window dimensions
+#define MIN_WIDTH 993
+#define MIN_HEIGHT 475
 
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace")
 
