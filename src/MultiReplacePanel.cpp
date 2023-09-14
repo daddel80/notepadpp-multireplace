@@ -322,6 +322,37 @@ void MultiReplace::moveAndResizeControls() {
         IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON
     };
 
+    std::unordered_map<int, HWND> hwndMap;  // Store HWNDs to avoid multiple calls to GetDlgItem
+
+    // Move and resize controls
+    for (int ctrlId : controlIds) {
+        const ControlInfo& ctrlInfo = ctrlMap[ctrlId];
+        HWND resizeHwnd = GetDlgItem(_hSelf, ctrlId);
+        hwndMap[ctrlId] = resizeHwnd;  // Store HWND
+
+        RECT rc;
+        GetClientRect(resizeHwnd, &rc);
+
+        DWORD startSelection = 0, endSelection = 0;
+        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT) {
+            SendMessage(resizeHwnd, CB_GETEDITSEL, (WPARAM)&startSelection, (LPARAM)&endSelection);
+        }
+
+        int height = ctrlInfo.cy;
+        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT) {
+            COMBOBOXINFO cbi = { sizeof(COMBOBOXINFO) };
+            if (GetComboBoxInfo(resizeHwnd, &cbi)) {
+                height = cbi.rcItem.bottom - cbi.rcItem.top;
+            }
+        }
+
+        MoveWindow(resizeHwnd, ctrlInfo.x, ctrlInfo.y, ctrlInfo.cx, height, TRUE);
+
+        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT) {
+            SendMessage(resizeHwnd, CB_SETEDITSEL, 0, MAKELPARAM(startSelection, endSelection));
+        }
+    }
+
     // IDs of controls to be redrawn
     const int redrawIds[] = {
         IDC_USE_LIST_CHECKBOX, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
@@ -329,25 +360,9 @@ void MultiReplace::moveAndResizeControls() {
         IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT
     };
 
-    // Move and resize controls
-    for (int ctrlId : controlIds) {
-        const ControlInfo& ctrlInfo = ctrlMap[ctrlId];
-        int height = ctrlInfo.cy;
-
-        // Adjust ComboBox height to its edit part
-        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT) {
-            COMBOBOXINFO cbi = { sizeof(COMBOBOXINFO) };
-            if (GetComboBoxInfo(GetDlgItem(_hSelf, ctrlId), &cbi)) {
-                height = cbi.rcItem.bottom - cbi.rcItem.top;
-            }
-        }
-
-        MoveWindow(GetDlgItem(_hSelf, ctrlId), ctrlInfo.x, ctrlInfo.y, ctrlInfo.cx, height, TRUE);
-    }
-
-    // Redraw controls
+    // Redraw controls using stored HWNDs
     for (int ctrlId : redrawIds) {
-        InvalidateRect(GetDlgItem(_hSelf, ctrlId), NULL, TRUE);
+        InvalidateRect(hwndMap[ctrlId], NULL, TRUE);
     }
 }
 
@@ -517,17 +532,23 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
     int remainingWidth = newWidth - 281 - columns3to7Width;
 
     static int prevWidth = newWidth; // Store the previous width
+    bool moveWindowCalled = false; // Flag to check if MoveWindow is already called
+
+    HWND listHwnd = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
 
     // If the window is horizontally maximized, update the IDC_REPLACE_LIST size first
     if (newWidth > prevWidth) {
-        MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 274, newWidth - 260, newHeight - 290, TRUE);
+        MoveWindow(listHwnd, 14, 274, newWidth - 260, newHeight - 290, TRUE);
+        moveWindowCalled = true;
     }
 
     ListView_SetColumnWidth(listView, 2, remainingWidth / 2);
     ListView_SetColumnWidth(listView, 3, remainingWidth / 2);
 
-    // If the window is horizontally minimized or vetically changed the size
-    MoveWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), 14, 274, newWidth - 260, newHeight - 290, TRUE);
+    // If the window is horizontally minimized or vertically changed the size
+    if (!moveWindowCalled) {
+        MoveWindow(listHwnd, 14, 274, newWidth - 260, newHeight - 290, TRUE);
+    }
 
     // If the window size hasn't changed, no need to do anything
 
@@ -785,10 +806,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializeListView();
         loadSettings();
         updateButtonVisibilityBasedOnMode();
-
         // Activate Dark Mode
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
-
          return TRUE;
     }
     break;
@@ -829,9 +848,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         if (isWindowOpen) {
             int newWidth = LOWORD(lParam);
             int newHeight = HIWORD(lParam);
-
-            // Update Button visibility based on 2ButtonMode
-            updateButtonVisibilityBasedOnMode();
 
             // Move and resize the List
             updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), lParam);
@@ -1381,7 +1397,7 @@ void MultiReplace::handleReplaceButton() {
                 int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
 
                 // Search from the selection position
-                searchResult = performSearchForward(findTextUtf8, searchFlags, selection.startPos, true);
+                searchResult = performSearchForward(findTextUtf8, searchFlags, true, selection.startPos);
 
                 if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
                     // If it does match, replace the selected string
@@ -1432,7 +1448,7 @@ void MultiReplace::handleReplaceButton() {
 
         // Define searchFlags before if block
         int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
-        searchResult = performSearchForward(findTextUtf8, searchFlags, selection.startPos, true);
+        searchResult = performSearchForward(findTextUtf8, searchFlags, true, selection.startPos);
 
         if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
             // If it does match, replace the selected string
@@ -1446,13 +1462,13 @@ void MultiReplace::handleReplaceButton() {
             showStatusMessage((L"Replaced '" + findText + L"' with '" + replaceText + L"'.").c_str(), RGB(0, 128, 0));
 
             // Continue search after replace
-            searchResult = performSearchForward(findTextUtf8, searchFlags, searchResult.pos + searchResult.length, true);
+            searchResult = performSearchForward(findTextUtf8, searchFlags, true, searchResult.pos + searchResult.length);
         }
 
         // Check search results and handle wrap-around
         if (searchResult.pos < 0 && wrapAroundEnabled) {
             // If no match was found, and wrap-around is enabled, start the search again from the start
-            searchResult = performSearchForward(findTextUtf8, searchFlags, 0, true);
+            searchResult = performSearchForward(findTextUtf8, searchFlags, true, 0);
             if (searchResult.pos >= 0) {
                 showStatusMessage((L"Wrapped, found match for '" + findText + L"'.").c_str(), RGB(0, 128, 0));
             }
@@ -1943,7 +1959,7 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
         if (itemData.isSelected) {
             int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
             std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
-            SearchResult result = performSearchForward(findTextUtf8, searchFlags, false, cursorPos);
+            SearchResult result = performSearchBackward(findTextUtf8, searchFlags, cursorPos);
 
             // If a match was found and it's closer to the cursor than the current closest match, update the closest match
             if (result.pos >= 0 && (closestMatch.pos < 0 || (result.pos + result.length) >(closestMatch.pos + closestMatch.length))) {
