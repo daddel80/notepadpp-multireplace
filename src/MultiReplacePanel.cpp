@@ -1044,16 +1044,22 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         setSelections(!currentSelectionStatus, true);
                     }
                 }
-                /* For testing purposes only!
-                else if (pnkd->wVKey == VK_F10) {
-                    findAllDelimitersInDocument();
-                    isLoggingEnabled = true;
-                    MessageBox(NULL, L"Delimiter List initialized", L"Notification", MB_OK);
+                else if (pnkd->wVKey == VK_F11) { // F11 key
+                    isReplaceOnceInList = !isReplaceOnceInList;
+
+                    if (isReplaceOnceInList) {
+                        MessageBox(NULL,
+                            L"Replace Once in List Mode: ON\n\nStops replacement after the first match, then the next list entry is activated.",
+                            L"Feature Status *Experimental:*",
+                            MB_OK);
+                    }
+                    else {
+                        MessageBox(NULL,
+                            L"Replace Once in List Mode: OFF\n\nNormal replacement mode resumed.",
+                            L"Feature Status *Experimental:*",
+                            MB_OK);
+                    }
                 }
-                else if (pnkd->wVKey == VK_F11) {
-                    displayLogChangesInMessageBox();
-                }
-                */
             }
             break;
             }
@@ -1509,6 +1515,10 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
             newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
         }
         replaceCount++;
+
+        if (isReplaceOnceInList) {
+            break;  // Exit the loop after the first successful replacement
+        }
 
         searchResult = performSearchForward(findTextUtf8, searchFlags, false, newPos);
     }

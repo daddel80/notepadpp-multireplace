@@ -119,6 +119,7 @@ struct StartColumnInfo {
     SIZE_T startColumnIndex;
 };
 
+// Exceptions
 class CsvLoadException : public std::exception {
 public:
     CsvLoadException(const std::string& message) : message_(message) {}
@@ -204,24 +205,40 @@ private:
     static constexpr int FONT_SIZE = 16;
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
+    bool isReplaceOnceInList = false;            // When set, replacement stops after the first match in list and the next list entry gets activated.
 
+    // Static variables related to GUI 
     static HWND s_hScintilla;
     static HWND s_hDlg;
+    static std::map<int, ControlInfo> ctrlMap;
 
+    // Instance-specific GUI-related variables 
     HINSTANCE hInstance;
     HWND _hScintilla;
-    HWND _replaceListView;
-
-    HWND _hInListCheckbox;
-    HWND _hReplaceAllButton;
-    HWND _hMarkMatchesButton;
     HWND _hClearMarksButton;
     HWND _hCopyMarkedTextButton;
+    HWND _hInListCheckbox;
+    HWND _hMarkMatchesButton;
+    HWND _hReplaceAllButton;
+    HWND _replaceListView;
     HWND _hStatusMessage;
-
-    COLORREF _statusMessageColor;
     HFONT _hFont;
+    COLORREF _statusMessageColor;
 
+    // Style-related variables and constants
+    /*
+       Available styles (self-tested):
+       { 0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 }
+       Note: Gaps in the list are intentional.
+
+       Styles 0 - 7 are reserved for syntax style.
+       Styles 21 - 29, 31 are reserved by N++ (see SciLexer.h).
+    */
+    std::vector<int> textStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
+    std::vector<int> hColumnStyles = { STYLE1, STYLE2, STYLE3, STYLE4, STYLE5, STYLE6, STYLE7, STYLE8, STYLE9, STYLE10 };
+    std::vector<long> columnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
+
+    // Data-related variables 
     size_t markedStringsCount = 0;
     bool allSelected = true;
     std::unordered_map<long, int> colorToStyleMap;
@@ -229,35 +246,22 @@ private:
     bool ascending = true;
     ColumnDelimiterData columnDelimiterData;
     LRESULT eolLength = -1; // Stores the length of the EOL character sequence
-    
-    /*
-       Available styles (self-tested):
-       { 0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 }
-       Note: Gaps in the list are intentional. 
-
-       Styles 0 - 7 are reserved for syntax style.
-       Styles 21 - 29, 31 are reserved bei N++ (see SciLexer.h).
-    */
-    std::vector<int> textStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
-    std::vector<int> hColumnStyles = { STYLE1, STYLE2, STYLE3, STYLE4, STYLE5, STYLE6, STYLE7, STYLE8, STYLE9, STYLE10 };
-    std::vector<long> columnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
-
     std::vector<ReplaceItemData> replaceListData;
-    static std::map<int, ControlInfo> ctrlMap;
-    using LinePositions = std::vector<DelimiterPosition>;
     std::vector<LineInfo> lineDelimiterPositions;
-
     bool isColumnHighlighted = false;
-    std::string messageBoxContent;  // just for temporyry debugging usage
     std::map<int, bool> stateSnapshot; // stores the state of the Elements
 
+    // Debugging and logging related 
+    std::string messageBoxContent;  // just for temporary debugging usage
+
+    // Scintilla related 
     SciFnDirect pSciMsg = nullptr;
     sptr_t pSciWndData = 0;
 
+    // GUI control-related constants
     const std::vector<int> selectionRadioDisabledButtons = {
         IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
     };
-
     const std::vector<int> columnRadioDependentElements = {
         IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
