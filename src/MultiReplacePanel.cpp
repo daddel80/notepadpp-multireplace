@@ -39,6 +39,7 @@
 #include <vector>
 #include <windows.h>
 #include <filesystem> 
+#include <lua.hpp> 
 
 
 #ifdef UNICODE
@@ -101,6 +102,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 114, 163, 25, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 143, 100, 25, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 172, 155, 25, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { 20, 201, 120, 25, WC_BUTTON, L"Use Variables", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_SEARCH_MODE_GROUP] = { 195, 90, 200, 116, WC_BUTTON, L"Search Mode", BS_GROUPBOX, NULL };
     ctrlMap[IDC_NORMAL_RADIO] = { 205, 114, 100, 25, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
@@ -1507,6 +1509,15 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
     SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, false, 0);
     while (searchResult.pos >= 0)
     {
+        bool useVariablesEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
+        if (useVariablesEnabled) {
+            int CNT = replaceCount;
+            int APOS = static_cast<int>(searchResult.pos);
+            int LINE = (int)::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0);
+            int LPOS = (int)searchResult.pos - (int)::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)LINE, 0);
+            replaceTextUtf8 = resolveLuaSyntax(replaceTextUtf8, CNT, LINE, LPOS, APOS);
+        }
+
         Sci_Position newPos;
         if (regex) {
             newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
@@ -1596,6 +1607,69 @@ SelectionInfo MultiReplace::getSelectionInfo() {
     Sci_Position selectionLength = selectionEnd - selectionStart;
 
     return SelectionInfo{ selectedText, selectionStart, selectionLength };
+}
+
+std::string MultiReplace::resolveLuaSyntax(const std::string& inputString, int CNT, int LINE, int LPOS, int APOS)
+{
+    std::wstring error_message;
+
+    lua_State* L = luaL_newstate();  // Create a new Lua environment
+    luaL_openlibs(L);  // Load standard libraries
+
+    // Set variables
+    lua_pushnumber(L, CNT);
+    lua_setglobal(L, "CNT");
+    lua_pushnumber(L, LINE);
+    lua_setglobal(L, "LINE");
+    lua_pushnumber(L, LPOS);
+    lua_setglobal(L, "LPOS");
+    lua_pushnumber(L, APOS);
+    lua_setglobal(L, "APOS");
+
+    // Initialize 'result' to an empty string
+    lua_pushstring(L, "");
+    lua_setglobal(L, "result");
+
+    // Declare if statement function
+    luaL_dostring(L,
+        "function if_statement(cond, trueVal, falseVal)\n"
+        "  if loadstring('return ' .. cond)() then\n"  // Evaluate the condition
+        "    result = trueVal\n"
+        "  else\n"
+        "    result = falseVal\n"
+        "  end\n"
+        "end\n");
+
+    // Execute your expression
+    std::string luaCode = inputString;  // Replace inputString with your actual Lua expression
+    if (luaL_dostring(L, luaCode.c_str()) != LUA_OK) {
+        const char* cstr = lua_tostring(L, -1);
+
+        int len = MultiByteToWideChar(CP_UTF8, 0, cstr, -1, NULL, 0);
+        wchar_t* wstr = new wchar_t[len];
+        MultiByteToWideChar(CP_UTF8, 0, cstr, -1, wstr, len);
+
+        error_message += wstr;  // Append to error_message
+        delete[] wstr;
+
+        showStatusMessage(error_message.c_str(), RGB(255, 0, 0));
+        lua_close(L);
+        return "";
+    }
+
+
+    // Retrieve the result
+    lua_getglobal(L, "result");
+    std::string result = lua_tostring(L, -1);  // Assuming 'result' could be a string
+    lua_pop(L, 1);  // Pop 'result'
+
+    MessageBoxA(NULL, ("After Retrieving Result: " + result).c_str(), "Debug", MB_OK);
+
+    // Close Lua environment
+    lua_close(L);
+
+    // Return the result
+    return result;
 }
 
 #pragma endregion

@@ -16,7 +16,7 @@
 #ifndef MULTI_REPLACE_H
 #define MULTI_REPLACE_H
 
-#include "DockingFeature\DockingDlgInterface.h"
+#include "DockingFeature\StaticDialog.h"
 #include "DockingFeature\resource.h"
 #include "PluginInterface.h"
 
@@ -29,6 +29,7 @@
 #include <unordered_map>
 #include <set>
 #include <commctrl.h>
+#include <lua.hpp>
 
 extern NppData nppData;
 
@@ -300,6 +301,7 @@ private:
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     SelectionInfo getSelectionInfo();
     std::string utf8ToCodepage(const std::string& utf8Str, int codepage);
+    std::string resolveLuaSyntax(const std::string& inputString, int CNT, int LINE, int LPOS, int APOS);
 
     //Find
     void handleFindNextButton();

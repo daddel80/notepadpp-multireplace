@@ -56,6 +56,7 @@
 #define IDC_WHOLE_WORD_CHECKBOX         5200
 #define IDC_MATCH_CASE_CHECKBOX         5201
 #define IDC_WRAP_AROUND_CHECKBOX        5202
+#define IDC_USE_VARIABLES_CHECKBOX      5203
 
 #define IDC_SEARCH_MODE_GROUP           5300
 #define IDC_NORMAL_RADIO                5301
