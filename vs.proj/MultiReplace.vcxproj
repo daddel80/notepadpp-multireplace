@@ -111,7 +111,9 @@
     <ClCompile Include="..\src\lua\ldump.c" />
     <ClCompile Include="..\src\lua\lfunc.c" />
     <ClCompile Include="..\src\lua\linit.c" />
-    <ClCompile Include="..\src\lua\llex.c" />
+    <ClCompile Include="..\src\lua\llex.c">
+	  <AdditionalOptions>/w %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
     <ClCompile Include="..\src\lua\lmathlib.c" />
     <ClCompile Include="..\src\lua\lmem.c" />
     <ClCompile Include="..\src\lua\loadlib.c" />
