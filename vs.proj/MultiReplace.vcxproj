@@ -112,7 +112,7 @@
     <ClCompile Include="..\src\lua\lfunc.c" />
     <ClCompile Include="..\src\lua\linit.c" />
     <ClCompile Include="..\src\lua\llex.c">
-	  <AdditionalOptions>/w %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/w %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <ClCompile Include="..\src\lua\lmathlib.c" />
     <ClCompile Include="..\src\lua\lmem.c" />
@@ -121,7 +121,9 @@
       <AdditionalOptions>/w %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <ClCompile Include="..\src\lua\lopcodes.c" />
-    <ClCompile Include="..\src\lua\loslib.c" />
+    <ClCompile Include="..\src\lua\loslib.c">
+	  <AdditionalOptions>/w %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
     <ClCompile Include="..\src\lua\ltablib.c" />
     <ClCompile Include="..\src\lua\ltm.c">
       <AdditionalOptions>/w %(AdditionalOptions)</AdditionalOptions>
@@ -323,6 +325,7 @@ copy ..\README.md $(OutDir)README.md</Command>
       <TreatWarningAsError>true</TreatWarningAsError>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\src\lua</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -347,6 +350,7 @@ copy ..\README.md $(OutDir)README.md</Command>
       <TreatWarningAsError>true</TreatWarningAsError>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\src\lua</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -371,6 +375,7 @@ copy ..\README.md $(OutDir)README.md</Command>
       <TreatWarningAsError>true</TreatWarningAsError>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\src\lua</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
