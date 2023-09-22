@@ -18,7 +18,7 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <commctrl.h>
-#include "DockingFeature/resource.h"
+#include "StaticDialog/resource.h"
 #include "AboutDialog.h"
 
 LRESULT CALLBACK WebsiteLinkProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)

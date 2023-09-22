@@ -16,8 +16,8 @@
 #ifndef MULTI_REPLACE_H
 #define MULTI_REPLACE_H
 
-#include "DockingFeature\StaticDialog.h"
-#include "DockingFeature\resource.h"
+#include "StaticDialog/StaticDialog.h"
+#include "StaticDialog/resource.h"
 #include "PluginInterface.h"
 
 #include <string>
@@ -178,6 +178,7 @@ public:
     static int scannedDelimiterBufferID;
     static bool isLoggingEnabled;
     static bool isCaretPositionEnabled;
+    static bool isLuaErrorDialogEnabled;
 
     // Static methods for Event Handling
     static void onSelectionChanged();
@@ -301,7 +302,7 @@ private:
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     SelectionInfo getSelectionInfo();
     std::string utf8ToCodepage(const std::string& utf8Str, int codepage);
-    std::string resolveLuaSyntax(const std::string& inputString, int CNT, int LINE, int LPOS, int APOS);
+    bool resolveLuaSyntax(std::string& inputString, int CNT, int LINE, int LPOS, int APOS);
 
     //Find
     void handleFindNextButton();
@@ -353,6 +354,7 @@ private:
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput);
     std::string wstringToString(const std::wstring& input);
+    std::wstring MultiReplace::utf8ToWString(const char* cstr);
 
     //FileOperations
     std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);

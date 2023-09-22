@@ -57,6 +57,7 @@ bool MultiReplace::isLoggingEnabled = true;
 bool MultiReplace::textModified = true;
 bool MultiReplace::documentSwitched = false;
 bool MultiReplace::isCaretPositionEnabled = false;
+bool MultiReplace::isLuaErrorDialogEnabled = true;
 int MultiReplace::scannedDelimiterBufferID = -1;
 std::map<int, ControlInfo> MultiReplace::ctrlMap;
 std::vector<MultiReplace::LogEntry> MultiReplace::logChanges;
@@ -1509,21 +1510,26 @@ int MultiReplace::replaceString(const std::wstring& findText, const std::wstring
     SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, false, 0);
     while (searchResult.pos >= 0)
     {
+        std::string localReplaceTextUtf8 = replaceTextUtf8;;
+
         bool useVariablesEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
         if (useVariablesEnabled) {
-            int CNT = replaceCount;
-            int APOS = static_cast<int>(searchResult.pos);
-            int LINE = (int)::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0);
-            int LPOS = (int)searchResult.pos - (int)::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)LINE, 0);
-            replaceTextUtf8 = resolveLuaSyntax(replaceTextUtf8, CNT, LINE, LPOS, APOS);
+            int CNT = replaceCount + 1;
+            int APOS = static_cast<int>(searchResult.pos) + 1;
+            int LINE = static_cast<int>(::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0)) + 1;
+            int LPOS = static_cast<int>(searchResult.pos) - static_cast<int>(::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)LINE, 0)) + 1;
+
+            if (!resolveLuaSyntax(localReplaceTextUtf8, CNT, LINE, LPOS, APOS)) {
+                break;  // Exit the loop if error in syntax
+            }
         }
 
         Sci_Position newPos;
         if (regex) {
-            newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+            newPos = performRegexReplace(localReplaceTextUtf8, searchResult.pos, searchResult.length);
         }
         else {
-            newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+            newPos = performReplace(localReplaceTextUtf8, searchResult.pos, searchResult.length);
         }
         replaceCount++;
 
@@ -1609,10 +1615,8 @@ SelectionInfo MultiReplace::getSelectionInfo() {
     return SelectionInfo{ selectedText, selectionStart, selectionLength };
 }
 
-std::string MultiReplace::resolveLuaSyntax(const std::string& inputString, int CNT, int LINE, int LPOS, int APOS)
+bool MultiReplace::resolveLuaSyntax(std::string& inputString, int CNT, int LINE, int LPOS, int APOS)
 {
-    std::wstring error_message;
-
     lua_State* L = luaL_newstate();  // Create a new Lua environment
     luaL_openlibs(L);  // Load standard libraries
 
@@ -1626,50 +1630,39 @@ std::string MultiReplace::resolveLuaSyntax(const std::string& inputString, int C
     lua_pushnumber(L, APOS);
     lua_setglobal(L, "APOS");
 
-    // Initialize 'result' to an empty string
-    lua_pushstring(L, "");
-    lua_setglobal(L, "result");
-
     // Declare if statement function
     luaL_dostring(L,
-        "function if_statement(cond, trueVal, falseVal)\n"
-        "  if loadstring('return ' .. cond)() then\n"  // Evaluate the condition
+        "function cond(cond, trueVal, falseVal)\n"
+        "  if cond then\n"
         "    result = trueVal\n"
+        "    return trueVal\n"
         "  else\n"
         "    result = falseVal\n"
+        "    return falseVal\n"
         "  end\n"
         "end\n");
 
-    // Execute your expression
-    std::string luaCode = inputString;  // Replace inputString with your actual Lua expression
-    if (luaL_dostring(L, luaCode.c_str()) != LUA_OK) {
+    if (luaL_dostring(L, inputString.c_str()) != LUA_OK) {
         const char* cstr = lua_tostring(L, -1);
+        std::wstring error_message = utf8ToWString(cstr);
 
-        int len = MultiByteToWideChar(CP_UTF8, 0, cstr, -1, NULL, 0);
-        wchar_t* wstr = new wchar_t[len];
-        MultiByteToWideChar(CP_UTF8, 0, cstr, -1, wstr, len);
+        if (isLuaErrorDialogEnabled) {
+            MessageBoxW(NULL, error_message.c_str(), L"Syntax Error", MB_OK);
+        }
 
-        error_message += wstr;  // Append to error_message
-        delete[] wstr;
-
-        showStatusMessage(error_message.c_str(), RGB(255, 0, 0));
         lua_close(L);
-        return "";
+        return false;
     }
 
-
-    // Retrieve the result
+    // Retrieve the result (if needed)
     lua_getglobal(L, "result");
-    std::string result = lua_tostring(L, -1);  // Assuming 'result' could be a string
-    lua_pop(L, 1);  // Pop 'result'
+    if (lua_isstring(L, -1)) {
+        inputString = lua_tostring(L, -1);  // Update inputString with the result
+    }
+    lua_pop(L, 1);
 
-    MessageBoxA(NULL, ("After Retrieving Result: " + result).c_str(), "Debug", MB_OK);
-
-    // Close Lua environment
     lua_close(L);
-
-    // Return the result
-    return result;
+    return true;
 }
 
 #pragma endregion
@@ -3348,6 +3341,23 @@ std::string MultiReplace::wstringToString(const std::wstring& input) {
 
     return strResult;
 }
+
+std::wstring MultiReplace::utf8ToWString(const char* cstr) {
+    if (cstr == nullptr) {
+        return std::wstring();
+    }
+
+    int requiredSize = MultiByteToWideChar(CP_UTF8, 0, cstr, -1, NULL, 0);
+    if (requiredSize == 0) {
+        return std::wstring();
+    }
+
+    std::vector<wchar_t> wideStringResult(requiredSize);
+    MultiByteToWideChar(CP_UTF8, 0, cstr, -1, &wideStringResult[0], requiredSize);
+
+    return std::wstring(&wideStringResult[0]);
+}
+
 
 #pragma endregion
 
