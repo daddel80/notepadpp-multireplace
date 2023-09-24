@@ -1373,12 +1373,13 @@ void MultiReplace::handleReplaceButton() {
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
     SearchResult searchResult;
+    Sci_Position newPos;
     searchResult.pos = -1;
     searchResult.length = 0;
     searchResult.foundText = "";
 
     // Get the cursor position
-    LRESULT cursorPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+    newPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
@@ -1411,11 +1412,24 @@ void MultiReplace::handleReplaceButton() {
                 if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
                     // If it does match, replace the selected string
                     std::string replaceTextUtf8 = convertAndExtend(replaceText, extended);
+
+                    bool useVariablesEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
+                    if (useVariablesEnabled) {
+                        int CNT = 1;
+                        int APOS = static_cast<int>(searchResult.pos) + 1;
+                        int LINE = static_cast<int>(::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0)) + 1;
+                        int LPOS = static_cast<int>(searchResult.pos) - static_cast<int>(::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)LINE, 0)) + 1;
+
+                        if (!resolveLuaSyntax(replaceTextUtf8, CNT, LINE, LPOS, APOS)) {
+                            return;  // Exit the loop if error in syntax
+                        }
+                    }
+
                     if (regex) {
-                        performRegexReplace(replaceTextUtf8, selection.startPos, selection.length);
+                        newPos = performRegexReplace(replaceTextUtf8, selection.startPos, selection.length);
                     }
                     else {
-                        performReplace(replaceTextUtf8, selection.startPos, selection.length);
+                        newPos = performReplace(replaceTextUtf8, selection.startPos, selection.length);
                     }
                     showStatusMessage((L"Replaced '" + stringToWString(selection.text) + L"' with '" + replaceText + L"'.").c_str(), RGB(0, 128, 0));
 
@@ -1424,7 +1438,7 @@ void MultiReplace::handleReplaceButton() {
             }
         }
 
-        searchResult = performListSearchForward(replaceListData, cursorPos);
+        searchResult = performListSearchForward(replaceListData, newPos);
 
         // Check search results and handle wrap-around
         if (searchResult.pos < 0 && wrapAroundEnabled) {
@@ -1460,18 +1474,33 @@ void MultiReplace::handleReplaceButton() {
         searchResult = performSearchForward(findTextUtf8, searchFlags, true, selection.startPos);
 
         if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
+
+
             // If it does match, replace the selected string
             std::string replaceTextUtf8 = convertAndExtend(replaceText, extended);
+
+            bool useVariablesEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
+            if (useVariablesEnabled) {
+                int CNT = 1;
+                int APOS = static_cast<int>(searchResult.pos) + 1;
+                int LINE = static_cast<int>(::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0)) + 1;
+                int LPOS = static_cast<int>(searchResult.pos) - static_cast<int>(::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)LINE, 0)) + 1;
+
+                if (!resolveLuaSyntax(replaceTextUtf8, CNT, LINE, LPOS, APOS)) {
+                    return;  // Exit the function if error in syntax
+                }
+            }
+
             if (regex) {
-                performRegexReplace(replaceTextUtf8, selection.startPos, selection.length);
+                newPos = performRegexReplace(replaceTextUtf8, selection.startPos, selection.length);
             }
             else {
-                performReplace(replaceTextUtf8, selection.startPos, selection.length);
+                newPos= performReplace(replaceTextUtf8, selection.startPos, selection.length);
             }
             showStatusMessage((L"Replaced '" + findText + L"' with '" + replaceText + L"'.").c_str(), RGB(0, 128, 0));
 
             // Continue search after replace
-            searchResult = performSearchForward(findTextUtf8, searchFlags, true, searchResult.pos + searchResult.length);
+            searchResult = performSearchForward(findTextUtf8, searchFlags, true, newPos);
         }
 
         // Check search results and handle wrap-around
@@ -1557,7 +1586,17 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
     // Perform the replacement
     send(SCI_REPLACETARGET, replaceTextCp.size(), reinterpret_cast<sptr_t>(replaceTextCp.c_str()));
 
-    return pos + static_cast<Sci_Position>(replaceTextCp.length());
+    // Get the end position after the replacement
+    Sci_Position newTargetEnd = static_cast<Sci_Position>(send(SCI_GETTARGETEND, 0, 0));
+
+    // Set the cursor to the end of the replaced text
+    send(SCI_SETCURRENTPOS, newTargetEnd, 0);
+
+    // Clear selection
+    send(SCI_SETSELECTIONSTART, newTargetEnd, 0);
+    send(SCI_SETSELECTIONEND, newTargetEnd, 0);
+
+    return newTargetEnd;
 }
 
 Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
@@ -1574,9 +1613,17 @@ Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf
     // Perform the regex replacement
     send(SCI_REPLACETARGETRE, static_cast<WPARAM>(-1), reinterpret_cast<sptr_t>(replaceTextCp.c_str()));
 
-    // Return the new position after the replacement. The replaced string's length 
-    // may differ from the original match. For now, we approximate using the replacement string's length.
-    return pos + static_cast<Sci_Position>(replaceTextCp.length());
+    // Get the end position after the replacement
+    Sci_Position newTargetEnd = static_cast<Sci_Position>(send(SCI_GETTARGETEND, 0, 0));
+
+    // Set the cursor to the end of the replaced text
+    send(SCI_SETCURRENTPOS, newTargetEnd, 0);
+
+    // Clear selection
+    send(SCI_SETSELECTIONSTART, newTargetEnd, 0);
+    send(SCI_SETSELECTIONEND, newTargetEnd, 0);
+
+    return newTargetEnd;
 }
 
 std::string MultiReplace::utf8ToCodepage(const std::string& utf8Str, int codepage) {
@@ -1630,17 +1677,95 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, int CNT, int LINE,
     lua_pushnumber(L, APOS);
     lua_setglobal(L, "APOS");
 
+    // Convert numbers to integers
+    luaL_dostring(L, "CNT = math.tointeger(CNT)");
+    luaL_dostring(L, "LINE = math.tointeger(LINE)");
+    luaL_dostring(L, "LPOS = math.tointeger(LPOS)");
+    luaL_dostring(L, "APOS = math.tointeger(APOS)");
+
+    // Get TAGs from Scintilla using SCI_GETTAG
+    std::vector<std::string> tags;  // Initialize an empty vector to store the tags
+    for (int i = 1; ; ++i) {  // Assuming tags start from 1, change the start index as needed
+        char buffer[1024];  // Buffer to hold the tag value
+        sptr_t len = send(SCI_GETTAG, i, reinterpret_cast<sptr_t>(buffer), true);
+        if (len > 0) {
+            buffer[len] = '\0';  // Null-terminate the string
+            std::string tag(buffer);  // Convert to std::string
+            tags.push_back(tag);  // Add the tag to the vector
+        }
+        else {
+            break;
+        }
+    }
+
+    // Process the tags and set them as global variables
+    for (size_t i = 0; i < tags.size(); ++i) {
+        std::string tag = tags[i];
+        bool isNumber = normalizeAndValidateNumber(tag);
+        if (isNumber) {
+            lua_pushnumber(L, std::stod(tag));
+        }
+        else {
+            lua_pushstring(L, tag.c_str());
+        }
+        std::string globalVarName = "TAG" + std::to_string(i + 1);
+        lua_setglobal(L, globalVarName.c_str());
+    }
+
     // Declare if statement function
     luaL_dostring(L,
         "function cond(cond, trueVal, falseVal)\n"
+        "  if type(trueVal) == 'function' then\n"
+        "    trueVal = trueVal()\n"
+        "  end\n"
+        "  if type(falseVal) == 'function' then\n"
+        "    falseVal = falseVal()\n"
+        "  end\n"
         "  if cond then\n"
         "    result = trueVal\n"
-        "    return trueVal\n"
+        "    if type(trueVal) == 'function' then\n"
+        "      result = trueVal()\n"
+        "    end\n"
+        "    return result\n"
         "  else\n"
         "    result = falseVal\n"
-        "    return falseVal\n"
+        "    if type(falseVal) == 'function' then\n"
+        "      result = falseVal()\n"
+        "    end\n"
+        "    return result\n"
         "  end\n"
         "end\n");
+
+    // Declare the set function
+    luaL_dostring(L,
+        "function set(strOrCalc)\n"
+        "  if type(strOrCalc) == 'string' then\n"
+        "    result = strOrCalc\n"
+        "  elseif type(strOrCalc) == 'number' then\n"
+        "    result = tostring(strOrCalc)\n"
+        "  end\n"
+        "  return result\n"
+        "end\n");
+
+    // Declare formatNumber function
+    luaL_dostring(L,
+        "function fmtN(num, maxDecimals, fixedDecimals)\n"
+        "  local multiplier = 10 ^ maxDecimals\n"
+        "  local rounded = math.floor(num * multiplier + 0.5) / multiplier\n"
+        "  local output = ''\n"
+        "  if fixedDecimals then\n"
+        "    output = string.format('%.' .. maxDecimals .. 'f', rounded)\n"
+        "  else\n"
+        "    local intPart, fracPart = math.modf(rounded)\n"
+        "    if fracPart == 0 then\n"
+        "      output = tostring(intPart)\n"
+        "    else\n"
+        "      output = tostring(rounded)\n"
+        "    end\n"
+        "  end\n"
+        "  result = output  -- Set the global 'result' variable\n"
+        "  return output\n"
+        "end");
 
     if (luaL_dostring(L, inputString.c_str()) != LUA_OK) {
         const char* cstr = lua_tostring(L, -1);
@@ -3308,6 +3433,31 @@ sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, b
         return ::SendMessage(_hScintilla, iMessage, wParam, lParam);
     }
 }
+
+bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
+    int dotCount = 0;
+    int commaCount = 0;
+
+    for (char& c : str) {
+        if (c == '.') {
+            dotCount++;
+        }
+        else if (c == ',') {
+            commaCount++;
+            c = '.';  // Replace comma with dot
+        }
+        else if (!isdigit(c)) {
+            return false;  // Contains non-numeric characters
+        }
+
+        if (dotCount + commaCount > 1) {
+            return false;  // Contains more than one separator
+        }
+    }
+
+    return true;  // String is a valid number
+}
+
 
 #pragma endregion
 

@@ -350,6 +350,7 @@ private:
     LRESULT updateEOLLength();
     void setElementsState(const std::vector<int>& elements, bool enable);
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
+    bool MultiReplace::normalizeAndValidateNumber(std::string& str);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput);
