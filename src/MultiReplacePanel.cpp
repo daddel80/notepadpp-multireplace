@@ -102,8 +102,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 114, 163, 25, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 143, 100, 25, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 172, 155, 25, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { 20, 201, 120, 25, WC_BUTTON, L"Use Variables", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { 20, 172, 155, 25, WC_BUTTON, L"Use Variables", BS_AUTOCHECKBOX | WS_TABSTOP, L"Enables e.g.: `set(CNT..\" times.\")` or `cond(LINE<=5, \"edge\")`" };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 201, 120, 25, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_SEARCH_MODE_GROUP] = { 195, 90, 200, 116, WC_BUTTON, L"Search Mode", BS_GROUPBOX, NULL };
     ctrlMap[IDC_NORMAL_RADIO] = { 205, 114, 100, 25, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
@@ -408,12 +408,12 @@ void MultiReplace::createListViewColumns(HWND listView) {
     int windowWidth = rcClient.right - rcClient.left;
 
     // Calculate the remaining width for the first two columns
-    int remainingWidth = windowWidth - 290;
+    int remainingWidth = windowWidth - 281;
 
-    // Calculate the total width of columns 3 to 7
-    int columns3to7Width = 30 * 7; // Assuming fixed width of 30 for columns 3 to 7
+    // Calculate the total width of columns 3 to 8
+    int columns3to8Width = 30 * 8; // Assuming fixed width of 30 for columns 3 to 8
 
-    remainingWidth -= columns3to7Width;
+    remainingWidth -= columns3to8Width;
 
     lvc.iSubItem = 0;
     lvc.pszText = L"";
@@ -452,29 +452,35 @@ void MultiReplace::createListViewColumns(HWND listView) {
     lvc.cx = 30;
     ListView_InsertColumn(listView, 5, &lvc);
 
-    // Column for Option: Normal
+    // Column for Option: Use Variables
     lvc.iSubItem = 6;
-    lvc.pszText = L"N";
+    lvc.pszText = L"V";
     lvc.cx = 30;
     ListView_InsertColumn(listView, 6, &lvc);
 
-    // Column for Option: Extended
+    // Column for Option: Normal
     lvc.iSubItem = 7;
-    lvc.pszText = L"E";
+    lvc.pszText = L"N";
     lvc.cx = 30;
     ListView_InsertColumn(listView, 7, &lvc);
 
-    // Column for Option: Regex
+    // Column for Option: Extended
     lvc.iSubItem = 8;
-    lvc.pszText = L"R";
+    lvc.pszText = L"E";
     lvc.cx = 30;
     ListView_InsertColumn(listView, 8, &lvc);
 
-    // Column for Delete Button
+    // Column for Option: Regex
     lvc.iSubItem = 9;
-    lvc.pszText = L"";
+    lvc.pszText = L"R";
     lvc.cx = 30;
     ListView_InsertColumn(listView, 9, &lvc);
+
+    // Column for Delete Button
+    lvc.iSubItem = 10;
+    lvc.pszText = L"";
+    lvc.cx = 30;
+    ListView_InsertColumn(listView, 10, &lvc);
 }
 
 void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
@@ -523,16 +529,16 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
     int newWidth = LOWORD(lParam);
     int newHeight = HIWORD(lParam);
 
-    // Calculate the total width of columns 3 to 7
-    int columns3to7Width = 0;
-    for (int i = 4; i < 10; i++)
+    // Calculate the total width of columns 3 to 8
+    int columns3to8Width = 0;
+    for (int i = 4; i < 11; i++)
     {
-        columns3to7Width += ListView_GetColumnWidth(listView, i);
+        columns3to8Width += ListView_GetColumnWidth(listView, i);
     }
-    columns3to7Width += 30; // for the first column
+    columns3to8Width += 30; // for the first column
 
     // Calculate the remaining width for the first two columns
-    int remainingWidth = newWidth - 281 - columns3to7Width;
+    int remainingWidth = newWidth - 281 - columns3to8Width;
 
     static int prevWidth = newWidth; // Store the previous width
     bool moveWindowCalled = false; // Flag to check if MoveWindow is already called
@@ -586,6 +592,7 @@ void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
     SetWindowTextW(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText.c_str());
     SendMessageW(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), BM_SETCHECK, itemData.wholeWord ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), BM_SETCHECK, itemData.matchCase ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(GetDlgItem(_hSelf, IDC_USE_VARIABLES_CHECKBOX), BM_SETCHECK, itemData.useVariables ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), BM_SETCHECK, (!itemData.regex && !itemData.extended) ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), BM_SETCHECK, itemData.extended ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_SETCHECK, itemData.regex ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -776,6 +783,7 @@ void MultiReplace::handleCopyToListButton() {
 
     itemData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
     itemData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+    itemData.useVariables = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
     itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
     itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
 
@@ -873,7 +881,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             case NM_CLICK:
             {
                 NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
-                if (pnmia->iSubItem == 9) { // Delete button column
+                if (pnmia->iSubItem == 10) { // Delete button column
                     handleDeletion(pnmia);
                 }
                 if (pnmia->iSubItem == 1) { // Select button column
@@ -930,24 +938,30 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     }
                     break;
                 case 6:
-                    if (!itemData.regex && !itemData.extended) {
+                    if (itemData.useVariables) {
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 7:
-                    if (itemData.extended) {
+                    if (!itemData.regex && !itemData.extended) {
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 8:
-                    if (itemData.regex) {
+                    if (itemData.extended) {
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
                 case 9:
+                    if (itemData.regex) {
+                        plvdi->item.mask |= LVIF_TEXT;
+                        plvdi->item.pszText = L"\u2714";
+                    }
+                    break;
+                case 10:
                     plvdi->item.mask |= LVIF_TEXT;
                     plvdi->item.pszText = L"\u2716";
                     break;
@@ -1219,6 +1233,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_BUTTON:
         {
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleReplaceButton();
         }
         break;
@@ -1334,8 +1349,8 @@ void MultiReplace::handleReplaceAllButton() {
             if (itemData.isSelected) {
                 replaceCount += replaceAll(
                     itemData.findText, itemData.replaceText,
-                    itemData.wholeWord, itemData.matchCase,
-                    itemData.regex, itemData.extended);
+                    itemData.wholeWord, itemData.matchCase, 
+                    itemData.useVariables, itemData.regex, itemData.extended);
             }
         }
         ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
@@ -1346,11 +1361,12 @@ void MultiReplace::handleReplaceAllButton() {
         std::wstring replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
         bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
         bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+        bool useVariables = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
         bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
         bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
         ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
-        replaceCount = replaceAll(findText, replaceText, wholeWord, matchCase, regex, extended);
+        replaceCount = replaceAll(findText, replaceText, wholeWord, matchCase, useVariables, regex, extended);
         ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 
         // Add the entered text to the combo box history
@@ -1559,7 +1575,7 @@ void MultiReplace::handleReplaceButton() {
                 replaceOne(
                     itemData.findText, itemData.replaceText, 
                     itemData.wholeWord, itemData.matchCase, 
-                    itemData.regex, itemData.extended, 
+                    itemData.useVariables, itemData.regex, itemData.extended, 
                     selection, searchResult, newPos);
             }
         }
@@ -1588,6 +1604,7 @@ void MultiReplace::handleReplaceButton() {
         std::wstring replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
         bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
         bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+        bool useVariables = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
         bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
         bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
@@ -1595,7 +1612,7 @@ void MultiReplace::handleReplaceButton() {
         int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
 
         SelectionInfo selection = getSelectionInfo();
-        replaceOne(findText, replaceText, wholeWord, matchCase, regex, extended, selection, searchResult, newPos);
+        replaceOne(findText, replaceText, wholeWord, matchCase, useVariables, regex, extended, selection, searchResult, newPos);
 
         // Check search results and handle wrap-around
         if (searchResult.pos < 0 && wrapAroundEnabled) {
@@ -1617,36 +1634,49 @@ void MultiReplace::handleReplaceButton() {
     }
 }
 
-void MultiReplace::replaceOne( const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos)
+void MultiReplace::replaceOne( const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool useVariables, bool regex, bool extended, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos)
 {
     std::string findTextUtf8 = convertAndExtend(findText, extended);
     int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
     searchResult = performSearchForward(findTextUtf8, searchFlags, true, selection.startPos);
 
     if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
+        bool skipReplace = false;
         std::string replaceTextUtf8 = convertAndExtend(replaceText, extended);
-        bool useVariablesEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
-        if (useVariablesEnabled) {
+        if (useVariables) {
+            int COL = 0;
+            if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
+                ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
+                COL = static_cast<int>(columnInfo.startColumnIndex);
+            }
             int CNT = 1;
             int APOS = static_cast<int>(searchResult.pos) + 1;
             int LINE = static_cast<int>(::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0)) + 1;
             int LPOS = static_cast<int>(searchResult.pos) - static_cast<int>(::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)LINE, 0)) + 1;
 
-            if (!resolveLuaSyntax(replaceTextUtf8, CNT, LINE, LPOS, APOS)) {
+            if (!resolveLuaSyntax(replaceTextUtf8, CNT, LINE, LPOS, APOS, COL, skipReplace)) {
                 return;  // Exit the function if error in syntax
             }
         }
 
-        if (regex) {
-            newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+        if (!skipReplace) {
+            if (regex) {
+                newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+            }
+            else {
+                newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+            }
         }
         else {
-            newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+            newPos = searchResult.pos + searchResult.length;
+            // Clear selection
+            send(SCI_SETSELECTIONSTART, newPos, 0);
+            send(SCI_SETSELECTIONEND, newPos, 0);
         }
     }
 }
 
-int MultiReplace::replaceAll(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended)
+int MultiReplace::replaceAll(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool useVariables, bool regex, bool extended)
 {
     if (findText.empty()) {
         return 0;
@@ -1661,28 +1691,40 @@ int MultiReplace::replaceAll(const std::wstring& findText, const std::wstring& r
     SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, false, 0);
     while (searchResult.pos >= 0)
     {
+        bool skipReplace = false;
         std::string localReplaceTextUtf8 = replaceTextUtf8;;
-
-        bool useVariablesEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
-        if (useVariablesEnabled) {
+        if (useVariables) {
+            int COL = 0;
+            if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
+                ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
+                COL = static_cast<int>(columnInfo.startColumnIndex);
+            }
             int CNT = replaceCount + 1;
             int APOS = static_cast<int>(searchResult.pos) + 1;
             int LINE = static_cast<int>(::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0)) + 1;
             int LPOS = static_cast<int>(searchResult.pos) - static_cast<int>(::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)LINE, 0)) + 1;
 
-            if (!resolveLuaSyntax(localReplaceTextUtf8, CNT, LINE, LPOS, APOS)) {
+            if (!resolveLuaSyntax(localReplaceTextUtf8, CNT, LINE, LPOS, APOS, COL, skipReplace)) {
                 break;  // Exit the loop if error in syntax
             }
         }
 
         Sci_Position newPos;
-        if (regex) {
-            newPos = performRegexReplace(localReplaceTextUtf8, searchResult.pos, searchResult.length);
+        if (!skipReplace) {
+            if (regex) {
+                newPos = performRegexReplace(localReplaceTextUtf8, searchResult.pos, searchResult.length);
+            }
+            else {
+                newPos = performReplace(localReplaceTextUtf8, searchResult.pos, searchResult.length);
+            }
+            replaceCount++;
         }
         else {
-            newPos = performReplace(localReplaceTextUtf8, searchResult.pos, searchResult.length);
+            newPos = searchResult.pos + searchResult.length;
+            // Clear selection
+            send(SCI_SETSELECTIONSTART, newPos, 0);
+            send(SCI_SETSELECTIONEND, newPos, 0);
         }
-        replaceCount++;
 
         if (isReplaceOnceInList) {
             break;  // Exit the loop after the first successful replacement
@@ -1784,7 +1826,7 @@ SelectionInfo MultiReplace::getSelectionInfo() {
     return SelectionInfo{ selectedText, selectionStart, selectionLength };
 }
 
-bool MultiReplace::resolveLuaSyntax(std::string& inputString, int CNT, int LINE, int LPOS, int APOS)
+bool MultiReplace::resolveLuaSyntax(std::string& inputString, int CNT, int LINE, int LPOS, int APOS, int COL, bool& skip)
 {
     lua_State* L = luaL_newstate();  // Create a new Lua environment
     luaL_openlibs(L);  // Load standard libraries
@@ -1798,73 +1840,118 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, int CNT, int LINE,
     lua_setglobal(L, "LPOS");
     lua_pushnumber(L, APOS);
     lua_setglobal(L, "APOS");
+    lua_pushnumber(L, COL);
+    lua_setglobal(L, "COL");
 
     // Convert numbers to integers
     luaL_dostring(L, "CNT = math.tointeger(CNT)");
     luaL_dostring(L, "LINE = math.tointeger(LINE)");
     luaL_dostring(L, "LPOS = math.tointeger(LPOS)");
     luaL_dostring(L, "APOS = math.tointeger(APOS)");
+    luaL_dostring(L, "COL = math.tointeger(COL)");
 
-    // Get TAGs from Scintilla using SCI_GETTAG
-    std::vector<std::string> tags;  // Initialize an empty vector to store the tags
-    for (int i = 1; ; ++i) {  // Assuming tags start from 1, change the start index as needed
-        char buffer[1024];  // Buffer to hold the tag value
-        sptr_t len = send(SCI_GETTAG, i, reinterpret_cast<sptr_t>(buffer), true);
-        if (len > 0) {
+    // Get CAPs from Scintilla using SCI_GETTAG
+    std::vector<std::string> caps;  // Initialize an empty vector to store the captures
+    sptr_t len = 0;
+
+    for (int i = 1; ; ++i) {
+        char buffer[1024] = { 0 };  // Buffer to hold the capture value
+        len = send(SCI_GETTAG, i, reinterpret_cast<sptr_t>(buffer), true);
+
+        if (len <= 0) {
+            // If len is zero or negative, break the loop
+            break;
+        }
+
+        if (len < sizeof(buffer)) {
+            // If the first character is 0x00, break the loop
+            if (buffer[0] == 0x00) {
+                break;
+            }
             buffer[len] = '\0';  // Null-terminate the string
-            std::string tag(buffer);  // Convert to std::string
-            tags.push_back(tag);  // Add the tag to the vector
+            std::string cap(buffer);  // Convert to std::string
+            caps.push_back(cap);  // Add the capture to the vector
         }
         else {
+            // Buffer overflow detected: This should be rare, but it's good to check
             break;
         }
     }
 
-    // Process the tags and set them as global variables
-    for (size_t i = 0; i < tags.size(); ++i) {
-        std::string tag = tags[i];
-        bool isNumber = normalizeAndValidateNumber(tag);
+
+    // Process the captures and set them as global variables
+    for (size_t i = 0; i < caps.size(); ++i) {
+        std::string cap = caps[i];
+        bool isNumber = normalizeAndValidateNumber(cap);  // A function to check if a cap is a valid number
         if (isNumber) {
-            lua_pushnumber(L, std::stod(tag));
+            double doubleVal = std::stod(cap);
+            int intVal = static_cast<int>(doubleVal);
+            if (doubleVal == static_cast<double>(intVal)) {
+                // If it's an integer, use lua_pushinteger
+                lua_pushinteger(L, intVal);
+            }
+            else {
+                // If it's a decimal, use lua_pushnumber
+                lua_pushnumber(L, doubleVal);
+            }
         }
         else {
-            lua_pushstring(L, tag.c_str());
+            lua_pushstring(L, cap.c_str());
         }
-        std::string globalVarName = "TAG" + std::to_string(i + 1);
+        std::string globalVarName = "CAP" + std::to_string(i + 1);
         lua_setglobal(L, globalVarName.c_str());
     }
 
-    // Declare if statement function
+    // Declare cond statement function
     luaL_dostring(L,
         "function cond(cond, trueVal, falseVal)\n"
+        "  skip = false  -- Initialize skip with false\n"
+        "  if cond == nil then  -- Check if cond is nil\n"
+        "    error('cond cannot be nil')\n"
+        "    return\n"
+        "  end\n"
+        "  if trueVal == nil then  -- Check if trueVal is nil\n"
+        "    error('trueVal cannot be nil')\n"
+        "    return\n"
+        "  end\n"
+        "  if falseVal == nil then  -- Check if falseVal is missing\n"
+        "    skip = true  -- Set skip to true ONLY IF falseVal is not provided\n"
+        "  end\n"
         "  if type(trueVal) == 'function' then\n"
         "    trueVal = trueVal()\n"
         "  end\n"
-        "  if type(falseVal) == 'function' then\n"
+        "  if not skip and type(falseVal) == 'function' then\n"
         "    falseVal = falseVal()\n"
         "  end\n"
         "  if cond then\n"
-        "    result = trueVal\n"
-        "    if type(trueVal) == 'function' then\n"
-        "      result = trueVal()\n"
-        "    end\n"
-        "    return result\n"
+        "    result = trueVal  -- Assign the result to the global variable\n"
+        "    skip = false\n"
+        "    return trueVal\n"
         "  else\n"
-        "    result = falseVal\n"
-        "    if type(falseVal) == 'function' then\n"
-        "      result = falseVal()\n"
+        "    if not skip then\n"
+        "      result = falseVal  -- Assign the result to the global variable\n"
+        "      return falseVal\n"
+        "    else\n"
+        "      result = ''  -- Assign an empty string to the global variable if falseVal is not provided\n"
+        "      return ''\n"
         "    end\n"
-        "    return result\n"
         "  end\n"
         "end\n");
 
     // Declare the set function
     luaL_dostring(L,
         "function set(strOrCalc)\n"
+        "  if strOrCalc == nil then\n"
+        "    error('cannot be nil')\n"
+        "    return\n"
+        "  end\n"
         "  if type(strOrCalc) == 'string' then\n"
         "    result = strOrCalc\n"
         "  elseif type(strOrCalc) == 'number' then\n"
         "    result = tostring(strOrCalc)\n"
+        "  else\n"
+        "    error('Expected string or number')\n"
+        "    return\n"
         "  end\n"
         "  return result\n"
         "end\n");
@@ -1872,6 +1959,27 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, int CNT, int LINE,
     // Declare formatNumber function
     luaL_dostring(L,
         "function fmtN(num, maxDecimals, fixedDecimals)\n"
+        "  if num == nil then\n"
+        "    error('num cannot be nil')\n"
+        "    return\n"
+        "  elseif type(num) ~= 'number' then\n"
+        "    error('Invalid type for num. Expected a number')\n"
+        "    return\n"
+        "  end\n"
+        "  if maxDecimals == nil then\n"
+        "    error('maxDecimals cannot be nil')\n"
+        "    return\n"
+        "  elseif type(maxDecimals) ~= 'number' then\n"
+        "    error('Invalid type for maxDecimals. Expected a number')\n"
+        "    return\n"
+        "  end\n"
+        "  if fixedDecimals == nil then\n"
+        "    error('fixedDecimals cannot be nil')\n"
+        "    return\n"
+        "  elseif type(fixedDecimals) ~= 'boolean' then\n"
+        "    error('Invalid type for fixedDecimals. Expected a boolean')\n"
+        "    return\n"
+        "  end\n"
         "  local multiplier = 10 ^ maxDecimals\n"
         "  local rounded = math.floor(num * multiplier + 0.5) / multiplier\n"
         "  local output = ''\n"
@@ -1889,8 +1997,11 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, int CNT, int LINE,
         "  return output\n"
         "end");
 
+    
+    // Show syntax error
     if (luaL_dostring(L, inputString.c_str()) != LUA_OK) {
         const char* cstr = lua_tostring(L, -1);
+        lua_pop(L, 1); // Entfernen des Fehlertextes vom Stack
         std::wstring error_message = utf8ToWString(cstr);
 
         if (isLuaErrorDialogEnabled) {
@@ -1901,15 +2012,53 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, int CNT, int LINE,
         return false;
     }
 
-    // Retrieve the result (if needed)
+    // Retrieve the result
     lua_getglobal(L, "result");
-    if (lua_isstring(L, -1)) {
+    if (lua_isstring(L, -1) || lua_isnumber(L, -1)) {
         inputString = lua_tostring(L, -1);  // Update inputString with the result
+    }
+    else { // Show Runtime error
+        std::string error_message = "Execution halted due to execution failure in:\n" + inputString;
+        std::wstring w_error_message = utf8ToWString(error_message.c_str());
+
+        if (isLuaErrorDialogEnabled) {
+            MessageBoxW(NULL, w_error_message.c_str(), L"Execution Error", MB_OK);
+        }
+
+        lua_pop(L, 1);
+        lua_close(L);
+        return false;
+    }
+    lua_pop(L, 1);
+
+    // Retrieve skip
+    lua_getglobal(L, "skip");
+    
+    bool isBoolean = lua_isboolean(L, -1);
+    bool booleanValue = false;
+    if (isBoolean) {
+        booleanValue = lua_toboolean(L, -1);
+    }
+    std::stringstream ss;
+    ss << "Read skip\n"
+        << "Is Boolean: " << (isBoolean ? "true" : "false") << "\n"
+        << "Boolean Value: " << (booleanValue ? "true" : "false");
+    //MessageBoxA(NULL, ss.str().c_str(), "Debug", MB_OK);
+
+    if (lua_isboolean(L, -1)) {
+        skip = lua_toboolean(L, -1);
+        if (skip) {
+            //MessageBoxA(NULL, "Skip detected", "Debug", MB_OK);
+        }
+    }
+    else {
+        skip = false;
     }
     lua_pop(L, 1);
 
     lua_close(L);
     return true;
+
 }
 
 #pragma endregion
@@ -2112,7 +2261,7 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
     else if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED && columnDelimiterData.isValid()) {
 
         // Identify Column to Start
-        StartColumnInfo columnInfo = getStartColumnInfo(start);
+        ColumnInfo columnInfo = getColumnInfo(start);
         LRESULT totalLines = columnInfo.totalLines;
         LRESULT startLine = columnInfo.startLine;
         SIZE_T startColumnIndex = columnInfo.startColumnIndex;
@@ -2195,7 +2344,7 @@ SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8
     if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED && columnDelimiterData.isValid()) {
 
         // Identify Column to Start
-        StartColumnInfo columnInfo = getStartColumnInfo(start);
+        ColumnInfo columnInfo = getColumnInfo(start);
         LRESULT startLine = columnInfo.startLine;
         SIZE_T startColumnIndex = columnInfo.startColumnIndex;
 
@@ -2815,7 +2964,7 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
     }
 }
 
-StartColumnInfo MultiReplace::getStartColumnInfo(LRESULT startPosition) {
+ColumnInfo MultiReplace::getColumnInfo(LRESULT startPosition) {
     if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) != BST_CHECKED ||
         columnDelimiterData.columns.empty() || columnDelimiterData.extendedDelimiter.empty() ||
         lineDelimiterPositions.empty()) {
@@ -2966,7 +3115,7 @@ std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
         return L"";
     }
     std::wstring lineAndColumnMessage;
-    StartColumnInfo startInfo = getStartColumnInfo(pos);
+    ColumnInfo startInfo = getColumnInfo(pos);
     lineAndColumnMessage = L" (Line: " + std::to_wstring(startInfo.startLine + 1) +
                            L", Column: " + std::to_wstring(startInfo.startColumnIndex) + L")";
     return lineAndColumnMessage;
@@ -3580,7 +3729,6 @@ bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
     return true;  // String is a valid number
 }
 
-
 #pragma endregion
 
 
@@ -3672,7 +3820,7 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
     }
 
     // Convert and Write CSV header
-    std::string utf8Header = wstringToString(L"Selected,Find,Replace,WholeWord,MatchCase,Regex,Extended\n");
+    std::string utf8Header = wstringToString(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Regex,Extended\n");
     outFile << utf8Header;
 
     // Write list items to CSV file
@@ -3682,6 +3830,7 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
             escapeCsvValue(item.replaceText) + L"," +
             std::to_wstring(item.wholeWord) + L"," +
             std::to_wstring(item.matchCase) + L"," +
+            std::to_wstring(item.useVariables) + L"," +
             std::to_wstring(item.extended) + L"," +
             std::to_wstring(item.regex) + L"\n";
         std::string utf8Line = wstringToString(line);
@@ -3749,7 +3898,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
         columns.push_back(unescapeCsvValue(currentValue));
 
         // Check if the row has the correct number of columns
-        if (columns.size() != 7) {
+        if (columns.size() != 8) {
             throw CsvLoadException("Invalid number of columns in CSV file '" + wstringToString(fileName) + "'.");
         }
 
@@ -3761,8 +3910,9 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
             item.replaceText = columns[2];
             item.wholeWord = std::stoi(columns[3]) != 0;
             item.matchCase = std::stoi(columns[4]) != 0;
-            item.extended = std::stoi(columns[5]) != 0;
-            item.regex = std::stoi(columns[6]) != 0;
+            item.useVariables = std::stoi(columns[5]) != 0;
+            item.extended = std::stoi(columns[6]) != 0;
+            item.regex = std::stoi(columns[7]) != 0;
 
             tempList.push_back(item);
         }
@@ -3829,29 +3979,25 @@ std::wstring MultiReplace::escapeCsvValue(const std::wstring& value) {
 
 std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
     std::wstring unescapedValue;
-    bool insideQuotes = false;
 
-    for (size_t i = 0; i < value.length(); ++i) {
-        wchar_t ch = value[i];
+    // If the value starts and ends with double quotes, remove them.
+    size_t start = (value.size() > 1 && value[0] == L'"' && value[value.size() - 1] == L'"') ? 1 : 0;
+    size_t end = (start == 1) ? value.size() - 1 : value.size();
 
-        if (ch == L'"') {
-            insideQuotes = !insideQuotes;
-            if (insideQuotes) {
-                // Ignore the leading quote
+    bool wasPreviousCharQuote = false;
+    for (size_t i = start; i < end; ++i) {
+        if (value[i] == L'"') {
+            if (wasPreviousCharQuote) {
+                wasPreviousCharQuote = false;
                 continue;
             }
-            else {
-                // Check for escaped quotes (two consecutive quotes)
-                if (i + 1 < value.length() && value[i + 1] == L'"') {
-                    unescapedValue += ch;
-                    ++i; // Skip the next quote
-                }
-                // Otherwise, ignore the trailing quote
-            }
+            wasPreviousCharQuote = true;
         }
         else {
-            unescapedValue += ch;
+            wasPreviousCharQuote = false;
         }
+
+        unescapedValue += value[i];
     }
 
     return unescapedValue;
@@ -4074,6 +4220,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int extended = IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED ? 1 : 0;
     int regex = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0;
     int wrapAround = IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED ? 1 : 0;
+    int useVariables = IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int ButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
     int useList = IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED ? 1 : 0;
 
@@ -4083,6 +4230,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"Extended=" + std::to_wstring(extended) + L"\n");
     outFile << wstringToString(L"Regex=" + std::to_wstring(regex) + L"\n");
     outFile << wstringToString(L"WrapAround=" + std::to_wstring(wrapAround) + L"\n");
+    outFile << wstringToString(L"UseVariables=" + std::to_wstring(useVariables) + L"\n");
     outFile << wstringToString(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
     outFile << wstringToString(L"UseList=" + std::to_wstring(useList) + L"\n");
 
@@ -4182,6 +4330,9 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
     bool matchCase = readBoolFromIniFile(iniFilePath, L"Options", L"MatchCase", false);
     SendMessage(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), BM_SETCHECK, matchCase ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    bool useVariables = readBoolFromIniFile(iniFilePath, L"Options", L"UseVariables", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_VARIABLES_CHECKBOX), BM_SETCHECK, useVariables ? BST_CHECKED : BST_UNCHECKED, 0);
 
     bool extended = readBoolFromIniFile(iniFilePath, L"Options", L"Extended", false);
     bool regex = readBoolFromIniFile(iniFilePath, L"Options", L"Regex", false);

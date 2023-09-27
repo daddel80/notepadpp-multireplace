@@ -43,6 +43,7 @@ struct ReplaceItemData
     std::wstring replaceText;
     bool wholeWord = false;
     bool matchCase = false;
+    bool useVariables = false;
     bool extended = false;
     bool regex = false;
 
@@ -114,7 +115,7 @@ struct LineInfo {
     LRESULT endPosition = 0;
 };
 
-struct StartColumnInfo {
+struct ColumnInfo {
     LRESULT totalLines;
     LRESULT startLine;
     SIZE_T startColumnIndex;
@@ -297,15 +298,15 @@ private:
     //Replace
     void handleReplaceAllButton();
     void handleReplaceButton();
-    int replaceAll(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended);
+    int replaceAll(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool useVariables, bool regex, bool extended);
     void replaceOne( 
-        const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool regex, bool extended, 
+        const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool useVariables, bool regex, bool extended,
         const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     SelectionInfo getSelectionInfo();
     std::string utf8ToCodepage(const std::string& utf8Str, int codepage);
-    bool resolveLuaSyntax(std::string& inputString, int CNT, int LINE, int LPOS, int APOS);
+    bool resolveLuaSyntax(std::string& inputString, int CNT, int LINE, int LPOS, int APOS, int COL, bool& skip);
 
     //Find
     void handleFindNextButton();
@@ -328,7 +329,7 @@ private:
     bool parseColumnAndDelimiterData();
     void findAllDelimitersInDocument();
     void findDelimitersInLine(LRESULT line);
-    StartColumnInfo getStartColumnInfo(LRESULT startPosition);
+    ColumnInfo getColumnInfo(LRESULT startPosition);
     void initializeColumnStyles();
     void handleHighlightColumnsInDocument();
     void highlightColumnsInLine(LRESULT line);
