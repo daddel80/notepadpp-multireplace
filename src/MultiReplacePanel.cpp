@@ -1652,7 +1652,8 @@ void MultiReplace::replaceOne( const std::wstring& findText, const std::wstring&
             int CNT = 1;
             int APOS = static_cast<int>(searchResult.pos) + 1;
             int LINE = static_cast<int>(::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0)) + 1;
-            int LPOS = static_cast<int>(searchResult.pos) - static_cast<int>(::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)LINE, 0)) + 1;
+            int previousLineStartPosition = (LINE > 0) ? static_cast<int>(::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)(LINE - 1), 0)) : 0;
+            int LPOS = static_cast<int>(searchResult.pos) - previousLineStartPosition + 1;
 
             if (!resolveLuaSyntax(replaceTextUtf8, CNT, LINE, LPOS, APOS, COL, skipReplace)) {
                 return;  // Exit the function if error in syntax
@@ -1701,8 +1702,9 @@ int MultiReplace::replaceAll(const std::wstring& findText, const std::wstring& r
             }
             int CNT = replaceCount + 1;
             int APOS = static_cast<int>(searchResult.pos) + 1;
-            int LINE = static_cast<int>(::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0)) + 1;
-            int LPOS = static_cast<int>(searchResult.pos) - static_cast<int>(::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)LINE, 0)) + 1;
+            int LINE = static_cast<int>(::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0)) + 1;            
+            int previousLineStartPosition = (LINE > 0) ? static_cast<int>(::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)(LINE - 1), 0)) : 0;
+            int LPOS = static_cast<int>(searchResult.pos) - previousLineStartPosition + 1;
 
             if (!resolveLuaSyntax(localReplaceTextUtf8, CNT, LINE, LPOS, APOS, COL, skipReplace)) {
                 break;  // Exit the loop if error in syntax
@@ -1905,55 +1907,70 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, int CNT, int LINE,
     // Declare cond statement function
     luaL_dostring(L,
         "function cond(cond, trueVal, falseVal)\n"
-        "  skip = false  -- Initialize skip with false\n"
+        "  local res = {result = '', skip = false}  -- Initialize result table with defaults\n"
         "  if cond == nil then  -- Check if cond is nil\n"
         "    error('cond cannot be nil')\n"
-        "    return\n"
+        "    return res\n"
         "  end\n"
+
         "  if trueVal == nil then  -- Check if trueVal is nil\n"
         "    error('trueVal cannot be nil')\n"
-        "    return\n"
+        "    return res\n"
         "  end\n"
+
         "  if falseVal == nil then  -- Check if falseVal is missing\n"
-        "    skip = true  -- Set skip to true ONLY IF falseVal is not provided\n"
+        "    res.skip = true  -- Set skip to true ONLY IF falseVal is not provided\n"
         "  end\n"
+
         "  if type(trueVal) == 'function' then\n"
         "    trueVal = trueVal()\n"
         "  end\n"
-        "  if not skip and type(falseVal) == 'function' then\n"
+
+        "  if type(falseVal) == 'function' then\n"
         "    falseVal = falseVal()\n"
         "  end\n"
+
         "  if cond then\n"
-        "    result = trueVal  -- Assign the result to the global variable\n"
-        "    skip = false\n"
-        "    return trueVal\n"
-        "  else\n"
-        "    if not skip then\n"
-        "      result = falseVal  -- Assign the result to the global variable\n"
-        "      return falseVal\n"
+        "    if type(trueVal) == 'table' then\n"
+        "      res.result = trueVal.result\n"
+        "      res.skip = trueVal.skip\n"
         "    else\n"
-        "      result = ''  -- Assign an empty string to the global variable if falseVal is not provided\n"
-        "      return ''\n"
+        "      res.result = trueVal\n"
+        "      res.skip = false\n"
+        "    end\n"
+        "  else\n"
+        "    if not res.skip then\n"
+        "      if type(falseVal) == 'table' then\n"
+        "        res.result = falseVal.result\n"
+        "        res.skip = falseVal.skip\n"
+        "      else\n"
+        "        res.result = falseVal\n"
+        "      end\n"
         "    end\n"
         "  end\n"
+        "  resultTable = res\n"
+        "  return res  -- Return the table containing result and skip\n"
         "end\n");
+
 
     // Declare the set function
     luaL_dostring(L,
         "function set(strOrCalc)\n"
+        "  local res = {result = '', skip = false}  -- Initialize result table with defaults\n"
         "  if strOrCalc == nil then\n"
         "    error('cannot be nil')\n"
         "    return\n"
         "  end\n"
         "  if type(strOrCalc) == 'string' then\n"
-        "    result = strOrCalc\n"
+        "    res.result = strOrCalc  -- Hier wird res.result gesetzt\n"
         "  elseif type(strOrCalc) == 'number' then\n"
-        "    result = tostring(strOrCalc)\n"
+        "    res.result = tostring(strOrCalc)  -- Convert number to string and set to res.result\n"
         "  else\n"
         "    error('Expected string or number')\n"
         "    return\n"
         "  end\n"
-        "  return result\n"
+        "  resultTable = res\n"
+        "  return res  -- Return the table containing result and skip\n"
         "end\n");
 
     // Declare formatNumber function
@@ -1993,7 +2010,6 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, int CNT, int LINE,
         "      output = tostring(rounded)\n"
         "    end\n"
         "  end\n"
-        "  result = output  -- Set the global 'result' variable\n"
         "  return output\n"
         "end");
 
@@ -2001,7 +2017,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, int CNT, int LINE,
     // Show syntax error
     if (luaL_dostring(L, inputString.c_str()) != LUA_OK) {
         const char* cstr = lua_tostring(L, -1);
-        lua_pop(L, 1); // Entfernen des Fehlertextes vom Stack
+        lua_pop(L, 1);
         std::wstring error_message = utf8ToWString(cstr);
 
         if (isLuaErrorDialogEnabled) {
@@ -2012,51 +2028,38 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, int CNT, int LINE,
         return false;
     }
 
-    // Retrieve the result
-    lua_getglobal(L, "result");
-    if (lua_isstring(L, -1) || lua_isnumber(L, -1)) {
-        inputString = lua_tostring(L, -1);  // Update inputString with the result
+    // Retrieve the result from the table
+    lua_getglobal(L, "resultTable");
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, "result");
+        if (lua_isstring(L, -1) || lua_isnumber(L, -1)) {
+            inputString = lua_tostring(L, -1);  // Update inputString with the result
+        }
+        lua_pop(L, 1);  // Pop the 'result' field from the stack
+
+        // Retrieve the skip flag from the table
+        lua_getfield(L, -1, "skip");
+        if (lua_isboolean(L, -1)) {
+            skip = lua_toboolean(L, -1);
+        }
+        else {
+            skip = false;
+        }
+        lua_pop(L, 1);  // Pop the 'skip' field from the stack
     }
-    else { // Show Runtime error
+    else {
+        // Show Runtime error
         std::string error_message = "Execution halted due to execution failure in:\n" + inputString;
         std::wstring w_error_message = utf8ToWString(error_message.c_str());
 
         if (isLuaErrorDialogEnabled) {
             MessageBoxW(NULL, w_error_message.c_str(), L"Execution Error", MB_OK);
         }
-
-        lua_pop(L, 1);
-        lua_close(L);
-        return false;
     }
-    lua_pop(L, 1);
-
-    // Retrieve skip
-    lua_getglobal(L, "skip");
-    
-    bool isBoolean = lua_isboolean(L, -1);
-    bool booleanValue = false;
-    if (isBoolean) {
-        booleanValue = lua_toboolean(L, -1);
-    }
-    std::stringstream ss;
-    ss << "Read skip\n"
-        << "Is Boolean: " << (isBoolean ? "true" : "false") << "\n"
-        << "Boolean Value: " << (booleanValue ? "true" : "false");
-    //MessageBoxA(NULL, ss.str().c_str(), "Debug", MB_OK);
-
-    if (lua_isboolean(L, -1)) {
-        skip = lua_toboolean(L, -1);
-        if (skip) {
-            //MessageBoxA(NULL, "Skip detected", "Debug", MB_OK);
-        }
-    }
-    else {
-        skip = false;
-    }
-    lua_pop(L, 1);
+    lua_pop(L, 1);  // Pop the 'result' table from the stack
 
     lua_close(L);
+
     return true;
 
 }
