@@ -3575,7 +3575,12 @@ sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, b
 
         // Append the function call details
         wchar_t callDetails[512];
-        swprintf(callDetails, L"\niMessage: %u\nwParam: %llu\nlParam: %Id", iMessage, wParam, lParam);
+        #if defined(_WIN64)
+             swprintf(callDetails, L"\niMessage: %u\nwParam: %llu\nlParam: %lld", iMessage, wParam, lParam);
+        #else
+             swprintf(callDetails, L"\niMessage: %u\nwParam: %lu\nlParam: %ld", iMessage, wParam, lParam);
+        #endif
+
         wcscat(buffer, callDetails);
 
         MessageBox(NULL, buffer, L"Scintilla Error/Warning", MB_OK | (status >= SC_STATUS_WARN_START ? MB_ICONWARNING : MB_ICONERROR));
