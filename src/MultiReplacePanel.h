@@ -121,6 +121,15 @@ struct ColumnInfo {
     SIZE_T startColumnIndex;
 };
 
+struct LuaVariables {
+    int CNT;
+    int LINE;
+    int LPOS;
+    int APOS;
+    int COL = 1;
+    std::string MATCH;
+};
+
 // Exceptions
 class CsvLoadException : public std::exception {
 public:
@@ -298,15 +307,13 @@ private:
     //Replace
     void handleReplaceAllButton();
     void handleReplaceButton();
-    int replaceAll(const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool useVariables, bool regex, bool extended);
-    void replaceOne( 
-        const std::wstring& findText, const std::wstring& replaceText, bool wholeWord, bool matchCase, bool useVariables, bool regex, bool extended,
-        const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos);
+    int replaceAll(const ReplaceItemData& itemData);
+    bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     SelectionInfo getSelectionInfo();
-    std::string utf8ToCodepage(const std::string& utf8Str, int codepage);
-    bool resolveLuaSyntax(std::string& inputString, int CNT, int LINE, int LPOS, int APOS, int COL, bool& skip);
+    bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
+    void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
 
     //Find
     void handleFindNextButton();
@@ -319,7 +326,7 @@ private:
 
     //Mark
     void handleMarkMatchesButton();
-    int markString(const std::wstring& findText, bool wholeWord, bool matchCase, bool regex, bool extended);
+    int markString(const std::string& findTextUtf8, int searchFlags);
     void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
     long generateColorValue(const std::string& str);
     void handleClearTextMarksButton();
@@ -357,9 +364,10 @@ private:
     bool MultiReplace::normalizeAndValidateNumber(std::string& str);
 
     //StringHandling
-    std::wstring stringToWString(const std::string& encodedInput);
-    std::string wstringToString(const std::wstring& input);
-    std::wstring MultiReplace::utf8ToWString(const char* cstr);
+    std::wstring stringToWString(const std::string& encodedInput) const;
+    std::string wstringToString(const std::wstring& input) const;
+    std::wstring MultiReplace::utf8ToWString(const char* cstr) const;
+    std::string utf8ToCodepage(const std::string& utf8Str, int codepage) const;
 
     //FileOperations
     std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
