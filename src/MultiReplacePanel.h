@@ -75,7 +75,7 @@ struct ControlInfo
 struct SearchResult {
     LRESULT pos = -1;
     LRESULT length = 0;
-    std::string foundText;
+    std::string foundText = "";
 };
 
 struct SelectionInfo {
@@ -85,8 +85,8 @@ struct SelectionInfo {
 };
 
 struct SelectionRange {
-    LRESULT start;
-    LRESULT end;
+    LRESULT start = 0;
+    LRESULT end = 0;
 };
 
 struct ColumnDelimiterData {
@@ -122,11 +122,11 @@ struct ColumnInfo {
 };
 
 struct LuaVariables {
-    int CNT;
-    int LINE;
-    int LPOS;
-    int APOS;
-    int COL = 1;
+    int CNT =  0;
+    int LINE = 0;
+    int LPOS = 0;
+    int APOS = 0;
+    int COL =  1;
     std::string MATCH;
 };
 
@@ -139,6 +139,9 @@ public:
     }
 private:
     std::string message_;
+};
+
+class LuaSyntaxException : public std::exception {   
 };
 
 class MultiReplace : public StaticDialog

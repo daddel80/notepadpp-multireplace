@@ -1695,7 +1695,8 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             }
             else {
                 // Buffer overflow detected: This should be rare, but it's good to check
-                break;
+                lua_close(L);
+                return false;
             }
         }
     }
@@ -1856,8 +1857,10 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         std::wstring w_error_message = utf8ToWString(error_message.c_str());
 
         if (isLuaErrorDialogEnabled) {
-            MessageBoxW(NULL, w_error_message.c_str(), L"Execution Error", MB_OK);
+            MessageBoxW(NULL, w_error_message.c_str(), L"Use Variables: Execution Error", MB_OK);
         }
+        lua_close(L);
+        return false;
     }
     lua_pop(L, 1);  // Pop the 'result' table from the stack
 
@@ -2059,8 +2062,7 @@ SearchResult MultiReplace::performSingleSearch(const std::string& findTextUtf8, 
 SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start)
 {
     SearchResult result;
-    result.pos = -1;
-    SelectionRange targetRange = { 0, 0 };
+    SelectionRange targetRange;
 
     // Check if IDC_SELECTION_RADIO is enabled and selectMatch is false
     if (!selectMatch && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
@@ -2163,7 +2165,7 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
     else {
         // If neither IDC_SELECTION_RADIO nor IDC_COLUMN_MODE_RADIO, perform search within the whole document
         targetRange.start = start;
-        targetRange.end = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+        targetRange.end = send(SCI_GETLENGTH, 0, 0);
         result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
     }
 
@@ -2173,10 +2175,6 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
 SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start)
 {
     SearchResult result;
-    result.pos = -1;
-    result.length = 0;
-    result.foundText = "";
-
     SelectionRange targetRange;
 
     // Check if IDC_COLUMN_MODE_RADIO is enabled, and column delimiter data is set
@@ -2222,17 +2220,20 @@ SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8
 
                     // Perform search within the column range
                     if (start >= startColumn && start <= endColumn) {
-                        startColumn = start;
+                        endColumn = start;
                     }
 
-                    targetRange = { startColumn, endColumn };
-                    result = performSingleSearch(findTextUtf8, searchFlags, true, targetRange);
+                    // Perform search within the column range
+                    if (start >= endColumn) {
+                        targetRange = { endColumn, startColumn };
+                        result = performSingleSearch(findTextUtf8, searchFlags, true, targetRange);
 
-                    // Check if a match was found
-                    if (result.pos >= 0) {
-                        displayResultCentered(result.pos, result.pos + result.length, false);
-                        return result;
+                        // Check if a match was found
+                        if (result.pos >= 0) {
+                            return result;
+                        }
                     }
+
                 }
             }
         }
@@ -2242,17 +2243,7 @@ SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8
         SelectionRange searchRange;
         searchRange.start = start;
         searchRange.end = 0;
-
-        // Using performSingleSearch to do the backward search
         result = performSingleSearch(findTextUtf8, searchFlags, true, searchRange);
-
-        if (result.pos >= 0) {
-            displayResultCentered(result.pos, result.pos + result.length, false);
-            return result;
-        }
-        else {
-            result.length = 0;
-        }
     }
 
     return result;
