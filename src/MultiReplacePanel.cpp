@@ -103,7 +103,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 114, 163, 25, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 143, 100, 25, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { 20, 172, 155, 25, WC_BUTTON, L"Use Variables", BS_AUTOCHECKBOX | WS_TABSTOP, L"Enables e.g.: `set(CNT..\" times.\")` or `cond(LINE<=5, \"edge\")`" };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { 20, 172, 155, 25, WC_BUTTON, L"Use Variables", BS_AUTOCHECKBOX | WS_TABSTOP, L"In 'Replace with:' e.g. `set(CNT..\" times.\")` or `cond(LINE<=10 and LPOS<3,\"Top\")`" };
     ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 201, 120, 25, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_SEARCH_MODE_GROUP] = { 195, 90, 200, 116, WC_BUTTON, L"Search Mode", BS_GROUPBOX, NULL };
@@ -134,7 +134,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 108, 160, 30, WC_BUTTON, L"Replace All", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, 108, 120, 30, WC_BUTTON, L"Replace", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 108, 35, 30, WC_BUTTON, L"\u066D", BS_PUSHBUTTON | WS_TABSTOP, L"Replace All" };
-    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, 108, 25, 25, WC_BUTTON, L" ", BS_AUTOCHECKBOX | WS_TABSTOP, L"2 buttons mode" };
+    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, 108, 25, 25, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, L"2 buttons mode" };
     ctrlMap[IDC_FIND_BUTTON] = { buttonX, 143, 160, 30, WC_BUTTON, L"Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_FIND_NEXT_BUTTON] = { buttonX + 40, 143, 120, 30, WC_BUTTON, L"\u25BC Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 143, 35, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, NULL };
@@ -1482,6 +1482,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 vars.COL = static_cast<int>(columnInfo.startColumnIndex);
             }
             vars.CNT = 1;
+            vars.LCNT = 1;
             vars.APOS = static_cast<int>(searchResult.pos) + 1;
             vars.LINE = static_cast<int>(::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0)) + 1;
             int previousLineStartPosition = (vars.LINE > 0) ? static_cast<int>(::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)(vars.LINE - 1), 0)) : 0;
@@ -1523,27 +1524,44 @@ int MultiReplace::replaceAll(const ReplaceItemData& itemData)
     std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
     std::string replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
 
-    int replaceCount = 0;  // Counter for replacements
+    int replaceCount = 0;
+    int findCount = 0; 
+    int previousLineIndex = -1;
+    int lineFindCount = 0;
+
     SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, false, 0);
+
     while (searchResult.pos >= 0)
     {
         bool skipReplace = false;
         std::string localReplaceTextUtf8 = replaceTextUtf8;;
         if (itemData.useVariables) {
-            LuaVariables vars; // Erstellen einer Instanz von LuaVariables
+            LuaVariables vars;
 
             if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
                 ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
                 vars.COL = static_cast<int>(columnInfo.startColumnIndex);
             }
-            vars.CNT = replaceCount + 1;
+
+            int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0)) + 1;
+
+            // Reset lineReplaceCount if the line has changed
+            if (currentLineIndex != previousLineIndex) {
+                lineFindCount = 0;
+                previousLineIndex = currentLineIndex;
+            }
+
+            lineFindCount++;
+            findCount++;
+
+            vars.CNT = findCount;
+            vars.LCNT = lineFindCount;
             vars.APOS = static_cast<int>(searchResult.pos) + 1;
-            vars.LINE = static_cast<int>(::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0)) + 1;
-            int previousLineStartPosition = (vars.LINE > 0) ? static_cast<int>(::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)(vars.LINE - 1), 0)) : 0;
+            vars.LINE = currentLineIndex + 1;
+            int previousLineStartPosition = (vars.LINE > 0) ? static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(vars.LINE - 1), 0)) : 0;
             vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPosition + 1;
             vars.MATCH = searchResult.foundText;
 
-            // Übergeben Sie die vars-Instanz an resolveLuaSyntax
             if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
                 break;  // Exit the loop if error in syntax
             }
@@ -1652,6 +1670,8 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     // Set variables
     lua_pushnumber(L, vars.CNT);
     lua_setglobal(L, "CNT");
+    lua_pushnumber(L, vars.LCNT);
+    lua_setglobal(L, "LCNT");
     lua_pushnumber(L, vars.LINE);
     lua_setglobal(L, "LINE");
     lua_pushnumber(L, vars.LPOS);
@@ -1663,6 +1683,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
     // Convert numbers to integers
     luaL_dostring(L, "CNT = math.tointeger(CNT)");
+    luaL_dostring(L, "LCNT = math.tointeger(LCNT)");
     luaL_dostring(L, "LINE = math.tointeger(LINE)");
     luaL_dostring(L, "LPOS = math.tointeger(LPOS)");
     luaL_dostring(L, "APOS = math.tointeger(APOS)");

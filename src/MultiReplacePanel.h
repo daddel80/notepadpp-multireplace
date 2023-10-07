@@ -125,6 +125,7 @@ struct LuaVariables {
     int CNT =  0;
     int LINE = 0;
     int LPOS = 0;
+    int LCNT = 0;
     int APOS = 0;
     int COL =  1;
     std::string MATCH;
