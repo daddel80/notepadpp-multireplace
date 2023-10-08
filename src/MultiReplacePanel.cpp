@@ -1477,6 +1477,9 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
         if (itemData.useVariables) {
             LuaVariables vars;
 
+            int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
+            int previousLineStartPosition = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
+
             if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
                 ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
                 vars.COL = static_cast<int>(columnInfo.startColumnIndex);
@@ -1484,8 +1487,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             vars.CNT = 1;
             vars.LCNT = 1;
             vars.APOS = static_cast<int>(searchResult.pos) + 1;
-            vars.LINE = static_cast<int>(::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, (WPARAM)searchResult.pos, 0)) + 1;
-            int previousLineStartPosition = (vars.LINE > 0) ? static_cast<int>(::SendMessage(_hScintilla, SCI_POSITIONFROMLINE, (WPARAM)(vars.LINE - 1), 0)) : 0;
+            vars.LINE = currentLineIndex + 1;
             vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPosition + 1;
             vars.MATCH = searchResult.foundText;
 
@@ -1543,7 +1545,8 @@ int MultiReplace::replaceAll(const ReplaceItemData& itemData)
                 vars.COL = static_cast<int>(columnInfo.startColumnIndex);
             }
 
-            int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0)) + 1;
+            int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
+            int previousLineStartPosition = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
 
             // Reset lineReplaceCount if the line has changed
             if (currentLineIndex != previousLineIndex) {
@@ -1558,7 +1561,6 @@ int MultiReplace::replaceAll(const ReplaceItemData& itemData)
             vars.LCNT = lineFindCount;
             vars.APOS = static_cast<int>(searchResult.pos) + 1;
             vars.LINE = currentLineIndex + 1;
-            int previousLineStartPosition = (vars.LINE > 0) ? static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(vars.LINE - 1), 0)) : 0;
             vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPosition + 1;
             vars.MATCH = searchResult.foundText;
 
@@ -1690,7 +1692,6 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     luaL_dostring(L, "COL = math.tointeger(COL)");
 
     setLuaVariable(L, "MATCH", vars.MATCH);
-
     // Get CAPs from Scintilla using SCI_GETTAG
     std::vector<std::string> caps;  // Initialize an empty vector to store the captures
     sptr_t len = 0;
@@ -3604,29 +3605,34 @@ sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, b
     return result;
 } 
 
-bool MultiReplace::normalizeAndValidateNumber(std::string& str)  {
-    int dotCount = 0;
-    int commaCount = 0;
+bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
+    if (str == "." || str == ",") {
+        return false;
+    }
 
-    for (char& c : str) {
+    int dotCount = 0;
+    std::string tempStr = str; // Temporary string to hold potentially modified string
+    for (char& c : tempStr) {
         if (c == '.') {
             dotCount++;
         }
         else if (c == ',') {
-            commaCount++;
-            c = '.';  // Replace comma with dot
+            dotCount++;
+            c = '.';  // Potentially replace comma with dot in tempStr
         }
         else if (!isdigit(c)) {
             return false;  // Contains non-numeric characters
         }
 
-        if (dotCount + commaCount > 1) {
+        if (dotCount > 1) {
             return false;  // Contains more than one separator
         }
     }
 
+    str = tempStr;
     return true;  // String is a valid number
 }
+
 
 #pragma endregion
 
