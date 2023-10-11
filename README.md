@@ -36,6 +36,7 @@ Note: Utilize either the `set()` or `cond()` command in 'Replace with:' to chann
 | **LINE** | Line number where the string is found. |
 | **APOS** | Absolute character position in the document. |
 | **LPOS** | Relative line position. |
+| **LCNT** | Count of the detected string within the line. |
 | **COL**  | Column number where the string was found (CSV-Scope option selected).|
 | **MATCH**| Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
 | **CAP1**, **CAP2**, ...  | Correspond to capture groups $1, $2, ... in regex patterns. They can be used for calculations or as strings.|
