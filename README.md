@@ -21,7 +21,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 Scope functions define the range for searching and replacing strings:
 -   **Selection Option**: Supports Rectangular and Multiselect to focus on specific areas for search or replace.
 -   **CSV Option**: Enables targeted search or replacement within specified columns of a delimited file.
-	- `Cols`: Specify the columns for focused operations.
+	-   `Cols`: Specify the columns for focused operations.
 	-   `Delim`: Define the delimiter character.
 	-   `Quote`: Delineate areas where characters are not recognized as delimiters.
 
