@@ -104,12 +104,6 @@ bool setCommand(size_t index, TCHAR* cmdName, PFUNCPLUGINCMD pFunc, ShortcutKey*
 //-- STEP 4. DEFINE YOUR ASSOCIATED FUNCTIONS --//
 //----------------------------------------------//
 
-HWND getCurScintilla()
-{
-    int which = -1;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, ( LPARAM )&which);
-    return ( which == 0 ) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
-}
 
 void multiReplace()
 {
