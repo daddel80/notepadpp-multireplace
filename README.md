@@ -1,7 +1,6 @@
 # MultiReplace for Notepad++
 ![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)
 [![Latest Stable Version](https://img.shields.io/badge/version-2.0.0.7-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/2.0.0.7)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/68745ee3c151487588b2792d169f5d77)](https://app.codacy.com/gh/daddel80/notepadpp-multireplace/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, proving useful across various sessions or projects. This enhancement increases efficiency when multiple replacements need to be made concurrently, thereby bolstering the overall functionality of Notepad++.
 
