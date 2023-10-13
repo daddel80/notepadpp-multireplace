@@ -9,18 +9,18 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 
 ## Key Features
 
-- **Multiple Replacements**: Execute multiple replacements in a single operation.
-- **Entry Toggling**: Toggle list entries for replacement, highlighting, or searching.
-- **String Storage**: Store and load your search and replace strings in a list, facilitating reuse across different sessions or projects.
-- **CSV Scope Functionality**: Target specific columns in a delimited file for search or replacement operations, offering precision in managing CSV data.
-- **Scripted Text Replacements**: Export to bash script for scripted text replacements.
-- **Highlighting**: Highlight multiple find words in unique colors for better visual distinction.
-- **Variable Usage**: Employ variables for conditional and computational operations within the replacement string.
+-   **Multiple Replacements**: Execute multiple replacements in a single operation.
+-   **Entry Toggling**: Toggle list entries for replacement, highlighting, or searching.
+-   **String Storage**: Store and load your search and replace strings in a list, facilitating reuse across different sessions or projects.
+-   **CSV Scope Functionality**: Target specific columns in a delimited file for search or replacement operations, offering precision in managing CSV data.
+-   **Scripted Text Replacements**: Export to bash script for scripted text replacements.
+-   **Highlighting**: Highlight multiple find words in unique colors for better visual distinction.
+-   **Variable Usage**: Employ variables for conditional and computational operations within the replacement string.
 
 ## Scope Functions
 Scope functions define the range for searching and replacing strings:
-- **Selection Option**: Supports Rectangular and Multiselect to focus on specific areas for search or replace.
-- **CSV Option**: Enables targeted search or replacement within specified columns of a delimited file.
+-   **Selection Option**: Supports Rectangular and Multiselect to focus on specific areas for search or replace.
+-   **CSV Option**: Enables targeted search or replacement within specified columns of a delimited file.
   -   `Cols`: Specify the columns for focused operations.
   -   `Delim`: Define the delimiter character.
   -   `Quote`: Delineate areas where characters are not recognized as delimiters.
@@ -56,7 +56,7 @@ Outputs strings or numbers directly.
 | `set("replaceString"..CNT)`          | "replaceString3"                    |
 | `set(LINE+5)`                        | "10"                                |
 
-#### **cond(cond, trueVal, [falseVal])**
+#### **cond(condition, trueVal, \[falseVal\])**
 Implements if-then-else logic, or if-then if falseVal is omitted.
 
 | Example                                                      | Result (assuming LINE = 5)            |
@@ -102,26 +102,26 @@ MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math 
 ## Technical Features
 
 ### String Handling and Visualization
-- Manage search and replace strings in a list.
-- Enable or disable entries for replacement, highlighting or searching within the list.
-- Field limits of 4096 characters for "Find what:" and "Replace with:".
-- Over 20 distinct colors for marking unique words in a Find string.
+-   Manage search and replace strings in a list.
+-   Enable or disable entries for replacement, highlighting or searching within the list.
+-   Field limits of 4096 characters for "Find what:" and "Replace with:".
+-   Over 20 distinct colors for marking unique words in a Find string.
 
 ### Function Toggling
-- "Use List" checkbox toggles operation application between all list entries or the "Find what:" and "Replace with:" fields.
+-   "Use List" checkbox toggles operation application between all list entries or the "Find what:" and "Replace with:" fields.
 
 ### List Interaction
-- **Add into List Button**: Adds field contents along with their options into the list.
-- **Alt + Up Arrow / Double-Click**: Instantly transfer a row's contents with their options to fields.
-- **Space**: Adjusts selection for individual or multiple highlighted list entries.
-- **Alt-A / Alt-D**: Activates or deactivates all list entries when in focus.
-- **Delete Key / Delete Button (X)**: Select and delete rows.
+-   **Add into List Button**: Adds field contents along with their options into the list.
+-   **Alt + Up Arrow / Double-Click**: Instantly transfer a row's contents with their options to fields.
+-   **Space**: Adjusts selection for individual or multiple highlighted list entries.
+-   **Alt-A / Alt-D**: Activates or deactivates all list entries when in focus.
+-   **Delete Key / Delete Button (X)**: Select and delete rows.
 
 ### Data Import/Export
-- Supports import/export of search and replace strings with their options in CSV format, including selection states.
-- Adherence to RFC 4180 standards for CSV, enabling compatibility and easy interaction with other CSV handling tools.
-- Enables reuse of search and replace operations across sessions and projects.
+-   Supports import/export of search and replace strings with their options in CSV format, including selection states.
+-   Adherence to RFC 4180 standards for CSV, enabling compatibility and easy interaction with other CSV handling tools.
+-   Enables reuse of search and replace operations across sessions and projects.
 
 ### Bash Script Export
-- Exports Find and Replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
-- This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
+-   Exports Find and Replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
+-   This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
