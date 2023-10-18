@@ -298,7 +298,6 @@ private:
     void createListViewColumns(HWND listView);
     void insertReplaceListItem(const ReplaceItemData& itemData);
     void updateListViewAndColumns(HWND listView, LPARAM lParam);
-    void handleSelection(NMITEMACTIVATE* pnmia);
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void shiftListItem(HWND listView, const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);

@@ -565,20 +565,6 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
     prevWidth = newWidth;
 }
 
-void MultiReplace::handleSelection(NMITEMACTIVATE* pnmia) {
-    if (pnmia == nullptr || static_cast<size_t>(pnmia->iItem) >= replaceListData.size()) {
-        return;
-    }
-
-    replaceListData[pnmia->iItem].isSelected = !replaceListData[pnmia->iItem].isSelected;
-
-    // Update the header after changing the selection status of an item
-    updateHeader();
-
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
-}
-
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
 
     if (pnmia == nullptr || static_cast<size_t>(pnmia->iItem) >= replaceListData.size()) {
@@ -2135,45 +2121,44 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
 
                 // Handle search for specific columns from columnDelimiterData
                 for (SIZE_T column = startColumnIndex; column <= totalColumns; ++column) {
-                    if (column <= linePositions.size() + 1) {
-                        LRESULT startColumn = 0;
-                        LRESULT endColumn = 0;
 
-                        // Set start and end positions based on column index
-                        if (column == 1) {
-                            startColumn = lineDelimiterPositions[line].startPosition;
-                        }
-                        else {
-                            startColumn = linePositions[column - 2].position + columnDelimiterData.delimiterLength;
-                        }
+                    LRESULT startColumn = 0;
+                    LRESULT endColumn = 0;
 
-                        if (column == linePositions.size() + 1) {
-                            endColumn = lineDelimiterPositions[line].endPosition;
-                        }
-                        else {
-                            endColumn = linePositions[column - 1].position;
-                        }
+                    // Set start and end positions based on column index
+                    if (column == 1) {
+                        startColumn = lineDelimiterPositions[line].startPosition;
+                    }
+                    else {
+                        startColumn = linePositions[column - 2].position + columnDelimiterData.delimiterLength;
+                    }
 
-                        // Check if the current column is included in the specified columns
-                        if (columnDelimiterData.columns.find(static_cast<int>(column)) == columnDelimiterData.columns.end()) {
-                            // If it's not included, skip this iteration
-                            continue;
-                        }
+                    if (column == linePositions.size() + 1) {
+                        endColumn = lineDelimiterPositions[line].endPosition;
+                    }
+                    else {
+                        endColumn = linePositions[column - 1].position;
+                    }
 
-                        // If start position is within the column range, adjust startColumn
-                        if (start >= startColumn && start <= endColumn) {
-                            startColumn = start;
-                        }
+                    // Check if the current column is included in the specified columns
+                    if (columnDelimiterData.columns.find(static_cast<int>(column)) == columnDelimiterData.columns.end()) {
+                        // If it's not included, skip this iteration
+                        continue;
+                    }
 
-                        // Perform search within the column range
-                        if (start <= startColumn) {
-                            targetRange = { startColumn, endColumn };
-                            result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
+                    // If start position is within the column range, adjust startColumn
+                    if (start >= startColumn && start <= endColumn) {
+                        startColumn = start;
+                    }
 
-                            // Check if a match was found
-                            if (result.pos >= 0) {
-                                return result;
-                            }
+                    // Perform search within the column range
+                    if (start <= startColumn) {
+                        targetRange = { startColumn, endColumn };
+                        result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
+
+                        // Check if a match was found
+                        if (result.pos >= 0) {
+                            return result;
                         }
                     }
                 }
@@ -2828,17 +2813,6 @@ ColumnInfo MultiReplace::getColumnInfo(LRESULT startPosition) {
     if (startLine < totalLines && startLine < listSize) {
         const auto& linePositions = lineDelimiterPositions[startLine].positions;
 
-       /* for (SIZE_T i = 0; i < linePositions.size(); ++i) {
-            if (startPosition <= linePositions[i].position) {
-                startColumnIndex = i + 1;
-                break;
-            }
-            else if (i == linePositions.size() - 1 && startPosition >= linePositions[i].position) {
-                startColumnIndex = i + 2;  // We're in the last column
-                break;
-            }
-        } */
-
         SIZE_T i = 0;
         for (; i < linePositions.size(); ++i) {
             if (startPosition <= linePositions[i].position) {
@@ -2851,7 +2825,6 @@ ColumnInfo MultiReplace::getColumnInfo(LRESULT startPosition) {
         if (i == linePositions.size()) {
             startColumnIndex = linePositions.size() + 1;  // We're in the last column
         }
-
 
     }
     return { totalLines, startLine, startColumnIndex };
