@@ -134,7 +134,7 @@ struct LuaVariables {
 // Exceptions
 class CsvLoadException : public std::exception {
 public:
-    CsvLoadException(const std::string& message) : message_(message) {}
+    explicit CsvLoadException(const std::string& message) : message_(message) {}
     const char* what() const noexcept override {
         return message_.c_str();
     }
@@ -170,7 +170,7 @@ public:
         instance = inst;
     }
 
-    virtual void display(bool toShow = true) const {
+    virtual void display(bool toShow = true) const override {
         StaticDialog::display(toShow);
     };
 
@@ -213,7 +213,7 @@ public:
 
 
 protected:
-    virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam);
+    virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 
 private:
     static constexpr int MAX_TEXT_LENGTH = 4096; // Maximum Textlength for Find and Replace String
