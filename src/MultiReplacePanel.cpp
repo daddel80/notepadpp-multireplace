@@ -515,7 +515,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
     else {
         message = L"Value added to the list.";
     }
-    showStatusMessage(message.c_str(), RGB(0, 128, 0));
+    showStatusMessage(message, RGB(0, 128, 0));
 
     // Update the item count in the ListView
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
@@ -731,7 +731,7 @@ void MultiReplace::sortReplaceListData(int column) {
                     return a.findText > b.findText;
             });
         std::wstring statusMessage = L"Find column sorted in " + std::wstring(ascending ? L"ascending" : L"descending") + L" order.";
-        showStatusMessage(statusMessage.c_str(), RGB(0, 0, 255));
+        showStatusMessage(statusMessage, RGB(0, 0, 255));
     }
     else if (column == 3) {
         // Sort by `replaceText`
@@ -743,7 +743,7 @@ void MultiReplace::sortReplaceListData(int column) {
                     return a.replaceText > b.replaceText;
             });
         std::wstring statusMessage = L"Replace column sorted in " + std::wstring(ascending ? L"ascending" : L"descending") + L" order.";
-        showStatusMessage(statusMessage.c_str(), RGB(0, 0, 255));
+        showStatusMessage(statusMessage, RGB(0, 0, 255));
     }
 
     // Update the ListView
@@ -825,7 +825,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     break;
 
     case WM_GETMINMAXINFO: {
-        MINMAXINFO* pMMI = (MINMAXINFO*)lParam;
+        MINMAXINFO* pMMI = reinterpret_cast<MINMAXINFO*>(lParam);
         RECT adjustedSize = calculateMinWindowFrame(_hSelf);
         pMMI->ptMinTrackSize.x = adjustedSize.right;
         pMMI->ptMinTrackSize.y = adjustedSize.bottom;
@@ -876,12 +876,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_NOTIFY:
     {
-        NMHDR* pnmh = (NMHDR*)lParam;
+        NMHDR* pnmh = reinterpret_cast<NMHDR*>(lParam);
         if (pnmh->idFrom == IDC_REPLACE_LIST) {
             switch (pnmh->code) {
             case NM_CLICK:
             {
-                NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
+                NMITEMACTIVATE* pnmia = reinterpret_cast<NMITEMACTIVATE*>(lParam);
                 if (pnmia->iSubItem == 10) { // Delete button column
                     handleDeletion(pnmia);
                 }
@@ -896,14 +896,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             case NM_DBLCLK:
             {
-                NMITEMACTIVATE* pnmia = (NMITEMACTIVATE*)lParam;
+                NMITEMACTIVATE* pnmia = reinterpret_cast<NMITEMACTIVATE*>(lParam);
                 handleCopyBack(pnmia);
             }
             break;
 
             case LVN_GETDISPINFO:
             {
-                NMLVDISPINFO* plvdi = (NMLVDISPINFO*)lParam;
+                NMLVDISPINFO* plvdi = reinterpret_cast<NMLVDISPINFO*>(lParam);
 
                 // Get the data from the vector
                 ReplaceItemData& itemData = replaceListData[plvdi->item.iItem];
@@ -972,7 +972,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             case LVN_COLUMNCLICK:
             {
-                NMLISTVIEW* pnmv = (NMLISTVIEW*)lParam;
+                NMLISTVIEW* pnmv = reinterpret_cast<NMLISTVIEW*>(lParam);
 
                 // Check if the column 1 header was clicked
                 if (pnmv->iSubItem == 1) {
@@ -1694,9 +1694,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     setLuaVariable(L, "MATCH", vars.MATCH);
     // Get CAPs from Scintilla using SCI_GETTAG
     std::vector<std::string> caps;  // Initialize an empty vector to store the captures
-    sptr_t len = 0;
 
     if (regex) {
+        sptr_t len = 0;
         for (int i = 1; ; ++i) {
             char buffer[1024] = { 0 };  // Buffer to hold the capture value
             len = send(SCI_GETTAG, i, reinterpret_cast<sptr_t>(buffer), true);
@@ -1844,9 +1844,8 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     if (luaL_dostring(L, inputString.c_str()) != LUA_OK) {
         const char* cstr = lua_tostring(L, -1);
         lua_pop(L, 1);
-        std::wstring error_message = utf8ToWString(cstr);
-
         if (isLuaErrorDialogEnabled) {
+            std::wstring error_message = utf8ToWString(cstr);
             MessageBoxW(NULL, error_message.c_str(), L"Use Variables: Syntax Error", MB_OK);
         }
 
@@ -1875,10 +1874,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     }
     else {
         // Show Runtime error
-        std::string error_message = "Execution halted due to execution failure in:\n" + inputString;
-        std::wstring w_error_message = utf8ToWString(error_message.c_str());
-
         if (isLuaErrorDialogEnabled) {
+            std::string error_message = "Execution halted due to execution failure in:\n" + inputString;
+            std::wstring w_error_message = utf8ToWString(error_message.c_str());
             MessageBoxW(NULL, w_error_message.c_str(), L"Use Variables: Execution Error", MB_OK);
         }
         lua_close(L);
@@ -2536,7 +2534,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
         if (hClipboardData)
         {
             WCHAR* pchData;
-            pchData = (WCHAR*)GlobalLock(hClipboardData);
+            pchData = reinterpret_cast<WCHAR*>(GlobalLock(hClipboardData));
             if (pchData)
             {
                 wcscpy(pchData, wstr.c_str());
@@ -2830,7 +2828,7 @@ ColumnInfo MultiReplace::getColumnInfo(LRESULT startPosition) {
     if (startLine < totalLines && startLine < listSize) {
         const auto& linePositions = lineDelimiterPositions[startLine].positions;
 
-        for (SIZE_T i = 0; i < linePositions.size(); ++i) {
+       /* for (SIZE_T i = 0; i < linePositions.size(); ++i) {
             if (startPosition <= linePositions[i].position) {
                 startColumnIndex = i + 1;
                 break;
@@ -2839,7 +2837,22 @@ ColumnInfo MultiReplace::getColumnInfo(LRESULT startPosition) {
                 startColumnIndex = i + 2;  // We're in the last column
                 break;
             }
+        } */
+
+        SIZE_T i = 0;
+        for (; i < linePositions.size(); ++i) {
+            if (startPosition <= linePositions[i].position) {
+                startColumnIndex = i + 1;
+                break;
+            }
         }
+
+        // Check if startPosition is in the last column only if the loop ran to completion
+        if (i == linePositions.size()) {
+            startColumnIndex = linePositions.size() + 1;  // We're in the last column
+        }
+
+
     }
     return { totalLines, startLine, startColumnIndex };
 }
@@ -3546,7 +3559,6 @@ void MultiReplace::setElementsState(const std::vector<int>& elements, bool enabl
     }
 }
 
-/*
 sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, bool useDirect) {
     if (useDirect && pSciMsg) {
         return pSciMsg(pSciWndData, iMessage, wParam, lParam);
@@ -3554,8 +3566,9 @@ sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, b
     else {
         return ::SendMessage(_hScintilla, iMessage, wParam, lParam);
     }
-}*/
+}
 
+/*
 sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, bool useDirect) {
     sptr_t result;
 
@@ -3589,10 +3602,11 @@ sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, b
         // Append the function call details
         wchar_t callDetails[512];
         #if defined(_WIN64)
-             swprintf(callDetails, L"\niMessage: %u\nwParam: %llu\nlParam: %lld", iMessage, wParam, lParam);
+            swprintf(callDetails, L"\niMessage: %u\nwParam: %llu\nlParam: %lld", iMessage, static_cast<unsigned long long>(wParam), static_cast<long long>(lParam));
         #else
-             swprintf(callDetails, L"\niMessage: %u\nwParam: %lu\nlParam: %ld", iMessage, wParam, lParam);
+            swprintf(callDetails, L"\niMessage: %u\nwParam: %lu\nlParam: %ld", iMessage, static_cast<unsigned long>(wParam), static_cast<long>(lParam));
         #endif
+
 
         wcscat(buffer, callDetails);
 
@@ -3604,6 +3618,7 @@ sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, b
 
     return result;
 } 
+*/
 
 bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
     if (str == "." || str == ",") {
@@ -4485,8 +4500,8 @@ void MultiReplace::onDocumentSwitched() {
         isCaretPositionEnabled = false;
         scannedDelimiterBufferID = currentBufferID;
         SetDlgItemText(s_hDlg, IDC_COLUMN_HIGHLIGHT_BUTTON, L"Show");
-        instance->isColumnHighlighted = false;
         if (instance != nullptr) {
+            instance->isColumnHighlighted = false;
             instance->showStatusMessage(L"", RGB(0, 0, 0));
         }
     }
