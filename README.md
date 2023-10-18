@@ -1,7 +1,7 @@
 # MultiReplace for Notepad++
 ![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)
 [![Latest Stable Version](https://img.shields.io/badge/version-2.0.0.7-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/2.0.0.7)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/68745ee3c151487588b2792d169f5d77)](https://app.codacy.com/gh/daddel80/notepadpp-multireplace/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/93f04659f326417eb99b4024f8a4eafd)](https://app.codacy.com/gh/daddel80/notepadpp-multireplace/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, proving useful across various sessions or projects. This enhancement increases efficiency when multiple replacements need to be made concurrently, thereby bolstering the overall functionality of Notepad++.
 
@@ -99,29 +99,40 @@ Formats numbers based on precision (maxDecimals) and whether the number of decim
 #### Engine Overview
 MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math operations and string methods. Refer to [Lua String Manipulation](https://www.lua.org/manual/5.1/manual.html#5.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.1/manual.html#5.6) for more information.
 
-## Technical Features
+## User Interaction and List Management
 
-### String Handling and Visualization
--   Manage search and replace strings in a list.
--   Enable or disable entries for replacement, highlighting or searching within the list.
--   Field limits of 4096 characters for "Find what:" and "Replace with:".
--   Over 20 distinct colors for marking unique words in a Find string.
+### Entry Management
+- **Add into List Button**: Adds field contents along with their options into the list.
+- **Alt + Up Arrow / Double-Click**: Instantly transfer a row's contents with their options to fields.
+- **Space**: Adjusts selection for individual or multiple highlighted list entries.
+- **Alt-A / Alt-D**: Activates or deactivates all list entries when in focus.
+- **Delete Key / Delete Button (X)**: Select and delete rows.
+
+### List Columns
+| Column | Description |
+|--------|-------------|
+| **W**  | Watch whole word only |
+| **C**  | Match case |
+| **V**  | Use Variables |
+| **N**  | Normal |
+| **E**  | Extended |
+| **R**  | Regular expression |
 
 ### Function Toggling
--   "Use List" checkbox toggles operation application between all list entries or the "Find what:" and "Replace with:" fields.
+- "Use List" checkbox toggles operation application between all list entries or the "Find what:" and "Replace with:" fields.
 
-### List Interaction
--   **Add into List Button**: Adds field contents along with their options into the list.
--   **Alt + Up Arrow / Double-Click**: Instantly transfer a row's contents with their options to fields.
--   **Space**: Adjusts selection for individual or multiple highlighted list entries.
--   **Alt-A / Alt-D**: Activates or deactivates all list entries when in focus.
--   **Delete Key / Delete Button (X)**: Select and delete rows.
+### Entry Management
+- **Manage Entries**: Manage search and replace strings in a list, and enable or disable entries for replacement, highlighting or searching within the list.
+- **Highlighting**: Highlight multiple find words in unique colors for better visual distinction, with over 20 distinct colors available.
+- **Character Limit**: Field limits of 4096 characters for "Find what:" and "Replace with:" fields.
 
-### Data Import/Export
--   Supports import/export of search and replace strings with their options in CSV format, including selection states.
--   Adherence to RFC 4180 standards for CSV, enabling compatibility and easy interaction with other CSV handling tools.
--   Enables reuse of search and replace operations across sessions and projects.
+## Data Handling
+
+### Import/Export
+- Supports import/export of search and replace strings with their options in CSV format, including selection states.
+- Adherence to RFC 4180 standards for CSV, enabling compatibility and easy interaction with other CSV handling tools.
+- Enables reuse of search and replace operations across sessions and projects.
 
 ### Bash Script Export
--   Exports Find and Replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
--   This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
+- Exports Find and Replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
+- This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
