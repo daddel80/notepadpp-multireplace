@@ -3678,7 +3678,7 @@ std::string MultiReplace::wstringToString(const std::wstring& input) const {
 
     std::string strResult(size_needed, 0);
     WideCharToMultiByte(codePage, 0, &input[0], (int)input.size(), &strResult[0], size_needed, NULL, NULL);
-
+     
     return strResult;
 }
 
