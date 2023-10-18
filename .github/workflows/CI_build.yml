@@ -30,8 +30,8 @@ jobs:
       with:
           name: MultiReplace-${{ matrix.build_configuration }}-${{ matrix.build_platform }}
           path: vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}\MultiReplace.dll
-- name: Debug Output
-  run: echo "Commit Message: ${{ github.event.commits[0].message }}"
+    - name: Debug Output
+      run: echo "Commit Message: ${{ github.event.commits[0].message }}"
 
     - name: Release
       uses: softprops/action-gh-release@v1
