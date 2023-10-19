@@ -395,6 +395,44 @@ void MultiReplace::updateButtonVisibilityBasedOnMode() {
 
 #pragma region ListView
 
+HWND MultiReplace::CreateHeaderTooltip(HWND hwndParent) {
+    HWND hwndTT = CreateWindowEx(WS_EX_TOPMOST,
+        TOOLTIPS_CLASS,
+        NULL,
+        WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        hwndParent,
+        NULL,
+        GetModuleHandle(NULL),
+        NULL);
+
+    SetWindowPos(hwndTT,
+        HWND_TOPMOST,
+        0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+    return hwndTT;
+}
+
+void MultiReplace::AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnIndex, LPCTSTR pszText) {
+    RECT rect;
+    Header_GetItemRect(hwndHeader, columnIndex, &rect);
+
+    TOOLINFO ti = { 0 };
+    ti.cbSize = sizeof(TOOLINFO);
+    ti.uFlags = TTF_SUBCLASS;
+    ti.hwnd = hwndHeader;
+    ti.hinst = GetModuleHandle(NULL);
+    ti.uId = columnIndex;
+    ti.lpszText = (LPWSTR)pszText;
+    ti.rect = rect;
+
+    SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)&ti);
+}
+
 void MultiReplace::createListViewColumns(HWND listView) {
     LVCOLUMN lvc;
     ZeroMemory(&lvc, sizeof(lvc));
@@ -482,6 +520,27 @@ void MultiReplace::createListViewColumns(HWND listView) {
     lvc.pszText = L"";
     lvc.cx = 30;
     ListView_InsertColumn(listView, 10, &lvc);
+
+    //Adding Tooltips
+    HWND hwndHeader = ListView_GetHeader(listView);
+    HWND hwndTT = CreateHeaderTooltip(hwndHeader);
+    LPCTSTR tooltips[] = {
+        _T(""),
+        _T(""),
+        _T(""),
+        _T(""),
+        _T("Whole Word"),
+        _T("Case Sensitive"),
+        _T("Use Variables"),
+        _T("Normal"),
+        _T("Extended"),
+        _T("Regex"),
+        _T("")
+    };
+
+    for (int i = 0; i < ARRAYSIZE(tooltips); i++) {
+        AddHeaderTooltip(hwndTT, hwndHeader, i, tooltips[i]);
+    }
 }
 
 void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)

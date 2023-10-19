@@ -295,6 +295,8 @@ private:
     void updateButtonVisibilityBasedOnMode();
 
     //ListView
+    HWND CreateHeaderTooltip(HWND hwndParent);
+    void AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnIndex, LPCTSTR pszText);
     void createListViewColumns(HWND listView);
     void insertReplaceListItem(const ReplaceItemData& itemData);
     void updateListViewAndColumns(HWND listView, LPARAM lParam);
