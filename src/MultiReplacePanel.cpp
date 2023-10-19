@@ -450,9 +450,9 @@ void MultiReplace::createListViewColumns(HWND listView) {
     int remainingWidth = windowWidth - 281;
 
     // Calculate the total width of columns 3 to 8
-    int columns3to8Width = 30 * 8; // Assuming fixed width of 30 for columns 3 to 8
+    int columns3to7Width = 30 * 7; // Assuming fixed width of 30 for columns 3 to 8
 
-    remainingWidth -= columns3to8Width;
+    remainingWidth -= columns3to7Width;
 
     lvc.iSubItem = 0;
     lvc.pszText = L"";
@@ -497,29 +497,23 @@ void MultiReplace::createListViewColumns(HWND listView) {
     lvc.cx = 30;
     ListView_InsertColumn(listView, 6, &lvc);
 
-    // Column for Option: Normal
+    // Column for Option: Extended
     lvc.iSubItem = 7;
-    lvc.pszText = L"N";
+    lvc.pszText = L"E";
     lvc.cx = 30;
     ListView_InsertColumn(listView, 7, &lvc);
 
-    // Column for Option: Extended
+    // Column for Option: Regex
     lvc.iSubItem = 8;
-    lvc.pszText = L"E";
+    lvc.pszText = L"R";
     lvc.cx = 30;
     ListView_InsertColumn(listView, 8, &lvc);
 
-    // Column for Option: Regex
-    lvc.iSubItem = 9;
-    lvc.pszText = L"R";
-    lvc.cx = 30;
-    ListView_InsertColumn(listView, 9, &lvc);
-
     // Column for Delete Button
-    lvc.iSubItem = 10;
+    lvc.iSubItem = 9;
     lvc.pszText = L"";
     lvc.cx = 30;
-    ListView_InsertColumn(listView, 10, &lvc);
+    ListView_InsertColumn(listView, 9, &lvc);
 
     //Adding Tooltips
     HWND hwndHeader = ListView_GetHeader(listView);
@@ -532,7 +526,6 @@ void MultiReplace::createListViewColumns(HWND listView) {
         _T("Whole Word"),
         _T("Case Sensitive"),
         _T("Use Variables"),
-        _T("Normal"),
         _T("Extended"),
         _T("Regex"),
         _T("")
@@ -590,15 +583,15 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
     int newHeight = HIWORD(lParam);
 
     // Calculate the total width of columns 3 to 8
-    int columns3to8Width = 0;
-    for (int i = 4; i < 11; i++)
+    int columns3to7Width = 0;
+    for (int i = 4; i < 10; i++)
     {
-        columns3to8Width += ListView_GetColumnWidth(listView, i);
+        columns3to7Width += ListView_GetColumnWidth(listView, i);
     }
-    columns3to8Width += 30; // for the first column
+    columns3to7Width += 30; // for the first column
 
     // Calculate the remaining width for the first two columns
-    int remainingWidth = newWidth - 281 - columns3to8Width;
+    int remainingWidth = newWidth - 281 - columns3to7Width;
 
     static int prevWidth = newWidth; // Store the previous width
     bool moveWindowCalled = false; // Flag to check if MoveWindow is already called
@@ -927,7 +920,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             case NM_CLICK:
             {
                 NMITEMACTIVATE* pnmia = reinterpret_cast<NMITEMACTIVATE*>(lParam);
-                if (pnmia->iSubItem == 10) { // Delete button column
+                if (pnmia->iSubItem == 9) { // Delete button column
                     handleDeletion(pnmia);
                 }
                 if (pnmia->iSubItem == 1) { // Select button column
@@ -990,24 +983,18 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     }
                     break;
                 case 7:
-                    if (!itemData.regex && !itemData.extended) {
-                        plvdi->item.mask |= LVIF_TEXT;
-                        plvdi->item.pszText = L"\u2714";
-                    }
-                    break;
-                case 8:
                     if (itemData.extended) {
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
-                case 9:
+                case 8:
                     if (itemData.regex) {
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
-                case 10:
+                case 9:
                     plvdi->item.mask |= LVIF_TEXT;
                     plvdi->item.pszText = L"\u2716";
                     break;
