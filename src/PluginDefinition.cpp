@@ -69,7 +69,9 @@ void commandMenuInit()
     //            bool check0nInit                // optional. Make this menu item be checked visually
     //            );
     setCommand(0, TEXT("&Multi Replace && Mark"), multiReplace, NULL, false);
-    setCommand(1, TEXT("&About"), about, NULL, false);
+    setCommand(1, TEXT("SEPARATOR"), NULL, NULL, false);
+    setCommand(2, TEXT("&Documentation"), openHelpLink, NULL, false);
+    setCommand(3, TEXT("&About"), about, NULL, false);
 }
 
 //
@@ -115,7 +117,14 @@ void multiReplace()
     _MultiReplace.display();
 }
 
+void openHelpLink()
+{
+    ShellExecute(NULL, TEXT("open"), TEXT("https://github.com/daddel80/notepadpp-multireplace#readme"), NULL, NULL, SW_SHOWNORMAL);
+}
+
 void about()
 {
     ShowAboutDialog(nppData._nppHandle);
 }
+
+
