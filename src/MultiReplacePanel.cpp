@@ -131,7 +131,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_REPLACE_EDIT] = { 120, 54, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, 33, 28, 34, WC_BUTTON, L"\u21C5", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, L"Add into List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 108, 160, 30, WC_BUTTON, L"Replace All", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 108, 160, 30, WC_BUTTON, L"Replace All", BS_SPLITBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, 108, 120, 30, WC_BUTTON, L"Replace", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 108, 35, 30, WC_BUTTON, L"\u066D", BS_PUSHBUTTON | WS_TABSTOP, L"Replace All" };
     ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, 108, 25, 25, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, L"2 buttons mode" };
@@ -915,6 +915,29 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_NOTIFY:
     {
         NMHDR* pnmh = reinterpret_cast<NMHDR*>(lParam);
+
+#pragma warning(push)
+#pragma warning(disable:26454)  // Suppress the overflow warning due to BCN_DROPDOWN definition
+
+        if (pnmh->code == BCN_DROPDOWN && pnmh->hwndFrom == GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON))
+        {
+            RECT rc;
+            ::GetWindowRect(pnmh->hwndFrom, &rc);  // Get screen coordinates of the button
+
+            HMENU hMenu = CreatePopupMenu();
+            AppendMenu(hMenu, MF_STRING, ID_OPTION1, L"Replace All");
+            AppendMenu(hMenu, MF_STRING, ID_OPTION2, L"Replace All in All opened Documents");
+
+            // Display the menu directly below the button
+            TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, NULL);
+            DestroyMenu(hMenu);  // Clean up after displaying menu
+
+            return TRUE;
+        }
+
+#pragma warning(pop)  // Restore the original warning settings
+
+
         if (pnmh->idFrom == IDC_REPLACE_LIST) {
             switch (pnmh->code) {
             case NM_CLICK:

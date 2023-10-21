@@ -29,15 +29,16 @@
 #define IDC_SWAP_BUTTON					5003
 #define IDC_COPY_TO_LIST_BUTTON         5004
 #define IDC_REPLACE_ALL_BUTTON          5005
-#define IDC_REPLACE_BUTTON              5006
-#define IDC_REPLACE_ALL_SMALL_BUTTON    5007
-#define IDC_2_BUTTONS_MODE              5008
-#define IDC_FIND_BUTTON                 5009
-#define IDC_FIND_NEXT_BUTTON            5010
-#define IDC_FIND_PREV_BUTTON            5011
-#define IDC_MARK_BUTTON                 5012
-#define IDC_MARK_MATCHES_BUTTON         5013
-#define IDC_CLEAR_MARKS_BUTTON          5014
+#define IDC_REPLACE_DROPDOWN_BUTTON     5006
+#define IDC_REPLACE_BUTTON              5007
+#define IDC_REPLACE_ALL_SMALL_BUTTON    5008
+#define IDC_2_BUTTONS_MODE              5009
+#define IDC_FIND_BUTTON                 5010
+#define IDC_FIND_NEXT_BUTTON            5011
+#define IDC_FIND_PREV_BUTTON            5012
+#define IDC_MARK_BUTTON                 5013
+#define IDC_MARK_MATCHES_BUTTON         5014
+#define IDC_CLEAR_MARKS_BUTTON          5015
 #define IDC_COPY_MARKED_TEXT_BUTTON     5017
 #define IDC_REPLACE_ALL_IN_LIST_BUTTON  5018
 #define IDC_DELETE_REPLACE_ITEM_BUTTON  5019
@@ -48,6 +49,8 @@
 #define IDC_DOWN_BUTTON					5024
 #define IDC_SHIFT_FRAME					5025
 #define IDC_SHIFT_TEXT					5026
+#define ID_OPTION1                      5027
+#define ID_OPTION2                      5028
 
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101
