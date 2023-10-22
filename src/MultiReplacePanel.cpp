@@ -925,8 +925,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             ::GetWindowRect(pnmh->hwndFrom, &rc);  // Get screen coordinates of the button
 
             HMENU hMenu = CreatePopupMenu();
-            AppendMenu(hMenu, MF_STRING, ID_OPTION1, L"Replace All");
-            AppendMenu(hMenu, MF_STRING, ID_OPTION2, L"Replace All in All opened Documents");
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_ALL_OPTION, L"Replace All");
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_ALL_DOCS_OPTION, L"Replace All in All opened Documents");
 
             // Display the menu directly below the button
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, NULL);
@@ -1293,14 +1293,41 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             handleReplaceButton();
         }
         break;
-
+        /*
         case IDC_REPLACE_ALL_SMALL_BUTTON:
         case IDC_REPLACE_ALL_BUTTON:
         {
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleReplaceAllButton();
         }
+        break; */
+
+        case IDC_REPLACE_ALL_SMALL_BUTTON:
+        case IDC_REPLACE_ALL_BUTTON:
+        {
+            
+            if (isReplaceAllInDocs)
+            {
+                // Get the total number of opened documents in Notepad++
+                LRESULT docCount = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, ALL_OPEN_FILES);
+
+                for (LRESULT i = 0; i < docCount; ++i)
+                {
+                    // Switch to the document at index i
+                    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, 0, i);
+
+                    handleDelimiterPositions(DelimiterOperation::LoadAll);
+                    handleReplaceAllButton();
+                }
+            }
+            else
+            {
+                handleDelimiterPositions(DelimiterOperation::LoadAll);
+                handleReplaceAllButton();
+            }
+        }
         break;
+
 
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
@@ -1361,6 +1388,21 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             }
         }
         break;
+
+        case ID_REPLACE_ALL_OPTION:
+        {
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, L"Replace All");
+            isReplaceAllInDocs = false;
+        }
+        break;
+
+        case ID_REPLACE_IN_ALL_DOCS_OPTION:
+        {
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, L"Replace All in Docs");
+            isReplaceAllInDocs = true;
+        }
+        break;
+
 
         default:
             return FALSE;

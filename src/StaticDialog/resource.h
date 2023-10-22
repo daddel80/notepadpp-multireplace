@@ -49,8 +49,8 @@
 #define IDC_DOWN_BUTTON					5024
 #define IDC_SHIFT_FRAME					5025
 #define IDC_SHIFT_TEXT					5026
-#define ID_OPTION1                      5027
-#define ID_OPTION2                      5028
+#define ID_REPLACE_ALL_OPTION           5027
+#define ID_REPLACE_IN_ALL_DOCS_OPTION   5028
 
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101
