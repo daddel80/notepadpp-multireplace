@@ -128,9 +128,9 @@ MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math 
 ## Data Handling
 
 ### Import/Export
-- Supports import/export of search and replace strings with their options in CSV format, including selection states.
-- Adherence to RFC 4180 standards for CSV, enabling compatibility and easy interaction with other CSV handling tools.
-- Enables reuse of search and replace operations across sessions and projects.
+-   Supports import/export of search and replace strings with their options in CSV format, including selection states.
+-   Adherence to RFC 4180 standards for CSV, enabling compatibility and easy interaction with other CSV handling tools.
+-   Enables reuse of search and replace operations across sessions and projects.
 
 ### Bash Script Export
 - Exports Find and Replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
