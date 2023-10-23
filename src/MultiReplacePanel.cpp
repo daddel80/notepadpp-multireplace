@@ -1571,6 +1571,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
     if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
         bool skipReplace = false;
         std::string replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
+        std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
         if (itemData.useVariables) {
             LuaVariables vars;
 
@@ -1588,9 +1589,10 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPosition + 1;
             vars.MATCH = searchResult.foundText;
 
-            if (!resolveLuaSyntax(replaceTextUtf8, vars, skipReplace, itemData.regex)) {
+            if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
                 return false;  // Exit the function if error in syntax
             }
+            replaceTextUtf8 = convertAndExtend(localReplaceTextUtf8, itemData.extended);
         }
 
         if (!skipReplace) {
@@ -1633,7 +1635,7 @@ int MultiReplace::replaceAll(const ReplaceItemData& itemData)
     while (searchResult.pos >= 0)
     {
         bool skipReplace = false;
-        std::string localReplaceTextUtf8 = replaceTextUtf8;;
+        std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
         if (itemData.useVariables) {
             LuaVariables vars;
 
@@ -1664,6 +1666,7 @@ int MultiReplace::replaceAll(const ReplaceItemData& itemData)
             if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
                 break;  // Exit the loop if error in syntax
             }
+            replaceTextUtf8 = convertAndExtend(localReplaceTextUtf8, itemData.extended);
         }
 
         Sci_Position newPos;
@@ -3465,6 +3468,20 @@ int MultiReplace::convertExtendedToString(const std::string& query, std::string&
 std::string MultiReplace::convertAndExtend(const std::wstring& input, bool extended)
 {
     std::string output = wstringToString(input);
+
+    if (extended)
+    {
+        std::string outputExtended;
+        convertExtendedToString(output, outputExtended);
+        output = outputExtended;
+    }
+
+    return output;
+}
+
+std::string MultiReplace::convertAndExtend(const std::string& input, bool extended)
+{
+    std::string output = input;
 
     if (extended)
     {

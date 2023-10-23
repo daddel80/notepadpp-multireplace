@@ -358,6 +358,7 @@ private:
     //Utilities
     int convertExtendedToString(const std::string& query, std::string& result);
     std::string convertAndExtend(const std::wstring& input, bool extended);
+    std::string convertAndExtend(const std::string& input, bool extended);
     static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 10);
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
     void setSelections(bool select, bool onlySelected = false);
