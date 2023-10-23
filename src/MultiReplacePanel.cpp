@@ -1293,37 +1293,44 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             handleReplaceButton();
         }
         break;
-        /*
+
         case IDC_REPLACE_ALL_SMALL_BUTTON:
-        case IDC_REPLACE_ALL_BUTTON:
         {
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleReplaceAllButton();
         }
-        break; */
+        break;
 
-        case IDC_REPLACE_ALL_SMALL_BUTTON:
         case IDC_REPLACE_ALL_BUTTON:
         {
-            
-            if (isReplaceAllInDocs)
+            int msgboxID = MessageBox(
+                NULL,
+                L"Are you sure you want to replace all occurrences in all open documents?",
+                L"Are you sure?",
+                MB_OKCANCEL
+            );
+
+            if (msgboxID == IDOK)
             {
-                // Get the total number of opened documents in Notepad++
-                LRESULT docCount = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, ALL_OPEN_FILES);
-
-                for (LRESULT i = 0; i < docCount; ++i)
+                if (isReplaceAllInDocs)
                 {
-                    // Switch to the document at index i
-                    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, 0, i);
+                    // Get the total number of opened documents in Notepad++
+                    LRESULT docCount = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, ALL_OPEN_FILES);
 
+                    for (LRESULT i = 0; i < docCount; ++i)
+                    {
+                        // Switch to the document at index i
+                        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, 0, i);
+
+                        handleDelimiterPositions(DelimiterOperation::LoadAll);
+                        handleReplaceAllButton();
+                    }
+                }
+                else
+                {
                     handleDelimiterPositions(DelimiterOperation::LoadAll);
                     handleReplaceAllButton();
                 }
-            }
-            else
-            {
-                handleDelimiterPositions(DelimiterOperation::LoadAll);
-                handleReplaceAllButton();
             }
         }
         break;
