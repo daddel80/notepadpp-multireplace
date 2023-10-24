@@ -1303,19 +1303,23 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_BUTTON:
         {
-            int msgboxID = MessageBox(
-                NULL,
-                L"Are you sure you want to replace all occurrences in all open documents?",
-                L"Are you sure?",
-                MB_OKCANCEL
-            );
-
-            if (msgboxID == IDOK)
+            if (isReplaceAllInDocs)
             {
-                if (isReplaceAllInDocs)
+                int msgboxID = MessageBox(
+                    NULL,
+                    L"Are you sure you want to replace all occurrences in all open documents?",
+                    L"Are you sure?",
+                    MB_OKCANCEL | MB_ICONWARNING
+                );
+
+                if (msgboxID == IDOK)
                 {
+
                     // Get the total number of opened documents in Notepad++
                     LRESULT docCount = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, ALL_OPEN_FILES);
+
+                    // Save focused Document
+                    LRESULT currentDocIndex = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
 
                     for (LRESULT i = 0; i < docCount; ++i)
                     {
@@ -1325,16 +1329,18 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         handleDelimiterPositions(DelimiterOperation::LoadAll);
                         handleReplaceAllButton();
                     }
+
+                    // Restore opened Document
+                    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, 0, currentDocIndex);
                 }
-                else
-                {
-                    handleDelimiterPositions(DelimiterOperation::LoadAll);
-                    handleReplaceAllButton();
-                }
+            }
+            else
+            {
+                handleDelimiterPositions(DelimiterOperation::LoadAll);
+                handleReplaceAllButton();
             }
         }
         break;
-
 
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
