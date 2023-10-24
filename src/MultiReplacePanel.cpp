@@ -1548,6 +1548,10 @@ void MultiReplace::handleReplaceButton() {
         SelectionInfo selection = getSelectionInfo();
         bool wasReplaced = replaceOne(replaceItem, selection, searchResult, newPos);
 
+        // Add the entered text to the combo box history
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), replaceItem.findText);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceItem.replaceText);
+
         if (searchResult.pos < 0 && wrapAroundEnabled) {
             searchResult = performSearchForward(findTextUtf8, searchFlags, true, 0);
         }
