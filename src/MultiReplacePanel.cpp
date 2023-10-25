@@ -1309,7 +1309,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     NULL,
                     L"Are you sure you want to replace all occurrences in all open documents?",
                     L"Are you sure?",
-                    MB_OKCANCEL | MB_ICONWARNING
+                    MB_OKCANCEL
                 );
 
                 if (msgboxID == IDOK)
