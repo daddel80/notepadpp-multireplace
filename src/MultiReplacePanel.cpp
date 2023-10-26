@@ -1689,10 +1689,10 @@ int MultiReplace::replaceAll(const ReplaceItemData& itemData)
         Sci_Position newPos;
         if (!skipReplace) {
             if (itemData.regex) {
-                newPos = performRegexReplace(localReplaceTextUtf8, searchResult.pos, searchResult.length);
+                newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
             }
             else {
-                newPos = performReplace(localReplaceTextUtf8, searchResult.pos, searchResult.length);
+                newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
             }
             replaceCount++;
         }
