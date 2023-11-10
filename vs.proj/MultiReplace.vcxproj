@@ -141,6 +141,9 @@
     <ResourceCompile Include="..\src\MultiReplace.rc" />
     <ResourceCompile Include="..\src\StaticDialog\resource.rc" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\src\help_use_variables.html" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{9D04DBD5-E12E-44E0-A683-6F43F21D533B}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
