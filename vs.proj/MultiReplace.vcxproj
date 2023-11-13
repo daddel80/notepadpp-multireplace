@@ -285,7 +285,8 @@ copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
     </Link>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
-copy ..\README.md $(OutDir)README.md</Command>
+copy ..\README.md $(OutDir)README.md
+copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
     </PostBuildEvent>
     <PreBuildEvent>
       <Command>
@@ -312,7 +313,8 @@ copy ..\README.md $(OutDir)README.md</Command>
     </Link>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
-copy ..\README.md $(OutDir)README.md</Command>
+copy ..\README.md $(OutDir)README.md
+copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
     </PostBuildEvent>
     <PreBuildEvent>
       <Command>
@@ -341,7 +343,8 @@ copy ..\README.md $(OutDir)README.md</Command>
     </Link>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
-copy ..\README.md $(OutDir)README.md</Command>
+copy ..\README.md $(OutDir)README.md
+copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -366,7 +369,8 @@ copy ..\README.md $(OutDir)README.md</Command>
     </Link>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
-copy ..\README.md $(OutDir)README.md</Command>
+copy ..\README.md $(OutDir)README.md
+copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
@@ -391,7 +395,8 @@ copy ..\README.md $(OutDir)README.md</Command>
     </Link>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
-copy ..\README.md $(OutDir)README.md</Command>
+copy ..\README.md $(OutDir)README.md
+copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
