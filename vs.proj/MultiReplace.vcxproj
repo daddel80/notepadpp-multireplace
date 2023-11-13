@@ -258,7 +258,8 @@
     </Link>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
-copy ..\README.md $(OutDir)README.md</Command>
+copy ..\README.md $(OutDir)README.md
+copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
     </PostBuildEvent>
     <PreBuildEvent>
       <Command>

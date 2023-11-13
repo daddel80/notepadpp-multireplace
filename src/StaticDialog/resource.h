@@ -51,6 +51,7 @@
 #define IDC_SHIFT_TEXT					5026
 #define ID_REPLACE_ALL_OPTION           5027
 #define ID_REPLACE_IN_ALL_DOCS_OPTION   5028
+#define IDC_USE_VARIABLES_HELP          5029
 
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101
