@@ -1916,7 +1916,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "    return\n"
         "  end\n"
         "  if type(strOrCalc) == 'string' then\n"
-        "    res.result = strOrCalc  -- Hier wird res.result gesetzt\n"
+        "    res.result = strOrCalc  -- Setting res.result\n"
         "  elseif type(strOrCalc) == 'number' then\n"
         "    res.result = tostring(strOrCalc)  -- Convert number to string and set to res.result\n"
         "  else\n"
