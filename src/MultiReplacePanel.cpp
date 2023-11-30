@@ -94,65 +94,66 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int comboWidth = windowWidth - 365;
     int frameX = windowWidth  - 320;
     int listWidth = windowWidth - 260;
-    int listHeight = windowHeight - 290;
+    int listHeight = windowHeight - 295;
     int checkboxX = buttonX - 105;
 
     // Static positions and sizes
     ctrlMap[IDC_STATIC_FIND] = { 14, 19, 100, 24, WC_STATIC, L"Find what : ", SS_RIGHT, NULL };
     ctrlMap[IDC_STATIC_REPLACE] = { 14, 54, 100, 24, WC_STATIC, L"Replace with : ", SS_RIGHT };
 
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 114, 163, 25, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 143, 120, 25, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { 20, 172, 120, 25, WC_BUTTON, L"Use Variables", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_HELP] = { 150, 172, 25, 25, WC_BUTTON, L"?", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 201, 120, 25, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 95, 163, 25, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 124, 120, 25, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { 20, 153, 120, 25, WC_BUTTON, L"Use Variables", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_VARIABLES_HELP] = { 150, 153, 25, 25, WC_BUTTON, L"?", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_FIRST_CHECKBOX] = { 20, 182, 163, 25, WC_BUTTON, L"Replace first match only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 211, 120, 25, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SEARCH_MODE_GROUP] = { 195, 90, 200, 116, WC_BUTTON, L"Search Mode", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_NORMAL_RADIO] = { 205, 114, 100, 25, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXTENDED_RADIO] = { 205, 143, 180, 25, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REGEX_RADIO] = { 205, 172, 175, 25, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    
-    ctrlMap[IDC_SCOPE_GROUP] = { 410, 90, 247, 145, WC_BUTTON, L"Scope", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_ALL_TEXT_RADIO] = { 420, 114, 100, 25, WC_BUTTON, L"All Text", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SELECTION_RADIO] = { 420, 143, 100, 25, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP,  NULL  };
-    ctrlMap[IDC_COLUMN_MODE_RADIO] = { 420, 172, 50, 25, WC_BUTTON, L"CSV", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 420, 205, 30, 25, WC_STATIC, L"Cols:", SS_RIGHT, NULL };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 452, 205, 50, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Columns: '1,3,5-12' (individuals, ranges)" };
-    ctrlMap[IDC_DELIMITER_STATIC] = { 508, 205, 40, 25, WC_STATIC, L"Delim:", SS_RIGHT, NULL };
-    ctrlMap[IDC_DELIMITER_EDIT] = { 550, 205, 30, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL ,  L"Delimiter: Single/combined chars, \\t for Tab" };
-    ctrlMap[IDC_QUOTECHAR_STATIC] = { 586, 205, 40, 25, WC_STATIC, L"Quote:", SS_RIGHT, NULL };
-    ctrlMap[IDC_QUOTECHAR_EDIT] = { 628, 205, 15, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Quote: ', \", or empty" };
+    ctrlMap[IDC_SEARCH_MODE_GROUP] = { 195, 99, 200, 128, WC_BUTTON, L"Search Mode", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_NORMAL_RADIO] = { 205, 124, 100, 25, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXTENDED_RADIO] = { 205, 153, 180, 25, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REGEX_RADIO] = { 205, 182, 175, 25, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 580, 173, 66, 25, WC_BUTTON, L"Show", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
+    ctrlMap[IDC_SCOPE_GROUP] = { 410, 99, 247, 147, WC_BUTTON, L"Scope", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_ALL_TEXT_RADIO] = { 420, 124, 100, 25, WC_BUTTON, L"All Text", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SELECTION_RADIO] = { 420, 153, 100, 25, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP,  NULL };
+    ctrlMap[IDC_COLUMN_MODE_RADIO] = { 420, 182, 50, 25, WC_BUTTON, L"CSV", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 420, 215, 30, 25, WC_STATIC, L"Cols:", SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 452, 215, 50, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Columns: '1,3,5-12' (individuals, ranges)" };
+    ctrlMap[IDC_DELIMITER_STATIC] = { 508, 215, 40, 25, WC_STATIC, L"Delim:", SS_RIGHT, NULL };
+    ctrlMap[IDC_DELIMITER_EDIT] = { 550, 215, 30, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL ,  L"Delimiter: Single/combined chars, \\t for Tab" };
+    ctrlMap[IDC_QUOTECHAR_STATIC] = { 586, 215, 40, 25, WC_STATIC, L"Quote:", SS_RIGHT, NULL };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { 628, 215, 15, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Quote: ', \", or empty" };
 
-    ctrlMap[IDC_STATUS_MESSAGE] = { 14, 250, 600, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 580, 183, 66, 25, WC_BUTTON, L"Show", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
+
+    ctrlMap[IDC_STATUS_MESSAGE] = { 14, 260, 600, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_EDIT] = { 120, 54, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, 33, 28, 34, WC_BUTTON, L"\u21C5", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, L"Add into List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 108, 160, 30, WC_BUTTON, L"Replace All", BS_SPLITBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, 108, 120, 30, WC_BUTTON, L"Replace", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 108, 35, 30, WC_BUTTON, L"\u066D", BS_PUSHBUTTON | WS_TABSTOP, L"Replace All" };
-    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, 108, 25, 25, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, L"2 buttons mode" };
-    ctrlMap[IDC_FIND_BUTTON] = { buttonX, 143, 160, 30, WC_BUTTON, L"Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_FIND_NEXT_BUTTON] = { buttonX + 40, 143, 120, 30, WC_BUTTON, L"\u25BC Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 143, 35, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_BUTTON] = { buttonX, 178, 160, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 178, 120, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 178, 35, 30, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP, L"Copy to Clipboard" };
-    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 213, 160, 30, WC_BUTTON, L"Clear all marks", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 269, 160, 30, WC_BUTTON, L"Load List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 304, 160, 30, WC_BUTTON, L"Save List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 339, 160, 30, WC_BUTTON, L"Export to Bash", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 389, 30, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
-    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 389 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
-    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 389 - 14, 160, 85, WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 389 + 20, 60, 20, WC_STATIC, L"Shift Lines", SS_LEFT, NULL };
-    ctrlMap[IDC_STATIC_FRAME] = { frameX, 90, 285, 165, WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_REPLACE_LIST] = { 14, 274, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
-    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 165, 80, 25, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_STATIC_FRAME] = { frameX, 99, 285, 163, WC_BUTTON, L"", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 118, 160, 30, WC_BUTTON, L"Replace All", BS_SPLITBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, 118, 120, 30, WC_BUTTON, L"Replace", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 118, 35, 30, WC_BUTTON, L"\u066D", BS_PUSHBUTTON | WS_TABSTOP, L"Replace All" };
+    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, 118, 25, 25, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, L"2 buttons mode" };
+    ctrlMap[IDC_FIND_BUTTON] = { buttonX, 153, 160, 30, WC_BUTTON, L"Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_NEXT_BUTTON] = { buttonX + 40, 153, 120, 30, WC_BUTTON, L"\u25BC Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 153, 35, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_BUTTON] = { buttonX, 188, 160, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 188, 120, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 188, 35, 30, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP, L"Copy to Clipboard" };
+    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 223, 160, 30, WC_BUTTON, L"Clear all marks", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 284, 160, 30, WC_BUTTON, L"Load List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 319, 160, 30, WC_BUTTON, L"Save List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 354, 160, 30, WC_BUTTON, L"Export to Bash", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 404, 30, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
+    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 404 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
+    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 404 - 14, 165, 85, WC_BUTTON, L"", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 404 + 20, 60, 20, WC_STATIC, L"Shift Lines", SS_LEFT, NULL };
+    ctrlMap[IDC_REPLACE_LIST] = { 14, 284, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
+    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 175, 90, 25, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 }
 
 void MultiReplace::initializeCtrlMap()
@@ -601,7 +602,7 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
 
     // If the window is horizontally maximized, update the IDC_REPLACE_LIST size first
     if (newWidth > prevWidth) {
-        MoveWindow(listHwnd, 14, 274, newWidth - 260, newHeight - 290, TRUE);
+        MoveWindow(listHwnd, 14, 284, newWidth - 260, newHeight - 295, TRUE);
         moveWindowCalled = true;
     }
 
@@ -610,7 +611,7 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
 
     // If the window is horizontally minimized or vertically changed the size
     if (!moveWindowCalled) {
-        MoveWindow(listHwnd, 14, 274, newWidth - 260, newHeight - 290, TRUE);
+        MoveWindow(listHwnd, 14, 284, newWidth - 260, newHeight - 295, TRUE);
     }
 
     // If the window size hasn't changed, no need to do anything
@@ -1648,6 +1649,7 @@ int MultiReplace::replaceAll(const ReplaceItemData& itemData)
         return 0;
     }
 
+    bool isReplaceFirstEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED);
     int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
 
     std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
@@ -1714,7 +1716,7 @@ int MultiReplace::replaceAll(const ReplaceItemData& itemData)
             send(SCI_SETSELECTIONEND, newPos, 0);
         }
 
-        if (isReplaceOnceInList) {
+        if (isReplaceFirstEnabled) {
             break;  // Exit the loop after the first successful replacement
         }
 
@@ -4289,6 +4291,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int matchCase = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int extended = IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED ? 1 : 0;
     int regex = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0;
+	int replaceFirst = IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int wrapAround = IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int useVariables = IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int ButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
@@ -4299,6 +4302,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"MatchCase=" + std::to_wstring(matchCase) + L"\n");
     outFile << wstringToString(L"Extended=" + std::to_wstring(extended) + L"\n");
     outFile << wstringToString(L"Regex=" + std::to_wstring(regex) + L"\n");
+	outFile << wstringToString(L"ReplaceFirst=" + std::to_wstring(replaceFirst) + L"\n");
     outFile << wstringToString(L"WrapAround=" + std::to_wstring(wrapAround) + L"\n");
     outFile << wstringToString(L"UseVariables=" + std::to_wstring(useVariables) + L"\n");
     outFile << wstringToString(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
@@ -4421,6 +4425,9 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
     bool wrapAround = readBoolFromIniFile(iniFilePath, L"Options", L"WrapAround", false);
     SendMessage(GetDlgItem(_hSelf, IDC_WRAP_AROUND_CHECKBOX), BM_SETCHECK, wrapAround ? BST_CHECKED : BST_UNCHECKED, 0);
+
+	bool replaceFirst = readBoolFromIniFile(iniFilePath, L"Options", L"ReplaceFirst", false);
+	SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_FIRST_CHECKBOX), BM_SETCHECK, replaceFirst ? BST_CHECKED : BST_UNCHECKED, 0);
 
     bool replaceButtonsMode = readBoolFromIniFile(iniFilePath, L"Options", L"ButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);

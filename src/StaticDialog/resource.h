@@ -60,7 +60,8 @@
 #define IDC_WHOLE_WORD_CHECKBOX         5200
 #define IDC_MATCH_CASE_CHECKBOX         5201
 #define IDC_USE_VARIABLES_CHECKBOX      5202
-#define IDC_WRAP_AROUND_CHECKBOX        5203
+#define IDC_REPLACE_FIRST_CHECKBOX      5203
+#define IDC_WRAP_AROUND_CHECKBOX        5204
 
 #define IDC_SEARCH_MODE_GROUP           5300
 #define IDC_NORMAL_RADIO                5301
@@ -103,7 +104,7 @@
 
 // Minimum window dimensions
 #define MIN_WIDTH 993
-#define MIN_HEIGHT 475
+#define MIN_HEIGHT 485
 
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace")
 
