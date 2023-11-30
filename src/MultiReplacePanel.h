@@ -221,7 +221,6 @@ private:
     static constexpr int FONT_SIZE = 16;
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
-    bool isReplaceOnceInList = false;  // When set, replacement stops after the first match in list and the next list entry gets activated.
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
 
 

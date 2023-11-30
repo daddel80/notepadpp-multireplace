@@ -1119,22 +1119,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         setSelections(!currentSelectionStatus, true);
                     }
                 }
-                else if (pnkd->wVKey == VK_F11) { // F11 key
-                    isReplaceOnceInList = !isReplaceOnceInList;
-
-                    if (isReplaceOnceInList) {
-                        MessageBox(NULL,
-                            L"Replace Once in List Mode: ON\n\nStops replacement after the first match, then the next list entry is activated.",
-                            L"Feature Status *Experimental:*",
-                            MB_OK);
-                    }
-                    else {
-                        MessageBox(NULL,
-                            L"Replace Once in List Mode: OFF\n\nNormal replacement mode resumed.",
-                            L"Feature Status *Experimental:*",
-                            MB_OK);
-                    }
-                }
             }
             break;
             }
