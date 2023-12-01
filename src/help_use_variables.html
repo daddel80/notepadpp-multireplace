@@ -386,28 +386,28 @@ window.addEventListener("load", doPageLoad);
             </tr>
             <tr>
                 <td><code>;</code></td>
-                <td><code>cond(LCNT==5,";Column5;")</code></td>
+                <td><code>cond(LCNT == 5, ";Column5;")</code></td>
                 <td>Adds a 5th Column for each line into a `;` delimited file.</td>
                 <td>No</td>
                 <td>No</td>
             </tr>
             <tr>
                 <td><code>key</code></td>
-                <td><code>set("key"..CNT)</code></td>
+                <td><code>set("key" .. CNT)</code></td>
                 <td>Enumerates key values by appending the count of detected strings. E.g., key1, key2, key3, etc.</td>
                 <td>No</td>
                 <td>No</td>
             </tr>
             <tr>
                 <td><code>(\d+)</code></td>
-                <td><code>set("$1€ The VAT is: ".. (CAP1 * 0.15).."€ Total with VAT: ".. (CAP1 + (CAP1 * 0.15)).."€")</code></td>
+                <td><code>set("$1€ The VAT is: " .. (CAP1 * 0.15) .. "€ Total with VAT: " .. (CAP1 + (CAP1 * 0.15)) .. "€")</code></td>
                 <td>Finds a number and calculates the VAT at 15%, then displays the original amount, the VAT, and the total amount. E.g., `50` becomes `50€ The VAT is: 7.5€ Total with VAT: 57.5€`</td>
                 <td>Yes</td>
                 <td>No</td>
             </tr>
             <tr>
                 <td><code>---</code></td>
-                <td><code>cond(COL==1 and LINE<3, "0-2" , cond(COL==2 and LINE>2 and LINE<5, "3-4" , cond(COL==3 and LINE>=5 and LINE<10, "5-9" , cond(COL==4 and LINE>=10, "10+"))))</code></td>
+                <td><code>cond(COL==1 and LINE<3 , "0-2", cond(COL==2 and LINE>2 and LINE<5 , "3-4", cond(COL==3 and LINE>=5 and LINE<10 , "5-9" , cond(COL==4 and LINE>=10 , "10+"))))</code></td>
                 <td>Replaces `---` with a specific range based on the `COL` and `LINE` values. E.g., `3-4` in column 2 of lines 3-4, and `5-9` in column 3 of lines 5-9 assuming `---` is found in all lines and columns.</td>
                 <td>No</td>
                 <td>Yes</td>
@@ -437,6 +437,8 @@ window.addEventListener("load", doPageLoad);
                 <td><code>-</code></td>
                 <td><code>cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), "*", " ")</code></td>
                 <td>Draws a sine wave across a canvas of '-' characters spanning at least 20 lines and 80 characters per line.</td>
+                <td>No</td>
+                <td>No</td>
 			</tr>
 		</table>
     </section>
