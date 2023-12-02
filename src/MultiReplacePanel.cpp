@@ -3161,6 +3161,14 @@ void MultiReplace::processLogForDelimiters()
         }
     }
 
+    // Workaround: Highlight last line to fix N++ bug causing loss of styling on last character whwn modification in any other line
+    if (isColumnHighlighted) {
+        LRESULT lastLine = send(SCI_GETLINECOUNT, 0, 0) - 1;
+        if (lastLine >= 0) {
+            highlightColumnsInLine(lastLine);
+        }
+    }
+
     // Clear Log queue
     logChanges.clear();
     textModified = false;
