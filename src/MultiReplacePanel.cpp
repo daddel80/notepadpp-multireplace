@@ -3134,6 +3134,7 @@ void MultiReplace::processLogForDelimiters()
         }
     }
 
+
     // Apply the saved "Modify" entries to the original delimiter list
     for (const auto& modifyLogEntry : modifyLogEntries) {
         if (modifyLogEntry.lineNumber != -1) {
@@ -3143,14 +3144,6 @@ void MultiReplace::processLogForDelimiters()
                 highlightColumnsInLine(modifyLogEntry.lineNumber);
             }
             //this->messageBoxContent += "Line " + std::to_string(static_cast<int>(modifyLogEntry.lineNumber)) + " modified.\n";
-        }
-    }
-
-	// Workaround: Highlight last line to fix N++ bug causing loss of styling on last character whwn modification in any other line
-    if (isColumnHighlighted) {
-        LRESULT lastLine = send(SCI_GETLINECOUNT, 0, 0) - 1;
-        if (lastLine >= 0) {
-            highlightColumnsInLine(lastLine);
         }
     }
 
@@ -3207,11 +3200,6 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
             // Re-analyze the line to find delimiters
             findDelimitersInLine(lineNumber);
 
-            // Update the highlight if necessary
-            if (isColumnHighlighted) {
-                highlightColumnsInLine(lineNumber);
-            }
-
             // Only adjust following lines if not at the last line
             if (lineNumber < lineDelimiterPositions.size() - 1) {
                 // Calculate the difference to the next line start position (considering EOL)
@@ -3241,6 +3229,7 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
     default:
         break;
     }
+
 }
 
 void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
