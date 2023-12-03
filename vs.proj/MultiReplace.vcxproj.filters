@@ -211,6 +211,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\src\help_use_variables.html" />
+    <None Include="..\help_use_variables.html" />
   </ItemGroup>
 </Project>
