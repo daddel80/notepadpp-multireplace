@@ -121,6 +121,8 @@ struct ColumnInfo {
     SIZE_T startColumnIndex;
 };
 
+
+// Lua Engine
 struct LuaVariables {
     int CNT =  0;
     int LINE = 0;
@@ -131,7 +133,25 @@ struct LuaVariables {
     std::string MATCH;
 };
 
-// Exceptions
+enum class LuaVariableType {
+    String,
+        Number,
+        Boolean,
+        None
+};
+
+struct LuaVariable {
+    std::string name;
+    LuaVariableType type;
+    std::string stringValue;
+    double numberValue;
+    bool booleanValue;
+
+    LuaVariable() : name(""), type(LuaVariableType::None), numberValue(0.0), booleanValue(false) {}
+};
+
+using LuaVariablesMap = std::map<std::string, LuaVariable>;
+
 class CsvLoadException : public std::exception {
 public:
     explicit CsvLoadException(const std::string& message) : message_(message) {}
