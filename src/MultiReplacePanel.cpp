@@ -1778,11 +1778,9 @@ SelectionInfo MultiReplace::getSelectionInfo() {
     return SelectionInfo{ selectedText, selectionStart, selectionLength };
 }
 
-LuaVariablesMap captureLuaGlobals(lua_State* L) {
-    LuaVariablesMap luaVariables;
-
+void MultiReplace::captureLuaGlobals(lua_State* L) {
+    globalLuaVariablesMap.clear();  // Clear existing data
     lua_pushglobaltable(L);
-
     lua_pushnil(L);
     while (lua_next(L, -2) != 0) {
         const char* key = lua_tostring(L, -2);
@@ -1801,32 +1799,51 @@ LuaVariablesMap captureLuaGlobals(lua_State* L) {
             }
             else if (lua_isboolean(L, -1)) {
                 luaVar.type = LuaVariableType::Boolean;
-                luaVar.booleanValue = lua_toboolean(L, -1) != 0;
+                luaVar.booleanValue = lua_toboolean(L, -1);
             }
             else {
-                // Skip unsupported types
                 lua_pop(L, 1);
-                continue;
+                continue;  // Skip unsupported types
             }
 
-            luaVariables[key] = luaVar;
+            globalLuaVariablesMap[key] = luaVar;
         }
 
         lua_pop(L, 1);
     }
 
     lua_pop(L, 1);
-
-    return luaVariables;
 }
 
+void MultiReplace::loadLuaGlobals(lua_State* L) {
+    for (const auto& pair : globalLuaVariablesMap) {
+        const LuaVariable& var = pair.second;
 
+        switch (var.type) {
+        case LuaVariableType::String:
+            lua_pushstring(L, var.stringValue.c_str());
+            break;
+        case LuaVariableType::Number:
+            lua_pushnumber(L, var.numberValue);
+            break;
+        case LuaVariableType::Boolean:
+            lua_pushboolean(L, var.booleanValue);
+            break;
+        default:
+            continue;  // Skip None or unsupported types
+        }
+
+        lua_setglobal(L, var.name.c_str());
+    }
+}
 
 
 bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
 {
     lua_State* L = luaL_newstate();  // Create a new Lua environment
     luaL_openlibs(L);  // Load standard libraries
+
+    loadLuaGlobals(L); // Load global Lua variables
 
     // Set variables
     lua_pushnumber(L, vars.CNT);
@@ -2044,10 +2061,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     lua_pop(L, 1);  // Pop the 'result' table from the stack
 
     // Read Lua global Variables
-    LuaVariablesMap luaVariablesMap = captureLuaGlobals(L);
+    captureLuaGlobals(L);
     std::string luaVariablesStr;
-
-    for (const auto& pair : luaVariablesMap) {
+    for (const auto& pair : globalLuaVariablesMap) {
         const LuaVariable& var = pair.second;
         luaVariablesStr += var.name + ": ";
 
@@ -2061,12 +2077,10 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         case LuaVariableType::Boolean:
             luaVariablesStr += "Boolean, " + std::string(var.booleanValue ? "true" : "false");
             break;
-        case LuaVariableType::None:
         default:
             luaVariablesStr += "None or Unsupported Type";
             break;
         }
-
         luaVariablesStr += "\n";
     }
 

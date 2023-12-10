@@ -135,9 +135,9 @@ struct LuaVariables {
 
 enum class LuaVariableType {
     String,
-        Number,
-        Boolean,
-        None
+    Number,
+    Boolean,
+    None
 };
 
 struct LuaVariable {
@@ -287,6 +287,7 @@ private:
     std::vector<LineInfo> lineDelimiterPositions;
     bool isColumnHighlighted = false;
     std::map<int, bool> stateSnapshot; // stores the state of the Elements
+    LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
@@ -338,6 +339,8 @@ private:
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     SelectionInfo getSelectionInfo();
+    void captureLuaGlobals(lua_State* L);
+    void loadLuaGlobals(lua_State* L);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
     void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
 
