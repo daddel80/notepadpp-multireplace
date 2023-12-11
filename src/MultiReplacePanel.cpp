@@ -1778,42 +1778,42 @@ SelectionInfo MultiReplace::getSelectionInfo() {
     return SelectionInfo{ selectedText, selectionStart, selectionLength };
 }
 
+
 void MultiReplace::captureLuaGlobals(lua_State* L) {
     globalLuaVariablesMap.clear();  // Clear existing data
     lua_pushglobaltable(L);
     lua_pushnil(L);
     while (lua_next(L, -2) != 0) {
         const char* key = lua_tostring(L, -2);
+        LuaVariable luaVar;
+        luaVar.name = key;
 
-        if (key) {
-            LuaVariable luaVar;
-            luaVar.name = key;
-
-            if (lua_isstring(L, -1)) {
-                luaVar.type = LuaVariableType::String;
-                luaVar.stringValue = lua_tostring(L, -1);
-            }
-            else if (lua_isnumber(L, -1)) {
-                luaVar.type = LuaVariableType::Number;
-                luaVar.numberValue = lua_tonumber(L, -1);
-            }
-            else if (lua_isboolean(L, -1)) {
-                luaVar.type = LuaVariableType::Boolean;
-                luaVar.booleanValue = lua_toboolean(L, -1);
-            }
-            else {
-                lua_pop(L, 1);
-                continue;  // Skip unsupported types
-            }
-
-            globalLuaVariablesMap[key] = luaVar;
+        int type = lua_type(L, -1);
+        if (type == LUA_TNUMBER) {
+            luaVar.type = LuaVariableType::Number;
+            luaVar.numberValue = lua_tonumber(L, -1);
+        }
+        else if (type == LUA_TSTRING) {
+            luaVar.type = LuaVariableType::String;
+            luaVar.stringValue = lua_tostring(L, -1);
+        }
+        else if (type == LUA_TBOOLEAN) {
+            luaVar.type = LuaVariableType::Boolean;
+            luaVar.booleanValue = lua_toboolean(L, -1);
+        }
+        else {
+            // Skipping unknown types
+            lua_pop(L, 1);
+            continue;
         }
 
+        globalLuaVariablesMap[key] = luaVar;
         lua_pop(L, 1);
     }
 
     lua_pop(L, 1);
 }
+
 
 void MultiReplace::loadLuaGlobals(lua_State* L) {
     for (const auto& pair : globalLuaVariablesMap) {
