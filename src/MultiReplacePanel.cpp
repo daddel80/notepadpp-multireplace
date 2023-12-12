@@ -1438,6 +1438,9 @@ void MultiReplace::handleReplaceAllButton() {
         return;
     }
 
+    // Clear all stored Lua Global Variables
+    globalLuaVariablesMap.clear();
+
     int replaceCount = 0;
     // Check if the "In List" option is enabled
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
@@ -1780,7 +1783,6 @@ SelectionInfo MultiReplace::getSelectionInfo() {
 
 
 void MultiReplace::captureLuaGlobals(lua_State* L) {
-    globalLuaVariablesMap.clear();  // Clear existing data
     lua_pushglobaltable(L);
     lua_pushnil(L);
     while (lua_next(L, -2) != 0) {
@@ -2015,6 +2017,24 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "  return output\n"
         "end");
 
+    // Declare the init function
+    luaL_dostring(L,
+        "function init(args)\n"
+        "  for name, value in pairs(args) do\n"
+        "    if _G[name] == nil then\n"
+        "      if type(name) ~= 'string' then\n"
+        "        error('Variable name must be a string')\n"
+        "      end\n"
+        "      if not string.match(name, '^[A-Za-z_][A-Za-z0-9_]*$') then\n"
+        "        error('Invalid variable name')\n"
+        "      end\n"
+        "      if value == nil then\n"
+        "        error('Value missing in Init')\n"
+        "      end\n"
+        "      _G[name] = value\n"
+        "    end\n"
+        "  end\n"
+        "end\n");
     
     // Show syntax error
     if (luaL_dostring(L, inputString.c_str()) != LUA_OK) {
@@ -2084,7 +2104,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         luaVariablesStr += "\n";
     }
 
-    MessageBoxA(NULL, luaVariablesStr.c_str(), "Lua Variables", MB_OK);
+    //MessageBoxA(NULL, luaVariablesStr.c_str(), "Lua Variables", MB_OK);
 
 
     lua_close(L);
