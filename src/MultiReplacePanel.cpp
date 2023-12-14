@@ -1778,65 +1778,7 @@ SelectionInfo MultiReplace::getSelectionInfo() {
     return SelectionInfo{ selectedText, selectionStart, selectionLength };
 }
 
-<<<<<<< HEAD
-=======
-void MultiReplace::captureLuaGlobals(lua_State* L) {
-    lua_pushglobaltable(L);
-    lua_pushnil(L);
-    while (lua_next(L, -2) != 0) {
-        const char* key = lua_tostring(L, -2);
-        LuaVariable luaVar;
-        luaVar.name = key;
 
-        int type = lua_type(L, -1);
-        if (type == LUA_TNUMBER) {
-            luaVar.type = LuaVariableType::Number;
-            luaVar.numberValue = lua_tonumber(L, -1);
-        }
-        else if (type == LUA_TSTRING) {
-            luaVar.type = LuaVariableType::String;
-            luaVar.stringValue = lua_tostring(L, -1);
-        }
-        else if (type == LUA_TBOOLEAN) {
-            luaVar.type = LuaVariableType::Boolean;
-            luaVar.booleanValue = lua_toboolean(L, -1);
-        }
-        else {
-            // Skipping unknown types
-            lua_pop(L, 1);
-            continue;
-        }
-
-        globalLuaVariablesMap[key] = luaVar;
-        lua_pop(L, 1);
-    }
-
-    lua_pop(L, 1);
-}
-
-void MultiReplace::loadLuaGlobals(lua_State* L) {
-    for (const auto& pair : globalLuaVariablesMap) {
-        const LuaVariable& var = pair.second;
-
-        switch (var.type) {
-        case LuaVariableType::String:
-            lua_pushstring(L, var.stringValue.c_str());
-            break;
-        case LuaVariableType::Number:
-            lua_pushnumber(L, var.numberValue);
-            break;
-        case LuaVariableType::Boolean:
-            lua_pushboolean(L, var.booleanValue);
-            break;
-        default:
-            continue;  // Skip None or unsupported types
-        }
-
-        lua_setglobal(L, var.name.c_str());
-    }
-}
-
->>>>>>> 87cd16c (filtered  \r and \n if added for Delimter)
 bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
 {
     lua_State* L = luaL_newstate();  // Create a new Lua environment
