@@ -1781,7 +1781,6 @@ SelectionInfo MultiReplace::getSelectionInfo() {
     return SelectionInfo{ selectedText, selectionStart, selectionLength };
 }
 
-
 void MultiReplace::captureLuaGlobals(lua_State* L) {
     lua_pushglobaltable(L);
     lua_pushnil(L);
@@ -1816,7 +1815,6 @@ void MultiReplace::captureLuaGlobals(lua_State* L) {
     lua_pop(L, 1);
 }
 
-
 void MultiReplace::loadLuaGlobals(lua_State* L) {
     for (const auto& pair : globalLuaVariablesMap) {
         const LuaVariable& var = pair.second;
@@ -1838,7 +1836,6 @@ void MultiReplace::loadLuaGlobals(lua_State* L) {
         lua_setglobal(L, var.name.c_str());
     }
 }
-
 
 bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
 {
@@ -2798,6 +2795,15 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     std::wstring columnDataString = getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT);
     std::wstring delimiterData = getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT);
     std::wstring quoteCharString = getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT);
+
+    // Remove invalid delimiter characters (\n, \r)
+    std::vector<std::wstring> stringsToRemove = { L"\\n", L"\\r" };
+    for (const auto& strToRemove : stringsToRemove) {
+        std::wstring::size_type pos = 0;
+        while ((pos = delimiterData.find(strToRemove, pos)) != std::wstring::npos) {
+            delimiterData.erase(pos, strToRemove.length());
+        }
+    }
 
     std::string tempExtendedDelimiter = convertAndExtend(delimiterData, true);
 
