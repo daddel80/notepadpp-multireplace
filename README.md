@@ -49,7 +49,7 @@ Note: Utilize either the `set()` or `cond()` command in 'Replace with:' to chann
 E.g., `"Detected "..CNT.." times."`
 
 #### set(strOrCalc)
-Outputs strings or numbers directly.
+Directly outputs strings or numbers, replacing the matched text in the Replace String with the specified or calculated value.
 
 | Example                              | Result (assuming LINE = 5, CNT = 3) |
 |--------------------------------------|-------------------------------------|
@@ -57,7 +57,7 @@ Outputs strings or numbers directly.
 | `set(LINE+5)`                        | "10"                                |
 
 #### **cond(condition, trueVal, \[falseVal\])**
-Implements if-then-else logic, or if-then if falseVal is omitted.
+Implements if-then-else logic, or if-then if falseVal is omitted. Evaluates the condition and pushes the corresponding value (trueVal or falseVal) to the Replace String.
 
 | Example                                                      | Result (assuming LINE = 5)            |
 |--------------------------------------------------------------|---------------------------------------|
@@ -76,12 +76,31 @@ Formats numbers based on precision (maxDecimals) and whether the number of decim
 | `set(fmtN(5.73652, 4, false))`      | "5.7365"|
 | `set(fmtN(5.0, 4, false))`          | "5"     |
 
+#### **init({Variable1=Value1, Variable2=Value2, ...})  (available in MultiReplace Version 2.209)**
+Initializes custom variables for use in various commands, extending beyond standard variables like CNT, MATCH, CAP1. These variables can carry the status of previous find-and-replace operations to subsequent ones.
+
+Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. They reset at the start of each new document in 'Replace All in All Open Documents'.
+
+| Find:            | Replace:                                                                                                      | Before                             | After                                     |
+|------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------|-------------------------------------------|
+| `(\d+)`          | `init({LINE_ACT=0,COL2=0,COL4=0}); cond(LINE==LINE_ACT and COL==5, COL2+COL4); LINE_ACT=LINE; if COL==2 then COL2=CAP1 end; if COL==4 then COL4=CAP1 end;` | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` |
+| `\d{2}-[A-Z]{3}$`| `init({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                                   | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`       |
+
 ### Operators 
 | Type        | Operators                     |
 |-------------|-------------------------------|
 | Arithmetic  | `+`, `-`, `*`, `/`, `^`, `%`  |
 | Relational  | `==`, `~=`, `<`, `>`, `<=`, `>=`|
 | Logical     | `and`, `or`, `not`            |
+
+### If-Then Logic
+If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.
+
+##### Syntax Combinations
+- `if condition then ... end`
+- `if condition then ... else ... end`
+- `if condition then ... elseif another_condition then ... end`
+- `if condition then ... elseif another_condition then ... else ... end`
 
 ### More Examples
 
@@ -95,6 +114,9 @@ Formats numbers based on precision (maxDecimals) and whether the number of decim
 | `(\d+)`             | `set(CAP1 * 2)`                                                               | Doubles the matched number. E.g., `100` becomes `200`.                                                         | Yes   | No        |
 | `;`                 | `cond(LCNT == 1, string.rep(" ", 20- (LPOS))..";")`                             | Inserts spaces before the semicolon to align it to the 20th character position if it's the first occurrence.    | No    | No        |
 | `-`                   | `cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), "*", " ")` | Draws a sine wave across a canvas of '-' characters spanning at least 20 lines and 80 characters per line. | No | No |
+| `^(.*)$`            | `init({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;` | Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses `MATCH_PREV` to identify and remove consecutive duplicates. | Yes | No  |
+
+  
 
 #### Engine Overview
 MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math operations and string methods. Refer to [Lua String Manipulation](https://www.lua.org/manual/5.1/manual.html#5.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.1/manual.html#5.6) for more information.
