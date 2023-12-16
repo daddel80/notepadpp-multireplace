@@ -68,7 +68,7 @@ Implements if-then-else logic, or if-then if falseVal is omitted. Evaluates the 
 #### **init({Variable1=Value1, Variable2=Value2, ...})  (available in MultiReplace Version 2.209)**
 Initializes custom variables for use in various commands, extending beyond standard variables like CNT, MATCH, CAP1. These variables can carry the status of previous find-and-replace operations to subsequent ones.
 
-Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. They reset at the start of each new document in 'Replace All in All Open Documents'.
+Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. So they can transfer values from one list entry to the following ones.  They reset at the start of each new document in 'Replace All in All Open Documents'.
 
 | Find:            | Replace:                                                                                                      | Before                             | After                                     |
 |------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------|-------------------------------------------|
