@@ -202,10 +202,10 @@ window.addEventListener("load", doPageLoad);
 <nav class=pagenav>
 <a href="#Introduction">Introduction</a>
 <a href="#FirstSteps">First steps</a>
-<a href="#Operators"> Operators</a>
 <a href="#Variables">Variables</a>
 <a href="#Commands">Commands</a>
-<a href="#FormatNumbers">Format Numbers</a>
+<a href="#Operators"> Operators</a>
+<a href="#IfThenLogic"> If-Then Logic</a>
 <a href="#FurtherFunctions">Math & String Functions</a>
 <a href="#Examples">Examples</a>
 </nav>
@@ -220,49 +220,7 @@ window.addEventListener("load", doPageLoad);
         <h2>First step</h2>
         Utilize either the <code>set()</code> or <code>cond()</code> command in 'Replace with:' to channel the output as the replacement string. Only one of these commands should be used at a time.
     </section>
-
-    <section id=Commands>
-        <h2>Commands</h2>
-        <h3>set(strOrCalc)</h3>
-        <p>Outputs strings or numbers directly.</p>
-        <table class="optionsTable">
-            <tr>
-                <th>Example</th>
-                <th>Result (assuming LINE = 5, CNT = 3)</th>
-            </tr>
-            <tr>
-                <td><code>set("replaceString"..CNT)</code></td>
-                <td>"replaceString3"</td>
-            </tr>
-            <tr>
-                <td><code>set(LINE+5)</code></td>
-                <td>"10"</td>
-            </tr>
-        </table>
-
-        <h3><strong>cond(condition, trueVal, [falseVal])</strong></h3>
-        <p>Implements if-then-else logic, or if-then if falseVal is omitted.</p>
-        <table class="optionsTable">
-            <tr>
-                <th>Example</th>
-                <th>Result (assuming LINE = 5)</th>
-            </tr>
-            <tr>
-                <td><code>cond(LINE&lt;=5 or LINE&gt;=9, "edge", "center")</code></td>
-                <td>"edge"</td>
-            </tr>
-            <tr>
-                <td><code>cond(LINE&lt;3, "Modify this line")</code></td>
-                <td>(Original text remains unchanged)</td>
-            </tr>
-            <tr>
-                <td><code>cond(LINE&lt;10, cond(LINE&lt;5, cond(LINE&gt;2, "3-4", "0-2"), "5-9"), "10+")</code></td>
-                <td>"5-9" (Nested condition)</td>
-            </tr>
-        </table>
-
-    </section>
-
+	
     <section id=Variables>
         <h2>Variables</h2>
         <table class="optionsTable">
@@ -306,7 +264,99 @@ window.addEventListener("load", doPageLoad);
                 <td colspan="2">Note: For <code>MATCH</code> and <code>CAP</code> variables, both dot and comma can be used as decimal separators when they contain numerical values, but thousands separators are not supported.</td>
             </tr>
         </table>
+    </section>
 
+    <section id=Commands>
+        <h2>Commands</h2>
+        <h3>set(strOrCalc)</h3>
+        <p>Outputs strings or numbers directly.</p>
+        <table class="optionsTable">
+            <tr>
+                <th>Example</th>
+                <th>Result (assuming LINE = 5, CNT = 3)</th>
+            </tr>
+            <tr>
+                <td><code>set("replaceString"..CNT)</code></td>
+                <td>"replaceString3"</td>
+            </tr>
+            <tr>
+                <td><code>set(LINE+5)</code></td>
+                <td>"10"</td>
+            </tr>
+        </table>
+
+        <h3><strong>cond(condition, trueVal, [falseVal])</strong></h3>
+        <p>Implements if-then-else logic, or if-then if falseVal is omitted.</p>
+        <table class="optionsTable">
+            <tr>
+                <th>Example</th>
+                <th>Result (assuming LINE = 5)</th>
+            </tr>
+            <tr>
+                <td><code>cond(LINE&lt;=5 or LINE&gt;=9, "edge", "center")</code></td>
+                <td>"edge"</td>
+            </tr>
+            <tr>
+                <td><code>cond(LINE&lt;3, "Modify this line")</code></td>
+                <td>(Original text remains unchanged)</td>
+            </tr>
+            <tr>
+                <td><code>cond(LINE&lt;10, cond(LINE&lt;5, cond(LINE&gt;2, "3-4", "0-2"), "5-9"), "10+")</code></td>
+                <td>"5-9" (Nested condition)</td>
+            </tr>
+        </table>
+		
+        <h3>init({Variable1=Value1, Variable2=Value2, ...})</h3>
+        Initializes custom variables for use in various commands, extending beyond standard variables like CNT, MATCH, CAP1. These variables can carry the status of previous find-and-replace operations to subsequent ones.</p>
+        <p>
+            Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. So they can transfer values from one list entry to the following ones. They reset at the start of each new document in 'Replace All in All Open Documents'.
+        </p>
+        <table class="optionsTable">
+            <tr>
+                <th>Find:</th>
+                <th>Replace:</th>
+                <th>Before</th>
+                <th>After</th>
+            </tr>
+            <tr>
+                <td><code>(\d+)</code></td>
+                <td><code>init({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4); if COL==2 then COL2=CAP1 end; if COL==4 then COL4=CAP1 end;</code></td>
+                <td>1,20,text,2,0<br>2,30,text,3,0<br>3,40,text,4,0</td>
+                <td>1,20,text,2,22.0<br>2,30,text,3,33.0<br>3,40,text,4,44.0</td>
+            </tr>
+            <tr>
+                <td><code>\d{2}-[A-Z]$</code></td>
+                <td><code>init({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;</code></td>
+                <td>12-P,00-A<br>65-S,00-A<br>43-V,00-A</td>
+                <td>Moved,12-P<br>Moved,65-S<br>Moved,43-V</td>
+            </tr>
+        </table>
+
+		<h3>fmtN(num, maxDecimals, fixedDecimals)</h3>
+        <p>Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).</p>
+        <p><strong>Note</strong>: The <code>fmtN</code> command can exclusively be used within the <code>set</code> and <code>cond</code> commands.</p>
+        <table class="optionsTable">
+            <tr>
+                <th>Example</th>
+                <th>Result</th>
+            </tr>
+            <tr>
+                <td><code>set(fmtN(5.73652, 2, true))</code></td>
+                <td>"5.74"</td>
+            </tr>
+            <tr>
+                <td><code>set(fmtN(5.0, 2, true))</code></td>
+                <td>"5.00"</td>
+            </tr>
+            <tr>
+                <td><code>set(fmtN(5.73652, 4, false))</code></td>
+                <td>"5.7365"</td>
+            </tr>
+            <tr>
+                <td><code>set(fmtN(5.0, 4, false))</code></td>
+                <td>"5"</td>
+            </tr>
+        </table>
     </section>
 
     <section id=Operators>
@@ -339,34 +389,19 @@ window.addEventListener("load", doPageLoad);
             </tr>
         </table>
     </section>
-
-    <section id=FormatNumbers>
-        <h2>Format Numbers</h2>
-        <h3><strong>fmtN(num, maxDecimals, fixedDecimals)</strong></h3>
-        <p>Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).</p>
-        <p><strong>Note</strong>: The <code>fmtN</code> command can exclusively be used within the <code>set</code> and <code>cond</code> commands.</p>
-        <table class="optionsTable">
-            <tr>
-                <th>Example</th>
-                <th>Result</th>
-            </tr>
-            <tr>
-                <td><code>set(fmtN(5.73652, 2, true))</code></td>
-                <td>"5.74"</td>
-            </tr>
-            <tr>
-                <td><code>set(fmtN(5.0, 2, true))</code></td>
-                <td>"5.00"</td>
-            </tr>
-            <tr>
-                <td><code>set(fmtN(5.73652, 4, false))</code></td>
-                <td>"5.7365"</td>
-            </tr>
-            <tr>
-                <td><code>set(fmtN(5.0, 4, false))</code></td>
-                <td>"5"</td>
-            </tr>
-        </table>
+	
+	<section id=IfThenLogic>
+        <h2>If-Then Logic</h2>
+        <p>
+            If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.
+        </p>
+        <h3>Syntax Combinations</h3>
+        <ul>
+            <li><code>if condition then ... end</code></li>
+            <li><code>if condition then ... else ... end</code></li>
+            <li><code>if condition then ... elseif another_condition then ... end</code></li>
+            <li><code>if condition then ... elseif another_condition then ... else ... end</code></li>
+        </ul>
     </section>
 
     <section id=FurtherFunctions>
@@ -440,6 +475,13 @@ window.addEventListener("load", doPageLoad);
                 <td>No</td>
                 <td>No</td>
 			</tr>
+			    <tr>
+                <td><code>^(.*)$</code></td>
+                <td><code>init({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;</code></td>
+                <td>Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses MATCH_PREV to identify and remove consecutive duplicates.</td>
+                <td>Yes</td>
+                <td>No</td>
+        </tr>
 		</table>
     </section>
 
