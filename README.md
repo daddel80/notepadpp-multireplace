@@ -65,6 +65,16 @@ Implements if-then-else logic, or if-then if falseVal is omitted. Evaluates the 
 | `cond(LINE<3, "Modify this line")`                         | (Original text remains unchanged)     |
 | `cond(LINE<10, cond(LINE<5, cond(LINE>2, "3-4", "0-2"), "5-9"), "10+")` | "5-9" (Nested condition) |
 
+#### **init({Variable1=Value1, Variable2=Value2, ...})  (available in MultiReplace Version 2.209)**
+Initializes custom variables for use in various commands, extending beyond standard variables like CNT, MATCH, CAP1. These variables can carry the status of previous find-and-replace operations to subsequent ones.
+
+Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. They reset at the start of each new document in 'Replace All in All Open Documents'.
+
+| Find:            | Replace:                                                                                                      | Before                             | After                                     |
+|------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------|-------------------------------------------|
+| `(\d+)`          | `init({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4); if COL==2 then COL2=CAP1 end; if COL==4 then COL4=CAP1 end;` | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` |
+| `\d{2}-[A-Z]{3}$`| `init({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                                   | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`       |
+
 #### **fmtN(num, maxDecimals, fixedDecimals)**
 Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).
 
@@ -75,16 +85,6 @@ Formats numbers based on precision (maxDecimals) and whether the number of decim
 | `set(fmtN(5.0, 2, true))`           | "5.00"  |
 | `set(fmtN(5.73652, 4, false))`      | "5.7365"|
 | `set(fmtN(5.0, 4, false))`          | "5"     |
-
-#### **init({Variable1=Value1, Variable2=Value2, ...})  (available in MultiReplace Version 2.209)**
-Initializes custom variables for use in various commands, extending beyond standard variables like CNT, MATCH, CAP1. These variables can carry the status of previous find-and-replace operations to subsequent ones.
-
-Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. They reset at the start of each new document in 'Replace All in All Open Documents'.
-
-| Find:            | Replace:                                                                                                      | Before                             | After                                     |
-|------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------|-------------------------------------------|
-| `(\d+)`          | `init({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4); if COL==2 then COL2=CAP1 end; if COL==4 then COL4=CAP1 end;` | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` |
-| `\d{2}-[A-Z]{3}$`| `init({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                                   | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`       |
 
 ### Operators 
 | Type        | Operators                     |
