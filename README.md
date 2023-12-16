@@ -17,6 +17,25 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 -   **Highlighting**: Highlight multiple find words in unique colors for better visual distinction.
 -   **Variable Usage**: Employ variables for conditional and computational operations within the replacement string.
 
+## Match and Replace Options
+
+This chapter provides an overview of the various match and replace options available in MultiReplace, enhancing the flexibility and precision of your search and replace operations.
+
+### Match Whole Word Only
+When this option is enabled, the search term is matched only if it appears as a whole word. This is particularly useful for avoiding partial matches within larger words, ensuring more precise and targeted search results.
+
+### Match Case
+Selecting this option makes the search case-sensitive, meaning 'Hello' and 'hello' will be treated as distinct terms. It's useful for scenarios where the case of the letters is crucial to the search.
+
+### Use Variables
+This feature allows the use of variables within the replacement string for dynamic and conditional replacements. For more detailed information, refer to the [Option 'Use Variables' chapter](#option-use-variables).
+
+### Replace First Match Only
+The "Replace First Match Only" option is ideal for Replace-All operations, where it replaces only the first occurrence of a match in each list entry. This is particularly useful for different replace strings with the same find pattern. It's designed for modifying only the initial match in a document or scope, while keeping other instances intact. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
+
+### Wrap Around
+When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
+
 ## Scope Functions
 Scope functions define the range for searching and replacing strings:
 -   **Selection Option**: Supports Rectangular and Multiselect to focus on specific areas for search or replace.
