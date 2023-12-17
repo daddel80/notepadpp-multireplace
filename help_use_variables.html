@@ -325,14 +325,14 @@ window.addEventListener("load", doPageLoad);
                 <td>1,20,text,2,22.0<br>2,30,text,3,33.0<br>3,40,text,4,44.0</td>
             </tr>
             <tr>
-                <td><code>\d{2}-[A-Z]$</code></td>
+                <td><code>\d{2}-[A-Z]</code></td>
                 <td><code>init({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;</code></td>
                 <td>12-P,00-A<br>65-S,00-A<br>43-V,00-A</td>
                 <td>Moved,12-P<br>Moved,65-S<br>Moved,43-V</td>
             </tr>
         </table>
 
-		<h3>fmtN(num, maxDecimals, fixedDecimals)</h3>
+        <h3>fmtN(num, maxDecimals, fixedDecimals)</h3>
         <p>Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).</p>
         <p><strong>Note</strong>: The <code>fmtN</code> command can exclusively be used within the <code>set</code> and <code>cond</code> commands.</p>
         <table class="optionsTable">
