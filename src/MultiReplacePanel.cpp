@@ -1438,6 +1438,9 @@ void MultiReplace::handleReplaceAllButton() {
         return;
     }
 
+    // Clear all stored Lua Global Variables
+    globalLuaVariablesMap.clear();
+
     int replaceCount = 0;
     // Check if the "In List" option is enabled
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
@@ -1778,11 +1781,68 @@ SelectionInfo MultiReplace::getSelectionInfo() {
     return SelectionInfo{ selectedText, selectionStart, selectionLength };
 }
 
+void MultiReplace::captureLuaGlobals(lua_State* L) {
+    lua_pushglobaltable(L);
+    lua_pushnil(L);
+    while (lua_next(L, -2) != 0) {
+        const char* key = lua_tostring(L, -2);
+        LuaVariable luaVar;
+        luaVar.name = key;
+
+        int type = lua_type(L, -1);
+        if (type == LUA_TNUMBER) {
+            luaVar.type = LuaVariableType::Number;
+            luaVar.numberValue = lua_tonumber(L, -1);
+        }
+        else if (type == LUA_TSTRING) {
+            luaVar.type = LuaVariableType::String;
+            luaVar.stringValue = lua_tostring(L, -1);
+        }
+        else if (type == LUA_TBOOLEAN) {
+            luaVar.type = LuaVariableType::Boolean;
+            luaVar.booleanValue = lua_toboolean(L, -1);
+        }
+        else {
+            // Skipping unknown types
+            lua_pop(L, 1);
+            continue;
+        }
+
+        globalLuaVariablesMap[key] = luaVar;
+        lua_pop(L, 1);
+    }
+
+    lua_pop(L, 1);
+}
+
+void MultiReplace::loadLuaGlobals(lua_State* L) {
+    for (const auto& pair : globalLuaVariablesMap) {
+        const LuaVariable& var = pair.second;
+
+        switch (var.type) {
+        case LuaVariableType::String:
+            lua_pushstring(L, var.stringValue.c_str());
+            break;
+        case LuaVariableType::Number:
+            lua_pushnumber(L, var.numberValue);
+            break;
+        case LuaVariableType::Boolean:
+            lua_pushboolean(L, var.booleanValue);
+            break;
+        default:
+            continue;  // Skip None or unsupported types
+        }
+
+        lua_setglobal(L, var.name.c_str());
+    }
+}
 
 bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
 {
     lua_State* L = luaL_newstate();  // Create a new Lua environment
     luaL_openlibs(L);  // Load standard libraries
+
+    loadLuaGlobals(L); // Load global Lua variables
 
     // Set variables
     lua_pushnumber(L, vars.CNT);
@@ -1954,6 +2014,24 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "  return output\n"
         "end");
 
+    // Declare the init function
+    luaL_dostring(L,
+        "function init(args)\n"
+        "  for name, value in pairs(args) do\n"
+        "    if _G[name] == nil then\n"
+        "      if type(name) ~= 'string' then\n"
+        "        error('Variable name must be a string')\n"
+        "      end\n"
+        "      if not string.match(name, '^[A-Za-z_][A-Za-z0-9_]*$') then\n"
+        "        error('Invalid variable name')\n"
+        "      end\n"
+        "      if value == nil then\n"
+        "        error('Value missing in Init')\n"
+        "      end\n"
+        "      _G[name] = value\n"
+        "    end\n"
+        "  end\n"
+        "end\n");
     
     // Show syntax error
     if (luaL_dostring(L, inputString.c_str()) != LUA_OK) {
@@ -1998,6 +2076,33 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         return false;
     }
     lua_pop(L, 1);  // Pop the 'result' table from the stack
+
+    // Read Lua global Variables
+    captureLuaGlobals(L);
+    std::string luaVariablesStr;
+    for (const auto& pair : globalLuaVariablesMap) {
+        const LuaVariable& var = pair.second;
+        luaVariablesStr += var.name + ": ";
+
+        switch (var.type) {
+        case LuaVariableType::String:
+            luaVariablesStr += "String, " + var.stringValue;
+            break;
+        case LuaVariableType::Number:
+            luaVariablesStr += "Number, " + std::to_string(var.numberValue);
+            break;
+        case LuaVariableType::Boolean:
+            luaVariablesStr += "Boolean, " + std::string(var.booleanValue ? "true" : "false");
+            break;
+        default:
+            luaVariablesStr += "None or Unsupported Type";
+            break;
+        }
+        luaVariablesStr += "\n";
+    }
+
+    //MessageBoxA(NULL, luaVariablesStr.c_str(), "Lua Variables", MB_OK);
+
 
     lua_close(L);
 
