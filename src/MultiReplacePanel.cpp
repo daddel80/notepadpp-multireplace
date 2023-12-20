@@ -2822,7 +2822,7 @@ void MultiReplace::handleCopyColumnsToClipboard()
         std::string lineText;
 
         // Process each column
-        for (int column : columnDelimiterData.columns) {
+        for (SIZE_T column : columnDelimiterData.columns) {
             LRESULT startPos, endPos;
 
             if (column == 1) {
