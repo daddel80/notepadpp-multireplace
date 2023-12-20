@@ -301,7 +301,7 @@ private:
         IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
     };
     const std::vector<int> columnRadioDependentElements = {
-        IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT, IDC_COLUMN_HIGHLIGHT_BUTTON
+        IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
 
     //Initialization
@@ -360,8 +360,10 @@ private:
     long generateColorValue(const std::string& str);
     void handleClearTextMarksButton();
     void handleCopyMarkedTextToClipboardButton();
+    void copyTextToClipboard(const std::wstring& text, int textCount);
 
     //Scope
+    void handleCopyColumnsToClipboard();
     bool parseColumnAndDelimiterData();
     void findAllDelimitersInDocument();
     void findDelimitersInLine(LRESULT line);

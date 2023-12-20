@@ -124,7 +124,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_QUOTECHAR_STATIC] = { 586, 215, 40, 25, WC_STATIC, L"Quote:", SS_RIGHT, NULL };
     ctrlMap[IDC_QUOTECHAR_EDIT] = { 628, 215, 15, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Quote: ', \", or empty" };
 
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 580, 183, 66, 25, WC_BUTTON, L"Show", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 480, 183, 50, 25, WC_BUTTON, L"Drop", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { 538, 183, 50, 25, WC_BUTTON, L"Copy", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 596, 183, 50, 25, WC_BUTTON, L"Show", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
 
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 260, 600, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
@@ -1222,6 +1224,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             setElementsState(columnRadioDependentElements, true);
             setElementsState(selectionRadioDisabledButtons, true);
+        }
+        break;
+
+        case IDC_COLUMN_COPY_BUTTON:
+        {
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            if (columnDelimiterData.isValid()) {
+                handleCopyColumnsToClipboard();
+            }
         }
         break;
 
@@ -2742,32 +2753,34 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
     // Convert encoding to wide string
     std::wstring wstr = stringToWString(markedText);
 
-    if (markedTextCount > 0)
-    {
-        // Open Clipboard
-        OpenClipboard(0);
-        EmptyClipboard();
+    copyTextToClipboard(wstr, static_cast<int>(markedTextCount));
+}
 
-        // Copy data to clipboard
-        HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, sizeof(WCHAR) * (wstr.length() + 1));
+void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
+{
+    if (text.empty()) {
+        showStatusMessage(L"No text to copy.", RGB(255, 0, 0));
+        return;
+    }
+
+    if (OpenClipboard(0))
+    {
+        EmptyClipboard();
+        HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, sizeof(WCHAR) * (text.length() + 1));
         if (hClipboardData)
         {
-            WCHAR* pchData;
-            pchData = reinterpret_cast<WCHAR*>(GlobalLock(hClipboardData));
+            WCHAR* pchData = reinterpret_cast<WCHAR*>(GlobalLock(hClipboardData));
             if (pchData)
             {
-                wcscpy(pchData, wstr.c_str());
+                wcscpy(pchData, text.c_str());
                 GlobalUnlock(hClipboardData);
-
-                // Checking SetClipboardData return
                 if (SetClipboardData(CF_UNICODETEXT, hClipboardData) != NULL)
                 {
-                    int markedTextCountInt = static_cast<int>(markedTextCount);
-                    showStatusMessage(std::to_wstring(markedTextCountInt) + L" marked blocks copied into Clipboard.", RGB(0, 128, 0));
+                    showStatusMessage(std::to_wstring(textCount) + L" items copied into Clipboard.", RGB(0, 128, 0));
                 }
                 else
                 {
-                    showStatusMessage(L"Failed to copy marked text to Clipboard.", RGB(255, 0, 0));
+                    showStatusMessage(L"Failed to copy to Clipboard.", RGB(255, 0, 0));
                 }
             }
             else
@@ -2776,12 +2789,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
                 GlobalFree(hClipboardData);
             }
         }
-
         CloseClipboard();
-    }
-    else
-    {
-        showStatusMessage(L"No marked text to copy.", RGB(255, 0, 0));
     }
 }
 
@@ -2789,6 +2797,84 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
 
 
 #pragma region Scope
+
+void MultiReplace::handleCopyColumnsToClipboard()
+{
+    if (!columnDelimiterData.isValid()) {
+        showStatusMessage(L"Invalid column or delimiter data.", RGB(255, 0, 0));
+        return;
+    }
+
+    std::string combinedText;
+    int copiedFieldsCount = 0;
+    size_t lineCount = lineDelimiterPositions.size();
+
+    // Iterate through each line
+    for (size_t i = 0; i < lineCount; ++i) {
+        const auto& lineInfo = lineDelimiterPositions[i];
+
+        if (lineInfo.endPosition - lineInfo.startPosition == 0) {
+            combinedText += "\n";
+            continue;
+        }
+
+        bool isFirstCopiedColumn = true;
+        std::string lineText;
+
+        // Process each column
+        for (int column : columnDelimiterData.columns) {
+            LRESULT startPos, endPos;
+
+            if (column == 1) {
+                startPos = lineInfo.startPosition;
+                isFirstCopiedColumn = false;
+            }
+            else if (column - 2 < lineInfo.positions.size()) {
+                startPos = lineInfo.positions[column - 2].position;
+                // Drop first Delimiter if copied as first column
+                if (isFirstCopiedColumn) {
+                    startPos += columnDelimiterData.delimiterLength;
+                    isFirstCopiedColumn = false;
+                }
+            }
+            else {
+                break;
+            }
+
+            if (column - 1 < lineInfo.positions.size()) {
+                endPos = lineInfo.positions[column - 1].position;
+            }
+            else {
+                endPos = lineInfo.endPosition;
+            }
+
+            // Buffer to hold the text
+            std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1);
+
+            // Prepare TextRange structure for Scintilla
+            Sci_TextRange tr;
+            tr.chrg.cpMin = startPos;
+            tr.chrg.cpMax = endPos;
+            tr.lpstrText = buffer.data();
+
+            // Extract text for the column
+            SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+            lineText += std::string(buffer.data());
+
+            copiedFieldsCount++;
+        }
+
+        combinedText += lineText;
+        // Add a newline except after the last line
+        if (i < lineCount - 1) {
+            combinedText += "\n";
+        }
+    }
+
+    // Convert to Wide String and Copy to Clipboard
+    std::wstring wstr = stringToWString(combinedText);
+    copyTextToClipboard(wstr, copiedFieldsCount);
+}
 
 bool MultiReplace::parseColumnAndDelimiterData() {
 
@@ -4559,6 +4645,8 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_NUM_EDIT), columnModeSelected);
     EnableWindow(GetDlgItem(_hSelf, IDC_DELIMITER_EDIT), columnModeSelected);
     EnableWindow(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), columnModeSelected);
+    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_DROP_BUTTON), columnModeSelected);
+    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), columnModeSelected);
     EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), columnModeSelected);
 
     std::wstring columnNum = readStringFromIniFile(iniFilePath, L"Scope", L"ColumnNum", L"");
