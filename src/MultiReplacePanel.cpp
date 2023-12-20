@@ -1227,6 +1227,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
+        case IDC_COLUMN_DROP_BUTTON:
+        {
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            if (columnDelimiterData.isValid()) {
+                handleDeleteColumns();
+            }
+        }
+        break;
+
         case IDC_COLUMN_COPY_BUTTON:
         {
             handleDelimiterPositions(DelimiterOperation::LoadAll);
@@ -2874,6 +2883,63 @@ void MultiReplace::handleCopyColumnsToClipboard()
     // Convert to Wide String and Copy to Clipboard
     std::wstring wstr = stringToWString(combinedText);
     copyTextToClipboard(wstr, copiedFieldsCount);
+}
+
+void MultiReplace::handleDeleteColumns()
+{
+    if (!columnDelimiterData.isValid()) {
+        showStatusMessage(L"Invalid column or delimiter data.", RGB(255, 0, 0));
+        return;
+    }
+
+    int deletedFieldsCount = 0;
+    size_t lineCount = lineDelimiterPositions.size();
+
+    // Iterate through each line
+    for (size_t i = 0; i < lineCount; ++i) {
+        const auto& lineInfo = lineDelimiterPositions[i];
+
+        // Process each column in reverse to avoid disrupting positions
+        for (auto it = columnDelimiterData.columns.rbegin(); it != columnDelimiterData.columns.rend(); ++it) {
+            SIZE_T column = *it;
+            LRESULT startPos, endPos;
+
+            if (column == 1) {
+                startPos = lineInfo.startPosition;
+            }
+            else if (column - 2 < lineInfo.positions.size()) {
+                startPos = lineInfo.positions[column - 2].position;
+            }
+            else {
+                continue;
+            }
+
+            if (column - 1 < lineInfo.positions.size()) {
+                // Delete leading Delimiter if first column will be droped
+                if (column == 1) {
+                    endPos = lineInfo.positions[column - 1].position + columnDelimiterData.delimiterLength;
+                }
+                else {
+                    endPos = lineInfo.positions[column - 1].position;
+                }
+            }
+            else {
+                endPos = lineInfo.endPosition;
+            }
+
+            // Delete the text for the column
+            Sci_TextRange tr;
+            tr.chrg.cpMin = startPos;
+            tr.chrg.cpMax = endPos;
+            send(SCI_DELETERANGE, startPos, endPos - startPos, false);
+
+            deletedFieldsCount++;
+        }
+    }
+
+    // Show status message
+    std::wstring statusMessage = L"Deleted " + std::to_wstring(deletedFieldsCount) + L" fields.";
+    showStatusMessage(statusMessage.c_str(), RGB(0, 255, 0));
 }
 
 bool MultiReplace::parseColumnAndDelimiterData() {

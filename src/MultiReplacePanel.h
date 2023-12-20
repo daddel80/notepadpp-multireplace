@@ -364,6 +364,7 @@ private:
 
     //Scope
     void handleCopyColumnsToClipboard();
+    void handleDeleteColumns();
     bool parseColumnAndDelimiterData();
     void findAllDelimitersInDocument();
     void findDelimitersInLine(LRESULT line);
