@@ -124,8 +124,11 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_QUOTECHAR_STATIC] = { 586, 215, 40, 25, WC_STATIC, L"Quote:", SS_RIGHT, NULL };
     ctrlMap[IDC_QUOTECHAR_EDIT] = { 628, 215, 15, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Quote: ', \", or empty" };
 
-    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 480, 183, 50, 25, WC_BUTTON, L"Drop", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { 538, 183, 50, 25, WC_BUTTON, L"Copy", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    //ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 480, 183, 50, 25, WC_BUTTON, L"Drop", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    //ctrlMap[IDC_COLUMN_COPY_BUTTON] = { 538, 183, 50, 25, WC_BUTTON, L"Copy", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_SORT_BUTTON] = { 480, 183, 25, 25, WC_BUTTON, L"\u25B2\u25BC", BS_PUSHBUTTON | WS_TABSTOP,  L"Sort Columns" };
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 518, 183, 25, 25, WC_BUTTON, L"\u2716", BS_PUSHBUTTON | WS_TABSTOP, L"Drop Columns" };
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { 556, 183, 25, 25, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP,  L"Copy Columns to Clipboard" };
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 596, 183, 50, 25, WC_BUTTON, L"Show", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
 
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 260, 600, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
@@ -197,6 +200,7 @@ void MultiReplace::initializeCtrlMap()
 
     HFONT hLargerBolderFont1 = CreateFont(29, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("Courier New"));
     SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
 
     // CheckBox to Normal
@@ -2892,6 +2896,24 @@ void MultiReplace::handleDeleteColumns()
         return;
     }
 
+    // Get the number of columns to delete
+    size_t columnCount = columnDelimiterData.columns.size();
+    std::wstring confirmMessage = L"Are you sure you want to delete " + std::to_wstring(columnCount) + (columnCount == 1 ? L" column?" : L" columns?");
+
+    // Display confirmation message box
+    int msgboxID = MessageBox(
+        NULL,
+        confirmMessage.c_str(),
+        L"Confirm Delete",
+        MB_ICONQUESTION | MB_YESNO
+    );
+
+    if (msgboxID != IDYES) {
+        return; // User chose not to delete
+    }
+
+    ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
+
     int deletedFieldsCount = 0;
     size_t lineCount = lineDelimiterPositions.size();
 
@@ -2936,6 +2958,7 @@ void MultiReplace::handleDeleteColumns()
             deletedFieldsCount++;
         }
     }
+    ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 
     // Show status message
     std::wstring statusMessage = L"Deleted " + std::to_wstring(deletedFieldsCount) + L" fields.";

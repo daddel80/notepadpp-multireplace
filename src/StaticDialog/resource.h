@@ -73,15 +73,16 @@
 #define IDC_ALL_TEXT_RADIO              5452
 #define IDC_SELECTION_RADIO             5453
 #define IDC_COLUMN_MODE_RADIO           5454
-#define IDC_COLUMN_DROP_BUTTON          5455
-#define IDC_COLUMN_COPY_BUTTON          5456
-#define IDC_COLUMN_HIGHLIGHT_BUTTON     5457
-#define IDC_COLUMN_NUM_EDIT             5458
-#define IDC_DELIMITER_EDIT              5459
-#define IDC_QUOTECHAR_EDIT              5460
-#define IDC_DELIMITER_STATIC            5461
-#define IDC_COLUMN_NUM_STATIC           5462
-#define IDC_QUOTECHAR_STATIC            5463
+#define IDC_COLUMN_SORT_BUTTON          5455
+#define IDC_COLUMN_DROP_BUTTON          5456
+#define IDC_COLUMN_COPY_BUTTON          5457
+#define IDC_COLUMN_HIGHLIGHT_BUTTON     5458
+#define IDC_COLUMN_NUM_EDIT             5459
+#define IDC_DELIMITER_EDIT              5460
+#define IDC_QUOTECHAR_EDIT              5461
+#define IDC_DELIMITER_STATIC            5462
+#define IDC_COLUMN_NUM_STATIC           5463
+#define IDC_QUOTECHAR_STATIC            5464
 
 #define IDC_STATIC_FRAME                5501
 #define IDC_REPLACE_LIST                5503
