@@ -2850,7 +2850,7 @@ void MultiReplace::handleSortColumns(SortDirection sortDirection)
         rowData.columns.resize(columnDelimiterData.inputColumns.size());
 
         size_t columnIndex = 0;
-        for (int columnNumber : columnDelimiterData.inputColumns) {
+        for (SIZE_T columnNumber : columnDelimiterData.inputColumns) {
             LRESULT startPos, endPos;
 
             // Calculate start and end positions for each column
