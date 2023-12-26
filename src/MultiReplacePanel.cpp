@@ -1250,9 +1250,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_DROP_BUTTON:
         {
-            handleDelimiterPositions(DelimiterOperation::LoadAll);
-            if (columnDelimiterData.isValid()) {
-                handleDeleteColumns();
+            if (confirmColumnDeletion()) {
+                handleDelimiterPositions(DelimiterOperation::LoadAll);
+                if (columnDelimiterData.isValid()) {
+                    handleDeleteColumns();
+                }
             }
         }
         break;
@@ -2960,6 +2962,27 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
     }
 }
 
+bool MultiReplace::confirmColumnDeletion() {
+    // Attempt to parse columns and delimiters
+    if (!parseColumnAndDelimiterData()) {
+        return false;  // Parsing failed, exit with false indicating no confirmation
+    }
+
+    // Now columnDelimiterData should be populated with the parsed column data
+    size_t columnCount = columnDelimiterData.columns.size();
+    std::wstring confirmMessage = L"Are you sure you want to delete " +
+        std::to_wstring(columnCount) +
+        (columnCount == 1 ? L" column?" : L" columns?");
+
+    int msgboxID = MessageBox(NULL,
+        confirmMessage.c_str(),
+        L"Confirm Delete",
+        MB_ICONQUESTION | MB_YESNO);
+
+    return (msgboxID == IDYES);  // Return true if user confirmed, else false
+}
+
+
 void MultiReplace::handleCopyColumnsToClipboard()
 {
     if (!columnDelimiterData.isValid()) {
@@ -2985,45 +3008,47 @@ void MultiReplace::handleCopyColumnsToClipboard()
 
         // Process each column
         for (SIZE_T column : columnDelimiterData.columns) {
-            LRESULT startPos, endPos;
+            if (column <= lineInfo.positions.size() + 1) {
+                LRESULT startPos, endPos;
 
-            if (column == 1) {
-                startPos = lineInfo.startPosition;
-                isFirstCopiedColumn = false;
-            }
-            else if (column - 2 < lineInfo.positions.size()) {
-                startPos = lineInfo.positions[column - 2].position;
-                // Drop first Delimiter if copied as first column
-                if (isFirstCopiedColumn) {
-                    startPos += columnDelimiterData.delimiterLength;
+                if (column == 1) {
+                    startPos = lineInfo.startPosition;
                     isFirstCopiedColumn = false;
                 }
+                else if (column - 2 < lineInfo.positions.size()) {
+                    startPos = lineInfo.positions[column - 2].position;
+                    // Drop first Delimiter if copied as first column
+                    if (isFirstCopiedColumn) {
+                        startPos += columnDelimiterData.delimiterLength;
+                        isFirstCopiedColumn = false;
+                    }
+                }
+                else {
+                    break;
+                }
+
+                if (column - 1 < lineInfo.positions.size()) {
+                    endPos = lineInfo.positions[column - 1].position;
+                }
+                else {
+                    endPos = lineInfo.endPosition;
+                }
+
+                // Buffer to hold the text
+                std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1);
+
+                // Prepare TextRange structure for Scintilla
+                Sci_TextRange tr;
+                tr.chrg.cpMin = startPos;
+                tr.chrg.cpMax = endPos;
+                tr.lpstrText = buffer.data();
+
+                // Extract text for the column
+                SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+                lineText += std::string(buffer.data());
+
+                copiedFieldsCount++;
             }
-            else {
-                break;
-            }
-
-            if (column - 1 < lineInfo.positions.size()) {
-                endPos = lineInfo.positions[column - 1].position;
-            }
-            else {
-                endPos = lineInfo.endPosition;
-            }
-
-            // Buffer to hold the text
-            std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1);
-
-            // Prepare TextRange structure for Scintilla
-            Sci_TextRange tr;
-            tr.chrg.cpMin = startPos;
-            tr.chrg.cpMax = endPos;
-            tr.lpstrText = buffer.data();
-
-            // Extract text for the column
-            SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
-            lineText += std::string(buffer.data());
-
-            copiedFieldsCount++;
         }
 
         combinedText += lineText;
@@ -3045,67 +3070,53 @@ void MultiReplace::handleDeleteColumns()
         return;
     }
 
-    // Get the number of columns to delete
-    size_t columnCount = columnDelimiterData.columns.size();
-    std::wstring confirmMessage = L"Are you sure you want to delete " + std::to_wstring(columnCount) + (columnCount == 1 ? L" column?" : L" columns?");
-
-    // Display confirmation message box
-    int msgboxID = MessageBox(
-        NULL,
-        confirmMessage.c_str(),
-        L"Confirm Delete",
-        MB_ICONQUESTION | MB_YESNO
-    );
-
-    if (msgboxID != IDYES) {
-        return; // User chose not to delete
-    }
-
     ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
 
     int deletedFieldsCount = 0;
-    size_t lineCount = lineDelimiterPositions.size();
+    SIZE_T lineCount = lineDelimiterPositions.size();
 
-    // Iterate through each line
-    for (size_t i = 0; i < lineCount; ++i) {
+    // Loop from the last element down to the first
+    for (SIZE_T i = lineCount; i-- > 0; ) {
         const auto& lineInfo = lineDelimiterPositions[i];
 
-        // Process each column in reverse to avoid disrupting positions
+        // Process each column in reverse
         for (auto it = columnDelimiterData.columns.rbegin(); it != columnDelimiterData.columns.rend(); ++it) {
             SIZE_T column = *it;
-            LRESULT startPos, endPos;
 
-            if (column == 1) {
-                startPos = lineInfo.startPosition;
-            }
-            else if (column - 2 < lineInfo.positions.size()) {
-                startPos = lineInfo.positions[column - 2].position;
-            }
-            else {
-                continue;
-            }
+            // Only process columns within the valid range
+            if (column <= lineInfo.positions.size() + 1) {
 
-            if (column - 1 < lineInfo.positions.size()) {
-                // Delete leading Delimiter if first column will be droped
+                LRESULT startPos, endPos;
+
                 if (column == 1) {
-                    endPos = lineInfo.positions[column - 1].position + columnDelimiterData.delimiterLength;
+                    startPos = lineInfo.startPosition;
+                }
+                else if (column - 2 < lineInfo.positions.size()) {
+                    startPos = lineInfo.positions[column - 2].position;
                 }
                 else {
-                    endPos = lineInfo.positions[column - 1].position;
+                    continue;
                 }
-            }
-            else {
-                endPos = lineInfo.endPosition;
-            }
 
-            // Delete the text for the column
-            Sci_TextRange tr;
-            tr.chrg.cpMin = startPos;
-            tr.chrg.cpMax = endPos;
-            send(SCI_DELETERANGE, startPos, endPos - startPos, false);
+                if (column - 1 < lineInfo.positions.size()) {
+                    // Delete leading Delimiter if first column will be droped
+                    if (column == 1) {
+                        endPos = lineInfo.positions[column - 1].position + columnDelimiterData.delimiterLength;
+                    }
+                    else {
+                        endPos = lineInfo.positions[column - 1].position;
+                    }
+                }
+                else {
+                    endPos = lineInfo.endPosition;
+                }
 
-            deletedFieldsCount++;
+                send(SCI_DELETERANGE, startPos, endPos - startPos, false);
+
+                deletedFieldsCount++;
+            }
         }
+
     }
     ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 
@@ -3227,7 +3238,9 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             }
 
             for (int i = startRange; i <= endRange; ++i) {
-                columns.insert(i);
+                if (columns.insert(i).second) {
+                    inputColumns.push_back(i);
+                }
             }
         }
         catch (const std::exception&) {

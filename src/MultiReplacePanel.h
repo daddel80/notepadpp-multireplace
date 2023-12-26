@@ -374,6 +374,7 @@ private:
     //Scope
     void handleSortColumns(SortDirection sortDirection);
     void reorderLinesInScintilla(const std::vector<size_t>& sortedIndex);
+    bool confirmColumnDeletion();
     void handleCopyColumnsToClipboard();
     void handleDeleteColumns();
     bool parseColumnAndDelimiterData();
