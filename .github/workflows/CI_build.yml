@@ -26,8 +26,11 @@ jobs:
         ZIPCMD: 7z a -tzip
 
     - name: Zip additional files
-      run: 7z a vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}\MultiReplace-v${{ github.ref_name }}-${{ matrix.build_platform }}.zip -r vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}\help_use_variables.html -spf2
+      run: |
+        cd vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}
+        7z a ..\MultiReplace-v${{ github.ref_name }}-${{ matrix.build_platform }}.zip help_use_variables.html
 
+  
     - name: List files in output directory
       run: dir vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}
 
