@@ -25,11 +25,11 @@ jobs:
       env:
         ZIPCMD: 7z a -tzip
 
+    - name: Zip additional files
+      run: 7z a vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}\MultiReplace-v${{ github.ref_name }}-${{ matrix.build_platform }}.zip vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}\help_use_variables.html
+
     - name: List files in output directory
       run: dir vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}
-
-    - name: List files in actual zip directory
-      run: dir vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}\MultiReplace
 
     - name: Archive
       uses: actions/upload-artifact@v4
