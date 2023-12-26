@@ -312,9 +312,9 @@ copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
       <ImportLibrary>$(TargetName).lib</ImportLibrary>
     </Link>
     <PostBuildEvent>
-      <Command>copy ..\license.txt $(OutDir)license.txt
-copy ..\README.md $(OutDir)README.md
-copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
+      <Command>copy ..\license.txt $(OutDir)license.txt &amp; echo copied license.txt
+copy ..\README.md $(OutDir)README.md &amp; echo copied README.md
+copy ..\help_use_variables.html $(OutDir)help_use_variables.html &amp; echo copied help_use_variables.html</Command>
     </PostBuildEvent>
     <PreBuildEvent>
       <Command>
@@ -342,9 +342,9 @@ copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
       <ImportLibrary>$(TargetName).lib</ImportLibrary>
     </Link>
     <PostBuildEvent>
-      <Command>copy ..\license.txt $(OutDir)license.txt
-copy ..\README.md $(OutDir)README.md
-copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
+      <Command>copy ..\license.txt $(OutDir)license.txt &amp; echo copied license.txt
+copy ..\README.md $(OutDir)README.md &amp; echo copied README.md
+copy ..\help_use_variables.html $(OutDir)help_use_variables.html &amp; echo copied help_use_variables.html</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -368,9 +368,9 @@ copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
       <ImportLibrary>$(TargetName).lib</ImportLibrary>
     </Link>
     <PostBuildEvent>
-      <Command>copy ..\license.txt $(OutDir)license.txt
-copy ..\README.md $(OutDir)README.md
-copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
+      <Command>copy ..\license.txt $(OutDir)license.txt &amp; echo copied license.txt
+copy ..\README.md $(OutDir)README.md &amp; echo copied README.md
+copy ..\help_use_variables.html $(OutDir)help_use_variables.html &amp; echo copied help_use_variables.html</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
@@ -394,9 +394,9 @@ copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
       <ImportLibrary>$(TargetName).lib</ImportLibrary>
     </Link>
     <PostBuildEvent>
-      <Command>copy ..\license.txt $(OutDir)license.txt
-copy ..\README.md $(OutDir)README.md
-copy ..\help_use_variables.html $(OutDir)help_use_variables.html</Command>
+      <Command>copy ..\license.txt $(OutDir)license.txt &amp; echo copied license.txt
+copy ..\README.md $(OutDir)README.md &amp; echo copied README.md
+copy ..\help_use_variables.html $(OutDir)help_use_variables.html &amp; echo copied help_use_variables.html</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
