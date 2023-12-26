@@ -84,7 +84,7 @@ Implements if-then-else logic, or if-then if falseVal is omitted. Evaluates the 
 | `cond(LINE<3, "Modify this line")`                         | (Original text remains unchanged)     |
 | `cond(LINE<10, cond(LINE<5, cond(LINE>2, "3-4", "0-2"), "5-9"), "10+")` | "5-9" (Nested condition) |
 
-#### **init({Variable1=Value1, Variable2=Value2, ...})  (available in MultiReplace Version 2.209)**
+#### **init({Variable1=Value1, Variable2=Value2, ...})**
 Initializes custom variables for use in various commands, extending beyond standard variables like CNT, MATCH, CAP1. These variables can carry the status of previous find-and-replace operations to subsequent ones.
 
 Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. So they can transfer values from one list entry to the following ones.  They reset at the start of each new document in 'Replace All in All Open Documents'.
