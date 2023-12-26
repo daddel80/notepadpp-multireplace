@@ -4,7 +4,6 @@ on: [push, pull_request]
 
 jobs:
   build:
-
     runs-on: windows-latest
     strategy:
       max-parallel: 6
@@ -21,25 +20,30 @@ jobs:
 
     - name: MSBuild of plugin dll
       working-directory: .\vs.proj
-      run: msbuild MultiReplace.vcxproj /m /p:configuration="${{ matrix.build_configuration }}" /p:platform="${{ matrix.build_platform }}" /p:PlatformToolset="v143" /p:CppStandard=17 /target:zip
+      run: |
+        msbuild MultiReplace.vcxproj /m /p:configuration="${{ matrix.build_configuration }}" /p:platform="${{ matrix.build_platform }}" /p:PlatformToolset="v143" /p:CppStandard=17 /target:zip
       env:
-          ZIPCMD: 7z a -tzip
+        ZIPCMD: 7z a -tzip
+
+    - name: List files in output directory
+      run: dir vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}
 
     - name: Archive
       uses: actions/upload-artifact@v4
       with:
           name: MultiReplace-${{ matrix.build_configuration }}-${{ matrix.build_platform }}
           path: vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}\MultiReplace.dll
+
     - name: Debug Output
       run: echo "${{ github.event.commits[0].message }}"
 
-    - name: Release
+    - name: Create Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/') && matrix.build_configuration == 'Release'
       with:
           body: ${{ github.event.commits[0].message }}
           files: vs.proj/${{ matrix.build_configuration }}/${{ matrix.build_platform }}/MultiReplace-v${{ github.ref_name }}-${{ matrix.build_platform }}.zip
 
-    - name: SHA256
+    - name: Compute SHA256
       if: startsWith(github.ref, 'refs/tags/') && matrix.build_configuration == 'Release'
       run: sha256sum.exe vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}\MultiReplace-v${{ github.ref_name }}-${{ matrix.build_platform }}.zip
