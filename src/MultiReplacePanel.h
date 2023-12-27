@@ -371,12 +371,14 @@ private:
     void handleCopyMarkedTextToClipboardButton();
     void copyTextToClipboard(const std::wstring& text, int textCount);
 
-    //Scope
+    //CSV
     void handleSortColumns(SortDirection sortDirection);
     void reorderLinesInScintilla(const std::vector<size_t>& sortedIndex);
-    bool confirmColumnDeletion();
     void handleCopyColumnsToClipboard();
+    bool confirmColumnDeletion();
     void handleDeleteColumns();
+
+    //Scope
     bool parseColumnAndDelimiterData();
     void findAllDelimitersInDocument();
     void findDelimitersInLine(LRESULT line);

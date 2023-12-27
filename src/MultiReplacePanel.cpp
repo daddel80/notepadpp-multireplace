@@ -2828,7 +2828,7 @@ void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
 #pragma endregion
 
 
-#pragma region Scope
+#pragma region CSV
 
 void MultiReplace::handleSortColumns(SortDirection sortDirection)
 {
@@ -2912,6 +2912,19 @@ void MultiReplace::handleSortColumns(SortDirection sortDirection)
     SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 }
 
+std::string determineLineBreakStyle(LRESULT eolMode) {
+    switch (eolMode) {
+    case SC_EOL_CRLF:
+        return "\r\n";
+    case SC_EOL_CR:
+        return "\r";
+    case SC_EOL_LF:
+        return "\n";
+    default:
+        return "\n";  // Defaulting to LF
+    }
+}
+
 void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedIndex)
 {
     // Step 1: Extract and save the header line
@@ -2925,9 +2938,9 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
     headerTr.lpstrText = headerBuffer.data();
     SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&headerTr));
     headerLine = std::string(headerBuffer.data());
-    if (!headerLine.empty() && headerLine.back() != '\n') {
-        headerLine += "\n"; // Ensure it ends with a newline
-    }
+    LRESULT eolMode = SendMessage(_hScintilla, SCI_GETEOLMODE, 0, 0);
+    std::string lineBreak = determineLineBreakStyle(eolMode);
+    headerLine += lineBreak;
 
     // Step 2: Extract the text of each line based on the sorted index
     std::vector<std::string> lines;
@@ -2946,7 +2959,7 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
         send(SCI_GETTEXTRANGE, 0, reinterpret_cast<sptr_t>(&tr), true);
         lines.push_back(std::string(buffer.data()));
         if (i < sortedIndex.size() - 1) {
-            lines.back().append("\n");
+            lines.back().append(lineBreak);
         }
     }
 
@@ -2982,6 +2995,67 @@ bool MultiReplace::confirmColumnDeletion() {
     return (msgboxID == IDYES);  // Return true if user confirmed, else false
 }
 
+void MultiReplace::handleDeleteColumns()
+{
+    if (!columnDelimiterData.isValid()) {
+        showStatusMessage(L"Invalid column or delimiter data.", RGB(255, 0, 0));
+        return;
+    }
+
+    ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
+
+    int deletedFieldsCount = 0;
+    SIZE_T lineCount = lineDelimiterPositions.size();
+
+    // Loop from the last element down to the first
+    for (SIZE_T i = lineCount; i-- > 0; ) {
+        const auto& lineInfo = lineDelimiterPositions[i];
+
+        // Process each column in reverse
+        for (auto it = columnDelimiterData.columns.rbegin(); it != columnDelimiterData.columns.rend(); ++it) {
+            SIZE_T column = *it;
+
+            // Only process columns within the valid range
+            if (column <= lineInfo.positions.size() + 1) {
+
+                LRESULT startPos, endPos;
+
+                if (column == 1) {
+                    startPos = lineInfo.startPosition;
+                }
+                else if (column - 2 < lineInfo.positions.size()) {
+                    startPos = lineInfo.positions[column - 2].position;
+                }
+                else {
+                    continue;
+                }
+
+                if (column - 1 < lineInfo.positions.size()) {
+                    // Delete leading Delimiter if first column will be droped
+                    if (column == 1) {
+                        endPos = lineInfo.positions[column - 1].position + columnDelimiterData.delimiterLength;
+                    }
+                    else {
+                        endPos = lineInfo.positions[column - 1].position;
+                    }
+                }
+                else {
+                    endPos = lineInfo.endPosition;
+                }
+
+                send(SCI_DELETERANGE, startPos, endPos - startPos, false);
+
+                deletedFieldsCount++;
+            }
+        }
+
+    }
+    ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
+
+    // Show status message
+    std::wstring statusMessage = L"Deleted " + std::to_wstring(deletedFieldsCount) + L" fields.";
+    showStatusMessage(statusMessage.c_str(), RGB(0, 255, 0));
+}
 
 void MultiReplace::handleCopyColumnsToClipboard()
 {
@@ -3063,67 +3137,10 @@ void MultiReplace::handleCopyColumnsToClipboard()
     copyTextToClipboard(wstr, copiedFieldsCount);
 }
 
-void MultiReplace::handleDeleteColumns()
-{
-    if (!columnDelimiterData.isValid()) {
-        showStatusMessage(L"Invalid column or delimiter data.", RGB(255, 0, 0));
-        return;
-    }
+#pragma endregion
 
-    ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
 
-    int deletedFieldsCount = 0;
-    SIZE_T lineCount = lineDelimiterPositions.size();
-
-    // Loop from the last element down to the first
-    for (SIZE_T i = lineCount; i-- > 0; ) {
-        const auto& lineInfo = lineDelimiterPositions[i];
-
-        // Process each column in reverse
-        for (auto it = columnDelimiterData.columns.rbegin(); it != columnDelimiterData.columns.rend(); ++it) {
-            SIZE_T column = *it;
-
-            // Only process columns within the valid range
-            if (column <= lineInfo.positions.size() + 1) {
-
-                LRESULT startPos, endPos;
-
-                if (column == 1) {
-                    startPos = lineInfo.startPosition;
-                }
-                else if (column - 2 < lineInfo.positions.size()) {
-                    startPos = lineInfo.positions[column - 2].position;
-                }
-                else {
-                    continue;
-                }
-
-                if (column - 1 < lineInfo.positions.size()) {
-                    // Delete leading Delimiter if first column will be droped
-                    if (column == 1) {
-                        endPos = lineInfo.positions[column - 1].position + columnDelimiterData.delimiterLength;
-                    }
-                    else {
-                        endPos = lineInfo.positions[column - 1].position;
-                    }
-                }
-                else {
-                    endPos = lineInfo.endPosition;
-                }
-
-                send(SCI_DELETERANGE, startPos, endPos - startPos, false);
-
-                deletedFieldsCount++;
-            }
-        }
-
-    }
-    ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
-
-    // Show status message
-    std::wstring statusMessage = L"Deleted " + std::to_wstring(deletedFieldsCount) + L" fields.";
-    showStatusMessage(statusMessage.c_str(), RGB(0, 255, 0));
-}
+#pragma region Scope
 
 bool MultiReplace::parseColumnAndDelimiterData() {
 
