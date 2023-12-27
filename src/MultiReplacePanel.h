@@ -297,6 +297,7 @@ private:
     bool isColumnHighlighted = false;
     std::map<int, bool> stateSnapshot; // stores the state of the Elements
     LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
+    SIZE_T CSVheaderLinesCount = 2; // Number of header lines not included in CSV sorting
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage

@@ -2846,7 +2846,7 @@ void MultiReplace::handleSortColumns(SortDirection sortDirection)
     index.reserve(lineCount);
 
     // Iterate through each line to extract content of specified columns
-    for (size_t i = 1; i < lineCount; ++i) {
+    for (SIZE_T i = CSVheaderLinesCount; i < lineCount; ++i) {
         const auto& lineInfo = lineDelimiterPositions[i];
         CombinedColumns rowData;
         rowData.columns.resize(columnDelimiterData.inputColumns.size());
@@ -2893,9 +2893,11 @@ void MultiReplace::handleSortColumns(SortDirection sortDirection)
 
     // Sorting logic
     std::sort(index.begin(), index.end(), [&](const size_t& a, const size_t& b) {
-        size_t adjustedA = a - 1;
-        size_t adjustedB = b - 1;
+        // Adjusted indexing for actual data after headers
+        size_t adjustedA = a - CSVheaderLinesCount;
+        size_t adjustedB = b - CSVheaderLinesCount;
 
+        // Compare columns for sorting
         for (size_t i = 0; i < columnDelimiterData.inputColumns.size(); ++i) {
             if (combinedData[adjustedA].columns[i] != combinedData[adjustedB].columns[i]) {
                 return sortDirection == SortDirection::Ascending ?
@@ -2903,7 +2905,7 @@ void MultiReplace::handleSortColumns(SortDirection sortDirection)
                     combinedData[adjustedA].columns[i] > combinedData[adjustedB].columns[i];
             }
         }
-        return false;
+        return false; // In case of a tie, maintain original order
         });
 
     // Reordering lines in Scintilla based on the sorted index
@@ -2925,51 +2927,54 @@ std::string determineLineBreakStyle(LRESULT eolMode) {
     }
 }
 
-void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedIndex)
-{
-    // Step 1: Extract and save the header line
-    std::string headerLine;
-    LRESULT headerStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, 0, 0);
-    LRESULT headerEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, 0, 0);
-    std::vector<char> headerBuffer(static_cast<size_t>(headerEnd - headerStart) + 1);
-    Sci_TextRange headerTr;
-    headerTr.chrg.cpMin = headerStart;
-    headerTr.chrg.cpMax = headerEnd;
-    headerTr.lpstrText = headerBuffer.data();
-    SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&headerTr));
-    headerLine = std::string(headerBuffer.data());
+void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedIndex) {
+    std::string combinedHeaderLines;
     LRESULT eolMode = SendMessage(_hScintilla, SCI_GETEOLMODE, 0, 0);
     std::string lineBreak = determineLineBreakStyle(eolMode);
-    headerLine += lineBreak;
 
-    // Step 2: Extract the text of each line based on the sorted index
-    std::vector<std::string> lines;
-    lines.reserve(sortedIndex.size());
-    for (size_t i = 0; i < sortedIndex.size(); ++i) {
-        size_t idx = sortedIndex[i]; // The actual line number in the document
-        LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, idx, 0);
-        LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, idx, 0);
+    // Adjust the number of header lines if it exceeds the total number of lines
+    SIZE_T actualHeaderLinesCount = CSVheaderLinesCount;
+    SIZE_T totalLineCount = SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
+    if (CSVheaderLinesCount > totalLineCount) actualHeaderLinesCount = totalLineCount;
 
-        std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
-        Sci_TextRange tr;
-        tr.chrg.cpMin = lineStart;
-        tr.chrg.cpMax = lineEnd;
-        tr.lpstrText = buffer.data();
-
-        send(SCI_GETTEXTRANGE, 0, reinterpret_cast<sptr_t>(&tr), true);
-        lines.push_back(std::string(buffer.data()));
-        if (i < sortedIndex.size() - 1) {
-            lines.back().append(lineBreak);
+    // Extract and save the header lines
+    for (SIZE_T i = 0; i < actualHeaderLinesCount; ++i) {
+        LRESULT start = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, i, 0);
+        LRESULT end = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, i, 0);
+        std::vector<char> buffer(static_cast<size_t>(end - start) + 1);
+        Sci_TextRange tr{ start, end, buffer.data() };
+        SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+        combinedHeaderLines += std::string(buffer.data());
+        // Add line break to each header, except the last if no sorted lines follow
+        if (i < actualHeaderLinesCount - 1 || (!sortedIndex.empty() && i == actualHeaderLinesCount - 1)) {
+            combinedHeaderLines += lineBreak;
         }
     }
 
-    // Step 3: Clear all content from Scintilla
+    // Extract the text of each line based on the sorted index
+    std::vector<std::string> lines;
+    lines.reserve(sortedIndex.size());
+    for (size_t i = 0; i < sortedIndex.size(); ++i) {
+        size_t idx = sortedIndex[i];
+        LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, idx, 0);
+        LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, idx, 0);
+        std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
+        Sci_TextRange tr{ lineStart, lineEnd, buffer.data() };
+        SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+        lines.push_back(std::string(buffer.data()));
+        // Add line break except after the last sorted line
+        if (i < sortedIndex.size() - 1 || (CSVheaderLinesCount == 0 && !lines.empty())) {
+            lines.back() += lineBreak;
+        }
+    }
+
+    // Clear all content from Scintilla
     SendMessage(_hScintilla, SCI_CLEARALL, 0, 0);
 
-    // Step 4: Re-insert the header line first
-    SendMessage(_hScintilla, SCI_APPENDTEXT, headerLine.length(), reinterpret_cast<LPARAM>(headerLine.c_str()));
+    // Re-insert the header lines first
+    SendMessage(_hScintilla, SCI_APPENDTEXT, combinedHeaderLines.length(), reinterpret_cast<LPARAM>(combinedHeaderLines.c_str()));
 
-    // Step 5: Re-insert the sorted lines
+    // Re-insert the sorted lines
     for (const auto& line : lines) {
         SendMessage(_hScintilla, SCI_APPENDTEXT, line.length(), reinterpret_cast<LPARAM>(line.c_str()));
     }
