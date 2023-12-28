@@ -2914,23 +2914,9 @@ void MultiReplace::handleSortColumns(SortDirection sortDirection)
     SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 }
 
-std::string determineLineBreakStyle(LRESULT eolMode) {
-    switch (eolMode) {
-    case SC_EOL_CRLF:
-        return "\r\n";
-    case SC_EOL_CR:
-        return "\r";
-    case SC_EOL_LF:
-        return "\n";
-    default:
-        return "\n";  // Defaulting to LF
-    }
-}
-
 void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedIndex) {
     std::string combinedHeaderLines;
-    LRESULT eolMode = SendMessage(_hScintilla, SCI_GETEOLMODE, 0, 0);
-    std::string lineBreak = determineLineBreakStyle(eolMode);
+    std::string lineBreak = getEOLStyle();
 
     // Adjust the number of header lines if it exceeds the total number of lines
     SIZE_T actualHeaderLinesCount = CSVheaderLinesCount;
@@ -3077,11 +3063,6 @@ void MultiReplace::handleCopyColumnsToClipboard()
     for (size_t i = 0; i < lineCount; ++i) {
         const auto& lineInfo = lineDelimiterPositions[i];
 
-        if (lineInfo.endPosition - lineInfo.startPosition == 0) {
-            combinedText += "\n";
-            continue;
-        }
-
         bool isFirstCopiedColumn = true;
         std::string lineText;
 
@@ -3137,7 +3118,7 @@ void MultiReplace::handleCopyColumnsToClipboard()
         }
     }
 
-    // Convert to Wide String and Copy to Clipboard
+    // Convert to Wide String and Copy to Clipboard (Ensure this line only occurs once and wstr is not redefined)
     std::wstring wstr = stringToWString(combinedText);
     copyTextToClipboard(wstr, copiedFieldsCount);
 }
@@ -3728,7 +3709,7 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         return;
     }
     //int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
-    LRESULT updatedEolLength = updateEOLLength();
+    LRESULT updatedEolLength = getEOLLength();
 
     // If EOL length has changed or if there's been a change in the active window within Notepad++, reset all delimiter settings
     if (updatedEolLength != eolLength || documentSwitched) {
@@ -4135,24 +4116,31 @@ std::wstring MultiReplace::getSelectedText() {
     return wstr;
 }
 
-LRESULT MultiReplace::updateEOLLength() {
+LRESULT MultiReplace::getEOLLength() {
     LRESULT eolMode = ::SendMessage(getScintillaHandle(), SCI_GETEOLMODE, 0, 0);
-    LRESULT currentEolLength;
-
     switch (eolMode) {
-    case SC_EOL_CRLF: // CRLF
-        currentEolLength = 2;
-        break;
-    case SC_EOL_CR: // CR
-    case SC_EOL_LF: // LF
-        currentEolLength = 1;
-        break;
+    case SC_EOL_CRLF:
+        return 2;
+    case SC_EOL_CR:
+    case SC_EOL_LF:
+        return 1;
     default:
-        currentEolLength = 2; // Default to CRLF if unknown
-        break;
+        return 2; // Default to CRLF
     }
+}
 
-    return currentEolLength;
+std::string MultiReplace::getEOLStyle() {
+    LRESULT eolMode = SendMessage(_hScintilla, SCI_GETEOLMODE, 0, 0);
+    switch (eolMode) {
+    case SC_EOL_CRLF:
+        return "\r\n";
+    case SC_EOL_CR:
+        return "\r";
+    case SC_EOL_LF:
+        return "\n";
+    default:
+        return "\n";  // Defaulting to LF
+    }
 }
 
 void MultiReplace::setElementsState(const std::vector<int>& elements, bool enable) {

@@ -297,7 +297,7 @@ private:
     bool isColumnHighlighted = false;
     std::map<int, bool> stateSnapshot; // stores the state of the Elements
     LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
-    SIZE_T CSVheaderLinesCount = 2; // Number of header lines not included in CSV sorting
+    SIZE_T CSVheaderLinesCount = 1; // Number of header lines not included in CSV sorting
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
@@ -406,7 +406,8 @@ private:
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
-    LRESULT updateEOLLength();
+    LRESULT getEOLLength();
+    std::string getEOLStyle(); 
     void setElementsState(const std::vector<int>& elements, bool enable);
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
     bool MultiReplace::normalizeAndValidateNumber(std::string& str);
