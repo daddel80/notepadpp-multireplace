@@ -124,9 +124,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_QUOTECHAR_STATIC] = { 586, 215, 40, 25, WC_STATIC, L"Quote:", SS_RIGHT, NULL };
     ctrlMap[IDC_QUOTECHAR_EDIT] = { 628, 215, 15, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Quote: ', \", or empty" };
 
-    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { 476, 183, 17, 25, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, L"Sort Descending" };
-    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { 494, 183, 17, 25, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP, L"Sort Ascending" };
-    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 522, 183, 25, 25, WC_BUTTON, L"\u2716", BS_PUSHBUTTON | WS_TABSTOP, L"Drop Columns" };
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { 478, 183, 17, 25, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, L"Sort Descending" };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { 496, 183, 17, 25, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP, L"Sort Ascending" };
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 524, 183, 25, 25, WC_BUTTON, L"\u2716", BS_PUSHBUTTON | WS_TABSTOP, L"Drop Columns" };
     ctrlMap[IDC_COLUMN_COPY_BUTTON] = { 560, 183, 25, 25, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP,  L"Copy Columns to Clipboard" };
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 596, 183, 50, 25, WC_BUTTON, L"Show", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
 
@@ -2932,7 +2932,7 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
         SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
         combinedHeaderLines += std::string(buffer.data());
         // Add line break to each header, except the last if no sorted lines follow
-        if (i < actualHeaderLinesCount - 1 || (!sortedIndex.empty() && i == actualHeaderLinesCount - 1)) {
+        if (i < actualHeaderLinesCount - 1 || (i == actualHeaderLinesCount - 1 && !sortedIndex.empty())) {
             combinedHeaderLines += lineBreak;
         }
     }
@@ -2949,7 +2949,7 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
         SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
         lines.push_back(std::string(buffer.data()));
         // Add line break except after the last sorted line
-        if (i < sortedIndex.size() - 1 || (CSVheaderLinesCount == 0 && !lines.empty())) {
+        if (i < sortedIndex.size() - 1) {
             lines.back() += lineBreak;
         }
     }
@@ -4773,6 +4773,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     std::wstring columnNum = L"\"" + getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT) + L"\"";
     std::wstring delimiter = L"\"" + getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT) + L"\"";
     std::wstring quoteChar = L"\"" + getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT) + L"\"";
+    std::wstring headerLines = std::to_wstring(CSVheaderLinesCount);
 
     outFile << wstringToString(L"[Scope]\n");
     outFile << wstringToString(L"Selection=" + std::to_wstring(selection) + L"\n");
@@ -4780,6 +4781,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"ColumnNum=" + columnNum + L"\n");
     outFile << wstringToString(L"Delimiter=" + delimiter + L"\n");
     outFile << wstringToString(L"QuoteChar=" + quoteChar + L"\n");
+    outFile << wstringToString(L"HeaderLines=" + headerLines + L"\n");
 
     // Convert and Store "Find what" history
     LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
@@ -4929,6 +4931,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     std::wstring quoteChar = readStringFromIniFile(iniFilePath, L"Scope", L"QuoteChar", L"");
     setTextInDialogItem(_hSelf, IDC_QUOTECHAR_EDIT, quoteChar);
 
+    CSVheaderLinesCount = readIntFromIniFile(iniFilePath, L"Scope", L"HeaderLines", 1);
 }
 
 void MultiReplace::loadSettings() {
