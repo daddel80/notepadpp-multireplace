@@ -124,7 +124,11 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_QUOTECHAR_STATIC] = { 586, 215, 40, 25, WC_STATIC, L"Quote:", SS_RIGHT, NULL };
     ctrlMap[IDC_QUOTECHAR_EDIT] = { 628, 215, 15, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Quote: ', \", or empty" };
 
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 580, 183, 66, 25, WC_BUTTON, L"Show", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { 478, 183, 17, 25, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, L"Sort Descending" };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { 496, 183, 17, 25, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP, L"Sort Ascending" };
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 524, 183, 25, 25, WC_BUTTON, L"\u2716", BS_PUSHBUTTON | WS_TABSTOP, L"Drop Columns" };
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { 560, 183, 25, 25, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP,  L"Copy Columns to Clipboard" };
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 596, 183, 50, 25, WC_BUTTON, L"Show", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
 
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 260, 600, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
@@ -195,6 +199,7 @@ void MultiReplace::initializeCtrlMap()
 
     HFONT hLargerBolderFont1 = CreateFont(29, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("Courier New"));
     SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
 
     // CheckBox to Normal
@@ -1222,6 +1227,44 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             setElementsState(columnRadioDependentElements, true);
             setElementsState(selectionRadioDisabledButtons, true);
+        }
+        break;
+
+        case IDC_COLUMN_SORT_ASC_BUTTON:
+        {
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            if (columnDelimiterData.isValid()) {
+                handleSortColumns(SortDirection::Ascending);
+            }
+        }
+        break;
+
+        case IDC_COLUMN_SORT_DESC_BUTTON:
+        {
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            if (columnDelimiterData.isValid()) {
+                handleSortColumns(SortDirection::Descending);
+            }
+        }
+        break;
+
+        case IDC_COLUMN_DROP_BUTTON:
+        {
+            if (confirmColumnDeletion()) {
+                handleDelimiterPositions(DelimiterOperation::LoadAll);
+                if (columnDelimiterData.isValid()) {
+                    handleDeleteColumns();
+                }
+            }
+        }
+        break;
+
+        case IDC_COLUMN_COPY_BUTTON:
+        {
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            if (columnDelimiterData.isValid()) {
+                handleCopyColumnsToClipboard();
+            }
         }
         break;
 
@@ -2742,32 +2785,34 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
     // Convert encoding to wide string
     std::wstring wstr = stringToWString(markedText);
 
-    if (markedTextCount > 0)
-    {
-        // Open Clipboard
-        OpenClipboard(0);
-        EmptyClipboard();
+    copyTextToClipboard(wstr, static_cast<int>(markedTextCount));
+}
 
-        // Copy data to clipboard
-        HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, sizeof(WCHAR) * (wstr.length() + 1));
+void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
+{
+    if (text.empty()) {
+        showStatusMessage(L"No text to copy.", RGB(255, 0, 0));
+        return;
+    }
+
+    if (OpenClipboard(0))
+    {
+        EmptyClipboard();
+        HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, sizeof(WCHAR) * (text.length() + 1));
         if (hClipboardData)
         {
-            WCHAR* pchData;
-            pchData = reinterpret_cast<WCHAR*>(GlobalLock(hClipboardData));
+            WCHAR* pchData = reinterpret_cast<WCHAR*>(GlobalLock(hClipboardData));
             if (pchData)
             {
-                wcscpy(pchData, wstr.c_str());
+                wcscpy(pchData, text.c_str());
                 GlobalUnlock(hClipboardData);
-
-                // Checking SetClipboardData return
                 if (SetClipboardData(CF_UNICODETEXT, hClipboardData) != NULL)
                 {
-                    int markedTextCountInt = static_cast<int>(markedTextCount);
-                    showStatusMessage(std::to_wstring(markedTextCountInt) + L" marked blocks copied into Clipboard.", RGB(0, 128, 0));
+                    showStatusMessage(std::to_wstring(textCount) + L" items copied into Clipboard.", RGB(0, 128, 0));
                 }
                 else
                 {
-                    showStatusMessage(L"Failed to copy marked text to Clipboard.", RGB(255, 0, 0));
+                    showStatusMessage(L"Failed to copy to Clipboard.", RGB(255, 0, 0));
                 }
             }
             else
@@ -2776,13 +2821,306 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
                 GlobalFree(hClipboardData);
             }
         }
-
         CloseClipboard();
     }
-    else
-    {
-        showStatusMessage(L"No marked text to copy.", RGB(255, 0, 0));
+}
+
+#pragma endregion
+
+
+#pragma region CSV
+
+void MultiReplace::handleSortColumns(SortDirection sortDirection)
+{
+    // Validate column delimiter data
+    if (!columnDelimiterData.isValid()) {
+        showStatusMessage(L"Invalid column or delimiter data.", RGB(255, 0, 0));
+        return;
     }
+    SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
+
+    std::vector<CombinedColumns> combinedData;
+    std::vector<size_t> index;
+    size_t lineCount = lineDelimiterPositions.size();
+    combinedData.reserve(lineCount); // Optimizing memory allocation
+    index.reserve(lineCount);
+
+    // Iterate through each line to extract content of specified columns
+    for (SIZE_T i = CSVheaderLinesCount; i < lineCount; ++i) {
+        const auto& lineInfo = lineDelimiterPositions[i];
+        CombinedColumns rowData;
+        rowData.columns.resize(columnDelimiterData.inputColumns.size());
+
+        size_t columnIndex = 0;
+        for (SIZE_T columnNumber : columnDelimiterData.inputColumns) {
+            LRESULT startPos, endPos;
+
+            // Calculate start and end positions for each column
+            if (columnNumber == 1) {
+                startPos = lineInfo.startPosition;
+            }
+            else if (columnNumber - 2 < lineInfo.positions.size()) {
+                startPos = lineInfo.positions[columnNumber - 2].position + columnDelimiterData.delimiterLength;
+            }
+            else {
+                continue;
+            }
+
+            if (columnNumber - 1 < lineInfo.positions.size()) {
+                endPos = lineInfo.positions[columnNumber - 1].position;
+            }
+            else {
+                endPos = lineInfo.endPosition;
+            }
+
+            // Buffer to hold the text
+            std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1);
+
+            // Prepare TextRange structure for Scintilla
+            Sci_TextRange tr;
+            tr.chrg.cpMin = startPos;
+            tr.chrg.cpMax = endPos;
+            tr.lpstrText = buffer.data();
+
+            // Extract text for the column
+            send(SCI_GETTEXTRANGE, 0, reinterpret_cast<sptr_t>(&tr), true);
+            rowData.columns[columnIndex++] = std::string(buffer.data());
+        }
+
+        combinedData.push_back(rowData);
+        index.push_back(i);
+    }
+
+    // Sorting logic
+    std::sort(index.begin(), index.end(), [&](const size_t& a, const size_t& b) {
+        // Adjusted indexing for actual data after headers
+        size_t adjustedA = a - CSVheaderLinesCount;
+        size_t adjustedB = b - CSVheaderLinesCount;
+
+        // Compare columns for sorting
+        for (size_t i = 0; i < columnDelimiterData.inputColumns.size(); ++i) {
+            if (combinedData[adjustedA].columns[i] != combinedData[adjustedB].columns[i]) {
+                return sortDirection == SortDirection::Ascending ?
+                    combinedData[adjustedA].columns[i] < combinedData[adjustedB].columns[i] :
+                    combinedData[adjustedA].columns[i] > combinedData[adjustedB].columns[i];
+            }
+        }
+        return false; // In case of a tie, maintain original order
+        });
+
+    // Reordering lines in Scintilla based on the sorted index
+    reorderLinesInScintilla(index);
+
+    SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
+}
+
+void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedIndex) {
+    std::string combinedHeaderLines;
+    std::string lineBreak = getEOLStyle();
+
+    // Adjust the number of header lines if it exceeds the total number of lines
+    SIZE_T actualHeaderLinesCount = CSVheaderLinesCount;
+    SIZE_T totalLineCount = SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
+    if (CSVheaderLinesCount > totalLineCount) actualHeaderLinesCount = totalLineCount;
+
+    // Extract and save the header lines
+    for (SIZE_T i = 0; i < actualHeaderLinesCount; ++i) {
+        LRESULT start = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, i, 0);
+        LRESULT end = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, i, 0);
+        std::vector<char> buffer(static_cast<size_t>(end - start) + 1);
+        Sci_TextRange tr{ start, end, buffer.data() };
+        SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+        combinedHeaderLines += std::string(buffer.data());
+        // Add line break to each header, except the last if no sorted lines follow
+        if (i < actualHeaderLinesCount - 1 || (i == actualHeaderLinesCount - 1 && !sortedIndex.empty())) {
+            combinedHeaderLines += lineBreak;
+        }
+    }
+
+    // Extract the text of each line based on the sorted index
+    std::vector<std::string> lines;
+    lines.reserve(sortedIndex.size());
+    for (size_t i = 0; i < sortedIndex.size(); ++i) {
+        size_t idx = sortedIndex[i];
+        LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, idx, 0);
+        LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, idx, 0);
+        std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
+        Sci_TextRange tr{ lineStart, lineEnd, buffer.data() };
+        SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+        lines.push_back(std::string(buffer.data()));
+        // Add line break except after the last sorted line
+        if (i < sortedIndex.size() - 1) {
+            lines.back() += lineBreak;
+        }
+    }
+
+    // Clear all content from Scintilla
+    SendMessage(_hScintilla, SCI_CLEARALL, 0, 0);
+
+    // Re-insert the header lines first
+    SendMessage(_hScintilla, SCI_APPENDTEXT, combinedHeaderLines.length(), reinterpret_cast<LPARAM>(combinedHeaderLines.c_str()));
+
+    // Re-insert the sorted lines
+    for (const auto& line : lines) {
+        SendMessage(_hScintilla, SCI_APPENDTEXT, line.length(), reinterpret_cast<LPARAM>(line.c_str()));
+    }
+}
+
+bool MultiReplace::confirmColumnDeletion() {
+    // Attempt to parse columns and delimiters
+    if (!parseColumnAndDelimiterData()) {
+        return false;  // Parsing failed, exit with false indicating no confirmation
+    }
+
+    // Now columnDelimiterData should be populated with the parsed column data
+    size_t columnCount = columnDelimiterData.columns.size();
+    std::wstring confirmMessage = L"Are you sure you want to delete " +
+        std::to_wstring(columnCount) +
+        (columnCount == 1 ? L" column?" : L" columns?");
+
+    int msgboxID = MessageBox(NULL,
+        confirmMessage.c_str(),
+        L"Confirm Delete",
+        MB_ICONQUESTION | MB_YESNO);
+
+    return (msgboxID == IDYES);  // Return true if user confirmed, else false
+}
+
+void MultiReplace::handleDeleteColumns()
+{
+    if (!columnDelimiterData.isValid()) {
+        showStatusMessage(L"Invalid column or delimiter data.", RGB(255, 0, 0));
+        return;
+    }
+
+    ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
+
+    int deletedFieldsCount = 0;
+    SIZE_T lineCount = lineDelimiterPositions.size();
+
+    // Loop from the last element down to the first
+    for (SIZE_T i = lineCount; i-- > 0; ) {
+        const auto& lineInfo = lineDelimiterPositions[i];
+
+        // Process each column in reverse
+        for (auto it = columnDelimiterData.columns.rbegin(); it != columnDelimiterData.columns.rend(); ++it) {
+            SIZE_T column = *it;
+
+            // Only process columns within the valid range
+            if (column <= lineInfo.positions.size() + 1) {
+
+                LRESULT startPos, endPos;
+
+                if (column == 1) {
+                    startPos = lineInfo.startPosition;
+                }
+                else if (column - 2 < lineInfo.positions.size()) {
+                    startPos = lineInfo.positions[column - 2].position;
+                }
+                else {
+                    continue;
+                }
+
+                if (column - 1 < lineInfo.positions.size()) {
+                    // Delete leading Delimiter if first column will be droped
+                    if (column == 1) {
+                        endPos = lineInfo.positions[column - 1].position + columnDelimiterData.delimiterLength;
+                    }
+                    else {
+                        endPos = lineInfo.positions[column - 1].position;
+                    }
+                }
+                else {
+                    endPos = lineInfo.endPosition;
+                }
+
+                send(SCI_DELETERANGE, startPos, endPos - startPos, false);
+
+                deletedFieldsCount++;
+            }
+        }
+
+    }
+    ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
+
+    // Show status message
+    std::wstring statusMessage = L"Deleted " + std::to_wstring(deletedFieldsCount) + L" fields.";
+    showStatusMessage(statusMessage.c_str(), RGB(0, 255, 0));
+}
+
+void MultiReplace::handleCopyColumnsToClipboard()
+{
+    if (!columnDelimiterData.isValid()) {
+        showStatusMessage(L"Invalid column or delimiter data.", RGB(255, 0, 0));
+        return;
+    }
+
+    std::string combinedText;
+    int copiedFieldsCount = 0;
+    size_t lineCount = lineDelimiterPositions.size();
+
+    // Iterate through each line
+    for (size_t i = 0; i < lineCount; ++i) {
+        const auto& lineInfo = lineDelimiterPositions[i];
+
+        bool isFirstCopiedColumn = true;
+        std::string lineText;
+
+        // Process each column
+        for (SIZE_T column : columnDelimiterData.columns) {
+            if (column <= lineInfo.positions.size() + 1) {
+                LRESULT startPos, endPos;
+
+                if (column == 1) {
+                    startPos = lineInfo.startPosition;
+                    isFirstCopiedColumn = false;
+                }
+                else if (column - 2 < lineInfo.positions.size()) {
+                    startPos = lineInfo.positions[column - 2].position;
+                    // Drop first Delimiter if copied as first column
+                    if (isFirstCopiedColumn) {
+                        startPos += columnDelimiterData.delimiterLength;
+                        isFirstCopiedColumn = false;
+                    }
+                }
+                else {
+                    break;
+                }
+
+                if (column - 1 < lineInfo.positions.size()) {
+                    endPos = lineInfo.positions[column - 1].position;
+                }
+                else {
+                    endPos = lineInfo.endPosition;
+                }
+
+                // Buffer to hold the text
+                std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1);
+
+                // Prepare TextRange structure for Scintilla
+                Sci_TextRange tr;
+                tr.chrg.cpMin = startPos;
+                tr.chrg.cpMax = endPos;
+                tr.lpstrText = buffer.data();
+
+                // Extract text for the column
+                SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+                lineText += std::string(buffer.data());
+
+                copiedFieldsCount++;
+            }
+        }
+
+        combinedText += lineText;
+        // Add a newline except after the last line
+        if (i < lineCount - 1) {
+            combinedText += "\n";
+        }
+    }
+
+    // Convert to Wide String and Copy to Clipboard (Ensure this line only occurs once and wstr is not redefined)
+    std::wstring wstr = stringToWString(combinedText);
+    copyTextToClipboard(wstr, copiedFieldsCount);
 }
 
 #pragma endregion
@@ -2826,6 +3164,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
         return false;
     }
 
+    std::vector<int> inputColumns;
     std::set<int> columns;
     std::wstring::size_type start = 0;
     std::wstring::size_type end = columnDataString.find(',', start);
@@ -2848,7 +3187,9 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                 }
 
                 for (int i = startRange; i <= endRange; ++i) {
-                    columns.insert(i);
+                    if (columns.insert(i).second) {
+                        inputColumns.push_back(i);
+                    }
                 }
             }
             catch (const std::exception&) {
@@ -2868,7 +3209,9 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                     return false;
                 }
 
-                columns.insert(column);
+                if (columns.insert(column).second) {
+                    inputColumns.push_back(column); 
+                }
             }
             catch (const std::exception&) {
                 showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
@@ -2898,7 +3241,9 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             }
 
             for (int i = startRange; i <= endRange; ++i) {
-                columns.insert(i);
+                if (columns.insert(i).second) {
+                    inputColumns.push_back(i);
+                }
             }
         }
         catch (const std::exception&) {
@@ -2916,8 +3261,10 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                 columnDelimiterData.columns.clear();
                 return false;
             }
-
-            columns.insert(column);
+            auto insertResult = columns.insert(column);
+            if (insertResult.second) { // Check if the insertion was successful
+                inputColumns.push_back(column); // Add to the inputColumns vector
+            }
         }
         catch (const std::exception&) {
             showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
@@ -2943,6 +3290,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     columnDelimiterData.columnChanged = !(columnDelimiterData.columns == columns);
 
     // Set columnDelimiterData values
+    columnDelimiterData.inputColumns = inputColumns;
     columnDelimiterData.columns = columns;
     columnDelimiterData.extendedDelimiter = tempExtendedDelimiter;
     columnDelimiterData.delimiterLength = tempExtendedDelimiter.length();
@@ -3361,7 +3709,7 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         return;
     }
     //int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
-    LRESULT updatedEolLength = updateEOLLength();
+    LRESULT updatedEolLength = getEOLLength();
 
     // If EOL length has changed or if there's been a change in the active window within Notepad++, reset all delimiter settings
     if (updatedEolLength != eolLength || documentSwitched) {
@@ -3768,24 +4116,31 @@ std::wstring MultiReplace::getSelectedText() {
     return wstr;
 }
 
-LRESULT MultiReplace::updateEOLLength() {
+LRESULT MultiReplace::getEOLLength() {
     LRESULT eolMode = ::SendMessage(getScintillaHandle(), SCI_GETEOLMODE, 0, 0);
-    LRESULT currentEolLength;
-
     switch (eolMode) {
-    case SC_EOL_CRLF: // CRLF
-        currentEolLength = 2;
-        break;
-    case SC_EOL_CR: // CR
-    case SC_EOL_LF: // LF
-        currentEolLength = 1;
-        break;
+    case SC_EOL_CRLF:
+        return 2;
+    case SC_EOL_CR:
+    case SC_EOL_LF:
+        return 1;
     default:
-        currentEolLength = 2; // Default to CRLF if unknown
-        break;
+        return 2; // Default to CRLF
     }
+}
 
-    return currentEolLength;
+std::string MultiReplace::getEOLStyle() {
+    LRESULT eolMode = SendMessage(_hScintilla, SCI_GETEOLMODE, 0, 0);
+    switch (eolMode) {
+    case SC_EOL_CRLF:
+        return "\r\n";
+    case SC_EOL_CR:
+        return "\r";
+    case SC_EOL_LF:
+        return "\n";
+    default:
+        return "\n";  // Defaulting to LF
+    }
 }
 
 void MultiReplace::setElementsState(const std::vector<int>& elements, bool enable) {
@@ -4418,6 +4773,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     std::wstring columnNum = L"\"" + getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT) + L"\"";
     std::wstring delimiter = L"\"" + getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT) + L"\"";
     std::wstring quoteChar = L"\"" + getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT) + L"\"";
+    std::wstring headerLines = std::to_wstring(CSVheaderLinesCount);
 
     outFile << wstringToString(L"[Scope]\n");
     outFile << wstringToString(L"Selection=" + std::to_wstring(selection) + L"\n");
@@ -4425,6 +4781,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"ColumnNum=" + columnNum + L"\n");
     outFile << wstringToString(L"Delimiter=" + delimiter + L"\n");
     outFile << wstringToString(L"QuoteChar=" + quoteChar + L"\n");
+    outFile << wstringToString(L"HeaderLines=" + headerLines + L"\n");
 
     // Convert and Store "Find what" history
     LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
@@ -4559,6 +4916,10 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_NUM_EDIT), columnModeSelected);
     EnableWindow(GetDlgItem(_hSelf, IDC_DELIMITER_EDIT), columnModeSelected);
     EnableWindow(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), columnModeSelected);
+    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_SORT_DESC_BUTTON), columnModeSelected);
+    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_SORT_ASC_BUTTON), columnModeSelected);
+    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_DROP_BUTTON), columnModeSelected);
+    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), columnModeSelected);
     EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), columnModeSelected);
 
     std::wstring columnNum = readStringFromIniFile(iniFilePath, L"Scope", L"ColumnNum", L"");
@@ -4570,6 +4931,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     std::wstring quoteChar = readStringFromIniFile(iniFilePath, L"Scope", L"QuoteChar", L"");
     setTextInDialogItem(_hSelf, IDC_QUOTECHAR_EDIT, quoteChar);
 
+    CSVheaderLinesCount = readIntFromIniFile(iniFilePath, L"Scope", L"HeaderLines", 1);
 }
 
 void MultiReplace::loadSettings() {

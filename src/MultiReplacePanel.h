@@ -90,6 +90,7 @@ struct SelectionRange {
 };
 
 struct ColumnDelimiterData {
+    std::vector<int> inputColumns; // original order of the columns
     std::set<int> columns;
     std::string extendedDelimiter;
     std::string quoteChar;
@@ -109,6 +110,10 @@ struct DelimiterPosition {
     LRESULT position;
 };
 
+struct CombinedColumns {
+    std::vector<std::string> columns;
+};
+
 struct LineInfo {
     std::vector<DelimiterPosition> positions;
     LRESULT startPosition = 0;
@@ -121,6 +126,10 @@ struct ColumnInfo {
     SIZE_T startColumnIndex;
 };
 
+enum class SortDirection {
+    Ascending,
+    Descending
+};
 
 // Lua Engine
 struct LuaVariables {
@@ -288,6 +297,7 @@ private:
     bool isColumnHighlighted = false;
     std::map<int, bool> stateSnapshot; // stores the state of the Elements
     LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
+    SIZE_T CSVheaderLinesCount = 1; // Number of header lines not included in CSV sorting
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
@@ -301,7 +311,7 @@ private:
         IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
     };
     const std::vector<int> columnRadioDependentElements = {
-        IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT, IDC_COLUMN_HIGHLIGHT_BUTTON
+        IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT, IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
 
     //Initialization
@@ -360,6 +370,14 @@ private:
     long generateColorValue(const std::string& str);
     void handleClearTextMarksButton();
     void handleCopyMarkedTextToClipboardButton();
+    void copyTextToClipboard(const std::wstring& text, int textCount);
+
+    //CSV
+    void handleSortColumns(SortDirection sortDirection);
+    void reorderLinesInScintilla(const std::vector<size_t>& sortedIndex);
+    void handleCopyColumnsToClipboard();
+    bool confirmColumnDeletion();
+    void handleDeleteColumns();
 
     //Scope
     bool parseColumnAndDelimiterData();
@@ -388,7 +406,8 @@ private:
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
-    LRESULT updateEOLLength();
+    LRESULT getEOLLength();
+    std::string getEOLStyle(); 
     void setElementsState(const std::vector<int>& elements, bool enable);
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
     bool MultiReplace::normalizeAndValidateNumber(std::string& str);
