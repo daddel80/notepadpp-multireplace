@@ -98,7 +98,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int checkboxX = buttonX - 105;
 
     // Static positions and sizes
-    ctrlMap[IDC_STATIC_FIND] = { 14, 19, 100, 24, WC_STATIC, L"Find what : ", SS_RIGHT, NULL };
+    ctrlMap[IDC_STATIC_FIND] = { 14, 19, 100, 24, WC_STATIC, getLangStrLPCWSTR("panel_find_what"), SS_RIGHT, NULL };
     ctrlMap[IDC_STATIC_REPLACE] = { 14, 54, 100, 24, WC_STATIC, L"Replace with : ", SS_RIGHT };
 
     ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 95, 163, 25, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
@@ -856,6 +856,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
     case WM_INITDIALOG:
     {
+        loadLanguage();
         initializeWindowSize();
         setupScintilla();
         initializePluginStyle();
@@ -5030,6 +5031,128 @@ void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring
 
 #pragma endregion
 
+
+#pragma region Language
+
+std::string MultiReplace::getLanguageFromNativeLangXML() {
+    wchar_t configDir[MAX_PATH] = { 0 };  // Ensuring initialization
+    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, reinterpret_cast<LPARAM>(configDir));
+    configDir[MAX_PATH - 1] = L'\0';  // Ensuring null termination
+
+    std::wstring nativeLangFilePath = std::wstring(configDir) + L"\\..\\..\\nativeLang.xml";
+    std::wifstream file(nativeLangFilePath);
+    std::wstring line;
+    std::wstring language = L"english"; // default to English
+
+    try {
+        if (file.is_open()) {
+            std::wregex languagePattern(L"<Native-Langue .*? filename=\"(.*?)\\.xml\"");
+            std::wsmatch matches;
+
+            while (std::getline(file, line)) {
+                if (std::regex_search(line, matches, languagePattern) && matches.size() > 1) {
+                    language = matches[1];
+                    break; // Language found
+                }
+            }
+        }
+    }
+    catch (const std::exception&) {
+        // Error reading file or other exception
+    }
+
+    file.close();  // Close the file stream
+
+    // Convert wstring language to string and make it lowercase
+    std::string convertedLanguage = wstringToString(language);
+    std::transform(convertedLanguage.begin(), convertedLanguage.end(), convertedLanguage.begin(),
+        [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });  // Make it lowercase
+
+    return convertedLanguage; // return the converted string
+}
+
+void MultiReplace::loadLanguage() {
+    try {
+        wchar_t pluginHomePath[MAX_PATH];
+        ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, MAX_PATH, reinterpret_cast<LPARAM>(pluginHomePath));
+        pluginHomePath[MAX_PATH - 1] = '\0'; // Ensure string is null-terminated
+
+        // Compose path to the language INI file within the plugin directory
+        std::wstring languageIniFilePath = std::wstring(pluginHomePath) + L"\\MultiReplace\\languages.ini";
+        std::string languageCode = getLanguageFromNativeLangXML(); // Retrieve current language code from XML
+
+        loadLanguageFromIni(languageIniFilePath, languageCode); // Load language settings from the INI file
+    }
+    catch (const std::exception&) {
+        // Handle or log error
+    }
+}
+
+void MultiReplace::loadLanguageFromIni(const std::wstring& iniFilePath, const std::string& languageCode) {
+    std::wstring section = stringToWString(languageCode); // Convert language code to wstring for section name
+
+    // Iterate through each entry in languageMap and attempt to load the corresponding value from the INI file
+    for (auto& entry : languageMap) {
+        // Using the readStringFromIniFile function to get the translated string
+        std::wstring translatedString = readStringFromIniFile(iniFilePath, section, stringToWString(entry.first), stringToWString(entry.second));
+        entry.second = wstringToString(translatedString); // Update languageMap with new value
+    }
+}
+
+std::string MultiReplace::getLangStr(const std::string& id, const std::string& replacement) {
+    auto it = languageMap.find(id);
+    if (it != languageMap.end()) {
+        std::string result = it->second;
+        if (!replacement.empty()) {
+            size_t pos = result.find("$REPLACE_STRING");
+            if (pos != std::string::npos) {
+                result.replace(pos, std::string("$REPLACE_STRING").length(), replacement);
+            }
+        }
+        return result;
+    }
+    else {
+        return "Text not found";
+    }
+}
+
+std::wstring MultiReplace::getLangStrW(const std::string& id, const std::wstring& replacement) {
+    auto it = languageMap.find(id);
+    if (it != languageMap.end()) {
+        std::wstring result = stringToWString(it->second);
+        if (!replacement.empty()) {
+            size_t pos = result.find(L"$REPLACE_STRING");
+            if (pos != std::wstring::npos) {
+                result.replace(pos, wcslen(L"$REPLACE_STRING"), replacement);
+            }
+        }
+        return result;
+    }
+    else {
+        return L"Text not found";
+    }
+}
+
+LPCWSTR MultiReplace::getLangStrLPCWSTR(const std::string& id, const std::wstring& replacement) {
+    static std::wstring converted;
+    auto it = languageMap.find(id);
+    if (it != languageMap.end()) {
+        converted = stringToWString(it->second);
+        if (!replacement.empty()) {
+            size_t pos = converted.find(L"$REPLACE_STRING");
+            if (pos != std::wstring::npos) {
+                converted.replace(pos, wcslen(L"$REPLACE_STRING"), replacement);
+            }
+        }
+        return converted.c_str();
+    }
+    else {
+        static const std::wstring defaultText = L"Text not found";
+        return defaultText.c_str();
+    }
+}
+
+#pragma endregion
 
 #pragma region Event Handling -- triggered in beNotified() in MultiReplace.cpp
 

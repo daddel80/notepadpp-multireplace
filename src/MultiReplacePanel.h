@@ -443,7 +443,16 @@ private:
     int readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue);
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
 
+	// Language
+    void loadLanguage();
+    void loadLanguageFromIni(const std::wstring& iniFilePath, const std::string& languageCode);
+    std::string getLanguageFromNativeLangXML();
+    std::string getLangStr(const std::string& id, const std::string& replacement = "");
+    std::wstring getLangStrW(const std::string& id, const std::wstring& replacement = L"");
+    LPCWSTR getLangStrLPCWSTR(const std::string& id, const std::wstring& replacement = L"");
 };
+
+extern std::unordered_map<std::string, std::string> languageMap;
 
 extern MultiReplace _MultiReplace;
 

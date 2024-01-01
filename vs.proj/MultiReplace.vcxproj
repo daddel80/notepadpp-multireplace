@@ -63,6 +63,7 @@
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\language_mapping.cpp" />
     <ClCompile Include="..\src\lua\lapi.c">
       <AdditionalOptions>/w %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
