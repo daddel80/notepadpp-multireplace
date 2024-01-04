@@ -915,8 +915,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             ::GetWindowRect(pnmh->hwndFrom, &rc);  // Get screen coordinates of the button
 
             HMENU hMenu = CreatePopupMenu();
-            AppendMenu(hMenu, MF_STRING, ID_REPLACE_ALL_OPTION, L"Replace All");
-            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_ALL_DOCS_OPTION, L"Replace All in All opened Documents");
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_ALL_OPTION, getLangStrLPWSTR(L"split_menu_replace_all"));
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_ALL_DOCS_OPTION, getLangStrLPWSTR(L"split_menu_replace_all_in_docs"));
 
             // Display the menu directly below the button
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, NULL);
@@ -1426,14 +1426,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case ID_REPLACE_ALL_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, L"Replace All");
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, getLangStrLPWSTR(L"split_button_replace_all"));
             isReplaceAllInDocs = false;
         }
         break;
 
         case ID_REPLACE_IN_ALL_DOCS_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, L"Replace All in Docs");
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, getLangStrLPWSTR(L"split_button_replace_all_in_docs"));
             isReplaceAllInDocs = true;
         }
         break;

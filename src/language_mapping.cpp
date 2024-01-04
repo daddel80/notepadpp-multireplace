@@ -50,7 +50,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"tooltip_copy_columns", L"Copy Columns to Clipboard" },
 { L"tooltip_column_highlight", L"Column highlight: On/Off" },
 
-// New header entries
+// header entries
 { L"header_find", L"Find" },
 { L"header_replace", L"Replace" },
 { L"header_whole_word", L"W" },
@@ -59,12 +59,18 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"header_extended", L"E" },
 { L"header_regex", L"R" },
 
-// New tooltip entries
+// tooltip entries
 { L"tooltip_header_whole_word", L"Whole Word" },
 { L"tooltip_header_match_case", L"Case Sensitive" },
 { L"tooltip_header_use_variables", L"Use Variables" },
 { L"tooltip_header_extended", L"Extended" },
-{ L"tooltip_header_regex", L"Regex" }
+{ L"tooltip_header_regex", L"Regex" },
+
+// SplitButton entries
+{ L"split_menu_replace_all", L"Alles ersetzen" },
+{ L"split_menu_replace_all_in_docs", L"In allen geöffneten Dokumenten ersetzen" },
+{ L"split_button_replace_all", L"Alles ersetzen" },
+{ L"split_button_replace_all_in_docs", L"In Dokumenten ersetzen" }
 };
 
 /*
