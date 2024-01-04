@@ -107,7 +107,7 @@
 #define STYLE10							69
 
 // Minimum window dimensions
-#define MIN_WIDTH 993
+#define MIN_WIDTH 1023
 #define MIN_HEIGHT 485
 
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace/issues")

@@ -48,7 +48,23 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"tooltip_sort_ascending", L"Sort Ascending" },
 { L"tooltip_drop_columns", L"Drop Columns" },
 { L"tooltip_copy_columns", L"Copy Columns to Clipboard" },
-{ L"tooltip_column_highlight", L"Column highlight: On/Off" }
+{ L"tooltip_column_highlight", L"Column highlight: On/Off" },
+
+// New header entries
+{ L"header_find", L"Find" },
+{ L"header_replace", L"Replace" },
+{ L"header_whole_word", L"W" },
+{ L"header_match_case", L"C" },
+{ L"header_use_variables", L"V" },
+{ L"header_extended", L"E" },
+{ L"header_regex", L"R" },
+
+// New tooltip entries
+{ L"tooltip_header_whole_word", L"Whole Word" },
+{ L"tooltip_header_match_case", L"Case Sensitive" },
+{ L"tooltip_header_use_variables", L"Use Variables" },
+{ L"tooltip_header_extended", L"Extended" },
+{ L"tooltip_header_regex", L"Regex" }
 };
 
 /*

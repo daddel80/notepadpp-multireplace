@@ -451,6 +451,7 @@ private:
     std::wstring getLanguageFromNativeLangXML();
     std::wstring getLangStr(const std::wstring& id, const std::wstring& replacement = L"");
     LPCWSTR getLangStrLPCWSTR(const std::wstring& id, const std::wstring& replacement = L"");
+    LPWSTR getLangStrLPWSTR(const std::wstring& id, const std::wstring& replacement = L"");
 };
 
 extern std::unordered_map<std::wstring, std::wstring> languageMap;
