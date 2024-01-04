@@ -72,6 +72,7 @@ struct ControlInfo
     LPCWSTR tooltipText;
 };
 
+
 struct SearchResult {
     LRESULT pos = -1;
     LRESULT length = 0;
@@ -314,6 +315,7 @@ private:
         IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT, IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
 
+
     //Initialization
     void initializeWindowSize();
     RECT calculateMinWindowFrame(HWND hwnd);
@@ -445,14 +447,13 @@ private:
 
 	// Language
     void loadLanguage();
-    void loadLanguageFromIni(const std::wstring& iniFilePath, const std::string& languageCode);
-    std::string getLanguageFromNativeLangXML();
-    std::string getLangStr(const std::string& id, const std::string& replacement = "");
-    std::wstring getLangStrW(const std::string& id, const std::wstring& replacement = L"");
-    LPCWSTR getLangStrLPCWSTR(const std::string& id, const std::wstring& replacement = L"");
+    void loadLanguageFromIni(const std::wstring& iniFilePath, const std::wstring& languageCode);
+    std::wstring getLanguageFromNativeLangXML();
+    std::wstring getLangStr(const std::wstring& id, const std::wstring& replacement = L"");
+    LPCWSTR getLangStrLPCWSTR(const std::wstring& id, const std::wstring& replacement = L"");
 };
 
-extern std::unordered_map<std::string, std::string> languageMap;
+extern std::unordered_map<std::wstring, std::wstring> languageMap;
 
 extern MultiReplace _MultiReplace;
 

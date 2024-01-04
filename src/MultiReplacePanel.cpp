@@ -98,37 +98,37 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int checkboxX = buttonX - 105;
 
     // Static positions and sizes
-    ctrlMap[IDC_STATIC_FIND] = { 14, 19, 100, 24, WC_STATIC, getLangStrLPCWSTR("panel_find_what"), SS_RIGHT, NULL };
-    ctrlMap[IDC_STATIC_REPLACE] = { 14, 54, 100, 24, WC_STATIC, L"Replace with : ", SS_RIGHT };
+    ctrlMap[IDC_STATIC_FIND] = { 14, 19, 100, 24, WC_STATIC, getLangStrLPCWSTR(L"panel_find_what"), SS_RIGHT, NULL };
+    ctrlMap[IDC_STATIC_REPLACE] = { 14, 54, 100, 24, WC_STATIC, getLangStrLPCWSTR(L"panel_replace_with"), SS_RIGHT };
 
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 95, 163, 25, WC_BUTTON, L"Match whole word only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 124, 120, 25, WC_BUTTON, L"Match case", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { 20, 153, 120, 25, WC_BUTTON, L"Use Variables", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_HELP] = { 150, 153, 25, 25, WC_BUTTON, L"?", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_FIRST_CHECKBOX] = { 20, 182, 163, 25, WC_BUTTON, L"Replace first match only", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 211, 120, 25, WC_BUTTON, L"Wrap around", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 95, 168, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 124, 168, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { 20, 153, 137, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_VARIABLES_HELP] = { 160, 153, 25, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_FIRST_CHECKBOX] = { 20, 182, 168, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_first_match_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 211, 168, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SEARCH_MODE_GROUP] = { 195, 99, 200, 128, WC_BUTTON, L"Search Mode", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_NORMAL_RADIO] = { 205, 124, 100, 25, WC_BUTTON, L"Normal", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXTENDED_RADIO] = { 205, 153, 180, 25, WC_BUTTON, L"Extended (\\n, \\r, \\t, \\0, \\x...)", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REGEX_RADIO] = { 205, 182, 175, 25, WC_BUTTON, L"Regular expression", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SEARCH_MODE_GROUP] = { 195, 99, 200, 128, WC_BUTTON,  getLangStrLPCWSTR(L"panel_search_mode"), BS_GROUPBOX, NULL };
+    ctrlMap[IDC_NORMAL_RADIO] = { 205, 124, 180, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXTENDED_RADIO] = { 205, 153, 180, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REGEX_RADIO] = { 205, 182, 180, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SCOPE_GROUP] = { 410, 99, 247, 147, WC_BUTTON, L"Scope", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_ALL_TEXT_RADIO] = { 420, 124, 100, 25, WC_BUTTON, L"All Text", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SELECTION_RADIO] = { 420, 153, 100, 25, WC_BUTTON, L"Selection", BS_AUTORADIOBUTTON | WS_TABSTOP,  NULL };
-    ctrlMap[IDC_COLUMN_MODE_RADIO] = { 420, 182, 50, 25, WC_BUTTON, L"CSV", BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 420, 215, 30, 25, WC_STATIC, L"Cols:", SS_RIGHT, NULL };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 452, 215, 50, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Columns: '1,3,5-12' (individuals, ranges)" };
-    ctrlMap[IDC_DELIMITER_STATIC] = { 508, 215, 40, 25, WC_STATIC, L"Delim:", SS_RIGHT, NULL };
-    ctrlMap[IDC_DELIMITER_EDIT] = { 550, 215, 30, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL ,  L"Delimiter: Single/combined chars, \\t for Tab" };
-    ctrlMap[IDC_QUOTECHAR_STATIC] = { 586, 215, 40, 25, WC_STATIC, L"Quote:", SS_RIGHT, NULL };
-    ctrlMap[IDC_QUOTECHAR_EDIT] = { 628, 215, 15, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , L"Quote: ', \", or empty" };
+    ctrlMap[IDC_SCOPE_GROUP] = { 410, 99, 247, 147, WC_BUTTON, getLangStrLPCWSTR(L"panel_scope"), BS_GROUPBOX, NULL };
+    ctrlMap[IDC_ALL_TEXT_RADIO] = { 420, 124, 230, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SELECTION_RADIO] = { 420, 153, 230, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_MODE_RADIO] = { 420, 182, 50, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 420, 215, 30, 25, WC_STATIC, getLangStrLPCWSTR(L"panel_cols"), SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 452, 215, 50, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , getLangStrLPCWSTR(L"tooltip_columns") };
+    ctrlMap[IDC_DELIMITER_STATIC] = { 508, 215, 40, 25, WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
+    ctrlMap[IDC_DELIMITER_EDIT] = { 550, 215, 30, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL ,  getLangStrLPCWSTR(L"tooltip_delimiter") };
+    ctrlMap[IDC_QUOTECHAR_STATIC] = { 586, 215, 40, 25, WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { 628, 215, 15, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , getLangStrLPCWSTR(L"tooltip_quote") };
 
-    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { 478, 183, 17, 25, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, L"Sort Descending" };
-    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { 496, 183, 17, 25, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP, L"Sort Ascending" };
-    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 524, 183, 25, 25, WC_BUTTON, L"\u2716", BS_PUSHBUTTON | WS_TABSTOP, L"Drop Columns" };
-    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { 560, 183, 25, 25, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP,  L"Copy Columns to Clipboard" };
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 596, 183, 50, 25, WC_BUTTON, L"Show", BS_PUSHBUTTON | WS_TABSTOP, L"Column highlight: On/Off" };
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { 478, 183, 17, 25, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { 496, 183, 17, 25, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 524, 183, 25, 25, WC_BUTTON, L"\u2716", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_drop_columns") };
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { 560, 183, 25, 25, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP,  getLangStrLPCWSTR(L"tooltip_copy_columns") };
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 596, 183, 50, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_show"), BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
 
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 260, 600, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
@@ -136,28 +136,30 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_EDIT] = { 120, 54, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, 33, 28, 34, WC_BUTTON, L"\u21C5", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, L"Add into List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, getLangStrLPCWSTR(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_STATIC_FRAME] = { frameX, 99, 285, 163, WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 118, 160, 30, WC_BUTTON, L"Replace All", BS_SPLITBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, 118, 120, 30, WC_BUTTON, L"Replace", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 118, 35, 30, WC_BUTTON, L"\u066D", BS_PUSHBUTTON | WS_TABSTOP, L"Replace All" };
-    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, 118, 25, 25, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, L"2 buttons mode" };
-    ctrlMap[IDC_FIND_BUTTON] = { buttonX, 153, 160, 30, WC_BUTTON, L"Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_FIND_NEXT_BUTTON] = { buttonX + 40, 153, 120, 30, WC_BUTTON, L"\u25BC Find Next", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 118, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, 118, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 118, 35, 30, WC_BUTTON, L"\u066D", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
+    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, 118, 25, 25, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_2_buttons_mode") };
+    ctrlMap[IDC_FIND_BUTTON] = { buttonX, 153, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_find_next"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+     // L"\u25BC
+    ctrlMap[IDC_FIND_NEXT_BUTTON] = { buttonX + 40, 153, 120, 30, WC_BUTTON,getLangStrLPCWSTR(L"panel_find_next_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 153, 35, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_BUTTON] = { buttonX, 188, 160, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 188, 120, 30, WC_BUTTON, L"Mark Matches", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_BUTTON] = { buttonX, 188, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 188, 120, 30, WC_BUTTON,getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 188, 35, 30, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP, L"Copy to Clipboard" };
-    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 223, 160, 30, WC_BUTTON, L"Clear all marks", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 284, 160, 30, WC_BUTTON, L"Load List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 319, 160, 30, WC_BUTTON, L"Save List", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 354, 160, 30, WC_BUTTON, L"Export to Bash", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 223, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 284, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 319, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 354, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 404, 30, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 404 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 404 - 14, 165, 85, WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 404 + 20, 60, 20, WC_STATIC, L"Shift Lines", SS_LEFT, NULL };
+    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 404 + 20, 120, 20, WC_STATIC, getLangStrLPCWSTR(L"panel_shift_lines"), SS_LEFT, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { 14, 284, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
-    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 175, 90, 25, WC_BUTTON, L"Use List", BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 175, 95, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_list"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+
 }
 
 void MultiReplace::initializeCtrlMap()
@@ -4980,39 +4982,54 @@ void MultiReplace::loadSettings() {
 }
 
 std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue) {
-    std::ifstream iniFile(iniFilePath);
+    // Convert std::wstring path to std::string path using WideCharToMultiByte
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, iniFilePath.c_str(), (int)iniFilePath.size(), NULL, 0, NULL, NULL);
+    std::string filePath(size_needed, 0);
+    WideCharToMultiByte(CP_UTF8, 0, iniFilePath.c_str(), (int)iniFilePath.size(), &filePath[0], size_needed, NULL, NULL);
+
+    // Open file in binary mode to read UTF-8 data
+    std::ifstream iniFile(filePath, std::ios::binary);
+    if (!iniFile.is_open()) {
+        return defaultValue; // Return default value if file can't be opened
+    }
+
+    // Read the file content into a std::string
+    std::string utf8Content((std::istreambuf_iterator<char>(iniFile)), std::istreambuf_iterator<char>());
+
+    // Convert UTF-8 std::string to std::wstring
+    int len = MultiByteToWideChar(CP_UTF8, 0, utf8Content.c_str(), -1, NULL, 0);
+    std::wstring wContent(len, 0);
+    MultiByteToWideChar(CP_UTF8, 0, utf8Content.c_str(), -1, &wContent[0], len);
+
+    // Process the content line by line
+    std::wstringstream contentStream(wContent);
     std::wstring line;
     bool correctSection = false;
     std::wstring requiredKey = key + L"=";
     size_t keyLength = requiredKey.length();
 
-    if (iniFile.is_open()) {
-        std::string strLine;
-        while (std::getline(iniFile, strLine)) {
-            line = stringToWString(strLine);
-            std::wstringstream linestream(line);
-            std::wstring segment;
-
-            if (line[0] == L'[') {
-                // This line contains section name
-                std::getline(linestream, segment, L']');
-                correctSection = (segment == L"[" + section);
-            }
-            else if (correctSection && line.compare(0, keyLength, requiredKey) == 0) {
-                // This line contains the key
-                std::wstring value = line.substr(keyLength);
-                // Remove prefix number and quotes from the value
-                size_t quotePos = value.find(L"\"");
-                if (quotePos != std::wstring::npos) {
-                    value = value.substr(quotePos + 1, value.length() - quotePos - 2);
-                }
-
-                return value;
+    while (std::getline(contentStream, line)) {
+        if (line[0] == L'[') {
+            size_t closingBracketPos = line.find(L']');
+            if (closingBracketPos != std::wstring::npos) {
+                correctSection = (line.substr(1, closingBracketPos - 1) == section);
             }
         }
-        iniFile.close();
+        else if (correctSection && line.compare(0, keyLength, requiredKey) == 0) {
+            std::wstring value = line.substr(keyLength);
+
+            if (!value.empty() && value.back() == L'\r') {
+                value.pop_back();  // Remove '\r' at the end of the line
+            }
+            if (value.length() >= 2 && value.front() == L'"' && value.back() == L'"') {
+                value = value.substr(1, value.length() - 2);  // Remove Leading adn trailing Quotes
+            }
+
+            return value; // Return the trimmed and possibly de-quoted value
+        }
     }
-    return defaultValue;
+
+    return defaultValue; // Return default value if key is not found
 }
 
 bool MultiReplace::readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue) {
@@ -5034,10 +5051,10 @@ void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring
 
 #pragma region Language
 
-std::string MultiReplace::getLanguageFromNativeLangXML() {
-    wchar_t configDir[MAX_PATH] = { 0 };  // Ensuring initialization
+std::wstring MultiReplace::getLanguageFromNativeLangXML() {
+    wchar_t configDir[MAX_PATH] = { 0 };
     ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, reinterpret_cast<LPARAM>(configDir));
-    configDir[MAX_PATH - 1] = L'\0';  // Ensuring null termination
+    configDir[MAX_PATH - 1] = L'\0';
 
     std::wstring nativeLangFilePath = std::wstring(configDir) + L"\\..\\..\\nativeLang.xml";
     std::wifstream file(nativeLangFilePath);
@@ -5058,68 +5075,43 @@ std::string MultiReplace::getLanguageFromNativeLangXML() {
         }
     }
     catch (const std::exception&) {
-        // Error reading file or other exception
+        // Error handling
     }
 
-    file.close();  // Close the file stream
-
-    // Convert wstring language to string and make it lowercase
-    std::string convertedLanguage = wstringToString(language);
-    std::transform(convertedLanguage.begin(), convertedLanguage.end(), convertedLanguage.begin(),
-        [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });  // Make it lowercase
-
-    return convertedLanguage; // return the converted string
+    file.close();
+    return language; // Return the language code as a wide string
 }
 
 void MultiReplace::loadLanguage() {
     try {
         wchar_t pluginHomePath[MAX_PATH];
         ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, MAX_PATH, reinterpret_cast<LPARAM>(pluginHomePath));
-        pluginHomePath[MAX_PATH - 1] = '\0'; // Ensure string is null-terminated
+        pluginHomePath[MAX_PATH - 1] = '\0';
 
-        // Compose path to the language INI file within the plugin directory
         std::wstring languageIniFilePath = std::wstring(pluginHomePath) + L"\\MultiReplace\\languages.ini";
-        std::string languageCode = getLanguageFromNativeLangXML(); // Retrieve current language code from XML
+        std::wstring languageCode = getLanguageFromNativeLangXML();
 
-        loadLanguageFromIni(languageIniFilePath, languageCode); // Load language settings from the INI file
+        loadLanguageFromIni(languageIniFilePath, languageCode);
     }
     catch (const std::exception&) {
-        // Handle or log error
+        // Error handling
     }
 }
 
-void MultiReplace::loadLanguageFromIni(const std::wstring& iniFilePath, const std::string& languageCode) {
-    std::wstring section = stringToWString(languageCode); // Convert language code to wstring for section name
+void MultiReplace::loadLanguageFromIni(const std::wstring& iniFilePath, const std::wstring& languageCode) {
+    std::wstring section = languageCode;
 
-    // Iterate through each entry in languageMap and attempt to load the corresponding value from the INI file
     for (auto& entry : languageMap) {
-        // Using the readStringFromIniFile function to get the translated string
-        std::wstring translatedString = readStringFromIniFile(iniFilePath, section, stringToWString(entry.first), stringToWString(entry.second));
-        entry.second = wstringToString(translatedString); // Update languageMap with new value
+        std::wstring translatedString = readStringFromIniFile(iniFilePath, section, entry.first, entry.second);
+        entry.second = translatedString;
     }
+
 }
 
-std::string MultiReplace::getLangStr(const std::string& id, const std::string& replacement) {
+std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::wstring& replacement) {
     auto it = languageMap.find(id);
     if (it != languageMap.end()) {
-        std::string result = it->second;
-        if (!replacement.empty()) {
-            size_t pos = result.find("$REPLACE_STRING");
-            if (pos != std::string::npos) {
-                result.replace(pos, std::string("$REPLACE_STRING").length(), replacement);
-            }
-        }
-        return result;
-    }
-    else {
-        return "Text not found";
-    }
-}
-
-std::wstring MultiReplace::getLangStrW(const std::string& id, const std::wstring& replacement) {
-    auto it = languageMap.find(id);
-    if (it != languageMap.end()) {
-        std::wstring result = stringToWString(it->second);
+        std::wstring result = it->second;
         if (!replacement.empty()) {
             size_t pos = result.find(L"$REPLACE_STRING");
             if (pos != std::wstring::npos) {
@@ -5133,24 +5125,29 @@ std::wstring MultiReplace::getLangStrW(const std::string& id, const std::wstring
     }
 }
 
-LPCWSTR MultiReplace::getLangStrLPCWSTR(const std::string& id, const std::wstring& replacement) {
-    static std::wstring converted;
+LPCWSTR MultiReplace::getLangStrLPCWSTR(const std::wstring& id, const std::wstring& replacement) {
+    static std::map<std::wstring, std::wstring> strings; // Static container for unique strings
+
     auto it = languageMap.find(id);
     if (it != languageMap.end()) {
-        converted = stringToWString(it->second);
+        std::wstring converted = it->second;
         if (!replacement.empty()) {
             size_t pos = converted.find(L"$REPLACE_STRING");
             if (pos != std::wstring::npos) {
                 converted.replace(pos, wcslen(L"$REPLACE_STRING"), replacement);
             }
         }
-        return converted.c_str();
+
+        // Store or update the string associated with this id in the static container
+        strings[id] = std::move(converted);
+        return strings[id].c_str(); // Return a pointer to the stored string
     }
     else {
         static const std::wstring defaultText = L"Text not found";
-        return defaultText.c_str();
+        return defaultText.c_str(); // This can remain as it's constant
     }
 }
+
 
 #pragma endregion
 
