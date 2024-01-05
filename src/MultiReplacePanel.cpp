@@ -3446,7 +3446,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
         showStatusMessage(L"Actual Position " + addLineAndColumnMessage(startPosition), RGB(0, 128, 0));
     }
 
-    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"Hide");
+    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, getLangStrLPCWSTR(L"panel_hide"));
 
     isColumnHighlighted = true;
 
@@ -3512,7 +3512,7 @@ void MultiReplace::handleClearColumnMarks() {
     send(SCI_STARTSTYLING, 0, 0);
     send(SCI_SETSTYLING, textLength, STYLE_DEFAULT);
 
-    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"Show");
+    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, getLangStrLPCWSTR(L"panel_show"));
 
     isColumnHighlighted = false;
 
@@ -5156,6 +5156,7 @@ LPWSTR MultiReplace::getLangStrLPWSTR(const std::wstring& id, const std::wstring
 
 #pragma endregion
 
+
 #pragma region Event Handling -- triggered in beNotified() in MultiReplace.cpp
 
 void MultiReplace::processTextChange(SCNotification* notifyCode) {
@@ -5226,7 +5227,7 @@ void MultiReplace::onDocumentSwitched() {
         documentSwitched = true;
         isCaretPositionEnabled = false;
         scannedDelimiterBufferID = currentBufferID;
-        SetDlgItemText(s_hDlg, IDC_COLUMN_HIGHLIGHT_BUTTON, L"Show");
+        SetDlgItemText(s_hDlg, IDC_COLUMN_HIGHLIGHT_BUTTON, _MultiReplace.getLangStrLPCWSTR(L"panel_show"));
         if (instance != nullptr) {
             instance->isColumnHighlighted = false;
             instance->showStatusMessage(L"", RGB(0, 0, 0));
