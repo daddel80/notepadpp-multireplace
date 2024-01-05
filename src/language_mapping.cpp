@@ -70,7 +70,41 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"split_menu_replace_all", L"Alles ersetzen" },
 { L"split_menu_replace_all_in_docs", L"In allen geöffneten Dokumenten ersetzen" },
 { L"split_button_replace_all", L"Alles ersetzen" },
-{ L"split_button_replace_all_in_docs", L"In Dokumenten ersetzen" }
+{ L"split_button_replace_all_in_docs", L"In Dokumenten ersetzen" },
+
+// Status message entries
+{ L"status_duplicate_entry", L"Duplicate entry: " },
+{ L"status_value_added", L"Value added to the list." },
+{ L"status_no_rows_selected", L"No rows selected to shift." },
+{ L"status_one_line_deleted", L"1 line deleted." },
+{ L"status_column_marks_cleared", L"Column marks cleared." },
+{ L"status_all_marks_cleared", L"All marks cleared." },
+{ L"status_cannot_replace_read_only", L"Cannot replace. Document is read-only." },
+{ L"status_add_values_instructions", L"Add values into the list. Or uncheck 'Use in List' to replace directly." },
+{ L"status_no_find_string", L"No 'Find String' entered. Please provide a value to add to the list." },
+    { L"status_no_rows_selected_to_shift", L"No rows selected to shift." },
+    { L"status_add_values_or_uncheck", L"Add values into the list or uncheck 'Use in List'." },
+    { L"status_no_occurrence_found", L"No occurrence found." },
+    { L"status_replace_one_next_found", L"Replace: 1 occurrence replaced. Next found." },
+    { L"status_replace_one_none_left", L"Replace: 1 occurrence replaced. None left." },
+    { L"status_add_values_or_find_directly", L"Add values into the list. Or uncheck 'Use in List' to find directly." },
+    { L"status_wrapped", L"Wrapped" },
+    { L"status_no_matches_found", L"No matches found." },
+    { L"status_no_matches_after_wrap", L"No matches found after wrap." },
+    { L"status_add_values_or_mark_directly", L"Add values into the list. Or uncheck 'Use in List' to mark directly." },
+    { L"status_no_text_to_copy", L"No text to copy." },
+    { L"status_failed_to_copy", L"Failed to copy to Clipboard." },
+    { L"status_failed_allocate_memory", L"Failed to allocate memory for Clipboard." },
+    { L"status_invalid_column_or_delimiter", L"Invalid column or delimiter data." },
+    { L"status_missing_column_or_delimiter_data", L"Column data or delimiter data is missing" },
+    { L"status_invalid_range_in_column_data", L"Invalid range in column data" },
+    { L"status_syntax_error_in_column_data", L"Syntax error in column data" },
+    { L"status_invalid_column_number", L"Invalid column number" },
+    { L"status_extended_delimiter_empty", L"Extended delimiter is empty" },
+    { L"status_invalid_quote_character", L"Invalid quote character. Use \", ' or leave it empty." },
+    { L"status_unable_to_open_file", L"Error: Unable to open file for writing." },
+    { L"status_no_valid_items_in_csv", L"No valid items found in the CSV file." },
+    { L"status_list_exported_to_bash", L"List exported to BASH script." }
 };
 
 /*

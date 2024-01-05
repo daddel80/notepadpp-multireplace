@@ -529,7 +529,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
 {
     // Return early if findText is empty
     if (itemData.findText.empty()) {
-        showStatusMessage(L"No 'Find String' entered. Please provide a value to add to the list.", RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_no_find_string"), RGB(255, 0, 0));
         return;
     }
 
@@ -551,10 +551,10 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
     // Show a status message indicating the value added to the list
     std::wstring message;
     if (isDuplicate) {
-        message = L"Duplicate entry: " + newItemData.findText;
+        message = getLangStr(L"status_duplicate_entry") + newItemData.findText;
     }
     else {
-        message = L"Value added to the list.";
+        message = getLangStr(L"status_value_added");
     }
     showStatusMessage(message, RGB(0, 128, 0));
 
@@ -639,7 +639,7 @@ void MultiReplace::shiftListItem(HWND listView, const Direction& direction) {
     }
 
     if (selectedIndices.empty()) {
-        showStatusMessage(L"No rows selected to shift.", RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_no_rows_selected_to_shift"), RGB(255, 0, 0));
         return;
     }
 
@@ -700,7 +700,7 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 
     InvalidateRect(_replaceListView, NULL, TRUE);
 
-    showStatusMessage(L"1 line deleted.", RGB(0, 128, 0));
+    showStatusMessage(getLangStr(L"status_one_line_deleted"), RGB(0, 128, 0));
 }
 
 void MultiReplace::deleteSelectedLines(HWND listView) {
@@ -1261,7 +1261,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             }
             else {
                 handleClearColumnMarks();
-                showStatusMessage(L"Column marks cleared.", RGB(0, 128, 0));
+                showStatusMessage(getLangStr(L"status_column_marks_cleared"), RGB(0, 128, 0));
             }
         }
         break;
@@ -1376,7 +1376,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_CLEAR_MARKS_BUTTON:
         {
             handleClearTextMarksButton();
-            showStatusMessage(L"All marks cleared.", RGB(0, 128, 0));
+            showStatusMessage(getLangStr(L"status_all_marks_cleared"), RGB(0, 128, 0));
         }
         break;
 
@@ -1460,7 +1460,7 @@ void MultiReplace::handleReplaceAllButton() {
     // First check if the document is read-only
     LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
-        showStatusMessage(L"Cannot replace. Document is read-only.", RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_cannot_replace_read_only"), RGB(255, 0, 0));
         return;
     }
 
@@ -1475,7 +1475,7 @@ void MultiReplace::handleReplaceAllButton() {
     {
         // Check if the replaceListData is empty and warn the user if so
         if (replaceListData.empty()) {
-            showStatusMessage(L"Add values into the list. Or uncheck 'Use in List' to replace directly.", RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_add_values_instructions"), RGB(255, 0, 0));
             return;
         }
         ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
@@ -1514,7 +1514,7 @@ void MultiReplace::handleReplaceButton() {
     // First check if the document is read-only
     LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
-        showStatusMessage(L"Cannot replace. Document is read-only.", RGB(255, 0, 0));
+        showStatusMessage(getLangStrLPWSTR(L"status_cannot_replace_read_only"), RGB(255, 0, 0));
         return;
     }
 
@@ -1530,7 +1530,7 @@ void MultiReplace::handleReplaceButton() {
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
-            showStatusMessage(L"Add values into the list or uncheck 'Use in List'.", RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_add_values_or_uncheck"), RGB(255, 0, 0));
             return;
         }
 
@@ -1559,7 +1559,7 @@ void MultiReplace::handleReplaceButton() {
         }
         else {
             if (searchResult.pos < 0) {
-                showStatusMessage(L"No occurrence found.", RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
             }
         }
     }
@@ -1589,15 +1589,15 @@ void MultiReplace::handleReplaceButton() {
 
         if (wasReplaced) {
             if (searchResult.pos >= 0) {
-                showStatusMessage(L"Replace: 1 occurrence replaced. Next found.", RGB(0, 128, 0));
+                showStatusMessage(getLangStr(L"status_replace_one_next_found"), RGB(0, 128, 0));
             }
             else {
-                showStatusMessage(L"Replace: 1 occurrence replaced. None left.", RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_replace_one_none_left"), RGB(255, 0, 0));
             }
         }
         else {
             if (searchResult.pos < 0) {
-                showStatusMessage(L"No occurrence found.", RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
             }
         }
     }
@@ -2167,7 +2167,7 @@ void MultiReplace::handleFindNextButton() {
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
-            showStatusMessage(L"Add values into the list. Or uncheck 'Use in List' to find directly.", RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_add_values_or_find_directly"), RGB(255, 0, 0));
             return;
         }
 
@@ -2175,7 +2175,7 @@ void MultiReplace::handleFindNextButton() {
         if (result.pos < 0 && wrapAroundEnabled) {
             result = performListSearchForward(replaceListData, 0);
             if (result.pos >= 0) {
-                showStatusMessage(L"Wrapped", RGB(0, 128, 0));
+                showStatusMessage(getLangStr(L"status_wrapped"), RGB(0, 128, 0));
                 return;
             }
         }
@@ -2184,7 +2184,7 @@ void MultiReplace::handleFindNextButton() {
             showStatusMessage(L"", RGB(0, 128, 0));
         }
         else {
-            showStatusMessage(L"No matches found.", RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_no_matches_found"), RGB(255, 0, 0));
         }
     }
     else {
@@ -2200,7 +2200,7 @@ void MultiReplace::handleFindNextButton() {
         if (result.pos < 0 && wrapAroundEnabled) {
             result = performSearchForward(findTextUtf8, searchFlags, true, 0);
             if (result.pos >= 0) {
-                showStatusMessage(L"Wrapped ", RGB(0, 128, 0));
+                showStatusMessage(getLangStr(L"status_wrapped"), RGB(0, 128, 0));
                 return;
             }
         }
@@ -2226,7 +2226,7 @@ void MultiReplace::handleFindPrevButton() {
     if (useListEnabled)
     {
         if (replaceListData.empty()) {
-            showStatusMessage(L"Add values into the list. Or uncheck 'Use in List' to find directly.", RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_add_values_or_find_directly"), RGB(255, 0, 0));
             return;
         }
 
@@ -2242,12 +2242,12 @@ void MultiReplace::handleFindPrevButton() {
                 showStatusMessage(L"Wrapped " + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
             }
             else {
-                showStatusMessage(L"No matches found after wrap.", RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_no_matches_after_wrap"), RGB(255, 0, 0));
             }
         }
         else
         {
-            showStatusMessage(L"No matches found.", RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_no_matches_found"), RGB(255, 0, 0));
         }
     }
     else
@@ -2608,7 +2608,7 @@ void MultiReplace::handleMarkMatchesButton() {
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
-            showStatusMessage(L"Add values into the list. Or uncheck 'Use in List' to mark directly.", RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_add_values_or_mark_directly"), RGB(255, 0, 0));
             return;
         }
 
@@ -2774,7 +2774,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
 void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
 {
     if (text.empty()) {
-        showStatusMessage(L"No text to copy.", RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_no_text_to_copy"), RGB(255, 0, 0));
         return;
     }
 
@@ -2795,12 +2795,12 @@ void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
                 }
                 else
                 {
-                    showStatusMessage(L"Failed to copy to Clipboard.", RGB(255, 0, 0));
+                    showStatusMessage(getLangStr(L"status_failed_to_copy"), RGB(255, 0, 0));
                 }
             }
             else
             {
-                showStatusMessage(L"Failed to allocate memory for Clipboard.", RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_failed_allocate_memory"), RGB(255, 0, 0));
                 GlobalFree(hClipboardData);
             }
         }
@@ -2817,7 +2817,7 @@ void MultiReplace::handleSortColumns(SortDirection sortDirection)
 {
     // Validate column delimiter data
     if (!columnDelimiterData.isValid()) {
-        showStatusMessage(L"Invalid column or delimiter data.", RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), RGB(255, 0, 0));
         return;
     }
     SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
@@ -2972,7 +2972,7 @@ bool MultiReplace::confirmColumnDeletion() {
 void MultiReplace::handleDeleteColumns()
 {
     if (!columnDelimiterData.isValid()) {
-        showStatusMessage(L"Invalid column or delimiter data.", RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), RGB(255, 0, 0));
         return;
     }
 
@@ -3034,7 +3034,7 @@ void MultiReplace::handleDeleteColumns()
 void MultiReplace::handleCopyColumnsToClipboard()
 {
     if (!columnDelimiterData.isValid()) {
-        showStatusMessage(L"Invalid column or delimiter data.", RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), RGB(255, 0, 0));
         return;
     }
 
@@ -3141,7 +3141,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     columnDataString.erase(columnDataString.find_last_not_of(L',') + 1);
 
     if (columnDataString.empty() || delimiterData.empty()) {
-        showStatusMessage(L"Column data or delimiter data is missing", RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_missing_column_or_delimiter_data"), RGB(255, 0, 0));
         columnDelimiterData.columns.clear();
         columnDelimiterData.extendedDelimiter = "";
         return false;
@@ -3164,7 +3164,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                 int endRange = std::stoi(block.substr(dashPos + 1));
 
                 if (startRange < 1 || endRange < startRange) {
-                    showStatusMessage(L"Invalid range in column data", RGB(255, 0, 0));
+                    showStatusMessage(getLangStr(L"status_invalid_range_in_column_data"), RGB(255, 0, 0));
                     columnDelimiterData.columns.clear();
                     return false;
                 }
@@ -3176,7 +3176,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                 }
             }
             catch (const std::exception&) {
-                showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), RGB(255, 0, 0));
                 columnDelimiterData.columns.clear();
                 return false;
             }
@@ -3187,7 +3187,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                 int column = std::stoi(block);
 
                 if (column < 1) {
-                    showStatusMessage(L"Invalid column number", RGB(255, 0, 0));
+                    showStatusMessage(getLangStr(L"status_invalid_column_number"), RGB(255, 0, 0));
                     columnDelimiterData.columns.clear();
                     return false;
                 }
@@ -3197,7 +3197,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                 }
             }
             catch (const std::exception&) {
-                showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), RGB(255, 0, 0));
                 columnDelimiterData.columns.clear();
                 return false;
             }
@@ -3218,7 +3218,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             int endRange = std::stoi(lastBlock.substr(dashPos + 1));
 
             if (startRange < 1 || endRange < startRange) {
-                showStatusMessage(L"Invalid range in column data", RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_invalid_range_in_column_data"), RGB(255, 0, 0));
                 columnDelimiterData.columns.clear();
                 return false;
             }
@@ -3230,7 +3230,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             }
         }
         catch (const std::exception&) {
-            showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), RGB(255, 0, 0));
             columnDelimiterData.columns.clear();
             return false;
         }
@@ -3240,7 +3240,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             int column = std::stoi(lastBlock);
 
             if (column < 1) {
-                showStatusMessage(L"Invalid column number", RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_invalid_column_number"), RGB(255, 0, 0));
                 columnDelimiterData.columns.clear();
                 return false;
             }
@@ -3250,7 +3250,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             }
         }
         catch (const std::exception&) {
-            showStatusMessage(L"Syntax error in column data", RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), RGB(255, 0, 0));
             columnDelimiterData.columns.clear();
             return false;
         }
@@ -3259,13 +3259,13 @@ bool MultiReplace::parseColumnAndDelimiterData() {
 
     // Check delimiter data
     if (tempExtendedDelimiter.empty()) {
-        showStatusMessage(L"Extended delimiter is empty", RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_extended_delimiter_empty"), RGB(255, 0, 0));
         return false;
     }
 
     // Check Quote Character
     if (!quoteCharString.empty() && (quoteCharString.length() != 1 || !(quoteCharString[0] == L'"' || quoteCharString[0] == L'\''))) {
-        showStatusMessage(L"Invalid quote character. Use \", ' or leave it empty.", RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_invalid_quote_character"), RGB(255, 0, 0));
         return false;
     }
 
@@ -4058,7 +4058,7 @@ void MultiReplace::updateHeader() {
 
 void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color)
 {
-    const size_t MAX_DISPLAY_LENGTH = 72; // Maximum length of the message to be displayed
+    const size_t MAX_DISPLAY_LENGTH = 120; // Maximum length of the message to be displayed
     // Cut the message and add "..." if it's too long
     std::wstring strMessage = messageText;
     if (strMessage.size() > MAX_DISPLAY_LENGTH) {
@@ -4357,7 +4357,7 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
 
 void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
     if (!saveListToCsvSilent(filePath, list)) {
-        showStatusMessage(L"Error: Unable to open file for writing.", RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_unable_to_open_file"), RGB(255, 0, 0));
         return;
     }
 
@@ -4456,7 +4456,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
 
     if (replaceListData.empty())
     {
-        showStatusMessage(L"No valid items found in the CSV file.", RGB(255, 0, 0)); // Red color
+        showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), RGB(255, 0, 0));
     }
     else
     {
@@ -4605,7 +4605,7 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
 
     file.close();
 
-    showStatusMessage(L"List exported to BASH script.", RGB(0, 128, 0));
+    showStatusMessage(getLangStr(L"status_list_exported_to_bash"), RGB(0, 128, 0));
 
     // Enable the ListView accordingly
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
