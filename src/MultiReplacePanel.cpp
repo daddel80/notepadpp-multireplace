@@ -2278,7 +2278,7 @@ void MultiReplace::handleFindPrevButton() {
         }
         else
         {
-            showStatusMessage((L"No matches found for '" + findText + L"'.").c_str(), RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_no_matches_found_for_simple", { findText }), RGB(255, 0, 0));
         }
 
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
