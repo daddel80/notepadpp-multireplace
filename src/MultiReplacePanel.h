@@ -450,8 +450,8 @@ private:
     void loadLanguageFromIni(const std::wstring& iniFilePath, const std::wstring& languageCode);
     std::wstring getLanguageFromNativeLangXML();
     std::wstring getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements = {});
-    LPCWSTR getLangStrLPCWSTR(const std::wstring& id, const std::wstring& replacement = L"");
-    LPWSTR getLangStrLPWSTR(const std::wstring& id, const std::wstring& replacement = L"");
+    LPCWSTR getLangStrLPCWSTR(const std::wstring& id);
+    LPWSTR getLangStrLPWSTR(const std::wstring& id);
 };
 
 extern std::unordered_map<std::wstring, std::wstring> languageMap;

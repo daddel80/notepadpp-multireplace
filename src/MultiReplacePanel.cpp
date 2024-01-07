@@ -3526,6 +3526,7 @@ std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
     std::wstring lineAndColumnMessage = getLangStr(L"status_line_and_column_position",
                                                    { std::to_wstring(startInfo.startLine + 1),
                                                      std::to_wstring(startInfo.startColumnIndex) });
+
     return lineAndColumnMessage;
 }
 
@@ -5090,25 +5091,27 @@ std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<
     auto it = languageMap.find(id);
     if (it != languageMap.end()) {
         std::wstring result = it->second;
+        std::wstring basePlaceholder = L"$REPLACE_STRING";
 
-        // Replace $REPLACE_STRING and $REPLACE_STRING1 (treated as identical) with the first replacement value.
-        if (!replacements.empty()) {
-            std::wstring genericPlaceholder = L"$REPLACE_STRING";
-            size_t pos = result.find(genericPlaceholder);
-            while (pos != std::wstring::npos) {
-                result.replace(pos, genericPlaceholder.size(), replacements[0]);
-                pos = result.find(genericPlaceholder, pos + replacements[0].size());
+        // Start at the end of replacements and count down
+        if (!replacements.empty()) { // Check if replacements vector is not empty
+            for (size_t i = replacements.size(); i-- > 0; ) {
+                std::wstring placeholder = basePlaceholder + (i == 0 ? L"" : std::to_wstring(i + 1));
+                size_t pos = result.find(placeholder);
+                while (pos != std::wstring::npos) {
+                    // Determine the replacement value based on the index
+                    std::wstring replacementValue = replacements[i];
+                    result.replace(pos, placeholder.size(), replacementValue);
+                    pos = result.find(placeholder, pos + replacementValue.size());
+                }
             }
         }
 
-        // Replace $REPLACE_STRING2, $REPLACE_STRING3, ... for all subsequent replacement values.
-        for (size_t i = 1; i < replacements.size(); ++i) { // Start at 1 as the first value has been replaced already.
-            std::wstring numberedPlaceholder = L"$REPLACE_STRING" + std::to_wstring(i + 1); // e.g., $REPLACE_STRING2, $REPLACE_STRING3...
-            size_t pos = result.find(numberedPlaceholder);
-            while (pos != std::wstring::npos) {
-                result.replace(pos, numberedPlaceholder.size(), replacements[i]);
-                pos = result.find(numberedPlaceholder, pos + replacements[i].size());
-            }
+        // Finally, handle the case for $REPLACE_STRING
+        size_t pos = result.find(basePlaceholder);
+        while (pos != std::wstring::npos) {
+            result.replace(pos, basePlaceholder.size(), replacements.empty() ? L"" : replacements[0]);
+            pos = result.find(basePlaceholder, pos + replacements[0].size());
         }
 
         return result;
@@ -5118,54 +5121,23 @@ std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<
     }
 }
 
-LPCWSTR MultiReplace::getLangStrLPCWSTR(const std::wstring& id, const std::wstring& replacement) {
-    static std::map<std::wstring, std::wstring> strings; // Static container for unique strings
 
-    auto it = languageMap.find(id);
-    if (it != languageMap.end()) {
-        std::wstring converted = it->second;
-        if (!replacement.empty()) {
-            size_t pos = converted.find(L"$REPLACE_STRING");
-            if (pos != std::wstring::npos) {
-                converted.replace(pos, wcslen(L"$REPLACE_STRING"), replacement);
-            }
-        }
+LPCWSTR MultiReplace::getLangStrLPCWSTR(const std::wstring& id) {
+    static std::map<std::wstring, std::wstring> cache; // Static cache to hold strings and extend their lifetimes
+    auto& cachedString = cache[id]; // Reference to the possibly existing entry in the cache
 
-        // Store or update the string associated with this id in the static container
-        strings[id] = std::move(converted);
-        return strings[id].c_str(); // Return a pointer to the stored string
+    if (cachedString.empty()) { // If not already cached, retrieve and store it
+        cachedString = getLangStr(id);
     }
-    else {
-        static const std::wstring defaultText = L"Text not found";
-        return defaultText.c_str(); // This can remain as it's constant
-    }
+
+    return cachedString.c_str(); // Return a pointer to the cached string
 }
 
-LPWSTR MultiReplace::getLangStrLPWSTR(const std::wstring& id, const std::wstring& replacement) {
-    static std::map<std::wstring, std::wstring> mutableStrings; // Static container for unique strings
-
-    auto it = languageMap.find(id);
-    if (it != languageMap.end()) {
-        std::wstring converted = it->second;
-        if (!replacement.empty()) {
-            size_t pos = converted.find(L"$REPLACE_STRING");
-            if (pos != std::wstring::npos) {
-                converted.replace(pos, wcslen(L"$REPLACE_STRING"), replacement);
-            }
-        }
-
-        // Store or update the string associated with this id in the static container
-        mutableStrings[id] = std::move(converted);
-        return &mutableStrings[id][0]; // Return a pointer to the stored string
-    }
-    else {
-        // Provide a default "not found" text or handle this case as appropriate
-        static std::wstring defaultText = L"Text not found";
-        mutableStrings[id] = defaultText; // Store default text for this id
-        return &mutableStrings[id][0]; // Return a pointer to the stored string
-    }
+LPWSTR MultiReplace::getLangStrLPWSTR(const std::wstring& id) {
+    static std::wstring localStr;        // Static variable to extend the lifetime of the returned string
+    localStr = getLangStr(id);           // Copy the result of getLangStr to the static variable
+    return &localStr[0];                 // Return a modifiable pointer to the static string's buffer
 }
-
 
 #pragma endregion
 
