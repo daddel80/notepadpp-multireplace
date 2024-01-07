@@ -124,10 +124,10 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_QUOTECHAR_STATIC] = { 616, 215, 40, 25, WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
     ctrlMap[IDC_QUOTECHAR_EDIT] = { 658, 215, 15, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , getLangStrLPCWSTR(L"tooltip_quote") };
 
-    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { 508, 183, 17, 25, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
-    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { 526, 183, 17, 25, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
-    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 554, 183, 25, 25, WC_BUTTON, L"\u2716", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_drop_columns") };
-    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { 590, 183, 25, 25, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP,  getLangStrLPCWSTR(L"tooltip_copy_columns") };
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { 508, 183, 17, 25, WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { 526, 183, 17, 25, WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 554, 183, 25, 25, WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_drop_columns") };
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { 590, 183, 25, 25, WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP,  getLangStrLPCWSTR(L"tooltip_copy_columns") };
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 626, 183, 50, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_show"), BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
 
     ctrlMap[IDC_STATUS_MESSAGE] = { 14, 260, 630, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
@@ -135,17 +135,19 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_EDIT] = { 120, 54, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, 33, 28, 34, WC_BUTTON, L"\u21C5", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, 33, 28, 34, WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, getLangStrLPCWSTR(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_STATIC_FRAME] = { frameX, 99, 285, 163, WC_BUTTON, L"", BS_GROUPBOX, NULL };
     ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 118, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, 118, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 118, 35, 30, WC_BUTTON, L"\u066D", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
+    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 118, 35, 30, WC_BUTTON, L"٭", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
     ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, 118, 25, 25, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_2_buttons_mode") };
     ctrlMap[IDC_FIND_BUTTON] = { buttonX, 153, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_find_next"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-     // L"\u25BC
-    ctrlMap[IDC_FIND_NEXT_BUTTON] = { buttonX + 40, 153, 120, 30, WC_BUTTON,getLangStrLPCWSTR(L"panel_find_next_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 153, 35, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+
+    findNextButtonText = L"▼ " + getLangStr(L"panel_find_next_small");
+    ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + 40, 153, 120, 30, WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+
+    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 153, 35, 30, WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_MARK_BUTTON] = { buttonX, 188, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 188, 120, 30, WC_BUTTON,getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 188, 35, 30, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP, L"Copy to Clipboard" };
@@ -153,8 +155,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 284, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 319, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 354, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 404, 30, 30, WC_BUTTON, L"\u25B2", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
-    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 404 + 30 + 5, 30, 30, WC_BUTTON, L"\u25BC", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
+    ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 404, 30, 30, WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
+    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 404 + 30 + 5, 30, 30, WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 404 - 14, 165, 85, WC_BUTTON, L"", BS_GROUPBOX, NULL };
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 404 + 20, 120, 20, WC_STATIC, getLangStrLPCWSTR(L"panel_shift_lines"), SS_LEFT, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { 14, 284, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
@@ -2087,8 +2089,8 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     else {
         // Show Runtime error
         if (isLuaErrorDialogEnabled) {
-            std::wstring errorMsg = getLangStr(L"msgbox_execution_halted", { utf8ToWString(inputString.c_str()) });
-            std::wstring errorTitle = getLangStr(L"msgbox_title_execution_error");
+            std::wstring errorMsg = getLangStr(L"msgbox_use_variables_execution_error", { utf8ToWString(inputString.c_str()) });
+            std::wstring errorTitle = getLangStr(L"msgbox_title_use_variables_execution_error");
             MessageBoxW(NULL, errorMsg.c_str(), errorTitle.c_str(), MB_OK);
         }
         lua_close(L);
@@ -2952,7 +2954,7 @@ bool MultiReplace::confirmColumnDeletion() {
     // Now columnDelimiterData should be populated with the parsed column data
     size_t columnCount = columnDelimiterData.columns.size();
     std::wstring confirmMessage = getLangStr(L"msgbox_confirm_delete_columns", { std::to_wstring(columnCount) });
-    int msgboxID = MessageBox(NULL, confirmMessage.c_str(), getLangStr(L"msgbox_title_confirm_delete").c_str(), MB_ICONQUESTION | MB_YESNO);
+    int msgboxID = MessageBox(NULL, confirmMessage.c_str(), getLangStr(L"msgbox_title_confirm").c_str(), MB_ICONQUESTION | MB_YESNO);
 
     return (msgboxID == IDYES);  // Return true if user confirmed, else false
 }
@@ -5080,6 +5082,13 @@ std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<
     if (it != languageMap.end()) {
         std::wstring result = it->second;
         std::wstring basePlaceholder = L"$REPLACE_STRING";
+
+        // Replace all occurrences of "<br/>" with "\r\n" for line breaks in MessageBox
+        size_t breakPos = result.find(L"<br/>");
+        while (breakPos != std::wstring::npos) {
+            result.replace(breakPos, 5, L"\r\n");  // 5 is the length of "<br/>"
+            breakPos = result.find(L"<br/>");
+        }
 
         // Start at the end of replacements and count down
         if (!replacements.empty()) { // Check if replacements vector is not empty

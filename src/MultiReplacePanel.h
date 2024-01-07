@@ -302,6 +302,7 @@ private:
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
+	std::wstring findNextButtonText;        // member variable to ensure persists for button label throughout the object's lifetime.
 
     // Scintilla related 
     SciFnDirect pSciMsg = nullptr;

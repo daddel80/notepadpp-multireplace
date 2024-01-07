@@ -27,9 +27,9 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_replace", L"Replace" },
 { L"panel_2_buttons_mode", L"2 buttons mode" },
 { L"panel_find_next", L"Find Next" },
-{ L"panel_find_next_small", L"▼ Find Next"},
+{ L"panel_find_next_small", L"Find Next"},
 { L"panel_mark_matches", L"Mark Matches" },
-{ L"panel_mark_matches_small", L"▼ Mark Matches"},
+{ L"panel_mark_matches_small", L"Mark Matches"},
 { L"panel_clear_all_marks", L"Clear all marks" },
 { L"panel_load_list", L"Load List" },
 { L"panel_save_list", L"Save List" },
@@ -128,17 +128,16 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_wrapped_no_find", L"Wrapped. Position: $REPLACE_STRING" },
 { L"status_line_and_column_position", L" (Line: $REPLACE_STRING, Column: $REPLACE_STRING1)" },
 
-// Messagbox Title and Messages
-{ L"msgbox_title_error", L"Error"},
-{ L"msgbox_title_confirm", L"Are you sure?" },
-{ L"msgbox_title_confirm_delete", L"Confirm Delete" },
+// MessageBox Titles
+{ L"msgbox_title_error", L"Error" },
+{ L"msgbox_title_confirm", L"Confirm" },
 { L"msgbox_title_use_variables_syntax_error", L"Use Variables: Syntax Error" },
-{ L"msgbox_title_execution_error", L"Execution Error" },
+{ L"msgbox_title_use_variables_execution_error", L"Use Variables: Execution Error" },
+
+// MessageBox Messages
 { L"msgbox_failed_create_control", L"Failed to create control with ID: $REPLACE_STRING1, GetLastError returned: $REPLACE_STRING2" },
 { L"msgbox_confirm_replace_all", L"Are you sure you want to replace all occurrences in all open documents?" },
-{ L"msgbox_use_variables_execution_error", L"Use Variables: Execution Error" },
-{ L"msgbox_confirm_delete_columns", L"Are you sure you want to delete $REPLACE_STRING columns?" },
-{ L"msgbox_error_saving_settings", L"An error occurred while saving the settings: $REPLACE_STRING" },
-{ L"msgbox_execution_halted", L"Execution halted due to execution failure in: $REPLACE_STRING" },
-{ L"msgbox_execution_halted", L"Execution halted due to failure in:\n$REPLACE_STRING" }
+{ L"msgbox_confirm_delete_columns", L"Are you sure you want to delete $REPLACE_STRING column(s)?" },
+{ L"msgbox_error_saving_settings", L"An error occurred while saving the settings:<br/>$REPLACE_STRING" },
+{ L"msgbox_use_variables_execution_error", L"Execution halted due to execution failure in:<br/>$REPLACE_STRING" },
 };
