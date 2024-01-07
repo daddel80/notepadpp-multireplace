@@ -126,5 +126,19 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_deleted_fields_count", L"Deleted $REPLACE_STRING fields." },
 { L"status_wrapped_find", L"Wrapped '$REPLACE_STRING1'. Position: $REPLACE_STRING2" },
 { L"status_wrapped_no_find", L"Wrapped. Position: $REPLACE_STRING" },
-{ L"status_line_and_column_position", L" (Line: $REPLACE_STRING, Column: $REPLACE_STRING1)" }
+{ L"status_line_and_column_position", L" (Line: $REPLACE_STRING, Column: $REPLACE_STRING1)" },
+
+// Messagbox Title and Messages
+{ L"msgbox_title_error", L"Error"},
+{ L"msgbox_title_confirm", L"Are you sure?" },
+{ L"msgbox_title_confirm_delete", L"Confirm Delete" },
+{ L"msgbox_title_use_variables_syntax_error", L"Use Variables: Syntax Error" },
+{ L"msgbox_title_execution_error", L"Execution Error" },
+{ L"msgbox_failed_create_control", L"Failed to create control with ID: $REPLACE_STRING1, GetLastError returned: $REPLACE_STRING2" },
+{ L"msgbox_confirm_replace_all", L"Are you sure you want to replace all occurrences in all open documents?" },
+{ L"msgbox_use_variables_execution_error", L"Use Variables: Execution Error" },
+{ L"msgbox_confirm_delete_columns", L"Are you sure you want to delete $REPLACE_STRING columns?" },
+{ L"msgbox_error_saving_settings", L"An error occurred while saving the settings: $REPLACE_STRING" },
+{ L"msgbox_execution_halted", L"Execution halted due to execution failure in: $REPLACE_STRING" },
+{ L"msgbox_execution_halted", L"Execution halted due to failure in:\n$REPLACE_STRING" }
 };

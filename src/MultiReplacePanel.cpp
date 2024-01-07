@@ -230,9 +230,6 @@ void MultiReplace::initializeCtrlMap()
 
 bool MultiReplace::createAndShowWindows() {
 
-    // Buffer size for the error message
-    constexpr int BUFFER_SIZE = 256;
-
     for (auto& pair : ctrlMap)
     {
         HWND hwndControl = CreateWindowEx(
@@ -250,12 +247,11 @@ bool MultiReplace::createAndShowWindows() {
             NULL                        // Additional application data.
         );
 
-        if (hwndControl == NULL)
+        if (hwndControl == NULL) 
         {
-            wchar_t msg[BUFFER_SIZE];
             DWORD dwError = GetLastError();
-            wsprintf(msg, L"Failed to create control with ID: %d, GetLastError returned: %lu", pair.first, dwError);
-            MessageBox(NULL, msg, L"Error", MB_OK | MB_ICONERROR);
+            std::wstring errorMsg = getLangStr(L"msgbox_failed_create_control", { std::to_wstring(pair.first), std::to_wstring(dwError) });
+            MessageBox(NULL, errorMsg.c_str(), getLangStr(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR);
             return false;
         }
 
@@ -1327,8 +1323,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             {
                 int msgboxID = MessageBox(
                     NULL,
-                    L"Are you sure you want to replace all occurrences in all open documents?",
-                    L"Are you sure?",
+                    getLangStr(L"msgbox_confirm_replace_all").c_str(),
+                    getLangStr(L"msgbox_title_confirm").c_str(),
                     MB_OKCANCEL
                 );
 
@@ -2063,9 +2059,8 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         lua_pop(L, 1);
         if (isLuaErrorDialogEnabled) {
             std::wstring error_message = utf8ToWString(cstr);
-            MessageBoxW(NULL, error_message.c_str(), L"Use Variables: Syntax Error", MB_OK);
+            MessageBoxW(NULL, error_message.c_str(), getLangStr(L"msgbox_title_use_variables_syntax_error").c_str(), MB_OK);
         }
-
         lua_close(L);
         return false;
     }
@@ -2092,9 +2087,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     else {
         // Show Runtime error
         if (isLuaErrorDialogEnabled) {
-            std::string error_message = "Execution halted due to execution failure in:\n" + inputString;
-            std::wstring w_error_message = utf8ToWString(error_message.c_str());
-            MessageBoxW(NULL, w_error_message.c_str(), L"Use Variables: Execution Error", MB_OK);
+            std::wstring errorMsg = getLangStr(L"msgbox_execution_halted", { utf8ToWString(inputString.c_str()) });
+            std::wstring errorTitle = getLangStr(L"msgbox_title_execution_error");
+            MessageBoxW(NULL, errorMsg.c_str(), errorTitle.c_str(), MB_OK);
         }
         lua_close(L);
         return false;
@@ -2956,14 +2951,8 @@ bool MultiReplace::confirmColumnDeletion() {
 
     // Now columnDelimiterData should be populated with the parsed column data
     size_t columnCount = columnDelimiterData.columns.size();
-    std::wstring confirmMessage = L"Are you sure you want to delete " +
-        std::to_wstring(columnCount) +
-        (columnCount == 1 ? L" column?" : L" columns?");
-
-    int msgboxID = MessageBox(NULL,
-        confirmMessage.c_str(),
-        L"Confirm Delete",
-        MB_ICONQUESTION | MB_YESNO);
+    std::wstring confirmMessage = getLangStr(L"msgbox_confirm_delete_columns", { std::to_wstring(columnCount) });
+    int msgboxID = MessageBox(NULL, confirmMessage.c_str(), getLangStr(L"msgbox_title_confirm_delete").c_str(), MB_ICONQUESTION | MB_YESNO);
 
     return (msgboxID == IDYES);  // Return true if user confirmed, else false
 }
@@ -4813,9 +4802,8 @@ void MultiReplace::saveSettings() {
     }
     catch (const std::exception& ex) {
         // If an error occurs while writing to the INI file, we show an error message
-        std::wstring errorMessage = L"An error occurred while saving the settings: ";
-        errorMessage += std::wstring(ex.what(), ex.what() + strlen(ex.what()));
-        MessageBox(NULL, errorMessage.c_str(), L"Error", MB_OK | MB_ICONERROR);
+        std::wstring errorMessage = getLangStr(L"msgbox_error_saving_settings", { std::wstring(ex.what(), ex.what() + strlen(ex.what())) });
+        MessageBox(NULL, errorMessage.c_str(), getLangStr(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR);
     }
     settingsSaved = true;
 }
@@ -5120,7 +5108,6 @@ std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<
         return L"Text not found"; // Return a default message if ID not found
     }
 }
-
 
 LPCWSTR MultiReplace::getLangStrLPCWSTR(const std::wstring& id) {
     static std::map<std::wstring, std::wstring> cache; // Static cache to hold strings and extend their lifetimes
