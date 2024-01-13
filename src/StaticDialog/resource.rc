@@ -21,7 +21,7 @@
 #include <commctrl.h>
 
 // Window Size will be overwritten in initializeWindowSize() but needed for calculationg FrameWidth
-IDD_REPLACE_DIALOG DIALOGEX 92, 40, 655, 305
+IDD_REPLACE_DIALOG DIALOGEX 92, 40, 1023, 485
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION "MultiReplace"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1

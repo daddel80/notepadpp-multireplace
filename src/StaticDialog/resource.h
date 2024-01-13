@@ -106,7 +106,9 @@
 #define STYLE9							68
 #define STYLE10							69
 
-// Minimum window dimensions
+// Default window position and dimensions
+#define POS_X 92
+#define POS_Y 40
 #define MIN_WIDTH 1023
 #define MIN_HEIGHT 485
 

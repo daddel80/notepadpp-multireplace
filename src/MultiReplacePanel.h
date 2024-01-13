@@ -63,6 +63,13 @@ struct ReplaceItemData
     }
 };
 
+struct WindowSettings {
+    int posX;
+    int posY;
+    int width;
+    int height;
+};
+
 struct ControlInfo
 {
     int x, y, cx, cy;
@@ -316,7 +323,6 @@ private:
         IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT, IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
 
-
     //Initialization
     void initializeWindowSize();
     RECT calculateMinWindowFrame(HWND hwnd);
@@ -437,10 +443,12 @@ private:
     std::string translateEscapes(const std::string& input);
 
     //INI
+    std::pair<std::wstring, std::wstring> generateConfigFilePaths();
     void saveSettingsToIni(const std::wstring& iniFilePath);
     void saveSettings();
     void loadSettingsFromIni(const std::wstring& iniFilePath);
     void loadSettings();
+    RECT loadWindowSettingsFromIni();
     std::wstring readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue);
     bool readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue);
     int readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue);

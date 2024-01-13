@@ -68,8 +68,8 @@ MultiReplace* MultiReplace::instance = nullptr;
 #pragma region Initialization
 
 void MultiReplace::initializeWindowSize() {
-    RECT adjustedSize = calculateMinWindowFrame(_hSelf);
-    SetWindowPos(_hSelf, NULL, 0, 0, adjustedSize.right, adjustedSize.bottom, SWP_NOZORDER | SWP_NOMOVE);
+    RECT settings = loadWindowSettingsFromIni();
+    SetWindowPos(_hSelf, NULL, settings.left, settings.top, settings.right - settings.left, settings.bottom - settings.top, SWP_NOZORDER);
 }
 
 RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
@@ -4704,6 +4704,16 @@ std::string MultiReplace::translateEscapes(const std::string& input) {
 
 #pragma region INI
 
+std::pair<std::wstring, std::wstring> MultiReplace::generateConfigFilePaths() {
+    wchar_t configDir[MAX_PATH] = {};
+    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, (LPARAM)configDir);
+    configDir[MAX_PATH - 1] = '\0'; // Ensure null-termination
+
+    std::wstring iniFilePath = std::wstring(configDir) + L"\\MultiReplace.ini";
+    std::wstring csvFilePath = std::wstring(configDir) + L"\\MultiReplaceList.ini";
+    return { iniFilePath, csvFilePath };
+}
+
 void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     std::ofstream outFile(iniFilePath);
 
@@ -4711,6 +4721,29 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
         throw std::runtime_error("Could not open settings file for writing.");
     }
 
+    // Store window size and position
+    RECT rect;
+    if (GetWindowRect(_hSelf, &rect)) {
+        int width = rect.right - rect.left;
+        int height = rect.bottom - rect.top;
+        int posX = rect.left;
+        int posY = rect.top;
+
+        outFile << wstringToString(L"[Window]\n");
+        outFile << wstringToString(L"Width=" + std::to_wstring(width) + L"\n");
+        outFile << wstringToString(L"Height=" + std::to_wstring(height) + L"\n");
+        outFile << wstringToString(L"PosX=" + std::to_wstring(posX) + L"\n");
+        outFile << wstringToString(L"PosY=" + std::to_wstring(posY) + L"\n");
+    }
+/*
+    // Store column widths for search and replace statistics (replace with actual values)
+    int searchColumnWidth = 100; // Replace with actual search column width
+    int replaceColumnWidth = 150; // Replace with actual replace column width
+
+    outFile << wstringToString(L"[ColumnWidths]\n");
+    outFile << wstringToString(L"SearchColumnWidth=" + std::to_wstring(searchColumnWidth) + L"\n");
+    outFile << wstringToString(L"ReplaceColumnWidth=" + std::to_wstring(replaceColumnWidth) + L"\n");
+*/
     // Convert and Store the current "Find what" and "Replace with" texts
     std::wstring currentFindTextData = L"\"" + getTextFromDialogItem(_hSelf, IDC_FIND_EDIT) + L"\"";
     std::wstring currentReplaceTextData = L"\"" + getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT) + L"\"";
@@ -4789,14 +4822,8 @@ void MultiReplace::saveSettings() {
         return;  // Check as WM_DESTROY will be 28 times triggered
     }
 
-    // Get the path to the plugin's configuration file
-    wchar_t configDir[MAX_PATH] = {}; // Initialize all elements to 0
-    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, (LPARAM)configDir);
-    configDir[MAX_PATH - 1] = '\0'; // Ensure the configDir is null-terminated
-
-    // Form the path to the INI file
-    std::wstring iniFilePath = std::wstring(configDir) + L"\\MultiReplace.ini";
-    std::wstring csvFilePath = std::wstring(configDir) + L"\\MultiReplaceList.ini";
+    // Generate the paths to the configuration files
+    auto [iniFilePath, csvFilePath] = generateConfigFilePaths();
 
     // Try to save the settings in the INI file
     try {
@@ -4908,32 +4935,8 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 }
 
 void MultiReplace::loadSettings() {
-
-    // Initialize configDir with all elements set to 0
-    wchar_t configDir[MAX_PATH] = {};
-
-    // Get the path to the plugin's configuration directory
-    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, (LPARAM)configDir);
-
-    // Ensure configDir is null-terminated
-    configDir[MAX_PATH - 1] = '\0';
-
-    std::wstring iniFilePath = std::wstring(configDir) + L"\\MultiReplace.ini";
-    std::wstring csvFilePath = std::wstring(configDir) + L"\\MultiReplaceList.ini";
-
-    // Verify that the settings file exists before attempting to read it
-    DWORD ftypIni = GetFileAttributesW(iniFilePath.c_str());
-    if (ftypIni == INVALID_FILE_ATTRIBUTES) {
-        // MessageBox(NULL, L"The settings file does not exist.", L"Error", MB_OK | MB_ICONERROR);
-        return;
-    }
-
-    // Verify that the list file exists before attempting to read it
-    DWORD ftypCsv = GetFileAttributesW(csvFilePath.c_str());
-    if (ftypCsv == INVALID_FILE_ATTRIBUTES) {
-        // MessageBox(NULL, L"The list file does not exist.", L"Error", MB_OK | MB_ICONERROR);
-        return;
-    }
+    // Generate the paths to the configuration files
+    auto [iniFilePath, csvFilePath] = generateConfigFilePaths();
 
     try {
         loadSettingsFromIni(iniFilePath);
@@ -4949,6 +4952,25 @@ void MultiReplace::loadSettings() {
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
 
+}
+
+RECT MultiReplace::loadWindowSettingsFromIni() {
+    // Generate the paths to the configuration files
+    auto [iniFilePath, _] = generateConfigFilePaths(); // CSV path is ignored
+
+    RECT rect;
+
+    // Read window position and size from the INI file or use default values
+    rect.left = readIntFromIniFile(iniFilePath, L"Window", L"PosX", POS_X);
+    rect.top = readIntFromIniFile(iniFilePath, L"Window", L"PosY", POS_Y);
+    int width = std::max(readIntFromIniFile(iniFilePath, L"Window", L"Width", MIN_WIDTH), MIN_WIDTH);
+    int height = std::max(readIntFromIniFile(iniFilePath, L"Window", L"Height", MIN_HEIGHT), MIN_HEIGHT);
+
+    // Update right and bottom values based on the read width and height
+    rect.right = rect.left + width;
+    rect.bottom = rect.top + height;
+
+    return rect;
 }
 
 std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue) {
