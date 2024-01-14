@@ -80,7 +80,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
         tbIcons.hToolbarBmp = ::LoadBitmap(g_inst, MAKEINTRESOURCE(IDR_SMILEY_BMP));
         tbIcons.hToolbarIcon = ::LoadIcon(g_inst, MAKEINTRESOURCE(IDI_SMILEY_ICON));
         tbIcons.hToolbarIconDarkMode = ::LoadIcon(g_inst, MAKEINTRESOURCE(IDI_SMILEY_DM_ICON));
-        ::SendMessage(nppData._nppHandle, NPPM_ADDTOOLBARICON_FORDARKMODE, funcItem[1]._cmdID, (LPARAM)&tbIcons);
+        ::SendMessage(nppData._nppHandle, NPPM_ADDTOOLBARICON_FORDARKMODE, funcItem[0]._cmdID, (LPARAM)&tbIcons);
     }
     break;
     case NPPN_SHUTDOWN:
