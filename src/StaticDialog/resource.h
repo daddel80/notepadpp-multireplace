@@ -106,6 +106,10 @@
 #define STYLE9							68
 #define STYLE10							69
 
+#define IDI_SMILEY_ICON 5701
+#define IDI_SMILEY_DM_ICON 5702
+#define IDR_SMILEY_BMP 5703
+
 // Default window position and dimensions
 #define POS_X 92
 #define POS_Y 40

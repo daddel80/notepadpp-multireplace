@@ -21,6 +21,8 @@
 extern FuncItem funcItem[nbFunc];
 extern NppData nppData;
 
+HINSTANCE g_inst;
+
 
 BOOL APIENTRY DllMain(HINSTANCE hModule, DWORD  reasonForCall, LPVOID /*lpReserved*/)
 {
@@ -30,6 +32,7 @@ BOOL APIENTRY DllMain(HINSTANCE hModule, DWORD  reasonForCall, LPVOID /*lpReserv
 		{
 			case DLL_PROCESS_ATTACH:
 				pluginInit(hModule);
+                g_inst = HINSTANCE(hModule);
 				break;
 
 			case DLL_PROCESS_DETACH:
@@ -71,6 +74,15 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
 {
     switch (notifyCode->nmhdr.code)
     {
+    case NPPN_TBMODIFICATION:
+    {
+        toolbarIconsWithDarkMode tbIcons;
+        tbIcons.hToolbarBmp = ::LoadBitmap(g_inst, MAKEINTRESOURCE(IDR_SMILEY_BMP));
+        tbIcons.hToolbarIcon = ::LoadIcon(g_inst, MAKEINTRESOURCE(IDI_SMILEY_ICON));
+        tbIcons.hToolbarIconDarkMode = ::LoadIcon(g_inst, MAKEINTRESOURCE(IDI_SMILEY_DM_ICON));
+        ::SendMessage(nppData._nppHandle, NPPM_ADDTOOLBARICON_FORDARKMODE, funcItem[1]._cmdID, (LPARAM)&tbIcons);
+    }
+    break;
     case NPPN_SHUTDOWN:
     {
         commandMenuCleanUp();

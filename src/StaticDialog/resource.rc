@@ -40,3 +40,7 @@ BEGIN
 	LTEXT           "License: GPLv2", IDC_LICENSE_STATIC, 20, 60, 200, 11
 	CONTROL         "Help and Support", IDC_WEBSITE_LINK, "Static", SS_NOTIFY | WS_VISIBLE, 60, 85, 150, 11
 END
+
+IDR_SMILEY_BMP BITMAP "smiley.bmp"
+IDI_SMILEY_ICON ICON "smiley.ico"
+IDI_SMILEY_DM_ICON ICON "smileyDM.ico"
