@@ -22,6 +22,3 @@ vs.proj/.vs/
 *.lib
 /.vs/VSWorkspaceState.json
 /.vs/notepadpp-multireplace/v17/.wsuo
-/src/StaticDialog/multireplace_ico_black.svg
-/src/StaticDialog/multireplace_ico_white.svg
-/src/StaticDialog/multireplace_light.svg
