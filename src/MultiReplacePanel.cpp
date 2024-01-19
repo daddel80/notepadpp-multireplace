@@ -505,22 +505,13 @@ void MultiReplace::createListViewColumns(HWND listView) {
     //Adding Tooltips
     HWND hwndHeader = ListView_GetHeader(listView);
     HWND hwndTT = CreateHeaderTooltip(hwndHeader);
-    LPWSTR tooltips[] = {
-        L"",
-        L"",
-        L"",
-        L"",
-        getLangStrLPWSTR(L"tooltip_header_whole_word"),
-        getLangStrLPWSTR(L"tooltip_header_match_case"),
-        getLangStrLPWSTR(L"tooltip_header_use_variables"),
-        getLangStrLPWSTR(L"tooltip_header_extended"),
-        getLangStrLPWSTR(L"tooltip_header_regex"),
-        L"" 
-    };
 
-    for (int i = 0; i < ARRAYSIZE(tooltips); i++) {
-        AddHeaderTooltip(hwndTT, hwndHeader, i, tooltips[i]);
-    }
+    AddHeaderTooltip(hwndTT, hwndHeader, 4, getLangStrLPWSTR(L"tooltip_header_whole_word"));
+    AddHeaderTooltip(hwndTT, hwndHeader, 5, getLangStrLPWSTR(L"tooltip_header_match_case"));
+    AddHeaderTooltip(hwndTT, hwndHeader, 6, getLangStrLPWSTR(L"tooltip_header_use_variables"));
+    AddHeaderTooltip(hwndTT, hwndHeader, 7, getLangStrLPWSTR(L"tooltip_header_extended"));
+    AddHeaderTooltip(hwndTT, hwndHeader, 8, getLangStrLPWSTR(L"tooltip_header_regex"));
+
 }
 
 void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
