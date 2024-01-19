@@ -460,6 +460,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     int columns3to7Width = 30 * 7; // Assuming fixed width of 30 for columns 3 to 8
 
     remainingWidth -= columns3to7Width;
+    int remainingWidth = adjustedWidth - findCountColumnWidth - replaceCountColumnWidth - columns5to10Width;
 
     lvc.iSubItem = 0;
     lvc.pszText = L"";
