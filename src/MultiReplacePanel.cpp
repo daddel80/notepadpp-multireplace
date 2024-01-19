@@ -68,13 +68,17 @@ MultiReplace* MultiReplace::instance = nullptr;
 #pragma region Initialization
 
 void MultiReplace::initializeWindowSize() {
-    RECT settings = loadWindowSettingsFromIni();
-    SetWindowPos(_hSelf, NULL, settings.left, settings.top, settings.right - settings.left, settings.bottom - settings.top, SWP_NOZORDER);
+    loadUIConfigFromIni(); // Loads the UI configuration, including window size and position
+
+    // Set the window position and size based on the loaded settings
+    SetWindowPos(_hSelf, NULL, windowRect.left, windowRect.top,
+        windowRect.right - windowRect.left,
+        windowRect.bottom - windowRect.top, SWP_NOZORDER);
 }
 
 RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     // Measure the window's borders and title bar
-    RECT clientRect, windowRect;
+    RECT clientRect;
     GetClientRect(hwnd, &clientRect);
     GetWindowRect(hwnd, &windowRect);
 
@@ -454,74 +458,80 @@ void MultiReplace::createListViewColumns(HWND listView) {
     int windowWidth = rcClient.right - rcClient.left;
 
     // Calculate the remaining width for the first two columns
-    int remainingWidth = windowWidth - 281;
+    int adjustedWidth = windowWidth - 281;
 
-    // Calculate the total width of columns 3 to 8
-    int columns3to7Width = 30 * 7; // Assuming fixed width of 30 for columns 3 to 8
+    // Calculate the total width of columns 5 to 10 (Options and Delete Button)
+    int columns5to10Width = 30 * 7;
 
-    remainingWidth -= columns3to7Width;
+    // Calculate the remaining width after subtracting the widths of the specified columns
     int remainingWidth = adjustedWidth - findCountColumnWidth - replaceCountColumnWidth - columns5to10Width;
+
+    // Ensure remainingWidth is not less than the minimum width
+    remainingWidth = std::max(remainingWidth, 60);
 
     lvc.iSubItem = 0;
     lvc.pszText = L"";
     lvc.cx = 0;
     ListView_InsertColumn(listView, 0, &lvc);
 
-    // Column for Selection
     lvc.iSubItem = 1;
+    lvc.pszText = L"Find Count";
+    lvc.cx = findCountColumnWidth;
+    lvc.fmt = LVCFMT_RIGHT;
+    ListView_InsertColumn(listView, 1, &lvc);
+
+    lvc.iSubItem = 2;
+    lvc.pszText = L"Replace Count";
+    lvc.cx = replaceCountColumnWidth;
+    lvc.fmt = LVCFMT_RIGHT;
+    ListView_InsertColumn(listView, 2, &lvc);
+
+    // Column for Selection
+    lvc.iSubItem = 3;
     lvc.pszText = L"\u2610";
     lvc.cx = 30;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
-    ListView_InsertColumn(listView, 1, &lvc);
+    ListView_InsertColumn(listView, 3, &lvc);
 
     // Column for "Find" Text
-    lvc.iSubItem = 2;
+    lvc.iSubItem = 4;
     lvc.pszText = getLangStrLPWSTR(L"header_find");
     lvc.cx = remainingWidth / 2;
     lvc.fmt = LVCFMT_LEFT;
-    ListView_InsertColumn(listView, 2, &lvc);
+    ListView_InsertColumn(listView, 4, &lvc);
 
     // Column for "Replace" Text
-    lvc.iSubItem = 3;
+    lvc.iSubItem = 5;
     lvc.pszText = getLangStrLPWSTR(L"header_replace");
     lvc.cx = remainingWidth / 2;
-    ListView_InsertColumn(listView, 3, &lvc);
+    ListView_InsertColumn(listView, 5, &lvc);
 
     // Columns for Options
     const std::wstring options[] = { L"header_whole_word", L"header_match_case", L"header_use_variables", L"header_extended", L"header_regex" };
     for (int i = 0; i < 5; i++) {
-        lvc.iSubItem = 4 + i;
+        lvc.iSubItem = 6 + i;
         lvc.pszText = getLangStrLPWSTR(options[i]);
         lvc.cx = 30;
         lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
-        ListView_InsertColumn(listView, 4 + i, &lvc);
+        ListView_InsertColumn(listView, 6 + i, &lvc);
     }
 
     // Column for Delete Button
-    lvc.iSubItem = 9;
+    lvc.iSubItem = 11;
     lvc.pszText = L"";
     lvc.cx = 30;
-    ListView_InsertColumn(listView, 9, &lvc);
+    ListView_InsertColumn(listView, 11, &lvc);
 
     //Adding Tooltips
     HWND hwndHeader = ListView_GetHeader(listView);
     HWND hwndTT = CreateHeaderTooltip(hwndHeader);
-    LPWSTR tooltips[] = {
-        L"",
-        L"",
-        L"",
-        L"",
-        getLangStrLPWSTR(L"tooltip_header_whole_word"),
-        getLangStrLPWSTR(L"tooltip_header_match_case"),
-        getLangStrLPWSTR(L"tooltip_header_use_variables"),
-        getLangStrLPWSTR(L"tooltip_header_extended"),
-        getLangStrLPWSTR(L"tooltip_header_regex"),
-        L"" 
-    };
 
-    for (int i = 0; i < ARRAYSIZE(tooltips); i++) {
-        AddHeaderTooltip(hwndTT, hwndHeader, i, tooltips[i]);
-    }
+    AddHeaderTooltip(hwndTT, hwndHeader, 6, getLangStrLPWSTR(L"tooltip_header_whole_word"));
+    AddHeaderTooltip(hwndTT, hwndHeader, 7, getLangStrLPWSTR(L"tooltip_header_match_case"));
+    AddHeaderTooltip(hwndTT, hwndHeader, 8, getLangStrLPWSTR(L"tooltip_header_use_variables"));
+    AddHeaderTooltip(hwndTT, hwndHeader, 9, getLangStrLPWSTR(L"tooltip_header_extended"));
+    AddHeaderTooltip(hwndTT, hwndHeader, 10, getLangStrLPWSTR(L"tooltip_header_regex"));
+
 }
 
 void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
@@ -570,16 +580,18 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
     int newWidth = LOWORD(lParam);
     int newHeight = HIWORD(lParam);
 
-    // Calculate the total width of columns 3 to 8
-    int columns3to7Width = 0;
-    for (int i = 4; i < 10; i++)
-    {
-        columns3to7Width += ListView_GetColumnWidth(listView, i);
-    }
-    columns3to7Width += 30; // for the first column
+    // Get the current width of the first two columns (Find Count and Replace Count)
+    int findCountColWidth = ListView_GetColumnWidth(listView, 1);
+    int replaceCountColWidth = ListView_GetColumnWidth(listView, 2); 
 
-    // Calculate the remaining width for the first two columns
-    int remainingWidth = newWidth - 281 - columns3to7Width;
+    // Calculate the total width of columns 5 to 10 (angepasst für zusätzliche Spalten)
+    int columns5to10Width = 30 * 7;
+
+    // Calculate the remaining width for the dynamic columns (Find and Replace Text)
+    int remainingWidth = newWidth - 281 - columns5to10Width - findCountColWidth - replaceCountColWidth;
+
+    // Ensure remainingWidth is not less than the minimum width
+    remainingWidth = std::max(remainingWidth, 60);
 
     static int prevWidth = newWidth; // Store the previous width
     bool moveWindowCalled = false; // Flag to check if MoveWindow is already called
@@ -592,17 +604,17 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
         moveWindowCalled = true;
     }
 
-    ListView_SetColumnWidth(listView, 2, remainingWidth / 2);
-    ListView_SetColumnWidth(listView, 3, remainingWidth / 2);
+    // Dynamically adjust the width of the Find and Replace Text columns
+    ListView_SetColumnWidth(listView, 4, remainingWidth / 2); // Find Text
+    ListView_SetColumnWidth(listView, 5, remainingWidth / 2); // Replace Text
 
     // If the window is horizontally minimized or vertically changed the size
     if (!moveWindowCalled) {
         MoveWindow(listHwnd, 14, 284, newWidth - 260, newHeight - 295, TRUE);
     }
 
-    // If the window size hasn't changed, no need to do anything
-
     prevWidth = newWidth;
+
 }
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
@@ -747,7 +759,7 @@ void MultiReplace::sortReplaceListData(int column) {
     // Get the currently selected rows
     auto selectedRows = getSelectedRows();
 
-    if (column == 2) {
+    if (column == 4) {
         // Sort by `findText`
         std::sort(replaceListData.begin(), replaceListData.end(),
             [this](const ReplaceItemData& a, const ReplaceItemData& b) {
@@ -758,7 +770,7 @@ void MultiReplace::sortReplaceListData(int column) {
             });
         showStatusMessage(getLangStr(L"status_find_column_sorted", { ascending ? L"ascending" : L"descending" }), RGB(0, 0, 255));
     }
-    else if (column == 3) {
+    else if (column == 5) {
         // Sort by `replaceText`
         std::sort(replaceListData.begin(), replaceListData.end(),
             [this](const ReplaceItemData& a, const ReplaceItemData& b) {
@@ -886,6 +898,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             int newWidth = LOWORD(lParam);
             int newHeight = HIWORD(lParam);
 
+            // Update the global windowRect dimensions
+            GetWindowRect(_hSelf, &windowRect);
+
             // Move and resize the List
             updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), lParam);
 
@@ -930,10 +945,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             case NM_CLICK:
             {
                 NMITEMACTIVATE* pnmia = reinterpret_cast<NMITEMACTIVATE*>(lParam);
-                if (pnmia->iSubItem == 9) { // Delete button column
+                if (pnmia->iSubItem == 11) { // Delete button column
                     handleDeletion(pnmia);
                 }
-                if (pnmia->iSubItem == 1) { // Select button column
+                if (pnmia->iSubItem == 3) { // Select button column
                     // get current selection status of the item
                     bool currentSelectionStatus = replaceListData[pnmia->iItem].isSelected;
                     // set the selection status to its opposite
@@ -959,8 +974,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // Display the data based on the subitem
                 switch (plvdi->item.iSubItem)
                 {
-
                 case 1:
+                    plvdi->item.pszText = const_cast<LPWSTR>(itemData.findCount.c_str());
+                    break;
+                case 2:
+                    plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceCount.c_str());
+                    break;
+                case 3:
                     if (itemData.isSelected) {
                         plvdi->item.pszText = L"\u25A0";
                     }
@@ -968,43 +988,43 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         plvdi->item.pszText = L"\u2610";
                     }
                     break;
-                case 2:
+                case 4:
                     plvdi->item.pszText = const_cast<LPWSTR>(itemData.findText.c_str());
                     break;
-                case 3:
+                case 5:
                     plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceText.c_str());
                     break;
-                case 4:
+                case 6:
                     if (itemData.wholeWord) {
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
-                case 5:
+                case 7:
                     if (itemData.matchCase) {
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
-                case 6:
+                case 8:
                     if (itemData.useVariables) {
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
-                case 7:
+                case 9:
                     if (itemData.extended) {
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
-                case 8:
+                case 10:
                     if (itemData.regex) {
                         plvdi->item.mask |= LVIF_TEXT;
                         plvdi->item.pszText = L"\u2714";
                     }
                     break;
-                case 9:
+                case 11:
                     plvdi->item.mask |= LVIF_TEXT;
                     plvdi->item.pszText = L"\u2716";
                     break;
@@ -1017,12 +1037,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 NMLISTVIEW* pnmv = reinterpret_cast<NMLISTVIEW*>(lParam);
 
                 // Check if the column 1 header was clicked
-                if (pnmv->iSubItem == 1) {
+                if (pnmv->iSubItem == 3) {
                     setSelections(!allSelected);
                 }
 
                 // Check if the column "Find" or "Replace" header was clicked
-                if (pnmv->iSubItem == 2 || pnmv->iSubItem == 3) {
+                if (pnmv->iSubItem == 4 || pnmv->iSubItem == 5) {
                     if (lastColumn == pnmv->iSubItem) {
                         ascending = !ascending;
                     }
@@ -1061,7 +1081,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     }
                 }
                 else if (pnkd->wVKey == VK_F12) { // F12 key
-                    RECT windowRect;
                     GetClientRect(_hSelf, &windowRect);
 
                     HDC hDC = GetDC(_hSelf);
@@ -4045,7 +4064,7 @@ void MultiReplace::updateHeader() {
         lvc.pszText = L"\u2610"; // Ballot box without check
     }
 
-    ListView_SetColumn(_replaceListView, 1, &lvc);
+    ListView_SetColumn(_replaceListView, 3, &lvc);
 }
 
 void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color)
@@ -4722,29 +4741,27 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
         throw std::runtime_error("Could not open settings file for writing.");
     }
 
-    // Store window size and position
-    RECT rect;
-    if (GetWindowRect(_hSelf, &rect)) {
-        int width = rect.right - rect.left;
-        int height = rect.bottom - rect.top;
-        int posX = rect.left;
-        int posY = rect.top;
+    // Store window size and position from the global windowRect
+    GetWindowRect(_hSelf, &windowRect);
+    int width = windowRect.right - windowRect.left;
+    int height = windowRect.bottom - windowRect.top;
+    int posX = windowRect.left;
+    int posY = windowRect.top;
 
-        outFile << wstringToString(L"[Window]\n");
-        outFile << wstringToString(L"Width=" + std::to_wstring(width) + L"\n");
-        outFile << wstringToString(L"Height=" + std::to_wstring(height) + L"\n");
-        outFile << wstringToString(L"PosX=" + std::to_wstring(posX) + L"\n");
-        outFile << wstringToString(L"PosY=" + std::to_wstring(posY) + L"\n");
-    }
-/*
-    // Store column widths for search and replace statistics (replace with actual values)
-    int searchColumnWidth = 100; // Replace with actual search column width
-    int replaceColumnWidth = 150; // Replace with actual replace column width
+    outFile << wstringToString(L"[Window]\n");
+    outFile << wstringToString(L"Width=" + std::to_wstring(width) + L"\n");
+    outFile << wstringToString(L"Height=" + std::to_wstring(height) + L"\n");
+    outFile << wstringToString(L"PosX=" + std::to_wstring(posX) + L"\n");
+    outFile << wstringToString(L"PosY=" + std::to_wstring(posY) + L"\n");
 
-    outFile << wstringToString(L"[ColumnWidths]\n");
-    outFile << wstringToString(L"SearchColumnWidth=" + std::to_wstring(searchColumnWidth) + L"\n");
-    outFile << wstringToString(L"ReplaceColumnWidth=" + std::to_wstring(replaceColumnWidth) + L"\n");
-*/
+    // Store column widths for "Find Count" and "Replace Count"
+    findCountColumnWidth = ListView_GetColumnWidth(_replaceListView, 1);
+    replaceCountColumnWidth = ListView_GetColumnWidth(_replaceListView, 2);
+
+    outFile << wstringToString(L"[ListColumns]\n");
+    outFile << wstringToString(L"FindCountWidth=" + std::to_wstring(findCountColumnWidth) + L"\n");
+    outFile << wstringToString(L"ReplaceCountWidth=" + std::to_wstring(replaceCountColumnWidth) + L"\n");
+
     // Convert and Store the current "Find what" and "Replace with" texts
     std::wstring currentFindTextData = L"\"" + getTextFromDialogItem(_hSelf, IDC_FIND_EDIT) + L"\"";
     std::wstring currentReplaceTextData = L"\"" + getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT) + L"\"";
@@ -4955,6 +4972,7 @@ void MultiReplace::loadSettings() {
 
 }
 
+/*
 RECT MultiReplace::loadWindowSettingsFromIni() {
     // Generate the paths to the configuration files
     auto [iniFilePath, _] = generateConfigFilePaths(); // CSV path is ignored
@@ -4972,6 +4990,21 @@ RECT MultiReplace::loadWindowSettingsFromIni() {
     rect.bottom = rect.top + height;
 
     return rect;
+}
+*/
+
+void MultiReplace::loadUIConfigFromIni() {
+    auto [iniFilePath, _] = generateConfigFilePaths(); // Generating config file paths
+
+    // Load window position and size
+    windowRect.left = readIntFromIniFile(iniFilePath, L"Window", L"PosX", POS_X);
+    windowRect.top = readIntFromIniFile(iniFilePath, L"Window", L"PosY", POS_Y);
+    windowRect.right = windowRect.left + std::max(readIntFromIniFile(iniFilePath, L"Window", L"Width", MIN_WIDTH), MIN_WIDTH);
+    windowRect.bottom = windowRect.top + std::max(readIntFromIniFile(iniFilePath, L"Window", L"Height", MIN_HEIGHT), MIN_HEIGHT);
+
+    // Read column widths
+    findCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", DEFAULT_FIND_COUNT_COLUMN_WIDTH);
+    replaceCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountWidth", DEFAULT_REPLACE_COUNT_COLUMN_WIDTH);
 }
 
 std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue) {

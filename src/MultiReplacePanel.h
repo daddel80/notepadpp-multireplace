@@ -38,6 +38,8 @@ enum class Direction { Up, Down };
 
 struct ReplaceItemData
 {
+    std::wstring findCount = L"0";
+    std::wstring replaceCount = L"0";
     bool isSelected = true;
     std::wstring findText;
     std::wstring replaceText;
@@ -259,7 +261,8 @@ private:
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
-
+    static constexpr int DEFAULT_FIND_COUNT_COLUMN_WIDTH = 50;
+    static constexpr int DEFAULT_REPLACE_COUNT_COLUMN_WIDTH = 50;
 
     // Static variables related to GUI 
     static HWND s_hScintilla;
@@ -322,6 +325,11 @@ private:
     const std::vector<int> columnRadioDependentElements = {
         IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT, IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
+
+    // Window related settings
+    RECT windowRect; // Structure to store window position and size
+    int findCountColumnWidth; // Width of the "Find Count" column
+    int replaceCountColumnWidth; // Width of the "Replace Count" column
 
     //Initialization
     void initializeWindowSize();
@@ -448,7 +456,7 @@ private:
     void saveSettings();
     void loadSettingsFromIni(const std::wstring& iniFilePath);
     void loadSettings();
-    RECT loadWindowSettingsFromIni();
+    void loadUIConfigFromIni();
     std::wstring readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue);
     bool readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue);
     int readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue);
