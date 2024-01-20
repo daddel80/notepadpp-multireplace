@@ -358,7 +358,7 @@ private:
     void selectRows(const std::vector<ReplaceItemData>& rowsToSelect);
     void handleCopyToListButton();
     void resetCountColumns();
-    void updateCountColumns(int itemIndex, int findCount, int replaceCount = -1);
+    void updateCountColumns(size_t itemIndex, int findCount, int replaceCount = -1);
 
     //Replace
     void handleReplaceAllButton();

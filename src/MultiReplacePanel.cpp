@@ -847,10 +847,10 @@ void MultiReplace::resetCountColumns() {
     InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
-void MultiReplace::updateCountColumns(int itemIndex, int findCount, int replaceCount)
+void MultiReplace::updateCountColumns(size_t itemIndex, int findCount, int replaceCount)
 {
     // Check if the itemIndex is valid
-    if (itemIndex < 0 || itemIndex >= replaceListData.size()) {
+    if (itemIndex >= replaceListData.size()) {
         return;
     }
 
@@ -1543,7 +1543,7 @@ void MultiReplace::handleReplaceAllButton() {
             return;
         }
         ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
-        for (int i = 0; i < replaceListData.size(); ++i)
+        for (size_t i = 0; i < replaceListData.size(); ++i)
         {
             if (replaceListData[i].isSelected)
             {
@@ -2694,7 +2694,7 @@ void MultiReplace::handleMarkMatchesButton() {
             return;
         }
 
-        for (int i = 0; i < replaceListData.size(); ++i) {
+        for (size_t i = 0; i < replaceListData.size(); ++i) {
             if (replaceListData[i].isSelected) {
                 std::string findTextUtf8 = convertAndExtend(replaceListData[i].findText, replaceListData[i].extended);
                 int searchFlags = (replaceListData[i].wholeWord * SCFIND_WHOLEWORD)
