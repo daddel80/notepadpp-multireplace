@@ -38,8 +38,8 @@ enum class Direction { Up, Down };
 
 struct ReplaceItemData
 {
-    std::wstring findCount = L"0";
-    std::wstring replaceCount = L"0";
+    std::wstring findCount = L"";
+    std::wstring replaceCount = L"";
     bool isSelected = true;
     std::wstring findText;
     std::wstring replaceText;
@@ -357,11 +357,13 @@ private:
     std::vector<ReplaceItemData> getSelectedRows();
     void selectRows(const std::vector<ReplaceItemData>& rowsToSelect);
     void handleCopyToListButton();
+    void resetCountColumns();
+    void updateCountColumns(int itemIndex, int findCount, int replaceCount = -1);
 
     //Replace
     void handleReplaceAllButton();
     void handleReplaceButton();
-    int replaceAll(const ReplaceItemData& itemData);
+    void replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount);
     bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);

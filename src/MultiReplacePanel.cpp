@@ -835,6 +835,49 @@ void MultiReplace::handleCopyToListButton() {
     EnableWindow(_replaceListView, TRUE);
 }
 
+void MultiReplace::resetCountColumns() {
+    // Reset the find and replace count columns in the list data
+    for (auto& itemData : replaceListData) {
+        itemData.findCount = L"";
+        itemData.replaceCount = L"";
+    }
+
+    // Update the list view to immediately reflect the changes
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+}
+
+void MultiReplace::updateCountColumns(int itemIndex, int findCount, int replaceCount)
+{
+    // Check if the itemIndex is valid
+    if (itemIndex < 0 || itemIndex >= replaceListData.size()) {
+        return;
+    }
+
+    // Access the item data from the list
+    ReplaceItemData& itemData = replaceListData[itemIndex];
+
+    // Update findCount
+    int currentFindCount = 0;
+    if (!itemData.findCount.empty()) {
+        currentFindCount = std::stoi(itemData.findCount);
+    }
+    itemData.findCount = std::to_wstring(currentFindCount + findCount);
+
+    // Update replaceCount if provided
+    if (replaceCount != -1) {
+        int currentReplaceCount = 0;
+        if (!itemData.replaceCount.empty()) {
+            currentReplaceCount = std::stoi(itemData.replaceCount);
+        }
+        itemData.replaceCount = std::to_wstring(currentReplaceCount + replaceCount);
+    }
+
+    // Update the list view to immediately reflect the changes
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+}
+
 #pragma endregion
 
 
@@ -1352,6 +1395,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
                 if (msgboxID == IDOK)
                 {
+                    // Reset Count Columns once before processing multiple documents
+                    resetCountColumns();
 
                     // Get the total number of opened documents in Notepad++
                     LRESULT docCount = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, ALL_OPEN_FILES);
@@ -1374,6 +1419,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             }
             else
             {
+                // Reset Count Columns for single document processing
+                resetCountColumns();
+
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
                 handleReplaceAllButton();
             }
@@ -1483,7 +1531,7 @@ void MultiReplace::handleReplaceAllButton() {
     // Clear all stored Lua Global Variables
     globalLuaVariablesMap.clear();
 
-    int replaceCount = 0;
+    int totalReplaceCount = 0;
     // Check if the "In List" option is enabled
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
 
@@ -1495,9 +1543,19 @@ void MultiReplace::handleReplaceAllButton() {
             return;
         }
         ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
-        for (ReplaceItemData& itemData : replaceListData) {
-            if (itemData.isSelected) {
-                replaceCount += replaceAll(itemData);
+        for (int i = 0; i < replaceListData.size(); ++i)
+        {
+            if (replaceListData[i].isSelected)
+            {
+                int findCount = 0;
+                int replaceCount = 0;
+                replaceAll(replaceListData[i], findCount, replaceCount);
+
+                // Update counts in list item
+                updateCountColumns(i, findCount, replaceCount);
+
+                // Accumulate total replacements
+                totalReplaceCount += replaceCount;
             }
         }
         ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
@@ -1514,7 +1572,8 @@ void MultiReplace::handleReplaceAllButton() {
         itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
         ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
-        replaceCount = replaceAll(itemData);
+        int findCount = 0;
+        replaceAll(itemData, findCount, totalReplaceCount);
         ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 
         // Add the entered text to the combo box history
@@ -1522,7 +1581,7 @@ void MultiReplace::handleReplaceAllButton() {
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
     }
     // Display status message
-    showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(replaceCount) }), RGB(0, 128, 0));
+    showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), RGB(0, 128, 0));
 }
 
 void MultiReplace::handleReplaceButton() {
@@ -1672,10 +1731,12 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
     return false;  // No replacement was made
 }
 
-int MultiReplace::replaceAll(const ReplaceItemData& itemData)
+void MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount)
 {
     if (itemData.findText.empty()) {
-        return 0;
+        findCount = 0;
+        replaceCount = 0;
+        return;
     }
 
     bool isReplaceFirstEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED);
@@ -1684,8 +1745,6 @@ int MultiReplace::replaceAll(const ReplaceItemData& itemData)
     std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
     std::string replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
 
-    int replaceCount = 0;
-    int findCount = 0; 
     int previousLineIndex = -1;
     int lineFindCount = 0;
 
@@ -1694,6 +1753,7 @@ int MultiReplace::replaceAll(const ReplaceItemData& itemData)
     while (searchResult.pos >= 0)
     {
         bool skipReplace = false;
+        findCount++;
         std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
         if (itemData.useVariables) {
             LuaVariables vars;
@@ -1713,7 +1773,6 @@ int MultiReplace::replaceAll(const ReplaceItemData& itemData)
             }
 
             lineFindCount++;
-            findCount++;
 
             vars.CNT = findCount;
             vars.LCNT = lineFindCount;
@@ -1752,7 +1811,6 @@ int MultiReplace::replaceAll(const ReplaceItemData& itemData)
         searchResult = performSearchForward(findTextUtf8, searchFlags, false, newPos);
     }
 
-    return replaceCount;
 }
 
 Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
@@ -2175,6 +2233,9 @@ void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std:
 #pragma region Find
 
 void MultiReplace::handleFindNextButton() {
+    // Clear Find and Replace Count Column
+    resetCountColumns();
+
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
@@ -2231,6 +2292,8 @@ void MultiReplace::handleFindNextButton() {
 }
 
 void MultiReplace::handleFindPrevButton() {
+    // Clear Find and Replace Count Column
+    resetCountColumns();
 
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
@@ -2618,9 +2681,12 @@ void MultiReplace::displayResultCentered(size_t posStart, size_t posEnd, bool is
 #pragma region Mark
 
 void MultiReplace::handleMarkMatchesButton() {
-    int matchCount = 0;
+    int totalMatchCount = 0;
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     markedStringsCount = 0;
+
+    // Clear Find and Replace Count Column
+    resetCountColumns();
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
@@ -2628,13 +2694,17 @@ void MultiReplace::handleMarkMatchesButton() {
             return;
         }
 
-        for (ReplaceItemData& itemData : replaceListData) {
-            if (itemData.isSelected) {
-                std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
-                int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD)
-                    | (itemData.matchCase * SCFIND_MATCHCASE)
-                    | (itemData.regex * SCFIND_REGEXP);
-                matchCount += markString(findTextUtf8, searchFlags);
+        for (int i = 0; i < replaceListData.size(); ++i) {
+            if (replaceListData[i].isSelected) {
+                std::string findTextUtf8 = convertAndExtend(replaceListData[i].findText, replaceListData[i].extended);
+                int searchFlags = (replaceListData[i].wholeWord * SCFIND_WHOLEWORD)
+                    | (replaceListData[i].matchCase * SCFIND_MATCHCASE)
+                    | (replaceListData[i].regex * SCFIND_REGEXP);
+                int matchCount = markString(findTextUtf8, searchFlags);
+                totalMatchCount += matchCount;
+
+                // Update find count in list item using updateCountColumns
+                updateCountColumns(i, matchCount, -1);
             }
         }
     }
@@ -2649,11 +2719,11 @@ void MultiReplace::handleMarkMatchesButton() {
         int searchFlags = (wholeWord * SCFIND_WHOLEWORD)
             | (matchCase * SCFIND_MATCHCASE)
             | (regex * SCFIND_REGEXP);
-        matchCount = markString(findTextUtf8, searchFlags);
+        totalMatchCount = markString(findTextUtf8, searchFlags);
 
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
-    showStatusMessage(getLangStr(L"status_occurrences_marked", { std::to_wstring(matchCount) }), RGB(0, 0, 128));
+    showStatusMessage(getLangStr(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), RGB(0, 0, 128));
 }
 
 int MultiReplace::markString(const std::string& findTextUtf8, int searchFlags) {
