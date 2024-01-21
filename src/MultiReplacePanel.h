@@ -38,6 +38,7 @@ enum class Direction { Up, Down };
 
 struct ReplaceItemData
 {
+	size_t id = 0;
     std::wstring findCount = L"";
     std::wstring replaceCount = L"";
     bool isSelected = true;
@@ -300,7 +301,7 @@ private:
     bool allSelected = true;
     std::unordered_map<long, int> colorToStyleMap;
     int lastColumn = -1;
-    bool ascending = true;
+    std::map<int, SortDirection> columnSortOrder;
     ColumnDelimiterData columnDelimiterData;
     LRESULT eolLength = -1; // Stores the length of the EOL character sequence
     std::vector<ReplaceItemData> replaceListData;
@@ -353,9 +354,9 @@ private:
     void shiftListItem(HWND listView, const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);
     void deleteSelectedLines(HWND listView);
-    void sortReplaceListData(int column);
-    std::vector<ReplaceItemData> getSelectedRows();
-    void selectRows(const std::vector<ReplaceItemData>& rowsToSelect);
+    void sortReplaceListData(int column, SortDirection direction);
+    std::vector<size_t> getSelectedRows();
+    void selectRows(const std::vector<size_t>& selectedIDs);
     void handleCopyToListButton();
     void resetCountColumns();
     void updateCountColumns(size_t itemIndex, int findCount, int replaceCount = -1);
@@ -421,7 +422,8 @@ private:
     static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 10);
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
     void setSelections(bool select, bool onlySelected = false);
-    void updateHeader();
+    void updateHeaderSelection();
+    void updateHeaderSortDirection();
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();

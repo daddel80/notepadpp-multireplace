@@ -53,6 +53,8 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"tooltip_column_highlight", L"Column highlight: On/Off" },
 
 // header entries
+{ L"header_find_count", L"Find Count" },
+{ L"header_replace_count", L"Replace Count" },
 { L"header_find", L"Find" },
 { L"header_replace", L"Replace" },
 { L"header_whole_word", L"W" },

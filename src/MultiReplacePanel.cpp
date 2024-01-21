@@ -475,13 +475,13 @@ void MultiReplace::createListViewColumns(HWND listView) {
     ListView_InsertColumn(listView, 0, &lvc);
 
     lvc.iSubItem = 1;
-    lvc.pszText = L"Find Count";
+    lvc.pszText = getLangStrLPWSTR(L"header_find_count");;
     lvc.cx = findCountColumnWidth;
     lvc.fmt = LVCFMT_RIGHT;
     ListView_InsertColumn(listView, 1, &lvc);
 
     lvc.iSubItem = 2;
-    lvc.pszText = L"Replace Count";
+    lvc.pszText = getLangStrLPWSTR(L"header_replace_count");
     lvc.cx = replaceCountColumnWidth;
     lvc.fmt = LVCFMT_RIGHT;
     ListView_InsertColumn(listView, 2, &lvc);
@@ -571,7 +571,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
     // Update Header if there might be any changes
-    updateHeader();
+    updateHeaderSelection();
 }
 
 void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
@@ -707,7 +707,7 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
     // Update Header if there might be any changes
-    updateHeader();
+    updateHeaderSelection();
 
     InvalidateRect(_replaceListView, NULL, TRUE);
 
@@ -748,69 +748,90 @@ void MultiReplace::deleteSelectedLines(HWND listView) {
     }
 
     // Update Header if there might be any changes
-    updateHeader();
+    updateHeaderSelection();
 
     InvalidateRect(_replaceListView, NULL, TRUE);
 
     showStatusMessage(getLangStr(L"status_lines_deleted", { std::to_wstring(numDeletedLines) }), RGB(0, 128, 0));
 }
 
-void MultiReplace::sortReplaceListData(int column) {
-    // Get the currently selected rows
-    auto selectedRows = getSelectedRows();
+void MultiReplace::sortReplaceListData(int column, SortDirection direction) {
+    auto selectedRows = getSelectedRows(); // Preserve selection
 
-    if (column == 4) {
-        // Sort by `findText`
-        std::sort(replaceListData.begin(), replaceListData.end(),
-            [this](const ReplaceItemData& a, const ReplaceItemData& b) {
-                if (this->ascending)
+    // Sort based on column and direction
+    std::sort(replaceListData.begin(), replaceListData.end(),
+        [this, column, direction](const ReplaceItemData& a, const ReplaceItemData& b) -> bool {
+            switch (column) {
+            case 1: { // Sort by findCount, converting "" to -1
+                int numA = a.findCount.empty() ? -1 : std::stoi(a.findCount);
+                int numB = b.findCount.empty() ? -1 : std::stoi(b.findCount);
+                return direction == SortDirection::Ascending ? numA < numB : numA > numB;
+            }
+            case 2: { // Sort by replaceCount, converting "" to -1
+                int numA = a.replaceCount.empty() ? -1 : std::stoi(a.replaceCount);
+                int numB = b.replaceCount.empty() ? -1 : std::stoi(b.replaceCount);
+                return direction == SortDirection::Ascending ? numA < numB : numA > numB;
+            }
+            case 4: { // Sort by findText
+                if (direction == SortDirection::Ascending) {
                     return a.findText < b.findText;
-                else
+                }
+                else {
                     return a.findText > b.findText;
-            });
-        showStatusMessage(getLangStr(L"status_find_column_sorted", { ascending ? L"ascending" : L"descending" }), RGB(0, 0, 255));
-    }
-    else if (column == 5) {
-        // Sort by `replaceText`
-        std::sort(replaceListData.begin(), replaceListData.end(),
-            [this](const ReplaceItemData& a, const ReplaceItemData& b) {
-                if (this->ascending)
+                }
+            }
+            case 5: { // Sort by replaceText
+                if (direction == SortDirection::Ascending) {
                     return a.replaceText < b.replaceText;
-                else
+                }
+                else {
                     return a.replaceText > b.replaceText;
-            });
-        showStatusMessage(getLangStr(L"status_replace_column_sorted", { ascending ? L"ascending" : L"descending" }), RGB(0, 0, 255));
-    }
+                }
+            }
+            default:
+                return false; // In case of an unknown column
+            }
+        });
 
-    // Update the ListView
+    // Update UI and restore selection
+    updateHeaderSortDirection();
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
-
-    // Select the previously selected rows
     selectRows(selectedRows);
 }
 
-std::vector<ReplaceItemData> MultiReplace::getSelectedRows() {
-    std::vector<ReplaceItemData> selectedRows;
-    int i = -1;
-    while ((i = ListView_GetNextItem(_replaceListView, i, LVNI_SELECTED)) != -1) {
-        selectedRows.push_back(replaceListData[i]);
+std::vector<size_t> MultiReplace::getSelectedRows() {
+    // Initialize row IDs
+    size_t counter = 1;
+    for (auto& row : replaceListData) {
+        row.id = counter++;
     }
-    return selectedRows;
+
+    // Collect IDs of selected rows
+    std::vector<size_t> selectedIDs;
+    int index = -1; // Use int to properly handle -1 case and comparison with ListView_GetNextItem return value
+    while ((index = ListView_GetNextItem(_replaceListView, index, LVNI_SELECTED)) != -1) {
+        if (index >= 0 && static_cast<size_t>(index) < replaceListData.size()) {
+            selectedIDs.push_back(replaceListData[index].id);
+        }
+    }
+
+    return selectedIDs;
 }
 
-void MultiReplace::selectRows(const std::vector<ReplaceItemData>& rowsToSelect) {
-    ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);  // deselect all items
+void MultiReplace::selectRows(const std::vector<size_t>& selectedIDs) {
+    // Deselect all items
+    ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
 
-    for (size_t i = 0; i < replaceListData.size(); i++) {
-        for (const auto& row : rowsToSelect) {
-            if (replaceListData[i] == row) {
-                ListView_SetItemState(_replaceListView, i, LVIS_SELECTED, LVIS_SELECTED);
-                break;
-            }
+    // Reselect rows based on IDs
+    for (size_t i = 0; i < replaceListData.size(); ++i) {
+        if (std::find(selectedIDs.begin(), selectedIDs.end(), replaceListData[i].id) != selectedIDs.end()) {
+            ListView_SetItemState(_replaceListView, i, LVIS_SELECTED, LVIS_SELECTED);
         }
     }
 }
+
+
 
 void MultiReplace::handleCopyToListButton() {
     ReplaceItemData itemData;
@@ -1079,21 +1100,18 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             {
                 NMLISTVIEW* pnmv = reinterpret_cast<NMLISTVIEW*>(lParam);
 
-                // Check if the column 1 header was clicked
                 if (pnmv->iSubItem == 3) {
                     setSelections(!allSelected);
                 }
-
-                // Check if the column "Find" or "Replace" header was clicked
-                if (pnmv->iSubItem == 4 || pnmv->iSubItem == 5) {
-                    if (lastColumn == pnmv->iSubItem) {
-                        ascending = !ascending;
+                else {
+                    // Toggle or initialize the sort order for the clicked column
+                    SortDirection newDirection = SortDirection::Ascending; // Default direction
+                    if (columnSortOrder.find(pnmv->iSubItem) != columnSortOrder.end() && columnSortOrder[pnmv->iSubItem] == SortDirection::Ascending) {
+                        newDirection = SortDirection::Descending;
                     }
-                    else {
-                        lastColumn = pnmv->iSubItem;
-                        ascending = true;
-                    }
-                    sortReplaceListData(lastColumn);
+                    columnSortOrder[pnmv->iSubItem] = newDirection;
+                    lastColumn = pnmv->iSubItem;
+                    sortReplaceListData(lastColumn, newDirection); // Now correctly passing SortDirection
                 }
                 break;
             }
@@ -4100,13 +4118,13 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
     }
 
     // Update the header after changing the selection status of the items
-    updateHeader();
+    updateHeaderSelection();
 
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
-void MultiReplace::updateHeader() {
+void MultiReplace::updateHeaderSelection() {
     bool anySelected = false;
     allSelected = !replaceListData.empty();
 
@@ -4137,6 +4155,35 @@ void MultiReplace::updateHeader() {
     ListView_SetColumn(_replaceListView, 3, &lvc);
 }
 
+void MultiReplace::updateHeaderSortDirection() {
+    const wchar_t* ascendingSymbol = L"▲ ";
+    const wchar_t* descendingSymbol = L"▼ ";
+
+    // Iterate through each column that has a sort order defined in columnSortOrder
+    for (const auto& [columnIndex, direction] : columnSortOrder) {
+        std::wstring symbol = direction == SortDirection::Ascending ? ascendingSymbol : descendingSymbol;
+
+        std::wstring headerText = L"" + symbol;
+        symbol = L" " + symbol;
+
+        // Append the base column title, this should be adjusted according to your actual column titles
+        switch (columnIndex) {
+        case 1: headerText = getLangStr(L"header_find_count") + symbol; break;
+        case 2: headerText = getLangStr(L"header_replace_count") + symbol; break;
+        case 4: headerText = getLangStr(L"header_find") + symbol; break;
+        case 5: headerText = getLangStr(L"header_replace") + symbol; break;
+        default: continue; // Skip if it's not a sortable column
+        }
+
+        // Prepare the LVCOLUMN structure for updating the header
+        LVCOLUMN lvc = { 0 };
+        lvc.mask = LVCF_TEXT;
+        lvc.pszText = const_cast<LPWSTR>(headerText.c_str());
+
+        // Correctly update the column header using the actual columnIndex without decrementing
+        ListView_SetColumn(_replaceListView, columnIndex, &lvc); // Use columnIndex directly
+    }
+}
 void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color)
 {
     const size_t MAX_DISPLAY_LENGTH = 120; // Maximum length of the message to be displayed
@@ -4531,7 +4578,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         return;
     }
 
-    updateHeader();
+    updateHeaderSelection();
     // Update the list view control
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
@@ -5035,7 +5082,7 @@ void MultiReplace::loadSettings() {
         errorMessage += std::wstring(ex.what(), ex.what() + strlen(ex.what()));
         // MessageBox(NULL, errorMessage.c_str(), L"Error", MB_OK | MB_ICONERROR);
     }
-    updateHeader();
+    updateHeaderSelection();
 
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
