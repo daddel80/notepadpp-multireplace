@@ -51,6 +51,8 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"tooltip_drop_columns", L"Drop Columns" },
 { L"tooltip_copy_columns", L"Copy Columns to Clipboard" },
 { L"tooltip_column_highlight", L"Column highlight: On/Off" },
+{ L"tooltip_copy_marked_text", L"Copy Marked Text" },
+{ L"tooltip_display_statistics_columns", L"Display Statistics Columns" },
 
 // header entries
 { L"header_find_count", L"Find Count" },
