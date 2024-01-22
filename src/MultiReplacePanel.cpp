@@ -154,7 +154,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 153, 35, 30, WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_MARK_BUTTON] = { buttonX, 188, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 188, 120, 30, WC_BUTTON,getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 188, 35, 30, WC_BUTTON, L"\U0001F5CD", BS_PUSHBUTTON | WS_TABSTOP, L"Copy to Clipboard" };
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 188, 35, 30, WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") };
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 223, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 284, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 319, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
@@ -163,9 +163,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 404 + 30 + 5, 30, 30, WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 404 - 14, 165, 85, WC_BUTTON, L"", BS_GROUPBOX, NULL };
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 404 + 20, 120, 20, WC_STATIC, getLangStrLPCWSTR(L"panel_shift_lines"), SS_LEFT, NULL };
-    ctrlMap[IDC_REPLACE_LIST] = { 14, 284, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
+    ctrlMap[IDC_REPLACE_LIST] = { 20, 284, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
     ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 175, 95, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_list"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-
+    ctrlMap[ID_STATISTICS_COLUMNS] = { 2, 287, 15, 20, WC_BUTTON, L"•", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
 }
 
 void MultiReplace::initializeCtrlMap()
@@ -576,9 +576,20 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
 
 void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
 {
-    // Get the new width and height of the window from lParam
-    int newWidth = LOWORD(lParam);
-    int newHeight = HIWORD(lParam);
+    int newWidth, newHeight;
+
+    // If lParam is provided, use it to get new width and height
+    if (lParam != NULL) {
+        newWidth = LOWORD(lParam);
+        newHeight = HIWORD(lParam);
+    }
+    else {
+        // Get current size from listView if lParam is not provided
+        RECT rect;
+        GetWindowRect(GetParent(listView), &rect);
+        newWidth = rect.right - rect.left;
+        newHeight = rect.bottom - rect.top;
+    }
 
     // Get the current width of the first two columns (Find Count and Replace Count)
     int findCountColWidth = ListView_GetColumnWidth(listView, 1);
@@ -600,7 +611,7 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
 
     // If the window is horizontally maximized, update the IDC_REPLACE_LIST size first
     if (newWidth > prevWidth) {
-        MoveWindow(listHwnd, 14, 284, newWidth - 260, newHeight - 295, TRUE);
+        MoveWindow(listHwnd, 20, 284, newWidth - 260, newHeight - 295, TRUE);
         moveWindowCalled = true;
     }
 
@@ -610,7 +621,7 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
 
     // If the window is horizontally minimized or vertically changed the size
     if (!moveWindowCalled) {
-        MoveWindow(listHwnd, 14, 284, newWidth - 260, newHeight - 295, TRUE);
+        MoveWindow(listHwnd, 20, 284, newWidth - 260, newHeight - 295, TRUE);
     }
 
     prevWidth = newWidth;
@@ -831,8 +842,6 @@ void MultiReplace::selectRows(const std::vector<size_t>& selectedIDs) {
     }
 }
 
-
-
 void MultiReplace::handleCopyToListButton() {
     ReplaceItemData itemData;
 
@@ -897,6 +906,47 @@ void MultiReplace::updateCountColumns(size_t itemIndex, int findCount, int repla
     // Update the list view to immediately reflect the changes
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
+}
+
+void MultiReplace::resizeCountColumns() {
+    // Get current column widths
+    int currentFindCountWidth = ListView_GetColumnWidth(_replaceListView, 1);
+    int currentReplaceCountWidth = ListView_GetColumnWidth(_replaceListView, 2);
+
+    // Define target widths for comparison
+    static constexpr int STEP_SIZE = 25; // Define the step size for adjustment
+
+    // Determine if we need to increase or decrease the column widths
+    bool increaseWidth = currentFindCountWidth < COUNT_COLUMN_WIDTH || currentReplaceCountWidth < COUNT_COLUMN_WIDTH;
+
+    if (increaseWidth) {
+        // Increase each column width by 5 pixels per step
+        while (currentFindCountWidth < COUNT_COLUMN_WIDTH || currentReplaceCountWidth < COUNT_COLUMN_WIDTH) {
+            if (currentFindCountWidth < COUNT_COLUMN_WIDTH) {
+                currentFindCountWidth = std::min(currentFindCountWidth + STEP_SIZE, COUNT_COLUMN_WIDTH);
+                ListView_SetColumnWidth(_replaceListView, 1, currentFindCountWidth);
+            }
+            if (currentReplaceCountWidth < COUNT_COLUMN_WIDTH) {
+                currentReplaceCountWidth = std::min(currentReplaceCountWidth + STEP_SIZE, COUNT_COLUMN_WIDTH);
+                ListView_SetColumnWidth(_replaceListView, 2, currentReplaceCountWidth);
+            }
+            updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), NULL);
+        }
+    }
+    else {
+        // Decrease each column width by 5 pixels per step until both reach 0
+        while (currentFindCountWidth > 0 || currentReplaceCountWidth > 0) {
+            if (currentFindCountWidth > 0) {
+                currentFindCountWidth = std::max(currentFindCountWidth - STEP_SIZE, 0);
+                ListView_SetColumnWidth(_replaceListView, 1, currentFindCountWidth);
+            }
+            if (currentReplaceCountWidth > 0) {
+                currentReplaceCountWidth = std::max(currentReplaceCountWidth - STEP_SIZE, 0);
+                ListView_SetColumnWidth(_replaceListView, 2, currentReplaceCountWidth);
+            }
+            updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), NULL);
+        }
+    }
 }
 
 #pragma endregion
@@ -1520,6 +1570,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
+        case ID_STATISTICS_COLUMNS:
+        {
+            resizeCountColumns();
+        }
+		break;
 
         default:
             return FALSE;
@@ -4184,6 +4239,7 @@ void MultiReplace::updateHeaderSortDirection() {
         ListView_SetColumn(_replaceListView, columnIndex, &lvc); // Use columnIndex directly
     }
 }
+
 void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color)
 {
     const size_t MAX_DISPLAY_LENGTH = 120; // Maximum length of the message to be displayed
@@ -4348,7 +4404,6 @@ bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
     str = tempStr;
     return true;  // String is a valid number
 }
-
 
 #pragma endregion
 
@@ -5120,8 +5175,8 @@ void MultiReplace::loadUIConfigFromIni() {
     windowRect.bottom = windowRect.top + std::max(readIntFromIniFile(iniFilePath, L"Window", L"Height", MIN_HEIGHT), MIN_HEIGHT);
 
     // Read column widths
-    findCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", DEFAULT_FIND_COUNT_COLUMN_WIDTH);
-    replaceCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountWidth", DEFAULT_REPLACE_COUNT_COLUMN_WIDTH);
+    findCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", 0);
+    replaceCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountWidth", 0);
 }
 
 std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue) {

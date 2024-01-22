@@ -86,6 +86,7 @@
 #define IDC_QUOTECHAR_STATIC            5465
 
 #define IDC_STATIC_FRAME                5501
+#define ID_STATISTICS_COLUMNS           5502
 #define IDC_REPLACE_LIST                5503
 
 #define IDD_ABOUT_DIALOG                5600
@@ -106,9 +107,9 @@
 #define STYLE9							68
 #define STYLE10							69
 
-#define IDI_SMILEY_ICON 5701
-#define IDI_SMILEY_DM_ICON 5702
-#define IDR_SMILEY_BMP 5703
+#define IDI_MR_ICON 5701
+#define IDI_MR_DM_ICON 5702
+#define IDR_MR_BMP 5703
 
 // Default window position and dimensions
 #define POS_X 92

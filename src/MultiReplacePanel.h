@@ -262,8 +262,7 @@ private:
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
-    static constexpr int DEFAULT_FIND_COUNT_COLUMN_WIDTH = 50;
-    static constexpr int DEFAULT_REPLACE_COUNT_COLUMN_WIDTH = 50;
+    static constexpr int COUNT_COLUMN_WIDTH = 50;
 
     // Static variables related to GUI 
     static HWND s_hScintilla;
@@ -360,6 +359,7 @@ private:
     void handleCopyToListButton();
     void resetCountColumns();
     void updateCountColumns(size_t itemIndex, int findCount, int replaceCount = -1);
+    void resizeCountColumns();
 
     //Replace
     void handleReplaceAllButton();
@@ -431,7 +431,7 @@ private:
     std::string getEOLStyle(); 
     void setElementsState(const std::vector<int>& elements, bool enable);
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
-    bool MultiReplace::normalizeAndValidateNumber(std::string& str);
+    bool normalizeAndValidateNumber(std::string& str);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput) const;
