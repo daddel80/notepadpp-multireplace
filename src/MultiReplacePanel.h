@@ -262,7 +262,9 @@ private:
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
-    static constexpr int COUNT_COLUMN_WIDTH = 50;
+	static constexpr int COUNT_COLUMN_WIDTH = 50; // Initial Size for Count Column
+    static constexpr int MIN_COLUMN_WIDTH = 60;  // Minimum size of Find and Replace Column
+    static constexpr int STEP_SIZE = 25; // Speed for opening and closing Count Columns
 
     // Static variables related to GUI 
     static HWND s_hScintilla;
@@ -309,6 +311,7 @@ private:
     std::map<int, bool> stateSnapshot; // stores the state of the Elements
     LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
     SIZE_T CSVheaderLinesCount = 1; // Number of header lines not included in CSV sorting
+	bool isStatisticsColumnsExpanded = false;
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
@@ -342,13 +345,16 @@ private:
     void initializeListView();
     void moveAndResizeControls();
     void updateButtonVisibilityBasedOnMode();
+    void updateStatisticsColumnButtonIcon();
 
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);
     void AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnIndex, LPCTSTR pszText);
     void createListViewColumns(HWND listView);
     void insertReplaceListItem(const ReplaceItemData& itemData);
+    int calcDynamicColWidth(HWND listView, int width, bool includeMargin);
     void updateListViewAndColumns(HWND listView, LPARAM lParam);
+    void adjustColumnWidths(HWND listView);
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void shiftListItem(HWND listView, const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);

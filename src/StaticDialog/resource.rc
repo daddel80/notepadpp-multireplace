@@ -41,6 +41,6 @@ BEGIN
 	CONTROL         "Help and Support", IDC_WEBSITE_LINK, "Static", SS_NOTIFY | WS_VISIBLE, 60, 85, 150, 11
 END
 
-IDR_SMILEY_BMP BITMAP "resources\multireplace_light.bmp"
-IDI_SMILEY_ICON ICON "resources\multireplace_ico_black.ico"
-IDI_SMILEY_DM_ICON ICON "resources\multireplace_ico_white.ico"
+IDR_MR_BMP BITMAP "resources\multireplace_light.bmp"
+IDI_MR_ICON ICON "resources\multireplace_ico_black.ico"
+IDI_MR_DM_ICON ICON "resources\multireplace_ico_white.ico"

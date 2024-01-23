@@ -165,7 +165,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 404 + 20, 120, 20, WC_STATIC, getLangStrLPCWSTR(L"panel_shift_lines"), SS_LEFT, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { 20, 284, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
     ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 175, 95, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_list"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[ID_STATISTICS_COLUMNS] = { 2, 287, 15, 20, WC_BUTTON, L"•", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
+    ctrlMap[ID_STATISTICS_COLUMNS] = { 2, 285, 17, 24, WC_BUTTON, L"▶", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
 }
 
 void MultiReplace::initializeCtrlMap()
@@ -401,6 +401,15 @@ void MultiReplace::updateButtonVisibilityBasedOnMode() {
     ShowWindow(GetDlgItem(_hSelf, IDC_MARK_BUTTON), twoButtonsMode ? SW_HIDE : SW_SHOW);
 }
 
+void MultiReplace::updateStatisticsColumnButtonIcon() {
+    LPCWSTR icon = isStatisticsColumnsExpanded ? L"◀" : L"▶";
+    // LPCWSTR tooltip = isStatisticsColumnsExpanded ? L"Collapse statistics columns" : L"Expand statistics columns";
+
+    SetDlgItemText(_hSelf, ID_STATISTICS_COLUMNS, icon);
+
+    //updateButtonTooltip(ID_STATISTICS_COLUMNS, tooltip);
+}
+
 #pragma endregion
 
 
@@ -574,58 +583,55 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
     updateHeaderSelection();
 }
 
-void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam)
-{
-    int newWidth, newHeight;
-
-    // If lParam is provided, use it to get new width and height
-    if (lParam != NULL) {
-        newWidth = LOWORD(lParam);
-        newHeight = HIWORD(lParam);
-    }
-    else {
-        // Get current size from listView if lParam is not provided
-        RECT rect;
-        GetWindowRect(GetParent(listView), &rect);
-        newWidth = rect.right - rect.left;
-        newHeight = rect.bottom - rect.top;
-    }
-
-    // Get the current width of the first two columns (Find Count and Replace Count)
+int MultiReplace::calcDynamicColWidth(HWND listView, int width, bool includeMargin) {
     int findCountColWidth = ListView_GetColumnWidth(listView, 1);
-    int replaceCountColWidth = ListView_GetColumnWidth(listView, 2); 
+    int replaceCountColWidth = ListView_GetColumnWidth(listView, 2);
+    int columns5to10Width = 210; // Simplified calculation (30 * 7).
+    int margin = includeMargin ? 281 : 0;
 
-    // Calculate the total width of columns 5 to 10 (angepasst für zusätzliche Spalten)
-    int columns5to10Width = 30 * 7;
+    // Directly calculate the width available for each dynamic column.
+    int totalRemainingWidth = width - margin - columns5to10Width - findCountColWidth - replaceCountColWidth;
+    int perColumnWidth = std::max(totalRemainingWidth, MIN_COLUMN_WIDTH * 2) / 2; // Ensure total min width is 120, then divide by 2.
+    return perColumnWidth; // Return width for a single column.
+}
 
-    // Calculate the remaining width for the dynamic columns (Find and Replace Text)
-    int remainingWidth = newWidth - 281 - columns5to10Width - findCountColWidth - replaceCountColWidth;
+void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
+    int newWidth = LOWORD(lParam);
+    int newHeight = HIWORD(lParam);
 
-    // Ensure remainingWidth is not less than the minimum width
-    remainingWidth = std::max(remainingWidth, 60);
+    // Calculate width available for each dynamic column.
+    int perColumnWidth = calcDynamicColWidth(listView, newWidth, true);
 
-    static int prevWidth = newWidth; // Store the previous width
-    bool moveWindowCalled = false; // Flag to check if MoveWindow is already called
-
+    static int prevWidth = newWidth;
+    bool isSizeIncreased = newWidth > prevWidth;
     HWND listHwnd = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
 
-    // If the window is horizontally maximized, update the IDC_REPLACE_LIST size first
-    if (newWidth > prevWidth) {
+    if (isSizeIncreased) {
         MoveWindow(listHwnd, 20, 284, newWidth - 260, newHeight - 295, TRUE);
-        moveWindowCalled = true;
     }
 
-    // Dynamically adjust the width of the Find and Replace Text columns
-    ListView_SetColumnWidth(listView, 4, remainingWidth / 2); // Find Text
-    ListView_SetColumnWidth(listView, 5, remainingWidth / 2); // Replace Text
+    // Set column widths directly using calculated width.
+    ListView_SetColumnWidth(listView, 4, perColumnWidth); // Find Text
+    ListView_SetColumnWidth(listView, 5, perColumnWidth); // Replace Text
 
-    // If the window is horizontally minimized or vertically changed the size
-    if (!moveWindowCalled) {
+    if (!isSizeIncreased) {
         MoveWindow(listHwnd, 20, 284, newWidth - 260, newHeight - 295, TRUE);
     }
 
     prevWidth = newWidth;
+}
 
+void MultiReplace::adjustColumnWidths(HWND listView) {
+    RECT listRect;
+    GetClientRect(listView, &listRect);
+    int listWidth = listRect.right - listRect.left;
+
+    // Calculate width available for each dynamic column without modifying list size.
+    int perColumnWidth = calcDynamicColWidth(listView, listWidth, false);
+
+    // Set column widths directly using calculated width.
+    ListView_SetColumnWidth(listView, 4, perColumnWidth); // Find Text
+    ListView_SetColumnWidth(listView, 5, perColumnWidth); // Replace Text
 }
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
@@ -909,45 +915,43 @@ void MultiReplace::updateCountColumns(size_t itemIndex, int findCount, int repla
 }
 
 void MultiReplace::resizeCountColumns() {
+    
     // Get current column widths
     int currentFindCountWidth = ListView_GetColumnWidth(_replaceListView, 1);
     int currentReplaceCountWidth = ListView_GetColumnWidth(_replaceListView, 2);
 
-    // Define target widths for comparison
-    static constexpr int STEP_SIZE = 25; // Define the step size for adjustment
+    // Calculate the target width based on the state of isStatisticsColumnsExpanded
+    int targetWidth = isStatisticsColumnsExpanded ? COUNT_COLUMN_WIDTH : 0;
 
-    // Determine if we need to increase or decrease the column widths
-    bool increaseWidth = currentFindCountWidth < COUNT_COLUMN_WIDTH || currentReplaceCountWidth < COUNT_COLUMN_WIDTH;
+    // Determine the direction of the adjustment
+    bool expandColumns = currentFindCountWidth < targetWidth || currentReplaceCountWidth < targetWidth;
 
-    if (increaseWidth) {
-        // Increase each column width by 5 pixels per step
-        while (currentFindCountWidth < COUNT_COLUMN_WIDTH || currentReplaceCountWidth < COUNT_COLUMN_WIDTH) {
-            if (currentFindCountWidth < COUNT_COLUMN_WIDTH) {
-                currentFindCountWidth = std::min(currentFindCountWidth + STEP_SIZE, COUNT_COLUMN_WIDTH);
-                ListView_SetColumnWidth(_replaceListView, 1, currentFindCountWidth);
-            }
-            if (currentReplaceCountWidth < COUNT_COLUMN_WIDTH) {
-                currentReplaceCountWidth = std::min(currentReplaceCountWidth + STEP_SIZE, COUNT_COLUMN_WIDTH);
-                ListView_SetColumnWidth(_replaceListView, 2, currentReplaceCountWidth);
-            }
-            updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), NULL);
+    // Perform the adjustment in steps
+    while ((expandColumns && (currentFindCountWidth < targetWidth || currentReplaceCountWidth < targetWidth)) ||
+        (!expandColumns && (currentFindCountWidth > 0 || currentReplaceCountWidth > 0))) {
+        // Adjust the width of the first column if needed
+        if (expandColumns && currentFindCountWidth < targetWidth) {
+            currentFindCountWidth = std::min(currentFindCountWidth + STEP_SIZE, targetWidth);
         }
-    }
-    else {
-        // Decrease each column width by 5 pixels per step until both reach 0
-        while (currentFindCountWidth > 0 || currentReplaceCountWidth > 0) {
-            if (currentFindCountWidth > 0) {
-                currentFindCountWidth = std::max(currentFindCountWidth - STEP_SIZE, 0);
-                ListView_SetColumnWidth(_replaceListView, 1, currentFindCountWidth);
-            }
-            if (currentReplaceCountWidth > 0) {
-                currentReplaceCountWidth = std::max(currentReplaceCountWidth - STEP_SIZE, 0);
-                ListView_SetColumnWidth(_replaceListView, 2, currentReplaceCountWidth);
-            }
-            updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), NULL);
+        else if (!expandColumns && currentFindCountWidth > 0) {
+            currentFindCountWidth = std::max(currentFindCountWidth - STEP_SIZE, 0);
         }
+        ListView_SetColumnWidth(_replaceListView, 1, currentFindCountWidth);
+
+        // Adjust the width of the second column if needed
+        if (expandColumns && currentReplaceCountWidth < targetWidth) {
+            currentReplaceCountWidth = std::min(currentReplaceCountWidth + STEP_SIZE, targetWidth);
+        }
+        else if (!expandColumns && currentReplaceCountWidth > 0) {
+            currentReplaceCountWidth = std::max(currentReplaceCountWidth - STEP_SIZE, 0);
+        }
+        ListView_SetColumnWidth(_replaceListView, 2, currentReplaceCountWidth);
+
+        // Update the view to reflect changes immediately
+        adjustColumnWidths(GetDlgItem(_hSelf, IDC_REPLACE_LIST));
     }
 }
+
 
 #pragma endregion
 
@@ -969,6 +973,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializeListView();
         loadSettings();
         updateButtonVisibilityBasedOnMode();
+		updateStatisticsColumnButtonIcon();
         // Activate Dark Mode
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
          return TRUE;
@@ -1572,7 +1577,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case ID_STATISTICS_COLUMNS:
         {
+            isStatisticsColumnsExpanded = !isStatisticsColumnsExpanded;
             resizeCountColumns();
+            updateStatisticsColumnButtonIcon();
         }
 		break;
 
@@ -5144,27 +5151,6 @@ void MultiReplace::loadSettings() {
 
 }
 
-/*
-RECT MultiReplace::loadWindowSettingsFromIni() {
-    // Generate the paths to the configuration files
-    auto [iniFilePath, _] = generateConfigFilePaths(); // CSV path is ignored
-
-    RECT rect;
-
-    // Read window position and size from the INI file or use default values
-    rect.left = readIntFromIniFile(iniFilePath, L"Window", L"PosX", POS_X);
-    rect.top = readIntFromIniFile(iniFilePath, L"Window", L"PosY", POS_Y);
-    int width = std::max(readIntFromIniFile(iniFilePath, L"Window", L"Width", MIN_WIDTH), MIN_WIDTH);
-    int height = std::max(readIntFromIniFile(iniFilePath, L"Window", L"Height", MIN_HEIGHT), MIN_HEIGHT);
-
-    // Update right and bottom values based on the read width and height
-    rect.right = rect.left + width;
-    rect.bottom = rect.top + height;
-
-    return rect;
-}
-*/
-
 void MultiReplace::loadUIConfigFromIni() {
     auto [iniFilePath, _] = generateConfigFilePaths(); // Generating config file paths
 
@@ -5177,6 +5163,8 @@ void MultiReplace::loadUIConfigFromIni() {
     // Read column widths
     findCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", 0);
     replaceCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountWidth", 0);
+
+    isStatisticsColumnsExpanded = (findCountColumnWidth >= COUNT_COLUMN_WIDTH && replaceCountColumnWidth >= COUNT_COLUMN_WIDTH);
 }
 
 std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue) {
