@@ -386,8 +386,8 @@ private:
     SearchResult performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range);
     SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
     SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start);
-    SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos);
-    SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos);
+    SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
+    SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
 
     //Mark
     void handleMarkMatchesButton();

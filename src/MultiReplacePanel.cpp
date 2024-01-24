@@ -893,12 +893,14 @@ void MultiReplace::updateCountColumns(size_t itemIndex, int findCount, int repla
     // Access the item data from the list
     ReplaceItemData& itemData = replaceListData[itemIndex];
 
-    // Update findCount
-    int currentFindCount = 0;
-    if (!itemData.findCount.empty()) {
-        currentFindCount = std::stoi(itemData.findCount);
+    // Update findCount if provided
+    if (findCount != -1) {
+        int currentFindCount = 0;
+        if (!itemData.findCount.empty()) {
+            currentFindCount = std::stoi(itemData.findCount);
+        }
+        itemData.findCount = std::to_wstring(currentFindCount + findCount);
     }
-    itemData.findCount = std::to_wstring(currentFindCount + findCount);
 
     // Update replaceCount if provided
     if (replaceCount != -1) {
@@ -951,7 +953,6 @@ void MultiReplace::resizeCountColumns() {
         adjustColumnWidths(GetDlgItem(_hSelf, IDC_REPLACE_LIST));
     }
 }
-
 
 #pragma endregion
 
@@ -1429,6 +1430,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_FIND_BUTTON:
         case IDC_FIND_NEXT_BUTTON:
         {
+            resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleFindNextButton();
         }
@@ -1436,6 +1438,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_FIND_PREV_BUTTON:
         {
+            resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleFindPrevButton(); 
         }
@@ -1443,6 +1446,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_BUTTON:
         {
+            resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleReplaceButton();
         }
@@ -1450,6 +1454,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_SMALL_BUTTON:
         {
+            resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleReplaceAllButton();
         }
@@ -1492,9 +1497,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             }
             else
             {
-                // Reset Count Columns for single document processing
                 resetCountColumns();
-
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
                 handleReplaceAllButton();
             }
@@ -1504,6 +1507,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
         {
+            resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleClearTextMarksButton();
             handleMarkMatchesButton();
@@ -1512,6 +1516,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_CLEAR_MARKS_BUTTON:
         {
+            resetCountColumns();
             handleClearTextMarksButton();
             showStatusMessage(getLangStr(L"status_all_marks_cleared"), RGB(0, 128, 0));
         }
@@ -1632,7 +1637,9 @@ void MultiReplace::handleReplaceAllButton() {
                 replaceAll(replaceListData[i], findCount, replaceCount);
 
                 // Update counts in list item
-                updateCountColumns(i, findCount, replaceCount);
+                if (findCount > 0) {
+                    updateCountColumns(i, findCount, replaceCount);
+                }
 
                 // Accumulate total replacements
                 totalReplaceCount += replaceCount;
@@ -1664,6 +1671,7 @@ void MultiReplace::handleReplaceAllButton() {
     showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), RGB(0, 128, 0));
 }
 
+/*
 void MultiReplace::handleReplaceButton() {
 
     // First check if the document is read-only
@@ -1706,6 +1714,106 @@ void MultiReplace::handleReplaceButton() {
         // Build and show message based on results
         if (replacements > 0) {
             if (searchResult.pos >= 0) {
+                showStatusMessage(getLangStr(L"status_replace_next_found", { std::to_wstring(replacements) }), RGB(0, 128, 0));
+            }
+            else {
+                showStatusMessage(getLangStr(L"status_replace_none_left", { std::to_wstring(replacements) }), RGB(255, 0, 0));
+            }
+        }
+        else {
+            if (searchResult.pos < 0) {
+                showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
+            }
+        }
+    }
+    else {
+        ReplaceItemData replaceItem;
+        replaceItem.findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        replaceItem.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
+        replaceItem.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+        replaceItem.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+        replaceItem.useVariables = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
+        replaceItem.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+        replaceItem.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+
+        std::string findTextUtf8 = convertAndExtend(replaceItem.findText, replaceItem.extended);
+        int searchFlags = (replaceItem.wholeWord * SCFIND_WHOLEWORD) | (replaceItem.matchCase * SCFIND_MATCHCASE) | (replaceItem.regex * SCFIND_REGEXP);
+
+        SelectionInfo selection = getSelectionInfo();
+        bool wasReplaced = replaceOne(replaceItem, selection, searchResult, newPos);
+
+        // Add the entered text to the combo box history
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), replaceItem.findText);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceItem.replaceText);
+
+        if (searchResult.pos < 0 && wrapAroundEnabled) {
+            searchResult = performSearchForward(findTextUtf8, searchFlags, true, 0);
+        }
+
+        if (wasReplaced) {
+            if (searchResult.pos >= 0) {
+                showStatusMessage(getLangStr(L"status_replace_one_next_found"), RGB(0, 128, 0));
+            }
+            else {
+                showStatusMessage(getLangStr(L"status_replace_one_none_left"), RGB(255, 0, 0));
+            }
+        }
+        else {
+            if (searchResult.pos < 0) {
+                showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
+            }
+        }
+    }
+
+}
+*/
+
+void MultiReplace::handleReplaceButton() {
+
+    // First check if the document is read-only
+    LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
+    if (isReadOnly) {
+        showStatusMessage(getLangStrLPWSTR(L"status_cannot_replace_read_only"), RGB(255, 0, 0));
+        return;
+    }
+
+    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+    bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+
+    SearchResult searchResult;
+    searchResult.pos = -1;
+    searchResult.length = 0;
+    searchResult.foundText = "";
+
+    Sci_Position newPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+    size_t matchIndex = std::numeric_limits<size_t>::max();
+
+    if (useListEnabled) {
+        if (replaceListData.empty()) {
+            showStatusMessage(getLangStr(L"status_add_values_or_uncheck"), RGB(255, 0, 0));
+            return;
+        }
+
+        SelectionInfo selection = getSelectionInfo();
+
+        int replacements = 0;  // Counter for replacements
+        for (size_t i = 0; i < replaceListData.size(); ++i) {
+            if (replaceListData[i].isSelected && replaceOne(replaceListData[i], selection, searchResult, newPos)) {
+                replacements++;
+                updateCountColumns(i, -1, 1);
+            }
+        }
+
+        searchResult = performListSearchForward(replaceListData, newPos, matchIndex);
+
+        if (searchResult.pos < 0 && wrapAroundEnabled) {
+            searchResult = performListSearchForward(replaceListData, 0, matchIndex);
+        }
+
+        // Build and show message based on results
+        if (replacements > 0) {
+            if (searchResult.pos >= 0) {
+                updateCountColumns(matchIndex, 1);
                 showStatusMessage(getLangStr(L"status_replace_next_found", { std::to_wstring(replacements) }), RGB(0, 128, 0));
             }
             else {
@@ -2313,8 +2421,7 @@ void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std:
 #pragma region Find
 
 void MultiReplace::handleFindNextButton() {
-    // Clear Find and Replace Count Column
-    resetCountColumns();
+    size_t matchIndex = std::numeric_limits<size_t>::max();
 
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
@@ -2327,10 +2434,11 @@ void MultiReplace::handleFindNextButton() {
             return;
         }
 
-        SearchResult result = performListSearchForward(replaceListData, searchPos);
+        SearchResult result = performListSearchForward(replaceListData, searchPos, matchIndex);
         if (result.pos < 0 && wrapAroundEnabled) {
-            result = performListSearchForward(replaceListData, 0);
+            result = performListSearchForward(replaceListData, 0, matchIndex);
             if (result.pos >= 0) {
+                updateCountColumns(matchIndex, 1);
                 showStatusMessage(getLangStr(L"status_wrapped"), RGB(0, 128, 0));
                 return;
             }
@@ -2338,6 +2446,7 @@ void MultiReplace::handleFindNextButton() {
 
         if (result.pos >= 0) {
             showStatusMessage(L"", RGB(0, 128, 0));
+            updateCountColumns(matchIndex, 1);
         }
         else {
             showStatusMessage(getLangStr(L"status_no_matches_found"), RGB(255, 0, 0));
@@ -2372,8 +2481,8 @@ void MultiReplace::handleFindNextButton() {
 }
 
 void MultiReplace::handleFindPrevButton() {
-    // Clear Find and Replace Count Column
-    resetCountColumns();
+
+    size_t matchIndex = std::numeric_limits<size_t>::max();
 
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
@@ -2388,17 +2497,18 @@ void MultiReplace::handleFindPrevButton() {
             return;
         }
 
-        SearchResult result = performListSearchBackward(replaceListData, searchPos);
+        SearchResult result = performListSearchBackward(replaceListData, searchPos, matchIndex);
 
         if (result.pos >= 0) {
+            updateCountColumns(matchIndex, 1);
             showStatusMessage(L"" + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
         }
         else if (wrapAroundEnabled)
         {
-            result = performListSearchBackward(replaceListData, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+            result = performListSearchBackward(replaceListData, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0), matchIndex);
             if (result.pos >= 0) {
+                updateCountColumns(matchIndex, 1);
                 showStatusMessage(getLangStr(L"status_wrapped_position", { addLineAndColumnMessage(result.pos) }), RGB(0, 128, 0));
-
             }
             else {
                 showStatusMessage(getLangStr(L"status_no_matches_after_wrap"), RGB(255, 0, 0));
@@ -2408,6 +2518,7 @@ void MultiReplace::handleFindPrevButton() {
         {
             showStatusMessage(getLangStr(L"status_no_matches_found"), RGB(255, 0, 0));
         }
+
     }
     else
     {
@@ -2673,6 +2784,7 @@ SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8
     return result;
 }
 
+/*
 SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos)
 {
     SearchResult closestMatch;
@@ -2699,7 +2811,40 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
 
     return closestMatch;
 }
+*/
 
+SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex) {
+    SearchResult closestMatch;
+    closestMatch.pos = -1;
+    closestMatch.length = 0;
+    closestMatch.foundText = "";
+
+    closestMatchIndex = std::numeric_limits<size_t>::max(); // Initialize with a value that represents "no index".
+
+    for (size_t i = 0; i < list.size(); ++i) {
+        if (list[i].isSelected) {
+            int searchFlags = (list[i].wholeWord * SCFIND_WHOLEWORD) |
+                (list[i].matchCase * SCFIND_MATCHCASE) |
+                (list[i].regex * SCFIND_REGEXP);
+            std::string findTextUtf8 = convertAndExtend(list[i].findText, list[i].extended);
+            SearchResult result = performSearchBackward(findTextUtf8, searchFlags, cursorPos);
+
+            // If a match was found and it's closer to the cursor than the current closest match, update the closest match
+            if (result.pos >= 0 && (closestMatch.pos < 0 || (result.pos + result.length) >(closestMatch.pos + closestMatch.length))) {
+                closestMatch = result;
+                closestMatchIndex = i; // Update the index of the closest match
+            }
+        }
+    }
+
+    if (closestMatch.pos >= 0) { // Check if a match was found
+        displayResultCentered(closestMatch.pos, closestMatch.pos + closestMatch.length, false);
+    }
+
+    return closestMatch;
+}
+
+/*
 SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos)
 {
     SearchResult closestMatch;
@@ -2725,6 +2870,37 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
     }
     return closestMatch;
 }
+*/
+
+SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex) {
+    SearchResult closestMatch;
+    closestMatch.pos = -1;
+    closestMatch.length = 0;
+    closestMatch.foundText = "";
+
+    closestMatchIndex = std::numeric_limits<size_t>::max(); // Initialisiert mit einem Wert, der "keinen Index" darstellt.
+
+    for (size_t i = 0; i < list.size(); i++) {
+        if (list[i].isSelected) {
+            int searchFlags = (list[i].wholeWord * SCFIND_WHOLEWORD) | (list[i].matchCase * SCFIND_MATCHCASE) | (list[i].regex * SCFIND_REGEXP);
+            std::string findTextUtf8 = convertAndExtend(list[i].findText, list[i].extended);
+            SearchResult result = performSearchForward(findTextUtf8, searchFlags, false, cursorPos);
+
+            // Wenn ein Treffer gefunden wurde, der näher am Cursor liegt als der aktuelle nächste Treffer, aktualisiere den nächstgelegenen Treffer
+            if (result.pos >= 0 && (closestMatch.pos < 0 || result.pos < closestMatch.pos)) {
+                closestMatch = result;
+                closestMatchIndex = i; // Aktualisiere den Index des nächstgelegenen Treffers
+            }
+        }
+    }
+
+    if (closestMatch.pos >= 0) { // Überprüfe, ob ein Treffer gefunden wurde
+        displayResultCentered(closestMatch.pos, closestMatch.pos + closestMatch.length, true);
+    }
+
+    return closestMatch;
+}
+
 
 void MultiReplace::displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards)
 {
@@ -2765,9 +2941,6 @@ void MultiReplace::handleMarkMatchesButton() {
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     markedStringsCount = 0;
 
-    // Clear Find and Replace Count Column
-    resetCountColumns();
-
     if (useListEnabled) {
         if (replaceListData.empty()) {
             showStatusMessage(getLangStr(L"status_add_values_or_mark_directly"), RGB(255, 0, 0));
@@ -2783,8 +2956,9 @@ void MultiReplace::handleMarkMatchesButton() {
                 int matchCount = markString(findTextUtf8, searchFlags);
                 totalMatchCount += matchCount;
 
-                // Update find count in list item using updateCountColumns
-                updateCountColumns(i, matchCount, -1);
+                if (matchCount > 0) {
+                    updateCountColumns(i, matchCount);
+                }
             }
         }
     }
