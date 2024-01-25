@@ -2713,6 +2713,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
 
     std::string markedText;
     std::string styleText;
+    std::string eol = getEOLStyle();
 
     for (int style : textStyles)
     {
@@ -2739,7 +2740,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
                     styleText += ch;
                 }
 
-                markedText += styleText;
+                markedText += styleText + eol; // Append marked text and EOL;
                 styleText.clear();
             }
             else
@@ -2750,6 +2751,11 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
             pos = nextPos;
             nextPos = ::SendMessage(_hScintilla, SCI_INDICATOREND, style, pos);
         }
+    }
+
+    // Remove the last EOL if necessary
+    if (!markedText.empty() && markedText.length() >= eol.length()) {
+        markedText.erase(markedText.length() - eol.length());
     }
 
     // Convert encoding to wide string
