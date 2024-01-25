@@ -1671,103 +1671,6 @@ void MultiReplace::handleReplaceAllButton() {
     showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), RGB(0, 128, 0));
 }
 
-/*
-void MultiReplace::handleReplaceButton() {
-
-    // First check if the document is read-only
-    LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
-    if (isReadOnly) {
-        showStatusMessage(getLangStrLPWSTR(L"status_cannot_replace_read_only"), RGB(255, 0, 0));
-        return;
-    }
-
-    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
-    bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
-
-    SearchResult searchResult;
-    searchResult.pos = -1;
-    searchResult.length = 0;
-    searchResult.foundText = "";
-
-    Sci_Position newPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
-
-    if (useListEnabled) {
-        if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_add_values_or_uncheck"), RGB(255, 0, 0));
-            return;
-        }
-
-        SelectionInfo selection = getSelectionInfo();
-
-        int replacements = 0;  // Counter for replacements
-        for (const ReplaceItemData& itemData : replaceListData) {
-            if (itemData.isSelected && replaceOne(itemData, selection, searchResult, newPos)) {
-                replacements++;
-            }
-        }
-
-        searchResult = performListSearchForward(replaceListData, newPos);
-        if (searchResult.pos < 0 && wrapAroundEnabled) {
-            searchResult = performListSearchForward(replaceListData, 0);
-        }
-
-        // Build and show message based on results
-        if (replacements > 0) {
-            if (searchResult.pos >= 0) {
-                showStatusMessage(getLangStr(L"status_replace_next_found", { std::to_wstring(replacements) }), RGB(0, 128, 0));
-            }
-            else {
-                showStatusMessage(getLangStr(L"status_replace_none_left", { std::to_wstring(replacements) }), RGB(255, 0, 0));
-            }
-        }
-        else {
-            if (searchResult.pos < 0) {
-                showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
-            }
-        }
-    }
-    else {
-        ReplaceItemData replaceItem;
-        replaceItem.findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-        replaceItem.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
-        replaceItem.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-        replaceItem.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-        replaceItem.useVariables = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
-        replaceItem.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-        replaceItem.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-
-        std::string findTextUtf8 = convertAndExtend(replaceItem.findText, replaceItem.extended);
-        int searchFlags = (replaceItem.wholeWord * SCFIND_WHOLEWORD) | (replaceItem.matchCase * SCFIND_MATCHCASE) | (replaceItem.regex * SCFIND_REGEXP);
-
-        SelectionInfo selection = getSelectionInfo();
-        bool wasReplaced = replaceOne(replaceItem, selection, searchResult, newPos);
-
-        // Add the entered text to the combo box history
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), replaceItem.findText);
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceItem.replaceText);
-
-        if (searchResult.pos < 0 && wrapAroundEnabled) {
-            searchResult = performSearchForward(findTextUtf8, searchFlags, true, 0);
-        }
-
-        if (wasReplaced) {
-            if (searchResult.pos >= 0) {
-                showStatusMessage(getLangStr(L"status_replace_one_next_found"), RGB(0, 128, 0));
-            }
-            else {
-                showStatusMessage(getLangStr(L"status_replace_one_none_left"), RGB(255, 0, 0));
-            }
-        }
-        else {
-            if (searchResult.pos < 0) {
-                showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
-            }
-        }
-    }
-
-}
-*/
-
 void MultiReplace::handleReplaceButton() {
 
     // First check if the document is read-only
@@ -2784,35 +2687,6 @@ SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8
     return result;
 }
 
-/*
-SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos)
-{
-    SearchResult closestMatch;
-    closestMatch.pos = -1;
-    closestMatch.length = 0;
-    closestMatch.foundText = "";
-
-    for (const ReplaceItemData& itemData : list)
-    {
-        if (itemData.isSelected) {
-            int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
-            std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
-            SearchResult result = performSearchBackward(findTextUtf8, searchFlags, cursorPos);
-
-            // If a match was found and it's closer to the cursor than the current closest match, update the closest match
-            if (result.pos >= 0 && (closestMatch.pos < 0 || (result.pos + result.length) >(closestMatch.pos + closestMatch.length))) {
-                closestMatch = result;
-            }
-        }
-    }
-    if (closestMatch.pos >= 0) { // Check if a match was found
-        displayResultCentered(closestMatch.pos, closestMatch.pos + closestMatch.length, false);
-    }
-
-    return closestMatch;
-}
-*/
-
 SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex) {
     SearchResult closestMatch;
     closestMatch.pos = -1;
@@ -2844,34 +2718,6 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
     return closestMatch;
 }
 
-/*
-SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos)
-{
-    SearchResult closestMatch;
-    closestMatch.pos = -1;
-    closestMatch.length = 0;
-    closestMatch.foundText = "";
-
-    for (const ReplaceItemData& itemData : list)
-    {
-        if (itemData.isSelected) {
-            int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
-            std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
-            SearchResult result = performSearchForward(findTextUtf8, searchFlags, false, cursorPos);
-
-            // If a match was found and it's closer to the cursor than the current closest match, update the closest match
-            if (result.pos >= 0 && (closestMatch.pos < 0 || result.pos < closestMatch.pos)) {
-                closestMatch = result;
-            }
-        }
-    }
-    if (closestMatch.pos >= 0) { // Check if a match was found
-        displayResultCentered(closestMatch.pos, closestMatch.pos + closestMatch.length, true);
-    }
-    return closestMatch;
-}
-*/
-
 SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex) {
     SearchResult closestMatch;
     closestMatch.pos = -1;
@@ -2900,7 +2746,6 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
 
     return closestMatch;
 }
-
 
 void MultiReplace::displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards)
 {
@@ -3066,6 +2911,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
 
     std::string markedText;
     std::string styleText;
+    std::string eol = getEOLStyle();
 
     for (int style : textStyles)
     {
@@ -3092,7 +2938,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
                     styleText += ch;
                 }
 
-                markedText += styleText;
+                markedText += styleText + eol; // Append marked text and EOL;
                 styleText.clear();
             }
             else
@@ -3103,6 +2949,11 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
             pos = nextPos;
             nextPos = ::SendMessage(_hScintilla, SCI_INDICATOREND, style, pos);
         }
+    }
+
+    // Remove the last EOL if necessary
+    if (!markedText.empty() && markedText.length() >= eol.length()) {
+        markedText.erase(markedText.length() - eol.length());
     }
 
     // Convert encoding to wide string
