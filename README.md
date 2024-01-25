@@ -7,6 +7,25 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 
 ![MultiReplace Screenshot](./MultiReplace.gif)
 
+## Table of Contents
+- [Key Features](#key-features)
+- [Match and Replace Options](#match-and-replace-options)
+  - [Match Whole Word Only](#match-whole-word-only)
+  - [Match Case](#match-case)
+  - [Use Variables](#use-variables)
+  - [Replace First Match Only](#replace-first-match-only)
+  - [Wrap Around](#wrap-around)
+- [Scope Functions](#scope-functions)
+- [Option 'Use Variables'](#option-use-variables)
+  - [Variables Overview](#variables-overview)
+  - [Command Overview](#command-overview)
+- [User Interaction and List Management](#user-interaction-and-list-management)
+  - [Entry Management](#entry-management)
+  - [List Columns](#list-columns)
+  - [Function Toggling](#function-toggling)
+- [Data Handling](#data-handling)
+  - [Import/Export](#importexport)
+  - [Bash Script Export](#bash-script-export)
 ## Key Features
 
 -   **Multiple Replacements**: Execute multiple replacements in a single operation, in one document or across all opened documents.
