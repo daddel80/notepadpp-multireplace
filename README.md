@@ -1,6 +1,6 @@
 # MultiReplace for Notepad++
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-2.2.0.9-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/2.2.0.9)
+[![Latest Stable Version](https://img.shields.io/badge/version-2.3.0.10-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/2.3.0.10)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, proving useful across various sessions or projects. This enhancement increases efficiency when multiple replacements need to be made concurrently, thereby bolstering the overall functionality of Notepad++.
@@ -10,22 +10,22 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 ## Table of Contents
 - [Key Features](#key-features)
 - [Match and Replace Options](#match-and-replace-options)
-  - [Match Whole Word Only](#match-whole-word-only)
-  - [Match Case](#match-case)
-  - [Use Variables](#use-variables)
-  - [Replace First Match Only](#replace-first-match-only)
-  - [Wrap Around](#wrap-around)
 - [Scope Functions](#scope-functions)
+- [CSV Processing Functions](#csv-processing-functions)
+  - [Sorting, Deleting, and Copying](#sorting-deleting-and-copying)
+  - [Header Line Sorting Control](#header-line-sorting-control)
+  - [Numeric Sorting in CSV](#numeric-sorting-in-csv)
 - [Option 'Use Variables'](#option-use-variables)
   - [Variables Overview](#variables-overview)
   - [Command Overview](#command-overview)
 - [User Interaction and List Management](#user-interaction-and-list-management)
   - [Entry Management](#entry-management)
   - [List Columns](#list-columns)
-  - [Function Toggling](#function-toggling)
+  - [List Toggling](#list-toggling)
 - [Data Handling](#data-handling)
   - [Import/Export](#importexport)
   - [Bash Script Export](#bash-script-export)
+  
 ## Key Features
 
 -   **Multiple Replacements**: Execute multiple replacements in a single operation, in one document or across all opened documents.
@@ -40,20 +40,15 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 
 This chapter provides an overview of the various match and replace options available in MultiReplace, enhancing the flexibility and precision of your search and replace operations.
 
-### Match Whole Word Only
-When this option is enabled, the search term is matched only if it appears as a whole word. This is particularly useful for avoiding partial matches within larger words, ensuring more precise and targeted search results.
+**Match Whole Word Only:** When this option is enabled, the search term is matched only if it appears as a whole word. This is particularly useful for avoiding partial matches within larger words, ensuring more precise and targeted search results.
 
-### Match Case
-Selecting this option makes the search case-sensitive, meaning 'Hello' and 'hello' will be treated as distinct terms. It's useful for scenarios where the case of the letters is crucial to the search.
+**Match Case:** Selecting this option makes the search case-sensitive, meaning 'Hello' and 'hello' will be treated as distinct terms. It's useful for scenarios where the case of the letters is crucial to the search.
 
-### Use Variables
-This feature allows the use of variables within the replacement string for dynamic and conditional replacements. For more detailed information, refer to the [Option 'Use Variables' chapter](#option-use-variables).
+**Use Variables:** This feature allows the use of variables within the replacement string for dynamic and conditional replacements. For more detailed information, refer to the [Option 'Use Variables' chapter](#option-use-variables).
 
-### Replace First Match Only
-The "Replace First Match Only" option is ideal for Replace-All operations, where it replaces only the first occurrence of a match in each list entry. This is particularly useful for different replace strings with the same find pattern. It's designed for modifying only the initial match in a document or scope, while keeping other instances intact. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
+**Replace First Match Only:** The "Replace First Match Only" option is ideal for Replace-All operations, where it replaces only the first occurrence of a match in each list entry. This is particularly useful for different replace strings with the same find pattern. It's designed for modifying only the initial match in a document or scope, while keeping other instances intact. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
 
-### Wrap Around
-When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
+**Wrap Around:** When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
 
 ## Scope Functions
 Scope functions define the range for searching and replacing strings:
@@ -62,6 +57,26 @@ Scope functions define the range for searching and replacing strings:
     -   `Cols`: Specify the columns for focused operations.
     -   `Delim`: Define the delimiter character.
     -   `Quote`: Delineate areas where characters are not recognized as delimiters.
+
+## CSV Processing Functions
+
+### Sorting, Deleting, and Copying
+- **Sorting Lines in CSV by Columns**: Sort lines ascending or descending, with column priority.
+- **Deleting Multiple Columns**: Remove multiple columns at once, cleaning obsolete delimiters.
+- **Clipboard Column Copying**: Copy columns with delimiters to clipboard.
+
+### Header Line Sorting Control
+- Exclude header from sorting with `HeaderLines=1` in `[userdir]\AppData\Roaming\Notepad++\plugins\config\MultiReplace.ini`.
+
+### Numeric Sorting in CSV
+- For accurate numeric sorting in CSV files, the following settings and regex patterns can be used:
+
+| Purpose                                   | Find Pattern        | Replace With   | Regex | Use Variables |
+|-------------------------------------------|---------------------|----------------|-------|---------------|
+| Align Numbers with Leading Zeros (Decimal)     | `\b(\d*)\.(\d{2})`  | `set(string.rep("0",9-string.len(string.format("%.2f", CAP1)))..string.format("%.2f", CAP1))` | Yes   | Yes           |
+| Align Numbers with Leading Zeros (Non-decimal) | `\b(\d+)`           | `set(string.rep("0",9-string.len(CAP1))..CAP1)` | Yes   | Yes           |
+| Remove Leading Zeros (Decimal)                 | `\b0+(\d*\.\d+)`    | `$1`           | Yes   | No            |
+| Remove Leading Zeros (Non-decimal)             | `\b0+(\d*)`         | `$1`           | Yes   | No            |
 
 ## Option 'Use Variables'
 Activate the '**Use Variables**' checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options.
@@ -178,7 +193,7 @@ MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math 
 | **E**  | Extended |
 | **R**  | Regular expression |
 
-### Function Toggling
+### List Toggling
 - "Use List" checkbox toggles operation application between all list entries or the "Find what:" and "Replace with:" fields.
 
 ### Entry Management
