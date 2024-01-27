@@ -61,9 +61,9 @@ Scope functions define the range for searching and replacing strings:
 ## CSV Processing Functions
 
 ### Sorting, Deleting, and Copying
-- **Sorting Lines in CSV by Columns**: Sort lines ascending or descending, with column priority.
+- **Sorting Lines in CSV by Columns**:Ascend or descend, combining columns in any prioritized order.
 - **Deleting Multiple Columns**: Remove multiple columns at once, cleaning obsolete delimiters.
-- **Clipboard Column Copying**: Copy columns with delimiters to clipboard.
+- **Clipboard Column Copying**: Copy columns with original delimiters to clipboard.
 
 ### Header Line Sorting Control
 - Exclude header from sorting with `HeaderLines=1` in `[userdir]\AppData\Roaming\Notepad++\plugins\config\MultiReplace.ini`.
