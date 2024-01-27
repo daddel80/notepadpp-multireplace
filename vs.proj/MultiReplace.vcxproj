@@ -63,6 +63,7 @@
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\language_mapping.cpp" />
     <ClCompile Include="..\src\lua\lapi.c">
       <AdditionalOptions>/w %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -143,6 +144,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\help_use_variables.html" />
+    <None Include="..\languages.ini" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{9D04DBD5-E12E-44E0-A683-6F43F21D533B}</ProjectGuid>

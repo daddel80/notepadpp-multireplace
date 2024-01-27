@@ -106,8 +106,14 @@
 #define STYLE9							68
 #define STYLE10							69
 
-// Minimum window dimensions
-#define MIN_WIDTH 993
+#define IDI_SMILEY_ICON 5701
+#define IDI_SMILEY_DM_ICON 5702
+#define IDR_SMILEY_BMP 5703
+
+// Default window position and dimensions
+#define POS_X 92
+#define POS_Y 40
+#define MIN_WIDTH 1023
 #define MIN_HEIGHT 485
 
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace/issues")

@@ -108,6 +108,7 @@
       <Filter>Lua</Filter>
     </ClCompile>
     <ClCompile Include="..\src\StaticDialog\StaticDialog.cpp" />
+    <ClCompile Include="..\src\language_mapping.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -212,5 +213,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\help_use_variables.html" />
+    <None Include="..\languages.ini" />
   </ItemGroup>
 </Project>

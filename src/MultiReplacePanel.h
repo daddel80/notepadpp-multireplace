@@ -63,6 +63,13 @@ struct ReplaceItemData
     }
 };
 
+struct WindowSettings {
+    int posX;
+    int posY;
+    int width;
+    int height;
+};
+
 struct ControlInfo
 {
     int x, y, cx, cy;
@@ -71,6 +78,7 @@ struct ControlInfo
     DWORD style;
     LPCWSTR tooltipText;
 };
+
 
 struct SearchResult {
     LRESULT pos = -1;
@@ -301,6 +309,7 @@ private:
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
+	std::wstring findNextButtonText;        // member variable to ensure persists for button label throughout the object's lifetime.
 
     // Scintilla related 
     SciFnDirect pSciMsg = nullptr;
@@ -434,16 +443,27 @@ private:
     std::string translateEscapes(const std::string& input);
 
     //INI
+    std::pair<std::wstring, std::wstring> generateConfigFilePaths();
     void saveSettingsToIni(const std::wstring& iniFilePath);
     void saveSettings();
     void loadSettingsFromIni(const std::wstring& iniFilePath);
     void loadSettings();
+    RECT loadWindowSettingsFromIni();
     std::wstring readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue);
     bool readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue);
     int readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue);
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
 
+	// Language
+    void loadLanguage();
+    void loadLanguageFromIni(const std::wstring& iniFilePath, const std::wstring& languageCode);
+    std::wstring getLanguageFromNativeLangXML();
+    std::wstring getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements = {});
+    LPCWSTR getLangStrLPCWSTR(const std::wstring& id);
+    LPWSTR getLangStrLPWSTR(const std::wstring& id);
 };
+
+extern std::unordered_map<std::wstring, std::wstring> languageMap;
 
 extern MultiReplace _MultiReplace;
 
