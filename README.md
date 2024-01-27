@@ -93,8 +93,9 @@ Note: Utilize either the `set()` or `cond()` command in 'Replace with:' to chann
 | **LCNT** | Count of the detected string within the line. |
 | **COL**  | Column number where the string was found (CSV-Scope option selected).|
 | **MATCH**| Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
-| **CAP1**, **CAP2**, ...  | Correspond to capture groups $1, $2, ... in regex patterns. They can be used for calculations or as strings.|
-| |Note: For `MATCH` and `CAP` variables, both dot and comma can be used as decimal separators when they contain numerical values, but thousands separators are not supported. |
+| **CAP1**, **CAP2**, ...  | Represent the variables of regex capture groups (such as $1, $2, ...). In the 'Use Variables' environment, these can be used for calculations and in conditions.|
+| |**Capture Group Variables::** Traditional capture group references ($1, $2, ...) are not resolved in the 'Use Variables' environment. Use `CAP1`, `CAP2`, etc., instead for proper functionality. |
+| |**Decimal Separator:** When `MATCH` and `CAP` variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators. |
 
 ### Command Overview
 #### String Composition
