@@ -258,10 +258,10 @@ window.addEventListener("load", doPageLoad);
             </tr>
             <tr>
                 <td><strong>CAP1</strong>, <strong>CAP2</strong>,...</td>
-                <td>Correspond to capture groups $1, $2, ... in regex patterns. They can be used for calculations or as strings.</td>
+                <td>These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Unlike their counterparts ($1, $2, ...), they are specifically suited for calculations and conditional operations within this environment.</td>
             </tr>
             <tr>
-                <td colspan="2">Note: For <code>MATCH</code> and <code>CAP</code> variables, both dot and comma can be used as decimal separators when they contain numerical values, but thousands separators are not supported.</td>
+                <td colspan="2"><strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.</p></td>
             </tr>
         </table>
     </section>
