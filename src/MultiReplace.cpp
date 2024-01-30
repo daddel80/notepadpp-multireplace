@@ -112,6 +112,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
     case NPPN_BUFFERACTIVATED:
     {
         MultiReplace::onDocumentSwitched();
+        MultiReplace::pointerToScintilla();
     }
     break;
 

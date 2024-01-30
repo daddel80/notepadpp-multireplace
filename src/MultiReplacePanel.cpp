@@ -289,20 +289,6 @@ bool MultiReplace::createAndShowWindows() {
     return true;
 }
 
-void MultiReplace::setupScintilla() {
-    int which = -1;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
-    if (which != -1) {
-        _hScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
-        s_hScintilla = _hScintilla;
-    }
-
-    if (_hScintilla) { // just to supress Warning
-        pSciMsg = (SciFnDirect)::SendMessage(_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0);
-        pSciWndData = (sptr_t)::SendMessage(_hScintilla, SCI_GETDIRECTPOINTER, 0, 0);
-    }
-}
-
 void MultiReplace::initializePluginStyle()
 {
     // Initialize for non-list marker
@@ -827,7 +813,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         loadLanguage();
         initializeWindowSize();
-        setupScintilla();
+        pointerToScintilla();
         initializePluginStyle();
         initializeCtrlMap();
         initializeListView();
@@ -1323,24 +1309,37 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
                 if (msgboxID == IDOK)
                 {
+                    // Get the number of opened documents in each view
+                    LRESULT docCountMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
+                    LRESULT docCountSecondary = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
 
-                    // Get the total number of opened documents in Notepad++
-                    LRESULT docCount = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, ALL_OPEN_FILES);
+                    // Check the visibility of each view
+                    bool visibleMain = IsWindowVisible(nppData._scintillaMainHandle);
+                    bool visibleSecond = IsWindowVisible(nppData._scintillaSecondHandle);
 
                     // Save focused Document
                     LRESULT currentDocIndex = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
 
-                    for (LRESULT i = 0; i < docCount; ++i)
-                    {
-                        // Switch to the document at index i
-                        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, 0, i);
+                    // Process documents in the main view if it's visible
+                    if (visibleMain) {
+                        for (LRESULT i = 0; i < docCountMain; ++i) {
+                            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
+                            handleDelimiterPositions(DelimiterOperation::LoadAll);
+                            handleReplaceAllButton();
+                        }
+                    }
 
-                        handleDelimiterPositions(DelimiterOperation::LoadAll);
-                        handleReplaceAllButton();
+                    // Process documents in the secondary view if it's visible
+                    if (visibleSecond) {
+                        for (LRESULT i = 0; i < docCountSecondary; ++i) {
+                            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, i);
+                            handleDelimiterPositions(DelimiterOperation::LoadAll);
+                            handleReplaceAllButton();
+                        }
                     }
 
                     // Restore opened Document
-                    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, 0, currentDocIndex);
+                    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, visibleMain ? MAIN_VIEW : SUB_VIEW, currentDocIndex);
                 }
             }
             else
@@ -5233,6 +5232,20 @@ void MultiReplace::onDocumentSwitched() {
             instance->isColumnHighlighted = false;
             instance->showStatusMessage(L"", RGB(0, 0, 0));
         }
+    }
+}
+
+void MultiReplace::pointerToScintilla() {
+    int which = -1;
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
+    if (which != -1) {
+        instance->_hScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+        s_hScintilla = instance->_hScintilla;
+    }
+
+    if (instance->_hScintilla) { // just to supress Warning
+        instance->pSciMsg = (SciFnDirect)::SendMessage(instance->_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0);
+        instance->pSciWndData = (sptr_t)::SendMessage(instance->_hScintilla, SCI_GETDIRECTPOINTER, 0, 0);
     }
 }
 
