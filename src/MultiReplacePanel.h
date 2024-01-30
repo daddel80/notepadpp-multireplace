@@ -238,6 +238,7 @@ public:
     static void onSelectionChanged();
     static void onTextChanged();
     static void onDocumentSwitched();
+    static void pointerToScintilla();
     static void processLog();
     static void processTextChange(SCNotification* notifyCode);
     static void onCaretPositionChanged();
@@ -340,7 +341,6 @@ private:
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();
-    void setupScintilla();
     void initializePluginStyle();
     void initializeListView();
     void moveAndResizeControls();
