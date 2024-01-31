@@ -1457,32 +1457,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     MB_OKCANCEL
                 );
 
-                /*
-                if (msgboxID == IDOK)
-                {
-                    // Reset Count Columns once before processing multiple documents
-                    resetCountColumns();
-
-                    // Get the total number of opened documents in Notepad++
-                    LRESULT docCount = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
-
-                    // Save focused Document
-                    LRESULT currentDocIndex = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
-
-                    for (LRESULT i = 0; i < docCount; ++i)
-                    {
-
-                        // Switch to the document at index i
-                        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, 0, i);
-
-                        handleDelimiterPositions(DelimiterOperation::LoadAll);
-                        handleReplaceAllButton();
-                    }
-
-                    // Restore opened Document
-                    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, 0, currentDocIndex);
-                }*/
-
                 if (msgboxID == IDOK)
                 {
                     // Reset Count Columns once before processing multiple documents
@@ -1495,13 +1469,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     // Check the visibility of each view
                     bool visibleMain = IsWindowVisible(nppData._scintillaMainHandle);
                     bool visibleSecond = IsWindowVisible(nppData._scintillaSecondHandle);
-
-                    // Combine the values into a string and show them in a MessageBox
-                    std::wstring visibilityMessage = L"Main View Visible: " + std::to_wstring(visibleMain) +
-                        L"\nSecondary View Visible: " + std::to_wstring(visibleSecond) +
-                        L"\nMain View Documents: " + std::to_wstring(docCountMain) +
-                        L"\nSecondary View Documents: " + std::to_wstring(docCountSecondary);
-                    MessageBox(NULL, visibilityMessage.c_str(), L"View Visibility and Document Counts", MB_OK);
 
                     // Save focused Document
                     LRESULT currentDocIndex = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
@@ -4541,6 +4508,25 @@ std::string MultiReplace::utf8ToCodepage(const std::string& utf8Str, int codepag
     return std::string(cpStr.data(), lenMbcs - 1);  // -1 to exclude the null character
 }
 
+std::wstring MultiReplace::trim(const std::wstring& str) {
+    // Find the first character that is not whitespace, tab, newline, or carriage return
+    const auto strBegin = str.find_first_not_of(L" \t\n\r");
+
+    if (strBegin == std::wstring::npos) {
+        // If the entire string consists of whitespace, return an empty string
+        return L"";
+    }
+
+    // Find the last character that is not whitespace, tab, newline, or carriage return
+    const auto strEnd = str.find_last_not_of(L" \t\n\r");
+
+    // Calculate the range of non-whitespace characters
+    const auto strRange = strEnd - strBegin + 1;
+
+    // Return the substring without leading and trailing whitespace
+    return str.substr(strBegin, strRange);
+}
+
 #pragma endregion
 
 
@@ -5249,8 +5235,6 @@ std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath
     std::wstringstream contentStream(wContent);
     std::wstring line;
     bool correctSection = false;
-    std::wstring requiredKey = key + L"=";
-    size_t keyLength = requiredKey.length();
 
     while (std::getline(contentStream, line)) {
         if (line[0] == L'[') {
@@ -5259,17 +5243,23 @@ std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath
                 correctSection = (line.substr(1, closingBracketPos - 1) == section);
             }
         }
-        else if (correctSection && line.compare(0, keyLength, requiredKey) == 0) {
-            std::wstring value = line.substr(keyLength);
+        else if (correctSection) {
+            size_t equalPos = line.find(L'=');
+            if (equalPos != std::wstring::npos) {
+                std::wstring foundKey = trim(line.substr(0, equalPos));
+                std::wstring value = line.substr(equalPos + 1);
 
-            if (!value.empty() && value.back() == L'\r') {
-                value.pop_back();  // Remove '\r' at the end of the line
-            }
-            if (value.length() >= 2 && value.front() == L'"' && value.back() == L'"') {
-                value = value.substr(1, value.length() - 2);  // Remove Leading adn trailing Quotes
-            }
+                if (foundKey == key) {
+                    size_t lastQuotePos = value.rfind(L'\"');
+                    size_t semicolonPos = value.find(L';', lastQuotePos);
+                    if (semicolonPos != std::wstring::npos) {
+                        value = value.substr(0, semicolonPos);
+                    }
+                    value = trim(value);
 
-            return value; // Return the trimmed and possibly de-quoted value
+                    return unescapeCsvValue(value);
+                }
+            }
         }
     }
 
