@@ -426,6 +426,7 @@ private:
     std::string wstringToString(const std::wstring& input) const;
     std::wstring MultiReplace::utf8ToWString(const char* cstr) const;
     std::string utf8ToCodepage(const std::string& utf8Str, int codepage) const;
+    std::wstring trim(const std::wstring& str);
 
     //FileOperations
     std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);

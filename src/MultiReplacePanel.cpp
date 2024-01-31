@@ -4280,6 +4280,25 @@ std::string MultiReplace::utf8ToCodepage(const std::string& utf8Str, int codepag
     return std::string(cpStr.data(), lenMbcs - 1);  // -1 to exclude the null character
 }
 
+std::wstring MultiReplace::trim(const std::wstring& str) {
+    // Find the first character that is not whitespace, tab, newline, or carriage return
+    const auto strBegin = str.find_first_not_of(L" \t\n\r");
+
+    if (strBegin == std::wstring::npos) {
+        // If the entire string consists of whitespace, return an empty string
+        return L"";
+    }
+
+    // Find the last character that is not whitespace, tab, newline, or carriage return
+    const auto strEnd = str.find_last_not_of(L" \t\n\r");
+
+    // Calculate the range of non-whitespace characters
+    const auto strRange = strEnd - strBegin + 1;
+
+    // Return the substring without leading and trailing whitespace
+    return str.substr(strBegin, strRange);
+}
+
 #pragma endregion
 
 
@@ -4993,8 +5012,6 @@ std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath
     std::wstringstream contentStream(wContent);
     std::wstring line;
     bool correctSection = false;
-    std::wstring requiredKey = key + L"=";
-    size_t keyLength = requiredKey.length();
 
     while (std::getline(contentStream, line)) {
         if (line[0] == L'[') {
@@ -5003,17 +5020,23 @@ std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath
                 correctSection = (line.substr(1, closingBracketPos - 1) == section);
             }
         }
-        else if (correctSection && line.compare(0, keyLength, requiredKey) == 0) {
-            std::wstring value = line.substr(keyLength);
+        else if (correctSection) {
+            size_t equalPos = line.find(L'=');
+            if (equalPos != std::wstring::npos) {
+                std::wstring foundKey = trim(line.substr(0, equalPos));
+                std::wstring value = line.substr(equalPos + 1);
 
-            if (!value.empty() && value.back() == L'\r') {
-                value.pop_back();  // Remove '\r' at the end of the line
-            }
-            if (value.length() >= 2 && value.front() == L'"' && value.back() == L'"') {
-                value = value.substr(1, value.length() - 2);  // Remove Leading adn trailing Quotes
-            }
+                if (foundKey == key) {
+                    size_t lastQuotePos = value.rfind(L'\"');
+                    size_t semicolonPos = value.find(L';', lastQuotePos);
+                    if (semicolonPos != std::wstring::npos) {
+                        value = value.substr(0, semicolonPos);
+                    }
+                    value = trim(value);
 
-            return value; // Return the trimmed and possibly de-quoted value
+                    return unescapeCsvValue(value);
+                }
+            }
         }
     }
 
