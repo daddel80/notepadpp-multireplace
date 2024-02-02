@@ -4474,50 +4474,58 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
 }
 
 std::wstring MultiReplace::escapeCsvValue(const std::wstring& value) {
-    std::wstring escapedValue;
-    bool needsQuotes = false;
+    std::wstring escapedValue = L"\"";
 
     for (const wchar_t& ch : value) {
-        // Check if value contains any character that requires escaping
-        if (ch == L',' || ch == L'"') {
-            needsQuotes = true;
-        }
-        escapedValue += ch;
-        // Escape double quotes by adding another double quote
-        if (ch == L'"') {
+        switch (ch) {
+        case L'"':
+            escapedValue += L"\"\"";
+            break;
+        case L'\n':
+            escapedValue += L"\\n";
+            break;
+        case L'\r':
+            escapedValue += L"\\r";
+            break;
+        case L'\\':
+            escapedValue += L"\\\\";
+            break;
+        default:
             escapedValue += ch;
+            break;
         }
     }
 
-    // Enclose the value in double quotes if necessary
-    if (needsQuotes) {
-        escapedValue = L'"' + escapedValue + L'"';
-    }
+    escapedValue += L"\""; // Schließt den String mit einem Anführungszeichen ab
 
     return escapedValue;
 }
 
 std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
     std::wstring unescapedValue;
+    if (value.empty()) {
+        return unescapedValue;
+    }
 
-    // If the value starts and ends with double quotes, remove them.
-    size_t start = (value.size() > 1 && value[0] == L'"' && value[value.size() - 1] == L'"') ? 1 : 0;
+    size_t start = (value.front() == L'"' && value.back() == L'"') ? 1 : 0;
     size_t end = (start == 1) ? value.size() - 1 : value.size();
 
-    bool wasPreviousCharQuote = false;
     for (size_t i = start; i < end; ++i) {
-        if (value[i] == L'"') {
-            if (wasPreviousCharQuote) {
-                wasPreviousCharQuote = false;
-                continue;
+        if (i < end - 1 && value[i] == L'\\') {
+            switch (value[i + 1]) {
+            case L'n': unescapedValue += L'\n'; ++i; break;
+            case L'r': unescapedValue += L'\r'; ++i; break;
+            case L'\\': unescapedValue += L'\\'; ++i; break;
+            default: unescapedValue += value[i]; break;
             }
-            wasPreviousCharQuote = true;
+        }
+        else if (i < end - 1 && value[i] == L'"' && value[i + 1] == L'"') {
+            unescapedValue += L'"';
+            ++i;
         }
         else {
-            wasPreviousCharQuote = false;
+            unescapedValue += value[i];
         }
-
-        unescapedValue += value[i];
     }
 
     return unescapedValue;
@@ -4750,18 +4758,10 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
         outFile << wstringToString(L"PosX=" + std::to_wstring(posX) + L"\n");
         outFile << wstringToString(L"PosY=" + std::to_wstring(posY) + L"\n");
     }
-/*
-    // Store column widths for search and replace statistics (replace with actual values)
-    int searchColumnWidth = 100; // Replace with actual search column width
-    int replaceColumnWidth = 150; // Replace with actual replace column width
 
-    outFile << wstringToString(L"[ColumnWidths]\n");
-    outFile << wstringToString(L"SearchColumnWidth=" + std::to_wstring(searchColumnWidth) + L"\n");
-    outFile << wstringToString(L"ReplaceColumnWidth=" + std::to_wstring(replaceColumnWidth) + L"\n");
-*/
     // Convert and Store the current "Find what" and "Replace with" texts
-    std::wstring currentFindTextData = L"\"" + getTextFromDialogItem(_hSelf, IDC_FIND_EDIT) + L"\"";
-    std::wstring currentReplaceTextData = L"\"" + getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT) + L"\"";
+    std::wstring currentFindTextData = escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
+    std::wstring currentReplaceTextData = escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT));
 
     outFile << wstringToString(L"[Current]\n");
     outFile << wstringToString(L"FindText=" + currentFindTextData + L"\n");
@@ -4813,7 +4813,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
         LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
         SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
-        std::wstring findTextData = L"\"" + std::wstring(buffer.data()) + L"\"";
+        std::wstring findTextData = escapeCsvValue(std::wstring(buffer.data()));
         outFile << wstringToString(L"FindTextHistory" + std::to_wstring(i) + L"=" + findTextData + L"\n");
     }
 
@@ -4824,7 +4824,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
         LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
         SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
-        std::wstring replaceTextData = L"\"" + std::wstring(buffer.data()) + L"\"";
+        std::wstring replaceTextData = escapeCsvValue(std::wstring(buffer.data()));
         outFile << wstringToString(L"ReplaceTextHistory" + std::to_wstring(i) + L"=" + replaceTextData + L"\n");
     }
 
