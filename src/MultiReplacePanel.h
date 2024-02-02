@@ -241,6 +241,7 @@ public:
     static void onCaretPositionChanged();
 
     enum class ChangeType { Insert, Delete, Modify };
+    enum class ReplaceMode { Normal, Extended, Regex };
 
     struct LogEntry {
         ChangeType changeType;
@@ -442,6 +443,7 @@ private:
     std::string escapeSpecialChars(const std::string& input, bool extended);
     void handleEscapeSequence(const std::regex& regex, const std::string& input, std::string& output, std::function<char(const std::string&)> converter);
     std::string translateEscapes(const std::string& input);
+    std::string replaceNewline(const std::string& input, ReplaceMode mode);
 
     //INI
     std::pair<std::wstring, std::wstring> generateConfigFilePaths();
