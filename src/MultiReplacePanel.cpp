@@ -4824,16 +4824,16 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
         std::string find;
         std::string replace;
         if (itemData.extended) {
-            find = translateEscapes(escapeSpecialChars(wstringToString(itemData.findText), true));
-            replace = translateEscapes(escapeSpecialChars(wstringToString(itemData.replaceText), true));
+            find = replaceNewline(translateEscapes(escapeSpecialChars(wstringToString(itemData.findText), true)), ReplaceMode::Extended);
+            replace = replaceNewline(translateEscapes(escapeSpecialChars(wstringToString(itemData.replaceText), true)), ReplaceMode::Extended);
         }
         else if (itemData.regex) {
-            find = wstringToString(itemData.findText);
-            replace = wstringToString(itemData.replaceText);
+            find = replaceNewline(wstringToString(itemData.findText), ReplaceMode::Regex);
+            replace = replaceNewline(wstringToString(itemData.replaceText), ReplaceMode::Regex);
         }
         else {
-            find = escapeSpecialChars(wstringToString(itemData.findText), false);
-            replace = escapeSpecialChars(wstringToString(itemData.replaceText), false);
+            find = replaceNewline(escapeSpecialChars(wstringToString(itemData.findText), false), ReplaceMode::Normal);
+            replace = replaceNewline(escapeSpecialChars(wstringToString(itemData.replaceText), false), ReplaceMode::Normal);
         }
 
         std::string wholeWord = itemData.wholeWord ? "1" : "0";
@@ -4948,6 +4948,25 @@ std::string MultiReplace::translateEscapes(const std::string& input) {
     output = std::regex_replace(output, nullCharRegex, "");  // \0 will not be supported
 
     return output;
+}
+
+std::string MultiReplace::replaceNewline(const std::string& input, ReplaceMode mode) {
+    std::string result = input;
+
+    if (mode == ReplaceMode::Normal) {
+        result.erase(std::remove(result.begin(), result.end(), '\n'), result.end());
+        result.erase(std::remove(result.begin(), result.end(), '\r'), result.end());
+    }
+    else if (mode == ReplaceMode::Extended) {
+        result = std::regex_replace(result, std::regex("\n"), "__NEWLINE__");
+        result = std::regex_replace(result, std::regex("\r"), "__CARRIAGERETURN__");
+    }
+    else if (mode == ReplaceMode::Regex) {
+        result = std::regex_replace(result, std::regex("\n"), "\\n");
+        result = std::regex_replace(result, std::regex("\r"), "\\r");
+    }
+
+    return result;
 }
 
 #pragma endregion
