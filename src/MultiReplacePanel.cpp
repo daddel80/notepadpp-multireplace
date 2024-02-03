@@ -4358,12 +4358,12 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
     }
 
     outFile.close();
-    return true;
+    return !outFile.fail();;
 }
 
 void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
     if (!saveListToCsvSilent(filePath, list)) {
-        showStatusMessage(getLangStr(L"status_unable_to_open_file"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_unable_to_save_file"), RGB(255, 0, 0));
         return;
     }
 
@@ -4539,6 +4539,7 @@ std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
 void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     std::ofstream file(fileName);
     if (!file.is_open()) {
+        showStatusMessage(getLangStr(L"status_unable_to_save_file"), RGB(255, 0, 0));
         return;
     }
 

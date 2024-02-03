@@ -108,7 +108,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_invalid_column_number", L"Invalid column number" },
 { L"status_extended_delimiter_empty", L"Extended delimiter is empty" },
 { L"status_invalid_quote_character", L"Invalid quote character. Use \" or ' or leave it empty." },
-{ L"status_unable_to_open_file", L"Error: Unable to open file for writing." },
+{ L"status_unable_to_save_file", L"Error: Unable to open or write to file." },
 { L"status_no_valid_items_in_csv", L"No valid items found in the CSV file." },
 { L"status_list_exported_to_bash", L"List exported to BASH script." },
 
