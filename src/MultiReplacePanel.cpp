@@ -4606,28 +4606,21 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
 void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list) {
     // Open file in binary mode to read UTF-8 data
     std::ifstream inFile(filePath);
-    std::filesystem::path fullPath(filePath);
-    std::wstring fileName = fullPath.filename().wstring();
     if (!inFile.is_open()) {
-        throw CsvLoadException("Failed to open '" + wstringToString(fileName) + "'.");
+        throw CsvLoadException("status_unable_to_open_file");
     }
 
     std::vector<ReplaceItemData> tempList;  // Temporary list to hold items
-
-    // Read the file content into a std::string
     std::string utf8Content((std::istreambuf_iterator<char>(inFile)), std::istreambuf_iterator<char>());
-    // Convert the UTF-8 string into a wstring
     std::wstring content = stringToWString(utf8Content);
     std::wstringstream contentStream(content);
 
     std::wstring line;
     std::getline(contentStream, line); // Skip the CSV header
 
-    // Read list items from the wstring stream
     while (std::getline(contentStream, line)) {
         std::wstringstream lineStream(line);
         std::vector<std::wstring> columns;
-
         bool insideQuotes = false;
         std::wstring currentValue;
 
@@ -4643,16 +4636,13 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
                 currentValue += ch;
             }
         }
-
         columns.push_back(unescapeCsvValue(currentValue));
 
-        // Check if the row has the correct number of columns
         if (columns.size() != 8) {
-            throw CsvLoadException("Invalid number of columns in CSV file '" + wstringToString(fileName) + "'.");
+            throw CsvLoadException("status_invalid_column_count");
         }
 
         ReplaceItemData item;
-
         try {
             item.isSelected = std::stoi(columns[0]) != 0;
             item.findText = columns[1];
@@ -4665,39 +4655,33 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
             tempList.push_back(item);
         }
-        catch (const std::invalid_argument&) {
-            throw CsvLoadException("Invalid data in columns.");
+        catch (const std::exception&) {
+            throw CsvLoadException("status_invalid_data_in_columns");
         }
     }
 
     inFile.close();
-
     list = tempList;  // Transfer data from temporary list to the final list
 }
 
 void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
-
     try {
         loadListFromCsvSilent(filePath, replaceListData);
     }
     catch (const CsvLoadException& ex) {
-        showStatusMessage(stringToWString(ex.what()), RGB(255, 0, 0));
+        // Resolve the error key to a localized string when displaying the message
+        showStatusMessage(getLangStr(stringToWString(ex.what())), RGB(255, 0, 0));
         return;
     }
 
-    updateHeaderSelection();
-    // Update the list view control
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-
-    if (replaceListData.empty())
-    {
+    if (replaceListData.empty()) {
         showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), RGB(255, 0, 0));
     }
-    else
-    {
+    else {
         showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), RGB(0, 128, 0));
     }
 
+    // Update the list view control, if necessary
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
 }
