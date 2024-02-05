@@ -277,7 +277,7 @@ private:
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
 	static constexpr int COUNT_COLUMN_WIDTH = 50; // Initial Size for Count Column
     static constexpr int MIN_COLUMN_WIDTH = 60;  // Minimum size of Find and Replace Column
-    static constexpr int STEP_SIZE = 25; // Speed for opening and closing Count Columns
+    static constexpr int STEP_SIZE = 5; // Speed for opening and closing Count Columns
 
     // Static variables related to GUI 
     static HWND s_hScintilla;

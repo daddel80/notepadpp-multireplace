@@ -931,6 +931,7 @@ void MultiReplace::resizeCountColumns() {
 
         int perColumnWidth = calcDynamicColWidth(widths);
 
+        SendMessage(widths.listView, WM_SETREDRAW, FALSE, 0);
         if (expandColumns) {
             ListView_SetColumnWidth(widths.listView, 4, perColumnWidth);
             ListView_SetColumnWidth(widths.listView, 1, widths.findCountWidth);
@@ -943,6 +944,9 @@ void MultiReplace::resizeCountColumns() {
             ListView_SetColumnWidth(widths.listView, 2, widths.replaceCountWidth);
             ListView_SetColumnWidth(widths.listView, 5, perColumnWidth);
         }
+        SendMessage(widths.listView, WM_SETREDRAW, TRUE, 0);
+        InvalidateRect(widths.listView, NULL, TRUE);
+        UpdateWindow(widths.listView);
     }
 }
 
