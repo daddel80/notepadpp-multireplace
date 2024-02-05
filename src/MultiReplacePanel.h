@@ -137,6 +137,17 @@ struct ColumnInfo {
     SIZE_T startColumnIndex;
 };
 
+struct CountColWidths {
+    HWND listView;
+    int listViewWidth;
+    bool hasVerticalScrollbar;
+    int findCountWidth;
+    int replaceCountWidth;
+    int margin;
+};
+
+
+
 enum class SortDirection {
     Ascending,
     Descending
@@ -353,9 +364,8 @@ private:
     void AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnIndex, LPCTSTR pszText);
     void createListViewColumns(HWND listView);
     void insertReplaceListItem(const ReplaceItemData& itemData);
-    int calcDynamicColWidth(HWND listView, int width, bool includeMargin);
+    int  calcDynamicColWidth(const CountColWidths& widths);
     void updateListViewAndColumns(HWND listView, LPARAM lParam);
-    void adjustColumnWidths(HWND listView);
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void shiftListItem(HWND listView, const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);

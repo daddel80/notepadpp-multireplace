@@ -569,24 +569,30 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
     updateHeaderSelection();
 }
 
-int MultiReplace::calcDynamicColWidth(HWND listView, int width, bool includeMargin) {
-    int findCountColWidth = ListView_GetColumnWidth(listView, 1);
-    int replaceCountColWidth = ListView_GetColumnWidth(listView, 2);
+int MultiReplace::calcDynamicColWidth(const CountColWidths& widths) {
     int columns5to10Width = 210; // Simplified calculation (30 * 7).
-    int margin = includeMargin ? 281 : 0;
 
     // Directly calculate the width available for each dynamic column.
-    int totalRemainingWidth = width - margin - columns5to10Width - findCountColWidth - replaceCountColWidth;
+    int totalRemainingWidth = widths.listViewWidth - widths.margin - columns5to10Width - widths.findCountWidth - widths.replaceCountWidth;
     int perColumnWidth = std::max(totalRemainingWidth, MIN_COLUMN_WIDTH * 2) / 2; // Ensure total min width is 120, then divide by 2.
     return perColumnWidth; // Return width for a single column.
 }
 
 void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
-    int newWidth = LOWORD(lParam);
+	int newWidth = LOWORD(lParam); // calculate ListWidth as lParam return WindowWidth
     int newHeight = HIWORD(lParam);
 
+    CountColWidths widths = {
+        listView,
+        newWidth - 281, // Direct use of newWidth for listViewWidth
+        false, // This is not used for current calculation.
+        ListView_GetColumnWidth(listView, 1), // Current Find Count Width
+        ListView_GetColumnWidth(listView, 2), // Current Replace Count Width
+        0 // No margin as already precalculated in newWidth
+    };
+
     // Calculate width available for each dynamic column.
-    int perColumnWidth = calcDynamicColWidth(listView, newWidth, true);
+    int perColumnWidth = calcDynamicColWidth(widths);
 
     static int prevWidth = newWidth;
     bool isSizeIncreased = newWidth > prevWidth;
@@ -605,19 +611,6 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
     }
 
     prevWidth = newWidth;
-}
-
-void MultiReplace::adjustColumnWidths(HWND listView) {
-    RECT listRect;
-    GetClientRect(listView, &listRect);
-    int listWidth = listRect.right - listRect.left;
-
-    // Calculate width available for each dynamic column without modifying list size.
-    int perColumnWidth = calcDynamicColWidth(listView, listWidth, false);
-
-    // Set column widths directly using calculated width.
-    ListView_SetColumnWidth(listView, 4, perColumnWidth); // Find Text
-    ListView_SetColumnWidth(listView, 5, perColumnWidth); // Replace Text
 }
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
@@ -903,40 +896,53 @@ void MultiReplace::updateCountColumns(size_t itemIndex, int findCount, int repla
 }
 
 void MultiReplace::resizeCountColumns() {
-    
-    // Get current column widths
-    int currentFindCountWidth = ListView_GetColumnWidth(_replaceListView, 1);
-    int currentReplaceCountWidth = ListView_GetColumnWidth(_replaceListView, 2);
+    HWND listView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+    RECT listRect;
+    GetClientRect(listView, &listRect);
+    int listViewWidth = listRect.right - listRect.left;
 
-    // Calculate the target width based on the state of isStatisticsColumnsExpanded
-    int targetWidth = isStatisticsColumnsExpanded ? COUNT_COLUMN_WIDTH : 0;
+    LONG style = GetWindowLong(listView, GWL_STYLE);
+    bool hasVerticalScrollbar = (style & WS_VSCROLL) != 0;
+    int margin = hasVerticalScrollbar ? 0 : 18;
+
+    CountColWidths widths = {
+        listView,
+        listViewWidth,
+        hasVerticalScrollbar,
+        ListView_GetColumnWidth(_replaceListView, 1), // Current Find Count Width
+        ListView_GetColumnWidth(_replaceListView, 2), // Current Replace Count Width
+        margin
+    };
 
     // Determine the direction of the adjustment
-    bool expandColumns = currentFindCountWidth < targetWidth || currentReplaceCountWidth < targetWidth;
+    bool expandColumns = widths.findCountWidth < COUNT_COLUMN_WIDTH || widths.replaceCountWidth < COUNT_COLUMN_WIDTH;
 
     // Perform the adjustment in steps
-    while ((expandColumns && (currentFindCountWidth < targetWidth || currentReplaceCountWidth < targetWidth)) ||
-        (!expandColumns && (currentFindCountWidth > 0 || currentReplaceCountWidth > 0))) {
-        // Adjust the width of the first column if needed
-        if (expandColumns && currentFindCountWidth < targetWidth) {
-            currentFindCountWidth = std::min(currentFindCountWidth + STEP_SIZE, targetWidth);
+    while ((expandColumns && (widths.findCountWidth < COUNT_COLUMN_WIDTH || widths.replaceCountWidth < COUNT_COLUMN_WIDTH)) ||
+        (!expandColumns && (widths.findCountWidth > 0 || widths.replaceCountWidth > 0))) {
+        if (expandColumns) {
+            widths.findCountWidth = std::min(widths.findCountWidth + STEP_SIZE, COUNT_COLUMN_WIDTH);
+            widths.replaceCountWidth = std::min(widths.replaceCountWidth + STEP_SIZE, COUNT_COLUMN_WIDTH);
         }
-        else if (!expandColumns && currentFindCountWidth > 0) {
-            currentFindCountWidth = std::max(currentFindCountWidth - STEP_SIZE, 0);
+        else {
+            widths.findCountWidth = std::max(widths.findCountWidth - STEP_SIZE, 0);
+            widths.replaceCountWidth = std::max(widths.replaceCountWidth - STEP_SIZE, 0);
         }
-        ListView_SetColumnWidth(_replaceListView, 1, currentFindCountWidth);
 
-        // Adjust the width of the second column if needed
-        if (expandColumns && currentReplaceCountWidth < targetWidth) {
-            currentReplaceCountWidth = std::min(currentReplaceCountWidth + STEP_SIZE, targetWidth);
-        }
-        else if (!expandColumns && currentReplaceCountWidth > 0) {
-            currentReplaceCountWidth = std::max(currentReplaceCountWidth - STEP_SIZE, 0);
-        }
-        ListView_SetColumnWidth(_replaceListView, 2, currentReplaceCountWidth);
+        int perColumnWidth = calcDynamicColWidth(widths);
 
-        // Update the view to reflect changes immediately
-        adjustColumnWidths(GetDlgItem(_hSelf, IDC_REPLACE_LIST));
+        if (expandColumns) {
+            ListView_SetColumnWidth(widths.listView, 4, perColumnWidth);
+            ListView_SetColumnWidth(widths.listView, 1, widths.findCountWidth);
+            ListView_SetColumnWidth(widths.listView, 5, perColumnWidth);
+            ListView_SetColumnWidth(widths.listView, 2, widths.replaceCountWidth);
+        }
+        else {
+            ListView_SetColumnWidth(widths.listView, 1, widths.findCountWidth);
+            ListView_SetColumnWidth(widths.listView, 4, perColumnWidth);
+            ListView_SetColumnWidth(widths.listView, 2, widths.replaceCountWidth);
+            ListView_SetColumnWidth(widths.listView, 5, perColumnWidth);
+        }
     }
 }
 

@@ -68,7 +68,7 @@ void commandMenuInit()
     //            ShortcutKey *shortcut,          // optional. Define a shortcut to trigger this command
     //            bool check0nInit                // optional. Make this menu item be checked visually
     //            );
-    setCommand(0, TEXT("&Multi Replace && Mark"), multiReplace, NULL, false);
+    setCommand(0, TEXT("&Multiple Replacement ..."), multiReplace, NULL, false);
     setCommand(1, TEXT("SEPARATOR"), NULL, NULL, false);
     setCommand(2, TEXT("&Documentation"), openHelpLink, NULL, false);
     setCommand(3, TEXT("&About"), about, NULL, false);
