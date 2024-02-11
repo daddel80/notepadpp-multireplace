@@ -453,7 +453,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     int windowWidth = rcClient.right - rcClient.left;
 
     // Calculate the remaining width for the first two columns
-    int adjustedWidth = windowWidth - 281;
+    int adjustedWidth = windowWidth - 283;
 
     // Calculate the total width of columns 5 to 10 (Options and Delete Button)
     int columns5to10Width = 30 * 7;
@@ -584,7 +584,7 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
 
     CountColWidths widths = {
         listView,
-        newWidth - 281, // Direct use of newWidth for listViewWidth
+        newWidth - 283, // Direct use of newWidth for listViewWidth
         false, // This is not used for current calculation.
         ListView_GetColumnWidth(listView, 1), // Current Find Count Width
         ListView_GetColumnWidth(listView, 2), // Current Replace Count Width
