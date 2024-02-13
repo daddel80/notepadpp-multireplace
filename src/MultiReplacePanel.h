@@ -377,6 +377,7 @@ private:
     void resetCountColumns();
     void updateCountColumns(size_t itemIndex, int findCount, int replaceCount = -1);
     void resizeCountColumns();
+    void toggleBooleanAt(int itemIndex, int columnIndex);
 
     //Replace
     void handleReplaceAllButton();

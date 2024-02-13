@@ -940,6 +940,36 @@ void MultiReplace::resizeCountColumns() {
     }
 }
 
+void MultiReplace::toggleBooleanAt(int itemIndex, int clickX) {
+    int totalWidth = 0;
+    int clickedColumn = -1;
+    HWND header = ListView_GetHeader(_replaceListView);
+    int columnCount = Header_GetItemCount(header);
+
+    for (int i = 0; i < columnCount; i++) {
+        totalWidth += ListView_GetColumnWidth(_replaceListView, i);
+        if (clickX < totalWidth) {
+            clickedColumn = i;
+            break; // Column found
+        }
+    }
+
+    if (clickedColumn < 6 || clickedColumn > 10 || itemIndex < 0 || itemIndex >= static_cast<int>(replaceListData.size())) {
+        return; // Early return for invalid column or item index
+    }
+
+    ReplaceItemData& item = replaceListData[itemIndex];
+    switch (clickedColumn) {
+    case 6: item.wholeWord = !item.wholeWord; break;
+    case 7: item.matchCase = !item.matchCase; break;
+    case 8: item.useVariables = !item.useVariables; break;
+    case 9: item.extended = !item.extended; break;
+    case 10: item.regex = !item.regex; break;
+    }
+
+    ListView_RedrawItems(_replaceListView, itemIndex, itemIndex);
+}
+
 #pragma endregion
 
 
@@ -1025,7 +1055,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         NMHDR* pnmh = reinterpret_cast<NMHDR*>(lParam);
 
 #pragma warning(push)
-#pragma warning(disable:26454)  // Suppress the overflow warning due to BCN_DROPDOWN definition
+#pragma warning(disable:26454)  // Suppress the overflow warning due to BCN_DROPDOWN and NM_RDBLCLK definition
 
         if (pnmh->code == BCN_DROPDOWN && pnmh->hwndFrom == GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON))
         {
@@ -1043,8 +1073,21 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-#pragma warning(pop)  // Restore the original warning settings
+        if (pnmh->idFrom == IDC_REPLACE_LIST && pnmh->code == NM_RDBLCLK) {
+            NMITEMACTIVATE* nmia = reinterpret_cast<NMITEMACTIVATE*>(lParam);
+            LVHITTESTINFO hitInfo = {};
+            hitInfo.pt = nmia->ptAction; // Use click coordinates for hit testing
 
+            int hitTestResult = ListView_HitTest(_replaceListView, &hitInfo);
+            if (hitTestResult != -1) {
+                // Determine the column based on X coordinate
+                int clickX = nmia->ptAction.x;
+                toggleBooleanAt(hitTestResult, clickX);
+            }
+            return TRUE;
+        }
+
+#pragma warning(pop)  // Restore the original warning settings
 
         if (pnmh->idFrom == IDC_REPLACE_LIST) {
             switch (pnmh->code) {
