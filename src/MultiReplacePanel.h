@@ -146,7 +146,16 @@ struct CountColWidths {
     int margin;
 };
 
+struct ContextMenuInfo {
+    int hitItem = -1;
+    int clickedColumn = -1;
+};
 
+struct MenuState {
+    bool canEdit = false;
+    bool canCopy = false;
+    bool canPaste = false;
+};
 
 enum class SortDirection {
     Ascending,
@@ -298,6 +307,9 @@ private:
     HFONT _hFont;
     COLORREF _statusMessageColor;
 
+    // ContextMenuInfo structure instance
+    POINT _contextMenuClickPoint;
+
     // Style-related variables and constants
     /*
        Available styles (self-tested):
@@ -384,6 +396,9 @@ private:
     void toggleBooleanAt(int itemIndex, int Column);
     void editTextAt(int itemIndex, int column);
     static LRESULT CALLBACK EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+    void createContextMenu(HWND hwnd, POINT ptScreen, MenuState state);
+    MenuState checkMenuConditions(HWND listView, POINT ptScreen);
+    void performActionOnItem(POINT ptClient);
 
     //Replace
     void handleReplaceAllButton();

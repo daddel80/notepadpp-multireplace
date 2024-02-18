@@ -96,6 +96,8 @@
 #define IDC_LICENSE_STATIC              5604
 #define IDC_AUTHOR_STATIC               5605
 
+#define IDM_EDIT_VALUE                  5700
+
 #define STYLE1							60
 #define STYLE2							61
 #define STYLE3							62
@@ -107,9 +109,9 @@
 #define STYLE9							68
 #define STYLE10							69
 
-#define IDI_MR_ICON 5701
-#define IDI_MR_DM_ICON 5702
-#define IDR_MR_BMP 5703
+#define IDI_MR_ICON 5801
+#define IDI_MR_DM_ICON 5802
+#define IDR_MR_BMP 5803
 
 // Default window position and dimensions
 #define POS_X 92

@@ -1035,6 +1035,82 @@ LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPAR
     return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
 
+void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state) {
+    HMENU hMenu = CreatePopupMenu();
+    if (hMenu) {
+        AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, L"&Edit Value");
+        // Add more menu items as needed
+
+        TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, ptScreen.x, ptScreen.y, 0, hwnd, NULL);
+        DestroyMenu(hMenu); // Clean up
+    }
+}
+
+MenuState MultiReplace::checkMenuConditions(HWND listView, POINT ptScreen) {
+    MenuState state;
+
+    POINT ptClient = ptScreen;
+    ScreenToClient(listView, &ptClient);
+
+    LVHITTESTINFO hitInfo = {};
+    hitInfo.pt = ptClient;
+    int hitTestResult = ListView_HitTest(listView, &hitInfo);
+
+    if (hitTestResult != -1) {
+        int clickedColumn = -1;
+        int totalWidth = 0;
+        HWND header = ListView_GetHeader(listView);
+        int columnCount = Header_GetItemCount(header);
+
+        for (int i = 0; i < columnCount; i++) {
+            totalWidth += ListView_GetColumnWidth(listView, i);
+            if (ptClient.x < totalWidth) {
+                clickedColumn = i;
+                break;
+            }
+        }
+
+        if (clickedColumn >= 4 && clickedColumn <= 10) {
+            state.canEdit = true;
+        }
+    }
+
+    return state;
+}
+
+void MultiReplace::performActionOnItem(POINT pt) {
+    LVHITTESTINFO hitInfo = {};
+    hitInfo.pt = pt; // Directly use the coordinates provided by the event
+
+    // Conduct a hit test with the provided coordinates
+    int hitTestResult = ListView_HitTest(_replaceListView, &hitInfo);
+    if (hitTestResult == -1) return; // No item found at the click position
+
+    // Calculate the clicked column based on the X coordinate
+    int clickedColumn = -1;
+    int totalWidth = 0;
+    HWND header = ListView_GetHeader(_replaceListView);
+    int columnCount = Header_GetItemCount(header);
+
+    for (int i = 0; i < columnCount; i++) {
+        totalWidth += ListView_GetColumnWidth(_replaceListView, i);
+        if (pt.x < totalWidth) {
+            clickedColumn = i;
+            break; // Column found
+        }
+    }
+
+    // Execute the action based on the clicked column
+    if (clickedColumn >= 6 && clickedColumn <= 10) {
+        toggleBooleanAt(hitTestResult, clickedColumn);
+    }
+    else if (clickedColumn == 4 || clickedColumn == 5) {
+        editTextAt(hitTestResult, clickedColumn);
+    }
+
+}
+
+
 #pragma endregion
 
 
@@ -1146,41 +1222,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             return TRUE;
         }
-
-        if (pnmh->idFrom == IDC_REPLACE_LIST && pnmh->code == NM_RDBLCLK) {
-            NMITEMACTIVATE* nmia = reinterpret_cast<NMITEMACTIVATE*>(lParam);
-            LVHITTESTINFO hitInfo = {};
-            hitInfo.pt = nmia->ptAction; // Use click coordinates for hit testing
-
-            int hitTestResult = ListView_HitTest(_replaceListView, &hitInfo);
-            if (hitTestResult != -1) {
-                int clickX = nmia->ptAction.x;
-                int clickedColumn = -1;
-                int totalWidth = 0;
-                HWND header = ListView_GetHeader(_replaceListView);
-                int columnCount = Header_GetItemCount(header);
-
-                for (int i = 0; i < columnCount; i++) {
-                    totalWidth += ListView_GetColumnWidth(_replaceListView, i);
-                    if (clickX < totalWidth) {
-                        clickedColumn = i;
-                        break; // Column found
-                    }
-                }
-
-                if (clickedColumn == 4 || clickedColumn == 5) {
-                    editTextAt(hitTestResult, clickedColumn);
-                }
-                else if (clickedColumn >= 6 && clickedColumn <= 10) {
-                    toggleBooleanAt(hitTestResult, clickedColumn); // Passing directly the column index
-                }
-            }
-            return TRUE;
-        }
-
-
-
-
 
 #pragma warning(pop)  // Restore the original warning settings
 
@@ -1371,6 +1412,22 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
      }
     break;
 
+    case WM_CONTEXTMENU:
+    {
+        if ((HWND)wParam == _replaceListView) {
+            POINT ptScreen;
+            ptScreen.x = LOWORD(lParam);
+            ptScreen.y = HIWORD(lParam);
+            _contextMenuClickPoint = ptScreen; // Store initial click point for later action determination
+            ScreenToClient(_replaceListView, &_contextMenuClickPoint); // Convert to client coordinates for hit testing
+            MenuState state = checkMenuConditions(_replaceListView, ptScreen);
+            createContextMenu(_hSelf, ptScreen, state); // Show context menu
+            return TRUE;
+        }
+        break;
+    }
+
+
     case WM_SHOWWINDOW:
     {
         if (wParam == TRUE) {
@@ -1387,7 +1444,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
     }
     break;
-
 
     case WM_COMMAND:
     {
@@ -1725,6 +1781,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             updateStatisticsColumnButtonIcon();
         }
 		break;
+
+		case IDM_EDIT_VALUE: // Submenu item
+        {
+            performActionOnItem(_contextMenuClickPoint);
+            break;
+        }
 
         default:
             return FALSE;
