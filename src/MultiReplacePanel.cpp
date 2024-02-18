@@ -940,26 +940,13 @@ void MultiReplace::resizeCountColumns() {
     }
 }
 
-void MultiReplace::toggleBooleanAt(int itemIndex, int clickX) {
-    int totalWidth = 0;
-    int clickedColumn = -1;
-    HWND header = ListView_GetHeader(_replaceListView);
-    int columnCount = Header_GetItemCount(header);
-
-    for (int i = 0; i < columnCount; i++) {
-        totalWidth += ListView_GetColumnWidth(_replaceListView, i);
-        if (clickX < totalWidth) {
-            clickedColumn = i;
-            break; // Column found
-        }
-    }
-
-    if (clickedColumn < 6 || clickedColumn > 10 || itemIndex < 0 || itemIndex >= static_cast<int>(replaceListData.size())) {
+void MultiReplace::toggleBooleanAt(int itemIndex, int column) {
+    if (column < 6 || column > 10 || itemIndex < 0 || itemIndex >= static_cast<int>(replaceListData.size())) {
         return; // Early return for invalid column or item index
     }
 
     ReplaceItemData& item = replaceListData[itemIndex];
-    switch (clickedColumn) {
+    switch (column) {
     case 6: item.wholeWord = !item.wholeWord; break;
     case 7: item.matchCase = !item.matchCase; break;
     case 8: item.useVariables = !item.useVariables; break;
@@ -968,6 +955,84 @@ void MultiReplace::toggleBooleanAt(int itemIndex, int clickX) {
     }
 
     ListView_RedrawItems(_replaceListView, itemIndex, itemIndex);
+}
+
+void MultiReplace::editTextAt(int itemIndex, int column) {
+    // Calculate the total width of previous columns to get the X coordinate for the start of the selected column
+    int totalWidthBeforeColumn = 0;
+    for (int i = 0; i < column; ++i) {
+        totalWidthBeforeColumn += ListView_GetColumnWidth(_replaceListView, i);
+    }
+
+    // Determine the width of the current column
+    int columnWidth = ListView_GetColumnWidth(_replaceListView, column);
+
+    // Adjust Y position considering the scroll position and adding an offset for better alignment
+    int rowHeight = 20; // Assumed row height, adjust as needed
+    SCROLLINFO si = { sizeof(si), SIF_POS };
+    GetScrollInfo(_replaceListView, SB_VERT, &si);
+    int visibleRowIndex = itemIndex - si.nPos; // Calculate the visible row index
+    int correctedY = (visibleRowIndex + 1) * rowHeight + 3; // Adjust Y position downwards by 3 pixels
+
+    // Create the Edit window with corrected coordinates and size
+    hwndEdit = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+        totalWidthBeforeColumn, correctedY, columnWidth, rowHeight,
+        _replaceListView, NULL, (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE), NULL);
+
+    // Set the initial text for the Edit window
+    wchar_t itemText[256];
+    ListView_GetItemText(_replaceListView, itemIndex, column, itemText, sizeof(itemText) / sizeof(wchar_t));
+    SetWindowText(hwndEdit, itemText);
+
+    // Adjust font size for the Edit window
+    HFONT hFont = CreateFont(-11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+        DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
+
+    // Set focus and select all text
+    SetFocus(hwndEdit);
+    SendMessage(hwndEdit, EM_SETSEL, 0, -1);
+
+    // Subclass the edit control to handle Enter and clicks outside
+    SetWindowSubclass(hwndEdit, EditControlSubclassProc, 1, (DWORD_PTR)this);
+
+    _editingItemIndex = itemIndex;
+    _editingColumn = column;
+}
+
+LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    switch (msg) {
+    case WM_KILLFOCUS: {
+        MultiReplace* pThis = reinterpret_cast<MultiReplace*>(dwRefData);
+
+        // Retrieve the new text from the edit control
+        wchar_t newText[MAX_TEXT_LENGTH];
+        GetWindowText(hwnd, newText, MAX_TEXT_LENGTH);
+
+        // Check if the column and item index are valid before updating
+        if (pThis->_editingColumn >= 0 && pThis->_editingItemIndex >= 0 && pThis->_editingItemIndex < static_cast<int>(pThis->replaceListData.size())) {
+            // Update the replaceListData vector with the new text
+            ReplaceItemData& item = pThis->replaceListData[pThis->_editingItemIndex];
+            if (pThis->_editingColumn == 4) { // Assuming column 4 is for findText
+                item.findText = newText;
+            }
+            else if (pThis->_editingColumn == 5) { // Assuming column 5 is for replaceText
+                item.replaceText = newText;
+            }
+
+            // Reflect this change in the ListView
+            ListView_SetItemText(pThis->_replaceListView, pThis->_editingItemIndex, pThis->_editingColumn, newText);
+        }
+
+        // Clean up and remove subclass
+        RemoveWindowSubclass(hwnd, EditControlSubclassProc, uIdSubclass);
+        DestroyWindow(hwnd);
+
+        return 0;
+    }
+    }
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
 
 #pragma endregion
@@ -1023,14 +1088,23 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_DESTROY:
     {
         saveSettings();
-        DestroyWindow(_hSelf);
+        if (hwndEdit) {
+            DestroyWindow(hwndEdit);
+        }
         DeleteObject(_hFont);
+        DestroyWindow(_hSelf);
     }
     break;
 
     case WM_SIZE:
     {
         if (isWindowOpen) {
+            // Force the edit control of the right mouse click to lose focus by setting focus to the main window
+            if (isWindowOpen && hwndEdit && GetFocus() == hwndEdit) {
+                HWND hwndListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+                SetFocus(hwndListView);
+            }
+
             int newWidth = LOWORD(lParam);
             int newHeight = HIWORD(lParam);
 
@@ -1080,12 +1154,33 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             int hitTestResult = ListView_HitTest(_replaceListView, &hitInfo);
             if (hitTestResult != -1) {
-                // Determine the column based on X coordinate
                 int clickX = nmia->ptAction.x;
-                toggleBooleanAt(hitTestResult, clickX);
+                int clickedColumn = -1;
+                int totalWidth = 0;
+                HWND header = ListView_GetHeader(_replaceListView);
+                int columnCount = Header_GetItemCount(header);
+
+                for (int i = 0; i < columnCount; i++) {
+                    totalWidth += ListView_GetColumnWidth(_replaceListView, i);
+                    if (clickX < totalWidth) {
+                        clickedColumn = i;
+                        break; // Column found
+                    }
+                }
+
+                if (clickedColumn == 4 || clickedColumn == 5) {
+                    editTextAt(hitTestResult, clickedColumn);
+                }
+                else if (clickedColumn >= 6 && clickedColumn <= 10) {
+                    toggleBooleanAt(hitTestResult, clickedColumn); // Passing directly the column index
+                }
             }
             return TRUE;
         }
+
+
+
+
 
 #pragma warning(pop)  // Restore the original warning settings
 

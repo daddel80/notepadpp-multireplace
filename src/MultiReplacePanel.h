@@ -282,6 +282,7 @@ private:
     // Static variables related to GUI 
     static HWND s_hScintilla;
     static HWND s_hDlg;
+    HWND hwndEdit = NULL;
     static std::map<int, ControlInfo> ctrlMap;
 
     // Instance-specific GUI-related variables 
@@ -325,6 +326,9 @@ private:
     LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
     SIZE_T CSVheaderLinesCount = 1; // Number of header lines not included in CSV sorting
 	bool isStatisticsColumnsExpanded = false;
+
+    int _editingItemIndex;
+    int _editingColumn;
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
@@ -377,7 +381,9 @@ private:
     void resetCountColumns();
     void updateCountColumns(size_t itemIndex, int findCount, int replaceCount = -1);
     void resizeCountColumns();
-    void toggleBooleanAt(int itemIndex, int columnIndex);
+    void toggleBooleanAt(int itemIndex, int Column);
+    void editTextAt(int itemIndex, int column);
+    static LRESULT CALLBACK EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
 
     //Replace
     void handleReplaceAllButton();
