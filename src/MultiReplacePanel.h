@@ -155,6 +155,8 @@ struct MenuState {
     bool canEdit = false;
     bool canCopy = false;
     bool canPaste = false;
+    bool hasSelection = false;
+    bool clickedOnItem = false;
 };
 
 enum class SortDirection {
@@ -393,12 +395,15 @@ private:
     void resetCountColumns();
     void updateCountColumns(size_t itemIndex, int findCount, int replaceCount = -1);
     void resizeCountColumns();
+
+    //Contextmenu
     void toggleBooleanAt(int itemIndex, int Column);
     void editTextAt(int itemIndex, int column);
     static LRESULT CALLBACK EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
     void createContextMenu(HWND hwnd, POINT ptScreen, MenuState state);
     MenuState checkMenuConditions(HWND listView, POINT ptScreen);
     void performActionOnItem(POINT ptClient);
+    void copySelectedItemsToClipboard(HWND listView);
 
     //Replace
     void handleReplaceAllButton();

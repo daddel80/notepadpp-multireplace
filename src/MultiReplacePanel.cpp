@@ -940,13 +940,19 @@ void MultiReplace::resizeCountColumns() {
     }
 }
 
+#pragma endregion
+
+
+#pragma region Contextmenu
+
 void MultiReplace::toggleBooleanAt(int itemIndex, int column) {
-    if (column < 6 || column > 10 || itemIndex < 0 || itemIndex >= static_cast<int>(replaceListData.size())) {
+    if (itemIndex < 0 || itemIndex >= static_cast<int>(replaceListData.size()) || !(column == 3 || (column >= 6 && column <= 10))) {
         return; // Early return for invalid column or item index
     }
 
     ReplaceItemData& item = replaceListData[itemIndex];
     switch (column) {
+    case 3: item.isSelected = !item.isSelected; break;
     case 6: item.wholeWord = !item.wholeWord; break;
     case 7: item.matchCase = !item.matchCase; break;
     case 8: item.useVariables = !item.useVariables; break;
@@ -1038,8 +1044,17 @@ LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPAR
 void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state) {
     HMENU hMenu = CreatePopupMenu();
     if (hMenu) {
-        AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, L"&Edit Value");
-        // Add more menu items as needed
+
+        AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, L"&Edit Value\t");
+
+        std::wstring copyDataToFieldsText = L"&Copy Data to Fields\tAlt+Up";
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection && state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, copyDataToFieldsText.c_str());
+
+        std::wstring copyText = L"&Copy\tCtrl+C";
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, copyText.c_str());
+
+        std::wstring deleteLinesText = L"&Delete Line(s)\tDel";
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, deleteLinesText.c_str());
 
         TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, ptScreen.x, ptScreen.y, 0, hwnd, NULL);
         DestroyMenu(hMenu); // Clean up
@@ -1056,6 +1071,7 @@ MenuState MultiReplace::checkMenuConditions(HWND listView, POINT ptScreen) {
     hitInfo.pt = ptClient;
     int hitTestResult = ListView_HitTest(listView, &hitInfo);
 
+    // Check if column was clicked and set canEdit
     if (hitTestResult != -1) {
         int clickedColumn = -1;
         int totalWidth = 0;
@@ -1070,10 +1086,16 @@ MenuState MultiReplace::checkMenuConditions(HWND listView, POINT ptScreen) {
             }
         }
 
-        if (clickedColumn >= 4 && clickedColumn <= 10) {
+        if ((clickedColumn == 3) || (clickedColumn >= 4 && clickedColumn <= 10)) {
             state.canEdit = true;
         }
+
+        state.clickedOnItem = true; // Click was on an item
     }
+
+    // Check if any items are selected to enable the delete option
+    int itemCount = ListView_GetSelectedCount(listView);
+    state.hasSelection = (itemCount > 0);
 
     return state;
 }
@@ -1101,7 +1123,7 @@ void MultiReplace::performActionOnItem(POINT pt) {
     }
 
     // Execute the action based on the clicked column
-    if (clickedColumn >= 6 && clickedColumn <= 10) {
+    if ((clickedColumn == 3) || (clickedColumn >= 6 && clickedColumn <= 10)) {
         toggleBooleanAt(hitTestResult, clickedColumn);
     }
     else if (clickedColumn == 4 || clickedColumn == 5) {
@@ -1110,6 +1132,47 @@ void MultiReplace::performActionOnItem(POINT pt) {
 
 }
 
+void MultiReplace::copySelectedItemsToClipboard(HWND listView) {
+    std::wstring csvData;
+    int itemCount = ListView_GetItemCount(listView);
+    int selectedCount = ListView_GetSelectedCount(listView);
+
+    if (selectedCount > 0) {
+        for (int i = 0; i < itemCount; ++i) {
+            if (ListView_GetItemState(listView, i, LVIS_SELECTED) & LVIS_SELECTED) {
+                // Angenommen, der Index in der ListView entspricht dem Index in replaceListData
+                const ReplaceItemData& item = replaceListData[i];
+                std::wstring line = std::to_wstring(item.isSelected) + L"," +
+                    escapeCsvValue(item.findText) + L"," +
+                    escapeCsvValue(item.replaceText) + L"," +
+                    std::to_wstring(item.wholeWord) + L"," +
+                    std::to_wstring(item.matchCase) + L"," +
+                    std::to_wstring(item.useVariables) + L"," +
+                    std::to_wstring(item.extended) + L"," +
+                    std::to_wstring(item.regex) + L"\n";
+                csvData += line;
+            }
+        }
+    }
+
+    if (!csvData.empty()) {
+        // Convert std::wstring to std::string (UTF-8) as needed
+        std::string utf8CsvData = wstringToString(csvData);
+
+        // Copying to clipboard
+        if (OpenClipboard(NULL)) {
+            EmptyClipboard();
+            HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, (utf8CsvData.size() + 1) * sizeof(wchar_t));
+            if (hClipboardData) {
+                wchar_t* pClipboardData = (wchar_t*)GlobalLock(hClipboardData);
+                memcpy(pClipboardData, csvData.c_str(), (utf8CsvData.size() + 1) * sizeof(wchar_t));
+                GlobalUnlock(hClipboardData);
+                SetClipboardData(CF_UNICODETEXT, hClipboardData);
+            }
+            CloseClipboard();
+        }
+    }
+}
 
 #pragma endregion
 
@@ -1782,11 +1845,48 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
 		break;
 
-		case IDM_EDIT_VALUE: // Submenu item
+		case IDM_EDIT_VALUE: // Contextmenu item
         {
             performActionOnItem(_contextMenuClickPoint);
             break;
         }
+
+        case IDM_COPY_DATA_TO_FIELDS:
+        {
+            NMITEMACTIVATE nmia = {};
+            nmia.iItem = ListView_HitTest(_replaceListView, &_contextMenuClickPoint);
+            handleCopyBack(&nmia);
+            break;
+        }
+
+		case IDM_COPY_LINES_TO_CLIPBOARD:
+        {
+            copySelectedItemsToClipboard(_replaceListView);
+        }
+		break;
+
+        case IDM_DELETE_LINES:
+        {
+            int selectedCount = ListView_GetSelectedCount(_replaceListView);
+            if (selectedCount > 1)
+            {
+                // Show confirmation dialog for multiple lines
+                std::wstring message1 = L"Are you sure you want to delete " + std::to_wstring(selectedCount) + L" lines?";
+                int msgBoxID = MessageBox(NULL, message1.c_str(), L"Confirmation", MB_ICONWARNING | MB_YESNO);
+                if (msgBoxID == IDYES)
+                {
+                    // If confirmed, proceed to delete
+                    deleteSelectedLines(_replaceListView);
+                }
+            }
+            else if (selectedCount == 1)
+            {
+                // Directly delete without confirmation if only one line is selected
+                deleteSelectedLines(_replaceListView);
+            }
+        }
+        break;
+
 
         default:
             return FALSE;

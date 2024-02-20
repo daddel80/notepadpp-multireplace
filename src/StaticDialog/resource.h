@@ -97,6 +97,9 @@
 #define IDC_AUTHOR_STATIC               5605
 
 #define IDM_EDIT_VALUE                  5700
+#define IDM_COPY_DATA_TO_FIELDS         5702
+#define IDM_COPY_LINES_TO_CLIPBOARD     5703
+#define IDM_DELETE_LINES                5704
 
 #define STYLE1							60
 #define STYLE2							61
