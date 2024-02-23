@@ -453,7 +453,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     int windowWidth = rcClient.right - rcClient.left;
 
     // Calculate the remaining width for the first two columns
-    int adjustedWidth = windowWidth - 279;
+    int adjustedWidth = windowWidth - 283;
 
     // Calculate the total width of columns 5 to 10 (Options and Delete Button)
     int columns5to10Width = 30 * 7;
@@ -584,7 +584,7 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
 
     CountColWidths widths = {
         listView,
-        newWidth - 279, // Direct use of newWidth for listViewWidth
+        newWidth - 283, // Direct use of newWidth for listViewWidth
         false, // This is not used for current calculation.
         ListView_GetColumnWidth(listView, 1), // Current Find Count Width
         ListView_GetColumnWidth(listView, 2), // Current Replace Count Width
@@ -899,7 +899,7 @@ void MultiReplace::resizeCountColumns() {
 
     LONG style = GetWindowLong(listView, GWL_STYLE);
     bool hasVerticalScrollbar = (style & WS_VSCROLL) != 0;
-    int margin = hasVerticalScrollbar ? 0 : 16;
+    int margin = hasVerticalScrollbar ? 0 : 21;
 
     CountColWidths widths = {
         listView,
@@ -986,7 +986,7 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
         _replaceListView, NULL, (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE), NULL);
 
     // Set the initial text for the Edit window
-    wchar_t itemText[256];
+    wchar_t itemText[MAX_TEXT_LENGTH];
     ListView_GetItemText(_replaceListView, itemIndex, column, itemText, sizeof(itemText) / sizeof(wchar_t));
     SetWindowText(hwndEdit, itemText);
 
@@ -1045,17 +1045,11 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
     HMENU hMenu = CreatePopupMenu();
     if (hMenu) {
 
-        AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, L"&Edit Value\t");
-
-        std::wstring copyDataToFieldsText = L"&Copy Data to Fields\tAlt+Up";
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection && state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, copyDataToFieldsText.c_str());
-
-        std::wstring copyText = L"&Copy\tCtrl+C";
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, copyText.c_str());
-
-        std::wstring deleteLinesText = L"&Delete Line(s)\tDel";
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, deleteLinesText.c_str());
-
+        AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, L"&Transfer to Input Fields\tAlt+Up");
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, L"&Copy\tCtrl+C");
+        AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_LINES_FROM_CLIPBOARD, L"&Paste\tCtrl+V");
+        AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, L"&Edit\t");
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, L"&Delete Line(s)\tDel");
         TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, ptScreen.x, ptScreen.y, 0, hwnd, NULL);
         DestroyMenu(hMenu); // Clean up
     }
@@ -1097,16 +1091,16 @@ MenuState MultiReplace::checkMenuConditions(HWND listView, POINT ptScreen) {
     int itemCount = ListView_GetSelectedCount(listView);
     state.hasSelection = (itemCount > 0);
 
+    // Check if the clipboard content is valid for pasting
+    state.canPaste = canPasteFromClipboard();
+
     return state;
 }
 
-void MultiReplace::performActionOnItem(POINT pt) {
+void MultiReplace::performItemAction(POINT pt, ItemAction action) {
     LVHITTESTINFO hitInfo = {};
-    hitInfo.pt = pt; // Directly use the coordinates provided by the event
-
-    // Conduct a hit test with the provided coordinates
+    hitInfo.pt = pt; // Use event-provided coordinates
     int hitTestResult = ListView_HitTest(_replaceListView, &hitInfo);
-    if (hitTestResult == -1) return; // No item found at the click position
 
     // Calculate the clicked column based on the X coordinate
     int clickedColumn = -1;
@@ -1122,14 +1116,32 @@ void MultiReplace::performActionOnItem(POINT pt) {
         }
     }
 
-    // Execute the action based on the clicked column
-    if ((clickedColumn == 3) || (clickedColumn >= 6 && clickedColumn <= 10)) {
-        toggleBooleanAt(hitTestResult, clickedColumn);
-    }
-    else if (clickedColumn == 4 || clickedColumn == 5) {
-        editTextAt(hitTestResult, clickedColumn);
-    }
+    switch (action) {
+    case ItemAction::Edit: {
+        // Exit if no item found at click position
+        if (hitTestResult == -1) return;
 
+        // Perform actions based on the clicked column
+        if ((clickedColumn == 3) || (clickedColumn >= 6 && clickedColumn <= 10)) {
+            toggleBooleanAt(hitTestResult, clickedColumn);
+        }
+        else if (clickedColumn == 4 || clickedColumn == 5) {
+            editTextAt(hitTestResult, clickedColumn);
+        }
+        break;
+    }
+    case ItemAction::Copy: {
+        // Copy selected items to clipboard
+        copySelectedItemsToClipboard(_replaceListView);
+        break;
+    }
+    case ItemAction::Paste: {
+        // Determine insert position based on hit test; use hitTestResult directly if item was clicked
+        int insertPosition = hitTestResult != -1 ? hitTestResult : -1;
+        pasteItemsIntoList(insertPosition);
+        break;
+    }
+    }
 }
 
 void MultiReplace::copySelectedItemsToClipboard(HWND listView) {
@@ -1172,6 +1184,152 @@ void MultiReplace::copySelectedItemsToClipboard(HWND listView) {
             CloseClipboard();
         }
     }
+}
+
+bool MultiReplace::canPasteFromClipboard() {
+    if (!IsClipboardFormatAvailable(CF_UNICODETEXT)) {
+        return false; // Clipboard does not contain text in a format that we can paste
+    }
+
+    if (!OpenClipboard(nullptr)) {
+        return false; // Cannot open the clipboard
+    }
+
+    bool canPaste = false; // Assume we cannot paste until proven otherwise
+    HANDLE hData = GetClipboardData(CF_UNICODETEXT);
+    if (hData) {
+        wchar_t* pClipboardData = static_cast<wchar_t*>(GlobalLock(hData));
+        if (pClipboardData) {
+            std::wstring content = pClipboardData;
+            std::wistringstream contentStream(content);
+            std::wstring line;
+
+            while (std::getline(contentStream, line) && !canPaste) {
+                if (line.empty()) continue; // Skip empty lines
+
+                std::vector<std::wstring> columns;
+                std::wstring currentValue;
+                bool insideQuotes = false;
+
+                for (size_t i = 0; i < line.length(); ++i) {
+                    const wchar_t& ch = line[i];
+                    if (ch == L'"') {
+                        if (insideQuotes && i + 1 < line.length() && line[i + 1] == L'"') {
+                            // Escaped quote
+                            currentValue += L'"';
+                            ++i; // Skip the next quote
+                        }
+                        else {
+                            // Toggle the state
+                            insideQuotes = !insideQuotes;
+                        }
+                    }
+                    else if (ch == L',' && !insideQuotes) {
+                        // When not inside quotes, treat comma as column separator
+                        columns.push_back(unescapeCsvValue(currentValue));
+                        currentValue.clear();
+                    }
+                    else {
+                        currentValue += ch; // Append the character to the current value
+                    }
+                }
+                columns.push_back(unescapeCsvValue(currentValue)); // Add the last value
+
+                // For the format to be considered valid, ensure each line has the correct number of columns
+                // and the second column (findText) must not be empty for a line to be valid
+                if (columns.size() == 8 && !columns[1].empty()) {
+                    canPaste = true; // Found at least one valid line, no need to check further
+                }
+            }
+
+            GlobalUnlock(hData);
+        }
+    }
+
+    CloseClipboard();
+    return canPaste;
+}
+
+void MultiReplace::pasteItemsIntoList(int insertPosition) {
+    if (!OpenClipboard(NULL)) {
+        return; // Abort if the clipboard cannot be opened
+    }
+
+    HANDLE hData = GetClipboardData(CF_UNICODETEXT);
+    if (!hData) {
+        CloseClipboard(); // Close the clipboard if no data is present
+        return;
+    }
+
+    wchar_t* pClipboardData = static_cast<wchar_t*>(GlobalLock(hData));
+    if (!pClipboardData) {
+        CloseClipboard(); // Close the clipboard if the data cannot be locked
+        return;
+    }
+
+    std::wstring content = pClipboardData;
+    GlobalUnlock(hData);
+    CloseClipboard();
+
+    std::wstringstream contentStream(content);
+    std::wstring line;
+    std::vector<int> insertedItemsIndices; // To track indices of inserted items
+
+    while (std::getline(contentStream, line)) {
+        if (line.empty()) continue; // Skip empty lines
+
+        std::vector<std::wstring> columns;
+        std::wstring currentValue;
+        bool insideQuotes = false;
+
+        for (const wchar_t& ch : line) {
+            if (ch == L'"') {
+                insideQuotes = !insideQuotes;
+                continue;
+            }
+            if (ch == L',' && !insideQuotes) {
+                columns.push_back(unescapeCsvValue(currentValue));
+                currentValue.clear();
+            }
+            else {
+                currentValue += ch;
+            }
+        }
+        columns.push_back(unescapeCsvValue(currentValue)); // Add the last value
+
+        // Check for proper column count and non-empty findText before adding to the list
+        if (columns.size() != 8 || columns[1].empty()) continue;
+
+        ReplaceItemData item;
+        item.isSelected = std::stoi(columns[0]) != 0;
+        item.findText = columns[1];
+        item.replaceText = columns[2];
+        item.wholeWord = std::stoi(columns[3]) != 0;
+        item.matchCase = std::stoi(columns[4]) != 0;
+        item.useVariables = std::stoi(columns[5]) != 0;
+        item.extended = std::stoi(columns[6]) != 0;
+        item.regex = std::stoi(columns[7]) != 0;
+
+        // Inserting item into the list
+        if (insertPosition >= 0 && insertPosition < replaceListData.size()) {
+            replaceListData.insert(replaceListData.begin() + insertPosition, item);
+            insertedItemsIndices.push_back(insertPosition); // Track inserted item index
+            ++insertPosition; // Adjust position for the next insert
+        }
+        else {
+            replaceListData.push_back(item);
+            insertedItemsIndices.push_back(static_cast<int>(replaceListData.size() - 1));// Track inserted item index at the end
+        }
+    }
+
+    // Selecting newly inserted items in the list view
+    for (int idx : insertedItemsIndices) {
+        ListView_SetItemState(_replaceListView, idx, LVIS_SELECTED, LVIS_SELECTED);
+    }
+
+    // Refresh the ListView to reflect the changes and new selections
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
 #pragma endregion
@@ -1845,11 +2003,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
 		break;
 
-		case IDM_EDIT_VALUE: // Contextmenu item
-        {
-            performActionOnItem(_contextMenuClickPoint);
-            break;
+        case IDM_EDIT_VALUE: {
+            performItemAction(_contextMenuClickPoint, ItemAction::Edit);
         }
+        break;
 
         case IDM_COPY_DATA_TO_FIELDS:
         {
@@ -1861,9 +2018,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
 		case IDM_COPY_LINES_TO_CLIPBOARD:
         {
-            copySelectedItemsToClipboard(_replaceListView);
+            performItemAction(_contextMenuClickPoint, ItemAction::Copy);
         }
 		break;
+
+        case IDM_PASTE_LINES_FROM_CLIPBOARD: {
+            performItemAction(_contextMenuClickPoint, ItemAction::Paste);
+        }
+        break;
 
         case IDM_DELETE_LINES:
         {

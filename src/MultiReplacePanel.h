@@ -159,6 +159,13 @@ struct MenuState {
     bool clickedOnItem = false;
 };
 
+enum class ItemAction {
+    Edit,
+    Paste,
+    Copy
+};
+
+
 enum class SortDirection {
     Ascending,
     Descending
@@ -402,8 +409,10 @@ private:
     static LRESULT CALLBACK EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
     void createContextMenu(HWND hwnd, POINT ptScreen, MenuState state);
     MenuState checkMenuConditions(HWND listView, POINT ptScreen);
-    void performActionOnItem(POINT ptClient);
+    void performItemAction(POINT pt, ItemAction action);
     void copySelectedItemsToClipboard(HWND listView);
+    bool canPasteFromClipboard();
+    void pasteItemsIntoList(int insertPosition);
 
     //Replace
     void handleReplaceAllButton();
