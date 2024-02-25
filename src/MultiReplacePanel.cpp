@@ -1050,6 +1050,7 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
         AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_LINES_FROM_CLIPBOARD, L"&Paste\tCtrl+V");
         AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, L"&Edit\t");
         AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, L"&Delete Line(s)\tDel");
+        AppendMenu(hMenu, MF_STRING, IDM_SELECT_ALL, L"&Select All\tCtrl+A");
         TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, ptScreen.x, ptScreen.y, 0, hwnd, NULL);
         DestroyMenu(hMenu); // Clean up
     }
@@ -2046,6 +2047,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // Directly delete without confirmation if only one line is selected
                 deleteSelectedLines(_replaceListView);
             }
+        }
+        break;
+
+        case IDM_SELECT_ALL: {
+            ListView_SetItemState(_replaceListView, -1, LVIS_SELECTED, LVIS_SELECTED);
         }
         break;
 

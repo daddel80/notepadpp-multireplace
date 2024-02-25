@@ -101,6 +101,9 @@
 #define IDM_COPY_LINES_TO_CLIPBOARD     5703
 #define IDM_PASTE_LINES_FROM_CLIPBOARD  5704
 #define IDM_DELETE_LINES                5705
+#define IDM_SELECT_ALL                  5706
+#define IDM_CUT_LINES_TO_CLIPBOARD      5707
+
 
 #define STYLE1							60
 #define STYLE2							61
