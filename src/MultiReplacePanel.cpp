@@ -453,7 +453,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     int windowWidth = rcClient.right - rcClient.left;
 
     // Calculate the remaining width for the first two columns
-    int adjustedWidth = windowWidth - 283;
+    int adjustedWidth = windowWidth - 279;
 
     // Calculate the total width of columns 5 to 10 (Options and Delete Button)
     int columns5to10Width = 30 * 7;
@@ -584,7 +584,7 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
 
     CountColWidths widths = {
         listView,
-        newWidth - 283, // Direct use of newWidth for listViewWidth
+        newWidth - 279, // Direct use of newWidth for listViewWidth
         false, // This is not used for current calculation.
         ListView_GetColumnWidth(listView, 1), // Current Find Count Width
         ListView_GetColumnWidth(listView, 2), // Current Replace Count Width
@@ -899,7 +899,7 @@ void MultiReplace::resizeCountColumns() {
 
     LONG style = GetWindowLong(listView, GWL_STYLE);
     bool hasVerticalScrollbar = (style & WS_VSCROLL) != 0;
-    int margin = hasVerticalScrollbar ? 0 : 21;
+    int margin = hasVerticalScrollbar ? 0 : 16;
 
     CountColWidths widths = {
         listView,
@@ -1562,71 +1562,95 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             case LVN_KEYDOWN:
             {
                 LPNMLVKEYDOWN pnkd = reinterpret_cast<LPNMLVKEYDOWN>(pnmh);
+                HDC hDC = NULL;
+                int iItem = -1;
 
                 PostMessage(_replaceListView, WM_SETFOCUS, 0, 0);
-                // Alt+A key for Select All
-                if (pnkd->wVKey == 'A' && GetKeyState(VK_MENU) & 0x8000) {
-                    setSelections(true, ListView_GetSelectedCount(_replaceListView) > 0);
-                }
-                // Alt+D key for Deselect All
-                else if (pnkd->wVKey == 'D' && GetKeyState(VK_MENU) & 0x8000) {
-                    setSelections(false, ListView_GetSelectedCount(_replaceListView) > 0);
-                }
-                else if (pnkd->wVKey == VK_DELETE) { // Delete key
-                    deleteSelectedLines(_replaceListView);
-                }
-                else if ((GetKeyState(VK_MENU) & 0x8000) && (pnkd->wVKey == VK_UP)) { // Alt/AltGr + Up key
-                    int iItem = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED);
-                    if (iItem >= 0) {
-                        NMITEMACTIVATE nmia;
-                        ZeroMemory(&nmia, sizeof(nmia));
-                        nmia.iItem = iItem;
-                        handleCopyBack(&nmia);
+                // Handling keyboard shortcuts for menu actions
+                if (GetKeyState(VK_CONTROL) & 0x8000) { // If Ctrl is pressed
+                    switch (pnkd->wVKey) {
+                    case 'C': // Ctrl+C for Copy
+                        performItemAction(_contextMenuClickPoint, ItemAction::Copy);
+                        break;
+                    case 'V': // Ctrl+V for Paste
+                        performItemAction(_contextMenuClickPoint, ItemAction::Paste);
+                        break;
+                    case 'A': // Ctrl+A for Select All
+                        ListView_SetItemState(_replaceListView, -1, LVIS_SELECTED, LVIS_SELECTED);
+                        break;
+                        // Add more Ctrl+ shortcuts here if needed
                     }
                 }
-                else if (pnkd->wVKey == VK_F12) { // F12 key
-                    GetClientRect(_hSelf, &windowRect);
-
-                    HDC hDC = GetDC(_hSelf);
-                    if (hDC)
-                    {
-                        // Get the current font of the window
-                        HFONT currentFont = (HFONT)SendMessage(_hSelf, WM_GETFONT, 0, 0);
-                        HFONT hOldFont = (HFONT)SelectObject(hDC, currentFont);
-
-                        // Get the text metrics for the current font
-                        TEXTMETRIC tm;
-                        GetTextMetrics(hDC, &tm);
-
-                        // Calculate the base units
-                        SIZE size;
-                        GetTextExtentPoint32W(hDC, L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 52, &size);
-                        int baseUnitX = (size.cx / 26 + 1) / 2;
-                        int baseUnitY = tm.tmHeight;
-
-                        // Calculate the window size in dialog units
-                        int duWidth = MulDiv(windowRect.right, 4, baseUnitX);
-                        int duHeight = MulDiv(windowRect.bottom, 8, baseUnitY);
-
-                        wchar_t sizeText[100];
-                        wsprintfW(sizeText, L"Window Size: %ld x %ld DUs", duWidth, duHeight);
-
-                        MessageBoxW(_hSelf, sizeText, L"Window Size", MB_OK);
-
-                        // Cleanup
-                        SelectObject(hDC, hOldFont);
-                        ReleaseDC(_hSelf, hDC);
+                else if (GetKeyState(VK_MENU) & 0x8000) { // If Alt is pressed
+                    switch (pnkd->wVKey) {
+                    case 'A': // Alt+A for Enable Line
+                        setSelections(true, ListView_GetSelectedCount(_replaceListView) > 0);
+                        break;
+                    case 'D': // Alt+D for Disable Line
+                        setSelections(false, ListView_GetSelectedCount(_replaceListView) > 0);
+                        break;
+                    case VK_UP: // Alt+ UP for Push Back
+                        iItem = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED);
+                        if (iItem >= 0) {
+                            NMITEMACTIVATE nmia;
+                            ZeroMemory(&nmia, sizeof(nmia));
+                            nmia.iItem = iItem;
+                            handleCopyBack(&nmia);
+                        }
+                        break;
                     }
                 }
-                else if (pnkd->wVKey == VK_SPACE) { // Spacebar key
-                    int iItem = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED);
-                    if (iItem >= 0) {
-                        // get current selection status of the item
-                        bool currentSelectionStatus = replaceListData[iItem].isSelected;
-                        // set the selection status to its opposite
-                        setSelections(!currentSelectionStatus, true);
+                else {
+                    switch (pnkd->wVKey) {
+                    case VK_DELETE: // Delete key for deleting selected lines
+                        deleteSelectedLines(_replaceListView);
+                        break;
+                    case VK_F12: // F12 key
+                        GetClientRect(_hSelf, &windowRect);
+
+                        hDC = GetDC(_hSelf);
+                        if (hDC)
+                        {
+                            // Get the current font of the window
+                            HFONT currentFont = (HFONT)SendMessage(_hSelf, WM_GETFONT, 0, 0);
+                            HFONT hOldFont = (HFONT)SelectObject(hDC, currentFont);
+
+                            // Get the text metrics for the current font
+                            TEXTMETRIC tm;
+                            GetTextMetrics(hDC, &tm);
+
+                            // Calculate the base units
+                            SIZE size;
+                            GetTextExtentPoint32W(hDC, L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 52, &size);
+                            int baseUnitX = (size.cx / 26 + 1) / 2;
+                            int baseUnitY = tm.tmHeight;
+
+                            // Calculate the window size in dialog units
+                            int duWidth = MulDiv(windowRect.right, 4, baseUnitX);
+                            int duHeight = MulDiv(windowRect.bottom, 8, baseUnitY);
+
+                            wchar_t sizeText[100];
+                            wsprintfW(sizeText, L"Window Size: %ld x %ld DUs", duWidth, duHeight);
+
+                            MessageBoxW(_hSelf, sizeText, L"Window Size", MB_OK);
+
+                            // Cleanup
+                            SelectObject(hDC, hOldFont);
+                            ReleaseDC(_hSelf, hDC);
+                        }
+                        break;
+                    case VK_SPACE: // Spacebar key
+                        iItem = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED);
+                        if (iItem >= 0) {
+                            // get current selection status of the item
+                            bool currentSelectionStatus = replaceListData[iItem].isSelected;
+                            // set the selection status to its opposite
+                            setSelections(!currentSelectionStatus, true);
+                        }
+                        break;
                     }
                 }
+                
             }
             break;
             }
