@@ -103,6 +103,8 @@
 #define IDM_DELETE_LINES                5705
 #define IDM_SELECT_ALL                  5706
 #define IDM_CUT_LINES_TO_CLIPBOARD      5707
+#define IDM_ENABLE_LINES                5708
+#define IDM_DISABLE_LINES               5709
 
 
 #define STYLE1							60

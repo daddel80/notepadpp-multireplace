@@ -1046,11 +1046,15 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
     if (hMenu) {
 
         AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, L"&Transfer to Input Fields\tAlt+Up");
+        AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, L"&Copy\tCtrl+C");
         AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_LINES_FROM_CLIPBOARD, L"&Paste\tCtrl+V");
         AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, L"&Edit\t");
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, L"&Delete Line(s)\tDel");
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, L"&Delete\tDel");
         AppendMenu(hMenu, MF_STRING, IDM_SELECT_ALL, L"&Select All\tCtrl+A");
+        AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, L"&Enable\tAlt+E");
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_LINES, L"&Disable\tAlt+D");
         TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, ptScreen.x, ptScreen.y, 0, hwnd, NULL);
         DestroyMenu(hMenu); // Clean up
     }
@@ -2055,20 +2059,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDM_DELETE_LINES:
         {
             int selectedCount = ListView_GetSelectedCount(_replaceListView);
-            if (selectedCount > 1)
-            {
-                // Show confirmation dialog for multiple lines
-                std::wstring message1 = L"Are you sure you want to delete " + std::to_wstring(selectedCount) + L" lines?";
-                int msgBoxID = MessageBox(NULL, message1.c_str(), L"Confirmation", MB_ICONWARNING | MB_YESNO);
-                if (msgBoxID == IDYES)
-                {
-                    // If confirmed, proceed to delete
-                    deleteSelectedLines(_replaceListView);
-                }
+            // Renaming 'message' to 'confirmationMessage' to avoid hiding the function parameter
+            std::wstring confirmationMessage = L"Are you sure you want to delete ";
+            if (selectedCount == 1) {
+                confirmationMessage += L"this line?";
             }
-            else if (selectedCount == 1)
+            else {
+                confirmationMessage += std::to_wstring(selectedCount) + L" lines?";
+            }
+
+            int msgBoxID = MessageBox(NULL, confirmationMessage.c_str(), L"Confirmation", MB_ICONWARNING | MB_YESNO);
+            if (msgBoxID == IDYES)
             {
-                // Directly delete without confirmation if only one line is selected
+                // If confirmed, proceed to delete
                 deleteSelectedLines(_replaceListView);
             }
         }
@@ -2076,6 +2079,16 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDM_SELECT_ALL: {
             ListView_SetItemState(_replaceListView, -1, LVIS_SELECTED, LVIS_SELECTED);
+        }
+        break;
+
+        case IDM_ENABLE_LINES: {
+            setSelections(true, ListView_GetSelectedCount(_replaceListView) > 0);
+        }
+        break;
+
+        case IDM_DISABLE_LINES: {
+            setSelections(false, ListView_GetSelectedCount(_replaceListView) > 0);
         }
         break;
 
