@@ -41,7 +41,7 @@ struct ReplaceItemData
 	size_t id = 0;
     std::wstring findCount = L"";
     std::wstring replaceCount = L"";
-    bool isSelected = true;
+    bool isEnabled = true;
     std::wstring findText;
     std::wstring replaceText;
     bool wholeWord = false;
@@ -52,7 +52,7 @@ struct ReplaceItemData
 
     bool operator==(const ReplaceItemData& rhs) const {
         return
-            isSelected == rhs.isSelected &&
+            isEnabled == rhs.isEnabled &&
             findText == rhs.findText &&
             replaceText == rhs.replaceText &&
             wholeWord == rhs.wholeWord &&
@@ -157,6 +157,8 @@ struct MenuState {
     bool canPaste = false;
     bool hasSelection = false;
     bool clickedOnItem = false;
+    bool allEnabled = false;;
+    bool allDisabled = false;;
 };
 
 enum class ItemAction {

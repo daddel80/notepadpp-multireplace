@@ -952,7 +952,7 @@ void MultiReplace::toggleBooleanAt(int itemIndex, int column) {
 
     ReplaceItemData& item = replaceListData[itemIndex];
     switch (column) {
-    case 3: item.isSelected = !item.isSelected; break;
+    case 3: item.isEnabled = !item.isEnabled; break;
     case 6: item.wholeWord = !item.wholeWord; break;
     case 7: item.matchCase = !item.matchCase; break;
     case 8: item.useVariables = !item.useVariables; break;
@@ -1053,8 +1053,8 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
         AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, L"&Delete\tDel");
         AppendMenu(hMenu, MF_STRING, IDM_SELECT_ALL, L"&Select All\tCtrl+A");
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, L"&Enable\tAlt+E");
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_LINES, L"&Disable\tAlt+D");
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, L"&Enable\tAlt+E");
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allDisabled ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_LINES, L"&Disable\tAlt+D");
         TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, ptScreen.x, ptScreen.y, 0, hwnd, NULL);
         DestroyMenu(hMenu); // Clean up
     }
@@ -1092,12 +1092,30 @@ MenuState MultiReplace::checkMenuConditions(HWND listView, POINT ptScreen) {
         state.clickedOnItem = true; // Click was on an item
     }
 
-    // Check if any items are selected to enable the delete option
-    int itemCount = ListView_GetSelectedCount(listView);
-    state.hasSelection = (itemCount > 0);
-
     // Check if the clipboard content is valid for pasting
     state.canPaste = canPasteFromClipboard();
+
+    // Check if any items are selected to enable the delete option
+    int selectedCount = ListView_GetSelectedCount(listView);
+    state.hasSelection = (selectedCount > 0);
+
+    // Check if all selected items are enabled or disabled
+    int enabledCount = 0;
+    int disabledCount = 0;
+
+    int itemIndex = -1;
+    while ((itemIndex = ListView_GetNextItem(listView, itemIndex, LVNI_SELECTED)) != -1) {
+        auto& itemData = replaceListData[itemIndex];
+        if (itemData.isEnabled) {
+            ++enabledCount;
+        }
+        else {
+            ++disabledCount;
+        }
+    }
+
+    state.allEnabled = (selectedCount == enabledCount);
+    state.allDisabled = (selectedCount == disabledCount);
 
     return state;
 }
@@ -1159,7 +1177,7 @@ void MultiReplace::copySelectedItemsToClipboard(HWND listView) {
             if (ListView_GetItemState(listView, i, LVIS_SELECTED) & LVIS_SELECTED) {
                 // Angenommen, der Index in der ListView entspricht dem Index in replaceListData
                 const ReplaceItemData& item = replaceListData[i];
-                std::wstring line = std::to_wstring(item.isSelected) + L"," +
+                std::wstring line = std::to_wstring(item.isEnabled) + L"," +
                     escapeCsvValue(item.findText) + L"," +
                     escapeCsvValue(item.replaceText) + L"," +
                     std::to_wstring(item.wholeWord) + L"," +
@@ -1306,7 +1324,7 @@ void MultiReplace::pasteItemsIntoList(int insertPosition) {
         if (columns.size() != 8 || columns[1].empty()) continue;
 
         ReplaceItemData item;
-        item.isSelected = std::stoi(columns[0]) != 0;
+        item.isEnabled = std::stoi(columns[0]) != 0;
         item.findText = columns[1];
         item.replaceText = columns[2];
         item.wholeWord = std::stoi(columns[3]) != 0;
@@ -1461,7 +1479,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
                 if (pnmia->iSubItem == 3) { // Select button column
                     // get current selection status of the item
-                    bool currentSelectionStatus = replaceListData[pnmia->iItem].isSelected;
+                    bool currentSelectionStatus = replaceListData[pnmia->iItem].isEnabled;
                     // set the selection status to its opposite
                     setSelections(!currentSelectionStatus, true);
                 }
@@ -1492,7 +1510,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceCount.c_str());
                     break;
                 case 3:
-                    if (itemData.isSelected) {
+                    if (itemData.isEnabled) {
                         plvdi->item.pszText = L"\u25A0";
                     }
                     else {
@@ -1647,7 +1665,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         iItem = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED);
                         if (iItem >= 0) {
                             // get current selection status of the item
-                            bool currentSelectionStatus = replaceListData[iItem].isSelected;
+                            bool currentSelectionStatus = replaceListData[iItem].isEnabled;
                             // set the selection status to its opposite
                             setSelections(!currentSelectionStatus, true);
                         }
@@ -1674,8 +1692,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             createContextMenu(_hSelf, ptScreen, state); // Show context menu
             return TRUE;
         }
-        break;
     }
+    break;
 
 
     case WM_SHOWWINDOW:
@@ -1993,13 +2011,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_UP_BUTTON:
         {
             shiftListItem(_replaceListView, Direction::Up);
-            break;
         }
+        break;
+
         case IDC_DOWN_BUTTON:
         {
             shiftListItem(_replaceListView, Direction::Down);
-            break;
         }
+        break;
 
         case IDC_EXPORT_BASH_BUTTON:
         {
@@ -2032,7 +2051,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
 		break;
 
-        case IDM_EDIT_VALUE: {
+        case IDM_EDIT_VALUE: 
+        {
             performItemAction(_contextMenuClickPoint, ItemAction::Edit);
         }
         break;
@@ -2041,9 +2061,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             NMITEMACTIVATE nmia = {};
             nmia.iItem = ListView_HitTest(_replaceListView, &_contextMenuClickPoint);
-            handleCopyBack(&nmia);
-            break;
+            handleCopyBack(&nmia);            
         }
+        break;
 
 		case IDM_COPY_LINES_TO_CLIPBOARD:
         {
@@ -2135,7 +2155,7 @@ void MultiReplace::handleReplaceAllButton() {
         ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
         for (size_t i = 0; i < replaceListData.size(); ++i)
         {
-            if (replaceListData[i].isSelected)
+            if (replaceListData[i].isEnabled)
             {
                 int findCount = 0;
                 int replaceCount = 0;
@@ -2206,7 +2226,7 @@ void MultiReplace::handleReplaceButton() {
 
         int replacements = 0;  // Counter for replacements
         for (size_t i = 0; i < replaceListData.size(); ++i) {
-            if (replaceListData[i].isSelected && replaceOne(replaceListData[i], selection, searchResult, newPos)) {
+            if (replaceListData[i].isEnabled && replaceOne(replaceListData[i], selection, searchResult, newPos)) {
                 replacements++;
                 updateCountColumns(i, -1, 1);
             }
@@ -3201,7 +3221,7 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
     closestMatchIndex = std::numeric_limits<size_t>::max(); // Initialize with a value that represents "no index".
 
     for (size_t i = 0; i < list.size(); ++i) {
-        if (list[i].isSelected) {
+        if (list[i].isEnabled) {
             int searchFlags = (list[i].wholeWord * SCFIND_WHOLEWORD) |
                 (list[i].matchCase * SCFIND_MATCHCASE) |
                 (list[i].regex * SCFIND_REGEXP);
@@ -3232,7 +3252,7 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
     closestMatchIndex = std::numeric_limits<size_t>::max(); // Initialisiert mit einem Wert, der "keinen Index" darstellt.
 
     for (size_t i = 0; i < list.size(); i++) {
-        if (list[i].isSelected) {
+        if (list[i].isEnabled) {
             int searchFlags = (list[i].wholeWord * SCFIND_WHOLEWORD) | (list[i].matchCase * SCFIND_MATCHCASE) | (list[i].regex * SCFIND_REGEXP);
             std::string findTextUtf8 = convertAndExtend(list[i].findText, list[i].extended);
             SearchResult result = performSearchForward(findTextUtf8, searchFlags, false, cursorPos);
@@ -3298,7 +3318,7 @@ void MultiReplace::handleMarkMatchesButton() {
         }
 
         for (size_t i = 0; i < replaceListData.size(); ++i) {
-            if (replaceListData[i].isSelected) {
+            if (replaceListData[i].isEnabled) {
                 std::string findTextUtf8 = convertAndExtend(replaceListData[i].findText, replaceListData[i].extended);
                 int searchFlags = (replaceListData[i].wholeWord * SCFIND_WHOLEWORD)
                     | (replaceListData[i].matchCase * SCFIND_MATCHCASE)
@@ -4700,7 +4720,7 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
     int i = 0;
     do {
         if (!onlySelected || ListView_GetItemState(_replaceListView, i, LVIS_SELECTED)) {
-            replaceListData[i].isSelected = select;
+            replaceListData[i].isEnabled = select;
         }
     } while ((i = ListView_GetNextItem(_replaceListView, i, LVNI_ALL)) != -1);
 
@@ -4722,7 +4742,7 @@ void MultiReplace::updateHeaderSelection() {
 
     // Check if any or all items in the replaceListData vector are selected
     for (const auto& itemData : replaceListData) {
-        if (itemData.isSelected) {
+        if (itemData.isEnabled) {
             anySelected = true;
         }
         else {
@@ -5078,7 +5098,7 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
 
     // Write list items to CSV file
     for (const ReplaceItemData& item : list) {
-        std::wstring line = std::to_wstring(item.isSelected) + L"," +
+        std::wstring line = std::to_wstring(item.isEnabled) + L"," +
             escapeCsvValue(item.findText) + L"," +
             escapeCsvValue(item.replaceText) + L"," +
             std::to_wstring(item.wholeWord) + L"," +
@@ -5149,7 +5169,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
         ReplaceItemData item;
         try {
-            item.isSelected = std::stoi(columns[0]) != 0;
+            item.isEnabled = std::stoi(columns[0]) != 0;
             item.findText = columns[1];
             item.replaceText = columns[2];
             item.wholeWord = std::stoi(columns[3]) != 0;
@@ -5310,7 +5330,7 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
 
     file << "# processLine arguments: \"findString\" \"replaceString\" wholeWord matchCase normal extended regex\n";
     for (const auto& itemData : replaceListData) {
-        if (!itemData.isSelected) continue; // Skip if this item is not selected
+        if (!itemData.isEnabled) continue; // Skip if this item is not selected
 
         std::string find;
         std::string replace;
