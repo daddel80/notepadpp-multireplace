@@ -237,26 +237,26 @@ public:
 
     static MultiReplace* instance; // Static instance of the class
 
-    static void setInstance(MultiReplace* inst) {
+    static inline void setInstance(MultiReplace* inst) {
         instance = inst;
     }
 
-    virtual void display(bool toShow = true) const override {
+    virtual inline void display(bool toShow = true) const override {
         StaticDialog::display(toShow);
     };
 
-    void setParent(HWND parent2set) {
+    inline void setParent(HWND parent2set) {
         _hParent = parent2set;
     };
 
-    static HWND getScintillaHandle() {
+    static inline HWND getScintillaHandle() {
         return s_hScintilla;
     }
 
-    static HWND getDialogHandle() {
+    static inline HWND getDialogHandle() {
         return s_hDlg;
     }
-
+    
     static bool isWindowOpen;
     static bool textModified;
     static bool documentSwitched;
@@ -376,7 +376,7 @@ private:
 
     //Initialization
     void initializeWindowSize();
-    RECT calculateMinWindowFrame(HWND hwnd);
+    RECT calculateMinWindowFrame(HWND hwnd);    
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();

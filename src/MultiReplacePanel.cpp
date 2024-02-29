@@ -988,6 +988,7 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
     // Set the initial text for the Edit window
     wchar_t itemText[MAX_TEXT_LENGTH];
     ListView_GetItemText(_replaceListView, itemIndex, column, itemText, sizeof(itemText) / sizeof(wchar_t));
+    itemText[MAX_TEXT_LENGTH - 1] = L'\0';
     SetWindowText(hwndEdit, itemText);
 
     // Adjust font size for the Edit window
@@ -1198,12 +1199,20 @@ void MultiReplace::copySelectedItemsToClipboard(HWND listView) {
         if (OpenClipboard(NULL)) {
             EmptyClipboard();
             HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, (utf8CsvData.size() + 1) * sizeof(wchar_t));
+            HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, (utf8CsvData.size() + 1) * sizeof(wchar_t));
             if (hClipboardData) {
                 wchar_t* pClipboardData = (wchar_t*)GlobalLock(hClipboardData);
-                memcpy(pClipboardData, csvData.c_str(), (utf8CsvData.size() + 1) * sizeof(wchar_t));
-                GlobalUnlock(hClipboardData);
-                SetClipboardData(CF_UNICODETEXT, hClipboardData);
+                if (pClipboardData != NULL) {
+                    memcpy(pClipboardData, utf8CsvData.c_str(), (utf8CsvData.size() + 1) * sizeof(char)); // Should be utf8CsvData and not csvData, and sizeof(char) for UTF-8
+                    GlobalUnlock(hClipboardData);
+                    SetClipboardData(CF_UNICODETEXT, hClipboardData);
+                }
+                else {
+                    GlobalFree(hClipboardData);
+                }
+                CloseClipboard();
             }
+
             CloseClipboard();
         }
     }
@@ -1694,7 +1703,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
     }
     break;
-
 
     case WM_SHOWWINDOW:
     {
