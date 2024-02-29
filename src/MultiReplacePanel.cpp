@@ -1199,7 +1199,6 @@ void MultiReplace::copySelectedItemsToClipboard(HWND listView) {
         if (OpenClipboard(NULL)) {
             EmptyClipboard();
             HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, (utf8CsvData.size() + 1) * sizeof(wchar_t));
-            HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, (utf8CsvData.size() + 1) * sizeof(wchar_t));
             if (hClipboardData) {
                 wchar_t* pClipboardData = (wchar_t*)GlobalLock(hClipboardData);
                 if (pClipboardData != NULL) {
