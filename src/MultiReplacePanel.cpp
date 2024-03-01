@@ -1571,6 +1571,8 @@ void MultiReplace::handleReplaceButton() {
 
         if (searchResult.pos < 0 && wrapAroundEnabled) {
             searchResult = performSearchForward(findTextUtf8, searchFlags, true, 0);
+        } if (searchResult.pos >= 0) {
+            searchResult = performSearchForward(findTextUtf8, searchFlags, true, newPos);
         }
 
         if (wasReplaced) {
@@ -1743,11 +1745,11 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
     Sci_Position newTargetEnd = static_cast<Sci_Position>(send(SCI_GETTARGETEND, 0, 0));
 
     // Set the cursor to the end of the replaced text
-    send(SCI_SETCURRENTPOS, newTargetEnd, 0);
+    //send(SCI_SETCURRENTPOS, newTargetEnd, 0);
 
     // Clear selection
-    send(SCI_SETSELECTIONSTART, newTargetEnd, 0);
-    send(SCI_SETSELECTIONEND, newTargetEnd, 0);
+    //send(SCI_SETSELECTIONSTART, newTargetEnd, 0);
+    //send(SCI_SETSELECTIONEND, newTargetEnd, 0);
 
     return newTargetEnd;
 }
