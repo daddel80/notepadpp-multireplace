@@ -164,7 +164,9 @@ struct MenuState {
 enum class ItemAction {
     Edit,
     Paste,
-    Copy
+    Copy,
+    Cut,
+    Delete
 };
 
 

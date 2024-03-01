@@ -96,13 +96,13 @@
 #define IDC_LICENSE_STATIC              5604
 #define IDC_AUTHOR_STATIC               5605
 
-#define IDM_EDIT_VALUE                  5700
-#define IDM_COPY_DATA_TO_FIELDS         5702
+#define IDM_COPY_DATA_TO_FIELDS         5701
+#define IDM_CUT_LINES_TO_CLIPBOARD      5702
 #define IDM_COPY_LINES_TO_CLIPBOARD     5703
 #define IDM_PASTE_LINES_FROM_CLIPBOARD  5704
-#define IDM_DELETE_LINES                5705
-#define IDM_SELECT_ALL                  5706
-#define IDM_CUT_LINES_TO_CLIPBOARD      5707
+#define IDM_EDIT_VALUE                  5705
+#define IDM_DELETE_LINES                5706
+#define IDM_SELECT_ALL                  5707
 #define IDM_ENABLE_LINES                5708
 #define IDM_DISABLE_LINES               5709
 

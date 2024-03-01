@@ -1048,6 +1048,7 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
 
         AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, L"&Transfer to Input Fields\tAlt+Up");
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_CUT_LINES_TO_CLIPBOARD, L"Cu&t\tCtrl+X");
         AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, L"&Copy\tCtrl+C");
         AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_LINES_FROM_CLIPBOARD, L"&Paste\tCtrl+V");
         AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, L"&Edit\t");
@@ -1140,7 +1141,25 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         }
     }
 
-    switch (action) {
+    switch (action) {    
+    case ItemAction::Cut: {
+        // Copy selected items to clipboard
+        copySelectedItemsToClipboard(_replaceListView);
+        // Remove the selected items from the list view
+        deleteSelectedLines(_replaceListView);
+        break;
+    }
+    case ItemAction::Copy: {
+        // Copy selected items to clipboard
+        copySelectedItemsToClipboard(_replaceListView);
+        break;
+    }
+    case ItemAction::Paste: {
+        // Determine insert position based on hit test; use hitTestResult directly if item was clicked
+        int insertPosition = hitTestResult != -1 ? hitTestResult : -1;
+        pasteItemsIntoList(insertPosition);
+        break;
+    }
     case ItemAction::Edit: {
         // Exit if no item found at click position
         if (hitTestResult == -1) return;
@@ -1154,15 +1173,21 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         }
         break;
     }
-    case ItemAction::Copy: {
-        // Copy selected items to clipboard
-        copySelectedItemsToClipboard(_replaceListView);
-        break;
-    }
-    case ItemAction::Paste: {
-        // Determine insert position based on hit test; use hitTestResult directly if item was clicked
-        int insertPosition = hitTestResult != -1 ? hitTestResult : -1;
-        pasteItemsIntoList(insertPosition);
+    case ItemAction::Delete: {
+        int selectedCount = ListView_GetSelectedCount(_replaceListView);
+        std::wstring confirmationMessage = L"Are you sure you want to delete ";
+        if (selectedCount == 1) {
+            confirmationMessage += L"this line?";
+        }
+        else if (selectedCount > 1) {
+            confirmationMessage += std::to_wstring(selectedCount) + L" lines?";
+        }
+
+        int msgBoxID = MessageBox(NULL, confirmationMessage.c_str(), L"Confirmation", MB_ICONWARNING | MB_YESNO);
+        if (msgBoxID == IDYES) {
+            // If confirmed, proceed to delete
+            deleteSelectedLines(_replaceListView);
+        }
         break;
     }
     }
@@ -1594,6 +1619,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // Handling keyboard shortcuts for menu actions
                 if (GetKeyState(VK_CONTROL) & 0x8000) { // If Ctrl is pressed
                     switch (pnkd->wVKey) {
+                    case 'X': // Ctrl+X for Cut
+                        performItemAction(_contextMenuClickPoint, ItemAction::Cut);
+                        break;
                     case 'C': // Ctrl+C for Copy
                         performItemAction(_contextMenuClickPoint, ItemAction::Copy);
                         break;
@@ -1628,7 +1656,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 else {
                     switch (pnkd->wVKey) {
                     case VK_DELETE: // Delete key for deleting selected lines
-                        deleteSelectedLines(_replaceListView);
+                        performItemAction(_contextMenuClickPoint, ItemAction::Delete);
                         break;
                     case VK_F12: // F12 key
                         GetClientRect(_hSelf, &windowRect);
@@ -2053,17 +2081,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
 		break;
 
-        case IDM_EDIT_VALUE: 
-        {
-            performItemAction(_contextMenuClickPoint, ItemAction::Edit);
-        }
-        break;
-
         case IDM_COPY_DATA_TO_FIELDS:
         {
             NMITEMACTIVATE nmia = {};
             nmia.iItem = ListView_HitTest(_replaceListView, &_contextMenuClickPoint);
             handleCopyBack(&nmia);            
+        }
+        break;
+
+        case IDM_CUT_LINES_TO_CLIPBOARD:
+        {
+            performItemAction(_contextMenuClickPoint, ItemAction::Cut);
         }
         break;
 
@@ -2073,47 +2101,41 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
 		break;
 
-        case IDM_PASTE_LINES_FROM_CLIPBOARD: {
+        case IDM_PASTE_LINES_FROM_CLIPBOARD: 
+        {
             performItemAction(_contextMenuClickPoint, ItemAction::Paste);
+        }
+        break;
+
+        case IDM_EDIT_VALUE:
+        {
+            performItemAction(_contextMenuClickPoint, ItemAction::Edit);
         }
         break;
 
         case IDM_DELETE_LINES:
         {
-            int selectedCount = ListView_GetSelectedCount(_replaceListView);
-            // Renaming 'message' to 'confirmationMessage' to avoid hiding the function parameter
-            std::wstring confirmationMessage = L"Are you sure you want to delete ";
-            if (selectedCount == 1) {
-                confirmationMessage += L"this line?";
-            }
-            else {
-                confirmationMessage += std::to_wstring(selectedCount) + L" lines?";
-            }
-
-            int msgBoxID = MessageBox(NULL, confirmationMessage.c_str(), L"Confirmation", MB_ICONWARNING | MB_YESNO);
-            if (msgBoxID == IDYES)
-            {
-                // If confirmed, proceed to delete
-                deleteSelectedLines(_replaceListView);
-            }
+            performItemAction(_contextMenuClickPoint, ItemAction::Delete);
         }
         break;
 
-        case IDM_SELECT_ALL: {
+        case IDM_SELECT_ALL: 
+        {
             ListView_SetItemState(_replaceListView, -1, LVIS_SELECTED, LVIS_SELECTED);
         }
         break;
 
-        case IDM_ENABLE_LINES: {
+        case IDM_ENABLE_LINES: 
+        {
             setSelections(true, ListView_GetSelectedCount(_replaceListView) > 0);
         }
         break;
 
-        case IDM_DISABLE_LINES: {
+        case IDM_DISABLE_LINES: 
+        {
             setSelections(false, ListView_GetSelectedCount(_replaceListView) > 0);
         }
         break;
-
 
         default:
             return FALSE;
