@@ -1192,17 +1192,13 @@ void MultiReplace::copySelectedItemsToClipboard(HWND listView) {
     }
 
     if (!csvData.empty()) {
-        // Convert std::wstring to std::string (UTF-8) as needed
-        std::string utf8CsvData = wstringToString(csvData);
-
-        // Copying to clipboard
         if (OpenClipboard(NULL)) {
             EmptyClipboard();
-            HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, (utf8CsvData.size() + 1) * sizeof(wchar_t));
+            HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, (csvData.size() + 1) * sizeof(wchar_t));
             if (hClipboardData) {
-                wchar_t* pClipboardData = (wchar_t*)GlobalLock(hClipboardData);
+                wchar_t* pClipboardData = static_cast<wchar_t*>(GlobalLock(hClipboardData));
                 if (pClipboardData != NULL) {
-                    memcpy(pClipboardData, utf8CsvData.c_str(), (utf8CsvData.size() + 1) * sizeof(char)); // Should be utf8CsvData and not csvData, and sizeof(char) for UTF-8
+                    memcpy(pClipboardData, csvData.c_str(), (csvData.size() + 1) * sizeof(wchar_t));
                     GlobalUnlock(hClipboardData);
                     SetClipboardData(CF_UNICODETEXT, hClipboardData);
                 }
@@ -1211,10 +1207,9 @@ void MultiReplace::copySelectedItemsToClipboard(HWND listView) {
                 }
                 CloseClipboard();
             }
-
-            CloseClipboard();
         }
     }
+
 }
 
 bool MultiReplace::canPasteFromClipboard() {
@@ -1342,7 +1337,7 @@ void MultiReplace::pasteItemsIntoList(int insertPosition) {
         item.regex = std::stoi(columns[7]) != 0;
 
         // Inserting item into the list
-        if (insertPosition >= 0 && insertPosition < replaceListData.size()) {
+        if (insertPosition >= 0 && static_cast<size_t>(insertPosition) < replaceListData.size()) {
             replaceListData.insert(replaceListData.begin() + insertPosition, item);
             insertedItemsIndices.push_back(insertPosition); // Track inserted item index
             ++insertPosition; // Adjust position for the next insert
@@ -2284,6 +2279,9 @@ void MultiReplace::handleReplaceButton() {
         if (searchResult.pos < 0 && wrapAroundEnabled) {
             searchResult = performSearchForward(findTextUtf8, searchFlags, true, 0);
         }
+        else if (searchResult.pos >= 0) {
+            searchResult = performSearchForward(findTextUtf8, searchFlags, true, newPos);
+        }
 
         if (wasReplaced) {
             if (searchResult.pos >= 0) {
@@ -2449,16 +2447,16 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
 
     // Perform the replacement
     send(SCI_REPLACETARGET, replaceTextCp.size(), reinterpret_cast<sptr_t>(replaceTextCp.c_str()));
-
+    
     // Get the end position after the replacement
     Sci_Position newTargetEnd = static_cast<Sci_Position>(send(SCI_GETTARGETEND, 0, 0));
 
     // Set the cursor to the end of the replaced text
-    send(SCI_SETCURRENTPOS, newTargetEnd, 0);
+    //send(SCI_SETCURRENTPOS, newTargetEnd, 0);
 
     // Clear selection
-    send(SCI_SETSELECTIONSTART, newTargetEnd, 0);
-    send(SCI_SETSELECTIONEND, newTargetEnd, 0);
+    //send(SCI_SETSELECTIONSTART, newTargetEnd, 0);
+    //send(SCI_SETSELECTIONEND, newTargetEnd, 0);
 
     return newTargetEnd;
 }
@@ -3019,7 +3017,7 @@ SearchResult MultiReplace::performSingleSearch(const std::string& findTextUtf8, 
         tr.lpstrText = buffer;
         send(SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
 
-        result.foundText = std::string(buffer);
+        result.foundText = std::string(buffer);        
 
         // If selectMatch is true, highlight the found text
         if (selectMatch) {
