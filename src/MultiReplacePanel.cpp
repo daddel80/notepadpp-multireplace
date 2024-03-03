@@ -1045,18 +1045,17 @@ LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPAR
 void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state) {
     HMENU hMenu = CreatePopupMenu();
     if (hMenu) {
-
-        AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, L"&Transfer to Input Fields\tAlt+Up");
+        AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, getLangStr(L"ctxmenu_transfer_to_input_fields").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_CUT_LINES_TO_CLIPBOARD, L"Cu&t\tCtrl+X");
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, L"&Copy\tCtrl+C");
-        AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_LINES_FROM_CLIPBOARD, L"&Paste\tCtrl+V");
-        AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, L"&Edit\t");
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, L"&Delete\tDel");
-        AppendMenu(hMenu, MF_STRING, IDM_SELECT_ALL, L"&Select All\tCtrl+A");
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_CUT_LINES_TO_CLIPBOARD, getLangStr(L"ctxmenu_cut").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, getLangStr(L"ctxmenu_copy").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_LINES_FROM_CLIPBOARD, getLangStr(L"ctxmenu_paste").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, getLangStr(L"ctxmenu_edit").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, getLangStr(L"ctxmenu_delete").c_str());
+        AppendMenu(hMenu, MF_STRING, IDM_SELECT_ALL, getLangStr(L"ctxmenu_select_all").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, L"&Enable\tAlt+E");
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allDisabled ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_LINES, L"&Disable\tAlt+D");
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, getLangStr(L"ctxmenu_enable").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allDisabled ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_LINES, getLangStr(L"ctxmenu_disable").c_str());
         TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, ptScreen.x, ptScreen.y, 0, hwnd, NULL);
         DestroyMenu(hMenu); // Clean up
     }
@@ -1175,21 +1174,22 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
     }
     case ItemAction::Delete: {
         int selectedCount = ListView_GetSelectedCount(_replaceListView);
-        std::wstring confirmationMessage = L"Are you sure you want to delete ";
+        std::wstring confirmationMessage;
+
         if (selectedCount == 1) {
-            confirmationMessage += L"this line?";
+            confirmationMessage = getLangStr(L"delete_confirmation_single");
         }
         else if (selectedCount > 1) {
-            confirmationMessage += std::to_wstring(selectedCount) + L" lines?";
+            confirmationMessage = getLangStr(L"delete_confirmation_multiple", { std::to_wstring(selectedCount) });
         }
 
-        int msgBoxID = MessageBox(NULL, confirmationMessage.c_str(), L"Confirmation", MB_ICONWARNING | MB_YESNO);
+        int msgBoxID = MessageBox(NULL, confirmationMessage.c_str(), getLangStr(L"confirmation").c_str(), MB_ICONWARNING | MB_YESNO);
         if (msgBoxID == IDYES) {
-            // If confirmed, proceed to delete
             deleteSelectedLines(_replaceListView);
         }
         break;
     }
+
     }
 }
 
@@ -2022,7 +2022,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_SAVE_TO_CSV_BUTTON:
         {
-            std::wstring filePath = openFileDialog(true, L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0", L"Save List As", OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"csv");
+            std::wstring fileTypeDescription = getLangStr(L"panel_csv") + L"\0*.csv\0" + getLangStr(L"panel_all_files") + L"\0*.*\0";
+            std::wstring dialogTitle = getLangStr(L"panel_save_list");
+            std::wstring filePath = openFileDialog(true, fileTypeDescription.c_str(), dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"csv");
             if (!filePath.empty()) {
                 saveListToCsv(filePath, replaceListData);
             }
@@ -2052,7 +2054,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_EXPORT_BASH_BUTTON:
         {
-            std::wstring filePath = openFileDialog(true, L"Bash Files (*.sh)\0*.sh\0All Files (*.*)\0*.*\0", L"Export as Bash", OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"sh");
+            std::wstring fileTypeDescription = getLangStr(L"panel_bash") + L"\0*.sh\0" + getLangStr(L"panel_all_files") + L"\0*.*\0";
+            std::wstring dialogTitle = getLangStr(L"panel_export_as_bash");
+            std::wstring filePath = openFileDialog(true, fileTypeDescription.c_str(), dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"sh");
             if (!filePath.empty()) {
                 exportToBashScript(filePath);
             }

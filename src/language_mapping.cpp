@@ -5,8 +5,6 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_find_what", L"Find what: "},
 { L"panel_replace_with", L"Replace with: "},
 { L"panel_match_whole_word_only", L"Match whole word only" },
-{ L"panel_replace_with", L"Replace with:"},
-{ L"panel_match_whole_word_only", L"Match whole word only" },
 { L"panel_match_case", L"Match case" },
 { L"panel_use_variables", L"Use Variables" },
 { L"panel_replace_first_match_only", L"Replace first match only" },
@@ -39,6 +37,11 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_show", L"Show" },
 { L"panel_hide", L"Hide" },
 { L"panel_help", L"?" },
+{ L"panel_all_files", L"All Files (*.*)" },
+{ L"panel_save_list", L"Save List As" },
+{ L"panel_csv", L"CSV Files (*.csv)" },
+{ L"panel_export_as_bash", L"Export as Bash" },
+{ L"panel_bash", L"Bash Files (*.sh)" },
 
 // Tooltips
 { L"tooltip_replace_all", L"Replace All" },
@@ -148,4 +151,17 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_confirm_delete_columns", L"Are you sure you want to delete $REPLACE_STRING column(s)?" },
 { L"msgbox_error_saving_settings", L"An error occurred while saving the settings:<br/>$REPLACE_STRING" },
 { L"msgbox_use_variables_execution_error", L"Execution halted due to execution failure in:<br/>$REPLACE_STRING" },
+{ L"msgbox_confirm_delete_single", L"Are you sure you want to delete this line?" },
+{ L"msgbox_confirm_delete_multiple", L"Are you sure you want to delete $REPLACE_STRING lines?" },
+
+// Context Menu Strings
+{ L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },
+{ L"ctxmenu_cut", L"Cu&t\tCtrl+X" },
+{ L"ctxmenu_copy", L"&Copy\tCtrl+C" },
+{ L"ctxmenu_paste", L"&Paste\tCtrl+V" },
+{ L"ctxmenu_edit", L"&Edit\t" },
+{ L"ctxmenu_delete", L"&Delete\tDel" },
+{ L"ctxmenu_select_all", L"&Select All\tCtrl+A" },
+{ L"ctxmenu_enable", L"&Enable\tAlt+E" },
+{ L"ctxmenu_disable", L"&Disable\tAlt+D" },
 };
