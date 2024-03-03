@@ -5,8 +5,6 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_find_what", L"Find what: "},
 { L"panel_replace_with", L"Replace with: "},
 { L"panel_match_whole_word_only", L"Match whole word only" },
-{ L"panel_replace_with", L"Replace with:"},
-{ L"panel_match_whole_word_only", L"Match whole word only" },
 { L"panel_match_case", L"Match case" },
 { L"panel_use_variables", L"Use Variables" },
 { L"panel_replace_first_match_only", L"Replace first match only" },
