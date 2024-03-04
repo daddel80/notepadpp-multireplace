@@ -1,6 +1,6 @@
 # MultiReplace for Notepad++
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-2.3.0.10-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/2.3.0.10)
+[![Latest Stable Version](https://img.shields.io/badge/version-2.4.0.11-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/2.4.0.11)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, proving useful across various sessions or projects. This enhancement increases efficiency when multiple replacements need to be made concurrently, thereby bolstering the overall functionality of Notepad++.
@@ -25,6 +25,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 - [Data Handling](#data-handling)
   - [Import/Export](#importexport)
   - [Bash Script Export](#bash-script-export)
+  - [Multilingual UI Support](#multilingual-ui-support)
   
 ## Key Features
 
@@ -66,7 +67,7 @@ Scope functions define the range for searching and replacing strings:
 - **Clipboard Column Copying**: Copy columns with original delimiters to clipboard.
 
 ### Header Line Sorting Control
-- Exclude header from sorting with `HeaderLines=1` in `[userdir]\AppData\Roaming\Notepad++\plugins\config\MultiReplace.ini`.
+- Exclude header from sorting with `HeaderLines=1` in `%USERPROFILE%\AppData\Roaming\Notepad++\plugins\config\MultiReplace\languages.ini`.
 
 ### Numeric Sorting in CSV
 - For accurate numeric sorting in CSV files, the following settings and regex patterns can be used:
@@ -213,3 +214,9 @@ MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math 
 ### Bash Script Export
 - Exports Find and Replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
 - This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
+
+### Multilingual UI Support
+The MultiReplace plugin offers a multilingual UI, enabling navigation in various languages through adjustments in the `languages.ini` file within the plugin's configuration directory:
+- `%APPDATA%\Notepad++\plugins\config\MultiReplace\languages.ini`
+
+This file enables users to select or customize the UI language settings, enhancing the accessibility and usability of the plugin for non-English speakers.
