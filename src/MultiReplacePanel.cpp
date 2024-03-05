@@ -4468,7 +4468,9 @@ void MultiReplace::handleClearDelimiterState() {
     isLoggingEnabled = false;
     textModified = false;
     logChanges.clear();
-    handleClearColumnMarks();
+    if (isColumnHighlighted) {
+        handleClearColumnMarks();
+    }
     isCaretPositionEnabled = false;
 }
 
