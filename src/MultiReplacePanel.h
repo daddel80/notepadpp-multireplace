@@ -376,6 +376,7 @@ private:
     int findCountColumnWidth; // Width of the "Find Count" column
     int replaceCountColumnWidth; // Width of the "Replace Count" column
 
+
     //Initialization
     void initializeWindowSize();
     RECT calculateMinWindowFrame(HWND hwnd);    
@@ -387,6 +388,7 @@ private:
     void moveAndResizeControls();
     void updateButtonVisibilityBasedOnMode();
     void updateStatisticsColumnButtonIcon();
+    void drawGripper();
 
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);

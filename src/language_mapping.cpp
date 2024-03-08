@@ -159,7 +159,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"ctxmenu_cut", L"Cu&t\tCtrl+X" },
 { L"ctxmenu_copy", L"&Copy\tCtrl+C" },
 { L"ctxmenu_paste", L"&Paste\tCtrl+V" },
-{ L"ctxmenu_edit", L"&Edit\t" },
+{ L"ctxmenu_edit", L"&Edit Field\t" },
 { L"ctxmenu_delete", L"&Delete\tDel" },
 { L"ctxmenu_select_all", L"&Select All\tCtrl+A" },
 { L"ctxmenu_enable", L"&Enable\tAlt+E" },

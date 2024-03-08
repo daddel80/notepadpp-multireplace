@@ -354,17 +354,18 @@ void MultiReplace::moveAndResizeControls() {
         }
     }
 
+    /*
     // IDs of controls to be redrawn
     const int redrawIds[] = {
         IDC_USE_LIST_CHECKBOX, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
         IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON,
         IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT
     };
-
+    
     // Redraw controls using stored HWNDs
     for (int ctrlId : redrawIds) {
         InvalidateRect(hwndMap[ctrlId], NULL, TRUE);
-    }
+    }*/
 }
 
 void MultiReplace::updateButtonVisibilityBasedOnMode() {
@@ -394,6 +395,52 @@ void MultiReplace::updateStatisticsColumnButtonIcon() {
     SetDlgItemText(_hSelf, ID_STATISTICS_COLUMNS, icon);
 
     //updateButtonTooltip(ID_STATISTICS_COLUMNS, tooltip);
+}
+
+void MultiReplace::drawGripper()
+{
+    PAINTSTRUCT ps;
+    HDC hdc = BeginPaint(_hSelf, &ps);
+
+    // Get the size of the client area
+    RECT rect;
+    GetClientRect(_hSelf, &rect);
+
+    // Determine where to draw the gripper
+    int gripperAreaSize = 13; // Total size of the gripper area
+    POINT startPoint = { rect.right - gripperAreaSize, rect.bottom - gripperAreaSize };
+
+    // Define the new size and reduced gap of the gripper dots
+    int dotSize = 3; // Increased dot size
+    int gap = 1; // Reduced gap between dots
+
+    // Brush Color for Gripper
+    HBRUSH hBrush = CreateSolidBrush(RGB(200, 200, 200));
+
+    // Matrix to identify the points to draw
+    int positions[3][3] = {
+        {0, 0, 1},
+        {0, 1, 1},
+        {1, 1, 1}
+    };
+
+    for (int row = 0; row < 3; row++)
+    {
+        for (int col = 0; col < 3; col++)
+        {
+            // Skip drawing for omitted positions
+            if (positions[row][col] == 0) continue;
+
+            int x = startPoint.x + col * (dotSize + gap);
+            int y = startPoint.y + row * (dotSize + gap);
+            RECT dotRect = { x, y, x + dotSize, y + dotSize };
+            FillRect(hdc, &dotRect, hBrush);
+        }
+    }
+
+    DeleteObject(hBrush);
+
+    EndPaint(_hSelf, &ps);
 }
 
 #pragma endregion
@@ -604,8 +651,8 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
     MoveWindow(listHwnd, 20, 284, newWidth - 260, newHeight - 295, TRUE);
 
     SendMessage(widths.listView, WM_SETREDRAW, TRUE, 0);
-    InvalidateRect(widths.listView, NULL, TRUE);
-    UpdateWindow(widths.listView);
+    //InvalidateRect(widths.listView, NULL, TRUE);
+    //UpdateWindow(widths.listView);
 
 }
 
@@ -1446,7 +1493,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_SIZE:
     {
-        if (isWindowOpen) {
+        if (isWindowOpen) {           
             // Force the edit control of the right mouse click to lose focus by setting focus to the main window
             if (isWindowOpen && hwndEdit && GetFocus() == hwndEdit) {
                 HWND hwndListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
@@ -1456,9 +1503,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             int newWidth = LOWORD(lParam);
             int newHeight = HIWORD(lParam);
 
-            // Update the global windowRect dimensions
-            GetWindowRect(_hSelf, &windowRect);
-
             // Move and resize the List
             updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), lParam);
 
@@ -1467,6 +1511,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             // Move all Elements
             moveAndResizeControls();
+
+            // Refresh UI and gripper by invalidating window
+            InvalidateRect(_hSelf, NULL, TRUE);
         }
         return 0;
     }
@@ -1740,6 +1787,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             handleClearTextMarksButton();
             handleClearDelimiterState();
         }
+    }
+    break;
+
+    case WM_PAINT:
+    {
+        drawGripper();
     }
     break;
 
