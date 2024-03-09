@@ -1870,8 +1870,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
+        case IDC_COLUMN_NUM_EDIT:
+        case IDC_DELIMITER_EDIT:
+        case IDC_QUOTECHAR_EDIT:
         case IDC_COLUMN_MODE_RADIO:
         {
+            CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_COLUMN_MODE_RADIO);        
             setElementsState(columnRadioDependentElements, true);
             setElementsState(selectionRadioDisabledButtons, true);
         }
@@ -5709,8 +5713,7 @@ void MultiReplace::saveSettings() {
 }
 
 void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
-
-    // Load combo box histories
+    // Loading the history for the Find and Replace text fields
     int findHistoryCount = readIntFromIniFile(iniFilePath, L"History", L"FindTextHistoryCount", 0);
     for (int i = 0; i < findHistoryCount; i++) {
         std::wstring findHistoryItem = readStringFromIniFile(iniFilePath, L"History", L"FindTextHistory" + std::to_wstring(i), L"");
@@ -5723,13 +5726,13 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceHistoryItem);
     }
 
-    // Read the current "Find what" and "Replace with" texts
+    // Reading and setting current "Find what" and "Replace with" texts
     std::wstring findText = readStringFromIniFile(iniFilePath, L"Current", L"FindText", L"");
     std::wstring replaceText = readStringFromIniFile(iniFilePath, L"Current", L"ReplaceText", L"");
-
     setTextInDialogItem(_hSelf, IDC_FIND_EDIT, findText);
     setTextInDialogItem(_hSelf, IDC_REPLACE_EDIT, replaceText);
 
+    // Setting options based on the INI file
     bool wholeWord = readBoolFromIniFile(iniFilePath, L"Options", L"WholeWord", false);
     SendMessage(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), BM_SETCHECK, wholeWord ? BST_CHECKED : BST_UNCHECKED, 0);
 
@@ -5739,10 +5742,9 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     bool useVariables = readBoolFromIniFile(iniFilePath, L"Options", L"UseVariables", false);
     SendMessage(GetDlgItem(_hSelf, IDC_USE_VARIABLES_CHECKBOX), BM_SETCHECK, useVariables ? BST_CHECKED : BST_UNCHECKED, 0);
 
+    // Selecting the appropriate search mode radio button based on the settings
     bool extended = readBoolFromIniFile(iniFilePath, L"Options", L"Extended", false);
     bool regex = readBoolFromIniFile(iniFilePath, L"Options", L"Regex", false);
-
-    // Select the appropriate radio button based on the settings
     if (regex) {
         CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_REGEX_RADIO);
         EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), SW_HIDE);
@@ -5754,11 +5756,12 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
         CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_NORMAL_RADIO);
     }
 
+    // Setting additional options
     bool wrapAround = readBoolFromIniFile(iniFilePath, L"Options", L"WrapAround", false);
     SendMessage(GetDlgItem(_hSelf, IDC_WRAP_AROUND_CHECKBOX), BM_SETCHECK, wrapAround ? BST_CHECKED : BST_UNCHECKED, 0);
 
-	bool replaceFirst = readBoolFromIniFile(iniFilePath, L"Options", L"ReplaceFirst", false);
-	SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_FIRST_CHECKBOX), BM_SETCHECK, replaceFirst ? BST_CHECKED : BST_UNCHECKED, 0);
+    bool replaceFirst = readBoolFromIniFile(iniFilePath, L"Options", L"ReplaceFirst", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_FIRST_CHECKBOX), BM_SETCHECK, replaceFirst ? BST_CHECKED : BST_UNCHECKED, 0);
 
     bool replaceButtonsMode = readBoolFromIniFile(iniFilePath, L"Options", L"ButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -5767,10 +5770,26 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, useList ? BST_CHECKED : BST_UNCHECKED, 0);
     EnableWindow(_replaceListView, useList);
 
-    // Load Scope
+    // Loading and setting the scope with enabled state check
     int selection = readIntFromIniFile(iniFilePath, L"Scope", L"Selection", 0);
     int columnMode = readIntFromIniFile(iniFilePath, L"Scope", L"ColumnMode", 0);
     BOOL isEnabled = ::IsWindowEnabled(GetDlgItem(_hSelf, IDC_SELECTION_RADIO));
+
+    // Reading and setting specific scope settings
+    std::wstring columnNum = readStringFromIniFile(iniFilePath, L"Scope", L"ColumnNum", L"");
+    setTextInDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT, columnNum);
+
+    std::wstring delimiter = readStringFromIniFile(iniFilePath, L"Scope", L"Delimiter", L"");
+    setTextInDialogItem(_hSelf, IDC_DELIMITER_EDIT, delimiter);
+
+    std::wstring quoteChar = readStringFromIniFile(iniFilePath, L"Scope", L"QuoteChar", L"");
+    setTextInDialogItem(_hSelf, IDC_QUOTECHAR_EDIT, quoteChar);
+
+    CSVheaderLinesCount = readIntFromIniFile(iniFilePath, L"Scope", L"HeaderLines", 1);
+
+    // Adjusting UI elements based on the selected scope
+    setElementsState(columnRadioDependentElements, columnMode);
+    setElementsState(selectionRadioDisabledButtons, !columnMode);
 
     if (selection && isEnabled) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_SELECTION_RADIO);
@@ -5782,26 +5801,6 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_ALL_TEXT_RADIO);
     }
 
-    BOOL columnModeSelected = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
-    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_NUM_EDIT), columnModeSelected);
-    EnableWindow(GetDlgItem(_hSelf, IDC_DELIMITER_EDIT), columnModeSelected);
-    EnableWindow(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), columnModeSelected);
-    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_SORT_DESC_BUTTON), columnModeSelected);
-    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_SORT_ASC_BUTTON), columnModeSelected);
-    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_DROP_BUTTON), columnModeSelected);
-    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), columnModeSelected);
-    EnableWindow(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), columnModeSelected);
-
-    std::wstring columnNum = readStringFromIniFile(iniFilePath, L"Scope", L"ColumnNum", L"");
-    setTextInDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT, columnNum);
-
-    std::wstring delimiter = readStringFromIniFile(iniFilePath, L"Scope", L"Delimiter", L"");
-    setTextInDialogItem(_hSelf, IDC_DELIMITER_EDIT, delimiter);
-
-    std::wstring quoteChar = readStringFromIniFile(iniFilePath, L"Scope", L"QuoteChar", L"");
-    setTextInDialogItem(_hSelf, IDC_QUOTECHAR_EDIT, quoteChar);
-
-    CSVheaderLinesCount = readIntFromIniFile(iniFilePath, L"Scope", L"HeaderLines", 1);
 }
 
 void MultiReplace::loadSettings() {
