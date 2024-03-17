@@ -63,6 +63,10 @@ std::map<int, ControlInfo> MultiReplace::ctrlMap;
 std::vector<MultiReplace::LogEntry> MultiReplace::logChanges;
 MultiReplace* MultiReplace::instance = nullptr;
 
+std::vector<size_t> MultiReplace::originalLineOrder;
+SortDirection MultiReplace::currentSortState = SortDirection::Unsorted;
+bool MultiReplace::isSortedColumn = false;
+
 #pragma warning(disable: 6262)
 
 #pragma region Initialization
@@ -128,8 +132,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_QUOTECHAR_STATIC] = { 616, 227, 40, 25, WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
     ctrlMap[IDC_QUOTECHAR_EDIT] = { 658, 227, 15, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , getLangStrLPCWSTR(L"tooltip_quote") };
 
-    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { 508, 186, 17, 25, WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
-    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { 526, 186, 17, 25, WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { 508, 186, 17, 25, WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { 526, 186, 17, 25, WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
     ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 554, 186, 25, 25, WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_drop_columns") };
     ctrlMap[IDC_COLUMN_COPY_BUTTON] = { 590, 186, 25, 25, WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP,  getLangStrLPCWSTR(L"tooltip_copy_columns") };
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 626, 186, 50, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_show"), BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
@@ -1224,13 +1228,13 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         std::wstring confirmationMessage;
 
         if (selectedCount == 1) {
-            confirmationMessage = getLangStr(L"delete_confirmation_single");
+            confirmationMessage = getLangStr(L"msgbox_confirm_delete_single");
         }
         else if (selectedCount > 1) {
-            confirmationMessage = getLangStr(L"delete_confirmation_multiple", { std::to_wstring(selectedCount) });
+            confirmationMessage = getLangStr(L"msgbox_confirm_delete_multiple", { std::to_wstring(selectedCount) });
         }
 
-        int msgBoxID = MessageBox(NULL, confirmationMessage.c_str(), getLangStr(L"confirmation").c_str(), MB_ICONWARNING | MB_YESNO);
+        int msgBoxID = MessageBox(NULL, confirmationMessage.c_str(), getLangStr(L"msgbox_title_confirm").c_str(), MB_ICONWARNING | MB_YESNO);
         if (msgBoxID == IDYES) {
             deleteSelectedLines(_replaceListView);
         }
@@ -1885,8 +1889,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             if (columnDelimiterData.isValid()) {
-                handleSortColumns(SortDirection::Ascending);
-            }
+                handleSortStateAndSort(SortDirection::Ascending);
+                UpdateSortButtonSymbols();
+            }            
         }
         break;
 
@@ -1894,7 +1899,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             if (columnDelimiterData.isValid()) {
-                handleSortColumns(SortDirection::Descending);
+                handleSortStateAndSort(SortDirection::Descending);
+                UpdateSortButtonSymbols();
             }
         }
         break;
@@ -3617,142 +3623,6 @@ void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
 
 #pragma region CSV
 
-void MultiReplace::handleSortColumns(SortDirection sortDirection)
-{
-    // Validate column delimiter data
-    if (!columnDelimiterData.isValid()) {
-        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), RGB(255, 0, 0));
-        return;
-    }
-    SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
-
-    std::vector<CombinedColumns> combinedData;
-    std::vector<size_t> index;
-    size_t lineCount = lineDelimiterPositions.size();
-    combinedData.reserve(lineCount); // Optimizing memory allocation
-    index.reserve(lineCount);
-
-    // Iterate through each line to extract content of specified columns
-    for (SIZE_T i = CSVheaderLinesCount; i < lineCount; ++i) {
-        const auto& lineInfo = lineDelimiterPositions[i];
-        CombinedColumns rowData;
-        rowData.columns.resize(columnDelimiterData.inputColumns.size());
-
-        size_t columnIndex = 0;
-        for (SIZE_T columnNumber : columnDelimiterData.inputColumns) {
-            LRESULT startPos, endPos;
-
-            // Calculate start and end positions for each column
-            if (columnNumber == 1) {
-                startPos = lineInfo.startPosition;
-            }
-            else if (columnNumber - 2 < lineInfo.positions.size()) {
-                startPos = lineInfo.positions[columnNumber - 2].position + columnDelimiterData.delimiterLength;
-            }
-            else {
-                continue;
-            }
-
-            if (columnNumber - 1 < lineInfo.positions.size()) {
-                endPos = lineInfo.positions[columnNumber - 1].position;
-            }
-            else {
-                endPos = lineInfo.endPosition;
-            }
-
-            // Buffer to hold the text
-            std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1);
-
-            // Prepare TextRange structure for Scintilla
-            Sci_TextRange tr;
-            tr.chrg.cpMin = startPos;
-            tr.chrg.cpMax = endPos;
-            tr.lpstrText = buffer.data();
-
-            // Extract text for the column
-            send(SCI_GETTEXTRANGE, 0, reinterpret_cast<sptr_t>(&tr), true);
-            rowData.columns[columnIndex++] = std::string(buffer.data());
-        }
-
-        combinedData.push_back(rowData);
-        index.push_back(i);
-    }
-
-    // Sorting logic
-    std::sort(index.begin(), index.end(), [&](const size_t& a, const size_t& b) {
-        // Adjusted indexing for actual data after headers
-        size_t adjustedA = a - CSVheaderLinesCount;
-        size_t adjustedB = b - CSVheaderLinesCount;
-
-        // Compare columns for sorting
-        for (size_t i = 0; i < columnDelimiterData.inputColumns.size(); ++i) {
-            if (combinedData[adjustedA].columns[i] != combinedData[adjustedB].columns[i]) {
-                return sortDirection == SortDirection::Ascending ?
-                    combinedData[adjustedA].columns[i] < combinedData[adjustedB].columns[i] :
-                    combinedData[adjustedA].columns[i] > combinedData[adjustedB].columns[i];
-            }
-        }
-        return false; // In case of a tie, maintain original order
-        });
-
-    // Reordering lines in Scintilla based on the sorted index
-    reorderLinesInScintilla(index);
-
-    SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
-}
-
-void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedIndex) {
-    std::string combinedHeaderLines;
-    std::string lineBreak = getEOLStyle();
-
-    // Adjust the number of header lines if it exceeds the total number of lines
-    SIZE_T actualHeaderLinesCount = CSVheaderLinesCount;
-    SIZE_T totalLineCount = SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
-    if (CSVheaderLinesCount > totalLineCount) actualHeaderLinesCount = totalLineCount;
-
-    // Extract and save the header lines
-    for (SIZE_T i = 0; i < actualHeaderLinesCount; ++i) {
-        LRESULT start = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, i, 0);
-        LRESULT end = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, i, 0);
-        std::vector<char> buffer(static_cast<size_t>(end - start) + 1);
-        Sci_TextRange tr{ start, end, buffer.data() };
-        SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
-        combinedHeaderLines += std::string(buffer.data());
-        // Add line break to each header, except the last if no sorted lines follow
-        if (i < actualHeaderLinesCount - 1 || (i == actualHeaderLinesCount - 1 && !sortedIndex.empty())) {
-            combinedHeaderLines += lineBreak;
-        }
-    }
-
-    // Extract the text of each line based on the sorted index
-    std::vector<std::string> lines;
-    lines.reserve(sortedIndex.size());
-    for (size_t i = 0; i < sortedIndex.size(); ++i) {
-        size_t idx = sortedIndex[i];
-        LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, idx, 0);
-        LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, idx, 0);
-        std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
-        Sci_TextRange tr{ lineStart, lineEnd, buffer.data() };
-        SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
-        lines.push_back(std::string(buffer.data()));
-        // Add line break except after the last sorted line
-        if (i < sortedIndex.size() - 1) {
-            lines.back() += lineBreak;
-        }
-    }
-
-    // Clear all content from Scintilla
-    SendMessage(_hScintilla, SCI_CLEARALL, 0, 0);
-
-    // Re-insert the header lines first
-    SendMessage(_hScintilla, SCI_APPENDTEXT, combinedHeaderLines.length(), reinterpret_cast<LPARAM>(combinedHeaderLines.c_str()));
-
-    // Re-insert the sorted lines
-    for (const auto& line : lines) {
-        SendMessage(_hScintilla, SCI_APPENDTEXT, line.length(), reinterpret_cast<LPARAM>(line.c_str()));
-    }
-}
-
 bool MultiReplace::confirmColumnDeletion() {
     // Attempt to parse columns and delimiters
     if (!parseColumnAndDelimiterData()) {
@@ -3901,6 +3771,270 @@ void MultiReplace::handleCopyColumnsToClipboard()
     // Convert to Wide String and Copy to Clipboard (Ensure this line only occurs once and wstr is not redefined)
     std::wstring wstr = stringToWString(combinedText);
     copyTextToClipboard(wstr, copiedFieldsCount);
+}
+
+#pragma endregion
+
+
+#pragma region CSV Sort
+
+std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, SIZE_T lineCount) {
+    std::vector<CombinedColumns> combinedData;
+    for (SIZE_T i = startLine; i < lineCount; ++i) {
+        const auto& lineInfo = lineDelimiterPositions[i]; // Stelle sicher, dass lineDelimiterPositions definiert ist
+        CombinedColumns rowData;
+        rowData.columns.resize(columnDelimiterData.inputColumns.size()); // Stelle sicher, dass columnDelimiterData definiert ist
+
+        size_t columnIndex = 0;
+        for (SIZE_T columnNumber : columnDelimiterData.inputColumns) {
+            LRESULT startPos, endPos;
+
+            // Berechne Start- und Endpositionen für jede Spalte
+            if (columnNumber == 1) {
+                startPos = lineInfo.startPosition;
+            }
+            else if (columnNumber - 2 < lineInfo.positions.size()) {
+                startPos = lineInfo.positions[columnNumber - 2].position + columnDelimiterData.delimiterLength;
+            }
+            else {
+                continue;
+            }
+
+            if (columnNumber - 1 < lineInfo.positions.size()) {
+                endPos = lineInfo.positions[columnNumber - 1].position;
+            }
+            else {
+                endPos = lineInfo.endPosition;
+            }
+
+            // Puffer, um den Text zu halten
+            std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1);
+            Sci_TextRange tr;
+            tr.chrg.cpMin = startPos;
+            tr.chrg.cpMax = endPos;
+            tr.lpstrText = buffer.data();
+
+            // Extrahiere Text für die Spalte
+            SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+            rowData.columns[columnIndex++] = std::string(buffer.data());
+        }
+
+        combinedData.push_back(rowData);
+    }
+
+    return combinedData;
+}
+
+void MultiReplace::sortRowsByColumn(SortDirection sortDirection) {
+    // Validate column delimiter data
+    if (!columnDelimiterData.isValid()) {
+        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), RGB(255, 0, 0));
+        return;
+    }
+    SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
+
+    size_t lineCount = lineDelimiterPositions.size();
+
+    // Check if there's nothing to sort or if the document has fewer lines than header lines
+    if (lineCount <= CSVheaderLinesCount) {
+        // Either nothing to sort or document consists only of header lines
+        SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
+        return;
+    }
+
+    std::vector<CombinedColumns> combinedData;
+    combinedData.reserve(lineCount); // Reserve space for all lines, including headers
+
+    // Initialize tempOrder with indices for all lines, including header lines
+    std::vector<size_t> tempOrder(lineCount);
+    for (size_t i = 0; i < lineCount; ++i) {
+        tempOrder[i] = i; // Manually filling tempOrder with 0, 1, ..., lineCount-1
+    }
+
+    // Extract content of specified columns, starting after header lines
+    combinedData = extractColumnData(CSVheaderLinesCount, lineDelimiterPositions.size());
+
+    // Sort the tempOrder based on combinedData, excluding header lines during comparison
+    std::sort(tempOrder.begin() + CSVheaderLinesCount, tempOrder.end(), [&](const size_t a, const size_t b) {
+        size_t adjustedA = a - CSVheaderLinesCount;
+        size_t adjustedB = b - CSVheaderLinesCount;
+        // Implement the sorting logic here, only for lines beyond the header lines
+        return sortDirection == SortDirection::Ascending ? combinedData[adjustedA].columns[0] < combinedData[adjustedB].columns[0] : combinedData[adjustedA].columns[0] > combinedData[adjustedB].columns[0];
+        });
+
+    // Adjust originalLineOrder based on the opposite sorting results
+    if (!originalLineOrder.empty()) {
+        std::vector<size_t> newOrder(originalLineOrder.size());
+        for (size_t i = 0; i < tempOrder.size(); ++i) {
+            size_t positionInOriginal = tempOrder[i];
+            size_t valueForNewOrder = originalLineOrder[positionInOriginal];
+            newOrder[i] = valueForNewOrder;
+        }
+        originalLineOrder = std::move(newOrder);
+    }
+    else {
+        originalLineOrder = tempOrder;
+    }
+
+    // Use tempOrder to reorder lines in Scintilla, adjusting for header lines
+    reorderLinesInScintilla(tempOrder);
+
+    SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
+}
+
+void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedIndex) {
+    std::string lineBreak = getEOLStyle();
+
+    isSortedColumn = false; // Stop logging changes
+    // Extract the text of each line based on the sorted index and include a line break after each
+    std::string combinedLines;
+    for (size_t i = 0; i < sortedIndex.size(); ++i) {
+        size_t idx = sortedIndex[i];
+        LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, idx, 0);
+        LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, idx, 0);
+        std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1); // Buffer size includes space for null terminator
+        Sci_TextRange tr;
+        tr.chrg.cpMin = lineStart;
+        tr.chrg.cpMax = lineEnd;
+        tr.lpstrText = buffer.data();
+        SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+        combinedLines += std::string(buffer.data(), buffer.size() - 1); // Exclude null terminator from the string
+        if (i < sortedIndex.size() - 1) {
+            combinedLines += lineBreak; // Add line break after each line except the last
+        }
+    }
+
+    // Clear all content from Scintilla
+    SendMessage(_hScintilla, SCI_CLEARALL, 0, 0);
+
+    // Re-insert the combined lines
+    SendMessage(_hScintilla, SCI_APPENDTEXT, combinedLines.length(), reinterpret_cast<LPARAM>(combinedLines.c_str()));
+
+    isSortedColumn = true; // Ready for logging changes
+}
+
+void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalOrder) {
+
+    // Determine the total number of lines in the document
+    size_t totalLineCount = SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
+
+    // Ensure the size of the originalOrder vector matches the number of lines in the document
+    auto maxElementIt = std::max_element(originalOrder.begin(), originalOrder.end());
+    if (maxElementIt == originalOrder.end() || *maxElementIt != totalLineCount - 1) {
+        return;
+    }
+
+    // Create a vector for the new sorted content of the document
+    std::vector<std::string> sortedLines(totalLineCount);
+    std::string lineBreak = getEOLStyle();
+
+    // Iterate through each line in the document and fill sortedLines according to originalOrder
+    for (size_t i = 0; i < totalLineCount; ++i) {
+        size_t newPosition = originalOrder[i];
+        LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, i, 0);
+        LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, i, 0);
+        std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
+        Sci_TextRange tr;
+        tr.chrg.cpMin = lineStart;
+        tr.chrg.cpMax = lineEnd;
+        tr.lpstrText = buffer.data();
+        SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+        sortedLines[newPosition] = std::string(buffer.data(), buffer.size() - 1); // Exclude null terminator
+    }
+
+    // Clear the content of the editor
+    SendMessage(_hScintilla, SCI_CLEARALL, 0, 0);
+
+    // Re-insert the lines in their original order
+    for (size_t i = 0; i < sortedLines.size(); ++i) {
+        //std::string message = "Inserting line at position: " + std::to_string(i) + "\nContent: " + sortedLines[i];
+        //MessageBoxA(NULL, message.c_str(), "Debug Insert Line", MB_OK);
+        SendMessage(_hScintilla, SCI_APPENDTEXT, sortedLines[i].length(), reinterpret_cast<LPARAM>(sortedLines[i].c_str()));
+        // Add a line break after each line except the last one
+        if (i < sortedLines.size() - 1) {
+            SendMessage(_hScintilla, SCI_APPENDTEXT, lineBreak.length(), reinterpret_cast<LPARAM>(lineBreak.c_str()));
+        }
+    }
+}
+
+void MultiReplace::extractLineContent(size_t idx, std::string& content, const std::string& lineBreak) {
+    LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, idx, 0);
+    LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, idx, 0);
+    std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
+    Sci_TextRange tr{ lineStart, lineEnd, buffer.data() };
+    SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+    content.assign(buffer.begin(), buffer.end() - 1); // Remove the null terminator
+    content += lineBreak;
+}
+
+void MultiReplace::UpdateSortButtonSymbols() {
+    HWND hwndAscButton = GetDlgItem(_hSelf, IDC_COLUMN_SORT_ASC_BUTTON);
+    HWND hwndDescButton = GetDlgItem(_hSelf, IDC_COLUMN_SORT_DESC_BUTTON);
+
+    switch (currentSortState) {
+    case SortDirection::Unsorted:
+        SetWindowText(hwndAscButton, symbolSortAsc);
+        SetWindowText(hwndDescButton, symbolSortDesc);
+        break;
+    case SortDirection::Ascending:
+        SetWindowText(hwndAscButton, symbolSortAscUnsorted);
+        SetWindowText(hwndDescButton, symbolSortDesc);
+        break;
+    case SortDirection::Descending:
+        SetWindowText(hwndAscButton, symbolSortAsc);
+        SetWindowText(hwndDescButton, symbolSortDescUnsorted);
+        break;
+    }
+}
+
+void MultiReplace::handleSortStateAndSort(SortDirection direction) {
+
+    if ((direction == SortDirection::Ascending && currentSortState == SortDirection::Ascending) ||
+        (direction == SortDirection::Descending && currentSortState == SortDirection::Descending)) {
+        isSortedColumn = false; //Disable logging of changes
+        restoreOriginalLineOrder(originalLineOrder);
+        currentSortState = SortDirection::Unsorted;
+        originalLineOrder.clear();
+    }
+    else {
+        currentSortState = (direction == SortDirection::Ascending) ? SortDirection::Ascending : SortDirection::Descending;
+        if (columnDelimiterData.isValid()) {
+            sortRowsByColumn(direction);
+        }
+    }
+}
+
+void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, ChangeType changeType) {
+    if (!isSortedColumn || lineNumber > originalLineOrder.size()) {
+        return; // Invalid line number, return early
+    }
+
+    switch (changeType) {
+    case ChangeType::Insert: {
+        // Find the current maximum value in originalLineOrder and add one for the new line placeholder
+        size_t maxIndex = originalLineOrder.empty() ? 0 : (*std::max_element(originalLineOrder.begin(), originalLineOrder.end())) + 1;
+        // Insert maxIndex for the new line at the specified position in originalLineOrder
+        originalLineOrder.insert(originalLineOrder.begin() + lineNumber, maxIndex);
+        break;
+    }
+
+    case ChangeType::Delete: {
+        // Ensure lineNumber is within the range before attempting to delete
+        if (lineNumber < originalLineOrder.size()) { // Safety check
+            // Element at lineNumber represents the actual index to be deleted
+            size_t actualIndexToDelete = originalLineOrder[lineNumber];
+            // Directly remove the index at lineNumber
+            originalLineOrder.erase(originalLineOrder.begin() + lineNumber);
+            // Adjust subsequent indices to reflect the deletion
+            for (size_t i = 0; i < originalLineOrder.size(); ++i) {
+                if (originalLineOrder[i] > actualIndexToDelete) {
+                    --originalLineOrder[i];
+                }
+            }
+        }
+        break;
+    }
+    }
 }
 
 #pragma endregion
@@ -4353,6 +4487,7 @@ void MultiReplace::processLogForDelimiters()
                 }
             }
             updateDelimitersInDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Insert);
+            updateUnsortedDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Insert);
             // this->messageBoxContent += "Line " + std::to_string(static_cast<int>(logEntry.lineNumber)) + " inserted.\n";
             // Add Insert entry as a Modify entry in modifyLogEntries
             logEntry.changeType = ChangeType::Modify;  // Convert Insert to Modify
@@ -4368,6 +4503,7 @@ void MultiReplace::processLogForDelimiters()
                 }
             }
             updateDelimitersInDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Delete);
+            updateUnsortedDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Delete);
             // this->messageBoxContent += "Line " + std::to_string(static_cast<int>(logEntry.lineNumber)) + " deleted.\n";
             break;
         case ChangeType::Modify:
@@ -6096,6 +6232,7 @@ void MultiReplace::onDocumentSwitched() {
         return;
     }
 
+    // for scanned delimiter
     int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
     if (currentBufferID != scannedDelimiterBufferID) {
         documentSwitched = true;
@@ -6107,6 +6244,12 @@ void MultiReplace::onDocumentSwitched() {
             instance->showStatusMessage(L"", RGB(0, 0, 0));
         }
     }
+
+    // for sorted Columns
+    originalLineOrder.clear();
+    currentSortState = SortDirection::Unsorted;
+    isSortedColumn = false;
+    instance->UpdateSortButtonSymbols();
 }
 
 void MultiReplace::pointerToScintilla() {

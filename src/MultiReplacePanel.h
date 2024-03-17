@@ -1,4 +1,4 @@
-// This file is part of Notepad++ project
+﻿// This file is part of Notepad++ project
 // Copyright (C)2023 Thomas Knoefel
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -171,6 +171,7 @@ enum class ItemAction {
 
 
 enum class SortDirection {
+    Unsorted,
     Ascending,
     Descending
 };
@@ -191,6 +192,12 @@ enum class LuaVariableType {
     Number,
     Boolean,
     None
+};
+
+enum class SortState {
+    Unsorted,
+    SortedAscending,
+    SortedDescending
 };
 
 struct LuaVariable {
@@ -267,6 +274,10 @@ public:
     static bool isCaretPositionEnabled;
     static bool isLuaErrorDialogEnabled;
 
+    static std::vector<size_t> originalLineOrder; // Stores the order of lines before sorting
+    static SortDirection currentSortState; // Status of column sort
+    static bool isSortedColumn; // Indicates if a column is sorted
+
     // Static methods for Event Handling
     static void onSelectionChanged();
     static void onTextChanged();
@@ -300,6 +311,10 @@ private:
 	static constexpr int COUNT_COLUMN_WIDTH = 50; // Initial Size for Count Column
     static constexpr int MIN_COLUMN_WIDTH = 60;  // Minimum size of Find and Replace Column
     static constexpr int STEP_SIZE = 5; // Speed for opening and closing Count Columns
+    static constexpr wchar_t* symbolSortAsc = L"▼";
+    static constexpr wchar_t* symbolSortDesc = L"▲";
+    static constexpr wchar_t* symbolSortAscUnsorted = L"▽";
+    static constexpr wchar_t* symbolSortDescUnsorted = L"△";
 
     // Static variables related to GUI 
     static HWND s_hScintilla;
@@ -350,7 +365,8 @@ private:
     std::map<int, bool> stateSnapshot; // stores the state of the Elements
     LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
     SIZE_T CSVheaderLinesCount = 1; // Number of header lines not included in CSV sorting
-	bool isStatisticsColumnsExpanded = false;
+	bool isStatisticsColumnsExpanded = false;    
+
 
     int _editingItemIndex;
     int _editingColumn;
@@ -368,7 +384,7 @@ private:
         IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
     };
     const std::vector<int> columnRadioDependentElements = {
-        /*IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT,*/ IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
+        IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
 
     // Window related settings
@@ -452,11 +468,19 @@ private:
     void copyTextToClipboard(const std::wstring& text, int textCount);
 
     //CSV
-    void handleSortColumns(SortDirection sortDirection);
-    void reorderLinesInScintilla(const std::vector<size_t>& sortedIndex);
     void handleCopyColumnsToClipboard();
     bool confirmColumnDeletion();
     void handleDeleteColumns();
+
+    //CSV Sort
+    std::vector<CombinedColumns> extractColumnData(SIZE_T startLine, SIZE_T lineCount);
+    void sortRowsByColumn(SortDirection sortDirection);
+    void reorderLinesInScintilla(const std::vector<size_t>& sortedIndex);
+    void restoreOriginalLineOrder(const std::vector<size_t>& originalOrder);
+    void extractLineContent(size_t idx, std::string& content, const std::string& lineBreak);
+    void UpdateSortButtonSymbols();
+    void handleSortStateAndSort(SortDirection direction);
+    void updateUnsortedDocument(SIZE_T lineNumber, ChangeType changeType);
 
     //Scope
     bool parseColumnAndDelimiterData();
@@ -472,7 +496,6 @@ private:
     void processLogForDelimiters();
     void handleDelimiterPositions(DelimiterOperation operation);
     void handleClearDelimiterState();
-    //void displayLogChangesInMessageBox();
 
     //Utilities
     int convertExtendedToString(const std::string& query, std::string& result);
