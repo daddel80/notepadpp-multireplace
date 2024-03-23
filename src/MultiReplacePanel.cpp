@@ -1096,7 +1096,8 @@ LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPAR
 void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state) {
     HMENU hMenu = CreatePopupMenu();
     if (hMenu) {
-        AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, getLangStr(L"ctxmenu_transfer_to_input_fields").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, getLangStr(L"ctxmenu_transfer_to_input_fields").c_str());        
+        AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_SEARCH_IN_LIST, getLangStr(L"ctxmenu_search_in_list").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_CUT_LINES_TO_CLIPBOARD, getLangStr(L"ctxmenu_cut").c_str());
         AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, getLangStr(L"ctxmenu_copy").c_str());
@@ -1121,6 +1122,10 @@ MenuState MultiReplace::checkMenuConditions(HWND listView, POINT ptScreen) {
     LVHITTESTINFO hitInfo = {};
     hitInfo.pt = ptClient;
     int hitTestResult = ListView_HitTest(listView, &hitInfo);
+
+    // Check if the list contains any items
+    int itemCount = ListView_GetItemCount(listView);
+    state.listNotEmpty = (itemCount > 0);
 
     // Check if column was clicked and set canEdit
     if (hitTestResult != -1) {
@@ -1191,7 +1196,11 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         }
     }
 
-    switch (action) {    
+    switch (action) {  
+    case ItemAction::Search: {
+        performSearchInList();
+        break;
+    }
     case ItemAction::Cut: {
         // Copy selected items to clipboard
         copySelectedItemsToClipboard(_replaceListView);
@@ -1434,6 +1443,75 @@ void MultiReplace::pasteItemsIntoList(int insertPosition) {
     InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
+void MultiReplace::performSearchInList() {
+    std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+    std::wstring replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
+
+    // Exit if both fields are empty
+    if (findText.empty() && replaceText.empty()) {
+        showStatusMessage(getLangStr(L"status_no_find_replace_list_input"), RGB(255, 0, 0));
+        return;
+    }
+
+    int startIdx = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED); // Get selected item or -1 if no selection
+    int matchIdx = searchInListData(startIdx, findText, replaceText);
+
+    if (matchIdx != -1) {
+        // Deselect all items first
+        int itemCount = ListView_GetItemCount(_replaceListView);
+        for (int i = 0; i < itemCount; ++i) {
+            ListView_SetItemState(_replaceListView, i, 0, LVIS_SELECTED | LVIS_FOCUSED);
+        }
+
+        // Highlight the matched item
+        ListView_SetItemState(_replaceListView, matchIdx, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+        ListView_EnsureVisible(_replaceListView, matchIdx, FALSE);
+        showStatusMessage(getLangStr(L"status_found_in_list"), RGB(0, 128, 0));
+    }
+    else {
+        // Show failure status message if no match found
+        showStatusMessage(getLangStr(L"status_not_found_in_list"), RGB(255, 0, 0));
+    }
+}
+
+int MultiReplace::searchInListData(int startIdx, const std::wstring& findText, const std::wstring& replaceText) {
+    int listSize = static_cast<int>(replaceListData.size());
+    bool searchFromStartAgain = true;
+
+    // If startIdx is -1 (no selection), start from the beginning
+    int i = (startIdx == -1) ? 0 : startIdx + 1;
+
+    while (true) {
+        if (i == listSize) {
+            if (searchFromStartAgain) {
+                // Restart search from the beginning until the original start index
+                i = 0;
+                searchFromStartAgain = false;
+            }
+            else {
+                // No match found
+                return -1;
+            }
+        }
+
+        if (i == startIdx) break; // Stop if we have searched the entire list
+
+        const auto& item = replaceListData[i];
+        bool findMatch = findText.empty() || item.findText.find(findText) != std::wstring::npos;
+        bool replaceMatch = replaceText.empty() || item.replaceText.find(replaceText) != std::wstring::npos;
+
+        if (findMatch && replaceMatch) {
+            // Match found
+            return i;
+        }
+
+        i++;
+    }
+
+    // No match found
+    return -1;
+}
+
 #pragma endregion
 
 
@@ -1670,6 +1748,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // Handling keyboard shortcuts for menu actions
                 if (GetKeyState(VK_CONTROL) & 0x8000) { // If Ctrl is pressed
                     switch (pnkd->wVKey) {
+                    case 'F': // Ctrl+F for Search in List
+                        performItemAction(_contextMenuClickPoint, ItemAction::Search);
+                        break;
                     case 'X': // Ctrl+X for Cut
                         performItemAction(_contextMenuClickPoint, ItemAction::Cut);
                         break;
@@ -2147,6 +2228,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             updateStatisticsColumnButtonIcon();
         }
 		break;
+
+        case IDM_SEARCH_IN_LIST:
+        {
+            performItemAction(_contextMenuClickPoint, ItemAction::Search);
+        }
+        break;
 
         case IDM_COPY_DATA_TO_FIELDS:
         {

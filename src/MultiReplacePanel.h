@@ -152,6 +152,7 @@ struct ContextMenuInfo {
 };
 
 struct MenuState {
+    bool listNotEmpty = false;
     bool canEdit = false;
     bool canCopy = false;
     bool canPaste = false;
@@ -162,6 +163,7 @@ struct MenuState {
 };
 
 enum class ItemAction {
+    Search,
     Edit,
     Paste,
     Copy,
@@ -435,6 +437,8 @@ private:
     void copySelectedItemsToClipboard(HWND listView);
     bool canPasteFromClipboard();
     void pasteItemsIntoList(int insertPosition);
+    void performSearchInList();
+    int searchInListData(int startIdx, const std::wstring& findText, const std::wstring& replaceText);
 
     //Replace
     void handleReplaceAllButton();

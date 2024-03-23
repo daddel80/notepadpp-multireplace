@@ -138,6 +138,9 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_wrapped_find", L"Wrapped '$REPLACE_STRING1'. Position: $REPLACE_STRING2" },
 { L"status_wrapped_no_find", L"Wrapped. Position: $REPLACE_STRING" },
 { L"status_line_and_column_position", L" (Line: $REPLACE_STRING, Column: $REPLACE_STRING1)" },
+{ L"status_no_find_replace_list_input", L"No 'Find' or 'Replace' string provided. Please enter a value." },
+{ L"status_found_in_list", L"Entry found in the list." },
+{ L"status_not_found_in_list", L"No entry found in the list based on input fields." },
 
 // MessageBox Titles
 { L"msgbox_title_error", L"Error" },
@@ -156,12 +159,13 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 
 // Context Menu Strings
 { L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },
+{ L"ctxmenu_search_in_list", L"&Search in List\tCtrl+F" },
 { L"ctxmenu_cut", L"Cu&t\tCtrl+X" },
 { L"ctxmenu_copy", L"&Copy\tCtrl+C" },
 { L"ctxmenu_paste", L"&Paste\tCtrl+V" },
 { L"ctxmenu_edit", L"&Edit Field\t" },
 { L"ctxmenu_delete", L"&Delete\tDel" },
-{ L"ctxmenu_select_all", L"&Select All\tCtrl+A" },
-{ L"ctxmenu_enable", L"&Enable\tAlt+E" },
-{ L"ctxmenu_disable", L"&Disable\tAlt+D" },
+{ L"ctxmenu_select_all", L"Select &All\tCtrl+A" },
+{ L"ctxmenu_enable", L"E&nable\tAlt+E" },
+{ L"ctxmenu_disable", L"D&isable\tAlt+D" },
 };
