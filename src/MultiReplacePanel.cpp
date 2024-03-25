@@ -231,7 +231,7 @@ void MultiReplace::initializeCtrlMap()
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
 
     // Prepopulate default values for CSV
-    SetDlgItemText(_hSelf, IDC_COLUMN_NUM_EDIT, L"1-20");
+    SetDlgItemText(_hSelf, IDC_COLUMN_NUM_EDIT, L"1-50");
     SetDlgItemText(_hSelf, IDC_DELIMITER_EDIT, L",");
     SetDlgItemText(_hSelf, IDC_QUOTECHAR_EDIT, L"\"");
 
