@@ -38,7 +38,7 @@ enum class Direction { Up, Down };
 
 struct ReplaceItemData
 {
-	size_t id = 0;
+    size_t id = 0;
     std::wstring findCount = L"";
     std::wstring replaceCount = L"";
     bool isEnabled = true;
@@ -180,12 +180,12 @@ enum class SortDirection {
 
 // Lua Engine
 struct LuaVariables {
-    int CNT =  0;
+    int CNT = 0;
     int LINE = 0;
     int LPOS = 0;
     int LCNT = 0;
     int APOS = 0;
-    int COL =  1;
+    int COL = 1;
     std::string MATCH;
 };
 
@@ -224,7 +224,7 @@ private:
     std::string message_;
 };
 
-class LuaSyntaxException : public std::exception {   
+class LuaSyntaxException : public std::exception {
 };
 
 class MultiReplace : public StaticDialog
@@ -267,7 +267,7 @@ public:
     static inline HWND getDialogHandle() {
         return s_hDlg;
     }
-    
+
     static bool isWindowOpen;
     static bool textModified;
     static bool documentSwitched;
@@ -310,7 +310,7 @@ private:
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
-	static constexpr int COUNT_COLUMN_WIDTH = 50; // Initial Size for Count Column
+    static constexpr int COUNT_COLUMN_WIDTH = 50; // Initial Size for Count Column
     static constexpr int MIN_COLUMN_WIDTH = 60;  // Minimum size of Find and Replace Column
     static constexpr int STEP_SIZE = 5; // Speed for opening and closing Count Columns
     static constexpr wchar_t* symbolSortAsc = L"▼";
@@ -367,7 +367,7 @@ private:
     std::map<int, bool> stateSnapshot; // stores the state of the Elements
     LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
     SIZE_T CSVheaderLinesCount = 1; // Number of header lines not included in CSV sorting
-	bool isStatisticsColumnsExpanded = false;    
+    bool isStatisticsColumnsExpanded = false;
 
 
     int _editingItemIndex;
@@ -375,7 +375,7 @@ private:
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
-	std::wstring findNextButtonText;        // member variable to ensure persists for button label throughout the object's lifetime.
+    std::wstring findNextButtonText;        // member variable to ensure persists for button label throughout the object's lifetime.
 
     // Scintilla related 
     SciFnDirect pSciMsg = nullptr;
@@ -397,7 +397,7 @@ private:
 
     //Initialization
     void initializeWindowSize();
-    RECT calculateMinWindowFrame(HWND hwnd);    
+    RECT calculateMinWindowFrame(HWND hwnd);
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();
@@ -451,7 +451,7 @@ private:
     void captureLuaGlobals(lua_State* L);
     void loadLuaGlobals(lua_State* L);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
-    void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
+    void setLuaVariable(lua_State* L, const std::string& varName, std::string value, bool regex);
 
     //Find
     void handleFindNextButton();
@@ -514,7 +514,7 @@ private:
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
     LRESULT getEOLLength();
-    std::string getEOLStyle(); 
+    std::string getEOLStyle();
     void setElementsState(const std::vector<int>& elements, bool enable);
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
     bool normalizeAndValidateNumber(std::string& str);
@@ -554,7 +554,7 @@ private:
     int readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue);
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
 
-	// Language
+    // Language
     void loadLanguage();
     void loadLanguageFromIni(const std::wstring& iniFilePath, const std::wstring& languageCode);
     std::wstring getLanguageFromNativeLangXML();

@@ -2754,6 +2754,8 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     lua_setglobal(L, "APOS");
     lua_pushnumber(L, vars.COL);
     lua_setglobal(L, "COL");
+    lua_pushboolean(L, regex);
+    lua_setglobal(L, "REGEX");
 
     // Convert numbers to integers
     luaL_dostring(L, "CNT = math.tointeger(CNT)");
@@ -2763,7 +2765,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     luaL_dostring(L, "APOS = math.tointeger(APOS)");
     luaL_dostring(L, "COL = math.tointeger(COL)");
 
-    setLuaVariable(L, "MATCH", vars.MATCH);
+    setLuaVariable(L, "MATCH", vars.MATCH, regex);
     // Get CAPs from Scintilla using SCI_GETTAG
     std::vector<std::string> caps;  // Initialize an empty vector to store the captures
 
@@ -2799,7 +2801,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     for (size_t i = 0; i < caps.size(); ++i) {
         std::string cap = caps[i];
         std::string globalVarName = "CAP" + std::to_string(i + 1);
-        setLuaVariable(L, globalVarName, cap);
+        setLuaVariable(L, globalVarName, cap, regex);
     }
 
     // Declare cond statement function
@@ -2925,11 +2927,15 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "      if value == nil then\n"
         "        error('Value missing in Init')\n"
         "      end\n"
+        "      -- Check if the value is a string and REGEX is true, then preprocess backslashes\n"
+        "      if type(value) == 'string' and REGEX then\n"
+        "        value = value:gsub('\\\\', '\\\\\\\\')\n"
+        "      end\n"
         "      _G[name] = value\n"
         "    end\n"
         "  end\n"
         "end\n");
-    
+
     // Show syntax error
     if (luaL_dostring(L, inputString.c_str()) != LUA_OK) {
         const char* cstr = lua_tostring(L, -1);
@@ -3006,7 +3012,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
 }
 
-void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std::string value) {
+void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std::string value, bool regex) {
     bool isNumber = normalizeAndValidateNumber(value);
     if (isNumber) {
         double doubleVal = std::stod(value);
@@ -3019,7 +3025,19 @@ void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std:
         }
     }
     else {
-        lua_pushstring(L, value.c_str());
+        std::string processedValue = value;
+        if (regex) {
+            processedValue.clear();
+            for (char c : value) {
+                if (c == '\\') {
+                    processedValue.append("\\\\");
+                }
+                else {
+                    processedValue.push_back(c);
+                }
+            }
+        }
+        lua_pushstring(L, processedValue.c_str());
     }
     lua_setglobal(L, varName.c_str());
 }
