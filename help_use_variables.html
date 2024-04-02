@@ -395,6 +395,9 @@ window.addEventListener("load", doPageLoad);
         <p>
             If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.
         </p>
+        <p>
+            <strong>Note</strong>: Do not embed <code>cond()</code>, <code>set()</code>, or <code>init()</code> within <code>if</code> statements; <code>if</code> statements are exclusively for adjusting custom variables.
+        </p>
         <h3>Syntax Combinations</h3>
         <ul>
             <li><code>if condition then ... end</code></li>
