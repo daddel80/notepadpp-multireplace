@@ -1,12 +1,32 @@
 # MultiReplace for Notepad++
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-2.1.0.8-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/2.1.0.8)
+[![Latest Stable Version](https://img.shields.io/badge/version-2.4.0.11-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/2.4.0.11)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, proving useful across various sessions or projects. This enhancement increases efficiency when multiple replacements need to be made concurrently, thereby bolstering the overall functionality of Notepad++.
 
 ![MultiReplace Screenshot](./MultiReplace.gif)
 
+## Table of Contents
+- [Key Features](#key-features)
+- [Match and Replace Options](#match-and-replace-options)
+- [Scope Functions](#scope-functions)
+- [CSV Processing Functions](#csv-processing-functions)
+  - [Sorting, Deleting, and Copying](#sorting-deleting-and-copying)
+  - [Header Line Sorting Control](#header-line-sorting-control)
+  - [Numeric Sorting in CSV](#numeric-sorting-in-csv)
+- [Option 'Use Variables'](#option-use-variables)
+  - [Variables Overview](#variables-overview)
+  - [Command Overview](#command-overview)
+- [User Interaction and List Management](#user-interaction-and-list-management)
+  - [Entry Management](#entry-management)
+  - [List Columns](#list-columns)
+  - [List Toggling](#list-toggling)
+- [Data Handling](#data-handling)
+  - [Import/Export](#importexport)
+  - [Bash Script Export](#bash-script-export)
+  - [Multilingual UI Support](#multilingual-ui-support)
+  
 ## Key Features
 
 -   **Multiple Replacements**: Execute multiple replacements in a single operation, in one document or across all opened documents.
@@ -21,20 +41,15 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 
 This chapter provides an overview of the various match and replace options available in MultiReplace, enhancing the flexibility and precision of your search and replace operations.
 
-### Match Whole Word Only
-When this option is enabled, the search term is matched only if it appears as a whole word. This is particularly useful for avoiding partial matches within larger words, ensuring more precise and targeted search results.
+**Match Whole Word Only:** When this option is enabled, the search term is matched only if it appears as a whole word. This is particularly useful for avoiding partial matches within larger words, ensuring more precise and targeted search results.
 
-### Match Case
-Selecting this option makes the search case-sensitive, meaning 'Hello' and 'hello' will be treated as distinct terms. It's useful for scenarios where the case of the letters is crucial to the search.
+**Match Case:** Selecting this option makes the search case-sensitive, meaning 'Hello' and 'hello' will be treated as distinct terms. It's useful for scenarios where the case of the letters is crucial to the search.
 
-### Use Variables
-This feature allows the use of variables within the replacement string for dynamic and conditional replacements. For more detailed information, refer to the [Option 'Use Variables' chapter](#option-use-variables).
+**Use Variables:** This feature allows the use of variables within the replacement string for dynamic and conditional replacements. For more detailed information, refer to the [Option 'Use Variables' chapter](#option-use-variables).
 
-### Replace First Match Only
-The "Replace First Match Only" option is ideal for Replace-All operations, where it replaces only the first occurrence of a match in each list entry. This is particularly useful for different replace strings with the same find pattern. It's designed for modifying only the initial match in a document or scope, while keeping other instances intact. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
+**Replace First Match Only:** The "Replace First Match Only" option is ideal for Replace-All operations, where it replaces only the first occurrence of a match in each list entry. This is particularly useful for different replace strings with the same find pattern. It's designed for modifying only the initial match in a document or scope, while keeping other instances intact. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
 
-### Wrap Around
-When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
+**Wrap Around:** When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
 
 ## Scope Functions
 Scope functions define the range for searching and replacing strings:
@@ -44,10 +59,30 @@ Scope functions define the range for searching and replacing strings:
     -   `Delim`: Define the delimiter character.
     -   `Quote`: Delineate areas where characters are not recognized as delimiters.
 
+## CSV Processing Functions
+
+### Sorting, Deleting, and Copying
+- **Sorting Lines in CSV by Columns**:Ascend or descend, combining columns in any prioritized order.
+- **Deleting Multiple Columns**: Remove multiple columns at once, cleaning obsolete delimiters.
+- **Clipboard Column Copying**: Copy columns with original delimiters to clipboard.
+
+### Header Line Sorting Control
+- Exclude header from sorting with `HeaderLines=1` in `%USERPROFILE%\AppData\Roaming\Notepad++\plugins\config\MultiReplace\languages.ini`.
+
+### Numeric Sorting in CSV
+- For accurate numeric sorting in CSV files, the following settings and regex patterns can be used:
+
+| Purpose                                   | Find Pattern        | Replace With   | Regex | Use Variables |
+|-------------------------------------------|---------------------|----------------|-------|---------------|
+| Align Numbers with Leading Zeros (Decimal)     | `\b(\d*)\.(\d{2})`  | `set(string.rep("0",9-string.len(string.format("%.2f", CAP1)))..string.format("%.2f", CAP1))` | Yes   | Yes           |
+| Align Numbers with Leading Zeros (Non-decimal) | `\b(\d+)`           | `set(string.rep("0",9-string.len(CAP1))..CAP1)` | Yes   | Yes           |
+| Remove Leading Zeros (Decimal)                 | `\b0+(\d*\.\d+)`    | `$1`           | Yes   | No            |
+| Remove Leading Zeros (Non-decimal)             | `\b0+(\d*)`         | `$1`           | Yes   | No            |
+
 ## Option 'Use Variables'
 Activate the '**Use Variables**' checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options.
 
-Note: Utilize either the `set()` or `cond()` command in 'Replace with:' to channel the output as the replacement string. Only one of these commands should be used at a time.
+**Note**: Utilize either the `set()` or `cond()` command in 'Replace with:' to channel the output as the replacement string. Only one of these commands should be used at a time.
 
 ### Variables Overview
 | Variable | Description |
@@ -59,8 +94,10 @@ Note: Utilize either the `set()` or `cond()` command in 'Replace with:' to chann
 | **LCNT** | Count of the detected string within the line. |
 | **COL**  | Column number where the string was found (CSV-Scope option selected).|
 | **MATCH**| Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
-| **CAP1**, **CAP2**, ...  | Correspond to capture groups $1, $2, ... in regex patterns. They can be used for calculations or as strings.|
-| |Note: For `MATCH` and `CAP` variables, both dot and comma can be used as decimal separators when they contain numerical values, but thousands separators are not supported. |
+| **CAP1**, **CAP2**, ...  | These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Unlike their counterparts ($1, $2, ...), they are specifically suited for calculations and conditional operations within this environment.|
+
+**Decimal Separator**<br>
+When `MATCH` and `CAP` variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.
 
 ### Command Overview
 #### String Composition
@@ -115,6 +152,8 @@ Formats numbers based on precision (maxDecimals) and whether the number of decim
 ### If-Then Logic
 If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.
 
+**Note**: Do not embed `cond()`, `set()`, or `init()` within if statements; if statements are exclusively for adjusting custom variables.
+
 ##### Syntax Combinations
 - `if condition then ... end`
 - `if condition then ... else ... end`
@@ -159,7 +198,7 @@ MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math 
 | **E**  | Extended |
 | **R**  | Regular expression |
 
-### Function Toggling
+### List Toggling
 - "Use List" checkbox toggles operation application between all list entries or the "Find what:" and "Replace with:" fields.
 
 ### Entry Management
@@ -177,3 +216,9 @@ MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math 
 ### Bash Script Export
 - Exports Find and Replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
 - This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
+
+### Multilingual UI Support
+The MultiReplace plugin offers a multilingual UI, enabling navigation in various languages through adjustments in the `languages.ini` file within the plugin's configuration directory:
+- `%APPDATA%\Notepad++\plugins\config\MultiReplace\languages.ini`
+
+This file enables users to select or customize the UI language settings, enhancing the accessibility and usability of the plugin for non-English speakers.
