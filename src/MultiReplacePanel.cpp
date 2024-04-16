@@ -1113,6 +1113,7 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
     }
 }
 
+/*
 MenuState MultiReplace::checkMenuConditions(HWND listView, POINT ptScreen) {
     MenuState state;
 
@@ -1173,6 +1174,83 @@ MenuState MultiReplace::checkMenuConditions(HWND listView, POINT ptScreen) {
 
     state.allEnabled = (selectedCount == enabledCount);
     state.allDisabled = (selectedCount == disabledCount);
+
+    return state;
+}
+*/
+
+MenuState MultiReplace::checkMenuConditions(HWND listView, POINT ptScreen) {
+    MenuState state;
+
+    // Convert screen coordinates to client coordinates
+    POINT ptClient = ptScreen;
+    ScreenToClient(listView, &ptClient);
+
+    // Perform hit testing to determine the exact location of the click within the ListView
+    LVHITTESTINFO hitInfo = {};
+    hitInfo.pt = ptClient;
+    int hitTestResult = ListView_HitTest(listView, &hitInfo);
+    state.clickedOnItem = (hitTestResult != -1);
+
+    // Calculate the total width of all columns to determine if a horizontal scrollbar is present
+    int totalWidth = 0;
+    HWND header = ListView_GetHeader(listView);
+    int columnCount = Header_GetItemCount(header);
+    for (int i = 0; i < columnCount; i++) {
+        totalWidth += ListView_GetColumnWidth(listView, i);
+    }
+
+    // Get the actual client area width of the ListView
+    RECT clientRect;
+    GetClientRect(listView, &clientRect);
+    int clientWidth = clientRect.right - clientRect.left;
+
+    // Determine if a horizontal scrollbar is present
+    bool horizontalScroll = (totalWidth > clientWidth);
+
+    // Set canEdit based on column clicked and the absence of a horizontal scrollbar
+    if (hitTestResult != -1 && !horizontalScroll) {
+        int clickedColumn = -1;
+        int cumulativeWidth = 0;
+
+        for (int i = 0; i < columnCount; i++) {
+            cumulativeWidth += ListView_GetColumnWidth(listView, i);
+            if (ptClient.x < cumulativeWidth) {
+                clickedColumn = i;
+                break;
+            }
+        }
+
+        if ((clickedColumn == 3) || (clickedColumn >= 4 && clickedColumn <= 10)) {
+            state.canEdit = true;
+        }
+    }
+
+    // Check if the list contains any items
+    state.listNotEmpty = (ListView_GetItemCount(listView) > 0);
+
+    // Check if the clipboard content is valid for pasting
+    state.canPaste = canPasteFromClipboard();
+
+    // Check if any items are selected to enable the delete option
+    state.hasSelection = (ListView_GetSelectedCount(listView) > 0);
+
+    // Check if all selected items are enabled or disabled
+    unsigned int enabledCount = 0;
+    unsigned int disabledCount = 0;
+    int itemIndex = -1;
+    while ((itemIndex = ListView_GetNextItem(listView, itemIndex, LVNI_SELECTED)) != -1) {
+        auto& itemData = replaceListData[itemIndex];
+        if (itemData.isEnabled) {
+            ++enabledCount;
+        }
+        else {
+            ++disabledCount;
+        }
+    }
+
+    state.allEnabled = (enabledCount == ListView_GetSelectedCount(listView));
+    state.allDisabled = (disabledCount == ListView_GetSelectedCount(listView));
 
     return state;
 }
