@@ -312,6 +312,7 @@ void MultiReplace::initializePluginStyle()
 
 void MultiReplace::initializeListView() {
     _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+    originalListViewProc = (WNDPROC)SetWindowLongPtr(_replaceListView, GWLP_WNDPROC, (LONG_PTR)ListViewSubclassProc);
     createListViewColumns(_replaceListView);
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     ListView_SetExtendedListViewStyle(_replaceListView, LVS_EX_FULLROWSELECT | LVS_EX_SUBITEMIMAGES);
@@ -1024,16 +1025,23 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
     // Determine the width of the current column
     int columnWidth = ListView_GetColumnWidth(_replaceListView, column);
 
+    // Get horizontal scroll position
+    SCROLLINFO siHorz = { sizeof(siHorz), SIF_POS };
+    GetScrollInfo(_replaceListView, SB_HORZ, &siHorz);
+
+    // Adjust X position by the horizontal scroll position
+    int correctedX = totalWidthBeforeColumn - siHorz.nPos;
+
     // Adjust Y position considering the scroll position and adding an offset for better alignment
     int rowHeight = 20; // Assumed row height, adjust as needed
-    SCROLLINFO si = { sizeof(si), SIF_POS };
-    GetScrollInfo(_replaceListView, SB_VERT, &si);
-    int visibleRowIndex = itemIndex - si.nPos; // Calculate the visible row index
+    SCROLLINFO siVert = { sizeof(siVert), SIF_POS };
+    GetScrollInfo(_replaceListView, SB_VERT, &siVert);
+    int visibleRowIndex = itemIndex - siVert.nPos; // Calculate the visible row index
     int correctedY = (visibleRowIndex + 1) * rowHeight + 3; // Adjust Y position downwards by 3 pixels
 
     // Create the Edit window with corrected coordinates and size
     hwndEdit = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-        totalWidthBeforeColumn, correctedY, columnWidth, rowHeight,
+        correctedX, correctedY, columnWidth, rowHeight,
         _replaceListView, NULL, (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE), NULL);
 
     // Set the initial text for the Edit window
@@ -1093,6 +1101,44 @@ LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPAR
     return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
 
+LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    MultiReplace* pThis = reinterpret_cast<MultiReplace*>(GetWindowLongPtr(GetParent(hwnd), GWLP_USERDATA));
+
+    switch (msg) {
+    case WM_VSCROLL:
+    case WM_MOUSEWHEEL:
+    case WM_HSCROLL:
+        // Close the edit control if it exists and is visible
+        if (pThis->hwndEdit && IsWindow(pThis->hwndEdit)) {
+            DestroyWindow(pThis->hwndEdit);
+            pThis->hwndEdit = NULL;
+        }
+        // Allow the default list view procedure to handle standard scrolling
+        break;
+
+    case WM_NOTIFY: {
+        NMHDR* pnmhdr = reinterpret_cast<NMHDR*>(lParam);
+        if (pnmhdr->hwndFrom == ListView_GetHeader(hwnd)) {
+            UINT code = static_cast<UINT>(pnmhdr->code);
+            if (code == HDN_ITEMCHANGEDW || code == HDN_ITEMCHANGEDA) {
+                if (pThis->hwndEdit && IsWindow(pThis->hwndEdit)) {
+                    DestroyWindow(pThis->hwndEdit);
+                    pThis->hwndEdit = NULL;
+                }
+            }
+        }
+        break;
+    }
+
+    default:
+        // No special handling needed
+        break;
+    }
+
+    // Always call the original procedure for default processing
+    return CallWindowProc(pThis->originalListViewProc, hwnd, msg, wParam, lParam);
+}
+
 void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state) {
     HMENU hMenu = CreatePopupMenu();
     if (hMenu) {
@@ -1126,52 +1172,30 @@ MenuState MultiReplace::checkMenuConditions(HWND listView, POINT ptScreen) {
     int hitTestResult = ListView_HitTest(listView, &hitInfo);
     state.clickedOnItem = (hitTestResult != -1);
 
-    // Calculate the total width of all columns to determine if a horizontal scrollbar is present
-    int totalWidth = 0;
-    HWND header = ListView_GetHeader(listView);
-    int columnCount = Header_GetItemCount(header);
+    // Assuming editing should be allowed regardless of the horizontal scroll presence:
+    int clickedColumn = -1;
+    int cumulativeWidth = 0;
+    int columnCount = Header_GetItemCount(ListView_GetHeader(listView));
+
     for (int i = 0; i < columnCount; i++) {
-        totalWidth += ListView_GetColumnWidth(listView, i);
-    }
-
-    // Get the actual client area width of the ListView
-    RECT clientRect;
-    GetClientRect(listView, &clientRect);
-    int clientWidth = clientRect.right - clientRect.left;
-
-    // Determine if a horizontal scrollbar is present
-    bool horizontalScroll = (totalWidth > clientWidth);
-
-    // Set canEdit based on column clicked and the absence of a horizontal scrollbar
-    if (hitTestResult != -1 && !horizontalScroll) {
-        int clickedColumn = -1;
-        int cumulativeWidth = 0;
-
-        for (int i = 0; i < columnCount; i++) {
-            cumulativeWidth += ListView_GetColumnWidth(listView, i);
-            if (ptClient.x < cumulativeWidth) {
-                clickedColumn = i;
-                break;
-            }
-        }
-
-        if ((clickedColumn == 3) || (clickedColumn >= 4 && clickedColumn <= 10)) {
-            state.canEdit = true;
+        cumulativeWidth += ListView_GetColumnWidth(listView, i);
+        if (ptClient.x < cumulativeWidth) {
+            clickedColumn = i;
+            break;
         }
     }
 
-    // Check if the list contains any items
+    // Enable editing if the clicked column is one of the editable columns and an item was actually clicked
+    if (state.clickedOnItem && ((clickedColumn == 3) || (clickedColumn >= 4 && clickedColumn <= 10))) {
+        state.canEdit = true;
+    }
+
+    // Rest of the checks remain the same
     state.listNotEmpty = (ListView_GetItemCount(listView) > 0);
-
-    // Check if the clipboard content is valid for pasting
     state.canPaste = canPasteFromClipboard();
-
-    // Check if any items are selected to enable the delete option
     state.hasSelection = (ListView_GetSelectedCount(listView) > 0);
+    unsigned int enabledCount = 0, disabledCount = 0;
 
-    // Check if all selected items are enabled or disabled
-    unsigned int enabledCount = 0;
-    unsigned int disabledCount = 0;
     int itemIndex = -1;
     while ((itemIndex = ListView_GetNextItem(listView, itemIndex, LVNI_SELECTED)) != -1) {
         auto& itemData = replaceListData[itemIndex];
@@ -1190,11 +1214,22 @@ MenuState MultiReplace::checkMenuConditions(HWND listView, POINT ptScreen) {
 }
 
 void MultiReplace::performItemAction(POINT pt, ItemAction action) {
+    // Get the horizontal scroll offset
+    SCROLLINFO si = {};
+    si.cbSize = sizeof(si);
+    si.fMask = SIF_POS;
+    GetScrollInfo(_replaceListView, SB_HORZ, &si);
+    int scrollX = si.nPos;
+
+    // Adjust point based on horizontal scroll
+    POINT ptAdjusted = pt;
+    ptAdjusted.x += scrollX;
+
     LVHITTESTINFO hitInfo = {};
-    hitInfo.pt = pt; // Use event-provided coordinates
+    hitInfo.pt = ptAdjusted; // Use adjusted coordinates
     int hitTestResult = ListView_HitTest(_replaceListView, &hitInfo);
 
-    // Calculate the clicked column based on the X coordinate
+    // Calculate the clicked column based on the adjusted X coordinate
     int clickedColumn = -1;
     int totalWidth = 0;
     HWND header = ListView_GetHeader(_replaceListView);
@@ -1202,13 +1237,13 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
 
     for (int i = 0; i < columnCount; i++) {
         totalWidth += ListView_GetColumnWidth(_replaceListView, i);
-        if (pt.x < totalWidth) {
+        if (ptAdjusted.x < totalWidth) {
             clickedColumn = i;
             break; // Column found
         }
     }
 
-    switch (action) {  
+    switch (action) {
     case ItemAction::Search: {
         performSearchInList();
         break;
@@ -1261,7 +1296,6 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         }
         break;
     }
-
     }
 }
 
@@ -1545,6 +1579,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         loadSettings();
         updateButtonVisibilityBasedOnMode();
 		updateStatisticsColumnButtonIcon();
+        
         // Activate Dark Mode
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
          return TRUE;
@@ -1576,6 +1611,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_DESTROY:
     {
+        if (_replaceListView && originalListViewProc) {
+            SetWindowLongPtr(_replaceListView, GWLP_WNDPROC, (LONG_PTR)originalListViewProc);
+        }
         saveSettings();
         if (hwndEdit) {
             DestroyWindow(hwndEdit);

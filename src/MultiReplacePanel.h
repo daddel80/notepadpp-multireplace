@@ -322,6 +322,7 @@ private:
     static HWND s_hScintilla;
     static HWND s_hDlg;
     HWND hwndEdit = NULL;
+    WNDPROC originalListViewProc;
     static std::map<int, ControlInfo> ctrlMap;
 
     // Instance-specific GUI-related variables 
@@ -430,6 +431,7 @@ private:
     //Contextmenu
     void toggleBooleanAt(int itemIndex, int Column);
     void editTextAt(int itemIndex, int column);
+    static LRESULT CALLBACK ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
     void createContextMenu(HWND hwnd, POINT ptScreen, MenuState state);
     MenuState checkMenuConditions(HWND listView, POINT ptScreen);
