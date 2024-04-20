@@ -22,6 +22,8 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
   - [Entry Management](#entry-management)
   - [List Columns](#list-columns)
   - [List Toggling](#list-toggling)
+  - [Statistical Columns Button](#statistical-columns-button)
+  - [Entry Interaction and Limits](#entry-interaction-and-limits)
 - [Data Handling](#data-handling)
   - [Import/Export](#importexport)
   - [Bash Script Export](#bash-script-export)
@@ -201,7 +203,13 @@ MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math 
 ### List Toggling
 - "Use List" checkbox toggles operation application between all list entries or the "Find what:" and "Replace with:" fields.
 
-### Entry Management
+### Statistical Columns Button
+- **Statistics Button**: Located to the left of the list, this button when clicked, opens two new columns:
+    - **Find Count**: Displays the number of times each 'Find what' string is detected.
+    - **Replace Count**: Shows the number of replacements made for each 'Replace what' string.
+- **Note**: The values in 'Find Count' and 'Replace Count' can differ, especially when 'Use Variables' is employed to conditionally modify text.
+
+### Entry Interaction and Limits
 - **Manage Entries**: Manage search and replace strings in a list, and enable or disable entries for replacement, highlighting or searching within the list.
 - **Highlighting**: Highlight multiple find words in unique colors for better visual distinction, with over 20 distinct colors available.
 - **Character Limit**: Field limits of 4096 characters for "Find what:" and "Replace with:" fields.
