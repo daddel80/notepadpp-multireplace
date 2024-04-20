@@ -68,7 +68,7 @@ Scope functions define the range for searching and replacing strings:
 - **Clipboard Column Copying**: Copy columns with original delimiters to clipboard.
 
 ### Header Line Sorting Control
-- Exclude header from sorting with `HeaderLines=1` in `%USERPROFILE%\AppData\Roaming\Notepad++\plugins\config\MultiReplace\languages.ini`.
+- **Exclude Header Lines from Sorting**: Set `HeaderLines=<number>` in `%USERPROFILE%\AppData\Roaming\Notepad++\plugins\config\MultiReplace\MultiReplace.ini` to specify the number of top lines to exclude from sorting as headers.
 
 ### Numeric Sorting in CSV
 - For accurate numeric sorting in CSV files, the following settings and regex patterns can be used:
