@@ -187,7 +187,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | Menu Item                | Shortcut      | Description                                     |
 |--------------------------|---------------|-------------------------------------------------|
 | Transfer to Input Fields | Alt+Up        | Transfers the selected entry to the input fields for editing.|
-| Search in List           | Ctrl+F        | Initiates a search within the list entries.     |
+| Search in List           | Ctrl+F        | Initiates a search within the list entries. Inputs are entered in the "Find what" and "Replace with" fields.|
 | Cut                      | Ctrl+X        | Cuts the selected entry to the clipboard.       |
 | Copy                     | Ctrl+C        | Copies the selected entry to the clipboard.     |
 | Paste                    | Ctrl+V        | Pastes content from the clipboard into the list.|
