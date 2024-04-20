@@ -166,6 +166,6 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"ctxmenu_edit", L"&Edit Field\t" },
 { L"ctxmenu_delete", L"&Delete\tDel" },
 { L"ctxmenu_select_all", L"Select &All\tCtrl+A" },
-{ L"ctxmenu_enable", L"E&nable\tAlt+E" },
+{ L"ctxmenu_enable", L"E&nable\tAlt+A" },
 { L"ctxmenu_disable", L"D&isable\tAlt+D" },
 };

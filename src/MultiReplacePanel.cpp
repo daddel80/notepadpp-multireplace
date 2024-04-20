@@ -1135,7 +1135,6 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         break;
     }
 
-    // Always call the original procedure for default processing
     return CallWindowProc(pThis->originalListViewProc, hwnd, msg, wParam, lParam);
 }
 
