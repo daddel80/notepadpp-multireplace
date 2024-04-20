@@ -3248,7 +3248,7 @@ SearchResult MultiReplace::performSingleSearch(const std::string& findTextUtf8, 
 
         // Consider the worst case for UTF-8, where one character could be up to 4 bytes.
         char buffer[MAX_TEXT_LENGTH * 4 + 1] = { 0 };  // Assuming UTF-8 encoding in Scintilla
-        Sci_TextRange tr;
+        Sci_TextRangeFull tr;
         tr.chrg.cpMin = static_cast<int>(result.pos);
         tr.chrg.cpMax = static_cast<int>(result.pos + result.length);
 
@@ -3258,7 +3258,7 @@ SearchResult MultiReplace::performSingleSearch(const std::string& findTextUtf8, 
         }
 
         tr.lpstrText = buffer;
-        send(SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+        send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
 
         result.foundText = std::string(buffer);        
 
@@ -3902,13 +3902,13 @@ void MultiReplace::handleCopyColumnsToClipboard()
                 std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1);
 
                 // Prepare TextRange structure for Scintilla
-                Sci_TextRange tr;
+                Sci_TextRangeFull tr;
                 tr.chrg.cpMin = startPos;
                 tr.chrg.cpMax = endPos;
                 tr.lpstrText = buffer.data();
 
                 // Extract text for the column
-                SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+                SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
                 lineText += std::string(buffer.data());
 
                 copiedFieldsCount++;
@@ -3963,13 +3963,13 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
 
             // Puffer, um den Text zu halten
             std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1);
-            Sci_TextRange tr;
+            Sci_TextRangeFull tr;
             tr.chrg.cpMin = startPos;
             tr.chrg.cpMax = endPos;
             tr.lpstrText = buffer.data();
 
             // Extrahiere Text für die Spalte
-            SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+            SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
             rowData.columns[columnIndex++] = std::string(buffer.data());
         }
 
@@ -4047,11 +4047,11 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
         LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, idx, 0);
         LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, idx, 0);
         std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1); // Buffer size includes space for null terminator
-        Sci_TextRange tr;
+        Sci_TextRangeFull tr;
         tr.chrg.cpMin = lineStart;
         tr.chrg.cpMax = lineEnd;
         tr.lpstrText = buffer.data();
-        SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+        SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
         combinedLines += std::string(buffer.data(), buffer.size() - 1); // Exclude null terminator from the string
         if (i < sortedIndex.size() - 1) {
             combinedLines += lineBreak; // Add line break after each line except the last
@@ -4088,11 +4088,11 @@ void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalO
         LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, i, 0);
         LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, i, 0);
         std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
-        Sci_TextRange tr;
+        Sci_TextRangeFull tr;
         tr.chrg.cpMin = lineStart;
         tr.chrg.cpMax = lineEnd;
         tr.lpstrText = buffer.data();
-        SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+        SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
         sortedLines[newPosition] = std::string(buffer.data(), buffer.size() - 1); // Exclude null terminator
     }
 
@@ -4115,8 +4115,8 @@ void MultiReplace::extractLineContent(size_t idx, std::string& content, const st
     LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, idx, 0);
     LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, idx, 0);
     std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
-    Sci_TextRange tr{ lineStart, lineEnd, buffer.data() };
-    SendMessage(_hScintilla, SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+    Sci_TextRangeFull tr{ lineStart, lineEnd, buffer.data() };
+    SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
     content.assign(buffer.begin(), buffer.end() - 1); // Remove the null terminator
     content += lineBreak;
 }
