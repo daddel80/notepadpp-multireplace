@@ -19,11 +19,10 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
   - [Variables Overview](#variables-overview)
   - [Command Overview](#command-overview)
 - [User Interaction and List Management](#user-interaction-and-list-management)
-  - [Entry Management](#entry-management)
+  - [Context Menu and Keyboard Shortcuts](#context-menu-and-keyboard-shortcuts)
   - [List Columns](#list-columns)
   - [List Toggling](#list-toggling)
   - [Statistical Columns Button](#statistical-columns-button)
-  - [Entry Interaction and Limits](#entry-interaction-and-limits)
 - [Data Handling](#data-handling)
   - [Import/Export](#importexport)
   - [Bash Script Export](#bash-script-export)
@@ -176,19 +175,31 @@ If-then logic is integral for dynamic replacements, allowing users to set custom
 | `-`                   | `cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), "*", " ")` | Draws a sine wave across a canvas of '-' characters spanning at least 20 lines and 80 characters per line. | No | No |
 | `^(.*)$`            | `init({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;` | Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses `MATCH_PREV` to identify and remove consecutive duplicates. | Yes | No  |
 
-  
-
 #### Engine Overview
 MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math operations and string methods. Refer to [Lua String Manipulation](https://www.lua.org/manual/5.1/manual.html#5.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.1/manual.html#5.6) for more information.
 
-## User Interaction and List Management
+### User Interaction and List Management
+Manage search and replace strings within the list using the context menu, which provides comprehensive functionalities accessible by right-clicking on an entry, using direct keyboard shortcuts, or mouse interactions. Here are the detailed actions available:
 
-### Entry Management
-- **Add into List Button**: Adds field contents along with their options into the list.
-- **Alt + Up Arrow / Double-Click**: Instantly transfer a row's contents with their options to fields.
-- **Space**: Adjusts selection for individual or multiple highlighted list entries.
-- **Alt-A / Alt-D**: Activates or deactivates all list entries when in focus.
-- **Delete Key / Delete Button (X)**: Select and delete rows.
+#### Context Menu and Keyboard Shortcuts
+Right-click on any entry in the list or use the corresponding keyboard shortcuts to access these options:
+
+| Menu Item                | Shortcut      | Description                                     |
+|--------------------------|---------------|-------------------------------------------------|
+| Transfer to Input Fields | Alt+Up        | Transfers the selected entry to the input fields for editing.|
+| Search in List           | Ctrl+F        | Initiates a search within the list entries.     |
+| Cut                      | Ctrl+X        | Cuts the selected entry to the clipboard.       |
+| Copy                     | Ctrl+C        | Copies the selected entry to the clipboard.     |
+| Paste                    | Ctrl+V        | Pastes content from the clipboard into the list.|
+| Edit Field               |               | Opens the selected entry for direct editing.    |
+| Delete                   | Del           | Removes the selected entry from the list.       |
+| Select All               | Ctrl+A        | Selects all entries in the list.                |
+| Enable                   | Alt+E         | Enables the selected entries, making them active for operations. |
+| Disable                  | Alt+D         | Disables the selected entries to prevent them from being included in operations. |
+
+Additional Interactions:
+- **Space Key**: Toggles the activation state of selected entries, similar to using Alt+E to enable or Alt+D to disable.
+- **Double-Click**: Mirrors the 'Transfer to Input Fields' action by transferring the contents of a row with their options to the input fields, equivalent to pressing Alt+Up.
 
 ### List Columns
 | Column | Description |
