@@ -64,6 +64,7 @@ Scope functions define the range for searching and replacing strings:
 
 ### Sorting, Deleting, and Copying
 - **Sorting Lines in CSV by Columns**:Ascend or descend, combining columns in any prioritized order.
+- **Toggle Sort**: Allows users to return columns to their initial unsorted state with just an extra click on the sorting button. This feature is effective even after rows are modified, deleted, or added.
 - **Deleting Multiple Columns**: Remove multiple columns at once, cleaning obsolete delimiters.
 - **Clipboard Column Copying**: Copy columns with original delimiters to clipboard.
 
