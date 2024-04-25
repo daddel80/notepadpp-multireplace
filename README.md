@@ -64,6 +64,7 @@ Scope functions define the range for searching and replacing strings:
 
 ### Sorting, Deleting, and Copying
 - **Sorting Lines in CSV by Columns**:Ascend or descend, combining columns in any prioritized order.
+- **Toggle Sort**: Allows users to return columns to their initial unsorted state with just an extra click on the sorting button. This feature is effective even after rows are modified, deleted, or added.
 - **Deleting Multiple Columns**: Remove multiple columns at once, cleaning obsolete delimiters.
 - **Clipboard Column Copying**: Copy columns with original delimiters to clipboard.
 
@@ -160,6 +161,11 @@ If-then logic is integral for dynamic replacements, allowing users to set custom
 - `if condition then ... else ... end`
 - `if condition then ... elseif another_condition then ... end`
 - `if condition then ... elseif another_condition then ... else ... end`
+
+##### Example
+This example shows how to use `if` statements with `cond()` to manage variables based on conditions:
+
+`init({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end`
 
 ### More Examples
 
