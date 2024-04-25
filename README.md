@@ -165,7 +165,7 @@ If-then logic is integral for dynamic replacements, allowing users to set custom
 ##### Example
 This example shows how to use `if` statements with `cond()` to manage variables based on conditions:
 
-`init({MVAR=""}); if CAP2 ~= nil then MVAR = MVAR..CAP2 end; cond(string.sub(CAP1, 1, 1) ~= "#", MVAR); if CAP2 ~= nil then MVAR=string.sub(CAP1, 4, -1) end`
+`init({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end`
 
 ### More Examples
 
