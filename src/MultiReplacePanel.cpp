@@ -214,26 +214,11 @@ void MultiReplace::initializeCtrlMap()
     SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
 
-    // CheckBox to Normal
-    CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_NORMAL_RADIO);
-
-    // CheckBox to All Text
-    CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_ALL_TEXT_RADIO);
-    setElementsState(columnRadioDependentElements, false);
-    
     // Enable IDC_SELECTION_RADIO based on text selection
     Sci_Position start = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
     Sci_Position end = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
     bool isTextSelected = (start != end);
     ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), isTextSelected);
-
-    // Enable the checkbox ID IDC_USE_LIST_CHECKBOX
-    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
-
-    // Prepopulate default values for CSV
-    SetDlgItemText(_hSelf, IDC_COLUMN_NUM_EDIT, L"1-50");
-    SetDlgItemText(_hSelf, IDC_DELIMITER_EDIT, L",");
-    SetDlgItemText(_hSelf, IDC_QUOTECHAR_EDIT, L"\"");
 
     isWindowOpen = true;
 }
@@ -6066,13 +6051,13 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     BOOL isEnabled = ::IsWindowEnabled(GetDlgItem(_hSelf, IDC_SELECTION_RADIO));
 
     // Reading and setting specific scope settings
-    std::wstring columnNum = readStringFromIniFile(iniFilePath, L"Scope", L"ColumnNum", L"");
+    std::wstring columnNum = readStringFromIniFile(iniFilePath, L"Scope", L"ColumnNum", L"1-50");
     setTextInDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT, columnNum);
 
-    std::wstring delimiter = readStringFromIniFile(iniFilePath, L"Scope", L"Delimiter", L"");
+    std::wstring delimiter = readStringFromIniFile(iniFilePath, L"Scope", L"Delimiter", L",");
     setTextInDialogItem(_hSelf, IDC_DELIMITER_EDIT, delimiter);
 
-    std::wstring quoteChar = readStringFromIniFile(iniFilePath, L"Scope", L"QuoteChar", L"");
+    std::wstring quoteChar = readStringFromIniFile(iniFilePath, L"Scope", L"QuoteChar", L"\"");
     setTextInDialogItem(_hSelf, IDC_QUOTECHAR_EDIT, quoteChar);
 
     CSVheaderLinesCount = readIntFromIniFile(iniFilePath, L"Scope", L"HeaderLines", 1);
