@@ -405,6 +405,11 @@ window.addEventListener("load", doPageLoad);
             <li><code>if condition then ... elseif another_condition then ... end</code></li>
             <li><code>if condition then ... elseif another_condition then ... else ... end</code></li>
         </ul>
+        <h3>Example</h3>
+        <p>
+            This example shows how to use <code>if</code> statements with <code>cond()</code> to manage variables based on conditions:
+        </p>
+           <code>init({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end</code>
     </section>
 
     <section id=FurtherFunctions>
