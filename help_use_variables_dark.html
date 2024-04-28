@@ -4,6 +4,89 @@
 <title>MultiRpelace Use Variables Option</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
+/* Dark Mode Base Styles */
+body.dark-mode                { background: #121212; color: #ccc; }
+
+/* Header and Footer Styles */
+body.dark-mode header, 
+body.dark-mode footer         { background: #1e1e1e; color: #ddd; border-color: #333; }
+
+/* Link Styles */
+body.dark-mode a              { color: #4ea8de; }
+body.dark-mode a:link         { color: #89b4ff; }
+body.dark-mode a:visited      { color: #89b4ff; }
+
+/* Navigation Link Styles in Dark Mode */
+body.dark-mode nav.pagenav {
+    background-color: #333;
+    padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    margin-bottom: 20px;
+}
+body.dark-mode nav.pagenav a         { color: #89b4ff; }
+body.dark-mode nav.pagenav a:visited { color: #89b4ff; }
+body.dark-mode nav.pagenav a:hover   { text-decoration: underline; }
+
+/* Main Content and Article Styling */
+body.dark-mode main, 
+body.dark-mode article               { background: #242424; }
+
+/* Footer Links */
+body.dark-mode footer a[rel=license], 
+body.dark-mode footer a[rel=license] img { color: #888; }
+
+/* Text Elements */
+body.dark-mode h1, 
+body.dark-mode h2, 
+body.dark-mode h3, 
+body.dark-mode p                     { color: #e0e0e0; }
+
+/* Interactive Elements */
+body.dark-mode #fontdown, 
+body.dark-mode #fontup               { background: #333; color: #fff; }
+body.dark-mode #fontdown:hover, 
+body.dark-mode #fontup:hover         { background: #444; color: #eee; }
+
+/* Additional UI Components */
+body.dark-mode main article section  { background: #333; border-color: #444; }
+body.dark-mode main article section.note { background: #2b2b2b; color: #ddd; }
+
+/* Table Styling */
+body.dark-mode table.optionsTable    { background: #333; color: #ddd; }
+body.dark-mode table.optionsTable th, 
+body.dark-mode table.optionsTable td { background: #2b2b2b; color: #ccc; }
+body.dark-mode table.optionsTable th { background: #333; }
+body.dark-mode table.optionsTable tr:hover { background: #3a3a3a; }
+
+/* Miscellaneous Adjustments */
+body.dark-mode span.mnemonic         { background: #4ea8de; color: #121212; }
+body.dark-mode ul, body.dark-mode li { color: #ddd; }
+
+/* Dark Mode Footer Text Styles */
+body.dark-mode #foottext             { flex: 1; margin: 0 1em; text-align: center; color: #ddd; }
+body.dark-mode #foottext a           { white-space: nowrap; text-decoration: none; color: #4ea8de; }
+body.dark-mode #foottext a:hover     { text-decoration: underline; color: #62d1c3; }
+body.dark-mode #foottext.linklist a:link    { color: #89b4ff; }
+body.dark-mode #foottext.linklist a:visited { color: #c678dd; }
+
+body.dark-mode code {
+    font-family: 'Fira Code', 'Consolas', monospace;
+    color: #abb2bf;
+    background-color: #282c34;
+    padding: 6px 8px;
+    border-radius: 5px;
+    border: 1px solid #3a3c43; /* Angepasste Randfarbe für besseren Kontrast */
+    font-weight: 600;
+    font-size: 0.9em;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3); /* Stärkerer Schatten für mehr Tiefe */
+    display: inline-block;
+    margin: 0 2px;
+    vertical-align: middle;
+    line-height: 1.4;
+}
+
+
 html, body                   {margin: 0; padding: 0; width: 100%; height: 100%;}
 body                         {display: flex; flex-direction: column; font: 1em Calibri, Tahoma, sans-serif;}
 
@@ -41,7 +124,7 @@ h3                           {font-size: 1rem; text-align: left; font-weight: bo
 
 main a                       {white-space: nowrap; text-decoration: none;}
 main a:link                  {color: #00c;}
-main a:visited               {color: #900;}
+main a:visited               {color: #00c;}
 main a:hover                 {text-decoration: underline;}
 
 @media (max-width:  480px)   {
@@ -77,7 +160,7 @@ body .pagenav a      {margin: 0 .5em; white-space: nowrap;}
 body #centershortlines ~ article h1        {max-width: calc(32em + 12px);}
 body #centershortlines ~ article section   {max-width: 48em;}
 
-p.subsub            {margin-left: 1.5em;}
+p.subsub              {margin-left: 1.5em;}
 
 table.justAlign       {border: none; margin: 0; border-collapse: collapse;}
 table.justAlign td    {border:none; padding: 0; font: inherit;}
@@ -92,36 +175,32 @@ body                {color: #000; background: #d0d0d0; line-height: 1.4;}
 *                   {border-color: #999;}
 #centershortlines   {width: calc((100vw - (13.5em + 48em + 2em + 24px)) / 2);}
 
+code {
+    font-family: 'Fira Code', 'Consolas', monospace;
+    color: #333;
+    background-color: #eef2f5;
+    padding: 6px 8px;
+    border-radius: 5px;
+    border: 1px solid #d1d6da;
+    font-weight: 600;
+    font-size: 0.9em;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
+    display: inline-block;
+    margin: 0 2px;
+    vertical-align: middle;
+    line-height: 1.4;
+}
 
-
-    code {
-        font-family: 'Fira Code', 'Consolas', monospace;
-        color: #333;
-        background-color: #eef2f5;
-        padding: 6px 8px;
-        border-radius: 5px;
-        border: 1px solid #d1d6da;
-        font-weight: 600;
-        font-size: 0.9em;
-        box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
-        display: inline-block;
-        margin: 0 2px;
-        vertical-align: middle;
-        line-height: 1.4;
-    }
-
-
-
-    table.optionsTable {
-        border-collapse: separate;
-        border-spacing: 0;
-        width: 100%;
-        margin: 1em auto;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        background: white;
-        border-radius: 8px;
-        overflow: hidden;
-    }
+table.optionsTable {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    margin: 1em auto;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+}
 
 table.optionsTable th,
 table.optionsTable td {
@@ -146,8 +225,9 @@ table.optionsTable tr:last-child td {
 
 table.optionsTable tr:hover {
     background-color: #ececec;
+}
 
-table.optionsTable .group {
+table .optionsTable .group {
     background-color: #d0d0d0;
     color: #333;
     text-align: center;
@@ -156,6 +236,9 @@ table.optionsTable .group {
 
 </style>
 <script>
+
+var isDarkModeEnabled = true;  // Set this variavle to true or false to activate or deactivate DarkMode
+
 function doPageLoad() {
     if (document.getElementById("fontdown")) {
         document.getElementById("fontdown").style.display = "inline-block";
@@ -163,7 +246,6 @@ function doPageLoad() {
         if (window.localStorage) {
             var n = localStorage.getItem("ColumnsPlusPlusFontSize");
             if (!isNaN(n) && n >= 9 && n <= 40) {
-                document.documentElement.style.fontSize = n + "px";
                 document.documentElement.style.fontSize = n + "px";
             }
         }
@@ -182,18 +264,28 @@ function setFontUp() {
     if (n < 40) ++n;
     document.documentElement.style.fontSize = n + "px";
     if (window.localStorage) localStorage.setItem("ColumnsPlusPlusFontSize", n);
-    if (window.getComputedStyle(document.body).display == "block") window.scrollBy(0,10000);
 }
 
-window.addEventListener("load", doPageLoad);
+function checkDarkMode() {
+    if (isDarkModeEnabled) {
+        document.body.classList.add('dark-mode');
+        console.log("Dark Mode On");
+    } else {
+        console.log("Dark Mode Off");
+    }
+}
 
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("Document loaded");
+    checkDarkMode();
+});
 
 </script>
+
 </head>
 <body>
 
-<header><header>MultiReplace: "Use Variables" Feature Guide</header>
-</header>
+<header>MultiReplace: "Use Variables" Feature Guide</header>
 
 <main>
 
@@ -261,7 +353,7 @@ window.addEventListener("load", doPageLoad);
                 <td>These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Unlike their counterparts ($1, $2, ...), they are specifically suited for calculations and conditional operations within this environment.</td>
             </tr>
             <tr>
-                <td colspan="2"><strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.</p></td>
+                <td colspan="2"><strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.</td>
             </tr>
         </table>
     </section>
@@ -276,12 +368,12 @@ window.addEventListener("load", doPageLoad);
                 <th>Result (assuming LINE = 5, CNT = 3)</th>
             </tr>
             <tr>
-                <td><code>set("replaceString"..CNT)</code></td>
-                <td>"replaceString3"</td>
+                <td><code>set(&quot;replaceString&quot;..CNT)</code></td>
+                <td>&quot;replaceString3&quot;</td>
             </tr>
             <tr>
                 <td><code>set(LINE+5)</code></td>
-                <td>"10"</td>
+                <td>&quot;10&quot;</td>
             </tr>
         </table>
 
@@ -293,21 +385,21 @@ window.addEventListener("load", doPageLoad);
                 <th>Result (assuming LINE = 5)</th>
             </tr>
             <tr>
-                <td><code>cond(LINE&lt;=5 or LINE&gt;=9, "edge", "center")</code></td>
-                <td>"edge"</td>
+                <td><code>cond(LINE&lt;=5 or LINE&gt;=9, &quot;edge&quot;, &quot;center&quot;)</code></td>
+                <td>&quot;edge&quot;</td>
             </tr>
             <tr>
-                <td><code>cond(LINE&lt;3, "Modify this line")</code></td>
+                <td><code>cond(LINE&lt;3, &quot;Modify this line&quot;)</code></td>
                 <td>(Original text remains unchanged)</td>
             </tr>
             <tr>
-                <td><code>cond(LINE&lt;10, cond(LINE&lt;5, cond(LINE&gt;2, "3-4", "0-2"), "5-9"), "10+")</code></td>
-                <td>"5-9" (Nested condition)</td>
+                <td><code>cond(LINE&lt;10, cond(LINE&lt;5, cond(LINE&gt;2, &quot;3-4&quot;, &quot;0-2&quot;), &quot;5-9&quot;) , &quot;10+&quot;)</code></td>
+                <td>&quot;5-9&quot; (Nested condition)</td>
             </tr>
         </table>
 		
         <h3>init({Variable1=Value1, Variable2=Value2, ...})</h3>
-        Initializes custom variables for use in various commands, extending beyond standard variables like CNT, MATCH, CAP1. These variables can carry the status of previous find-and-replace operations to subsequent ones.</p>
+        Initializes custom variables for use in various commands, extending beyond standard variables like CNT, MATCH, CAP1. These variables can carry the status of previous find-and-replace operations to subsequent ones.<p>
         <p>
             Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. So they can transfer values from one list entry to the following ones. They reset at the start of each new document in 'Replace All in All Open Documents'.
         </p>
@@ -342,19 +434,19 @@ window.addEventListener("load", doPageLoad);
             </tr>
             <tr>
                 <td><code>set(fmtN(5.73652, 2, true))</code></td>
-                <td>"5.74"</td>
+                <td>&quot;5.74&quot;</td>
             </tr>
             <tr>
                 <td><code>set(fmtN(5.0, 2, true))</code></td>
-                <td>"5.00"</td>
+                <td>&quot;5.00&quot;</td>
             </tr>
             <tr>
                 <td><code>set(fmtN(5.73652, 4, false))</code></td>
-                <td>"5.7365"</td>
+                <td>&quot;5.7365&quot;</td>
             </tr>
             <tr>
                 <td><code>set(fmtN(5.0, 4, false))</code></td>
-                <td>"5"</td>
+                <td>&quot;5&quot;</td>
             </tr>
         </table>
     </section>
@@ -370,7 +462,7 @@ window.addEventListener("load", doPageLoad);
             <tr>
                 <td>Concatenation</td>
                 <td><code>..</code></td>
-                <td><code>set("Found "..CNT)</code></td>
+                <td><code>set(&quot;Found &quot;..CNT)</code></td>
             </tr>
             <tr>
                 <td>Arithmetic</td>
@@ -380,12 +472,12 @@ window.addEventListener("load", doPageLoad);
             <tr>
                 <td>Relational</td>
                 <td><code>==</code>, <code>~=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code></td>
-                <td><code>cond(LINE == 1, "First", "Not first")</code></td>
+                <td><code>cond(LINE == 1, &quot;First&quot;, &quot;Not first&quot;)</code></td>
             </tr>
             <tr>
                 <td>Logical</td>
                 <td><code>and</code>, <code>or</code>, <code>not</code></td>
-                <td><code>cond(LINE &gt; 5 and CNT &lt; 10, "Midrange", "Other")</code></td>
+                <td><code>cond(LINE &gt; 5 and CNT &lt; 10, &quot;Midrange&quot;, &quot;Other&quot;)</code></td>
             </tr>
         </table>
     </section>
@@ -409,7 +501,7 @@ window.addEventListener("load", doPageLoad);
         <p>
             This example shows how to use <code>if</code> statements with <code>cond()</code> to manage variables based on conditions:
         </p>
-           <code>init({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end</code>
+           <code>init({MVAR=&quot;&quot;}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~=&quot;#&quot;, MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end</code>
     </section>
 
     <section id=FurtherFunctions>
@@ -429,35 +521,35 @@ window.addEventListener("load", doPageLoad);
             </tr>
             <tr>
                 <td><code>;</code></td>
-                <td><code>cond(LCNT==5,";Column5;")</code></td>
+                <td><code>cond(LCNT==5,&quot;;Column5;&quot;)</code></td>
                 <td>Adds a 5th Column for each line into a `;` delimited file.</td>
                 <td>No</td>
                 <td>No</td>
             </tr>
             <tr>
                 <td><code>key</code></td>
-                <td><code>set("key"..CNT)</code></td>
+                <td><code>set(&quot;key&quot;..CNT)</code></td>
                 <td>Enumerates key values by appending the count of detected strings. E.g., key1, key2, key3, etc.</td>
                 <td>No</td>
                 <td>No</td>
             </tr>
             <tr>
                 <td><code>(\d+)</code></td>
-                <td><code>set("$1€ The VAT is: ".. (CAP1 * 0.15).."€ Total with VAT: ".. (CAP1 + (CAP1 * 0.15)).."€")</code></td>
+                <td><code>set(&quot;$1€ The VAT is: &quot;.. (CAP1 * 0.15)..&quot;€ Total with VAT: &quot;.. (CAP1 + (CAP1 * 0.15))..&quot;€&quot;)</code></td>
                 <td>Finds a number and calculates the VAT at 15%, then displays the original amount, the VAT, and the total amount. E.g., `50` becomes `50€ The VAT is: 7.5€ Total with VAT: 57.5€`</td>
                 <td>Yes</td>
                 <td>No</td>
             </tr>
             <tr>
                 <td><code>---</code></td>
-                <td><code>cond(COL==1 and LINE<3, "0-2" , cond(COL==2 and LINE>2 and LINE<5, "3-4" , cond(COL==3 and LINE>=5 and LINE<10, "5-9" , cond(COL==4 and LINE>=10, "10+"))))</code></td>
+                <td><code>cond(COL==1 and LINE&lt;3, &quot;0-2&quot; , cond(COL==2 and LINE&gt;2 and LINE&lt;5, &quot;3-4&quot; , cond(COL==3 and LINE&gt;=5 and LINE&lt;10, &quot;5-9&quot; , cond(COL==4 and LINE&gt;=10, &quot;10+&quot;))))</code></td>
                 <td>Replaces `---` with a specific range based on the `COL` and `LINE` values. E.g., `3-4` in column 2 of lines 3-4, and `5-9` in column 3 of lines 5-9 assuming `---` is found in all lines and columns.</td>
                 <td>No</td>
                 <td>Yes</td>
             </tr>
             <tr>
                 <td><code>(\d+)\.(\d+)\.(\d+)</code></td>
-                <td><code>cond(CAP1 > 0 and CAP2 == 0 and CAP3 == 0, MATCH, cond(CAP2 > 0 and CAP3 == 0, " " .. MATCH, " " .. MATCH))</code></td>
+                <td><code>cond(CAP1 &gt; 0 and CAP2 == 0 and CAP3 == 0, MATCH, cond(CAP2 &gt; 0 and CAP3 == 0, &quot; &quot; .. MATCH, &quot; &quot; .. MATCH))</code></td>
                 <td>Alters the spacing based on the hierarchy of the version numbers, aligning lower hierarchies with spaces as needed. E.g., `1.0.0` remains `1.0.0`, `1.2.0` becomes ` 1.2.0`, indicating a second-level version change.</td>
                 <td>Yes</td>
                 <td>No</td>
@@ -471,14 +563,14 @@ window.addEventListener("load", doPageLoad);
             </tr>
             <tr>
                 <td><code>;</code></td>
-                <td><code>cond(LCNT == 1, string.rep(" ", 20- (LPOS))..";")</code></td>
+                <td><code>cond(LCNT == 1, string.rep(&quot; &quot;, 20- (LPOS))..&quot;;&quot;)</code></td>
                 <td>Inserts spaces before the semicolon to align it to the 20th character position if it's the first occurrence.</td>
                 <td>No</td>
                 <td>No</td>
             </tr>
             <tr>
                 <td><code>-</code></td>
-                <td><code>cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), "*", " ")</code></td>
+                <td><code>cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), &quot;*&quot;, &quot; &quot;)</code></td>
                 <td>Draws a sine wave across a canvas of '-' characters spanning at least 20 lines and 80 characters per line.</td>
                 <td>No</td>
                 <td>No</td>

@@ -1926,7 +1926,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             auto n = SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, 0, 0);
             std::wstring path(n, 0);
             SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, n + 1, reinterpret_cast<LPARAM>(path.data()));
-            path += L"\\MultiReplace\\help_use_variables.html";
+            path += L"\\MultiReplace";
+            BOOL isDarkMode = SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != FALSE;
+            std::wstring filename = isDarkMode ? L"\\help_use_variables_dark.html" : L"\\help_use_variables_light.html";
+            path += filename;
             ShellExecute(NULL, L"open", path.c_str(), NULL, NULL, SW_SHOWNORMAL);
         }
         break;

@@ -212,7 +212,8 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\help_use_variables.html" />
+    <None Include="..\help_use_variables_light.html" />
     <None Include="..\languages.ini" />
+    <None Include="..\help_use_variables_dark.html" />
   </ItemGroup>
 </Project>
