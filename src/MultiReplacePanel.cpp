@@ -1883,6 +1883,21 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             POINT ptScreen;
             ptScreen.x = LOWORD(lParam);
             ptScreen.y = HIWORD(lParam);
+
+            // Get the size of the virtual screen (the total width and height of all monitors)
+            int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+            int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+
+            // Check if the x-coordinates are outside the expected range and adjust
+            if (ptScreen.x > virtualWidth) {
+                ptScreen.x -= 65536; // Adjust for potential overflow
+            }
+
+            // Check if the y-coordinates are outside the expected range and adjust
+            if (ptScreen.y > virtualHeight) {
+                ptScreen.y -= 65536; // Adjust for potential overflow
+            }
+
             _contextMenuClickPoint = ptScreen; // Store initial click point for later action determination
             ScreenToClient(_replaceListView, &_contextMenuClickPoint); // Convert to client coordinates for hit testing
             MenuState state = checkMenuConditions(_replaceListView, ptScreen);
