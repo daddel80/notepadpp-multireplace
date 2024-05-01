@@ -438,7 +438,7 @@ private:
     void performItemAction(POINT pt, ItemAction action);
     void copySelectedItemsToClipboard(HWND listView);
     bool canPasteFromClipboard();
-    void pasteItemsIntoList(int insertPosition);
+    void pasteItemsIntoList();
     void performSearchInList();
     int searchInListData(int startIdx, const std::wstring& findText, const std::wstring& replaceText);
 

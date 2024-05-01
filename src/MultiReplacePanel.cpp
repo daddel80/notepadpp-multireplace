@@ -1245,9 +1245,8 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         break;
     }
     case ItemAction::Paste: {
-        // Determine insert position based on hit test; use hitTestResult directly if item was clicked
-        int insertPosition = hitTestResult != -1 ? hitTestResult : -1;
-        pasteItemsIntoList(insertPosition);
+        // Paste items into list
+        pasteItemsIntoList();
         break;
     }
     case ItemAction::Edit: {
@@ -1391,7 +1390,7 @@ bool MultiReplace::canPasteFromClipboard() {
     return canPaste;
 }
 
-void MultiReplace::pasteItemsIntoList(int insertPosition) {
+void MultiReplace::pasteItemsIntoList() {
     if (!OpenClipboard(NULL)) {
         return; // Abort if the clipboard cannot be opened
     }
@@ -1415,6 +1414,17 @@ void MultiReplace::pasteItemsIntoList(int insertPosition) {
     std::wstringstream contentStream(content);
     std::wstring line;
     std::vector<int> insertedItemsIndices; // To track indices of inserted items
+
+    // Determine insert position based on focused item or default to end if none is focused
+    int insertPosition = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
+    if (insertPosition != -1) {
+        // Increase by one to insert after the focused item
+        insertPosition++;
+    }
+    else {
+        // If no item is focused, consider the paste position as the end of the list
+        insertPosition = ListView_GetItemCount(_replaceListView);
+    }
 
     while (std::getline(contentStream, line)) {
         if (line.empty()) continue; // Skip empty lines
@@ -1452,14 +1462,14 @@ void MultiReplace::pasteItemsIntoList(int insertPosition) {
         item.regex = std::stoi(columns[7]) != 0;
 
         // Inserting item into the list
-        if (insertPosition >= 0 && static_cast<size_t>(insertPosition) < replaceListData.size()) {
+        if (static_cast<size_t>(insertPosition) < replaceListData.size()) {
             replaceListData.insert(replaceListData.begin() + insertPosition, item);
             insertedItemsIndices.push_back(insertPosition); // Track inserted item index
             ++insertPosition; // Adjust position for the next insert
         }
         else {
             replaceListData.push_back(item);
-            insertedItemsIndices.push_back(static_cast<int>(replaceListData.size() - 1));// Track inserted item index at the end
+            insertedItemsIndices.push_back(static_cast<int>(replaceListData.size() - 1)); // Track inserted item index at the end
         }
     }
 
