@@ -40,7 +40,7 @@
 #include <windows.h>
 #include <filesystem> 
 #include <lua.hpp> 
-
+#include <unordered_set>
 
 #ifdef UNICODE
 #define generic_strtoul wcstoul
@@ -3065,35 +3065,37 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 }
 
 void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std::string value, bool regex) {
+    // Check if the input string is a number
     bool isNumber = normalizeAndValidateNumber(value);
     if (isNumber) {
         double doubleVal = std::stod(value);
         int intVal = static_cast<int>(doubleVal);
         if (doubleVal == static_cast<double>(intVal)) {
-            lua_pushinteger(L, intVal);
+            lua_pushinteger(L, intVal); // Push as integer if value is integral
         }
         else {
-            lua_pushnumber(L, doubleVal);
+            lua_pushnumber(L, doubleVal); // Push as floating-point number otherwise
         }
     }
     else {
         std::string processedValue = value;
         if (regex) {
+            // Set of characters that need to be escaped in a regex pattern
+            const std::unordered_set<char> regexSpecialChars = {
+                '\\', '^', '$', '.', '|', '?', '*', '+', '(', ')', '[', ']', '{', '}' };
+
             processedValue.clear();
             for (char c : value) {
-                if (c == '\\') {
-                    processedValue.append("\\\\");
+                if (regexSpecialChars.find(c) != regexSpecialChars.end()) {
+                    processedValue.append("\\"); // Escape special characters
                 }
-                else {
-                    processedValue.push_back(c);
-                }
+                processedValue.push_back(c);
             }
         }
-        lua_pushstring(L, processedValue.c_str());
+        lua_pushstring(L, processedValue.c_str()); // Push the processed string to Lua
     }
-    lua_setglobal(L, varName.c_str());
+    lua_setglobal(L, varName.c_str()); // Set the global variable in Lua
 }
-
 #pragma endregion
 
 
