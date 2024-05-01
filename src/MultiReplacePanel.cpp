@@ -1436,7 +1436,6 @@ void MultiReplace::pasteItemsIntoList() {
         for (const wchar_t& ch : line) {
             if (ch == L'"') {
                 insideQuotes = !insideQuotes;
-                continue;
             }
             if (ch == L',' && !insideQuotes) {
                 columns.push_back(unescapeCsvValue(currentValue));
@@ -1452,14 +1451,19 @@ void MultiReplace::pasteItemsIntoList() {
         if (columns.size() != 8 || columns[1].empty()) continue;
 
         ReplaceItemData item;
-        item.isEnabled = std::stoi(columns[0]) != 0;
-        item.findText = columns[1];
-        item.replaceText = columns[2];
-        item.wholeWord = std::stoi(columns[3]) != 0;
-        item.matchCase = std::stoi(columns[4]) != 0;
-        item.useVariables = std::stoi(columns[5]) != 0;
-        item.extended = std::stoi(columns[6]) != 0;
-        item.regex = std::stoi(columns[7]) != 0;
+        try {
+            item.isEnabled = std::stoi(columns[0]) != 0;
+            item.findText = columns[1];
+            item.replaceText = columns[2];
+            item.wholeWord = std::stoi(columns[3]) != 0;
+            item.matchCase = std::stoi(columns[4]) != 0;
+            item.useVariables = std::stoi(columns[5]) != 0;
+            item.extended = std::stoi(columns[6]) != 0;
+            item.regex = std::stoi(columns[7]) != 0;
+        }
+        catch (const std::exception&) {
+            continue; // Silently ignore lines with conversion errors
+        }
 
         // Inserting item into the list
         if (static_cast<size_t>(insertPosition) < replaceListData.size()) {
