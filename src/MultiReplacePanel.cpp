@@ -1054,6 +1054,35 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
 
 LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
     switch (msg) {
+    case WM_PASTE: {
+        // Check if the clipboard contains Unicode text
+        if (IsClipboardFormatAvailable(CF_UNICODETEXT)) {
+            if (OpenClipboard(hwnd)) {
+                HGLOBAL hglb = GetClipboardData(CF_UNICODETEXT);
+                if (hglb != NULL) {
+                    // Retrieve text from the clipboard
+                    wchar_t* lptstr = static_cast<wchar_t*>(GlobalLock(hglb));
+                    if (lptstr != NULL) {
+                        // Remove newlines from the clipboard text
+                        std::wstring text = lptstr;
+                        std::wstring cleanText;
+                        for (wchar_t ch : text) {
+                            if (ch != L'\n' && ch != L'\r') {
+                                cleanText += ch;
+                            }
+                        }
+                        GlobalUnlock(hglb);
+
+                        // Set the cleaned text in the edit field
+                        SetWindowText(hwnd, cleanText.c_str());
+                    }
+                }
+                CloseClipboard();
+            }
+            return 0; // Mark the message as handled
+        }
+        break;
+    }
     case WM_KILLFOCUS: {
         MultiReplace* pThis = reinterpret_cast<MultiReplace*>(dwRefData);
 
