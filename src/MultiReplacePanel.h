@@ -452,8 +452,9 @@ private:
     SelectionInfo getSelectionInfo();
     void captureLuaGlobals(lua_State* L);
     void loadLuaGlobals(lua_State* L);
+    std::string escapeForRegex(const std::string& input);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
-    void setLuaVariable(lua_State* L, const std::string& varName, std::string value, bool regex);
+    void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
 
     //Find
     void handleFindNextButton();
@@ -526,7 +527,7 @@ private:
     std::string wstringToString(const std::wstring& input) const;
     std::wstring MultiReplace::utf8ToWString(const char* cstr) const;
     std::string utf8ToCodepage(const std::string& utf8Str, int codepage) const;
-    std::wstring trim(const std::wstring& str);
+    std::wstring trim(const std::wstring& str);    
 
     //FileOperations
     std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);

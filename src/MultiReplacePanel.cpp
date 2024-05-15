@@ -2829,6 +2829,23 @@ void MultiReplace::loadLuaGlobals(lua_State* L) {
     }
 }
 
+std::string MultiReplace::escapeForRegex(const std::string& input) {
+    std::string escaped;
+    for (char c : input) {
+        switch (c) {
+        case '^': case '$': case '.': case '|':
+        case '?': case '*': case '+': case '(': case ')':
+        case '[': case ']': case '{': case '}':
+            escaped.push_back('\\'); // Prepend a backslash to escape regex special chars
+            escaped.push_back(c);
+            break;
+        default:
+            escaped.push_back(c);
+        }
+    }
+    return escaped;
+}
+
 bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
 {
     lua_State* L = luaL_newstate();  // Create a new Lua environment
@@ -2860,7 +2877,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     luaL_dostring(L, "APOS = math.tointeger(APOS)");
     luaL_dostring(L, "COL = math.tointeger(COL)");
 
-    setLuaVariable(L, "MATCH", vars.MATCH, regex);
+    setLuaVariable(L, "MATCH", vars.MATCH);
     // Get CAPs from Scintilla using SCI_GETTAG
     std::vector<std::string> caps;  // Initialize an empty vector to store the captures
 
@@ -2896,7 +2913,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     for (size_t i = 0; i < caps.size(); ++i) {
         std::string cap = caps[i];
         std::string globalVarName = "CAP" + std::to_string(i + 1);
-        setLuaVariable(L, globalVarName, cap, regex);
+        setLuaVariable(L, globalVarName, cap);
     }
 
     // Declare cond statement function
@@ -3048,7 +3065,11 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     if (lua_istable(L, -1)) {
         lua_getfield(L, -1, "result");
         if (lua_isstring(L, -1) || lua_isnumber(L, -1)) {
-            inputString = lua_tostring(L, -1);  // Update inputString with the result
+            std::string result = lua_tostring(L, -1);  // Get the result as a string
+            if (regex) {
+                result = escapeForRegex(result);  // Escape result if it will be used in regex
+            }
+            inputString = result;  // Update inputString with the potentially escaped result
         }
         lua_pop(L, 1);  // Pop the 'result' field from the stack
 
@@ -3107,7 +3128,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
 }
 
-void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std::string value, bool regex) {
+void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std::string value) {
     // Check if the input string is a number
     bool isNumber = normalizeAndValidateNumber(value);
     if (isNumber) {
@@ -3121,18 +3142,14 @@ void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std:
         }
     }
     else {
-        std::string processedValue = value;
-        if (regex) {
-            // Set of characters that need to be escaped in a regex pattern
-            const std::unordered_set<char> regexSpecialChars = {
-                '\\', '^', '$', '.', '|', '?', '*', '+', '(', ')', '[', ']', '{', '}' };
-
-            processedValue.clear();
-            for (char c : value) {
-                if (regexSpecialChars.find(c) != regexSpecialChars.end()) {
-                    processedValue.append("\\"); // Escape special characters
-                }
-                processedValue.push_back(c);
+        // Always escape backslashes for Lua string literals
+        std::string processedValue;
+        for (char c : value) {
+            if (c == '\\') {
+                processedValue += "\\\\"; // Escape the backslash for Lua strings
+            }
+            else {
+                processedValue += c;
             }
         }
         lua_pushstring(L, processedValue.c_str()); // Push the processed string to Lua
