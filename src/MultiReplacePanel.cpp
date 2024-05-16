@@ -2833,6 +2833,7 @@ std::string MultiReplace::escapeForRegex(const std::string& input) {
     std::string escaped;
     for (char c : input) {
         switch (c) {
+        case '\\':
         case '^': case '$': case '.': case '|':
         case '?': case '*': case '+': case '(': case ')':
         case '[': case ']': case '{': case '}':
@@ -3142,17 +3143,7 @@ void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std:
         }
     }
     else {
-        // Always escape backslashes for Lua string literals
-        std::string processedValue;
-        for (char c : value) {
-            if (c == '\\') {
-                processedValue += "\\\\"; // Escape the backslash for Lua strings
-            }
-            else {
-                processedValue += c;
-            }
-        }
-        lua_pushstring(L, processedValue.c_str()); // Push the processed string to Lua
+        lua_pushstring(L, value.c_str());
     }
     lua_setglobal(L, varName.c_str()); // Set the global variable in Lua
 }
