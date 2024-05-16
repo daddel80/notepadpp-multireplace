@@ -6316,6 +6316,7 @@ void MultiReplace::loadLanguageFromIni(const std::wstring& iniFilePath, const st
 
 }
 
+/*
 std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements) {
     auto it = languageMap.find(id);
     if (it != languageMap.end()) {
@@ -6356,6 +6357,45 @@ std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<
         return L"Text not found"; // Return a default message if ID not found
     }
 }
+*/
+
+std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements) {
+    auto it = languageMap.find(id);
+    if (it != languageMap.end()) {
+        std::wstring result = it->second;
+        std::wstring basePlaceholder = L"$REPLACE_STRING";
+
+        // Replace all occurrences of "<br/>" with "\r\n" for line breaks in MessageBox
+        size_t breakPos = result.find(L"<br/>");
+        while (breakPos != std::wstring::npos) {
+            result.replace(breakPos, 5, L"\r\n");  // 5 is the length of "<br/>"
+            breakPos = result.find(L"<br/>");
+        }
+
+        // Replace placeholders with numbers from highest to lowest
+        for (size_t i = replacements.size(); i > 0; i--) {
+            std::wstring placeholder = basePlaceholder + std::to_wstring(i);
+            size_t pos = result.find(placeholder);
+            while (pos != std::wstring::npos) {
+                result.replace(pos, placeholder.size(), replacements[i - 1]);
+                pos = result.find(placeholder, pos + replacements[i - 1].size());
+            }
+        }
+
+        // Finally, handle the case for $REPLACE_STRING
+        size_t pos = result.find(basePlaceholder);
+        while (pos != std::wstring::npos) {
+            result.replace(pos, basePlaceholder.size(), replacements.empty() ? L"" : replacements[0]);
+            pos = result.find(basePlaceholder, pos + replacements[0].size());
+        }
+
+        return result;
+    }
+    else {
+        return L"Text not found"; // Return a default message if ID not found
+    }
+}
+
 
 LPCWSTR MultiReplace::getLangStrLPCWSTR(const std::wstring& id) {
     static std::map<std::wstring, std::wstring> cache; // Static cache to hold strings and extend their lifetimes
