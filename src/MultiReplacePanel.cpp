@@ -6134,17 +6134,22 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     CSVheaderLinesCount = readIntFromIniFile(iniFilePath, L"Scope", L"HeaderLines", 1);
 
     // Adjusting UI elements based on the selected scope
-    setElementsState(columnRadioDependentElements, columnMode);
-    setElementsState(selectionRadioDisabledButtons, !columnMode);
+        
 
     if (selection && isEnabled) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_SELECTION_RADIO);
+        setElementsState(columnRadioDependentElements, false);
+        setElementsState(selectionRadioDisabledButtons, false);
     }
     else if (columnMode) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_COLUMN_MODE_RADIO);
+        setElementsState(columnRadioDependentElements, true);
+        setElementsState(selectionRadioDisabledButtons, true);
     }
     else {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_ALL_TEXT_RADIO);
+        setElementsState(columnRadioDependentElements, false);
+        setElementsState(selectionRadioDisabledButtons, true);
     }
 
 }
