@@ -2926,12 +2926,12 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "    return res\n"
         "  end\n"
 
-        "  if trueVal == nil then  -- Check if trueVal is nil\n"
+        "  if cond and trueVal == nil then  -- Check if trueVal is nil\n"
         "    error('trueVal cannot be nil')\n"
         "    return res\n"
         "  end\n"
 
-        "  if falseVal == nil then  -- Check if falseVal is missing\n"
+        "  if not cond and falseVal == nil then  -- Check if falseVal is missing\n"
         "    res.skip = true  -- Set skip to true ONLY IF falseVal is not provided\n"
         "  end\n"
 
@@ -6315,49 +6315,6 @@ void MultiReplace::loadLanguageFromIni(const std::wstring& iniFilePath, const st
     }
 
 }
-
-/*
-std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements) {
-    auto it = languageMap.find(id);
-    if (it != languageMap.end()) {
-        std::wstring result = it->second;
-        std::wstring basePlaceholder = L"$REPLACE_STRING";
-
-        // Replace all occurrences of "<br/>" with "\r\n" for line breaks in MessageBox
-        size_t breakPos = result.find(L"<br/>");
-        while (breakPos != std::wstring::npos) {
-            result.replace(breakPos, 5, L"\r\n");  // 5 is the length of "<br/>"
-            breakPos = result.find(L"<br/>");
-        }
-
-        // Start at the end of replacements and count down
-        if (!replacements.empty()) { // Check if replacements vector is not empty
-            for (size_t i = replacements.size(); i-- > 0; ) {
-                std::wstring placeholder = basePlaceholder + (i == 0 ? L"" : std::to_wstring(i + 1));
-                size_t pos = result.find(placeholder);
-                while (pos != std::wstring::npos) {
-                    // Determine the replacement value based on the index
-                    std::wstring replacementValue = replacements[i];
-                    result.replace(pos, placeholder.size(), replacementValue);
-                    pos = result.find(placeholder, pos + replacementValue.size());
-                }
-            }
-        }
-
-        // Finally, handle the case for $REPLACE_STRING
-        size_t pos = result.find(basePlaceholder);
-        while (pos != std::wstring::npos) {
-            result.replace(pos, basePlaceholder.size(), replacements.empty() ? L"" : replacements[0]);
-            pos = result.find(basePlaceholder, pos + replacements[0].size());
-        }
-
-        return result;
-    }
-    else {
-        return L"Text not found"; // Return a default message if ID not found
-    }
-}
-*/
 
 std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements) {
     auto it = languageMap.find(id);
