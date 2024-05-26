@@ -378,6 +378,37 @@ void MultiReplace::updateButtonVisibilityBasedOnMode() {
     ShowWindow(GetDlgItem(_hSelf, IDC_MARK_BUTTON), twoButtonsMode ? SW_HIDE : SW_SHOW);
 }
 
+void MultiReplace::setUIElementVisibility() {
+    // Determine the state of mode radio buttons
+    bool regexChecked = SendMessage(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
+    bool extendedChecked = SendMessage(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
+    bool selectionChecked = SendMessage(GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
+    bool columnModeChecked = SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_MODE_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
+
+    // Update radio button states and manage the Whole Word checkbox visibility
+    if (regexChecked) {
+        CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_REGEX_RADIO);
+        EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), FALSE);  // Hide if regex mode is active
+    }
+    else {
+        CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, extendedChecked ? IDC_EXTENDED_RADIO : IDC_NORMAL_RADIO);
+        EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), TRUE);  // Show otherwise
+    }
+
+    // Enable or disable UI elements based on column mode
+    for (int id : columnRadioDependentElements) {
+        EnableWindow(GetDlgItem(_hSelf, id), columnModeChecked);
+    }
+
+    // Enable or disable buttons based on selection mode, excluding FIND_PREV_BUTTON
+    for (int id : selectionRadioDisabledButtons) {
+        EnableWindow(GetDlgItem(_hSelf, id), !selectionChecked);
+    }
+
+    // Specifically manage the FIND_PREV_BUTTON state based on regex and selection mode
+    EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !(regexChecked || selectionChecked));
+}
+
 void MultiReplace::updateStatisticsColumnButtonIcon() {
     LPCWSTR icon = isStatisticsColumnsExpanded ? L"◀" : L"▶";
     // LPCWSTR tooltip = isStatisticsColumnsExpanded ? L"Collapse statistics columns" : L"Expand statistics columns";
@@ -2013,17 +2044,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REGEX_RADIO:
         {
-            // Check if the Regular expression radio button is checked
-            bool regexChecked = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-
-            // Enable or disable the Whole word checkbox accordingly
-            EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), !regexChecked);
-
-            // If the Regular expression radio button is checked, uncheck the Whole word checkbox
-            if (regexChecked)
-            {
-                CheckDlgButton(_hSelf, IDC_WHOLE_WORD_CHECKBOX, BST_UNCHECKED);
-            }
+            setUIElementVisibility();
         }
         break;
 
@@ -2031,21 +2052,20 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_EXTENDED_RADIO:
         {
             EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), TRUE);
+            setUIElementVisibility();
         }
         break;
 
         case IDC_ALL_TEXT_RADIO:
         {
-            setElementsState(columnRadioDependentElements, false);
-            setElementsState(selectionRadioDisabledButtons, true);
+            setUIElementVisibility();
             handleClearDelimiterState();
         }
         break;
 
         case IDC_SELECTION_RADIO:
         {
-            setElementsState(columnRadioDependentElements, false);
-            setElementsState(selectionRadioDisabledButtons, false);
+            setUIElementVisibility();
             handleClearDelimiterState();
         }
         break;
@@ -2056,8 +2076,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_COLUMN_MODE_RADIO:
         {
             CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_COLUMN_MODE_RADIO);        
-            setElementsState(columnRadioDependentElements, true);
-            setElementsState(selectionRadioDisabledButtons, true);
+            setUIElementVisibility();
         }
         break;
 
@@ -5303,12 +5322,6 @@ std::string MultiReplace::getEOLStyle() {
     }
 }
 
-void MultiReplace::setElementsState(const std::vector<int>& elements, bool enable) {
-    for (int id : elements) {
-        EnableWindow(GetDlgItem(_hSelf, id), enable ? TRUE : FALSE);
-    }
-}
-
 sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, bool useDirect) {
     if (useDirect && pSciMsg) {
         return pSciMsg(pSciWndData, iMessage, wParam, lParam);
@@ -6093,7 +6106,6 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     bool regex = readBoolFromIniFile(iniFilePath, L"Options", L"Regex", false);
     if (regex) {
         CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_REGEX_RADIO);
-        EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), SW_HIDE);
     }
     else if (extended) {
         CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_EXTENDED_RADIO);
@@ -6119,7 +6131,6 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     // Loading and setting the scope with enabled state check
     int selection = readIntFromIniFile(iniFilePath, L"Scope", L"Selection", 0);
     int columnMode = readIntFromIniFile(iniFilePath, L"Scope", L"ColumnMode", 0);
-    BOOL isEnabled = ::IsWindowEnabled(GetDlgItem(_hSelf, IDC_SELECTION_RADIO));
 
     // Reading and setting specific scope settings
     std::wstring columnNum = readStringFromIniFile(iniFilePath, L"Scope", L"ColumnNum", L"1-50");
@@ -6136,21 +6147,17 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     // Adjusting UI elements based on the selected scope
         
 
-    if (selection && isEnabled) {
+    if (selection) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_SELECTION_RADIO);
-        setElementsState(columnRadioDependentElements, false);
-        setElementsState(selectionRadioDisabledButtons, false);
     }
     else if (columnMode) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_COLUMN_MODE_RADIO);
-        setElementsState(columnRadioDependentElements, true);
-        setElementsState(selectionRadioDisabledButtons, true);
     }
     else {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_ALL_TEXT_RADIO);
-        setElementsState(columnRadioDependentElements, false);
-        setElementsState(selectionRadioDisabledButtons, true);
     }
+
+    setUIElementVisibility();
 
 }
 
@@ -6506,7 +6513,7 @@ void MultiReplace::onSelectionChanged() {
     // Check if there was a switch from selected to not selected
     if (wasTextSelected && !isTextSelected) {
         if (instance != nullptr) {
-            instance->setElementsState(selectionRadioDisabledButtons, true);
+            instance->setUIElementVisibility();
         }
     }
     wasTextSelected = isTextSelected;  // Update the previous state

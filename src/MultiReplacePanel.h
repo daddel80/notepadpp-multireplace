@@ -384,7 +384,7 @@ private:
 
     // GUI control-related constants
     const std::vector<int> selectionRadioDisabledButtons = {
-        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
+        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_REPLACE_BUTTON
     };
     const std::vector<int> columnRadioDependentElements = {
         IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
@@ -406,6 +406,7 @@ private:
     void initializeListView();
     void moveAndResizeControls();
     void updateButtonVisibilityBasedOnMode();
+    void setUIElementVisibility();
     void updateStatisticsColumnButtonIcon();
     void drawGripper();
 
@@ -518,7 +519,6 @@ private:
     std::wstring getSelectedText();
     LRESULT getEOLLength();
     std::string getEOLStyle();
-    void setElementsState(const std::vector<int>& elements, bool enable);
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
     bool normalizeAndValidateNumber(std::string& str);
 
