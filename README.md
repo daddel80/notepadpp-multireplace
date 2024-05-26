@@ -1,6 +1,6 @@
 # MultiReplace for Notepad++
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-3.0.1.13-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/3.0.1.13)
+[![Latest Stable Version](https://img.shields.io/badge/version-3.0.2.14-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/3.0.2.14)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, proving useful across various sessions or projects. This enhancement increases efficiency when multiple replacements need to be made concurrently, thereby bolstering the overall functionality of Notepad++.
@@ -202,6 +202,9 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | Select All               | Ctrl+A        | Selects all entries in the list.                |
 | Enable                   | Alt+E         | Enables the selected entries, making them active for operations. |
 | Disable                  | Alt+D         | Disables the selected entries to prevent them from being included in operations. |
+
+**Note on the 'Edit Field' option:**
+When you paste text into the edit field, any line breaks are automatically removed. This simplifies the process of inserting complex, structured 'Use Variables' statements without the need to convert them into a single line first. However, make sure to include the necessary final semicolons and spaces.
 
 Additional Interactions:
 - **Space Key**: Toggles the activation state of selected entries, similar to using Alt+E to enable or Alt+D to disable.
