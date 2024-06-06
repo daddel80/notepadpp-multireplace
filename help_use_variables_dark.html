@@ -350,7 +350,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </tr>
             <tr>
                 <td><strong>CAP1</strong>, <strong>CAP2</strong>,...</td>
-                <td>These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Unlike their counterparts ($1, $2, ...), they are specifically suited for calculations and conditional operations within this environment.</td>
+                <td>These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.</td>
             </tr>
             <tr>
                 <td colspan="2"><strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.</td>
@@ -535,7 +535,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </tr>
             <tr>
                 <td><code>(\d+)</code></td>
-                <td><code>set(&quot;$1€ The VAT is: &quot;.. (CAP1 * 0.15)..&quot;€ Total with VAT: &quot;.. (CAP1 + (CAP1 * 0.15))..&quot;€&quot;)</code></td>
+                <td><code>set(CAP1..&quot;€ The VAT is: &quot;.. (CAP1 * 0.15)..&quot;€ Total with VAT: &quot;.. (CAP1 + (CAP1 * 0.15))..&quot;€&quot;)</code></td>
                 <td>Finds a number and calculates the VAT at 15%, then displays the original amount, the VAT, and the total amount. E.g., `50` becomes `50€ The VAT is: 7.5€ Total with VAT: 57.5€`</td>
                 <td>Yes</td>
                 <td>No</td>
