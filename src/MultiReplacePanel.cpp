@@ -2280,9 +2280,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_SAVE_TO_CSV_BUTTON:
         {
-            std::wstring fileTypeDescription = getLangStr(L"panel_csv") + L"\0*.csv\0" + getLangStr(L"panel_all_files") + L"\0*.*\0";
+            std::wstring csvDescription = getLangStr(L"panel_csv");  // "CSV Files (*.csv)"
+            std::wstring allFilesDescription = getLangStr(L"panel_all_files");  // "All Files (*.*)"
+
+            std::vector<std::pair<std::wstring, std::wstring>> filters = {
+                {csvDescription, L"*.csv"},
+                {allFilesDescription, L"*.*"}
+            };
+
             std::wstring dialogTitle = getLangStr(L"panel_save_list");
-            std::wstring filePath = openFileDialog(true, fileTypeDescription.c_str(), dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"csv");
+            std::wstring filePath = openFileDialog(true, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"csv");
+
             if (!filePath.empty()) {
                 saveListToCsv(filePath, replaceListData);
             }
@@ -2291,7 +2299,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_LOAD_FROM_CSV_BUTTON:
         {
-            std::wstring filePath = openFileDialog(false, L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0", L"Open List", OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST, L"csv");
+            std::wstring csvDescription = getLangStr(L"panel_csv");  // "CSV Files (*.csv)"
+            std::wstring allFilesDescription = getLangStr(L"panel_all_files");  // "All Files (*.*)"
+
+            std::vector<std::pair<std::wstring, std::wstring>> filters = {
+                {csvDescription, L"*.csv"},
+                {allFilesDescription, L"*.*"}
+            };
+
+            std::wstring dialogTitle = getLangStr(L"panel_load_list");
+            std::wstring filePath = openFileDialog(false, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST, L"csv");
+
             if (!filePath.empty()) {
                 loadListFromCsv(filePath);
             }
@@ -2312,9 +2330,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_EXPORT_BASH_BUTTON:
         {
-            std::wstring fileTypeDescription = getLangStr(L"panel_bash") + L"\0*.sh\0" + getLangStr(L"panel_all_files") + L"\0*.*\0";
-            std::wstring dialogTitle = getLangStr(L"panel_export_as_bash");
-            std::wstring filePath = openFileDialog(true, fileTypeDescription.c_str(), dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"sh");
+            std::wstring bashDescription = getLangStr(L"panel_bash");  // "Bash Scripts (*.sh)"
+            std::wstring allFilesDescription = getLangStr(L"panel_all_files");  // "All Files (*.*)"
+
+            std::vector<std::pair<std::wstring, std::wstring>> filters = {
+                {bashDescription, L"*.sh"},
+                {allFilesDescription, L"*.*"}
+            };
+
+            std::wstring dialogTitle = getLangStr(L"panel_export_to_bash");
+            std::wstring filePath = openFileDialog(true, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"sh");
+
             if (!filePath.empty()) {
                 exportToBashScript(filePath);
             }
@@ -5411,6 +5437,33 @@ bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
     return true;  // String is a valid number
 }
 
+std::vector<WCHAR> MultiReplace::createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters) {
+    // Calculate the required size for the filter string
+    size_t totalSize = 0;
+    for (const auto& filter : filters) {
+        totalSize += filter.first.size() + 1; // Description + null terminator
+        totalSize += filter.second.size() + 1; // Pattern + null terminator
+    }
+    totalSize += 1; // Double null terminator at the end
+
+    // Create the array
+    std::vector<WCHAR> filterString;
+    filterString.reserve(totalSize);
+
+    // Fill the array
+    for (const auto& filter : filters) {
+        filterString.insert(filterString.end(), filter.first.begin(), filter.first.end());
+        filterString.push_back(L'\0');
+        filterString.insert(filterString.end(), filter.second.begin(), filter.second.end());
+        filterString.push_back(L'\0');
+    }
+
+    // End with an additional null terminator
+    filterString.push_back(L'\0');
+
+    return filterString;
+}
+
 #pragma endregion
 
 
@@ -5506,15 +5559,17 @@ std::wstring MultiReplace::trim(const std::wstring& str) {
 
 #pragma region FileOperations
 
-std::wstring MultiReplace::openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension) {
+std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension) {
     OPENFILENAME ofn = { 0 };
     WCHAR szFile[MAX_PATH] = { 0 };
+
+    std::vector<WCHAR> filter = createFilterString(filters);
 
     ofn.lStructSize = sizeof(OPENFILENAME);
     ofn.hwndOwner = _hSelf;
     ofn.lpstrFile = szFile;
     ofn.nMaxFile = sizeof(szFile) / sizeof(WCHAR);
-    ofn.lpstrFilter = filter;
+    ofn.lpstrFilter = filter.data();
     ofn.nFilterIndex = 1;
     ofn.lpstrTitle = title;
     ofn.Flags = flags;
@@ -5522,7 +5577,6 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const WCHAR* filter, co
     if (saveFile ? GetSaveFileName(&ofn) : GetOpenFileName(&ofn)) {
         std::wstring filePath(szFile);
 
-        // Ensure that the filename ends with the correct extension if no extension is provided
         if (filePath.find_last_of(L".") == std::wstring::npos) {
             filePath += L"." + fileExtension;
         }
@@ -5533,7 +5587,6 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const WCHAR* filter, co
         return std::wstring();
     }
 }
-
 bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
     std::ofstream outFile(filePath);
 

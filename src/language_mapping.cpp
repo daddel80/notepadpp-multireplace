@@ -16,7 +16,6 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_scope", L"Scope" },
 { L"panel_all_text", L"All Text" },
 { L"panel_selection", L"Selection" },
-{ L"panel_csv", L"CSV" },
 { L"panel_cols", L"Cols:" },
 { L"panel_delim", L"Delim:" },
 { L"panel_quote", L"Quote:" },
@@ -38,10 +37,8 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_hide", L"Hide" },
 { L"panel_help", L"?" },
 { L"panel_all_files", L"All Files (*.*)" },
-{ L"panel_save_list", L"Save List As" },
 { L"panel_csv", L"CSV Files (*.csv)" },
-{ L"panel_export_as_bash", L"Export as Bash" },
-{ L"panel_bash", L"Bash Files (*.sh)" },
+{ L"panel_bash", L"Bash Scripts (*.sh)" },
 
 // Tooltips
 { L"tooltip_replace_all", L"Replace All" },

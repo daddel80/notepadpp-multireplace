@@ -521,6 +521,7 @@ private:
     std::string getEOLStyle();
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
     bool normalizeAndValidateNumber(std::string& str);
+    std::vector<WCHAR> MultiReplace::createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput) const;
@@ -530,7 +531,7 @@ private:
     std::wstring trim(const std::wstring& str);    
 
     //FileOperations
-    std::wstring openFileDialog(bool saveFile, const WCHAR* filter, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
+    std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
