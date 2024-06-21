@@ -44,7 +44,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"tooltip_replace_all", L"Replace All" },
 { L"tooltip_2_buttons_mode", L"2 buttons mode" },
 { L"tooltip_columns", L"Columns: '1,3,5-12' (individuals, ranges)" },
-{ L"tooltip_delimiter", L"Delimiter: Single/combined chars, \t for Tab" },
+{ L"tooltip_delimiter", L"Delimiter: Single/combined chars, \\t for Tab" },
 { L"tooltip_quote", L"Quote: ', \", or empty" },
 { L"tooltip_sort_descending", L"Sort Descending" },
 { L"tooltip_sort_ascending", L"Sort Ascending" },

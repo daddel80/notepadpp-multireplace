@@ -5587,6 +5587,7 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::
         return std::wstring();
     }
 }
+
 bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
     std::ofstream outFile(filePath);
 
@@ -6417,7 +6418,6 @@ std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<
         return L"Text not found"; // Return a default message if ID not found
     }
 }
-
 
 LPCWSTR MultiReplace::getLangStrLPCWSTR(const std::wstring& id) {
     static std::map<std::wstring, std::wstring> cache; // Static cache to hold strings and extend their lifetimes
