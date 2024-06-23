@@ -298,6 +298,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <a href="#Commands">Commands</a>
 <a href="#Operators"> Operators</a>
 <a href="#IfThenLogic"> If-Then Logic</a>
+<a href="#DebugOption"> Debug option</a>
 <a href="#FurtherFunctions">Math & String Functions</a>
 <a href="#Examples">Examples</a>
 </nav>
@@ -502,6 +503,24 @@ document.addEventListener('DOMContentLoaded', function() {
             This example shows how to use <code>if</code> statements with <code>cond()</code> to manage variables based on conditions:
         </p>
            <code>init({MVAR=&quot;&quot;}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~=&quot;#&quot;, MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end</code>
+    </section>
+
+    <section id=DebugOption>
+        <h2>DEBUG option</h2>
+        <p>
+            The <code>DEBUG</code> option lets you inspect global variables during replacements. When enabled, it opens a message box displaying the current values of all global variables for each replacement hit, requiring confirmation to proceed to the next match. Initialize the <code>DEBUG</code> option in your replacement string to enable it.
+        </p>
+        <h3>Example</h3>
+        <table class="optionsTable">
+            <tr>
+                <th>Find:</th>
+                <th>Replace with:</th>
+            </tr>
+            <tr>
+                <td><code>(\d+)</code></td>
+                <td><code>init({DEBUG=true}); set("Number: "..CAP1)</code></td>
+            </tr>
+        </table>
     </section>
 
     <section id=FurtherFunctions>
