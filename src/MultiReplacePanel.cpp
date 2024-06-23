@@ -3165,7 +3165,12 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         luaVariablesStr += "\n";
     }
 
-    //MessageBoxA(NULL, luaVariablesStr.c_str(), "Lua Variables", MB_OK);
+    // Show MessageBox if 'DEBUG' is true and clean the stack
+    lua_getglobal(L, "DEBUG");
+    if (lua_isboolean(L, -1) && lua_toboolean(L, -1)) {
+        MessageBoxA(NULL, luaVariablesStr.c_str(), "Lua Variables", MB_OK);
+    }
+    lua_pop(L, 1);
 
 
     lua_close(L);
