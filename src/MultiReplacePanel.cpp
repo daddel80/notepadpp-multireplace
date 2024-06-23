@@ -1104,8 +1104,22 @@ LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPAR
                         }
                         GlobalUnlock(hglb);
 
-                        // Set the cleaned text in the edit field
-                        SetWindowText(hwnd, cleanText.c_str());
+                        // Get the current selection in the edit control
+                        DWORD start, end;
+                        SendMessage(hwnd, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
+
+                        // Get the current text in the edit control
+                        int len = GetWindowTextLength(hwnd);
+                        std::wstring currentText(len + 1, L'\0');
+                        GetWindowText(hwnd, &currentText[0], len + 1);
+                        currentText.resize(len);
+
+                        // Replace the selected text with the cleaned clipboard text
+                        std::wstring newText = currentText.substr(0, start) + cleanText + currentText.substr(end);
+
+                        // Set the new text and adjust the cursor position
+                        SetWindowText(hwnd, newText.c_str());
+                        SendMessage(hwnd, EM_SETSEL, start + cleanText.size(), start + cleanText.size());
                     }
                 }
                 CloseClipboard();
