@@ -133,6 +133,14 @@ Custom variables maintain their values throughout a single Replace-All or within
 | `(\d+)`          | `init({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4); if COL==2 then COL2=CAP1 end; if COL==4 then COL4=CAP1 end;` | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` |
 | `\d{2}-[A-Z]{3}`| `init({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                                   | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`       |
 
+#### **Using the DEBUG option**
+
+The `DEBUG` option lets you inspect global variables during replacements. When enabled, it opens a message box displaying the current values of all global variables for each replacement hit, requiring confirmation to proceed to the next match. Initialize the `DEBUG` option in your replacement string to enable it.
+
+| Find:      | Replace with:                              |
+|------------|--------------------------------------------|
+| `(\d+)`    | `init({DEBUG=true}); set("Number: "..CAP1)`|
+
 #### **fmtN(num, maxDecimals, fixedDecimals)**
 Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).
 
