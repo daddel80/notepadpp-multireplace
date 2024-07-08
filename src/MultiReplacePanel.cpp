@@ -1160,19 +1160,37 @@ LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPAR
     return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
 
+void UpdateListViewColors(HWND hwnd, BOOL isDarkMode, BOOL enable) {
+    if (enable) {
+        ListView_SetBkColor(hwnd, RGB(255, 255, 255)); // Light background
+        ListView_SetTextBkColor(hwnd, RGB(255, 255, 255)); // Light text background
+        ListView_SetTextColor(hwnd, RGB(0, 0, 0)); // Black text
+    }
+    else if (isDarkMode) {
+        ListView_SetBkColor(hwnd, RGB(0, 128, 0)); // Green background
+        ListView_SetTextBkColor(hwnd, RGB(0, 0, 255)); // Blue text background
+        ListView_SetTextColor(hwnd, RGB(255, 0, 0)); // Red text
+    }
+    else {
+        ListView_SetBkColor(hwnd, RGB(255, 255, 255)); // Light background
+        ListView_SetTextBkColor(hwnd, RGB(255, 255, 255)); // Light text background
+        ListView_SetTextColor(hwnd, RGB(0, 0, 0)); // Black text
+    }
+    InvalidateRect(hwnd, NULL, TRUE); // Force a redraw to apply the new colors
+}
+
 LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    static bool wasDisabledInDarkMode = false;
     MultiReplace* pThis = reinterpret_cast<MultiReplace*>(GetWindowLongPtr(GetParent(hwnd), GWLP_USERDATA));
 
     switch (msg) {
     case WM_VSCROLL:
     case WM_MOUSEWHEEL:
     case WM_HSCROLL:
-        // Close the edit control if it exists and is visible
         if (pThis->hwndEdit && IsWindow(pThis->hwndEdit)) {
             DestroyWindow(pThis->hwndEdit);
             pThis->hwndEdit = NULL;
         }
-        // Allow the default list view procedure to handle standard scrolling
         break;
 
     case WM_NOTIFY: {
@@ -1189,8 +1207,74 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         break;
     }
 
+    case WM_ENABLE: {
+        BOOL isDarkMode = SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != FALSE;
+        BOOL enable = (BOOL)wParam;
+        //UpdateListViewColors(hwnd, isDarkMode, enable);
+        if (!enable && isDarkMode) {
+            wasDisabledInDarkMode = true;
+        }
+        else {
+            wasDisabledInDarkMode = false;
+        }
+        break;
+    }
+
+    case WM_PAINT: {
+        BOOL isDarkMode = SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != FALSE;
+        if (!IsWindowEnabled(hwnd) && isDarkMode) {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+
+            // Create a memory DC for double buffering
+            HDC memDC = CreateCompatibleDC(hdc);
+            HBITMAP memBitmap = CreateCompatibleBitmap(hdc, ps.rcPaint.right - ps.rcPaint.left, ps.rcPaint.bottom - ps.rcPaint.top);
+            HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
+
+            // Fill background with the desired color
+            HBRUSH hBrush = CreateSolidBrush(RGB(32, 32, 32)); // Dark background
+            FillRect(memDC, &ps.rcPaint, hBrush);
+            DeleteObject(hBrush);
+
+            // Temporarily enable the ListView to allow default painting
+            EnableWindow(hwnd, TRUE);
+
+            // Get current colors
+            COLORREF originalBkColor = ListView_GetBkColor(hwnd);
+            COLORREF originalTextBkColor = ListView_GetTextBkColor(hwnd);
+            COLORREF originalTextColor = ListView_GetTextColor(hwnd);
+
+            // Set new colors
+            ListView_SetBkColor(hwnd, RGB(32, 32, 32)); // Dark background
+            ListView_SetTextBkColor(hwnd, RGB(32, 32, 32)); // Dark text background
+            ListView_SetTextColor(hwnd, RGB(169, 169, 169)); // Light Grey
+
+            // Call the default paint handler on the memory DC
+            CallWindowProc(pThis->originalListViewProc, hwnd, WM_PRINTCLIENT, (WPARAM)memDC, PRF_CLIENT);
+
+            // Restore original colors
+            ListView_SetBkColor(hwnd, originalBkColor);
+            ListView_SetTextBkColor(hwnd, originalTextBkColor);
+            ListView_SetTextColor(hwnd, originalTextColor);
+
+            // Restore original enabled state
+            EnableWindow(hwnd, FALSE);
+
+            // Copy the painted image from the memory DC to the original DC
+            BitBlt(hdc, 0, 0, ps.rcPaint.right - ps.rcPaint.left, ps.rcPaint.bottom - ps.rcPaint.top, memDC, 0, 0, SRCCOPY);
+
+            // Cleanup
+            SelectObject(memDC, oldBitmap);
+            DeleteObject(memBitmap);
+            DeleteDC(memDC);
+
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        break;
+    }
+
     default:
-        // No special handling needed
         break;
     }
 
