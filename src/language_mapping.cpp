@@ -16,13 +16,13 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_scope", L"Scope" },
 { L"panel_all_text", L"All Text" },
 { L"panel_selection", L"Selection" },
+{ L"panel_csv", L"CSV" },
 { L"panel_cols", L"Cols:" },
 { L"panel_delim", L"Delim:" },
 { L"panel_quote", L"Quote:" },
 { L"panel_add_into_list", L"Add into List" },
 { L"panel_replace_all", L"Replace All" },
 { L"panel_replace", L"Replace" },
-{ L"panel_2_buttons_mode", L"2 buttons mode" },
 { L"panel_find_next", L"Find Next" },
 { L"panel_find_next_small", L"Find Next"},
 { L"panel_mark_matches", L"Mark Matches" },
@@ -36,9 +36,11 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_show", L"Show" },
 { L"panel_hide", L"Hide" },
 { L"panel_help", L"?" },
-{ L"panel_all_files", L"All Files (*.*)" },
-{ L"panel_csv", L"CSV Files (*.csv)" },
-{ L"panel_bash", L"Bash Scripts (*.sh)" },
+
+; File Dialog
+{ L"filetype_all_files", L"All Files (*.*)" },
+{ L"filetype_csv", L"CSV Files (*.csv)" },
+{ L"filetype_bash", L"Bash Files (*.sh)" },
 
 // Tooltips
 { L"tooltip_replace_all", L"Replace All" },
@@ -67,7 +69,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 
 // tooltip entries
 { L"tooltip_header_whole_word", L"Whole Word" },
-{ L"tooltip_header_match_case", L"Case Sensitive" },
+{ L"tooltip_header_match_case", L"Match Case" },
 { L"tooltip_header_use_variables", L"Use Variables" },
 { L"tooltip_header_extended", L"Extended" },
 { L"tooltip_header_regex", L"Regex" },
