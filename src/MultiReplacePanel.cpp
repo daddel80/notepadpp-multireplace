@@ -2294,8 +2294,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_SAVE_TO_CSV_BUTTON:
         {
-            std::wstring csvDescription = getLangStr(L"panel_csv");  // "CSV Files (*.csv)"
-            std::wstring allFilesDescription = getLangStr(L"panel_all_files");  // "All Files (*.*)"
+            std::wstring csvDescription = getLangStr(L"filetype_csv");  // "CSV Files (*.csv)"
+            std::wstring allFilesDescription = getLangStr(L"filetype_all_files");  // "All Files (*.*)"
 
             std::vector<std::pair<std::wstring, std::wstring>> filters = {
                 {csvDescription, L"*.csv"},
@@ -2313,8 +2313,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_LOAD_FROM_CSV_BUTTON:
         {
-            std::wstring csvDescription = getLangStr(L"panel_csv");  // "CSV Files (*.csv)"
-            std::wstring allFilesDescription = getLangStr(L"panel_all_files");  // "All Files (*.*)"
+            std::wstring csvDescription = getLangStr(L"filetype_csv");  // "CSV Files (*.csv)"
+            std::wstring allFilesDescription = getLangStr(L"filetype_all_files");  // "All Files (*.*)"
 
             std::vector<std::pair<std::wstring, std::wstring>> filters = {
                 {csvDescription, L"*.csv"},
@@ -2344,8 +2344,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_EXPORT_BASH_BUTTON:
         {
-            std::wstring bashDescription = getLangStr(L"panel_bash");  // "Bash Scripts (*.sh)"
-            std::wstring allFilesDescription = getLangStr(L"panel_all_files");  // "All Files (*.*)"
+            std::wstring bashDescription = getLangStr(L"filetype_bash");  // "Bash Scripts (*.sh)"
+            std::wstring allFilesDescription = getLangStr(L"filetype_all_files");  // "All Files (*.*)"
 
             std::vector<std::pair<std::wstring, std::wstring>> filters = {
                 {bashDescription, L"*.sh"},
