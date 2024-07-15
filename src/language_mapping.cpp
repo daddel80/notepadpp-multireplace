@@ -37,7 +37,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_hide", L"Hide" },
 { L"panel_help", L"?" },
 
-; File Dialog
+// File Dialog
 { L"filetype_all_files", L"All Files (*.*)" },
 { L"filetype_csv", L"CSV Files (*.csv)" },
 { L"filetype_bash", L"Bash Files (*.sh)" },
