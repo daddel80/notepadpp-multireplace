@@ -2906,6 +2906,13 @@ std::string MultiReplace::escapeForRegex(const std::string& input) {
     return escaped;
 }
 
+// Utility function to format variables
+std::string formatVariable(const std::string& name, const std::string& type, const std::string& value) {
+    std::ostringstream oss;
+    oss << name << "\t(" << type << "):\t" << value;
+    return oss.str();
+}
+
 bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
 {
     lua_State* L = luaL_newstate();  // Create a new Lua environment
@@ -3155,29 +3162,57 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     }
     lua_pop(L, 1);  // Pop the 'result' table from the stack
 
+    // Remove CAP variables to prevent them from being set in the next call
+    std::string capVariablesStr = "\n---- Regex CAP Variables ----\n";
+    for (size_t i = 0; i < caps.size(); ++i) {
+        std::string globalVarName = "CAP" + std::to_string(i + 1);
+        lua_getglobal(L, globalVarName.c_str());
+
+        // Include CAP variables in the debug output
+        if (lua_isstring(L, -1)) {
+            capVariablesStr += formatVariable(globalVarName, "String", lua_tostring(L, -1));
+        }
+        else if (lua_isnumber(L, -1)) {
+            capVariablesStr += formatVariable(globalVarName, "Number", std::to_string(lua_tonumber(L, -1)));
+        }
+        else if (lua_isboolean(L, -1)) {
+            capVariablesStr += formatVariable(globalVarName, "Boolean", lua_toboolean(L, -1) ? "true" : "false");
+        }
+        capVariablesStr += "\n";
+        lua_pop(L, 1); // Pop the variable value
+
+        lua_pushnil(L);
+        lua_setglobal(L, globalVarName.c_str());
+    }
+
     // Read Lua global Variables
     captureLuaGlobals(L);
-    std::string luaVariablesStr;
+    std::string luaVariablesStr = "---- Global Variables ----\n";
     for (const auto& pair : globalLuaVariablesMap) {
         const LuaVariable& var = pair.second;
-        luaVariablesStr += var.name + ": ";
-
+        std::string value;
         switch (var.type) {
         case LuaVariableType::String:
-            luaVariablesStr += "String, " + var.stringValue;
+            value = var.stringValue;
             break;
         case LuaVariableType::Number:
-            luaVariablesStr += "Number, " + std::to_string(var.numberValue);
+            value = std::to_string(var.numberValue);
             break;
         case LuaVariableType::Boolean:
-            luaVariablesStr += "Boolean, " + std::string(var.booleanValue ? "true" : "false");
+            value = var.booleanValue ? "true" : "false";
             break;
         default:
-            luaVariablesStr += "None or Unsupported Type";
+            value = "None or Unsupported Type";
             break;
         }
+        luaVariablesStr += formatVariable(var.name, (var.type == LuaVariableType::String) ? "String" :
+            (var.type == LuaVariableType::Number) ? "Number" :
+            (var.type == LuaVariableType::Boolean) ? "Boolean" : "Unknown", value);
         luaVariablesStr += "\n";
     }
+
+    // Combine global variables and CAP variables for debug output
+    luaVariablesStr += capVariablesStr;
 
     // Show MessageBox if 'DEBUG' is true and clean the stack
     lua_getglobal(L, "DEBUG");
@@ -3186,11 +3221,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     }
     lua_pop(L, 1);
 
-
     lua_close(L);
 
     return true;
-
 }
 
 void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std::string value) {
