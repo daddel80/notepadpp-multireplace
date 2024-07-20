@@ -2906,8 +2906,7 @@ std::string MultiReplace::escapeForRegex(const std::string& input) {
     return escaped;
 }
 
-// Utility function to format variables
-std::string formatVariable(const std::string& name, const std::string& type, const std::string& value) {
+std::string MultiReplace::formatVariable(const std::string& name, const std::string& type, const std::string& value) {
     std::ostringstream oss;
     oss << name << "\t(" << type << "):\t" << value;
     return oss.str();

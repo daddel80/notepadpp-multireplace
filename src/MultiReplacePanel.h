@@ -454,6 +454,7 @@ private:
     void captureLuaGlobals(lua_State* L);
     void loadLuaGlobals(lua_State* L);
     std::string escapeForRegex(const std::string& input);
+    std::string formatVariable(const std::string& name, const std::string& type, const std::string& value);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
     void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
 
