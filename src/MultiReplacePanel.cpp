@@ -66,6 +66,12 @@ MultiReplace* MultiReplace::instance = nullptr;
 std::vector<size_t> MultiReplace::originalLineOrder;
 SortDirection MultiReplace::currentSortState = SortDirection::Unsorted;
 bool MultiReplace::isSortedColumn = false;
+POINT MultiReplace::debugWindowPosition = { CW_USEDEFAULT, CW_USEDEFAULT };
+bool MultiReplace::debugWindowPositionSet = false;
+int MultiReplace::debugWindowResponse = -1;
+SIZE MultiReplace::debugWindowSize = { 400, 250 };
+bool MultiReplace::debugWindowSizeSet = false;
+
 
 #pragma warning(disable: 6262)
 
@@ -2733,7 +2739,7 @@ void MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             vars.MATCH = searchResult.foundText;
 
             if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
-                break;  // Exit the loop if error in syntax
+                break;  // Exit the loop if error in syntax or process is stopped by debug
             }
             replaceTextUtf8 = convertAndExtend(localReplaceTextUtf8, itemData.extended);
         }
@@ -3216,13 +3222,179 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     // Show MessageBox if 'DEBUG' is true and clean the stack
     lua_getglobal(L, "DEBUG");
     if (lua_isboolean(L, -1) && lua_toboolean(L, -1)) {
-        MessageBoxA(NULL, luaVariablesStr.c_str(), "Lua Variables", MB_OK);
+        int response = ShowDebugWindow(luaVariablesStr);
+
+        // MessageBox to display the response for debugging
+        std::wstring message = L"Debug Window Response: " + std::to_wstring(response);
+
+        if (response == 3) { // Stop button was pressed
+            lua_pop(L, 1);
+            lua_close(L);
+            return false; // Stop the process if "Stop" is clicked
+        }
     }
     lua_pop(L, 1);
 
     lua_close(L);
 
     return true;
+}
+
+int MultiReplace::ShowDebugWindow(const std::string& message) {
+    const int buffer_size = 4096;
+    wchar_t wMessage[buffer_size];
+
+    // Convert the message from UTF-8 to UTF-16
+    int result = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wMessage, buffer_size);
+    if (result == 0) {
+        MessageBoxW(NULL, L"Error converting message", L"Error", MB_OK | MB_ICONERROR);
+        return -1;
+    }
+
+    static bool isClassRegistered = false;
+
+    if (!isClassRegistered) {
+        WNDCLASS wc = { 0 };
+
+        wc.lpfnWndProc = DebugWindowProc;
+        wc.hInstance = hInstance;
+        wc.lpszClassName = L"DebugWindowClass";
+        wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+        wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+
+        if (!RegisterClass(&wc)) {
+            MessageBoxW(NULL, L"Error registering class", L"Error", MB_OK | MB_ICONERROR);
+            return -1;
+        }
+
+        isClassRegistered = true;
+    }
+
+    // Use the saved position and size if set, otherwise use default position and size
+    int x = debugWindowPositionSet ? debugWindowPosition.x : CW_USEDEFAULT;
+    int y = debugWindowPositionSet ? debugWindowPosition.y : CW_USEDEFAULT;
+    int width = debugWindowSizeSet ? debugWindowSize.cx : 400;
+    int height = debugWindowSizeSet ? debugWindowSize.cy : 250;
+
+    HWND hwnd = CreateWindowEx(
+        0,
+        L"DebugWindowClass",
+        L"Debug Information",
+        WS_OVERLAPPEDWINDOW,
+        x, y, width, height,
+        NULL, NULL, hInstance, (LPVOID)wMessage
+    );
+
+    if (hwnd == NULL) {
+        MessageBoxW(NULL, L"Error creating window", L"Error", MB_OK | MB_ICONERROR);
+        return -1;
+    }
+
+    ShowWindow(hwnd, SW_SHOW);
+    UpdateWindow(hwnd);
+
+    MSG msg = { 0 };
+    debugWindowResponse = -1;
+    while (GetMessage(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+
+        // Check for WM_QUIT after dispatching the message
+        if (msg.message == WM_QUIT) {
+            break;
+        }
+    }
+
+    // Get the window position and size before destroying it
+    RECT rect;
+    if (GetWindowRect(hwnd, &rect)) {
+        debugWindowPosition.x = rect.left;
+        debugWindowPosition.y = rect.top;
+        debugWindowPositionSet = true;
+
+        debugWindowSize.cx = rect.right - rect.left;
+        debugWindowSize.cy = rect.bottom - rect.top;
+        debugWindowSizeSet = true;
+    }
+
+    DestroyWindow(hwnd);
+    return debugWindowResponse;
+}
+
+
+LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    static HWND hNextButton;
+    static HWND hStopButton;
+    static HWND hText;
+
+    switch (uMsg) {
+    case WM_CREATE: {
+        hText = CreateWindowW(L"STATIC", L"",
+            WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+            10, 10, 360, 140,
+            hwnd, (HMENU)1, NULL, NULL);
+
+        hNextButton = CreateWindowW(L"BUTTON", L"Next",
+            WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
+            50, 160, 80, 30,
+            hwnd, (HMENU)2, NULL, NULL);
+
+        hStopButton = CreateWindowW(L"BUTTON", L"Stop",
+            WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+            150, 160, 80, 30,
+            hwnd, (HMENU)3, NULL, NULL);
+
+        // Extract the debug message from lParam
+        LPCWSTR debugMessage = reinterpret_cast<LPCWSTR>(reinterpret_cast<CREATESTRUCT*>(lParam)->lpCreateParams);
+        SetWindowTextW(hText, debugMessage);
+
+        break;
+    }
+
+    case WM_SIZE: {
+        // Get the new window size
+        RECT rect;
+        GetClientRect(hwnd, &rect);
+
+        // Calculate new positions for the buttons
+        int buttonWidth = 80;
+        int buttonHeight = 30;
+        int textHeight = rect.bottom - buttonHeight - 40; // 40 for padding
+
+        SetWindowPos(hText, NULL, 10, 10, rect.right - 20, textHeight, SWP_NOZORDER);
+        SetWindowPos(hNextButton, NULL, 10, rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
+        SetWindowPos(hStopButton, NULL, buttonWidth + 20, rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
+        break;
+    }
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == 2 || LOWORD(wParam) == 3) {
+            debugWindowResponse = LOWORD(wParam);
+
+            // Save the window position and size before closing
+            RECT rect;
+            if (GetWindowRect(hwnd, &rect)) {
+                debugWindowPosition.x = rect.left;
+                debugWindowPosition.y = rect.top;
+                debugWindowPositionSet = true;
+
+                debugWindowSize.cx = rect.right - rect.left;
+                debugWindowSize.cy = rect.bottom - rect.top;
+                debugWindowSizeSet = true;
+            }
+
+            DestroyWindow(hwnd);
+        }
+        break;
+
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        break;
+
+    default:
+        return DefWindowProc(hwnd, uMsg, wParam, lParam);
+    }
+    return 0;
 }
 
 void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std::string value) {

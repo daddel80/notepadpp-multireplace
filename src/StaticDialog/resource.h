@@ -107,6 +107,7 @@
 #define IDM_ENABLE_LINES                5709
 #define IDM_DISABLE_LINES               5710
 
+#define IDC_STOP_BUTTON                 5801
 
 #define STYLE1							60
 #define STYLE2							61

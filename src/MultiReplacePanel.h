@@ -369,6 +369,11 @@ private:
     LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
     SIZE_T CSVheaderLinesCount = 1; // Number of header lines not included in CSV sorting
     bool isStatisticsColumnsExpanded = false;
+    static POINT debugWindowPosition;
+    static bool debugWindowPositionSet;
+    static int debugWindowResponse;
+    static SIZE debugWindowSize;
+    static bool debugWindowSizeSet;
 
 
     int _editingItemIndex;
@@ -457,6 +462,8 @@ private:
     std::string formatVariable(const std::string& name, const std::string& type, const std::string& value);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
     void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
+    static LRESULT CALLBACK DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+    int ShowDebugWindow(const std::string& message);
 
     //Find
     void handleFindNextButton();
