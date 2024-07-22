@@ -3168,7 +3168,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     lua_pop(L, 1);  // Pop the 'result' table from the stack
 
     // Remove CAP variables to prevent them from being set in the next call
-    std::string capVariablesStr = "\n---- Regex CAP Variables ----\n";
+    std::string capVariablesStr = "\r\n---- Regex CAP Variables ----\r\n";
     for (size_t i = 0; i < caps.size(); ++i) {
         std::string globalVarName = "CAP" + std::to_string(i + 1);
         lua_getglobal(L, globalVarName.c_str());
@@ -3183,7 +3183,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         else if (lua_isboolean(L, -1)) {
             capVariablesStr += formatVariable(globalVarName, "Boolean", lua_toboolean(L, -1) ? "true" : "false");
         }
-        capVariablesStr += "\n";
+        capVariablesStr += "\r\n";
         lua_pop(L, 1); // Pop the variable value
 
         lua_pushnil(L);
@@ -3192,7 +3192,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
     // Read Lua global Variables
     captureLuaGlobals(L);
-    std::string luaVariablesStr = "---- Global Variables ----\n";
+    std::string luaVariablesStr = "---- Global Variables ----\r\n";
     for (const auto& pair : globalLuaVariablesMap) {
         const LuaVariable& var = pair.second;
         std::string value;
@@ -3213,7 +3213,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         luaVariablesStr += formatVariable(var.name, (var.type == LuaVariableType::String) ? "String" :
             (var.type == LuaVariableType::Number) ? "Number" :
             (var.type == LuaVariableType::Boolean) ? "Boolean" : "Unknown", value);
-        luaVariablesStr += "\n";
+        luaVariablesStr += "\r\n";
     }
 
     // Combine global variables and CAP variables for debug output
@@ -3325,12 +3325,12 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
 LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     static HWND hNextButton;
     static HWND hStopButton;
-    static HWND hText;
+    static HWND hEdit;
 
     switch (uMsg) {
     case WM_CREATE: {
-        hText = CreateWindowW(L"STATIC", L"",
-            WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+        hEdit = CreateWindowW(L"EDIT", L"",
+            WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL | WS_HSCROLL | ES_WANTRETURN,
             10, 10, 360, 140,
             hwnd, (HMENU)1, NULL, NULL);
 
@@ -3346,7 +3346,7 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wPar
 
         // Extract the debug message from lParam
         LPCWSTR debugMessage = reinterpret_cast<LPCWSTR>(reinterpret_cast<CREATESTRUCT*>(lParam)->lpCreateParams);
-        SetWindowTextW(hText, debugMessage);
+        SetWindowTextW(hEdit, debugMessage);
 
         break;
     }
@@ -3361,7 +3361,7 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wPar
         int buttonHeight = 30;
         int textHeight = rect.bottom - buttonHeight - 40; // 40 for padding
 
-        SetWindowPos(hText, NULL, 10, 10, rect.right - 20, textHeight, SWP_NOZORDER);
+        SetWindowPos(hEdit, NULL, 10, 10, rect.right - 20, textHeight, SWP_NOZORDER);
         SetWindowPos(hNextButton, NULL, 10, rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
         SetWindowPos(hStopButton, NULL, buttonWidth + 20, rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
         break;
