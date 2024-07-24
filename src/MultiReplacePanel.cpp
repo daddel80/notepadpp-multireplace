@@ -3169,13 +3169,13 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
         // Include CAP variables in the debug output
         if (lua_isstring(L, -1)) {
-            capVariablesStr += formatVariable(globalVarName, "String", lua_tostring(L, -1));
+            capVariablesStr += globalVarName + "\tString\t" + lua_tostring(L, -1) + "\n";
         }
         else if (lua_isnumber(L, -1)) {
-            capVariablesStr += formatVariable(globalVarName, "Number", std::to_string(lua_tonumber(L, -1)));
+            capVariablesStr += globalVarName + "\tNumber\t" + std::to_string(lua_tonumber(L, -1)) + "\n";
         }
         else if (lua_isboolean(L, -1)) {
-            capVariablesStr += formatVariable(globalVarName, "Boolean", lua_toboolean(L, -1) ? "true" : "false");
+            capVariablesStr += globalVarName + "\tBoolean\t" + (lua_toboolean(L, -1) ? "true" : "false") + "\n";
         }
         capVariablesStr += "\n";
         lua_pop(L, 1); // Pop the variable value
@@ -3204,10 +3204,11 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             value = "None or Unsupported Type";
             break;
         }
-        luaVariablesStr += formatVariable(var.name, (var.type == LuaVariableType::String) ? "String" :
-            (var.type == LuaVariableType::Number) ? "Number" :
-            (var.type == LuaVariableType::Boolean) ? "Boolean" : "Unknown", value);
-        luaVariablesStr += "\n";
+        luaVariablesStr += var.name + "\t" +
+            ((var.type == LuaVariableType::String) ? "String" :
+                (var.type == LuaVariableType::Number) ? "Number" :
+                (var.type == LuaVariableType::Boolean) ? "Boolean" : "Unknown") +
+            "\t" + value + "\n";
     }
 
     // Combine global variables and CAP variables for debug output
@@ -3229,6 +3230,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     lua_close(L);
 
     return true;
+
 }
 
 void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std::string value) {
@@ -3491,10 +3493,6 @@ void MultiReplace::CopyListViewToClipboard(HWND hListView) {
         }
         CloseClipboard();
     }
-}
-
-std::string MultiReplace::formatVariable(const std::string& name, const std::string& type, const std::string& value) {
-    return name + "\t" + type + "\t" + value + "\n";
 }
 
 #pragma endregion
