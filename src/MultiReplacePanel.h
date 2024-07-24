@@ -459,11 +459,14 @@ private:
     void captureLuaGlobals(lua_State* L);
     void loadLuaGlobals(lua_State* L);
     std::string escapeForRegex(const std::string& input);
-    std::string formatVariable(const std::string& name, const std::string& type, const std::string& value);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
     void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
-    static LRESULT CALLBACK DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+
+    //DebugWindow
     int ShowDebugWindow(const std::string& message);
+    static LRESULT CALLBACK DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+    static void CopyListViewToClipboard(HWND hListView);
+    std::string formatVariable(const std::string& name, const std::string& type, const std::string& value);
 
     //Find
     void handleFindNextButton();

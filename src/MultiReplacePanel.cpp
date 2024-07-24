@@ -2912,12 +2912,6 @@ std::string MultiReplace::escapeForRegex(const std::string& input) {
     return escaped;
 }
 
-std::string MultiReplace::formatVariable(const std::string& name, const std::string& type, const std::string& value) {
-    std::ostringstream oss;
-    oss << name << "\t(" << type << "):\t" << value;
-    return oss.str();
-}
-
 bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
 {
     lua_State* L = luaL_newstate();  // Create a new Lua environment
@@ -3168,7 +3162,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     lua_pop(L, 1);  // Pop the 'result' table from the stack
 
     // Remove CAP variables to prevent them from being set in the next call
-    std::string capVariablesStr = "\r\n---- Regex CAP Variables ----\r\n";
+    std::string capVariablesStr;
     for (size_t i = 0; i < caps.size(); ++i) {
         std::string globalVarName = "CAP" + std::to_string(i + 1);
         lua_getglobal(L, globalVarName.c_str());
@@ -3183,7 +3177,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         else if (lua_isboolean(L, -1)) {
             capVariablesStr += formatVariable(globalVarName, "Boolean", lua_toboolean(L, -1) ? "true" : "false");
         }
-        capVariablesStr += "\r\n";
+        capVariablesStr += "\n";
         lua_pop(L, 1); // Pop the variable value
 
         lua_pushnil(L);
@@ -3192,7 +3186,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
     // Read Lua global Variables
     captureLuaGlobals(L);
-    std::string luaVariablesStr = "---- Global Variables ----\r\n";
+    std::string luaVariablesStr;
     for (const auto& pair : globalLuaVariablesMap) {
         const LuaVariable& var = pair.second;
         std::string value;
@@ -3213,19 +3207,16 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         luaVariablesStr += formatVariable(var.name, (var.type == LuaVariableType::String) ? "String" :
             (var.type == LuaVariableType::Number) ? "Number" :
             (var.type == LuaVariableType::Boolean) ? "Boolean" : "Unknown", value);
-        luaVariablesStr += "\r\n";
+        luaVariablesStr += "\n";
     }
 
     // Combine global variables and CAP variables for debug output
-    luaVariablesStr += capVariablesStr;
+    std::string combinedVariablesStr = luaVariablesStr + capVariablesStr;
 
-    // Show MessageBox if 'DEBUG' is true and clean the stack
+    // Show debug window if 'DEBUG' is true and clean the stack
     lua_getglobal(L, "DEBUG");
     if (lua_isboolean(L, -1) && lua_toboolean(L, -1)) {
-        int response = ShowDebugWindow(luaVariablesStr);
-
-        // MessageBox to display the response for debugging
-        std::wstring message = L"Debug Window Response: " + std::to_wstring(response);
+        int response = ShowDebugWindow(combinedVariablesStr);
 
         if (response == 3) { // Stop button was pressed
             lua_pop(L, 1);
@@ -3239,6 +3230,30 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
     return true;
 }
+
+void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std::string value) {
+    // Check if the input string is a number
+    bool isNumber = normalizeAndValidateNumber(value);
+    if (isNumber) {
+        double doubleVal = std::stod(value);
+        int intVal = static_cast<int>(doubleVal);
+        if (doubleVal == static_cast<double>(intVal)) {
+            lua_pushinteger(L, intVal); // Push as integer if value is integral
+        }
+        else {
+            lua_pushnumber(L, doubleVal); // Push as floating-point number otherwise
+        }
+    }
+    else {
+        lua_pushstring(L, value.c_str());
+    }
+    lua_setglobal(L, varName.c_str()); // Set the global variable in Lua
+}
+
+#pragma endregion
+
+
+#pragma region DebugWindow
 
 int MultiReplace::ShowDebugWindow(const std::string& message) {
     const int buffer_size = 4096;
@@ -3271,13 +3286,13 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     }
 
     // Use the saved position and size if set, otherwise use default position and size
-    int x = debugWindowPositionSet ? debugWindowPosition.x : CW_USEDEFAULT;
-    int y = debugWindowPositionSet ? debugWindowPosition.y : CW_USEDEFAULT;
-    int width = debugWindowSizeSet ? debugWindowSize.cx : 400;
-    int height = debugWindowSizeSet ? debugWindowSize.cy : 250;
+    int width = debugWindowSizeSet ? debugWindowSize.cx : 400; // Set initial width
+    int height = debugWindowSizeSet ? debugWindowSize.cy : 500; // Set initial height
+    int x = debugWindowPositionSet ? debugWindowPosition.x : (GetSystemMetrics(SM_CXSCREEN) - width) / 2; // Center horizontally
+    int y = debugWindowPositionSet ? debugWindowPosition.y : (GetSystemMetrics(SM_CYSCREEN) - height) / 2; // Center vertically
 
     HWND hwnd = CreateWindowEx(
-        0,
+        WS_EX_TOPMOST, // Always on top
         L"DebugWindowClass",
         L"Debug Information",
         WS_OVERLAPPEDWINDOW,
@@ -3321,18 +3336,31 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     return debugWindowResponse;
 }
 
-
-LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    static HWND hListView;
     static HWND hNextButton;
     static HWND hStopButton;
-    static HWND hEdit;
+    static HWND hCopyButton;
 
-    switch (uMsg) {
+    switch (msg) {
     case WM_CREATE: {
-        hEdit = CreateWindowW(L"EDIT", L"",
-            WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL | WS_HSCROLL | ES_WANTRETURN,
+        hListView = CreateWindowW(WC_LISTVIEW, L"",
+            WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
             10, 10, 360, 140,
             hwnd, (HMENU)1, NULL, NULL);
+
+        // Initialize columns
+        LVCOLUMN lvCol;
+        lvCol.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+        lvCol.pszText = L"Variable";
+        lvCol.cx = 120;
+        ListView_InsertColumn(hListView, 0, &lvCol);
+        lvCol.pszText = L"Type";
+        lvCol.cx = 80;
+        ListView_InsertColumn(hListView, 1, &lvCol);
+        lvCol.pszText = L"Value";
+        lvCol.cx = 160;
+        ListView_InsertColumn(hListView, 2, &lvCol);
 
         hNextButton = CreateWindowW(L"BUTTON", L"Next",
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
@@ -3344,9 +3372,33 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wPar
             150, 160, 80, 30,
             hwnd, (HMENU)3, NULL, NULL);
 
+        hCopyButton = CreateWindowW(L"BUTTON", L"Copy",
+            WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+            250, 160, 80, 30,
+            hwnd, (HMENU)4, NULL, NULL);
+
         // Extract the debug message from lParam
         LPCWSTR debugMessage = reinterpret_cast<LPCWSTR>(reinterpret_cast<CREATESTRUCT*>(lParam)->lpCreateParams);
-        SetWindowTextW(hEdit, debugMessage);
+
+        // Populate ListView with the debug message
+        std::wstringstream ss(debugMessage);
+        std::wstring line;
+        int itemIndex = 0;
+        while (std::getline(ss, line)) {
+            std::wstring variable, type, value;
+            std::wistringstream iss(line);
+            if (std::getline(iss, variable, L'\t') && std::getline(iss, type, L'\t') && std::getline(iss, value)) {
+                LVITEM lvItem;
+                lvItem.mask = LVIF_TEXT;
+                lvItem.iItem = itemIndex;
+                lvItem.iSubItem = 0;
+                lvItem.pszText = const_cast<LPWSTR>(variable.c_str());
+                ListView_InsertItem(hListView, &lvItem);
+                ListView_SetItemText(hListView, itemIndex, 1, const_cast<LPWSTR>(type.c_str()));
+                ListView_SetItemText(hListView, itemIndex, 2, const_cast<LPWSTR>(value.c_str()));
+                ++itemIndex;
+            }
+        }
 
         break;
     }
@@ -3359,11 +3411,17 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wPar
         // Calculate new positions for the buttons
         int buttonWidth = 80;
         int buttonHeight = 30;
-        int textHeight = rect.bottom - buttonHeight - 40; // 40 for padding
+        int listHeight = rect.bottom - buttonHeight - 40; // 40 for padding
 
-        SetWindowPos(hEdit, NULL, 10, 10, rect.right - 20, textHeight, SWP_NOZORDER);
+        SetWindowPos(hListView, NULL, 10, 10, rect.right - 20, listHeight, SWP_NOZORDER);
         SetWindowPos(hNextButton, NULL, 10, rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
         SetWindowPos(hStopButton, NULL, buttonWidth + 20, rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
+        SetWindowPos(hCopyButton, NULL, 2 * (buttonWidth + 20), rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
+
+        // Adjust the column widths
+        ListView_SetColumnWidth(hListView, 0, LVSCW_AUTOSIZE_USEHEADER); // Variable column
+        ListView_SetColumnWidth(hListView, 1, LVSCW_AUTOSIZE_USEHEADER); // Type column
+        ListView_SetColumnWidth(hListView, 2, LVSCW_AUTOSIZE_USEHEADER); // Value column
         break;
     }
 
@@ -3385,6 +3443,9 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wPar
 
             DestroyWindow(hwnd);
         }
+        else if (LOWORD(wParam) == 4) {  // Copy button was pressed
+            CopyListViewToClipboard(hListView);
+        }
         break;
 
     case WM_DESTROY:
@@ -3392,29 +3453,50 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wPar
         break;
 
     default:
-        return DefWindowProc(hwnd, uMsg, wParam, lParam);
+        return DefWindowProc(hwnd, msg, wParam, lParam);
     }
     return 0;
 }
 
-void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std::string value) {
-    // Check if the input string is a number
-    bool isNumber = normalizeAndValidateNumber(value);
-    if (isNumber) {
-        double doubleVal = std::stod(value);
-        int intVal = static_cast<int>(doubleVal);
-        if (doubleVal == static_cast<double>(intVal)) {
-            lua_pushinteger(L, intVal); // Push as integer if value is integral
+void MultiReplace::CopyListViewToClipboard(HWND hListView) {
+    int itemCount = ListView_GetItemCount(hListView);
+    int columnCount = Header_GetItemCount(ListView_GetHeader(hListView));
+
+    std::wstring clipboardText;
+
+    for (int i = 0; i < itemCount; ++i) {
+        for (int j = 0; j < columnCount; ++j) {
+            wchar_t buffer[256];
+            ListView_GetItemText(hListView, i, j, buffer, 256);
+            clipboardText += buffer;
+            if (j < columnCount - 1) {
+                clipboardText += L'\t';
+            }
         }
-        else {
-            lua_pushnumber(L, doubleVal); // Push as floating-point number otherwise
+        clipboardText += L'\n';
+    }
+
+    if (OpenClipboard(0)) {
+        EmptyClipboard();
+        HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, sizeof(WCHAR) * (clipboardText.length() + 1));
+        if (hClipboardData) {
+            WCHAR* pchData = reinterpret_cast<WCHAR*>(GlobalLock(hClipboardData));
+            if (pchData) {
+                wcscpy(pchData, clipboardText.c_str());
+                GlobalUnlock(hClipboardData);
+                if (!SetClipboardData(CF_UNICODETEXT, hClipboardData)) {
+                    GlobalFree(hClipboardData);
+                }
+            }
         }
+        CloseClipboard();
     }
-    else {
-        lua_pushstring(L, value.c_str());
-    }
-    lua_setglobal(L, varName.c_str()); // Set the global variable in Lua
 }
+
+std::string MultiReplace::formatVariable(const std::string& name, const std::string& type, const std::string& value) {
+    return name + "\t" + type + "\t" + value + "\n";
+}
+
 #pragma endregion
 
 
