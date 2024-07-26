@@ -3464,6 +3464,19 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
     case WM_CLOSE:
         // Handle the window close button (X)
         debugWindowResponse = 3; // Set to the value that indicates the "Stop" button was pressed
+
+        // Save the window position and size before closing
+        RECT rect;
+        if (GetWindowRect(hwnd, &rect)) {
+            debugWindowPosition.x = rect.left;
+            debugWindowPosition.y = rect.top;
+            debugWindowPositionSet = true;
+
+            debugWindowSize.cx = rect.right - rect.left;
+            debugWindowSize.cy = rect.bottom - rect.top;
+            debugWindowSizeSet = true;
+        }
+
         DestroyWindow(hwnd);
         break;
 
@@ -3515,6 +3528,18 @@ void MultiReplace::CopyListViewToClipboard(HWND hListView) {
 void MultiReplace::CloseDebugWindow() {
     // Triggers the WM_CLOSE message for the debug window, handled in DebugWindowProc
     if (hDebugWnd != NULL) {
+        // Save the window position and size before closing
+        RECT rect;
+        if (GetWindowRect(hDebugWnd, &rect)) {
+            debugWindowPosition.x = rect.left;
+            debugWindowPosition.y = rect.top;
+            debugWindowPositionSet = true;
+
+            debugWindowSize.cx = rect.right - rect.left;
+            debugWindowSize.cy = rect.bottom - rect.top;
+            debugWindowSizeSet = true;
+        }
+
         PostMessage(hDebugWnd, WM_CLOSE, 0, 0);
     }
 }
