@@ -71,6 +71,7 @@ bool MultiReplace::debugWindowPositionSet = false;
 int MultiReplace::debugWindowResponse = -1;
 SIZE MultiReplace::debugWindowSize = { 400, 250 };
 bool MultiReplace::debugWindowSizeSet = false;
+HWND MultiReplace::hDebugWnd = NULL;
 
 
 #pragma warning(disable: 6262)
@@ -2186,6 +2187,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_FIND_BUTTON:
         case IDC_FIND_NEXT_BUTTON:
         {
+            CloseDebugWindow(); // Close the Lua debug window if it is open
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleFindNextButton();
@@ -2194,6 +2196,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_FIND_PREV_BUTTON:
         {
+            CloseDebugWindow(); // Close the Lua debug window if it is open
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleFindPrevButton(); 
@@ -2202,6 +2205,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_BUTTON:
         {
+            CloseDebugWindow(); // Close the Lua debug window if it is open
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleReplaceButton();
@@ -2210,6 +2214,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_SMALL_BUTTON:
         {
+            CloseDebugWindow(); // Close the Lua debug window if it is open
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleReplaceAllButton();
@@ -2220,6 +2225,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             if (isReplaceAllInDocs)
             {
+                CloseDebugWindow(); // Close the Lua debug window if it is open
                 int msgboxID = MessageBox(
                     NULL,
                     getLangStr(L"msgbox_confirm_replace_all").c_str(),
@@ -2267,6 +2273,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             }
             else
             {
+                CloseDebugWindow(); // Close the Lua debug window if it is open
                 resetCountColumns();
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
                 handleReplaceAllButton();
@@ -3260,6 +3267,7 @@ void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std:
 int MultiReplace::ShowDebugWindow(const std::string& message) {
     const int buffer_size = 4096;
     wchar_t wMessage[buffer_size];
+    debugWindowResponse = -1;
 
     // Convert the message from UTF-8 to UTF-16
     int result = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wMessage, buffer_size);
@@ -3307,11 +3315,13 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         return -1;
     }
 
+    // Save the handle of the debug window
+    hDebugWnd = hwnd;
+
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
 
     MSG msg = { 0 };
-    debugWindowResponse = -1;
     while (GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
@@ -3335,6 +3345,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     }
 
     DestroyWindow(hwnd);
+    hDebugWnd = NULL; // Reset the handle after the window is destroyed
     return debugWindowResponse;
 }
 
@@ -3450,6 +3461,12 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         }
         break;
 
+    case WM_CLOSE:
+        // Handle the window close button (X)
+        debugWindowResponse = 3; // Set to the value that indicates the "Stop" button was pressed
+        DestroyWindow(hwnd);
+        break;
+
     case WM_DESTROY:
         PostQuitMessage(0);
         break;
@@ -3492,6 +3509,13 @@ void MultiReplace::CopyListViewToClipboard(HWND hListView) {
             }
         }
         CloseClipboard();
+    }
+}
+
+void MultiReplace::CloseDebugWindow() {
+    // Triggers the WM_CLOSE message for the debug window, handled in DebugWindowProc
+    if (hDebugWnd != NULL) {
+        PostMessage(hDebugWnd, WM_CLOSE, 0, 0);
     }
 }
 

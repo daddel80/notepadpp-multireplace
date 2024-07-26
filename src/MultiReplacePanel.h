@@ -374,6 +374,7 @@ private:
     static int debugWindowResponse;
     static SIZE debugWindowSize;
     static bool debugWindowSizeSet;
+    static HWND hDebugWnd; // Handle for the debug window
 
 
     int _editingItemIndex;
@@ -466,6 +467,7 @@ private:
     int ShowDebugWindow(const std::string& message);
     static LRESULT CALLBACK DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     static void CopyListViewToClipboard(HWND hListView);
+    static void CloseDebugWindow();
 
     //Find
     void handleFindNextButton();
