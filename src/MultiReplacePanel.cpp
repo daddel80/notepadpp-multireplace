@@ -2046,7 +2046,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDCANCEL:
         {
-
+            CloseDebugWindow(); // Close the Lua debug window if it is open
             EndDialog(_hSelf, 0);
             _MultiReplace.display(false);
 
@@ -3127,7 +3127,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         lua_pop(L, 1);
         if (isLuaErrorDialogEnabled) {
             std::wstring error_message = utf8ToWString(cstr);
-            MessageBoxW(NULL, error_message.c_str(), getLangStr(L"msgbox_title_use_variables_syntax_error").c_str(), MB_OK);
+            MessageBoxW(NULL, error_message.c_str(), getLangStr(L"msgbox_title_use_variables_syntax_error").c_str(), MB_OK | MB_SETFOREGROUND | MB_SYSTEMMODAL);
         }
         lua_close(L);
         return false;
@@ -3262,7 +3262,7 @@ void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std:
 #pragma endregion
 
 
-#pragma region DebugWindow
+#pragma region DebugWindow from resolveLuaSyntax
 
 int MultiReplace::ShowDebugWindow(const std::string& message) {
     const int buffer_size = 4096;
