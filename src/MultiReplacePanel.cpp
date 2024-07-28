@@ -101,8 +101,7 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     return adjustedSize;
 }
 
-void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
-{
+void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight) {
     int buttonX = windowWidth - 45 - 160;
     int checkbox2X = buttonX + 173;
     int swapButtonX = windowWidth - 45 - 160 - 33;
@@ -179,8 +178,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[ID_STATISTICS_COLUMNS] = { 2, 285, 17, 24, WC_BUTTON, L"▶", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
 }
 
-void MultiReplace::initializeCtrlMap()
-{
+void MultiReplace::initializeCtrlMap() {
 
     hInstance = (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE);
     s_hDlg = _hSelf;
@@ -289,8 +287,7 @@ bool MultiReplace::createAndShowWindows() {
     return true;
 }
 
-void MultiReplace::initializePluginStyle()
-{
+void MultiReplace::initializePluginStyle() {
     // Initialize for non-list marker
     long standardMarkerColor = MARKER_COLOR;
     int standardMarkerStyle = textStyles[0];
@@ -425,8 +422,7 @@ void MultiReplace::updateStatisticsColumnButtonIcon() {
     //updateButtonTooltip(ID_STATISTICS_COLUMNS, tooltip);
 }
 
-void MultiReplace::drawGripper()
-{
+void MultiReplace::drawGripper() {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(_hSelf, &ps);
 
@@ -469,6 +465,12 @@ void MultiReplace::drawGripper()
     DeleteObject(hBrush);
 
     EndPaint(_hSelf, &ps);
+}
+
+void MultiReplace::SetWindowTransparency(HWND hwnd, BYTE alpha) {
+    LONG style = GetWindowLong(hwnd, GWL_EXSTYLE);
+    SetWindowLong(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED);
+    SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
 }
 
 #pragma endregion
@@ -604,8 +606,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
 
 }
 
-void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData)
-{
+void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     // Return early if findText is empty
     if (itemData.findText.empty()) {
         showStatusMessage(getLangStr(L"status_no_find_string"), RGB(255, 0, 0));
@@ -1670,6 +1671,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         RECT adjustedSize = calculateMinWindowFrame(_hSelf);
         pMMI->ptMinTrackSize.x = adjustedSize.right;
         pMMI->ptMinTrackSize.y = adjustedSize.bottom;
+        return 0;
+    }
+
+    case WM_ACTIVATE:
+    {
+        if (LOWORD(wParam) == WA_INACTIVE) {
+            // The window loses focus
+            SetWindowTransparency(_hSelf, backgroundTransparency); // Use the loaded value
+        }
+        else {
+            // The window gains focus
+            SetWindowTransparency(_hSelf, foregroundTransparency); // Use the loaded value
+        }
         return 0;
     }
 
@@ -3500,6 +3514,7 @@ void MultiReplace::CopyListViewToClipboard(HWND hListView) {
         for (int j = 0; j < columnCount; ++j) {
             wchar_t buffer[256];
             ListView_GetItemText(hListView, i, j, buffer, 256);
+            buffer[255] = L'\0';
             clipboardText += buffer;
             if (j < columnCount - 1) {
                 clipboardText += L'\t';
@@ -6375,6 +6390,10 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"PosX=" + std::to_wstring(posX) + L"\n");
     outFile << wstringToString(L"PosY=" + std::to_wstring(posY) + L"\n");
 
+    // Save transparency settings
+    outFile << wstringToString(L"ForegroundTransparency=" + std::to_wstring(foregroundTransparency) + L"\n");
+    outFile << wstringToString(L"BackgroundTransparency=" + std::to_wstring(backgroundTransparency) + L"\n");
+
     // Store column widths for "Find Count" and "Replace Count"
     findCountColumnWidth = ListView_GetColumnWidth(_replaceListView, 1);
     replaceCountColumnWidth = ListView_GetColumnWidth(_replaceListView, 2);
@@ -6597,10 +6616,14 @@ void MultiReplace::loadUIConfigFromIni() {
     windowRect.bottom = windowRect.top + std::max(readIntFromIniFile(iniFilePath, L"Window", L"Height", MIN_HEIGHT), MIN_HEIGHT);
 
     // Read column widths
-    findCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", 0);
-    replaceCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountWidth", 0);
+    findCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", findCountColumnWidth);
+    replaceCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountWidth", replaceCountColumnWidth);
 
     isStatisticsColumnsExpanded = (findCountColumnWidth >= COUNT_COLUMN_WIDTH && replaceCountColumnWidth >= COUNT_COLUMN_WIDTH);
+
+    // Load transparency settings with defaults
+    foregroundTransparency = readByteFromIniFile(iniFilePath, L"Window", L"ForegroundTransparency", foregroundTransparency);
+    backgroundTransparency = readByteFromIniFile(iniFilePath, L"Window", L"BackgroundTransparency", backgroundTransparency);
 }
 
 std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue) {
@@ -6666,6 +6689,11 @@ bool MultiReplace::readBoolFromIniFile(const std::wstring& iniFilePath, const st
 
 int MultiReplace::readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue) {
     return ::GetPrivateProfileIntW(section.c_str(), key.c_str(), defaultValue, iniFilePath.c_str());
+}
+
+BYTE MultiReplace::readByteFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, BYTE defaultValue) {
+    int intValue = ::GetPrivateProfileIntW(section.c_str(), key.c_str(), defaultValue, iniFilePath.c_str());
+    return static_cast<BYTE>(intValue);
 }
 
 void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {

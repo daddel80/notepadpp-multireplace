@@ -398,8 +398,10 @@ private:
 
     // Window related settings
     RECT windowRect; // Structure to store window position and size
-    int findCountColumnWidth; // Width of the "Find Count" column
-    int replaceCountColumnWidth; // Width of the "Replace Count" column
+    int findCountColumnWidth = 0; // Width of the "Find Count" column
+    int replaceCountColumnWidth = 0; // Width of the "Replace Count" column
+    BYTE foregroundTransparency = 255; // Default to fully opaque
+    BYTE backgroundTransparency = 128; // Default to semi-transparent
 
 
     //Initialization
@@ -415,6 +417,7 @@ private:
     void setUIElementVisibility();
     void updateStatisticsColumnButtonIcon();
     void drawGripper();
+    void SetWindowTransparency(HWND hwnd, BYTE alpha);
 
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);
@@ -577,6 +580,7 @@ private:
     std::wstring getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements = {});
     LPCWSTR getLangStrLPCWSTR(const std::wstring& id);
     LPWSTR getLangStrLPWSTR(const std::wstring& id);
+    BYTE readByteFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, BYTE defaultValue);
 };
 
 extern std::unordered_map<std::wstring, std::wstring> languageMap;
