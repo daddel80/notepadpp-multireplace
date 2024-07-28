@@ -27,6 +27,8 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 - [Data Handling](#data-handling)
   - [Import/Export](#importexport)
   - [Bash Script Export](#bash-script-export)
+- [Window and Display Options](#window-and-display-options)
+  - [Transparency Configuration](#transparency-configuration)
   - [Multilingual UI Support](#multilingual-ui-support)
   
 ## Key Features
@@ -254,8 +256,19 @@ Additional Interactions:
 - Exports Find and Replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
 - This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
 
+## Window and Display Options
+
+### Transparency Configuration
+
+You can set the transparency levels for the MultiReplace plugin window in the INI file located at `%APPDATA%\Notepad++\plugins\config\MultiReplace\MultiReplace.ini`.
+
+**INI File Settings:**
+- `ForegroundTransparency`: Transparency level when in focus (0-255, default 255).
+- `BackgroundTransparency`: Transparency level when not in focus (0-255, default 128).
+
 ### Multilingual UI Support
-The MultiReplace plugin offers a multilingual UI, enabling navigation in various languages through adjustments in the `languages.ini` file within the plugin's configuration directory:
-- `%APPDATA%\Notepad++\plugins\config\MultiReplace\languages.ini`
+
+The MultiReplace plugin offers a multilingual UI, enabling navigation in various languages through adjustments in the `languages.ini` file within the plugin's configuration directory: `%APPDATA%\Notepad++\plugins\config\MultiReplace\languages.ini`.
 
 This file enables users to select or customize the UI language settings, enhancing the accessibility and usability of the plugin for non-English speakers.
+
