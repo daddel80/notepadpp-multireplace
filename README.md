@@ -264,7 +264,7 @@ You can set the transparency levels for the MultiReplace plugin window in the IN
 
 **INI File Settings:**
 - `ForegroundTransparency`: Transparency level when in focus (0-255, default 255).
-- `BackgroundTransparency`: Transparency level when not in focus (0-255, default 128).
+- `BackgroundTransparency`: Transparency level when not in focus (0-255, default 190).
 
 ### Multilingual UI Support
 
