@@ -401,8 +401,7 @@ private:
     int findCountColumnWidth = 0; // Width of the "Find Count" column
     int replaceCountColumnWidth = 0; // Width of the "Replace Count" column
     BYTE foregroundTransparency = 255; // Default to fully opaque
-    BYTE backgroundTransparency = 128; // Default to semi-transparent
-
+    BYTE backgroundTransparency = 190; // Default to semi-transparent
 
     //Initialization
     void initializeWindowSize();
