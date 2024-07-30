@@ -1,6 +1,6 @@
 # MultiReplace for Notepad++
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-3.0.3.15-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/3.0.3.15)
+[![Latest Stable Version](https://img.shields.io/badge/version-3.1.0.16-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/3.1.0.16)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, proving useful across various sessions or projects. This enhancement increases efficiency when multiple replacements need to be made concurrently, thereby bolstering the overall functionality of Notepad++.
@@ -268,7 +268,7 @@ You can set the transparency levels for the MultiReplace plugin window in the IN
 
 ### Multilingual UI Support
 
-The MultiReplace plugin offers a multilingual UI, enabling navigation in various languages through adjustments in the `languages.ini` file within the plugin's configuration directory: `%APPDATA%\Notepad++\plugins\config\MultiReplace\languages.ini`.
+The UI language settings for the MultiReplace plugin can be customized by adjusting the `languages.ini` file located in `C:\Program Files\Notepad++\plugins\MultiReplace\`. These adjustments will ensure that the selected language in Notepad++ is applied within the plugin. 
 
-This file enables users to select or customize the UI language settings, enhancing the accessibility and usability of the plugin for non-English speakers.
+Contributions to the `languages.ini` file on GitHub are welcome for future versions. Find the file [here](https://github.com/daddel80/notepadpp-multireplace/blob/main/languages.ini).
 
