@@ -3184,7 +3184,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
     // Remove CAP variables to prevent them from being set in the next call
     std::string capVariablesStr;
-    for (size_t i = 0; i < caps.size(); ++i) {
+
         std::string globalVarName = "CAP" + std::to_string(i + 1);
         lua_getglobal(L, globalVarName.c_str());
 
