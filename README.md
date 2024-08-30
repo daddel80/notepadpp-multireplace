@@ -1,6 +1,6 @@
 # MultiReplace for Notepad++
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-3.1.0.16-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/3.1.0.16)
+[![Latest Stable Version](https://img.shields.io/badge/version-3.1.1.17-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/3.1.1.17)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, proving useful across various sessions or projects. This enhancement increases efficiency when multiple replacements need to be made concurrently, thereby bolstering the overall functionality of Notepad++.
@@ -72,7 +72,7 @@ Scope functions define the range for searching and replacing strings:
 - **Clipboard Column Copying**: Copy columns with original delimiters to clipboard.
 
 ### Header Line Sorting Control
-- **Exclude Header Lines from Sorting**: Set `HeaderLines=<number>` in `%USERPROFILE%\AppData\Roaming\Notepad++\plugins\config\MultiReplace\MultiReplace.ini` to specify the number of top lines to exclude from sorting as headers.
+- **Exclude Header Lines from Sorting**: Set `HeaderLines=<number>` in You can set the transparency levels for the MultiReplace plugin window in the INI file located at `C:\Program Files\Notepad++\plugins\MultiReplace\MultiReplace.ini`. to specify the number of top lines to exclude from sorting as headers.
 
 ### Numeric Sorting in CSV
 - For accurate numeric sorting in CSV files, the following settings and regex patterns can be used:
@@ -260,7 +260,7 @@ Additional Interactions:
 
 ### Transparency Configuration
 
-You can set the transparency levels for the MultiReplace plugin window in the INI file located at `%APPDATA%\Notepad++\plugins\config\MultiReplace\MultiReplace.ini`.
+You can set the transparency levels for the MultiReplace plugin window in the INI file located at `C:\Program Files\Notepad++\plugins\MultiReplace\MultiReplace.ini`.
 
 **INI File Settings:**
 - `ForegroundTransparency`: Transparency level when in focus (0-255, default 255).
