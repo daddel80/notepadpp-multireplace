@@ -2966,41 +2966,48 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
     setLuaVariable(L, "MATCH", vars.MATCH);
     // Get CAPs from Scintilla using SCI_GETTAG
-    std::vector<std::string> caps;  // Initialize an empty vector to store the captures
+    std::vector<std::string> capNames;  // Vector to store the names of the set CAP variables for DEBUG Window
 
     if (regex) {
         sptr_t len = 0;
-        for (int i = 1; ; ++i) {
+        int capIndex = 1;  // Start numbering from CAP1
+
+        // Loop to retrieve up to 100 capture groups
+        for (int i = 1; i <= MAX_CAP_GROUPS; ++i) {
             char buffer[1024] = { 0 };  // Buffer to hold the capture value
             len = send(SCI_GETTAG, i, reinterpret_cast<sptr_t>(buffer), true);
 
-            if (len <= 0) {
-                // If len is zero or negative, break the loop
+            if (len < 0) {
+                // If len is negative, no more captures are available, break the loop
                 break;
             }
 
-            if (len < sizeof(buffer)) {
-                // If the first character is 0x00, break the loop
-                if (buffer[0] == 0x00) {
-                    break;
-                }
+            if (len > 0 && len < sizeof(buffer)) {
+                // Valid capture found
                 buffer[len] = '\0';  // Null-terminate the string
-                std::string cap(buffer);  // Convert to std::string
-                caps.push_back(cap);  // Add the capture to the vector
+                std::string capValue(buffer);  // Convert to std::string for capture value
+
+                // Generate the CAP variable name dynamically
+                std::string globalVarName = "CAP" + std::to_string(capIndex);
+
+                // Set the capture as a global Lua variable
+                setLuaVariable(L, globalVarName, capValue);
+
+                // Store only the CAP variable name for later use
+                capNames.push_back(globalVarName);
+
+                capIndex++;  // Increment the CAP index only for non-empty captures
+            }
+            else if (len == 0 || buffer[0] == 0x00) {
+                // If the capture is empty, increment the capture index
+                capIndex++;  // Ensure the index is correctly incremented even for empty captures
             }
             else {
-                // Buffer overflow detected: This should be rare, but it's good to check
+                // Buffer overflow detected or other error: Close Lua and return false
                 lua_close(L);
                 return false;
             }
         }
-    }
-
-    // Process the captures and set them as global variables
-    for (size_t i = 0; i < caps.size(); ++i) {
-        std::string cap = caps[i];
-        std::string globalVarName = "CAP" + std::to_string(i + 1);
-        setLuaVariable(L, globalVarName, cap);
     }
 
     // Declare cond statement function
@@ -3184,8 +3191,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
     // Remove CAP variables to prevent them from being set in the next call
     std::string capVariablesStr;
-
-        std::string globalVarName = "CAP" + std::to_string(i + 1);
+    
+    // Loop through the stored CAP names
+    for (const auto& globalVarName : capNames) {
         lua_getglobal(L, globalVarName.c_str());
 
         // Include CAP variables in the debug output
@@ -3198,9 +3206,13 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         else if (lua_isboolean(L, -1)) {
             capVariablesStr += globalVarName + "\tBoolean\t" + (lua_toboolean(L, -1) ? "true" : "false") + "\n";
         }
+        else {
+            capVariablesStr += globalVarName + "\t<nil>\n";  // Handle missing or nil values
+        }
         capVariablesStr += "\n";
         lua_pop(L, 1); // Pop the variable value
 
+        // Remove the CAP variable from Lua
         lua_pushnil(L);
         lua_setglobal(L, globalVarName.c_str());
     }

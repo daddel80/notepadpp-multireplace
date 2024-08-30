@@ -317,6 +317,7 @@ private:
     static constexpr wchar_t* symbolSortDesc = L"▲";
     static constexpr wchar_t* symbolSortAscUnsorted = L"▽";
     static constexpr wchar_t* symbolSortDescUnsorted = L"△";
+    static constexpr int MAX_CAP_GROUPS = 9; // Maximum number of capture groups supported by Notepad++
 
     // Static variables related to GUI 
     static HWND s_hScintilla;
