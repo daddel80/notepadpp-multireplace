@@ -85,7 +85,7 @@ Scope functions define the range for searching and replacing strings:
 | Remove Leading Zeros (Non-decimal)             | `\b0+(\d*)`         | `$1`           | Yes   | No            |
 
 ## Option 'Use Variables'
-Activate the '**Use Variables**' checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options.
+Activate the '**Use Variables**' checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options. The functionality relies on the [Lua engine](https://www.lua.org/).
 
 **Note**: Utilize either the `set()` or `cond()` command in 'Replace with:' to channel the output as the replacement string. Only one of these commands should be used at a time.
 
@@ -118,7 +118,7 @@ Directly outputs strings or numbers, replacing the matched text in the Replace S
 | `set(LINE+5)`                        | "10"                                |
 
 #### **cond(condition, trueVal, \[falseVal\])**
-Implements if-then-else logic, or if-then if falseVal is omitted. Evaluates the condition and pushes the corresponding value (trueVal or falseVal) to the Replace String.
+Implements if-then-else logic, or if-then if falseVal is omitted. Evates the condition and pushes the corresponding value (trueVal or falseVal) to the Replace String.
 
 | Example                                                      | Result (assuming LINE = 5)            |
 |--------------------------------------------------------------|---------------------------------------|
@@ -193,7 +193,7 @@ The `DEBUG` option lets you inspect global variables during replacements. When e
 | `^(.*)$`            | `init({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;` | Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses `MATCH_PREV` to identify and remove consecutive duplicates. | Yes | No  |
 
 #### Engine Overview
-MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math operations and string methods. Refer to [Lua String Manipulation](https://www.lua.org/manual/5.1/manual.html#5.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.1/manual.html#5.6) for more information.
+MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math operations and string methods. Refer to [Lua String Manipulation](https://www.lua.org/manual/5.4/manual.html#6.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.4/manual.html#6.6) for more information.
 
 ### User Interaction and List Management
 Manage search and replace strings within the list using the context menu, which provides comprehensive functionalities accessible by right-clicking on an entry, using direct keyboard shortcuts, or mouse interactions. Here are the detailed actions available:
