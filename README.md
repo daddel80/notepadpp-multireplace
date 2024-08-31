@@ -3,7 +3,7 @@
 [![Latest Stable Version](https://img.shields.io/badge/version-3.1.1.17-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/3.1.1.17)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
-MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, proving useful across various sessions or projects. This enhancement increases efficiency when multiple replacements need to be made concurrently, thereby bolstering the overall functionality of Notepad++.
+MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, perfect for use across different sessions or projects. It increases efficiency by enabling multiple replacements at once, supports sorting and applying operations to specific columns in CSV files, and offers flexible options for replacing text in various ways.
 
 ![MultiReplace Screenshot](./MultiReplace.gif)
 
@@ -36,7 +36,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 -   **Multiple Replacements**: Execute multiple replacements in a single operation, in one document or across all opened documents.
 -   **Entry Toggling**: Toggle list entries for replacement, highlighting, or searching.
 -   **String Storage**: Store and load your search and replace strings in a list, facilitating reuse across different sessions or projects.
--   **CSV Scope Functionality**: Target specific columns in a delimited file for search or replacement operations, offering precision in managing CSV data.
+-   **CSV Scope Functionality**: Apply search, replace, or sort operations to specific columns in a CSV or other delimited file by selecting column numbers.
 -   **Scripted Text Replacements**: Export to bash script for scripted text replacements.
 -   **Highlighting**: Highlight multiple find words in unique colors for better visual distinction.
 -   **Variable Usage**: Employ variables for conditional and computational operations within the replacement string.
