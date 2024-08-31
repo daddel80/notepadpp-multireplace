@@ -85,7 +85,7 @@ Scope functions define the range for searching and replacing strings:
 ## Option 'Use Variables'
 Activate the '**Use Variables**' checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options. This functionality relies on the [Lua engine](https://www.lua.org/).
 
-**Note**: Utilize either the [`set()`](#command-overview) or [`cond()`](#command-overview) command in 'Replace with:' to channel the output as the replacement string. Only one of these commands should be used at a time.
+**Note**: Utilize either the [`set()`](#setstrorcalc) or [`cond()`](#condcondition-trueval-falseval) command in 'Replace with:' to channel the output as the replacement string. Only one of these commands should be used at a time.
 
 ### Variables Overview
 | Variable | Description |
