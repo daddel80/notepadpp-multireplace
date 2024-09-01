@@ -306,12 +306,12 @@ document.addEventListener('DOMContentLoaded', function() {
 <article>
     <section id=Introduction>
         <h2>Introduction</h2>
-        Activate the <strong>Use Variables</strong> checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options.
+        Activate the <strong>Use Variables</strong> checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options. The functionality relies on the <a href="https://www.lua.org/" target="_blank">Lua engine</a>.
     </section>
 
     <section id=FirstSteps>
         <h2>First step</h2>
-        Utilize either the <code>set()</code> or <code>cond()</code> command in 'Replace with:' to channel the output as the replacement string. Only one of these commands should be used at a time.
+        Utilize either the <a href="#setstrorcalc"><code>set()</code></a> or <a href="#condcondition-trueval-falseval"><code>cond()</code></a> command in 'Replace with:' to channel the output as the replacement string. Only one of these commands should be used at a time.
     </section>
 	
     <section id=Variables>
@@ -361,7 +361,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     <section id=Commands>
         <h2>Commands</h2>
-        <h3>set(strOrCalc)</h3>
+        <h3 id="setstrorcalc">set(strOrCalc)</h3>
         <p>Outputs strings or numbers directly.</p>
         <table class="optionsTable">
             <tr>
@@ -378,7 +378,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </tr>
         </table>
 
-        <h3><strong>cond(condition, trueVal, [falseVal])</strong></h3>
+        <h3 id="condcondition-trueval-falseval">cond(condition, trueVal, [falseVal])</h3>
         <p>Implements if-then-else logic, or if-then if falseVal is omitted.</p>
         <table class="optionsTable">
             <tr>
@@ -525,7 +525,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     <section id=FurtherFunctions>
         <h2>Math & String Functions</h2>
-        <p>MultiReplace uses the <a href="https://www.lua.org/" target="_blank">Lua engine</a>, allowing for Lua math operations and string methods. Refer to <a href="https://www.lua.org/manual/5.1/manual.html#5.4" target="_blank">Lua String Manipulation</a> and <a href="https://www.lua.org/manual/5.1/manual.html#5.6" target="_blank">Lua Mathematical Functions</a> for more information.</p>
+        <p>MultiReplace uses the <a href="https://www.lua.org/" target="_blank">Lua engine</a>, allowing for Lua math operations and string methods. Refer to <a href="https://www.lua.org/manual/5.4/manual.html#6.4" target="_blank">Lua String Manipulation</a> and <a href="https://www.lua.org/manual/5.4/manual.html#6.6" target="_blank">Lua Mathematical Functions</a> for more information.</p>
     </section>
 
     <section id=Examples>
