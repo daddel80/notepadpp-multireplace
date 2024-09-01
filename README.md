@@ -1,9 +1,9 @@
 # MultiReplace for Notepad++
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-3.1.1.17-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/3.1.1.17)
+[![Latest Stable Version](https://img.shields.io/badge/version-3.1.2.18-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/3.1.2.18)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
-MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, proving useful across various sessions or projects. This enhancement increases efficiency when multiple replacements need to be made concurrently, thereby bolstering the overall functionality of Notepad++.
+MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, perfect for use across different sessions or projects. It increases efficiency by enabling multiple replacements at once, supports sorting and applying operations to specific columns in CSV files, and offers flexible options for replacing text in various ways.
 
 ![MultiReplace Screenshot](./MultiReplace.gif)
 
@@ -33,17 +33,15 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
   
 ## Key Features
 
--   **Multiple Replacements**: Execute multiple replacements in a single operation, in one document or across all opened documents.
--   **Entry Toggling**: Toggle list entries for replacement, highlighting, or searching.
--   **String Storage**: Store and load your search and replace strings in a list, facilitating reuse across different sessions or projects.
--   **CSV Scope Functionality**: Target specific columns in a delimited file for search or replacement operations, offering precision in managing CSV data.
--   **Scripted Text Replacements**: Export to bash script for scripted text replacements.
--   **Highlighting**: Highlight multiple find words in unique colors for better visual distinction.
--   **Variable Usage**: Employ variables for conditional and computational operations within the replacement string.
+-   **Multiple Replacements:** Execute multiple replacements in a single operation, in one document or across all opened documents.
+-   **Entry Toggling:** Toggle list entries for replacement, highlighting, or searching.
+-   **String Storage:** Store and load your search and replace strings in a list, facilitating reuse across different sessions or projects.
+-   **CSV Scope Functionality:** Apply search, replace, or sort operations to specific columns in a CSV or other delimited file by selecting column numbers.
+-   **Scripted Text Replacements:** Export to bash script for scripted text replacements.
+-   **Highlighting:** Highlight multiple find words in unique colors for better visual distinction.
+-   **Variable Usage:** Employ variables for conditional and computational operations within the replacement string.
 
 ## Match and Replace Options
-
-This chapter provides an overview of the various match and replace options available in MultiReplace, enhancing the flexibility and precision of your search and replace operations.
 
 **Match Whole Word Only:** When this option is enabled, the search term is matched only if it appears as a whole word. This is particularly useful for avoiding partial matches within larger words, ensuring more precise and targeted search results.
 
@@ -51,7 +49,7 @@ This chapter provides an overview of the various match and replace options avail
 
 **Use Variables:** This feature allows the use of variables within the replacement string for dynamic and conditional replacements. For more detailed information, refer to the [Option 'Use Variables' chapter](#option-use-variables).
 
-**Replace First Match Only:** The "Replace First Match Only" option is ideal for Replace-All operations, where it replaces only the first occurrence of a match in each list entry. This is particularly useful for different replace strings with the same find pattern. It's designed for modifying only the initial match in a document or scope, while keeping other instances intact. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
+**Replace First Match Only:** For Replace-All operations, this option replaces only the first occurrence of a match for each entry in a Search and Replace list, instead of all matches in the text. This is useful when using different replace strings with the same find pattern. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
 
 **Wrap Around:** When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
 
@@ -85,9 +83,9 @@ Scope functions define the range for searching and replacing strings:
 | Remove Leading Zeros (Non-decimal)             | `\b0+(\d*)`         | `$1`           | Yes   | No            |
 
 ## Option 'Use Variables'
-Activate the '**Use Variables**' checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options.
+Activate the '**Use Variables**' checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options. This functionality relies on the [Lua engine](https://www.lua.org/).
 
-**Note**: Utilize either the `set()` or `cond()` command in 'Replace with:' to channel the output as the replacement string. Only one of these commands should be used at a time.
+**Note**: Utilize either the [`set()`](#setstrorcalc) or [`cond()`](#condcondition-trueval-falseval) command in 'Replace with:' to channel the output as the replacement string. Only one of these commands should be used at a time.
 
 ### Variables Overview
 | Variable | Description |
@@ -118,7 +116,7 @@ Directly outputs strings or numbers, replacing the matched text in the Replace S
 | `set(LINE+5)`                        | "10"                                |
 
 #### **cond(condition, trueVal, \[falseVal\])**
-Implements if-then-else logic, or if-then if falseVal is omitted. Evaluates the condition and pushes the corresponding value (trueVal or falseVal) to the Replace String.
+Implements if-then-else logic, or if-then if falseVal is omitted. Evates the condition and pushes the corresponding value (trueVal or falseVal) to the Replace String.
 
 | Example                                                      | Result (assuming LINE = 5)            |
 |--------------------------------------------------------------|---------------------------------------|
@@ -193,7 +191,7 @@ The `DEBUG` option lets you inspect global variables during replacements. When e
 | `^(.*)$`            | `init({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;` | Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses `MATCH_PREV` to identify and remove consecutive duplicates. | Yes | No  |
 
 #### Engine Overview
-MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math operations and string methods. Refer to [Lua String Manipulation](https://www.lua.org/manual/5.1/manual.html#5.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.1/manual.html#5.6) for more information.
+MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math operations and string methods. Refer to [Lua String Manipulation](https://www.lua.org/manual/5.4/manual.html#6.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.4/manual.html#6.6) for more information.
 
 ### User Interaction and List Management
 Manage search and replace strings within the list using the context menu, which provides comprehensive functionalities accessible by right-clicking on an entry, using direct keyboard shortcuts, or mouse interactions. Here are the detailed actions available:
