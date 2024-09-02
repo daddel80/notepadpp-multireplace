@@ -3123,6 +3123,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     luaL_dostring(L,
         "function init(args)\n"
         "  for name, value in pairs(args) do\n"
+        " -- Set the global variable only if it does not already exist"
         "    if _G[name] == nil then\n"
         "      if type(name) ~= 'string' then\n"
         "        error('Variable name must be a string')\n"
@@ -3140,7 +3141,26 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "      _G[name] = value\n"
         "    end\n"
         "  end\n"
+
+        "  -- Forward or initialize resultTable\n"
+        "  local res = {result = '', skip = true}  -- Defaults for resultTable\n"
+
+        "  -- Ensure resultTable is not overwritten if combined with cond or set\n"
+        "  if resultTable == nil then\n"
+        "    resultTable = res  -- Initialize resultTable if it does not exist\n"
+        "  else\n"
+        "    -- Ensure required fields are present without overwriting existing values\n"
+        "    if resultTable.result == nil then\n"
+        "      resultTable.result = res.result\n"
+        "    end\n"
+        "    if resultTable.skip == nil then\n"
+        "      resultTable.skip = res.skip\n"
+        "    end\n"
+        "  end\n"
+
+        "  return resultTable  -- Return the existing or new resultTable\n"
         "end\n");
+
 
     // Show syntax error
     if (luaL_dostring(L, inputString.c_str()) != LUA_OK) {
