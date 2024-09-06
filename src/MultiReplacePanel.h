@@ -185,8 +185,8 @@ struct LuaVariables {
     int LPOS = 0;
     int LCNT = 0;
     int APOS = 0;
-    int COL = 1;
-    std::string MATCH;
+    int COL = 0;
+    std::string MATCH = "";
 };
 
 enum class LuaVariableType {
@@ -459,6 +459,7 @@ private:
     bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
+    bool MultiReplace::preProcessListForReplace();
     SelectionInfo getSelectionInfo();
     void captureLuaGlobals(lua_State* L);
     void loadLuaGlobals(lua_State* L);

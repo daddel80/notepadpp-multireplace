@@ -607,8 +607,10 @@ void MultiReplace::createListViewColumns(HWND listView) {
 }
 
 void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
-    // Return early if findText is empty
-    if (itemData.findText.empty()) {
+    int useVariables = IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED ? 1 : 0;
+
+    // Return early if findText is empty and "Use Variables" is not enabled
+    if (itemData.findText.empty() && useVariables == 0) {
         showStatusMessage(getLangStr(L"status_no_find_string"), RGB(255, 0, 0));
         return;
     }
@@ -2511,6 +2513,12 @@ void MultiReplace::handleReplaceAllButton() {
             showStatusMessage(getLangStr(L"status_add_values_instructions"), RGB(255, 0, 0));
             return;
         }
+
+        // Check the status if stopped by DEBUG
+        if (!preProcessListForReplace()) {
+            return;
+        }
+
         ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
         for (size_t i = 0; i < replaceListData.size(); ++i)
         {
@@ -2564,6 +2572,9 @@ void MultiReplace::handleReplaceButton() {
         return;
     }
 
+    // Clear all stored Lua Global Variables
+    globalLuaVariablesMap.clear();
+
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
@@ -2578,6 +2589,11 @@ void MultiReplace::handleReplaceButton() {
     if (useListEnabled) {
         if (replaceListData.empty()) {
             showStatusMessage(getLangStr(L"status_add_values_or_uncheck"), RGB(255, 0, 0));
+            return;
+        }
+
+        // Check the status if stopped by DEBUG
+        if (!preProcessListForReplace()) {
             return;
         }
 
@@ -2610,6 +2626,9 @@ void MultiReplace::handleReplaceButton() {
         else {
             if (searchResult.pos < 0) {
                 showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
+            }
+            else {
+                showStatusMessage(getLangStr(L"status_found_text_not_replaced"), RGB(255, 0, 0));
             }
         }
     }
@@ -2652,9 +2671,11 @@ void MultiReplace::handleReplaceButton() {
             if (searchResult.pos < 0) {
                 showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
             }
+            else {
+                showStatusMessage(getLangStr(L"status_found_text_not_replaced"), RGB(255, 0, 0));
+            }
         }
     }
-
 }
 
 bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos)
@@ -2845,6 +2866,24 @@ Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf
     return newTargetEnd;
 }
 
+bool MultiReplace::preProcessListForReplace() {
+    if (!replaceListData.empty()) {
+        for (size_t i = 0; i < replaceListData.size(); ++i) {
+            if (replaceListData[i].isEnabled && replaceListData[i].useVariables) {
+                if (replaceListData[i].findText.empty()) {
+                    std::string localReplaceTextUtf8 = wstringToString(replaceListData[i].replaceText);
+                    bool skipReplace = false;
+                    LuaVariables vars;
+                    if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, replaceListData[i].regex)) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+
 SelectionInfo MultiReplace::getSelectionInfo() {
     // Get selected text
     Sci_Position selectionStart = ::SendMessage(_hScintilla, SCI_GETSELECTIONSTART, 0, 0);
@@ -2963,7 +3002,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     luaL_dostring(L, "LPOS = math.tointeger(LPOS)");
     luaL_dostring(L, "APOS = math.tointeger(APOS)");
     luaL_dostring(L, "COL = math.tointeger(COL)");
-
+    
     setLuaVariable(L, "MATCH", vars.MATCH);
     // Get CAPs from Scintilla using SCI_GETTAG
     std::vector<std::string> capNames;  // Vector to store the names of the set CAP variables for DEBUG Window
@@ -3056,8 +3095,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "  end\n"
         "  resultTable = res\n"
         "  return res  -- Return the table containing result and skip\n"
-        "end\n");
-
+        "end\n");        
 
     // Declare the set function
     luaL_dostring(L,
@@ -3117,12 +3155,13 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "    end\n"
         "  end\n"
         "  return output\n"
-        "end");
+        "end\n");
 
     // Declare the init function
     luaL_dostring(L,
         "function init(args)\n"
         "  for name, value in pairs(args) do\n"
+        "    -- Set the global variable only if it does not already exist\n"
         "    if _G[name] == nil then\n"
         "      if type(name) ~= 'string' then\n"
         "        error('Variable name must be a string')\n"
@@ -3140,8 +3179,27 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "      _G[name] = value\n"
         "    end\n"
         "  end\n"
+
+        "  -- Forward or initialize resultTable\n"
+        "  local res = {result = '', skip = true}  -- Defaults for resultTable\n"
+
+        "  -- Ensure resultTable is not overwritten if combined with cond or set\n"
+        "  if resultTable == nil then\n"
+        "    resultTable = res  -- Initialize resultTable if it does not exist\n"
+        "  else\n"
+        "    -- Ensure required fields are present without overwriting existing values\n"
+        "    if resultTable.result == nil then\n"
+        "      resultTable.result = res.result\n"
+        "    end\n"
+        "    if resultTable.skip == nil then\n"
+        "      resultTable.skip = res.skip\n"
+        "    end\n"
+        "  end\n"
+
+        "  return resultTable  -- Return the existing or new resultTable\n"
         "end\n");
 
+    
     // Show syntax error
     if (luaL_dostring(L, inputString.c_str()) != LUA_OK) {
         const char* cstr = lua_tostring(L, -1);
@@ -3153,7 +3211,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         lua_close(L);
         return false;
     }
-
+    
     // Retrieve the result from the table
     lua_getglobal(L, "resultTable");
     if (lua_istable(L, -1)) {
@@ -3713,6 +3771,11 @@ void MultiReplace::handleFindPrevButton() {
 
 SearchResult MultiReplace::performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range) {
 
+    // Check if the search string is empty
+    if (findTextUtf8.empty()) {
+        return SearchResult();  // Returns the default-initialized SearchResult
+    }
+
     send(SCI_SETTARGETSTART, range.start, 0);
     send(SCI_SETTARGETEND, range.end, 0);
     send(SCI_SETSEARCHFLAGS, searchFlags, 0);
@@ -3977,7 +4040,7 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
     closestMatch.length = 0;
     closestMatch.foundText = "";
 
-    closestMatchIndex = std::numeric_limits<size_t>::max(); // Initialisiert mit einem Wert, der "keinen Index" darstellt.
+    closestMatchIndex = std::numeric_limits<size_t>::max(); // Initialize with a value representing "no index".
 
     for (size_t i = 0; i < list.size(); i++) {
         if (list[i].isEnabled) {
@@ -3985,15 +4048,15 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
             std::string findTextUtf8 = convertAndExtend(list[i].findText, list[i].extended);
             SearchResult result = performSearchForward(findTextUtf8, searchFlags, false, cursorPos);
 
-            // Wenn ein Treffer gefunden wurde, der näher am Cursor liegt als der aktuelle nächste Treffer, aktualisiere den nächstgelegenen Treffer
+            // If a match is found that is closer to the cursor than the current closest match, update the closest match
             if (result.pos >= 0 && (closestMatch.pos < 0 || result.pos < closestMatch.pos)) {
                 closestMatch = result;
-                closestMatchIndex = i; // Aktualisiere den Index des nächstgelegenen Treffers
+                closestMatchIndex = i; // Update the index of the closest match
             }
         }
     }
 
-    if (closestMatch.pos >= 0) { // Überprüfe, ob ein Treffer gefunden wurde
+    if (closestMatch.pos >= 0) { // Check if a match was found
         displayResultCentered(closestMatch.pos, closestMatch.pos + closestMatch.length, true);
     }
 
@@ -5789,6 +5852,10 @@ sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, b
 */
 
 bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
+    if (str.empty()) {
+        return false;  // An empty string is not a valid number
+    }
+
     if (str == "." || str == ",") {
         return false;
     }
