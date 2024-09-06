@@ -93,6 +93,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_no_rows_selected_to_shift", L"No rows selected to shift." },
 { L"status_add_values_or_uncheck", L"Add values into the list or uncheck 'Use in List'." },
 { L"status_no_occurrence_found", L"No occurrence found." },
+{ L"status_found_text_not_replaced", L"Found text was not replaced." },
 { L"status_replace_one_next_found", L"Replace: 1 occurrence replaced. Next found." },
 { L"status_replace_one_none_left", L"Replace: 1 occurrence replaced. None left." },
 { L"status_add_values_or_find_directly", L"Add values into the list. Or uncheck 'Use in List' to find directly." },

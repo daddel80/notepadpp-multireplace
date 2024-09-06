@@ -607,8 +607,10 @@ void MultiReplace::createListViewColumns(HWND listView) {
 }
 
 void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
-    // Return early if findText is empty
-    if (itemData.findText.empty()) {
+    int useVariables = IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED ? 1 : 0;
+
+    // Return early if findText is empty and "Use Variables" is not enabled
+    if (itemData.findText.empty() && useVariables == 0) {
         showStatusMessage(getLangStr(L"status_no_find_string"), RGB(255, 0, 0));
         return;
     }
@@ -2626,7 +2628,7 @@ void MultiReplace::handleReplaceButton() {
                 showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
             }
             else {
-                showStatusMessage(L"Found text was not replaced", RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_found_text_not_replaced"), RGB(255, 0, 0));
             }
         }
     }
@@ -2670,7 +2672,7 @@ void MultiReplace::handleReplaceButton() {
                 showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
             }
             else {
-                showStatusMessage(L"Found text was not replaced", RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_found_text_not_replaced"), RGB(255, 0, 0));
             }
         }
     }
