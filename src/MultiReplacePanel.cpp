@@ -307,6 +307,18 @@ void MultiReplace::initializeListView() {
     ListView_SetExtendedListViewStyle(_replaceListView, LVS_EX_FULLROWSELECT | LVS_EX_SUBITEMIMAGES);
 }
 
+void MultiReplace::initializeDragAndDrop() {
+    dropTarget = new DropTarget(_replaceListView, this);  // Create an instance of DropTarget
+    HRESULT hr = ::RegisterDragDrop(_replaceListView, dropTarget);  // Register the ListView as a drop target
+
+    if (FAILED(hr)) {
+        // Safely release the DropTarget instance to avoid memory leaks
+        delete dropTarget;
+        dropTarget = nullptr;  // Set to nullptr to prevent any unintended usage
+    }
+}
+
+
 void MultiReplace::moveAndResizeControls() {
     // IDs of controls to be moved or resized
     const int controlIds[] = {
@@ -1658,6 +1670,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializePluginStyle();
         initializeCtrlMap();
         initializeListView();
+        initializeDragAndDrop();
         loadSettings();
         updateButtonVisibilityBasedOnMode();
 		updateStatisticsColumnButtonIcon();
@@ -1709,14 +1722,44 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         if (_replaceListView && originalListViewProc) {
             SetWindowLongPtr(_replaceListView, GWLP_WNDPROC, (LONG_PTR)originalListViewProc);
         }
-        saveSettings();
+
+        saveSettings(); // Save any settings before destroying
+
+        // Unregister Drag-and-Drop
+        if (dropTarget) {
+            RevokeDragDrop(_replaceListView);
+            delete dropTarget;
+            dropTarget = nullptr;
+        }
+
         if (hwndEdit) {
             DestroyWindow(hwndEdit);
         }
+
         DeleteObject(_hFont);
-        DestroyWindow(_hSelf);
+
+        // Close the debug window if open
+        if (hDebugWnd != NULL) {
+            RECT rect;
+            if (GetWindowRect(hDebugWnd, &rect)) {
+                debugWindowPosition.x = rect.left;
+                debugWindowPosition.y = rect.top;
+                debugWindowPositionSet = true;
+                debugWindowSize.cx = rect.right - rect.left;
+                debugWindowSize.cy = rect.bottom - rect.top;
+                debugWindowSizeSet = true;
+            }
+            PostMessage(hDebugWnd, WM_CLOSE, 0, 0);
+            hDebugWnd = NULL; // Reset the handle after closing
+        }
+
+        DestroyWindow(_hSelf); // Destroy the main window
+
+        // Post a quit message to ensure the application terminates cleanly
+        PostQuitMessage(0);
     }
     break;
+
 
     case WM_SIZE:
     {

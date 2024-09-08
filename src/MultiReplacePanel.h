@@ -19,6 +19,7 @@
 #include "StaticDialog/StaticDialog.h"
 #include "StaticDialog/resource.h"
 #include "PluginInterface.h"
+#include "DropTarget.h"
 
 #include <string>
 #include <vector>
@@ -299,6 +300,10 @@ public:
 
     static std::vector<LogEntry> logChanges;
 
+    // Drag-and-Drop functionality
+    DropTarget* dropTarget;  // Pointer to DropTarget instance
+    void loadListFromCsv(const std::wstring& filePath); // used in DropTarget.cpp
+    void initializeDragAndDrop();
 
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
@@ -551,7 +556,6 @@ private:
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
-    void loadListFromCsv(const std::wstring& filePath);
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
 
