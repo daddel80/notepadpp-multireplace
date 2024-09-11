@@ -394,6 +394,9 @@ private:
     SciFnDirect pSciMsg = nullptr;
     sptr_t pSciWndData = 0;
 
+    // List related
+    std::wstring listFilePath = L""; //to store the file path of loaded list
+
     // GUI control-related constants
     const std::vector<int> selectionRadioDisabledButtons = {
         IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_REPLACE_BUTTON
@@ -536,6 +539,7 @@ private:
     void updateHeaderSelection();
     void updateHeaderSortDirection();
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
+    void showListFilePath();
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
     LRESULT getEOLLength();
@@ -555,6 +559,7 @@ private:
     std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
+    void saveListToCurrentFile();
     void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);

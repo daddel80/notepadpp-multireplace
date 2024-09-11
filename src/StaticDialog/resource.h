@@ -45,17 +45,20 @@
 #define IDC_DELETE_REPLACE_ITEM_BUTTON  5019
 #define IDC_LOAD_FROM_CSV_BUTTON        5020
 #define IDC_SAVE_TO_CSV_BUTTON          5021
-#define IDC_EXPORT_BASH_BUTTON			5022
-#define IDC_UP_BUTTON					5023
-#define IDC_DOWN_BUTTON					5024
-#define IDC_SHIFT_FRAME					5025
-#define IDC_SHIFT_TEXT					5026
-#define ID_REPLACE_ALL_OPTION           5027
-#define ID_REPLACE_IN_ALL_DOCS_OPTION   5028
+#define IDC_SAVE_BUTTON                 5022
+#define IDC_SAVE_AS_BUTTON              5023
+#define IDC_EXPORT_BASH_BUTTON			5024
+#define IDC_UP_BUTTON					5025
+#define IDC_DOWN_BUTTON					5026
+#define IDC_SHIFT_FRAME					5027
+#define IDC_SHIFT_TEXT					5028
+#define ID_REPLACE_ALL_OPTION           5029
+#define ID_REPLACE_IN_ALL_DOCS_OPTION   5030
 
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101
 #define IDC_STATUS_MESSAGE				5102
+#define IDC_PATH_DISPLAY                5103
 
 #define IDC_WHOLE_WORD_CHECKBOX         5200
 #define IDC_MATCH_CASE_CHECKBOX         5201
@@ -126,7 +129,7 @@
 #define POS_X 92
 #define POS_Y 40
 #define MIN_WIDTH 1023
-#define MIN_HEIGHT 485
+#define MIN_HEIGHT 500
 
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace/issues")
 

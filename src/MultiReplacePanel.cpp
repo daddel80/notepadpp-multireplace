@@ -108,7 +108,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight) 
     int comboWidth = windowWidth - 365;
     int frameX = windowWidth  - 320;
     int listWidth = windowWidth - 260;
-    int listHeight = windowHeight - 295;
+    int listHeight = windowHeight - 310;
     int checkboxX = buttonX - 105;
 
     // Static positions and sizes
@@ -168,6 +168,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight) 
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 223, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 284, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 319, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, 319, 35, 30, WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_save") }; // "Save" Button mit Symbol
+    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + 40, 319, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL }; // "Save As" Button mit Text
     ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 354, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 404, 30, 30, WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 404 + 30 + 5, 30, 30, WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
@@ -318,15 +320,14 @@ void MultiReplace::initializeDragAndDrop() {
     }
 }
 
-
 void MultiReplace::moveAndResizeControls() {
     // IDs of controls to be moved or resized
     const int controlIds[] = {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON,
         IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON,
         IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
-        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON,
-        IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON
+        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, 
+        IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON
     };
 
     std::unordered_map<int, HWND> hwndMap;  // Store HWNDs to avoid multiple calls to GetDlgItem
@@ -392,6 +393,11 @@ void MultiReplace::updateButtonVisibilityBasedOnMode() {
     ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
     ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
     ShowWindow(GetDlgItem(_hSelf, IDC_MARK_BUTTON), twoButtonsMode ? SW_HIDE : SW_SHOW);
+
+    // for save buttons
+    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_AS_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), twoButtonsMode ? SW_HIDE : SW_SHOW);
 }
 
 void MultiReplace::setUIElementVisibility() {
@@ -691,7 +697,7 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
     ListView_SetColumnWidth(listView, 4, perColumnWidth); // Find Text
     ListView_SetColumnWidth(listView, 5, perColumnWidth); // Replace Text
 
-    MoveWindow(listHwnd, 20, 284, newWidth - 260, newHeight - 295, TRUE);
+    MoveWindow(listHwnd, 20, 284, newWidth - 260, newHeight - 310, TRUE);
 
     SendMessage(widths.listView, WM_SETREDRAW, TRUE, 0);
     //InvalidateRect(widths.listView, NULL, TRUE);
@@ -2364,6 +2370,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
+        case IDC_SAVE_AS_BUTTON:
         case IDC_SAVE_TO_CSV_BUTTON:
         {
             std::wstring csvDescription = getLangStr(L"filetype_csv");  // "CSV Files (*.csv)"
@@ -5787,6 +5794,39 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF c
     UpdateWindow(GetParent(hStatusMessage));
 }
 
+void MultiReplace::showListFilePath() {
+    const size_t MAX_PATH_DISPLAY_LENGTH = 120; // Maximum length for the displayed path
+
+    // Use the stored file path and shorten it if necessary
+    std::wstring displayPath = listFilePath;
+
+    // Shorten the path if it exceeds the maximum length
+    if (displayPath.size() > MAX_PATH_DISPLAY_LENGTH) {
+        size_t lastSlashPos = displayPath.find_last_of(L"\\/");
+        std::wstring fileName = (lastSlashPos != std::wstring::npos) ? displayPath.substr(lastSlashPos + 1) : displayPath;
+        if (fileName.size() > MAX_PATH_DISPLAY_LENGTH) {
+            displayPath = fileName.substr(0, MAX_PATH_DISPLAY_LENGTH - 3) + L"...";
+        }
+        else {
+            size_t remainingLength = MAX_PATH_DISPLAY_LENGTH - fileName.size();
+            displayPath = displayPath.substr(0, remainingLength) + L"..." + fileName;
+        }
+    }
+
+    // Get the handle for the path display control
+    HWND hPathDisplay = GetDlgItem(_hSelf, IDC_PATH_DISPLAY);
+
+    // Set the new path text
+    SetWindowText(hPathDisplay, displayPath.c_str());
+
+    // Invalidate the area of the parent where the control resides
+    RECT rect;
+    GetWindowRect(hPathDisplay, &rect);
+    MapWindowPoints(HWND_DESKTOP, GetParent(hPathDisplay), (LPPOINT)&rect, 2);
+    InvalidateRect(GetParent(hPathDisplay), &rect, TRUE);
+    UpdateWindow(GetParent(hPathDisplay));
+}
+
 std::wstring MultiReplace::getSelectedText() {
     SIZE_T length = SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, 0);
 
@@ -6120,6 +6160,11 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     EnableWindow(_replaceListView, TRUE);
 }
 
+void MultiReplace::saveListToCurrentFile() {
+    // Dummy-Implementierung
+    showStatusMessage(getLangStr(L"status_save_to_file"), RGB(0, 128, 0));
+}
+
 void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list) {
     // Open file in binary mode to read UTF-8 data
     std::ifstream inFile(filePath);
@@ -6184,6 +6229,10 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
     try {
         loadListFromCsvSilent(filePath, replaceListData);
+        // Store the file path only if loading was successful
+        listFilePath = filePath;
+        // Display the path below the list
+        showListFilePath();
     }
     catch (const CsvLoadException& ex) {
         // Resolve the error key to a localized string when displaying the message

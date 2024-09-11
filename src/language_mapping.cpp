@@ -30,6 +30,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_clear_all_marks", L"Clear all marks" },
 { L"panel_load_list", L"Load List" },
 { L"panel_save_list", L"Save List" },
+{ L"panel_save_as", L"Save As..." },
 { L"panel_export_to_bash", L"Export to Bash" },
 { L"panel_shift_lines", L"Shift Lines" },
 { L"panel_use_list", L"Use List" },
