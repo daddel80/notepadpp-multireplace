@@ -6133,7 +6133,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     std::wstringstream contentStream(content);
 
     std::wstring line;
-    std::getline(contentStream, line); // Skip the CSV header
+    bool isFirstLine = true;  // Flag to identify the first line
 
     while (std::getline(contentStream, line)) {
         std::wstringstream lineStream(line);
@@ -6157,6 +6157,12 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
         if (columns.size() != 8) {
             throw CsvLoadException("status_invalid_column_count");
+        }
+
+        // Skip processing if it's the first line (assumed header)
+        if (isFirstLine) {
+            isFirstLine = false;
+            continue;
         }
 
         ReplaceItemData item;
