@@ -167,6 +167,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight) 
     ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 188, 35, 30, WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") };
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 223, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 284, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, 284, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_CLEAR_LIST_BUTTON] = { buttonX + 125, 284, 35, 30, WC_BUTTON, L"🗑️", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_clear_list") };
     ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 319, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_SAVE_BUTTON] = { buttonX, 319, 35, 30, WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_save") }; // "Save" Button mit Symbol
     ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + 40, 319, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL }; // "Save As" Button mit Text
@@ -176,6 +178,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight) 
     ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 404 - 14, 165, 85, WC_BUTTON, L"", BS_GROUPBOX, NULL };
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 404 + 20, 120, 20, WC_STATIC, getLangStrLPCWSTR(L"panel_shift_lines"), SS_LEFT, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { 20, 284, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
+    ctrlMap[IDC_PATH_DISPLAY] = { 20, 284 + listHeight + 5, listWidth, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
     ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 175, 95, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_list"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[ID_STATISTICS_COLUMNS] = { 2, 285, 17, 24, WC_BUTTON, L"▶", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
 }
@@ -326,8 +329,8 @@ void MultiReplace::moveAndResizeControls() {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON,
         IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON,
         IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
-        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, 
-        IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON
+        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_CLEAR_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON, 
+        IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, IDC_PATH_DISPLAY
     };
 
     std::unordered_map<int, HWND> hwndMap;  // Store HWNDs to avoid multiple calls to GetDlgItem
@@ -361,6 +364,8 @@ void MultiReplace::moveAndResizeControls() {
         }
     }
 
+    showListFilePath();
+
     /*
     // IDs of controls to be redrawn
     const int redrawIds[] = {
@@ -393,6 +398,11 @@ void MultiReplace::updateButtonVisibilityBasedOnMode() {
     ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
     ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
     ShowWindow(GetDlgItem(_hSelf, IDC_MARK_BUTTON), twoButtonsMode ? SW_HIDE : SW_SHOW);
+
+    // for load buttons
+    ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_LIST_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_CLEAR_LIST_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), twoButtonsMode ? SW_HIDE : SW_SHOW);
 
     // for save buttons
     ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
@@ -1034,6 +1044,24 @@ void MultiReplace::resizeCountColumns() {
         InvalidateRect(widths.listView, NULL, TRUE);
         UpdateWindow(widths.listView);
     }
+}
+
+void MultiReplace::clearList() {
+    // Clear the replace list data vector
+    replaceListData.clear();
+
+    // Update the ListView to reflect the cleared list
+    ListView_SetItemCountEx(_replaceListView, 0, LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+
+    // Reset listFilePath to an empty string
+    listFilePath.clear();
+
+    // Show a status message to indicate the list was cleared
+    showStatusMessage(getLangStr(L"status_list_cleared"), RGB(0, 128, 0));
+
+    // Call showListFilePath to update the UI with the cleared file path
+    showListFilePath();
 }
 
 #pragma endregion
@@ -1766,7 +1794,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     }
     break;
 
-
     case WM_SIZE:
     {
         if (isWindowOpen) {           
@@ -2390,6 +2417,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
+        case IDC_SAVE_BUTTON:
+        {
+            if (!listFilePath.empty()) {
+                saveListToCsv(listFilePath, replaceListData);
+            }
+        }
+        break;
+
+        case IDC_LOAD_LIST_BUTTON:
         case IDC_LOAD_FROM_CSV_BUTTON:
         {
             std::wstring csvDescription = getLangStr(L"filetype_csv");  // "CSV Files (*.csv)"
@@ -2406,6 +2442,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (!filePath.empty()) {
                 loadListFromCsv(filePath);
             }
+        }
+        break;
+
+        case IDC_CLEAR_LIST_BUTTON:
+        {
+            clearList();
         }
         break;
 
@@ -5795,31 +5837,85 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF c
 }
 
 void MultiReplace::showListFilePath() {
-    const size_t MAX_PATH_DISPLAY_LENGTH = 120; // Maximum length for the displayed path
+    // Define the path to be displayed
+    //std::wstring path = L"C:\\Users\\ExampleUser\\Documents\\Projects\\TestProject\\SubFolder\\AnotherSubFolder\\Users\\ExampleUser\\Documents\\Projects\\TestProject\\SubFolder\\AnotherSubFolderThisIsAReallyLongFileNameForTestingPurposes.txt";
 
-    // Use the stored file path and shorten it if necessary
-    std::wstring displayPath = listFilePath;
+    std::wstring path = listFilePath;
 
-    // Shorten the path if it exceeds the maximum length
-    if (displayPath.size() > MAX_PATH_DISPLAY_LENGTH) {
-        size_t lastSlashPos = displayPath.find_last_of(L"\\/");
-        std::wstring fileName = (lastSlashPos != std::wstring::npos) ? displayPath.substr(lastSlashPos + 1) : displayPath;
-        if (fileName.size() > MAX_PATH_DISPLAY_LENGTH) {
-            displayPath = fileName.substr(0, MAX_PATH_DISPLAY_LENGTH - 3) + L"...";
-        }
-        else {
-            size_t remainingLength = MAX_PATH_DISPLAY_LENGTH - fileName.size();
-            displayPath = displayPath.substr(0, remainingLength) + L"..." + fileName;
+    // Obtain handle and device context for the path display control
+    HWND hPathDisplay = GetDlgItem(_hSelf, IDC_PATH_DISPLAY);
+    HDC hDC = GetDC(hPathDisplay);
+    HFONT hFont = (HFONT)SendMessage(hPathDisplay, WM_GETFONT, 0, 0);
+    SelectObject(hDC, hFont);
+
+    // Calculate the width of each character in the path and the width of the dots ("...")
+    double dotWidth = 0.0;
+    SIZE charSize;
+    std::vector<double> characterWidths;
+
+    for (wchar_t ch : path) {
+        GetTextExtentPoint32(hDC, &ch, 1, &charSize);
+        characterWidths.push_back(static_cast<double>(charSize.cx));
+        if (ch == L'.') {
+            dotWidth = static_cast<double>(charSize.cx); // Store width of '.' separately
         }
     }
 
-    // Get the handle for the path display control
-    HWND hPathDisplay = GetDlgItem(_hSelf, IDC_PATH_DISPLAY);
+    ReleaseDC(hPathDisplay, hDC);
 
-    // Set the new path text
-    SetWindowText(hPathDisplay, displayPath.c_str());
+    RECT rcPathDisplay;
+    GetClientRect(hPathDisplay, &rcPathDisplay);
+    int pathDisplayWidth = rcPathDisplay.right - rcPathDisplay.left;
+    double totalDotsWidth = dotWidth * 3; // Width for "..."
 
-    // Invalidate the area of the parent where the control resides
+    size_t lastSlashPos = path.find_last_of(L"\\/");
+    std::wstring directoryPart = (lastSlashPos != std::wstring::npos) ? path.substr(0, lastSlashPos + 1) : L"";
+    std::wstring fileName = (lastSlashPos != std::wstring::npos) ? path.substr(lastSlashPos + 1) : path;
+
+    // Calculate the width of directory and file name parts
+    double directoryWidth = 0.0, fileNameWidth = 0.0;
+
+    for (size_t i = 0; i < directoryPart.size(); ++i) {
+        directoryWidth += characterWidths[i];
+    }
+
+    for (size_t i = directoryPart.size(); i < path.size(); ++i) {
+        fileNameWidth += characterWidths[i];
+    }
+
+    std::wstring displayPath;
+    double currentWidth = 0.0;
+
+    // Check if file name needs to be shortened
+    if (fileNameWidth + totalDotsWidth > pathDisplayWidth) {
+        for (size_t i = directoryPart.size(); i < path.size(); ++i) {
+            if (currentWidth + characterWidths[i] + totalDotsWidth > pathDisplayWidth) {
+                break;
+            }
+            displayPath += path[i];
+            currentWidth += characterWidths[i];
+        }
+        displayPath += L"...";
+    }
+    // Check if directory part needs to be shortened
+    else if (directoryWidth + fileNameWidth > pathDisplayWidth) {
+        for (size_t i = 0; i < directoryPart.size(); ++i) {
+            if (currentWidth + characterWidths[i] + totalDotsWidth + fileNameWidth > pathDisplayWidth) {
+                break;
+            }
+            displayPath += directoryPart[i];
+            currentWidth += characterWidths[i];
+        }
+        displayPath += L"...";
+        displayPath += fileName;
+    }
+    else {
+        displayPath = path; // No shortening needed
+    }
+
+    SetWindowTextW(hPathDisplay, displayPath.c_str());
+
+    // Update the parent window area where the control resides
     RECT rect;
     GetWindowRect(hPathDisplay, &rect);
     MapWindowPoints(HWND_DESKTOP, GetParent(hPathDisplay), (LPPOINT)&rect, 2);
@@ -6179,7 +6275,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
     std::wstring line;
     std::getline(contentStream, line); // Skip the CSV header
-
+    
     while (std::getline(contentStream, line)) {
         std::wstringstream lineStream(line);
         std::vector<std::wstring> columns;

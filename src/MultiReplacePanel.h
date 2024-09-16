@@ -445,6 +445,7 @@ private:
     void resetCountColumns();
     void updateCountColumns(size_t itemIndex, int findCount, int replaceCount = -1);
     void resizeCountColumns();
+    void clearList();
 
     //Contextmenu
     void toggleBooleanAt(int itemIndex, int Column);
@@ -539,6 +540,7 @@ private:
     void updateHeaderSelection();
     void updateHeaderSortDirection();
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
+    void calculateCharacterWidths();
     void showListFilePath();
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
