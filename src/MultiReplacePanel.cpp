@@ -6715,6 +6715,10 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"QuoteChar=" + quoteChar + L"\n");
     outFile << wstringToString(L"HeaderLines=" + headerLines + L"\n");
 
+    // Save the list file path
+    outFile << wstringToString(L"[Paths]\n");
+    outFile << wstringToString(L"ListFilePath=" + listFilePath + L"\n");
+
     // Convert and Store "Find what" history
     LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
     outFile << wstringToString(L"[History]\n");
@@ -6835,6 +6839,10 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     setTextInDialogItem(_hSelf, IDC_QUOTECHAR_EDIT, quoteChar);
 
     CSVheaderLinesCount = readIntFromIniFile(iniFilePath, L"Scope", L"HeaderLines", 1);
+
+    // Load the list file path from the INI file
+    listFilePath = readStringFromIniFile(iniFilePath, L"Paths", L"ListFilePath", L"");
+    showListFilePath();
 
     // Adjusting UI elements based on the selected scope
         
