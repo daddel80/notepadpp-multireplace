@@ -154,7 +154,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight) 
     ctrlMap[IDC_STATIC_FRAME] = { frameX, 99, 285, 163, WC_BUTTON, L"", BS_GROUPBOX, NULL };
     ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 118, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, 118, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 118, 35, 30, WC_BUTTON, L"٭", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
+    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 118, 35, 30, WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all")};
     ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, 118, 25, 25, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_2_buttons_mode") };
     ctrlMap[IDC_FIND_BUTTON] = { buttonX, 153, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_find_next"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
@@ -168,7 +168,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight) 
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 223, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 284, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, 284, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_CLEAR_LIST_BUTTON] = { buttonX + 125, 284, 35, 30, WC_BUTTON, L"🗑️", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_clear_list") };
+    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + 125, 284, 35, 30, WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_new_list") };
     ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 319, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_SAVE_BUTTON] = { buttonX, 319, 35, 30, WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_save") }; // "Save" Button mit Symbol
     ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + 40, 319, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL }; // "Save As" Button mit Text
@@ -329,7 +329,7 @@ void MultiReplace::moveAndResizeControls() {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON,
         IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON,
         IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
-        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_CLEAR_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON, 
+        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON, 
         IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, IDC_PATH_DISPLAY
     };
 
@@ -401,7 +401,7 @@ void MultiReplace::updateButtonVisibilityBasedOnMode() {
 
     // for load buttons
     ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_LIST_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_CLEAR_LIST_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON), twoButtonsMode ? SW_SHOW : SW_HIDE);
     ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), twoButtonsMode ? SW_HIDE : SW_SHOW);
 
     // for save buttons
@@ -2445,7 +2445,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
         break;
 
-        case IDC_CLEAR_LIST_BUTTON:
+        case IDC_NEW_LIST_BUTTON:
         {
             clearList();
         }

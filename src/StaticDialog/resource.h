@@ -45,7 +45,7 @@
 #define IDC_DELETE_REPLACE_ITEM_BUTTON  5019
 #define IDC_LOAD_FROM_CSV_BUTTON        5020
 #define IDC_LOAD_LIST_BUTTON            5021
-#define IDC_CLEAR_LIST_BUTTON           5022
+#define IDC_NEW_LIST_BUTTON             5022
 #define IDC_SAVE_TO_CSV_BUTTON          5023
 #define IDC_SAVE_BUTTON                 5024
 #define IDC_SAVE_AS_BUTTON              5025
