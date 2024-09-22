@@ -56,6 +56,8 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"tooltip_column_highlight", L"Column highlight: On/Off" },
 { L"tooltip_copy_marked_text", L"Copy Marked Text" },
 { L"tooltip_display_statistics_columns", L"Show/Hide Statistics Columns" },
+{ L"tooltip_new_list", L"New List" },
+{ L"tooltip_save", L"Save List" },
 
 // header entries
 { L"header_find_count", L"Find Count" },
@@ -131,7 +133,6 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_actual_position", L"Actual Position $REPLACE_STRING" },
 { L"status_items_loaded_from_csv", L"$REPLACE_STRING items loaded from CSV." },
 { L"status_wrapped_position", L"Wrapped at $REPLACE_STRING" },
-{ L"status_deleted_fields", L"Deleted $REPLACE_STRING fields." },
 { L"status_occurrences_marked", L"$REPLACE_STRING occurrences were marked." },
 { L"status_items_copied_to_clipboard", L"$REPLACE_STRING items copied into Clipboard." },
 { L"status_no_matches_after_wrap_for", L"No matches found for '$REPLACE_STRING' after wrap." },
@@ -148,6 +149,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_title_confirm", L"Confirm" },
 { L"msgbox_title_use_variables_syntax_error", L"Use Variables: Syntax Error" },
 { L"msgbox_title_use_variables_execution_error", L"Use Variables: Execution Error" },
+{ L"msgbox_title_save_list", L"Save list" },
 
 // MessageBox Messages
 { L"msgbox_failed_create_control", L"Failed to create control with ID: $REPLACE_STRING1, GetLastError returned: $REPLACE_STRING2" },
@@ -157,6 +159,8 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_use_variables_execution_error", L"Execution halted due to execution failure in:<br/>$REPLACE_STRING" },
 { L"msgbox_confirm_delete_single", L"Are you sure you want to delete this line?" },
 { L"msgbox_confirm_delete_multiple", L"Are you sure you want to delete $REPLACE_STRING lines?" },
+{ L"msgbox_save_list_file", L"Save list: $REPLACE_STRING?" },
+{ L"msgbox_save_list", L"Do you want to save the list?" },
 
 // Context Menu Strings
 { L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },

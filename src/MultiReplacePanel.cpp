@@ -170,8 +170,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight) 
     ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, 284, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + 125, 284, 35, 30, WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_new_list") };
     ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 319, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, 319, 35, 30, WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_save") }; // "Save" Button mit Symbol
-    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + 40, 319, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL }; // "Save As" Button mit Text
+    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, 319, 35, 30, WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_save") };
+    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + 40, 319, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 354, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 404, 30, 30, WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 404 + 30 + 5, 30, 30, WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
@@ -1047,6 +1047,11 @@ void MultiReplace::resizeCountColumns() {
 }
 
 void MultiReplace::clearList() {
+    // Check for unsaved changes before clearing the list
+    if (checkForUnsavedChanges() == IDCANCEL) {
+        return; 
+    }
+
     // Clear the replace list data vector
     replaceListData.clear();
 
@@ -1062,6 +1067,20 @@ void MultiReplace::clearList() {
 
     // Call showListFilePath to update the UI with the cleared file path
     showListFilePath();
+
+    // Set the original list hash to a default value when list is cleared
+    originalListHash = 0;
+}
+
+std::size_t MultiReplace::computeListHash() {
+    std::size_t combinedHash = 0;
+    ReplaceItemDataHasher hasher;
+
+    for (const auto& item : replaceListData) {
+        combinedHash ^= hasher(item) + golden_ratio_constant + (combinedHash << 6) + (combinedHash >> 2);
+    }
+
+    return combinedHash;
 }
 
 #pragma endregion
@@ -2400,16 +2419,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_SAVE_AS_BUTTON:
         case IDC_SAVE_TO_CSV_BUTTON:
         {
-            std::wstring csvDescription = getLangStr(L"filetype_csv");  // "CSV Files (*.csv)"
-            std::wstring allFilesDescription = getLangStr(L"filetype_all_files");  // "All Files (*.*)"
-
-            std::vector<std::pair<std::wstring, std::wstring>> filters = {
-                {csvDescription, L"*.csv"},
-                {allFilesDescription, L"*.*"}
-            };
-
-            std::wstring dialogTitle = getLangStr(L"panel_save_list");
-            std::wstring filePath = openFileDialog(true, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"csv");
+            // Use the promptSaveListToCsv function to get the file path
+            std::wstring filePath = promptSaveListToCsv();
 
             if (!filePath.empty()) {
                 saveListToCsv(filePath, replaceListData);
@@ -2421,6 +2432,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             if (!listFilePath.empty()) {
                 saveListToCsv(listFilePath, replaceListData);
+            }
+            else {
+                // If no file path is set, prompt the user to select a file path
+                std::wstring filePath = promptSaveListToCsv();
+
+                if (!filePath.empty()) {
+                    saveListToCsv(filePath, replaceListData);
+                }
             }
         }
         break;
@@ -2437,7 +2456,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             };
 
             std::wstring dialogTitle = getLangStr(L"panel_load_list");
-            std::wstring filePath = openFileDialog(false, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST, L"csv");
+            std::wstring filePath = openFileDialog(false, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST, L"csv", L"");
 
             if (!filePath.empty()) {
                 loadListFromCsv(filePath);
@@ -2474,7 +2493,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             };
 
             std::wstring dialogTitle = getLangStr(L"panel_export_to_bash");
-            std::wstring filePath = openFileDialog(true, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"sh");
+
+            // Set a default filename if none is provided
+            static int scriptCounter = 1;
+            std::wstring defaultFileName = L"Replace_Script_" + std::to_wstring(scriptCounter++) + L".sh";
+
+            // Open the file dialog with the default filename for bash scripts
+            std::wstring filePath = openFileDialog(true, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"sh", defaultFileName);
 
             if (!filePath.empty()) {
                 exportToBashScript(filePath);
@@ -4421,7 +4446,14 @@ bool MultiReplace::confirmColumnDeletion() {
     // Now columnDelimiterData should be populated with the parsed column data
     size_t columnCount = columnDelimiterData.columns.size();
     std::wstring confirmMessage = getLangStr(L"msgbox_confirm_delete_columns", { std::to_wstring(columnCount) });
-    int msgboxID = MessageBox(NULL, confirmMessage.c_str(), getLangStr(L"msgbox_title_confirm").c_str(), MB_ICONQUESTION | MB_YESNO);
+
+    // Display a message box with Yes/No options and a question mark icon
+    int msgboxID = MessageBox(
+        _hSelf,
+        confirmMessage.c_str(),
+        getLangStr(L"msgbox_title_confirm").c_str(),
+        MB_ICONQUESTION | MB_YESNO 
+    );
 
     return (msgboxID == IDYES);  // Return true if user confirmed, else false
 }
@@ -5814,9 +5846,16 @@ void MultiReplace::updateHeaderSortDirection() {
 
 void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color)
 {
-    const size_t MAX_DISPLAY_LENGTH = 120; // Maximum length of the message to be displayed
-    // Cut the message and add "..." if it's too long
-    std::wstring strMessage = messageText;
+    const size_t MAX_DISPLAY_LENGTH = 120;  // Maximum length of the message to be displayed
+
+    // Filter out non-printable characters while keeping all printable Unicode characters
+    std::wstring strMessage;
+    for (wchar_t ch : messageText) {
+        if (iswprint(ch)) {
+            strMessage += ch;
+        }
+    }
+
     if (strMessage.size() > MAX_DISPLAY_LENGTH) {
         strMessage = strMessage.substr(0, MAX_DISPLAY_LENGTH - 3) + L"...";
     }
@@ -5836,18 +5875,7 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF c
     UpdateWindow(GetParent(hStatusMessage));
 }
 
-void MultiReplace::showListFilePath() {
-    // Define the path to be displayed
-    //std::wstring path = L"C:\\Users\\ExampleUser\\Documents\\Projects\\TestProject\\SubFolder\\AnotherSubFolder\\Users\\ExampleUser\\Documents\\Projects\\TestProject\\SubFolder\\AnotherSubFolderThisIsAReallyLongFileNameForTestingPurposes.txt";
-
-    std::wstring path = listFilePath;
-
-    // Obtain handle and device context for the path display control
-    HWND hPathDisplay = GetDlgItem(_hSelf, IDC_PATH_DISPLAY);
-    HDC hDC = GetDC(hPathDisplay);
-    HFONT hFont = (HFONT)SendMessage(hPathDisplay, WM_GETFONT, 0, 0);
-    SelectObject(hDC, hFont);
-
+std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC) {
     // Calculate the width of each character in the path and the width of the dots ("...")
     double dotWidth = 0.0;
     SIZE charSize;
@@ -5861,18 +5889,14 @@ void MultiReplace::showListFilePath() {
         }
     }
 
-    ReleaseDC(hPathDisplay, hDC);
-
-    RECT rcPathDisplay;
-    GetClientRect(hPathDisplay, &rcPathDisplay);
-    int pathDisplayWidth = rcPathDisplay.right - rcPathDisplay.left;
     double totalDotsWidth = dotWidth * 3; // Width for "..."
 
+    // Split the directory and filename
     size_t lastSlashPos = path.find_last_of(L"\\/");
     std::wstring directoryPart = (lastSlashPos != std::wstring::npos) ? path.substr(0, lastSlashPos + 1) : L"";
     std::wstring fileName = (lastSlashPos != std::wstring::npos) ? path.substr(lastSlashPos + 1) : path;
 
-    // Calculate the width of directory and file name parts
+    // Calculate widths for directory and file name
     double directoryWidth = 0.0, fileNameWidth = 0.0;
 
     for (size_t i = 0; i < directoryPart.size(); ++i) {
@@ -5886,10 +5910,10 @@ void MultiReplace::showListFilePath() {
     std::wstring displayPath;
     double currentWidth = 0.0;
 
-    // Check if file name needs to be shortened
-    if (fileNameWidth + totalDotsWidth > pathDisplayWidth) {
+    // Shorten the file name if necessary
+    if (fileNameWidth + totalDotsWidth > maxLength) {
         for (size_t i = directoryPart.size(); i < path.size(); ++i) {
-            if (currentWidth + characterWidths[i] + totalDotsWidth > pathDisplayWidth) {
+            if (currentWidth + characterWidths[i] + totalDotsWidth > maxLength) {
                 break;
             }
             displayPath += path[i];
@@ -5897,10 +5921,10 @@ void MultiReplace::showListFilePath() {
         }
         displayPath += L"...";
     }
-    // Check if directory part needs to be shortened
-    else if (directoryWidth + fileNameWidth > pathDisplayWidth) {
+    // Shorten the directory part if necessary
+    else if (directoryWidth + fileNameWidth > maxLength) {
         for (size_t i = 0; i < directoryPart.size(); ++i) {
-            if (currentWidth + characterWidths[i] + totalDotsWidth + fileNameWidth > pathDisplayWidth) {
+            if (currentWidth + characterWidths[i] + totalDotsWidth + fileNameWidth > maxLength) {
                 break;
             }
             displayPath += directoryPart[i];
@@ -5913,7 +5937,30 @@ void MultiReplace::showListFilePath() {
         displayPath = path; // No shortening needed
     }
 
-    SetWindowTextW(hPathDisplay, displayPath.c_str());
+    return displayPath;
+}
+
+void MultiReplace::showListFilePath() {
+    std::wstring path = listFilePath;
+
+    // Obtain handle and device context for the path display control
+    HWND hPathDisplay = GetDlgItem(_hSelf, IDC_PATH_DISPLAY);
+    HDC hDC = GetDC(hPathDisplay);
+    HFONT hFont = (HFONT)SendMessage(hPathDisplay, WM_GETFONT, 0, 0);
+    SelectObject(hDC, hFont);
+
+    // Get display width for IDC_PATH_DISPLAY
+    RECT rcPathDisplay;
+    GetClientRect(hPathDisplay, &rcPathDisplay);
+    int pathDisplayWidth = rcPathDisplay.right - rcPathDisplay.left;
+
+    // Call the new function to get the shortened file path
+    std::wstring shortenedPath = getShortenedFilePath(path, pathDisplayWidth, hDC);
+
+    // Display the shortened path
+    SetWindowTextW(hPathDisplay, shortenedPath.c_str());
+
+    ReleaseDC(hPathDisplay, hDC);
 
     // Update the parent window area where the control resides
     RECT rect;
@@ -6184,9 +6231,14 @@ std::wstring MultiReplace::trim(const std::wstring& str) {
 
 #pragma region FileOperations
 
-std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension) {
+std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath) {
     OPENFILENAME ofn = { 0 };
     WCHAR szFile[MAX_PATH] = { 0 };
+
+    // Safely copy the default file path into the buffer and ensure null-termination
+    if (!defaultFilePath.empty()) {
+        wcsncpy_s(szFile, defaultFilePath.c_str(), MAX_PATH);
+    }
 
     std::vector<WCHAR> filter = createFilterString(filters);
 
@@ -6202,6 +6254,7 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::
     if (saveFile ? GetSaveFileName(&ofn) : GetOpenFileName(&ofn)) {
         std::wstring filePath(szFile);
 
+        // If no extension is provided, append the default one
         if (filePath.find_last_of(L".") == std::wstring::npos) {
             filePath += L"." + fileExtension;
         }
@@ -6211,6 +6264,41 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::
     else {
         return std::wstring();
     }
+}
+
+std::wstring MultiReplace::promptSaveListToCsv() {
+    std::wstring csvDescription = getLangStr(L"filetype_csv");  // "CSV Files (*.csv)"
+    std::wstring allFilesDescription = getLangStr(L"filetype_all_files");  // "All Files (*.*)"
+
+    std::vector<std::pair<std::wstring, std::wstring>> filters = {
+        {csvDescription, L"*.csv"},
+        {allFilesDescription, L"*.*"}
+    };
+
+    std::wstring dialogTitle = getLangStr(L"panel_save_list");
+    std::wstring defaultFileName;
+
+    if (!listFilePath.empty()) {
+        // If a file path already exists, use its directory and filename
+        defaultFileName = listFilePath;
+    }
+    else {
+        // If no file path is set, provide a default file name with a sequential number
+        static int fileCounter = 1;
+        defaultFileName = L"Replace_List_" + std::to_wstring(fileCounter++) + L".csv";
+    }
+
+    // Call openFileDialog with the default file path and name
+    std::wstring filePath = openFileDialog(
+        true,
+        filters,
+        dialogTitle.c_str(),
+        OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT,
+        L"csv",
+        defaultFileName
+    );
+
+    return filePath;
 }
 
 bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
@@ -6254,11 +6342,70 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     // Enable the ListView accordingly
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
     EnableWindow(_replaceListView, TRUE);
+
+    // Update the file path and original hash after a successful save
+    listFilePath = filePath;
+    originalListHash = computeListHash();
+
+    // Update the displayed file path below the list
+    showListFilePath();
 }
 
-void MultiReplace::saveListToCurrentFile() {
-    // Dummy-Implementierung
-    showStatusMessage(getLangStr(L"status_save_to_file"), RGB(0, 128, 0));
+int MultiReplace::checkForUnsavedChanges() {
+    std::size_t currentListHash = computeListHash();
+
+    if (currentListHash != originalListHash) {
+        HDC hDC = GetDC(_hSelf);
+
+        // Define a reasonable width for the MessageBox path display
+        int maxLengthForMessageBox = 300;
+
+        std::wstring message;
+        if (!listFilePath.empty()) {
+            // Get the shortened file path and build the message
+            std::wstring shortenedFilePath = getShortenedFilePath(listFilePath, maxLengthForMessageBox, hDC);
+            message = getLangStr(L"msgbox_save_list_file", { shortenedFilePath });
+        }
+        else {
+            // If no file is associated, use the alternative message
+            message = getLangStr(L"msgbox_save_list");
+        }
+        ReleaseDC(_hSelf, hDC);
+
+        // Show the MessageBox with the appropriate message
+        int result = MessageBox(
+            _hSelf,
+            message.c_str(),
+            getLangStr(L"msgbox_title_save_list").c_str(),
+            MB_YESNOCANCEL | MB_ICONQUESTION
+        );
+
+        if (result == IDYES) {
+            if (!listFilePath.empty()) {
+                saveListToCsv(listFilePath, replaceListData);
+                return IDYES;  // Proceed if saved successfully
+            }
+            else {
+                std::wstring filePath = promptSaveListToCsv();
+
+                if (!filePath.empty()) {
+                    saveListToCsv(filePath, replaceListData);
+                    return IDYES;  // Proceed with clear after save
+                }
+                else {
+                    return IDCANCEL;  // Cancel if no file was selected
+                }
+            }
+        }
+        else if (result == IDNO) {
+            return IDNO;  // Allow proceeding without saving
+        }
+        else if (result == IDCANCEL) {
+            return IDCANCEL;  // Cancel the action
+        }
+    }
+
+    return IDYES;  // No unsaved changes, allow proceeding
 }
 
 void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list) {
@@ -6329,6 +6476,8 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         listFilePath = filePath;
         // Display the path below the list
         showListFilePath();
+        // Calculate the original list hash after loading
+        originalListHash = computeListHash();
     }
     catch (const CsvLoadException& ex) {
         // Resolve the error key to a localized string when displaying the message

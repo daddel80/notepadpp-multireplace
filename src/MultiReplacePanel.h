@@ -67,6 +67,21 @@ struct ReplaceItemData
     }
 };
 
+// Hash function for ReplaceItemData
+struct ReplaceItemDataHasher {
+    std::size_t operator()(const ReplaceItemData& item) const {
+        std::size_t hash = std::hash<bool>{}(item.isEnabled);
+        hash ^= std::hash<std::wstring>{}(item.findText) << 1;
+        hash ^= std::hash<std::wstring>{}(item.replaceText) << 1;
+        hash ^= std::hash<bool>{}(item.wholeWord) << 1;
+        hash ^= std::hash<bool>{}(item.matchCase) << 1;
+        hash ^= std::hash<bool>{}(item.useVariables) << 1;
+        hash ^= std::hash<bool>{}(item.extended) << 1;
+        hash ^= std::hash<bool>{}(item.regex) << 1;
+        return hash;
+    }
+};
+
 struct WindowSettings {
     int posX;
     int posY;
@@ -396,6 +411,8 @@ private:
 
     // List related
     std::wstring listFilePath = L""; //to store the file path of loaded list
+    const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ /uused for Hashing
+    std::size_t originalListHash = 0;
 
     // GUI control-related constants
     const std::vector<int> selectionRadioDisabledButtons = {
@@ -446,6 +463,7 @@ private:
     void updateCountColumns(size_t itemIndex, int findCount, int replaceCount = -1);
     void resizeCountColumns();
     void clearList();
+    std::size_t computeListHash();
 
     //Contextmenu
     void toggleBooleanAt(int itemIndex, int Column);
@@ -541,6 +559,7 @@ private:
     void updateHeaderSortDirection();
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
     void calculateCharacterWidths();
+    std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC);
     void showListFilePath();
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
@@ -548,20 +567,20 @@ private:
     std::string getEOLStyle();
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
     bool normalizeAndValidateNumber(std::string& str);
-    std::vector<WCHAR> MultiReplace::createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
+    std::vector<WCHAR> createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput) const;
     std::string wstringToString(const std::wstring& input) const;
-    std::wstring MultiReplace::utf8ToWString(const char* cstr) const;
+    std::wstring utf8ToWString(const char* cstr) const;
     std::string utf8ToCodepage(const std::string& utf8Str, int codepage) const;
     std::wstring trim(const std::wstring& str);    
 
     //FileOperations
-    std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
+    std::wstring promptSaveListToCsv();
+    std::wstring openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath);
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
-    void saveListToCurrentFile();
     void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
@@ -577,6 +596,7 @@ private:
     std::pair<std::wstring, std::wstring> generateConfigFilePaths();
     void saveSettingsToIni(const std::wstring& iniFilePath);
     void saveSettings();
+    int checkForUnsavedChanges();
     void loadSettingsFromIni(const std::wstring& iniFilePath);
     void loadSettings();
     void loadUIConfigFromIni();
