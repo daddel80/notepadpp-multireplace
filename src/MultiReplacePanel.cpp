@@ -7123,7 +7123,7 @@ std::size_t MultiReplace::readSizeTFromIniFile(const std::wstring& iniFilePath, 
     GetPrivateProfileStringW(section.c_str(), key.c_str(), std::to_wstring(defaultValue).c_str(), buffer, sizeof(buffer) / sizeof(WCHAR), iniFilePath.c_str());
 
     try {
-        return std::stoull(buffer);  // Convert the string to a size_t
+        return static_cast<std::size_t>(std::stoull(buffer));  // Convert and cast directly to size_t
     }
     catch (...) {
         return defaultValue;  // If conversion fails, return the default value
