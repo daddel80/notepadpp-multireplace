@@ -1072,16 +1072,17 @@ void MultiReplace::clearList() {
     originalListHash = 0;
 }
 
-std::size_t MultiReplace::computeListHash() {
+std::size_t MultiReplace::computeListHash(const std::vector<ReplaceItemData>& list) {
     std::size_t combinedHash = 0;
     ReplaceItemDataHasher hasher;
 
-    for (const auto& item : replaceListData) {
+    for (const auto& item : list) {
         combinedHash ^= hasher(item) + golden_ratio_constant + (combinedHash << 6) + (combinedHash >> 2);
     }
 
     return combinedHash;
 }
+
 
 #pragma endregion
 
@@ -6345,14 +6346,14 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
 
     // Update the file path and original hash after a successful save
     listFilePath = filePath;
-    originalListHash = computeListHash();
+    originalListHash = computeListHash(list);
 
     // Update the displayed file path below the list
     showListFilePath();
 }
 
 int MultiReplace::checkForUnsavedChanges() {
-    std::size_t currentListHash = computeListHash();
+    std::size_t currentListHash = computeListHash(replaceListData);
 
     if (currentListHash != originalListHash) {
         HDC hDC = GetDC(_hSelf);
@@ -6477,7 +6478,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         // Display the path below the list
         showListFilePath();
         // Calculate the original list hash after loading
-        originalListHash = computeListHash();
+        originalListHash = computeListHash(replaceListData);
     }
     catch (const CsvLoadException& ex) {
         // Resolve the error key to a localized string when displaying the message
@@ -6864,9 +6865,10 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"QuoteChar=" + quoteChar + L"\n");
     outFile << wstringToString(L"HeaderLines=" + headerLines + L"\n");
 
-    // Save the list file path
-    outFile << wstringToString(L"[Paths]\n");
+    // Save the list file path and original hash
+    outFile << wstringToString(L"[File]\n");
     outFile << wstringToString(L"ListFilePath=" + listFilePath + L"\n");
+    outFile << wstringToString(L"OriginalListHash=" + std::to_wstring(originalListHash) + L"\n");
 
     // Convert and Store "Find what" history
     LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
@@ -6989,8 +6991,9 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
     CSVheaderLinesCount = readIntFromIniFile(iniFilePath, L"Scope", L"HeaderLines", 1);
 
-    // Load the list file path from the INI file
-    listFilePath = readStringFromIniFile(iniFilePath, L"Paths", L"ListFilePath", L"");
+    // Load file path and original hash from the INI file
+    listFilePath = readStringFromIniFile(iniFilePath, L"File", L"ListFilePath", L"");
+    originalListHash = readSizeTFromIniFile(iniFilePath, L"File", L"OriginalListHash", 0);
     showListFilePath();
 
     // Adjusting UI elements based on the selected scope
@@ -7113,6 +7116,18 @@ bool MultiReplace::readBoolFromIniFile(const std::wstring& iniFilePath, const st
 
 int MultiReplace::readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue) {
     return ::GetPrivateProfileIntW(section.c_str(), key.c_str(), defaultValue, iniFilePath.c_str());
+}
+
+std::size_t MultiReplace::readSizeTFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, std::size_t defaultValue) {
+    WCHAR buffer[256] = { 0 };
+    GetPrivateProfileStringW(section.c_str(), key.c_str(), std::to_wstring(defaultValue).c_str(), buffer, sizeof(buffer) / sizeof(WCHAR), iniFilePath.c_str());
+
+    try {
+        return std::stoull(buffer);  // Convert the string to a size_t
+    }
+    catch (...) {
+        return defaultValue;  // If conversion fails, return the default value
+    }
 }
 
 BYTE MultiReplace::readByteFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, BYTE defaultValue) {

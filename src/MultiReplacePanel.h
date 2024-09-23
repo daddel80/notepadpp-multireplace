@@ -463,7 +463,7 @@ private:
     void updateCountColumns(size_t itemIndex, int findCount, int replaceCount = -1);
     void resizeCountColumns();
     void clearList();
-    std::size_t computeListHash();
+    std::size_t computeListHash(const std::vector<ReplaceItemData>& list);
 
     //Contextmenu
     void toggleBooleanAt(int itemIndex, int Column);
@@ -603,6 +603,7 @@ private:
     std::wstring readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue);
     bool readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue);
     int readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue);
+    std::size_t readSizeTFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, std::size_t defaultValue);
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
 
     // Language
