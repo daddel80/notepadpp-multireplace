@@ -559,7 +559,7 @@ private:
     void updateHeaderSortDirection();
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
     void calculateCharacterWidths();
-    std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC);
+    std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
     void showListFilePath();
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
@@ -582,6 +582,7 @@ private:
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
+    void checkForFileChangesAtStartup();
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
 

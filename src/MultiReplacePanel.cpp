@@ -1726,6 +1726,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializeListView();
         initializeDragAndDrop();
         loadSettings();
+        checkForFileChangesAtStartup();
         updateButtonVisibilityBasedOnMode();
 		updateStatisticsColumnButtonIcon();
         
@@ -5877,20 +5878,28 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF c
 }
 
 std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC) {
-    // Calculate the width of each character in the path and the width of the dots ("...")
+    bool hdcProvided = true;
+
+    // If no HDC is provided, get the one for the main window (_hSelf)
+    if (hDC == nullptr) {
+        hDC = GetDC(_hSelf);  // Get the device context for _hSelf (less accurate)
+        hdcProvided = false;  // Mark that HDC was not provided externally
+    }
+
     double dotWidth = 0.0;
     SIZE charSize;
     std::vector<double> characterWidths;
 
+    // Calculate the width of each character in the path and the width of the dots ("...")
     for (wchar_t ch : path) {
         GetTextExtentPoint32(hDC, &ch, 1, &charSize);
         characterWidths.push_back(static_cast<double>(charSize.cx));
         if (ch == L'.') {
-            dotWidth = static_cast<double>(charSize.cx); // Store width of '.' separately
+            dotWidth = static_cast<double>(charSize.cx);  // Store width of '.' separately
         }
     }
 
-    double totalDotsWidth = dotWidth * 3; // Width for "..."
+    double totalDotsWidth = dotWidth * 3;  // Width for "..."
 
     // Split the directory and filename
     size_t lastSlashPos = path.find_last_of(L"\\/");
@@ -5938,6 +5947,11 @@ std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int ma
         displayPath = path; // No shortening needed
     }
 
+    // If we obtained HDC ourselves, release it
+    if (!hdcProvided) {
+        ReleaseDC(_hSelf, hDC);
+    }
+
     return displayPath;
 }
 
@@ -5960,8 +5974,6 @@ void MultiReplace::showListFilePath() {
 
     // Display the shortened path
     SetWindowTextW(hPathDisplay, shortenedPath.c_str());
-
-    ReleaseDC(hPathDisplay, hDC);
 
     // Update the parent window area where the control resides
     RECT rect;
@@ -6356,22 +6368,17 @@ int MultiReplace::checkForUnsavedChanges() {
     std::size_t currentListHash = computeListHash(replaceListData);
 
     if (currentListHash != originalListHash) {
-        HDC hDC = GetDC(_hSelf);
-
-        // Define a reasonable width for the MessageBox path display
-        int maxLengthForMessageBox = 300;
 
         std::wstring message;
         if (!listFilePath.empty()) {
             // Get the shortened file path and build the message
-            std::wstring shortenedFilePath = getShortenedFilePath(listFilePath, maxLengthForMessageBox, hDC);
+            std::wstring shortenedFilePath = getShortenedFilePath(listFilePath, 500);
             message = getLangStr(L"msgbox_save_list_file", { shortenedFilePath });
         }
         else {
             // If no file is associated, use the alternative message
             message = getLangStr(L"msgbox_save_list");
         }
-        ReleaseDC(_hSelf, hDC);
 
         // Show the MessageBox with the appropriate message
         int result = MessageBox(
@@ -6413,7 +6420,9 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     // Open file in binary mode to read UTF-8 data
     std::ifstream inFile(filePath);
     if (!inFile.is_open()) {
-        throw CsvLoadException("status_unable_to_open_file");
+        std::wstring shortenedFilePathW = getShortenedFilePath(filePath, 500);
+        std::string errorMessage = wstringToString(getLangStr(L"status_unable_to_open_file", { shortenedFilePathW }));
+        throw CsvLoadException(errorMessage);
     }
 
     std::vector<ReplaceItemData> tempList;  // Temporary list to hold items
@@ -6445,7 +6454,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
         columns.push_back(unescapeCsvValue(currentValue));
 
         if (columns.size() != 8) {
-            throw CsvLoadException("status_invalid_column_count");
+            throw CsvLoadException(wstringToString(getLangStr(L"status_invalid_column_count")));
         }
 
         ReplaceItemData item;
@@ -6462,7 +6471,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
             tempList.push_back(item);
         }
         catch (const std::exception&) {
-            throw CsvLoadException("status_invalid_data_in_columns");
+            throw CsvLoadException(wstringToString(getLangStr(L"status_invalid_data_in_columns")));
         }
     }
 
@@ -6482,7 +6491,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
     }
     catch (const CsvLoadException& ex) {
         // Resolve the error key to a localized string when displaying the message
-        showStatusMessage(getLangStr(stringToWString(ex.what())), RGB(255, 0, 0));
+        showStatusMessage(stringToWString(ex.what()), RGB(255, 0, 0));
         return;
     }
 
@@ -6496,6 +6505,45 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
     // Update the list view control, if necessary
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
+}
+
+void MultiReplace::checkForFileChangesAtStartup() {
+    if (listFilePath.empty()) {
+        return;
+    }
+
+    std::wstring shortenedFilePath = getShortenedFilePath(listFilePath, 500);
+
+    try {
+        std::vector<ReplaceItemData> tempListFromFile;
+        loadListFromCsvSilent(listFilePath, tempListFromFile);  // Load the list into a temporary list
+
+        std::size_t newFileHash = computeListHash(tempListFromFile);  // Calculate the new file hash
+
+        // Check if the file has been modified externally
+        if (newFileHash != originalListHash) {
+            std::wstring message = getLangStr(L"msgbox_file_modified_prompt", { shortenedFilePath });
+
+            int response = MessageBox(_hSelf, message.c_str(), getLangStr(L"msgbox_title_reload").c_str(), MB_YESNO | MB_ICONQUESTION);
+
+            if (response == IDYES) {
+                replaceListData = tempListFromFile;
+                originalListHash = newFileHash;
+            }
+        }
+    }
+    catch (const CsvLoadException& ex) {
+        // Resolve the error key to a localized string when displaying the message
+        showStatusMessage(stringToWString(ex.what()), RGB(255, 0, 0));
+        return;
+    }
+
+    if (replaceListData.empty()) {
+        showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), RGB(255, 0, 0));
+    }
+    else {
+        showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), RGB(0, 128, 0));
+    }
 }
 
 std::wstring MultiReplace::escapeCsvValue(const std::wstring& value) {

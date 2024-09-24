@@ -118,10 +118,11 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_saved_items_to_csv", L"$REPLACE_STRING items saved to CSV." },
 { L"status_no_valid_items_in_csv", L"No valid items found in the CSV file." },
 { L"status_list_exported_to_bash", L"List exported to BASH script." }, 
-{ L"status_unable_to_open_file", L"Failed to open the file." },
-{ L"status_invalid_column_count", L"Invalid number of columns in CSV file." },
-{ L"status_invalid_data_in_columns", L"Invalid data found in CSV columns." },
+{ L"status_invalid_column_count", L"File not loaded! Invalid number of columns in CSV file." },
+{ L"status_invalid_data_in_columns", L"File not loaded! Invalid data found in CSV columns." },
 { L"status_no_find_replace_list_input", L"No 'Find' or 'Replace' string provided. Please enter a value." },
+{ L"status_found_in_list", L"Entry found in the list." },
+{ L"status_not_found_in_list", L"No entry found in the list based on input fields." },
 
 // Dynamic Status message entries
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },
@@ -141,9 +142,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_wrapped_find", L"Wrapped '$REPLACE_STRING1'. Position: $REPLACE_STRING2" },
 { L"status_wrapped_no_find", L"Wrapped. Position: $REPLACE_STRING" },
 { L"status_line_and_column_position", L" (Line: $REPLACE_STRING, Column: $REPLACE_STRING1)" },
-{ L"status_no_find_replace_list_input", L"No 'Find' or 'Replace' string provided. Please enter a value." },
-{ L"status_found_in_list", L"Entry found in the list." },
-{ L"status_not_found_in_list", L"No entry found in the list based on input fields." },
+{ L"status_unable_to_open_file", L"Failed to open the file: $REPLACE_STRING1" },
 
 // MessageBox Titles
 { L"msgbox_title_error", L"Error" },
@@ -151,6 +150,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_title_use_variables_syntax_error", L"Use Variables: Syntax Error" },
 { L"msgbox_title_use_variables_execution_error", L"Use Variables: Execution Error" },
 { L"msgbox_title_save_list", L"Save list" },
+{ L"msgbox_title_reload", L"Reload" },
 
 // MessageBox Messages
 { L"msgbox_failed_create_control", L"Failed to create control with ID: $REPLACE_STRING1, GetLastError returned: $REPLACE_STRING2" },
@@ -162,6 +162,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_confirm_delete_multiple", L"Are you sure you want to delete $REPLACE_STRING lines?" },
 { L"msgbox_save_list_file", L"Save list: $REPLACE_STRING?" },
 { L"msgbox_save_list", L"Do you want to save the list?" },
+{ L"msgbox_file_modified_prompt", L"$REPLACE_STRING<br/><br/>The file has been modified by another program.<br/>Do you want to load the changes and lose unsaved modifications?" },
 
 // Context Menu Strings
 { L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },
