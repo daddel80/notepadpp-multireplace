@@ -121,6 +121,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_unable_to_open_file", L"Failed to open the file." },
 { L"status_invalid_column_count", L"Invalid number of columns in CSV file." },
 { L"status_invalid_data_in_columns", L"Invalid data found in CSV columns." },
+{ L"status_no_find_replace_list_input", L"No 'Find' or 'Replace' string provided. Please enter a value." },
 
 // Dynamic Status message entries
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },
