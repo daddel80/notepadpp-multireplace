@@ -160,9 +160,9 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_use_variables_execution_error", L"Execution halted due to execution failure in:<br/>$REPLACE_STRING" },
 { L"msgbox_confirm_delete_single", L"Are you sure you want to delete this line?" },
 { L"msgbox_confirm_delete_multiple", L"Are you sure you want to delete $REPLACE_STRING lines?" },
-{ L"msgbox_save_list_file", L"Save list: $REPLACE_STRING?" },
+{ L"msgbox_save_list_file", L"Save list: '$REPLACE_STRING' ?" },
 { L"msgbox_save_list", L"Do you want to save the list?" },
-{ L"msgbox_file_modified_prompt", L"$REPLACE_STRING<br/><br/>The file has been modified by another program.<br/>Do you want to load the changes and lose unsaved modifications?" },
+{ L"msgbox_file_modified_prompt", L"'$REPLACE_STRING'<br/><br/>The file has been modified by another program.<br/>Do you want to load the changes and lose unsaved modifications?" },
 
 // Context Menu Strings
 { L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },

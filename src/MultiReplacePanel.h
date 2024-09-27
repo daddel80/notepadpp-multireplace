@@ -443,6 +443,7 @@ private:
     void updateStatisticsColumnButtonIcon();
     void drawGripper();
     void SetWindowTransparency(HWND hwnd, BYTE alpha);
+    void adjustWindowSize();
 
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);

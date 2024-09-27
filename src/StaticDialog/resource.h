@@ -132,6 +132,7 @@
 #define POS_Y 40
 #define MIN_WIDTH 1023
 #define MIN_HEIGHT 500
+#define SHRUNK_HEIGHT 280
 
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace/issues")
 
