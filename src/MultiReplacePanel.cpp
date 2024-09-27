@@ -88,30 +88,30 @@ void MultiReplace::initializeWindowSize() {
 }
 
 RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
+    // Use local variables to avoid modifying windowRect
+    RECT tempWindowRect;
+    GetWindowRect(hwnd, &tempWindowRect);
+
     // Measure the window's borders and title bar
     RECT clientRect;
     GetClientRect(hwnd, &clientRect);
-    GetWindowRect(hwnd, &windowRect);
 
-    int borderWidth = ((windowRect.right - windowRect.left) - (clientRect.right - clientRect.left)) / 2;
-    int titleBarHeight = (windowRect.bottom - windowRect.top) - (clientRect.bottom - clientRect.top) - borderWidth;
+    int borderWidth = ((tempWindowRect.right - tempWindowRect.left) - (clientRect.right - clientRect.left)) / 2;
+    int titleBarHeight = (tempWindowRect.bottom - tempWindowRect.top) - (clientRect.bottom - clientRect.top) - borderWidth;
 
-    // Determine whether the checkbox is checked
-    BOOL listCheckboxChecked = (IsDlgButtonChecked(hwnd, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+    // Determine whether the Use List checkbox is checked
+    BOOL useListChecked = IsDlgButtonChecked(hwnd, IDC_USE_LIST_CHECKBOX) == BST_CHECKED;
 
-    int adjustedHeight = 0;
-    int adjustedWidth = MIN_WIDTH + 2 * borderWidth;
+    int minHeight = useListChecked ? MIN_HEIGHT : SHRUNK_HEIGHT;
+    int minWidth = MIN_WIDTH;
 
-    if (listCheckboxChecked) {
-        adjustedHeight = MIN_HEIGHT + borderWidth + titleBarHeight;
-    }
-    else {
-        adjustedHeight = SHRUNK_HEIGHT + borderWidth + titleBarHeight;
-    }
+    // Adjust for window borders and title bar
+    minHeight += borderWidth + titleBarHeight;
+    minWidth += 2 * borderWidth;
 
-    RECT adjustedSize = { 0, 0, adjustedWidth, adjustedHeight };
+    RECT minSize = { 0, 0, minWidth, minHeight };
 
-    return adjustedSize;
+    return minSize;
 }
 
 void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight) {
@@ -525,12 +525,42 @@ void MultiReplace::SetWindowTransparency(HWND hwnd, BYTE alpha) {
 }
 
 void MultiReplace::adjustWindowSize() {
-    // Adjust the window size based on the current Use List state
-    RECT adjustedSize = calculateMinWindowFrame(_hSelf);
-    GetWindowRect(_hSelf, &windowRect);
-    int newWidth = windowRect.right - windowRect.left;
-    int newHeight = adjustedSize.bottom;
-    SetWindowPos(_hSelf, NULL, 0, 0, newWidth, newHeight, SWP_NOMOVE | SWP_NOZORDER);
+    // Determine whether the Use List checkbox is checked
+    BOOL useListChecked = IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED;
+
+    // Get the minimum allowed window size
+    RECT minSize = calculateMinWindowFrame(_hSelf);
+    int minHeight = minSize.bottom; // minSize.bottom is minHeight
+
+    // Get the current window position and size
+    RECT currentRect;
+    GetWindowRect(_hSelf, &currentRect);
+    int currentWidth = currentRect.right - currentRect.left;
+    int currentHeight = currentRect.bottom - currentRect.top;
+    int currentX = currentRect.left;
+    int currentY = currentRect.top;
+
+    int newHeight = currentHeight;
+
+    if (useListChecked) {
+        // If we have a stored previous height, restore it
+        if (previousWindowHeight > 0) {
+            newHeight = std::max<LONG>(previousWindowHeight, minHeight);
+        }
+        else {
+            // No previous height stored; keep the current height or ensure minimum height
+            newHeight = std::max<LONG>(currentHeight, minHeight);
+        }
+    }
+    else {
+        // Store the current height before shrinking
+        previousWindowHeight = currentHeight;
+        // Shrink the window to the minimum height
+        newHeight = minHeight;
+    }
+
+    // Adjust the window size while keeping the current position and width
+    SetWindowPos(_hSelf, NULL, currentX, currentY, currentWidth, newHeight, SWP_NOZORDER);
 
     // Update the visibility of UI elements based on the current modes
     updateButtonVisibilityBasedOnMode();
@@ -1767,27 +1797,33 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     }
     break;
 
-    case WM_GETMINMAXINFO: {
+    case WM_GETMINMAXINFO:
+    {
         MINMAXINFO* pMMI = reinterpret_cast<MINMAXINFO*>(lParam);
         RECT adjustedSize = calculateMinWindowFrame(_hSelf);
+
+        // Set minimum window width
         pMMI->ptMinTrackSize.x = adjustedSize.right;
-        //pMMI->ptMaxTrackSize.x = MAXLONG;
+        // Allow horizontal resizing up to a maximum value
+        pMMI->ptMaxTrackSize.x = MAXLONG;
 
-        // Determine whether the checkbox is checked
-        BOOL listCheckboxChecked = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
+        // Determine whether the Use List checkbox is checked
+        BOOL useListChecked = IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED;
 
-        if (listCheckboxChecked) {
+        if (useListChecked) {
+            // Set minimum window height
             pMMI->ptMinTrackSize.y = adjustedSize.bottom;
-            //pMMI->ptMaxTrackSize.y = MAXLONG;
+            // Allow vertical resizing up to a maximum value
+            pMMI->ptMaxTrackSize.y = MAXLONG;
         }
         else {
+            // Set fixed window height
             pMMI->ptMinTrackSize.y = adjustedSize.bottom;
-            pMMI->ptMaxTrackSize.y = adjustedSize.bottom; // Fix the height
+            pMMI->ptMaxTrackSize.y = adjustedSize.bottom; // Fix the height when Use List is unchecked
         }
 
         return 0;
     }
-
 
     case WM_ACTIVATE:
     {
@@ -6877,12 +6913,13 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
         throw std::runtime_error("Could not open settings file for writing.");
     }
 
-    // Store window size and position from the global windowRect
-    GetWindowRect(_hSelf, &windowRect);
-    int width = windowRect.right - windowRect.left;
-    int height = windowRect.bottom - windowRect.top;
-    int posX = windowRect.left;
-    int posY = windowRect.top;
+    // Get the current window rectangle
+    RECT currentRect;
+    GetWindowRect(_hSelf, &currentRect);
+    int width = currentRect.right - currentRect.left;
+    int height = currentRect.bottom - currentRect.top;
+    int posX = currentRect.left;
+    int posY = currentRect.top;
 
     outFile << wstringToString(L"[Window]\n");
     outFile << wstringToString(L"Width=" + std::to_wstring(width) + L"\n");
@@ -7118,11 +7155,39 @@ void MultiReplace::loadSettings() {
 void MultiReplace::loadUIConfigFromIni() {
     auto [iniFilePath, _] = generateConfigFilePaths(); // Generating config file paths
 
-    // Load window position and size
+    // Load window position
     windowRect.left = readIntFromIniFile(iniFilePath, L"Window", L"PosX", POS_X);
     windowRect.top = readIntFromIniFile(iniFilePath, L"Window", L"PosY", POS_Y);
-    windowRect.right = windowRect.left + std::max(readIntFromIniFile(iniFilePath, L"Window", L"Width", MIN_WIDTH), MIN_WIDTH);
-    windowRect.bottom = windowRect.top + std::max(readIntFromIniFile(iniFilePath, L"Window", L"Height", MIN_HEIGHT), MIN_HEIGHT);
+
+    // Load the state of the Use List checkbox from the ini file
+    int useList = readIntFromIniFile(iniFilePath, L"Options", L"UseList", 1); // Default to 1 if not found
+    // Set the checkbox state
+    CheckDlgButton(_hSelf, IDC_USE_LIST_CHECKBOX, useList ? BST_CHECKED : BST_UNCHECKED);
+
+    // Determine whether the Use List checkbox is checked
+    BOOL useListChecked = (useList == 1);
+
+    int defaultHeight = useListChecked ? MIN_HEIGHT : SHRUNK_HEIGHT;
+
+    // Load window size
+    int savedWidth = readIntFromIniFile(iniFilePath, L"Window", L"Width", MIN_WIDTH);
+    int savedHeight = readIntFromIniFile(iniFilePath, L"Window", L"Height", defaultHeight);
+
+    // Ensure the saved size meets the minimum requirements
+    int minWidth = MIN_WIDTH;
+    int minHeight = defaultHeight;
+
+    int width = std::max(savedWidth, minWidth);
+    int height = std::max(savedHeight, minHeight);
+
+    // Set windowRect
+    windowRect.right = windowRect.left + width;
+    windowRect.bottom = windowRect.top + height;
+
+    // Initialize previousWindowHeight if Use List is checked
+    if (useListChecked) {
+        previousWindowHeight = height;
+    }
 
     // Read column widths
     findCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", findCountColumnWidth);

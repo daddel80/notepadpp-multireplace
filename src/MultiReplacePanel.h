@@ -413,6 +413,7 @@ private:
     std::wstring listFilePath = L""; //to store the file path of loaded list
     const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ /uused for Hashing
     std::size_t originalListHash = 0;
+    int previousWindowHeight = 0;
 
     // GUI control-related constants
     const std::vector<int> selectionRadioDisabledButtons = {
