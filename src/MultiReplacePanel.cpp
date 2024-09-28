@@ -1765,7 +1765,6 @@ int MultiReplace::searchInListData(int startIdx, const std::wstring& findText, c
 
 INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
-
     switch (message)
     {
     case WM_INITDIALOG:
@@ -1779,23 +1778,22 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializeDragAndDrop();
         loadSettings();
         adjustWindowSize();
-		updateStatisticsColumnButtonIcon();
-        
+        updateStatisticsColumnButtonIcon();
+
         // Activate Dark Mode
-        ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
+        ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
+            static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
 
-         // Post a custom message to perform post-initialization tasks after the dialog is shown
-         PostMessage(_hSelf, WM_POST_INIT, 0, 0);
+        // Post a custom message to perform post-initialization tasks after the dialog is shown
+        PostMessage(_hSelf, WM_POST_INIT, 0, 0);
 
-         return TRUE;
+        return TRUE;
     }
-    break;
 
     case WM_POST_INIT:
     {
         checkForFileChangesAtStartup();
-
-        return 0;
+        return TRUE;
     }
 
     case WM_GETMINMAXINFO:
@@ -1844,15 +1842,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         HDC hdcStatic = reinterpret_cast<HDC>(wParam);
         HWND hwndStatic = reinterpret_cast<HWND>(lParam);
 
-        if (hwndStatic == GetDlgItem(_hSelf, IDC_STATUS_MESSAGE) ) {
+        if (hwndStatic == GetDlgItem(_hSelf, IDC_STATUS_MESSAGE)) {
             SetTextColor(hdcStatic, _statusMessageColor);
             SetBkMode(hdcStatic, TRANSPARENT);
-            return (LRESULT)GetStockObject(NULL_BRUSH);
+            return (LRESULT)GetStockObject(NULL_BRUSH); // Return a brush handle
         }
 
-        break;
+        return FALSE;
     }
-    break;
 
     case WM_DESTROY:
     {
@@ -1894,8 +1891,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         // Post a quit message to ensure the application terminates cleanly
         PostQuitMessage(0);
+
+        return 0;
     }
-    break;
 
     case WM_SIZE:
     {
@@ -1937,12 +1935,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // Ensure useListOnHeight is at least the minimum height
                 useListOnHeight = std::max(currentHeight, minHeight);
             }
-
         }
         return 0;
     }
-
-    break;
 
     case WM_NOTIFY:
     {
@@ -1978,20 +1973,20 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     handleDeletion(pnmia);
                 }
                 if (pnmia->iSubItem == 3) { // Select button column
-                    // get current selection status of the item
+                    // Get current selection status of the item
                     bool currentSelectionStatus = replaceListData[pnmia->iItem].isEnabled;
-                    // set the selection status to its opposite
+                    // Set the selection status to its opposite
                     setSelections(!currentSelectionStatus, true);
                 }
+                return TRUE;
             }
-            break;
 
             case NM_DBLCLK:
             {
                 NMITEMACTIVATE* pnmia = reinterpret_cast<NMITEMACTIVATE*>(lParam);
                 handleCopyBack(pnmia);
+                return TRUE;
             }
-            break;
 
             case LVN_GETDISPINFO:
             {
@@ -2058,8 +2053,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     plvdi->item.pszText = L"\u2716";
                     break;
                 }
+                return TRUE;
             }
-            break;
 
             case LVN_COLUMNCLICK:
             {
@@ -2078,7 +2073,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     lastColumn = pnmv->iSubItem;
                     sortReplaceListData(lastColumn, newDirection); // Now correctly passing SortDirection
                 }
-                break;
+                return TRUE;
             }
 
             case LVN_KEYDOWN:
@@ -2134,7 +2129,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         performItemAction(_contextMenuClickPoint, ItemAction::Delete);
                         break;
                     case VK_F12: // F12 key
-                        GetClientRect(_hSelf, &windowRect);
+                    {
+                        RECT sizeWindowRect;
+                        GetClientRect(_hSelf, &sizeWindowRect);
 
                         hDC = GetDC(_hSelf);
                         if (hDC)
@@ -2154,8 +2151,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                             int baseUnitY = tm.tmHeight;
 
                             // Calculate the window size in dialog units
-                            int duWidth = MulDiv(windowRect.right, 4, baseUnitX);
-                            int duHeight = MulDiv(windowRect.bottom, 8, baseUnitY);
+                            int duWidth = MulDiv(sizeWindowRect.right, 4, baseUnitX);
+                            int duHeight = MulDiv(sizeWindowRect.bottom, 8, baseUnitY);
 
                             wchar_t sizeText[100];
                             wsprintfW(sizeText, L"Window Size: %ld x %ld DUs", duWidth, duHeight);
@@ -2167,24 +2164,24 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                             ReleaseDC(_hSelf, hDC);
                         }
                         break;
+                    }
                     case VK_SPACE: // Spacebar key
                         iItem = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED);
                         if (iItem >= 0) {
-                            // get current selection status of the item
+                            // Get current selection status of the item
                             bool currentSelectionStatus = replaceListData[iItem].isEnabled;
-                            // set the selection status to its opposite
+                            // Set the selection status to its opposite
                             setSelections(!currentSelectionStatus, true);
                         }
                         break;
                     }
                 }
-                
+                return TRUE;
             }
-            break;
             }
         }
-     }
-    break;
+        return FALSE;
+    }
 
     case WM_CONTEXTMENU:
     {
@@ -2213,8 +2210,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             createContextMenu(_hSelf, ptScreen, state); // Show context menu
             return TRUE;
         }
+        return FALSE;
     }
-    break;
 
     case WM_SHOWWINDOW:
     {
@@ -2230,21 +2227,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             handleClearTextMarksButton();
             handleClearDelimiterState();
         }
+        return 0;
     }
-    break;
 
     case WM_PAINT:
     {
         drawGripper();
+        return 0;
     }
-    break;
 
     case WM_COMMAND:
     {
-
         switch (LOWORD(wParam))
         {
-
         case IDC_USE_VARIABLES_HELP:
         {
             auto n = SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, 0, 0);
@@ -2255,17 +2250,16 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             std::wstring filename = isDarkMode ? L"\\help_use_variables_dark.html" : L"\\help_use_variables_light.html";
             path += filename;
             ShellExecute(NULL, L"open", path.c_str(), NULL, NULL, SW_SHOWNORMAL);
+            return TRUE;
         }
-        break;
 
         case IDCANCEL:
         {
             CloseDebugWindow(); // Close the Lua debug window if it is open
             EndDialog(_hSelf, 0);
             _MultiReplace.display(false);
-
+            return TRUE;
         }
-        break;
 
         case IDC_2_BUTTONS_MODE:
         {
@@ -2273,47 +2267,48 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (HIWORD(wParam) == BN_CLICKED)
             {
                 updateButtonVisibilityBasedOnMode();
+                return TRUE;
             }
+            return FALSE;
         }
-        break;
 
         case IDC_REGEX_RADIO:
         {
             setUIElementVisibility();
+            return TRUE;
         }
-        break;
 
         case IDC_NORMAL_RADIO:
         case IDC_EXTENDED_RADIO:
         {
             EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), TRUE);
             setUIElementVisibility();
+            return TRUE;
         }
-        break;
 
         case IDC_ALL_TEXT_RADIO:
         {
             setUIElementVisibility();
             handleClearDelimiterState();
+            return TRUE;
         }
-        break;
 
         case IDC_SELECTION_RADIO:
         {
             setUIElementVisibility();
             handleClearDelimiterState();
+            return TRUE;
         }
-        break;
 
         case IDC_COLUMN_NUM_EDIT:
         case IDC_DELIMITER_EDIT:
         case IDC_QUOTECHAR_EDIT:
         case IDC_COLUMN_MODE_RADIO:
         {
-            CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_COLUMN_MODE_RADIO);        
+            CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_COLUMN_MODE_RADIO);
             setUIElementVisibility();
+            return TRUE;
         }
-        break;
 
         case IDC_COLUMN_SORT_ASC_BUTTON:
         {
@@ -2321,9 +2316,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (columnDelimiterData.isValid()) {
                 handleSortStateAndSort(SortDirection::Ascending);
                 UpdateSortButtonSymbols();
-            }            
+            }
+            return TRUE;
         }
-        break;
 
         case IDC_COLUMN_SORT_DESC_BUTTON:
         {
@@ -2332,8 +2327,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 handleSortStateAndSort(SortDirection::Descending);
                 UpdateSortButtonSymbols();
             }
+            return TRUE;
         }
-        break;
 
         case IDC_COLUMN_DROP_BUTTON:
         {
@@ -2343,8 +2338,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     handleDeleteColumns();
                 }
             }
+            return TRUE;
         }
-        break;
 
         case IDC_COLUMN_COPY_BUTTON:
         {
@@ -2352,8 +2347,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (columnDelimiterData.isValid()) {
                 handleCopyColumnsToClipboard();
             }
+            return TRUE;
         }
-        break;
 
         case IDC_COLUMN_HIGHLIGHT_BUTTON:
         {
@@ -2367,16 +2362,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 handleClearColumnMarks();
                 showStatusMessage(getLangStr(L"status_column_marks_cleared"), RGB(0, 128, 0));
             }
+            return TRUE;
         }
-        break;
 
         case IDC_USE_LIST_CHECKBOX:
         {
             // Adjust the window size based on the current Use List state
             adjustWindowSize();
-
+            return TRUE;
         }
-        break;
 
         case IDC_SWAP_BUTTON:
         {
@@ -2386,14 +2380,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // Swap the content of the two text fields
             SetDlgItemTextW(_hSelf, IDC_FIND_EDIT, replaceText.c_str());
             SetDlgItemTextW(_hSelf, IDC_REPLACE_EDIT, findText.c_str());
+            return TRUE;
         }
-        break;
 
         case IDC_COPY_TO_LIST_BUTTON:
         {
             handleCopyToListButton();
+            return TRUE;
         }
-        break;
 
         case IDC_FIND_BUTTON:
         case IDC_FIND_NEXT_BUTTON:
@@ -2402,17 +2396,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleFindNextButton();
+            return TRUE;
         }
-        break;
 
         case IDC_FIND_PREV_BUTTON:
         {
             CloseDebugWindow(); // Close the Lua debug window if it is open
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
-            handleFindPrevButton(); 
+            handleFindPrevButton();
+            return TRUE;
         }
-        break;
 
         case IDC_REPLACE_BUTTON:
         {
@@ -2420,8 +2414,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleReplaceButton();
+            return TRUE;
         }
-        break;
 
         case IDC_REPLACE_ALL_SMALL_BUTTON:
         {
@@ -2429,8 +2423,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleReplaceAllButton();
+            return TRUE;
         }
-        break;
 
         case IDC_REPLACE_ALL_BUTTON:
         {
@@ -2463,7 +2457,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     // Process documents in the main view if it's visible
                     if (visibleMain) {
                         for (LRESULT i = 0; i < docCountMain; ++i) {
-                            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);                            
+                            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
                             handleDelimiterPositions(DelimiterOperation::LoadAll);
                             handleReplaceAllButton();
                         }
@@ -2489,8 +2483,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
                 handleReplaceAllButton();
             }
+            return TRUE;
         }
-        break;
 
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
@@ -2499,22 +2493,22 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleClearTextMarksButton();
             handleMarkMatchesButton();
+            return TRUE;
         }
-        break;
 
         case IDC_CLEAR_MARKS_BUTTON:
         {
             resetCountColumns();
             handleClearTextMarksButton();
             showStatusMessage(getLangStr(L"status_all_marks_cleared"), RGB(0, 128, 0));
+            return TRUE;
         }
-        break;
 
         case IDC_COPY_MARKED_TEXT_BUTTON:
         {
             handleCopyMarkedTextToClipboardButton();
+            return TRUE;
         }
-        break;
 
         case IDC_SAVE_AS_BUTTON:
         case IDC_SAVE_TO_CSV_BUTTON:
@@ -2525,8 +2519,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (!filePath.empty()) {
                 saveListToCsv(filePath, replaceListData);
             }
+            return TRUE;
         }
-        break;
 
         case IDC_SAVE_BUTTON:
         {
@@ -2541,8 +2535,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     saveListToCsv(filePath, replaceListData);
                 }
             }
+            return TRUE;
         }
-        break;
 
         case IDC_LOAD_LIST_BUTTON:
         case IDC_LOAD_FROM_CSV_BUTTON:
@@ -2561,26 +2555,26 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (!filePath.empty()) {
                 loadListFromCsv(filePath);
             }
+            return TRUE;
         }
-        break;
 
         case IDC_NEW_LIST_BUTTON:
         {
             clearList();
+            return TRUE;
         }
-        break;
 
         case IDC_UP_BUTTON:
         {
             shiftListItem(_replaceListView, Direction::Up);
+            return TRUE;
         }
-        break;
 
         case IDC_DOWN_BUTTON:
         {
             shiftListItem(_replaceListView, Direction::Down);
+            return TRUE;
         }
-        break;
 
         case IDC_EXPORT_BASH_BUTTON:
         {
@@ -2604,102 +2598,101 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (!filePath.empty()) {
                 exportToBashScript(filePath);
             }
+            return TRUE;
         }
-        break;
 
         case ID_REPLACE_ALL_OPTION:
         {
             SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, getLangStrLPWSTR(L"split_button_replace_all"));
             isReplaceAllInDocs = false;
+            return TRUE;
         }
-        break;
 
         case ID_REPLACE_IN_ALL_DOCS_OPTION:
         {
             SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, getLangStrLPWSTR(L"split_button_replace_all_in_docs"));
             isReplaceAllInDocs = true;
+            return TRUE;
         }
-        break;
 
         case ID_STATISTICS_COLUMNS:
         {
             isStatisticsColumnsExpanded = !isStatisticsColumnsExpanded;
             resizeCountColumns();
             updateStatisticsColumnButtonIcon();
+            return TRUE;
         }
-		break;
 
         case IDM_SEARCH_IN_LIST:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Search);
+            return TRUE;
         }
-        break;
 
         case IDM_COPY_DATA_TO_FIELDS:
         {
             NMITEMACTIVATE nmia = {};
             nmia.iItem = ListView_HitTest(_replaceListView, &_contextMenuClickPoint);
-            handleCopyBack(&nmia);            
+            handleCopyBack(&nmia);
+            return TRUE;
         }
-        break;
 
         case IDM_CUT_LINES_TO_CLIPBOARD:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Cut);
+            return TRUE;
         }
-        break;
 
-		case IDM_COPY_LINES_TO_CLIPBOARD:
+        case IDM_COPY_LINES_TO_CLIPBOARD:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Copy);
+            return TRUE;
         }
-		break;
 
-        case IDM_PASTE_LINES_FROM_CLIPBOARD: 
+        case IDM_PASTE_LINES_FROM_CLIPBOARD:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Paste);
+            return TRUE;
         }
-        break;
 
         case IDM_EDIT_VALUE:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Edit);
+            return TRUE;
         }
-        break;
 
         case IDM_DELETE_LINES:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Delete);
+            return TRUE;
         }
-        break;
 
-        case IDM_SELECT_ALL: 
+        case IDM_SELECT_ALL:
         {
             ListView_SetItemState(_replaceListView, -1, LVIS_SELECTED, LVIS_SELECTED);
+            return TRUE;
         }
-        break;
 
-        case IDM_ENABLE_LINES: 
+        case IDM_ENABLE_LINES:
         {
             setSelections(true, ListView_GetSelectedCount(_replaceListView) > 0);
+            return TRUE;
         }
-        break;
 
-        case IDM_DISABLE_LINES: 
+        case IDM_DISABLE_LINES:
         {
             setSelections(false, ListView_GetSelectedCount(_replaceListView) > 0);
+            return TRUE;
         }
-        break;
 
         default:
             return FALSE;
         }
-
     }
-    break;
 
+    default:
+        return FALSE;
     }
-    return FALSE;
 }
 
 #pragma endregion
