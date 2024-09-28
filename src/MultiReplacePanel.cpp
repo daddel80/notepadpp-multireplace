@@ -269,7 +269,7 @@ bool MultiReplace::createAndShowWindows() {
         {
             DWORD dwError = GetLastError();
             std::wstring errorMsg = getLangStr(L"msgbox_failed_create_control", { std::to_wstring(pair.first), std::to_wstring(dwError) });
-            MessageBox(NULL, errorMsg.c_str(), getLangStr(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR);
+            MessageBox(nppData._nppHandle, errorMsg.c_str(), getLangStr(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR);
             return false;
         }
 
@@ -1475,7 +1475,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
             confirmationMessage = getLangStr(L"msgbox_confirm_delete_multiple", { std::to_wstring(selectedCount) });
         }
 
-        int msgBoxID = MessageBox(NULL, confirmationMessage.c_str(), getLangStr(L"msgbox_title_confirm").c_str(), MB_ICONWARNING | MB_YESNO);
+        int msgBoxID = MessageBox(nppData._nppHandle, confirmationMessage.c_str(), getLangStr(L"msgbox_title_confirm").c_str(), MB_ICONWARNING | MB_YESNO);
         if (msgBoxID == IDYES) {
             deleteSelectedLines(_replaceListView);
         }
@@ -2432,7 +2432,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             {
                 CloseDebugWindow(); // Close the Lua debug window if it is open
                 int msgboxID = MessageBox(
-                    NULL,
+                    nppData._nppHandle,
                     getLangStr(L"msgbox_confirm_replace_all").c_str(),
                     getLangStr(L"msgbox_title_confirm").c_str(),
                     MB_OKCANCEL
@@ -4568,7 +4568,7 @@ bool MultiReplace::confirmColumnDeletion() {
 
     // Display a message box with Yes/No options and a question mark icon
     int msgboxID = MessageBox(
-        _hSelf,
+        nppData._nppHandle,
         confirmMessage.c_str(),
         getLangStr(L"msgbox_title_confirm").c_str(),
         MB_ICONQUESTION | MB_YESNO 
@@ -6495,7 +6495,7 @@ int MultiReplace::checkForUnsavedChanges() {
 
         // Show the MessageBox with the appropriate message
         int result = MessageBox(
-            _hSelf,
+            nppData._nppHandle,
             message.c_str(),
             getLangStr(L"msgbox_title_save_list").c_str(),
             MB_YESNOCANCEL | MB_ICONQUESTION
@@ -6637,7 +6637,7 @@ void MultiReplace::checkForFileChangesAtStartup() {
         if (newFileHash != originalListHash) {
             std::wstring message = getLangStr(L"msgbox_file_modified_prompt", { shortenedFilePath });
 
-            int response = MessageBox(_hSelf, message.c_str(), getLangStr(L"msgbox_title_reload").c_str(), MB_YESNO | MB_ICONQUESTION);
+            int response = MessageBox(nppData._nppHandle, message.c_str(), getLangStr(L"msgbox_title_reload").c_str(), MB_YESNO | MB_ICONQUESTION);
 
             if (response == IDYES) {
                 replaceListData = tempListFromFile;
@@ -7084,7 +7084,7 @@ void MultiReplace::saveSettings() {
     catch (const std::exception& ex) {
         // If an error occurs while writing to the INI file, we show an error message
         std::wstring errorMessage = getLangStr(L"msgbox_error_saving_settings", { std::wstring(ex.what(), ex.what() + strlen(ex.what())) });
-        MessageBox(NULL, errorMessage.c_str(), getLangStr(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR);
+        MessageBox(nppData._nppHandle, errorMessage.c_str(), getLangStr(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR);
     }
     settingsSaved = true;
 }
