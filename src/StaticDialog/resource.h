@@ -134,6 +134,9 @@
 #define MIN_HEIGHT 500
 #define SHRUNK_HEIGHT 280
 
+// Custom message used to perform initial actions after the window has been fully opened
+#define WM_POST_INIT (WM_APP + 1)
+
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace/issues")
 
 #endif // RESOURCE_H

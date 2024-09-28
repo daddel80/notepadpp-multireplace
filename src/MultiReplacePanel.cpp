@@ -1778,15 +1778,25 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializeListView();
         initializeDragAndDrop();
         loadSettings();
-        checkForFileChangesAtStartup();
         adjustWindowSize();
 		updateStatisticsColumnButtonIcon();
         
         // Activate Dark Mode
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
+
+         // Post a custom message to perform post-initialization tasks after the dialog is shown
+         PostMessage(_hSelf, WM_POST_INIT, 0, 0);
+
          return TRUE;
     }
     break;
+
+    case WM_POST_INIT:
+    {
+        checkForFileChangesAtStartup();
+
+        return 0;
+    }
 
     case WM_GETMINMAXINFO:
     {
@@ -6627,6 +6637,10 @@ void MultiReplace::checkForFileChangesAtStartup() {
     }
     else {
         showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), RGB(0, 128, 0));
+
+        // Update the list view control, if necessary
+        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
     }
 }
 
