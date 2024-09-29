@@ -269,7 +269,7 @@ bool MultiReplace::createAndShowWindows() {
         {
             DWORD dwError = GetLastError();
             std::wstring errorMsg = getLangStr(L"msgbox_failed_create_control", { std::to_wstring(pair.first), std::to_wstring(dwError) });
-            MessageBox(nppData._nppHandle, errorMsg.c_str(), getLangStr(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
+            MessageBox(nppData._nppHandle, errorMsg.c_str(), getLangStr(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
             return false;
         }
 
@@ -3442,7 +3442,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         lua_pop(L, 1);
         if (isLuaErrorDialogEnabled) {
             std::wstring error_message = utf8ToWString(cstr);
-            MessageBox(nppData._nppHandle, error_message.c_str(), getLangStr(L"msgbox_title_use_variables_syntax_error").c_str(), MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
+            MessageBox(nppData._nppHandle, error_message.c_str(), getLangStr(L"msgbox_title_use_variables_syntax_error").c_str(), MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
         }
         lua_close(L);
         return false;
@@ -3592,7 +3592,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     // Convert the message from UTF-8 to UTF-16
     int result = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wMessage, buffer_size);
     if (result == 0) {
-        MessageBox(nppData._nppHandle, L"Error converting message", L"Error", MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
+        MessageBox(nppData._nppHandle, L"Error converting message", L"Error", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
         return -1;
     }
 
@@ -3608,7 +3608,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 
         if (!RegisterClass(&wc)) {
-            MessageBoxW(nppData._nppHandle, L"Error registering class", L"Error", MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
+            MessageBox(nppData._nppHandle, L"Error registering class", L"Error", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
             return -1;
         }
 
@@ -3631,7 +3631,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     );
 
     if (hwnd == NULL) {
-        MessageBox(nppData._nppHandle, L"Error creating window", L"Error", MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
+        MessageBoxW(nppData._nppHandle, L"Error creating window", L"Error", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
         return -1;
     }
 
@@ -7089,7 +7089,7 @@ void MultiReplace::saveSettings() {
     catch (const std::exception& ex) {
         // If an error occurs while writing to the INI file, we show an error message
         std::wstring errorMessage = getLangStr(L"msgbox_error_saving_settings", { std::wstring(ex.what(), ex.what() + strlen(ex.what())) });
-        MessageBox(nppData._nppHandle, errorMessage.c_str(), getLangStr(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
+        MessageBox(nppData._nppHandle, errorMessage.c_str(), getLangStr(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
     }
     settingsSaved = true;
 }
