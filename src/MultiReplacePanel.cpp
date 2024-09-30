@@ -6978,10 +6978,10 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     }
 
     outFile << wstringToString(L"[Window]\n");
-    outFile << wstringToString(L"Width=" + std::to_wstring(width) + L"\n");
     outFile << wstringToString(L"PosX=" + std::to_wstring(posX) + L"\n");
     outFile << wstringToString(L"PosY=" + std::to_wstring(posY) + L"\n");
-    outFile << wstringToString(L"UseListOnHeight=" + std::to_wstring(useListOnHeight) + L"\n");
+    outFile << wstringToString(L"Width=" + std::to_wstring(width) + L"\n");
+    outFile << wstringToString(L"Height=" + std::to_wstring(useListOnHeight) + L"\n");
 
     // Save transparency settings
     outFile << wstringToString(L"ForegroundTransparency=" + std::to_wstring(foregroundTransparency) + L"\n");
@@ -7225,7 +7225,7 @@ void MultiReplace::loadUIConfigFromIni() {
     int width = std::max(savedWidth, MIN_WIDTH);
 
     // Load useListOnHeight from INI file
-    useListOnHeight = readIntFromIniFile(iniFilePath, L"Window", L"UseListOnHeight", MIN_HEIGHT);
+    useListOnHeight = readIntFromIniFile(iniFilePath, L"Window", L"Height", MIN_HEIGHT);
     useListOnHeight = std::max(useListOnHeight, MIN_HEIGHT); // Ensure minimum height
 
     // Set windowRect based on Use List state
