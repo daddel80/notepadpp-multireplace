@@ -358,6 +358,7 @@ private:
     HWND _hStatusMessage;
     HFONT _hFont;
     COLORREF _statusMessageColor;
+    HWND _hHeaderTooltip; // Handle to the tooltip for the ListView header
 
     // ContextMenuInfo structure instance
     POINT _contextMenuClickPoint;
@@ -454,6 +455,7 @@ private:
     void insertReplaceListItem(const ReplaceItemData& itemData);
     int  calcDynamicColWidth(const CountColWidths& widths);
     void updateListViewAndColumns(HWND listView, LPARAM lParam);
+    void updateListViewTooltips();
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void shiftListItem(HWND listView, const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);
@@ -561,7 +563,6 @@ private:
     void updateHeaderSelection();
     void updateHeaderSortDirection();
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
-    void calculateCharacterWidths();
     std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
     void showListFilePath();
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);

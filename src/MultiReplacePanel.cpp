@@ -562,24 +562,24 @@ void MultiReplace::adjustWindowSize() {
 
 #pragma region ListView
 
-HWND MultiReplace::CreateHeaderTooltip(HWND hwndParent) {
-    HWND hwndTT = CreateWindowEx(WS_EX_TOPMOST,
+HWND MultiReplace::CreateHeaderTooltip(HWND hwndParent)
+{
+    HWND hwndTT = CreateWindowEx(
+        WS_EX_TOPMOST,
         TOOLTIPS_CLASS,
         NULL,
         WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
+        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
         hwndParent,
         NULL,
         GetModuleHandle(NULL),
-        NULL);
+        NULL
+    );
 
-    SetWindowPos(hwndTT,
-        HWND_TOPMOST,
-        0, 0, 0, 0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    if (hwndTT)
+    {
+        SendMessage(hwndTT, TTM_ACTIVATE, TRUE, 0);
+    }
 
     return hwndTT;
 }
@@ -594,9 +594,10 @@ void MultiReplace::AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnInde
     ti.hwnd = hwndHeader;
     ti.hinst = GetModuleHandle(NULL);
     ti.uId = columnIndex;
-    ti.lpszText = (LPWSTR)pszText;
+    ti.lpszText = const_cast<LPWSTR>(pszText);
     ti.rect = rect;
 
+    SendMessage(hwndTT, TTM_DELTOOL, 0, (LPARAM)&ti);
     SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)&ti);
 }
 
@@ -680,13 +681,13 @@ void MultiReplace::createListViewColumns(HWND listView) {
 
     //Adding Tooltips
     HWND hwndHeader = ListView_GetHeader(listView);
-    HWND hwndTT = CreateHeaderTooltip(hwndHeader);
+    _hHeaderTooltip = CreateHeaderTooltip(hwndHeader);
 
-    AddHeaderTooltip(hwndTT, hwndHeader, 6, getLangStrLPWSTR(L"tooltip_header_whole_word"));
-    AddHeaderTooltip(hwndTT, hwndHeader, 7, getLangStrLPWSTR(L"tooltip_header_match_case"));
-    AddHeaderTooltip(hwndTT, hwndHeader, 8, getLangStrLPWSTR(L"tooltip_header_use_variables"));
-    AddHeaderTooltip(hwndTT, hwndHeader, 9, getLangStrLPWSTR(L"tooltip_header_extended"));
-    AddHeaderTooltip(hwndTT, hwndHeader, 10, getLangStrLPWSTR(L"tooltip_header_regex"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 6, getLangStrLPWSTR(L"tooltip_header_whole_word"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 7, getLangStrLPWSTR(L"tooltip_header_match_case"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 8, getLangStrLPWSTR(L"tooltip_header_use_variables"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 9, getLangStrLPWSTR(L"tooltip_header_extended"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 10, getLangStrLPWSTR(L"tooltip_header_regex"));
 
 }
 
@@ -768,7 +769,20 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
     SendMessage(widths.listView, WM_SETREDRAW, TRUE, 0);
     //InvalidateRect(widths.listView, NULL, TRUE);
     //UpdateWindow(widths.listView);
+}
 
+void MultiReplace::updateListViewTooltips()
+{
+    HWND hwndHeader = ListView_GetHeader(_replaceListView);
+    if (!hwndHeader || !_hHeaderTooltip)
+        return;
+
+    // Re-add tooltips for columns 6 to 10
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 6, getLangStrLPWSTR(L"tooltip_header_whole_word"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 7, getLangStrLPWSTR(L"tooltip_header_match_case"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 8, getLangStrLPWSTR(L"tooltip_header_use_variables"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 9, getLangStrLPWSTR(L"tooltip_header_extended"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 10, getLangStrLPWSTR(L"tooltip_header_regex"));
 }
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
@@ -1306,13 +1320,33 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
     case WM_NOTIFY: {
         NMHDR* pnmhdr = reinterpret_cast<NMHDR*>(lParam);
         if (pnmhdr->hwndFrom == ListView_GetHeader(hwnd)) {
-            UINT code = static_cast<UINT>(pnmhdr->code);
-            if (code == HDN_ITEMCHANGEDW || code == HDN_ITEMCHANGEDA) {
+            int code = static_cast<int>(static_cast<short>(pnmhdr->code));
+
+            // These values are derived from the HDN_ITEMCHANGEDW and HDN_ITEMCHANGEDA constants:
+            // HDN_ITEMCHANGEDW = 0U - 300U - 21 = -321
+            // HDN_ITEMCHANGEDA = 0U - 300U - 1  = -301
+            // The constants are not used directly to avoid unsigned arithmetic overflow warnings.
+            if (code == (int(0) - 300 - 21) || code == (int(0) - 300 - 1)) {
+                // If there is an active edit control, destroy it when the header is changed
                 if (pThis->hwndEdit && IsWindow(pThis->hwndEdit)) {
                     DestroyWindow(pThis->hwndEdit);
                     pThis->hwndEdit = NULL;
                 }
+
+                // Set a timer to defer the tooltip update, ensuring the column resize is complete
+                SetTimer(hwnd, 1, 100, NULL);  // Timer ID 1, 100ms delay
+
             }
+        }
+        break;
+    }
+
+    case WM_TIMER: {
+        if (wParam == 1) {  // Check if it's the timer we set
+            KillTimer(hwnd, 1);  // Stop the timer
+
+            // Update the tooltips now that the columns have been resized
+            pThis->updateListViewTooltips();
         }
         break;
     }
