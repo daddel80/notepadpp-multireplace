@@ -157,7 +157,6 @@ struct ColumnInfo {
 struct CountColWidths {
     HWND listView;
     int listViewWidth;
-    bool hasVerticalScrollbar;
     int findCountWidth;
     int replaceCountWidth;
     int margin;
@@ -435,12 +434,15 @@ private:
     BYTE foregroundTransparency = 255; // Default to fully opaque
     BYTE backgroundTransparency = 190; // Default to semi-transparent
 
-
-    void applyFonts();
+    // Window DPI scaled size 
+    int MIN_WIDTH_scaled;
+    int MIN_HEIGHT_scaled;
+    int SHRUNK_HEIGHT_scaled;
 
     //Initialization
     void initializeWindowSize();
     RECT calculateMinWindowFrame(HWND hwnd);
+    void applyFonts();
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();

@@ -41,10 +41,12 @@ public:
     // Updates DPI values (e.g., after a DPI change event).
     void updateDPI(HWND hwnd);
 
-private:
-    HWND _hwnd;  // Handle to the window.
     int _dpiX;   // Horizontal DPI.
     int _dpiY;   // Vertical DPI.
+
+private:
+    HWND _hwnd;  // Handle to the window.
+
 
     // Initializes the DPI values.
     void init();

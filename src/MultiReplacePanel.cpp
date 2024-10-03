@@ -77,6 +77,21 @@ HWND MultiReplace::hDebugWnd = NULL;
 
 #pragma warning(disable: 6262)
 
+#pragma region Initialization
+
+void MultiReplace::initializeWindowSize() {
+    MIN_WIDTH_scaled = dpiMgr->scaleX(MIN_WIDTH); // MIN_WIDTH from resource.rc
+    MIN_HEIGHT_scaled = dpiMgr->scaleY(MIN_HEIGHT); // MIN_HEIGHT from resource.rc
+    SHRUNK_HEIGHT_scaled = dpiMgr->scaleY(SHRUNK_HEIGHT); // SHRUNK_HEIGHT from resource.rc
+
+    loadUIConfigFromIni(); // Loads the UI configuration, including window size and position
+
+    // Set the window position and size based on the loaded settings
+    SetWindowPos(_hSelf, NULL, windowRect.left, windowRect.top,
+        windowRect.right - windowRect.left,
+        windowRect.bottom - windowRect.top, SWP_NOZORDER);
+}
+
 void MultiReplace::applyFonts()
 {
     if (!dpiMgr) return;
@@ -130,17 +145,6 @@ void MultiReplace::applyFonts()
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)hBoldFont, TRUE);
 }
 
-#pragma region Initialization
-
-void MultiReplace::initializeWindowSize() {
-    loadUIConfigFromIni(); // Loads the UI configuration, including window size and position
-
-    // Set the window position and size based on the loaded settings
-    SetWindowPos(_hSelf, NULL, windowRect.left, windowRect.top,
-        windowRect.right - windowRect.left,
-        windowRect.bottom - windowRect.top, SWP_NOZORDER);
-}
-
 RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     // Use local variables to avoid modifying windowRect
     RECT tempWindowRect;
@@ -156,8 +160,8 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     // Determine whether the Use List checkbox is checked
     BOOL useListChecked = IsDlgButtonChecked(hwnd, IDC_USE_LIST_CHECKBOX) == BST_CHECKED;
 
-    int minHeight = useListChecked ? MIN_HEIGHT : SHRUNK_HEIGHT;
-    int minWidth = MIN_WIDTH;
+    int minHeight = useListChecked ? MIN_HEIGHT_scaled : SHRUNK_HEIGHT_scaled;
+    int minWidth = MIN_WIDTH_scaled;
 
     // Adjust for window borders and title bar
     minHeight += borderWidth + titleBarHeight;
@@ -176,8 +180,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int swapButtonX = windowWidth - dpiMgr->scaleX(36 + 128 + 26);
     int comboWidth = windowWidth - dpiMgr->scaleX(292);
     int frameX = windowWidth  - dpiMgr->scaleX(256);
-    int listWidth = windowWidth - dpiMgr->scaleX(260);
-    int listHeight = windowHeight - dpiMgr->scaleX(310);
+    int listWidth = windowWidth - dpiMgr->scaleX(208);
+    int listHeight = windowHeight - dpiMgr->scaleX(248);
     int checkboxX = buttonX - dpiMgr->scaleX(84);
 
     // Apply scaling only when assigning to ctrlMap
@@ -799,15 +803,18 @@ int MultiReplace::calcDynamicColWidth(const CountColWidths& widths) {
 
 void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
     int newWidth = LOWORD(lParam); // calculate ListWidth as lParam return WindowWidth
-    int newHeight = HIWORD(lParam);
+    //int newHeight = HIWORD(lParam);
+    newWidth += newWidth;
+
+    // Retrieve the control information for IDC_REPLACE_LIST from ctrlMap
+    const ControlInfo& listCtrlInfo = ctrlMap[IDC_REPLACE_LIST];
 
     CountColWidths widths = {
         listView,
-        newWidth - 282, // Direct use of newWidth for listViewWidth
-        false, // This is not used for current calculation.
+        listCtrlInfo.cx, // Direct use of newWidth for listViewWidth
         ListView_GetColumnWidth(listView, 1), // Current Find Count Width
         ListView_GetColumnWidth(listView, 2), // Current Replace Count Width
-        0 // No margin as already precalculated in newWidth
+        GetSystemMetrics(SM_CXVSCROLL) // Width of Scrollbar
     };
 
     // Calculate width available for each dynamic column.
@@ -820,7 +827,8 @@ void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
     ListView_SetColumnWidth(listView, 4, perColumnWidth); // Find Text
     ListView_SetColumnWidth(listView, 5, perColumnWidth); // Replace Text
 
-    MoveWindow(listHwnd, 20, 284, newWidth - 260, newHeight - 310, TRUE);
+    //MoveWindow(listHwnd, 20, dpiMgr->scaleY(227), newWidth - dpiMgr->scaleX(208), newHeight - dpiMgr->scaleY(248), TRUE);
+    MoveWindow(listHwnd, listCtrlInfo.x, listCtrlInfo.y, listCtrlInfo.cx, listCtrlInfo.cy, TRUE);
 
     SendMessage(widths.listView, WM_SETREDRAW, TRUE, 0);
     //InvalidateRect(widths.listView, NULL, TRUE);
@@ -1127,12 +1135,12 @@ void MultiReplace::resizeCountColumns() {
 
     LONG style = GetWindowLong(listView, GWL_STYLE);
     bool hasVerticalScrollbar = (style & WS_VSCROLL) != 0;
-    int margin = hasVerticalScrollbar ? 0 : 20;
+    int scrollbarWidth = GetSystemMetrics(SM_CXVSCROLL);
+    int margin = hasVerticalScrollbar ? 0 : scrollbarWidth;
 
     CountColWidths widths = {
         listView,
         listViewWidth,
-        hasVerticalScrollbar,
         ListView_GetColumnWidth(_replaceListView, 1), // Current Find Count Width
         ListView_GetColumnWidth(_replaceListView, 2), // Current Replace Count Width
         margin
@@ -1861,6 +1869,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         // Instantiate DPIManager
         dpiMgr = new DPIManager(_hSelf);
+        // For debugging only
+        // dpiMgr->_dpiX = 70;
+        // dpiMgr->_dpiY = 70;
         loadLanguage();
         initializeWindowSize();
         pointerToScintilla();
@@ -2035,11 +2046,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             int newWidth = LOWORD(lParam);
             int newHeight = HIWORD(lParam);
 
-            // Move and resize the List
-            updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), lParam);
-
             // Calculate Position for all Elements
             positionAndResizeControls(newWidth, newHeight);
+
+            // Move and resize the List
+            updateListViewAndColumns(GetDlgItem(_hSelf, IDC_REPLACE_LIST), lParam);
 
             // Move all Elements
             moveAndResizeControls();
@@ -7352,8 +7363,8 @@ void MultiReplace::loadUIConfigFromIni() {
     CheckDlgButton(_hSelf, IDC_USE_LIST_CHECKBOX, useList ? BST_CHECKED : BST_UNCHECKED);
 
     // Load window width
-    int savedWidth = readIntFromIniFile(iniFilePath, L"Window", L"Width", MIN_WIDTH);
-    int width = std::max(savedWidth, MIN_WIDTH);
+    int savedWidth = readIntFromIniFile(iniFilePath, L"Window", L"Width", MIN_WIDTH_scaled);
+    int width = std::max(savedWidth, MIN_WIDTH_scaled);
 
     // Load useListOnHeight from INI file
     useListOnHeight = readIntFromIniFile(iniFilePath, L"Window", L"Height", MIN_HEIGHT);

@@ -130,9 +130,9 @@
 // Default window position and dimensions
 #define POS_X 92
 #define POS_Y 40
-#define MIN_WIDTH 1023
-#define MIN_HEIGHT 500
-#define SHRUNK_HEIGHT 280
+#define MIN_WIDTH 818
+#define MIN_HEIGHT 400
+#define SHRUNK_HEIGHT 224
 
 // Custom message used to perform initial actions after the window has been fully opened
 #define WM_POST_INIT (WM_APP + 1)
