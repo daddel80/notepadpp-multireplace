@@ -21,6 +21,7 @@
 #include "Notepad_plus_msgs.h"
 #include "PluginDefinition.h"
 #include "Scintilla.h"
+#include "DPIManager.h"
 
 #include <algorithm>
 #include <bitset>
@@ -76,6 +77,59 @@ HWND MultiReplace::hDebugWnd = NULL;
 
 #pragma warning(disable: 6262)
 
+void MultiReplace::applyFonts()
+{
+    if (!dpiMgr) return;
+
+    // Create a standard scaled font
+    HFONT hStandardFont = CreateFont(
+        dpiMgr->scaleY(12), // Font height
+        0,                  // Font width (0 means default)
+        0,                  // Escapement
+        0,                  // Orientation
+        FW_NORMAL,          // Weight
+        FALSE,              // Italic
+        FALSE,              // Underline
+        FALSE,              // Strikeout
+        DEFAULT_CHARSET,    // Char set
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        DEFAULT_QUALITY,
+        DEFAULT_PITCH | FF_DONTCARE,
+        L"Segoe UI"         // Font name
+    );
+
+    // Apply the standard font to all controls
+    for (const auto& pair : ctrlMap)
+    {
+        SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)hStandardFont, TRUE);
+    }
+
+    // Create and apply a bold font for specific controls
+    HFONT hBoldFont = CreateFont(
+        dpiMgr->scaleY(14), // Larger font height
+        0,
+        0,
+        0,
+        FW_BOLD,           // Bold weight
+        FALSE,
+        FALSE,
+        FALSE,
+        DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        DEFAULT_QUALITY,
+        DEFAULT_PITCH | FF_DONTCARE,
+        L"Courier New"     // Font name
+    );
+
+    // Apply the bold font to specific controls
+    SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)hBoldFont, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)hBoldFont, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)hBoldFont, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)hBoldFont, TRUE);
+}
+
 #pragma region Initialization
 
 void MultiReplace::initializeWindowSize() {
@@ -114,86 +168,88 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     return minSize;
 }
 
-void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight) {
-    int buttonX = windowWidth - 45 - 160;
-    int checkbox2X = buttonX + 173;
-    int swapButtonX = windowWidth - 45 - 160 - 33;
-    int comboWidth = windowWidth - 365;
-    int frameX = windowWidth  - 320;
-    int listWidth = windowWidth - 260;
-    int listHeight = windowHeight - 310;
-    int checkboxX = buttonX - 105;
+void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
+{
+    // Calculate dimensions without scaling
+    int buttonX = windowWidth - dpiMgr->scaleX(36 + 128);
+    int checkbox2X = buttonX + dpiMgr->scaleX(138);
+    int swapButtonX = windowWidth - dpiMgr->scaleX(36 + 128 + 26);
+    int comboWidth = windowWidth - dpiMgr->scaleX(292);
+    int frameX = windowWidth  - dpiMgr->scaleX(256);
+    int listWidth = windowWidth - dpiMgr->scaleX(260);
+    int listHeight = windowHeight - dpiMgr->scaleX(310);
+    int checkboxX = buttonX - dpiMgr->scaleX(84);
 
-    // Static positions and sizes
-    ctrlMap[IDC_STATIC_FIND] = { 14, 19, 100, 24, WC_STATIC, getLangStrLPCWSTR(L"panel_find_what"), SS_RIGHT, NULL };
-    ctrlMap[IDC_STATIC_REPLACE] = { 14, 54, 100, 24, WC_STATIC, getLangStrLPCWSTR(L"panel_replace_with"), SS_RIGHT };
+    // Apply scaling only when assigning to ctrlMap
+    ctrlMap[IDC_STATIC_FIND] = { dpiMgr->scaleX(11), dpiMgr->scaleY(15), dpiMgr->scaleX(80), dpiMgr->scaleY(19), WC_STATIC, getLangStrLPCWSTR(L"panel_find_what"), SS_RIGHT, NULL };
+    ctrlMap[IDC_STATIC_REPLACE] = { dpiMgr->scaleX(11), dpiMgr->scaleY(43), dpiMgr->scaleX(80), dpiMgr->scaleY(19), WC_STATIC, getLangStrLPCWSTR(L"panel_replace_with"), SS_RIGHT };
 
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { 20, 95, 198, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { 20, 126, 198, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { 20, 157, 167, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_HELP] = { 190, 158, 25, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_FIRST_CHECKBOX] = { 20, 189, 198, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_first_match_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { 20, 220, 198, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { dpiMgr->scaleX(16), dpiMgr->scaleY(76), dpiMgr->scaleX(158), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { dpiMgr->scaleX(16), dpiMgr->scaleY(101), dpiMgr->scaleX(158), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { dpiMgr->scaleX(16), dpiMgr->scaleY(126), dpiMgr->scaleX(134), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_VARIABLES_HELP] = { dpiMgr->scaleX(152), dpiMgr->scaleY(126), dpiMgr->scaleX(20), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_FIRST_CHECKBOX] = { dpiMgr->scaleX(16), dpiMgr->scaleY(151), dpiMgr->scaleX(158), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_first_match_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { dpiMgr->scaleX(16), dpiMgr->scaleY(176), dpiMgr->scaleX(158), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SEARCH_MODE_GROUP] = { 225, 99, 200, 130, WC_BUTTON,  getLangStrLPCWSTR(L"panel_search_mode"), BS_GROUPBOX, NULL };
-    ctrlMap[IDC_NORMAL_RADIO] = { 235, 126, 180, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXTENDED_RADIO] = { 235, 157, 180, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REGEX_RADIO] = { 235, 188, 180, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SEARCH_MODE_GROUP] = { dpiMgr->scaleX(180), dpiMgr->scaleY(79), dpiMgr->scaleX(160), dpiMgr->scaleY(104), WC_BUTTON, getLangStrLPCWSTR(L"panel_search_mode"), BS_GROUPBOX, NULL };
+    ctrlMap[IDC_NORMAL_RADIO] = { dpiMgr->scaleX(188), dpiMgr->scaleY(101), dpiMgr->scaleX(144), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXTENDED_RADIO] = { dpiMgr->scaleX(188), dpiMgr->scaleY(126), dpiMgr->scaleX(144), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REGEX_RADIO] = { dpiMgr->scaleX(188), dpiMgr->scaleY(150), dpiMgr->scaleX(144), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SCOPE_GROUP] = { 440, 99, 247, 163, WC_BUTTON, getLangStrLPCWSTR(L"panel_scope"), BS_GROUPBOX, NULL };
-    ctrlMap[IDC_ALL_TEXT_RADIO] = { 450, 126, 230, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SELECTION_RADIO] = { 450, 157, 230, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_MODE_RADIO] = { 450, 188, 50, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { 450, 227, 30, 25, WC_STATIC, getLangStrLPCWSTR(L"panel_cols"), SS_RIGHT, NULL};
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { 482, 227, 50, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , getLangStrLPCWSTR(L"tooltip_columns") };
-    ctrlMap[IDC_DELIMITER_STATIC] = { 538, 227, 40, 25, WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
-    ctrlMap[IDC_DELIMITER_EDIT] = { 580, 227, 30, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL ,  getLangStrLPCWSTR(L"tooltip_delimiter") };
-    ctrlMap[IDC_QUOTECHAR_STATIC] = { 616, 227, 40, 25, WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
-    ctrlMap[IDC_QUOTECHAR_EDIT] = { 658, 227, 15, 20, WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL , getLangStrLPCWSTR(L"tooltip_quote") };
+    ctrlMap[IDC_SCOPE_GROUP] = { dpiMgr->scaleX(352), dpiMgr->scaleY(79), dpiMgr->scaleX(198), dpiMgr->scaleY(130), WC_BUTTON, getLangStrLPCWSTR(L"panel_scope"), BS_GROUPBOX, NULL };
+    ctrlMap[IDC_ALL_TEXT_RADIO] = { dpiMgr->scaleX(360), dpiMgr->scaleY(101), dpiMgr->scaleX(184), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SELECTION_RADIO] = { dpiMgr->scaleX(360), dpiMgr->scaleY(126), dpiMgr->scaleX(184), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_MODE_RADIO] = { dpiMgr->scaleX(360), dpiMgr->scaleY(150), dpiMgr->scaleX(40), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { dpiMgr->scaleX(360), dpiMgr->scaleY(182), dpiMgr->scaleX(24), dpiMgr->scaleY(20), WC_STATIC, getLangStrLPCWSTR(L"panel_cols"), SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { dpiMgr->scaleX(386), dpiMgr->scaleY(182), dpiMgr->scaleX(40), dpiMgr->scaleY(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_columns") };
+    ctrlMap[IDC_DELIMITER_STATIC] = { dpiMgr->scaleX(430), dpiMgr->scaleY(182), dpiMgr->scaleX(32), dpiMgr->scaleY(20), WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
+    ctrlMap[IDC_DELIMITER_EDIT] = { dpiMgr->scaleX(464), dpiMgr->scaleY(182), dpiMgr->scaleX(24), dpiMgr->scaleY(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_delimiter") };
+    ctrlMap[IDC_QUOTECHAR_STATIC] = { dpiMgr->scaleX(493), dpiMgr->scaleY(182), dpiMgr->scaleX(32), dpiMgr->scaleY(20), WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { dpiMgr->scaleX(526), dpiMgr->scaleY(182), dpiMgr->scaleX(12), dpiMgr->scaleY(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_quote") };
 
-    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { 508, 186, 17, 25, WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
-    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { 526, 186, 17, 25, WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
-    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { 554, 186, 25, 25, WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_drop_columns") };
-    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { 590, 186, 25, 25, WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP,  getLangStrLPCWSTR(L"tooltip_copy_columns") };
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { 626, 186, 50, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_show"), BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { dpiMgr->scaleX(406), dpiMgr->scaleY(149), dpiMgr->scaleX(14), dpiMgr->scaleY(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { dpiMgr->scaleX(421), dpiMgr->scaleY(149), dpiMgr->scaleX(14), dpiMgr->scaleY(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { dpiMgr->scaleX(443), dpiMgr->scaleY(149), dpiMgr->scaleX(20), dpiMgr->scaleY(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_drop_columns") };
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { dpiMgr->scaleX(472), dpiMgr->scaleY(149), dpiMgr->scaleX(20), dpiMgr->scaleY(20), WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_columns") };
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { dpiMgr->scaleX(501), dpiMgr->scaleY(149), dpiMgr->scaleX(40), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_show"), BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
 
-    ctrlMap[IDC_STATUS_MESSAGE] = { 14, 260, 630, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
+    ctrlMap[IDC_STATUS_MESSAGE] = { dpiMgr->scaleX(11), dpiMgr->scaleY(208), dpiMgr->scaleX(504), dpiMgr->scaleY(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
     // Dynamic positions and sizes
-    ctrlMap[IDC_FIND_EDIT] = { 120, 19, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_EDIT] = { 120, 54, comboWidth, 200, WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, 33, 28, 34, WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, 19, 160, 60, WC_BUTTON, getLangStrLPCWSTR(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_STATIC_FRAME] = { frameX, 99, 285, 163, WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, 118, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, 118, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + 125, 118, 35, 30, WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all")};
-    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, 118, 25, 25, WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_2_buttons_mode") };
-    ctrlMap[IDC_FIND_BUTTON] = { buttonX, 153, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_find_next"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_EDIT] = { dpiMgr->scaleX(96), dpiMgr->scaleY(15), comboWidth, dpiMgr->scaleY(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_EDIT] = { dpiMgr->scaleX(96), dpiMgr->scaleY(43), comboWidth, dpiMgr->scaleY(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, dpiMgr->scaleY(26), dpiMgr->scaleX(22), dpiMgr->scaleY(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, dpiMgr->scaleY(15), dpiMgr->scaleX(128), dpiMgr->scaleY(48), WC_BUTTON, getLangStrLPCWSTR(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_STATIC_FRAME] = { frameX, dpiMgr->scaleY(79), dpiMgr->scaleX(228), dpiMgr->scaleY(130), WC_BUTTON, L"", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, dpiMgr->scaleY(94), dpiMgr->scaleX(128), dpiMgr->scaleY(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, dpiMgr->scaleY(94), dpiMgr->scaleX(96), dpiMgr->scaleY(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + dpiMgr->scaleX(100), dpiMgr->scaleY(94), dpiMgr->scaleX(28), dpiMgr->scaleY(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
+    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, dpiMgr->scaleY(94), dpiMgr->scaleX(20), dpiMgr->scaleY(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_2_buttons_mode") };
+    ctrlMap[IDC_FIND_BUTTON] = { buttonX, dpiMgr->scaleY(122), dpiMgr->scaleX(128), dpiMgr->scaleY(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_find_next"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[ID_STATISTICS_COLUMNS] = { dpiMgr->scaleX(2), dpiMgr->scaleY(228), dpiMgr->scaleX(14), dpiMgr->scaleY(19), WC_BUTTON, L"▶", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
 
     findNextButtonText = L"▼ " + getLangStr(L"panel_find_next_small");
-    ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + 40, 153, 120, 30, WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + dpiMgr->scaleX(32), dpiMgr->scaleY(122), dpiMgr->scaleX(96), dpiMgr->scaleY(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, 153, 35, 30, WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_BUTTON] = { buttonX, 188, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, 188, 120, 30, WC_BUTTON,getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + 125, 188, 35, 30, WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") };
-    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, 223, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, 284, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, 284, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + 125, 284, 35, 30, WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_new_list") };
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, 319, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, 319, 35, 30, WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_save") };
-    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + 40, 319, 120, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, 354, 160, 30, WC_BUTTON, getLangStrLPCWSTR(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_UP_BUTTON] = { buttonX + 5, 404, 30, 30, WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
-    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + 5, 404 + 30 + 5, 30, 30, WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
-    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, 404 - 14, 165, 85, WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + 38, 404 + 20, 120, 20, WC_STATIC, getLangStrLPCWSTR(L"panel_shift_lines"), SS_LEFT, NULL };
-    ctrlMap[IDC_REPLACE_LIST] = { 20, 284, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
-    ctrlMap[IDC_PATH_DISPLAY] = { 20, 284 + listHeight + 5, listWidth, 24, WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
-    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, 175, 95, 25, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_list"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[ID_STATISTICS_COLUMNS] = { 2, 285, 17, 24, WC_BUTTON, L"▶", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
+    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, dpiMgr->scaleY(122), dpiMgr->scaleX(28), dpiMgr->scaleY(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_BUTTON] = { buttonX, dpiMgr->scaleY(150), dpiMgr->scaleX(128), dpiMgr->scaleY(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, dpiMgr->scaleY(150), dpiMgr->scaleX(96), dpiMgr->scaleY(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + dpiMgr->scaleX(100), dpiMgr->scaleY(150), dpiMgr->scaleX(28), dpiMgr->scaleY(24), WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") };
+    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, dpiMgr->scaleY(178), dpiMgr->scaleX(128), dpiMgr->scaleY(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, dpiMgr->scaleY(227), dpiMgr->scaleX(128), dpiMgr->scaleY(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, dpiMgr->scaleY(227), dpiMgr->scaleX(96), dpiMgr->scaleY(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + dpiMgr->scaleX(100), dpiMgr->scaleY(227), dpiMgr->scaleX(28), dpiMgr->scaleY(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_new_list") };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, dpiMgr->scaleY(255), dpiMgr->scaleX(128), dpiMgr->scaleY(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, dpiMgr->scaleY(255), dpiMgr->scaleX(28), dpiMgr->scaleY(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_save") };
+    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + dpiMgr->scaleX(32), dpiMgr->scaleY(255), dpiMgr->scaleX(96), dpiMgr->scaleY(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, dpiMgr->scaleY(283), dpiMgr->scaleX(128), dpiMgr->scaleY(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_UP_BUTTON] = { buttonX + dpiMgr->scaleX(4), dpiMgr->scaleY(323), dpiMgr->scaleX(24), dpiMgr->scaleY(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
+    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + dpiMgr->scaleX(4), dpiMgr->scaleY(323 + 24 + 4), dpiMgr->scaleX(24), dpiMgr->scaleY(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
+    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, dpiMgr->scaleY(323 - 11), dpiMgr->scaleX(132), dpiMgr->scaleY(68), WC_BUTTON, L"", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + dpiMgr->scaleX(30), dpiMgr->scaleY(323 + 16), dpiMgr->scaleX(96), dpiMgr->scaleY(16), WC_STATIC, getLangStrLPCWSTR(L"panel_shift_lines"), SS_LEFT, NULL };
+    ctrlMap[IDC_REPLACE_LIST] = { dpiMgr->scaleX(20), dpiMgr->scaleY(227), listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
+    ctrlMap[IDC_PATH_DISPLAY] = { dpiMgr->scaleX(18), windowHeight - dpiMgr->scaleY(15), listWidth, dpiMgr->scaleY(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL};
+    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, dpiMgr->scaleY(140), dpiMgr->scaleX(76), dpiMgr->scaleY(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_use_list"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 }
 
 void MultiReplace::initializeCtrlMap() {
@@ -342,7 +398,7 @@ void MultiReplace::moveAndResizeControls() {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON,
         IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON,
         IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
-        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON, 
+        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
         IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, IDC_PATH_DISPLAY
     };
 
@@ -386,7 +442,7 @@ void MultiReplace::moveAndResizeControls() {
         IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON,
         IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT
     };
-    
+
     // Redraw controls using stored HWNDs
     for (int ctrlId : redrawIds) {
         InvalidateRect(hwndMap[ctrlId], NULL, TRUE);
@@ -742,7 +798,7 @@ int MultiReplace::calcDynamicColWidth(const CountColWidths& widths) {
 }
 
 void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
-	int newWidth = LOWORD(lParam); // calculate ListWidth as lParam return WindowWidth
+    int newWidth = LOWORD(lParam); // calculate ListWidth as lParam return WindowWidth
     int newHeight = HIWORD(lParam);
 
     CountColWidths widths = {
@@ -1803,6 +1859,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
     case WM_INITDIALOG:
     {
+        // Instantiate DPIManager
+        dpiMgr = new DPIManager(_hSelf);
         loadLanguage();
         initializeWindowSize();
         pointerToScintilla();
@@ -1812,7 +1870,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializeDragAndDrop();
         loadSettings();
         adjustWindowSize();
-        updateStatisticsColumnButtonIcon();
+        updateStatisticsColumnButtonIcon();        
 
         // Activate Dark Mode
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
@@ -1822,6 +1880,36 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         PostMessage(_hSelf, WM_POST_INIT, 0, 0);
 
         return TRUE;
+    }
+
+    case WM_DPICHANGED:
+    {
+        // Extract the new window size and position from lParam
+        RECT* pRect = (RECT*)lParam;
+        SetWindowPos(_hSelf, NULL, pRect->left, pRect->top,
+            pRect->right - pRect->left, pRect->bottom - pRect->top,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+
+        // Update DPI values
+        if (dpiMgr)
+        {
+            dpiMgr->updateDPI(_hSelf);
+        }
+
+        // Rescale and reposition UI elements
+        RECT rcClient;
+        GetClientRect(_hSelf, &rcClient);
+        positionAndResizeControls(rcClient.right - rcClient.left, rcClient.bottom - rcClient.top);
+
+        // Move and resize controls accordingly
+        moveAndResizeControls();
+
+        // Apply scaled fonts after resizing controls
+        applyFonts();
+
+        // Refresh the UI
+        InvalidateRect(_hSelf, NULL, TRUE);
+        return 0;
     }
 
     case WM_POST_INIT:
@@ -1887,6 +1975,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_DESTROY:
     {
+        // Clean up DPIManager
+        if (dpiMgr) {
+            delete dpiMgr;
+            dpiMgr = nullptr;
+        }
+
         if (_replaceListView && originalListViewProc) {
             SetWindowLongPtr(_replaceListView, GWLP_WNDPROC, (LONG_PTR)originalListViewProc);
         }
@@ -1949,6 +2043,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             // Move all Elements
             moveAndResizeControls();
+
+            // Apply fonts after resizing controls
+            applyFonts();
 
             // Refresh UI and gripper by invalidating window
             InvalidateRect(_hSelf, NULL, TRUE);

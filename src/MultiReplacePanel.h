@@ -20,6 +20,7 @@
 #include "StaticDialog/resource.h"
 #include "PluginInterface.h"
 #include "DropTarget.h"
+#include "DPIManager.h"
 
 #include <string>
 #include <vector>
@@ -339,6 +340,8 @@ private:
     static constexpr wchar_t* symbolSortDescUnsorted = L"△";
     static constexpr int MAX_CAP_GROUPS = 9; // Maximum number of capture groups supported by Notepad++
 
+    DPIManager* dpiMgr; // Pointer to DPIManager instance
+
     // Static variables related to GUI 
     static HWND s_hScintilla;
     static HWND s_hDlg;
@@ -431,6 +434,9 @@ private:
     int replaceCountColumnWidth = 0; // Width of the "Replace Count" column
     BYTE foregroundTransparency = 255; // Default to fully opaque
     BYTE backgroundTransparency = 190; // Default to semi-transparent
+
+
+    void applyFonts();
 
     //Initialization
     void initializeWindowSize();

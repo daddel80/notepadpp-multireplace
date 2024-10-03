@@ -44,3 +44,5 @@ END
 IDR_MR_BMP BITMAP "resources\multireplace_light.bmp"
 IDI_MR_ICON ICON "resources\multireplace_ico_black.ico"
 IDI_MR_DM_ICON ICON "resources\multireplace_ico_white.ico"
+
+1 RT_MANIFEST "MultiReplacePanel.manifest"

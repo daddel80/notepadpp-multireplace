@@ -28,6 +28,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
+    <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
     <ClInclude Include="..\src\lua\lapi.h" />
     <ClInclude Include="..\src\lua\lauxlib.h" />
@@ -64,6 +65,7 @@
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\DPIManager.cpp" />
     <ClCompile Include="..\src\DropTarget.cpp" />
     <ClCompile Include="..\src\language_mapping.cpp" />
     <ClCompile Include="..\src\lua\lapi.c">
