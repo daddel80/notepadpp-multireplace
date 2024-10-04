@@ -89,13 +89,12 @@ void MultiReplace::initializeWindowSize() {
         windowRect.bottom - windowRect.top, SWP_NOZORDER);
 }
 
-void MultiReplace::initializeFontStyles()
-{
+void MultiReplace::initializeFontStyles() {
     if (!dpiMgr) return;
 
     // Create a standard scaled font
     HFONT hStandardFont = CreateFont(
-        dpiMgr->scaleY(12), // Font height
+        dpiMgr->scaleY(14), // Font height
         0,                  // Font width (0 means default)
         0,                  // Escapement
         0,                  // Orientation
@@ -112,14 +111,13 @@ void MultiReplace::initializeFontStyles()
     );
 
     // Apply the standard font to all controls
-    for (const auto& pair : ctrlMap)
-    {
+    for (const auto& pair : ctrlMap) {
         SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)hStandardFont, TRUE);
     }
 
     // Create and apply a bold font for specific controls
     HFONT hBoldFont = CreateFont(
-        dpiMgr->scaleY(14), // Larger font height
+        dpiMgr->scaleY(19), // Larger font height
         0,
         0,
         0,
@@ -140,6 +138,17 @@ void MultiReplace::initializeFontStyles()
     SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)hBoldFont, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)hBoldFont, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)hBoldFont, TRUE);
+
+    // For ListView identify width of special characters
+    // Measure the width of the Unicode characters L"\u2714" and L"\u2716" (for columns 5 to 10)
+    int widthCheckMark = getCharacterWidth(IDC_REPLACE_LIST, L"\u2714");
+    int widthCross = getCharacterWidth(IDC_REPLACE_LIST, L"\u2716");
+
+    // Store the widest width of column 5 to 10 with extra space for padding/alignment
+    column5to10Width_scaled = std::max(widthCheckMark, widthCross) + 15;
+
+    // Store width of column 3 with extra space for padding/alignment
+    column3Width_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2610") + 15;
 }
 
 RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
@@ -657,10 +666,10 @@ void MultiReplace::createListViewColumns(HWND listView) {
     int adjustedWidth = windowWidth - dpiMgr->scaleX(225);
 
     // Calculate the total width of columns 5 to 10 (Options and Delete Button)
-    int columns5to10Width = dpiMgr->scaleX(24) * 7;
+    int totalWidthColumn5to10 = column5to10Width_scaled * 7;
 
     // Calculate the remaining width after subtracting the widths of the specified columns
-    int remainingWidth = adjustedWidth - findCountColumnWidth - replaceCountColumnWidth - columns5to10Width;
+    int remainingWidth = adjustedWidth - findCountColumnWidth - replaceCountColumnWidth - totalWidthColumn5to10;
 
     // Ensure remainingWidth is not less than the minimum width
     remainingWidth = std::max(remainingWidth, dpiMgr->scaleX(MIN_COLUMN_WIDTH));  // Minimum size of Find and Replace Column
@@ -685,7 +694,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     // Column for Selection
     lvc.iSubItem = 3;
     lvc.pszText = L"\u2610";
-    lvc.cx = dpiMgr->scaleX(24);
+    lvc.cx = column3Width_scaled;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 3, &lvc);
 
@@ -707,7 +716,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     for (int i = 0; i < 5; i++) {
         lvc.iSubItem = 6 + i;
         lvc.pszText = getLangStrLPWSTR(options[i]);
-        lvc.cx = dpiMgr->scaleX(24);
+        lvc.cx = column5to10Width_scaled;
         lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
         ListView_InsertColumn(listView, 6 + i, &lvc);
     }
@@ -715,7 +724,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     // Column for Delete Button
     lvc.iSubItem = 11;
     lvc.pszText = L"";
-    lvc.cx = dpiMgr->scaleX(24);
+    lvc.cx = column5to10Width_scaled;
     ListView_InsertColumn(listView, 11, &lvc);
 
     //Adding Tooltips
@@ -772,12 +781,35 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
 }
 
 int MultiReplace::calcDynamicColWidth(const CountColWidths& widths) {
-    int columns5to10Width = dpiMgr->scaleX(24) * 7; // Simplified calculation
+
+    int totalWidthColumn5to10 = column5to10Width_scaled * 7; // Simplified calculation
 
     // Directly calculate the width available for each dynamic column.
-    int totalRemainingWidth = widths.listViewWidth - widths.margin - columns5to10Width - widths.findCountWidth - widths.replaceCountWidth;
+    int totalRemainingWidth = widths.listViewWidth - widths.margin - totalWidthColumn5to10 - widths.findCountWidth - widths.replaceCountWidth;
     int perColumnWidth = std::max(totalRemainingWidth, MIN_COLUMN_WIDTH * 2) / 2; // Ensure total min width is 120, then divide by 2.
     return perColumnWidth; // Return width for a single column.
+}
+
+int MultiReplace::getCharacterWidth(int elementID, const wchar_t* character) {
+    // Get the HWND of the element by its ID
+    HWND hwndElement = GetDlgItem(_hSelf, elementID);
+
+    // Get the font used by the element
+    HFONT hFont = (HFONT)SendMessage(hwndElement, WM_GETFONT, 0, 0);
+
+    // Get the device context for measuring text
+    HDC hdc = GetDC(hwndElement);
+    SelectObject(hdc, hFont);  // Use the font of the given element
+
+    // Measure the width of the character
+    SIZE size;
+    GetTextExtentPoint32W(hdc, character, 1, &size);
+
+    // Release the device context
+    ReleaseDC(hwndElement, hdc);
+
+    // Return the width of the character
+    return size.cx;
 }
 
 void MultiReplace::updateListViewAndColumns(HWND listView, LPARAM lParam) {
@@ -1857,12 +1889,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         pointerToScintilla();
         initializePluginStyle();
         initializeCtrlMap();
+        initializeFontStyles();
         initializeListView();
         initializeDragAndDrop();
         loadSettings();
         adjustWindowSize();
         updateStatisticsColumnButtonIcon();
-        initializeFontStyles();
+        
 
         // Activate Dark Mode
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,

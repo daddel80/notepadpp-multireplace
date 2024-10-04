@@ -418,6 +418,8 @@ private:
     std::size_t originalListHash = 0;
     int useListOnHeight = MIN_HEIGHT;      // Default height when "Use List" is on
     const int useListOffHeight = SHRUNK_HEIGHT; // Height when "Use List" is off (constant)
+    int column5to10Width_scaled = 0;  // Global variable for columns 5 to 10
+    int column3Width_scaled = 0;      // Global variable for column 3
 
     // GUI control-related constants
     const std::vector<int> selectionRadioDisabledButtons = {
@@ -580,6 +582,7 @@ private:
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
     bool normalizeAndValidateNumber(std::string& str);
     std::vector<WCHAR> createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
+    int getCharacterWidth(int elementID, const wchar_t* character);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput) const;
