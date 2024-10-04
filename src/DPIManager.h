@@ -6,6 +6,8 @@
 
 #include <windows.h>
 #include <shellscalingapi.h>
+#include <algorithm>
+
 
 // DPIManager class handles DPI awareness and scaling for UI elements.
 class DPIManager
@@ -17,13 +19,23 @@ public:
     // Destructor (if needed for resource management).
     ~DPIManager();
 
+    // Getter for custom scale factor
+    float getCustomScaleFactor() const { return _customScaleFactor; }
+
+    // Setter for custom scale factor
+    void DPIManager::setCustomScaleFactor(float scaleFactor) {
+        _customScaleFactor = std::clamp(scaleFactor, 0.5f, 2.0f);
+    }
+
     // Retrieves the current DPI values.
     int getDPIX() const { return _dpiX; }
     int getDPIY() const { return _dpiY; }
 
-    // Converts raw pixels to scaled pixels.
-    int scaleX(int x) const { return MulDiv(x, _dpiX, 96); }
-    int scaleY(int y) const { return MulDiv(y, _dpiY, 96); }
+    // Converts raw pixels to scaled pixels, includes the custom scale factor.
+    //int scaleX(int x) const { return static_cast<int>(MulDiv(x, _dpiX, 120) * _customScaleFactor); }
+    //int scaleY(int y) const { return static_cast<int>(MulDiv(y, _dpiY, 120) * _customScaleFactor); }
+    int scaleX(int x) const { return static_cast<int>(MulDiv(x, _dpiX, 96) * _customScaleFactor); }
+    int scaleY(int y) const { return static_cast<int>(MulDiv(y, _dpiY, 96) * _customScaleFactor); }
 
     // Converts scaled pixels back to raw pixels.
     int unscaleX(int x) const { return MulDiv(x, 96, _dpiX); }
@@ -43,6 +55,7 @@ public:
 
     int _dpiX;   // Horizontal DPI.
     int _dpiY;   // Vertical DPI.
+    float _customScaleFactor; // Custom scaling factor stored INI file.
 
 private:
     HWND _hwnd;  // Handle to the window.

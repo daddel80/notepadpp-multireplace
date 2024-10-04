@@ -80,9 +80,6 @@ HWND MultiReplace::hDebugWnd = NULL;
 #pragma region Initialization
 
 void MultiReplace::initializeWindowSize() {
-    MIN_WIDTH_scaled = dpiMgr->scaleX(MIN_WIDTH); // MIN_WIDTH from resource.rc
-    MIN_HEIGHT_scaled = dpiMgr->scaleY(MIN_HEIGHT); // MIN_HEIGHT from resource.rc
-    SHRUNK_HEIGHT_scaled = dpiMgr->scaleY(SHRUNK_HEIGHT); // SHRUNK_HEIGHT from resource.rc
 
     loadUIConfigFromIni(); // Loads the UI configuration, including window size and position
 
@@ -1852,9 +1849,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         // Instantiate DPIManager
         dpiMgr = new DPIManager(_hSelf);
-        // For debugging only
-        dpiMgr->_dpiX = 70;
-        dpiMgr->_dpiY = 70;
+        // For DPI debugging only
+        //dpiMgr->_dpiX = 70;
+        //dpiMgr->_dpiY = 70;
         loadLanguage();
         initializeWindowSize();
         pointerToScintilla();
@@ -1864,7 +1861,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializeDragAndDrop();
         loadSettings();
         adjustWindowSize();
-        updateStatisticsColumnButtonIcon();        
+        updateStatisticsColumnButtonIcon();
+        initializeFontStyles();
 
         // Activate Dark Mode
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
@@ -1969,11 +1967,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_DESTROY:
     {
-        // Clean up DPIManager
-        if (dpiMgr) {
-            delete dpiMgr;
-            dpiMgr = nullptr;
-        }
 
         if (_replaceListView && originalListViewProc) {
             SetWindowLongPtr(_replaceListView, GWLP_WNDPROC, (LONG_PTR)originalListViewProc);
@@ -2009,6 +2002,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             hDebugWnd = NULL; // Reset the handle after closing
         }
 
+        // Clean up DPIManager
+        if (dpiMgr) {
+            delete dpiMgr;
+            dpiMgr = nullptr;
+        }
+
         DestroyWindow(_hSelf); // Destroy the main window
 
         // Post a quit message to ensure the application terminates cleanly
@@ -2037,9 +2036,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             // Move all Elements
             moveAndResizeControls();
-
-            // Apply fonts after resizing controls
-            initializeFontStyles();
 
             // Refresh UI and gripper by invalidating window
             InvalidateRect(_hSelf, NULL, TRUE);
@@ -7107,6 +7103,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"PosY=" + std::to_wstring(posY) + L"\n");
     outFile << wstringToString(L"Width=" + std::to_wstring(width) + L"\n");
     outFile << wstringToString(L"Height=" + std::to_wstring(useListOnHeight) + L"\n");
+    outFile << wstringToString(L"ScaleFactor=" + std::to_wstring(dpiMgr->getCustomScaleFactor()).substr(0, std::to_wstring(dpiMgr->getCustomScaleFactor()).find(L'.') + 2) + L"\n");
 
     // Save transparency settings
     outFile << wstringToString(L"ForegroundTransparency=" + std::to_wstring(foregroundTransparency) + L"\n");
@@ -7205,7 +7202,7 @@ void MultiReplace::saveSettings() {
 
     // Generate the paths to the configuration files
     auto [iniFilePath, csvFilePath] = generateConfigFilePaths();
-
+    
     // Try to save the settings in the INI file
     try {
         saveSettingsToIni(iniFilePath);
@@ -7336,6 +7333,15 @@ void MultiReplace::loadSettings() {
 void MultiReplace::loadUIConfigFromIni() {
     auto [iniFilePath, _] = generateConfigFilePaths(); // Generating config file paths
 
+    // Load DPI Scaling factor from INI file
+    float customScaleFactor = readFloatFromIniFile(iniFilePath, L"Window", L"ScaleFactor", 1.0f);
+    dpiMgr->setCustomScaleFactor(customScaleFactor);
+
+    // Scale Window Size after loading ScaleFactor
+    MIN_WIDTH_scaled = dpiMgr->scaleX(MIN_WIDTH); // MIN_WIDTH from resource.rc
+    MIN_HEIGHT_scaled = dpiMgr->scaleY(MIN_HEIGHT); // MIN_HEIGHT from resource.rc
+    SHRUNK_HEIGHT_scaled = dpiMgr->scaleY(SHRUNK_HEIGHT); // SHRUNK_HEIGHT from resource.rc
+
     // Load window position
     windowRect.left = readIntFromIniFile(iniFilePath, L"Window", L"PosX", POS_X);
     windowRect.top = readIntFromIniFile(iniFilePath, L"Window", L"PosY", POS_Y);
@@ -7350,8 +7356,9 @@ void MultiReplace::loadUIConfigFromIni() {
     int width = std::max(savedWidth, MIN_WIDTH_scaled);
 
     // Load useListOnHeight from INI file
-    useListOnHeight = readIntFromIniFile(iniFilePath, L"Window", L"Height", MIN_HEIGHT);
-    useListOnHeight = std::max(useListOnHeight, MIN_HEIGHT); // Ensure minimum height
+    useListOnHeight = readIntFromIniFile(iniFilePath, L"Window", L"Height", MIN_HEIGHT_scaled);
+    useListOnHeight = std::max(useListOnHeight, MIN_HEIGHT_scaled); // Ensure minimum height
+
 
     // Set windowRect based on Use List state
     BOOL useListChecked = (useList == 1);
@@ -7451,6 +7458,20 @@ std::size_t MultiReplace::readSizeTFromIniFile(const std::wstring& iniFilePath, 
 BYTE MultiReplace::readByteFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, BYTE defaultValue) {
     int intValue = ::GetPrivateProfileIntW(section.c_str(), key.c_str(), defaultValue, iniFilePath.c_str());
     return static_cast<BYTE>(intValue);
+}
+
+float MultiReplace::readFloatFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, float defaultValue) {
+    WCHAR buffer[256] = { 0 };
+    std::wstring defaultStr = std::to_wstring(defaultValue);
+
+    GetPrivateProfileStringW(section.c_str(), key.c_str(), defaultStr.c_str(), buffer, sizeof(buffer) / sizeof(WCHAR), iniFilePath.c_str());
+
+    try {
+        return std::stof(buffer);
+    }
+    catch (...) {
+        return defaultValue;
+    }
 }
 
 void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {

@@ -5,7 +5,7 @@
 
 // Constructor: Initializes DPI values.
 DPIManager::DPIManager(HWND hwnd)
-    : _hwnd(hwnd), _dpiX(96), _dpiY(96) // Default DPI is 96.
+    : _hwnd(hwnd), _dpiX(120), _dpiY(120), _customScaleFactor(1.0f)
 {
     init();
 }
