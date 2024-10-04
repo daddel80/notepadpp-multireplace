@@ -330,8 +330,8 @@ private:
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
-    static constexpr int COUNT_COLUMN_WIDTH = 50; // Initial Size for Count Column
-    static constexpr int MIN_COLUMN_WIDTH = 60;  // Minimum size of Find and Replace Column
+    static constexpr int COUNT_COLUMN_WIDTH = 40; // Initial Size for Count Column
+    static constexpr int MIN_COLUMN_WIDTH = 48;  // Minimum size of Find and Replace Column
     static constexpr int STEP_SIZE = 5; // Speed for opening and closing Count Columns
     static constexpr wchar_t* symbolSortAsc = L"▼";
     static constexpr wchar_t* symbolSortDesc = L"▲";
@@ -442,7 +442,7 @@ private:
     //Initialization
     void initializeWindowSize();
     RECT calculateMinWindowFrame(HWND hwnd);
-    void applyFonts();
+    void initializeFontStyles();
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();

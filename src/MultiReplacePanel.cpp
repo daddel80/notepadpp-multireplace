@@ -92,7 +92,7 @@ void MultiReplace::initializeWindowSize() {
         windowRect.bottom - windowRect.top, SWP_NOZORDER);
 }
 
-void MultiReplace::applyFonts()
+void MultiReplace::initializeFontStyles()
 {
     if (!dpiMgr) return;
 
@@ -276,26 +276,8 @@ void MultiReplace::initializeCtrlMap() {
         return;
     }
 
-    // Create the font
-    _hFont = CreateFont(FONT_SIZE, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, FONT_NAME);
-
-    // Set the font for each control in ctrlMap
-    for (auto& pair : ctrlMap)
-    {
-        SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)_hFont, TRUE);
-    }
-
     // Limit the input for IDC_QUOTECHAR_EDIT to one character
     SendMessage(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), EM_SETLIMITTEXT, (WPARAM)1, 0);
-
-    // Set the larger, bolder font for the swap, copy and refresh button
-    HFONT hLargerBolderFont = CreateFont(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("Courier New"));
-    SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont, TRUE);
-
-    HFONT hLargerBolderFont1 = CreateFont(29, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT("Courier New"));
-    SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)hLargerBolderFont1, TRUE);
 
     // Enable IDC_SELECTION_RADIO based on text selection
     Sci_Position start = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
@@ -675,16 +657,16 @@ void MultiReplace::createListViewColumns(HWND listView) {
     int windowWidth = rcClient.right - rcClient.left;
 
     // Calculate the remaining width for the first two columns
-    int adjustedWidth = windowWidth - 282;
+    int adjustedWidth = windowWidth - dpiMgr->scaleX(225);
 
     // Calculate the total width of columns 5 to 10 (Options and Delete Button)
-    int columns5to10Width = 30 * 7;
+    int columns5to10Width = dpiMgr->scaleX(24) * 7;
 
     // Calculate the remaining width after subtracting the widths of the specified columns
     int remainingWidth = adjustedWidth - findCountColumnWidth - replaceCountColumnWidth - columns5to10Width;
 
     // Ensure remainingWidth is not less than the minimum width
-    remainingWidth = std::max(remainingWidth, 60);
+    remainingWidth = std::max(remainingWidth, dpiMgr->scaleX(MIN_COLUMN_WIDTH));  // Minimum size of Find and Replace Column
 
     lvc.iSubItem = 0;
     lvc.pszText = L"";
@@ -706,7 +688,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     // Column for Selection
     lvc.iSubItem = 3;
     lvc.pszText = L"\u2610";
-    lvc.cx = 30;
+    lvc.cx = dpiMgr->scaleX(24);
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
     ListView_InsertColumn(listView, 3, &lvc);
 
@@ -728,7 +710,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     for (int i = 0; i < 5; i++) {
         lvc.iSubItem = 6 + i;
         lvc.pszText = getLangStrLPWSTR(options[i]);
-        lvc.cx = 30;
+        lvc.cx = dpiMgr->scaleX(24);
         lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
         ListView_InsertColumn(listView, 6 + i, &lvc);
     }
@@ -736,7 +718,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     // Column for Delete Button
     lvc.iSubItem = 11;
     lvc.pszText = L"";
-    lvc.cx = 30;
+    lvc.cx = dpiMgr->scaleX(24);
     ListView_InsertColumn(listView, 11, &lvc);
 
     //Adding Tooltips
@@ -793,7 +775,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
 }
 
 int MultiReplace::calcDynamicColWidth(const CountColWidths& widths) {
-    int columns5to10Width = 210; // Simplified calculation (30 * 7).
+    int columns5to10Width = dpiMgr->scaleX(24) * 7; // Simplified calculation
 
     // Directly calculate the width available for each dynamic column.
     int totalRemainingWidth = widths.listViewWidth - widths.margin - columns5to10Width - widths.findCountWidth - widths.replaceCountWidth;
@@ -1132,6 +1114,7 @@ void MultiReplace::resizeCountColumns() {
     RECT listRect;
     GetClientRect(listView, &listRect);
     int listViewWidth = listRect.right - listRect.left;
+    int COUNT_COLUMN_WIDTH_scaled = dpiMgr->scaleX(COUNT_COLUMN_WIDTH);
 
     LONG style = GetWindowLong(listView, GWL_STYLE);
     bool hasVerticalScrollbar = (style & WS_VSCROLL) != 0;
@@ -1147,15 +1130,15 @@ void MultiReplace::resizeCountColumns() {
     };
 
     // Determine the direction of the adjustment
-    bool expandColumns = widths.findCountWidth < COUNT_COLUMN_WIDTH && widths.replaceCountWidth < COUNT_COLUMN_WIDTH;
+    bool expandColumns = widths.findCountWidth < COUNT_COLUMN_WIDTH_scaled && widths.replaceCountWidth < COUNT_COLUMN_WIDTH_scaled;
 
     // Perform the adjustment in steps
-    while ((expandColumns && (widths.findCountWidth < COUNT_COLUMN_WIDTH || widths.replaceCountWidth < COUNT_COLUMN_WIDTH)) ||
+    while ((expandColumns && (widths.findCountWidth < COUNT_COLUMN_WIDTH_scaled || widths.replaceCountWidth < COUNT_COLUMN_WIDTH_scaled)) ||
         (!expandColumns && (widths.findCountWidth > 0 || widths.replaceCountWidth > 0))) {
 
         if (expandColumns) {
-            widths.findCountWidth = std::min(widths.findCountWidth + STEP_SIZE, COUNT_COLUMN_WIDTH);
-            widths.replaceCountWidth = std::min(widths.replaceCountWidth + STEP_SIZE, COUNT_COLUMN_WIDTH);
+            widths.findCountWidth = std::min(widths.findCountWidth + STEP_SIZE, COUNT_COLUMN_WIDTH_scaled);
+            widths.replaceCountWidth = std::min(widths.replaceCountWidth + STEP_SIZE, COUNT_COLUMN_WIDTH_scaled);
         }
         else {
             widths.findCountWidth = std::max(widths.findCountWidth - STEP_SIZE, 0);
@@ -1870,8 +1853,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         // Instantiate DPIManager
         dpiMgr = new DPIManager(_hSelf);
         // For debugging only
-        // dpiMgr->_dpiX = 70;
-        // dpiMgr->_dpiY = 70;
+        dpiMgr->_dpiX = 70;
+        dpiMgr->_dpiY = 70;
         loadLanguage();
         initializeWindowSize();
         pointerToScintilla();
@@ -1916,7 +1899,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         moveAndResizeControls();
 
         // Apply scaled fonts after resizing controls
-        applyFonts();
+        initializeFontStyles();
 
         // Refresh the UI
         InvalidateRect(_hSelf, NULL, TRUE);
@@ -2056,7 +2039,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             moveAndResizeControls();
 
             // Apply fonts after resizing controls
-            applyFonts();
+            initializeFontStyles();
 
             // Refresh UI and gripper by invalidating window
             InvalidateRect(_hSelf, NULL, TRUE);
@@ -7381,7 +7364,7 @@ void MultiReplace::loadUIConfigFromIni() {
     findCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", findCountColumnWidth);
     replaceCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountWidth", replaceCountColumnWidth);
 
-    isStatisticsColumnsExpanded = (findCountColumnWidth >= COUNT_COLUMN_WIDTH && replaceCountColumnWidth >= COUNT_COLUMN_WIDTH);
+    isStatisticsColumnsExpanded = (findCountColumnWidth >= dpiMgr->scaleX(COUNT_COLUMN_WIDTH) && replaceCountColumnWidth >= dpiMgr->scaleX(COUNT_COLUMN_WIDTH));
 
     // Load transparency settings with defaults
     foregroundTransparency = readByteFromIniFile(iniFilePath, L"Window", L"ForegroundTransparency", foregroundTransparency);
