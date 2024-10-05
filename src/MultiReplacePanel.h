@@ -264,6 +264,10 @@ public:
 
     static MultiReplace* instance; // Static instance of the class
 
+    // Helper functions for scaling
+    inline int sx(int value) { return dpiMgr->scaleX(value); }
+    inline int sy(int value) { return dpiMgr->scaleY(value); }
+
     static inline void setInstance(MultiReplace* inst) {
         instance = inst;
     }
@@ -418,8 +422,9 @@ private:
     std::size_t originalListHash = 0;
     int useListOnHeight = MIN_HEIGHT;      // Default height when "Use List" is on
     const int useListOffHeight = SHRUNK_HEIGHT; // Height when "Use List" is off (constant)
-    int column5to10Width_scaled = 0;  // Global variable for columns 5 to 10
-    int column3Width_scaled = 0;      // Global variable for column 3
+    int checkMarkWidth_scaled = 0;
+    int crossWidth_scaled = 0;
+    int boxWidth_scaled = 0;
 
     // GUI control-related constants
     const std::vector<int> selectionRadioDisabledButtons = {
@@ -428,7 +433,7 @@ private:
     const std::vector<int> columnRadioDependentElements = {
         IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
-
+  
     // Window related settings
     RECT windowRect; // Structure to store window position and size
     int findCountColumnWidth = 0; // Width of the "Find Count" column
@@ -440,6 +445,8 @@ private:
     int MIN_WIDTH_scaled;
     int MIN_HEIGHT_scaled;
     int SHRUNK_HEIGHT_scaled;
+    int COUNT_COLUMN_WIDTH_scaled;
+    int MIN_COLUMN_WIDTH_scaled;
 
     //Initialization
     void initializeWindowSize();
@@ -464,7 +471,7 @@ private:
     void createListViewColumns(HWND listView);
     void insertReplaceListItem(const ReplaceItemData& itemData);
     int  calcDynamicColWidth(const CountColWidths& widths);
-    void updateListViewAndColumns(HWND listView, LPARAM lParam);
+    void updateListViewAndColumns();
     void updateListViewTooltips();
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void shiftListItem(HWND listView, const Direction& direction);

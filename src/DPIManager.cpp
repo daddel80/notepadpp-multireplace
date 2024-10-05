@@ -5,7 +5,7 @@
 
 // Constructor: Initializes DPI values.
 DPIManager::DPIManager(HWND hwnd)
-    : _hwnd(hwnd), _dpiX(120), _dpiY(120), _customScaleFactor(1.0f)
+    : _hwnd(hwnd), _dpiX(96), _dpiY(96), _customScaleFactor(1.0f)
 {
     init();
 }
@@ -19,7 +19,7 @@ DPIManager::~DPIManager()
 // Initializes the DPI values using Win32 APIs.
 void DPIManager::init()
 {
-    UINT dpiX = 96, dpiY = 96; // Default DPI.
+    UINT dpiX = 120, dpiY = 120; // Default DPI.
 
     // Attempt to load Shcore.dll for modern DPI functions.
     HMODULE hShcore = LoadLibrary(TEXT("Shcore.dll"));
