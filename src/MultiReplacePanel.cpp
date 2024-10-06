@@ -223,13 +223,13 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_SCOPE_GROUP] = { sx(352), sy(79), sx(198), sy(130), WC_BUTTON, getLangStrLPCWSTR(L"panel_scope"), BS_GROUPBOX, NULL };
     ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(360), sy(101), sx(184), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
     ctrlMap[IDC_SELECTION_RADIO] = { sx(360), sy(126), sx(184), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(360), sy(150), sx(40), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(360), sy(182), sx(24), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_cols"), SS_RIGHT, NULL };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(386), sy(182), sx(40), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_columns") };
-    ctrlMap[IDC_DELIMITER_STATIC] = { sx(430), sy(182), sx(32), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(361), sy(150), sx(40), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(358), sy(182), sx(25), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_cols"), SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(385), sy(182), sx(40), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_columns") };
+    ctrlMap[IDC_DELIMITER_STATIC] = { sx(427), sy(182), sx(35), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
     ctrlMap[IDC_DELIMITER_EDIT] = { sx(464), sy(182), sx(24), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_delimiter") };
-    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(493), sy(182), sx(32), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
-    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(526), sy(182), sx(12), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_quote") };
+    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(490), sy(182), sx(35), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(527), sy(182), sx(12), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_quote") };
 
     ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(406), sy(149), sx(14), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
     ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(421), sy(149), sx(14), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
@@ -2245,7 +2245,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             case LVN_KEYDOWN:
             {
                 LPNMLVKEYDOWN pnkd = reinterpret_cast<LPNMLVKEYDOWN>(pnmh);
-                HDC hDC = NULL;
                 int iItem = -1;
 
                 PostMessage(_replaceListView, WM_SETFOCUS, 0, 0);
@@ -2296,39 +2295,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         break;
                     case VK_F12: // F12 key
                     {
-                        RECT sizeWindowRect;
-                        GetClientRect(_hSelf, &sizeWindowRect);
-
-                        hDC = GetDC(_hSelf);
-                        if (hDC)
-                        {
-                            // Get the current font of the window
-                            HFONT currentFont = (HFONT)SendMessage(_hSelf, WM_GETFONT, 0, 0);
-                            HFONT hOldFont = (HFONT)SelectObject(hDC, currentFont);
-
-                            // Get the text metrics for the current font
-                            TEXTMETRIC tm;
-                            GetTextMetrics(hDC, &tm);
-
-                            // Calculate the base units
-                            SIZE size;
-                            GetTextExtentPoint32W(hDC, L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 52, &size);
-                            int baseUnitX = (size.cx / 26 + 1) / 2;
-                            int baseUnitY = tm.tmHeight;
-
-                            // Calculate the window size in dialog units
-                            int duWidth = MulDiv(sizeWindowRect.right, 4, baseUnitX);
-                            int duHeight = MulDiv(sizeWindowRect.bottom, 8, baseUnitY);
-
-                            wchar_t sizeText[100];
-                            wsprintfW(sizeText, L"Window Size: %ld x %ld DUs", duWidth, duHeight);
-
-                            MessageBox(nppData._nppHandle, sizeText, L"Window Size", MB_OK);
-
-                            // Cleanup
-                            SelectObject(hDC, hOldFont);
-                            ReleaseDC(_hSelf, hDC);
-                        }
+                        showDPIAndFontInfo();  // Show the DPI and font information
                         break;
                     }
                     case VK_SPACE: // Spacebar key
@@ -6442,6 +6409,70 @@ int MultiReplace::getFontHeight(HWND hwnd, HFONT hFont) {
     ReleaseDC(hwnd, hdc);  // Release the device context
     return fontHeight;  // Return the font height
 }
+
+void MultiReplace::showDPIAndFontInfo()
+{
+    RECT sizeWindowRect;
+    GetClientRect(_hSelf, &sizeWindowRect);  // Get the dimensions of the client area of the window
+
+    HDC hDC = GetDC(_hSelf);  // Get the device context (DC) for the current window
+    if (hDC)
+    {
+        // Get the current font of the window
+        HFONT currentFont = (HFONT)SendMessage(_hSelf, WM_GETFONT, 0, 0);
+        HFONT hOldFont = (HFONT)SelectObject(hDC, currentFont);  // Select the current font into the DC
+
+        // Get the text metrics for the current font
+        TEXTMETRIC tmCurrent;
+        GetTextMetrics(hDC, &tmCurrent);  // Retrieve text metrics for the selected font
+
+        // Now get the standard font metrics (_hStandardFont)
+        SelectObject(hDC, _hStandardFont);  // Select the standard font into the DC
+        TEXTMETRIC tmStandard;
+        GetTextMetrics(hDC, &tmStandard);  // Retrieve text metrics for the standard font
+
+        // Calculate the base units
+        SIZE size;
+        GetTextExtentPoint32W(hDC, L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 52, &size);
+        int baseUnitX = (size.cx / 26 + 1) / 2;
+        int baseUnitY = tmCurrent.tmHeight;
+
+        // Calculate the window size in dialog units
+        int duWidth = MulDiv(sizeWindowRect.right, 4, baseUnitX);
+        int duHeight = MulDiv(sizeWindowRect.bottom, 8, baseUnitY);
+
+        // Get DPI values from the DPIManager
+        int dpix = dpiMgr->getDPIX();
+        int dpiy = dpiMgr->getDPIY();
+        float customScaleFactor = dpiMgr->getCustomScaleFactor();
+
+        // Calculate scaled DPI values
+        int scaledDpiX = dpiMgr->scaleX(96); // example using 96 for standard DPI
+        int scaledDpiY = dpiMgr->scaleY(96);
+
+        // Create a message box to display the window size, DPI, and font information
+        wchar_t sizeText[500];
+        swprintf(sizeText, 500, L"Window Size: %ld x %ld DUs\n"
+            L"DPI X: %d\nDPI Y: %d\nCustom Scale Factor: %.2f\n"
+            L"Scaled DPI X: %d\nScaled DPI Y: %d\n\n"
+            L"Current Font: Height = %d, Ascent = %d, Descent = %d, Weight = %d\n"
+            L"Standard Font: Height = %d, Ascent = %d, Descent = %d, Weight = %d",
+            duWidth, duHeight, dpix, dpiy, customScaleFactor, scaledDpiX, scaledDpiY,
+            tmCurrent.tmHeight, tmCurrent.tmAscent, tmCurrent.tmDescent, tmCurrent.tmWeight,
+            tmStandard.tmHeight, tmStandard.tmAscent, tmStandard.tmDescent, tmStandard.tmWeight);
+
+        MessageBox(nppData._nppHandle, sizeText, L"Window, DPI, and Font Info", MB_OK);
+
+        // Cleanup
+        SelectObject(hDC, hOldFont);  // Restore the previous font in the DC
+        ReleaseDC(_hSelf, hDC);  // Release the device context
+    }
+    else
+    {
+        MessageBox(_hSelf, L"Failed to retrieve device context (HDC).", L"Error", MB_OK | MB_ICONERROR);
+    }
+}
+
 
 
 #pragma endregion

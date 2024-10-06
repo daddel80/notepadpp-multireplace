@@ -592,6 +592,7 @@ private:
     bool normalizeAndValidateNumber(std::string& str);
     std::vector<WCHAR> createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
     int getCharacterWidth(int elementID, const wchar_t* character);
+    void showDPIAndFontInfo();
     int getFontHeight(HWND hwnd, HFONT hFont);
 
     //StringHandling
