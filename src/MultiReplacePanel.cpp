@@ -93,7 +93,7 @@ void MultiReplace::initializeFontStyles() {
     if (!dpiMgr) return;
 
     // Create a standard scaled font
-    HFONT hStandardFont = CreateFont(
+    _hStandardFont = CreateFont(
         dpiMgr->scaleY(14), // Font height
         0,                  // Font width (0 means default)
         0,                  // Escapement
@@ -112,11 +112,11 @@ void MultiReplace::initializeFontStyles() {
 
     // Apply the standard font to all controls
     for (const auto& pair : ctrlMap) {
-        SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)hStandardFont, TRUE);
+        SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)_hStandardFont, TRUE);
     }
 
     // Create and apply a bold font for specific controls
-    HFONT hBoldFont = CreateFont(
+    _hBoldFont = CreateFont(
         dpiMgr->scaleY(19), // Larger font height
         0,
         0,
@@ -134,10 +134,10 @@ void MultiReplace::initializeFontStyles() {
     );
 
     // Apply the bold font to specific controls
-    SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)hBoldFont, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)hBoldFont, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)hBoldFont, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)hBoldFont, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
 
     // For ListView identify width of special characters
     // Add 15 units of padding to the widths of checkmark, cross, and box characters
@@ -180,6 +180,20 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // sx(value): scales the x-axis value based on DPI settings.
     // sy(value): scales the y-axis value based on DPI settings.
 
+    // DPI Aware System Metrics for Checkboxes and Radio Buttons
+    UINT dpi = dpiMgr->getDPIX(); // Get the DPI from DPIManager
+
+    // Calculate appropriate height for checkboxes and radiobuttons
+    int checkboxBaseHeight = dpiMgr->getCustomMetricOrFallback(SM_CYMENUCHECK, dpi, 14);
+    int radioButtonBaseHeight = dpiMgr->getCustomMetricOrFallback(SM_CYMENUCHECK, dpi, 14);
+
+    // Get the font height from the standard font
+    int fontHeight = getFontHeight(_hSelf, _hStandardFont);
+
+    // Choose the larger value between the font height and the base height
+    int checkboxHeight = std::max(checkboxBaseHeight, fontHeight);
+    int radioButtonHeight = std::max(radioButtonBaseHeight, fontHeight);
+
     // Calculate dimensions without scaling
     int buttonX = windowWidth - sx(36 + 128);
     int checkbox2X = buttonX + sx(138);
@@ -194,22 +208,22 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(15), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_find_what"), SS_RIGHT, NULL };
     ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(43), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_replace_with"), SS_RIGHT };
 
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(158), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_FIRST_CHECKBOX] = { sx(16), sy(151), sx(158), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_first_match_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(176), sx(158), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_FIRST_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_first_match_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(176), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(160), sy(104), WC_BUTTON, getLangStrLPCWSTR(L"panel_search_mode"), BS_GROUPBOX, NULL };
-    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(144), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(144), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(144), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(144), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(144), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(144), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_SCOPE_GROUP] = { sx(352), sy(79), sx(198), sy(130), WC_BUTTON, getLangStrLPCWSTR(L"panel_scope"), BS_GROUPBOX, NULL };
-    ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(360), sy(101), sx(184), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SELECTION_RADIO] = { sx(360), sy(126), sx(184), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(360), sy(150), sx(40), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(360), sy(101), sx(184), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SELECTION_RADIO] = { sx(360), sy(126), sx(184), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(360), sy(150), sx(40), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(360), sy(182), sx(24), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_cols"), SS_RIGHT, NULL };
     ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(386), sy(182), sx(40), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_columns") };
     ctrlMap[IDC_DELIMITER_STATIC] = { sx(430), sy(182), sx(32), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
@@ -259,7 +273,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16), sx(96), sy(16), WC_STATIC, getLangStrLPCWSTR(L"panel_shift_lines"), SS_LEFT, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { sx(20), sy(227), listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
     ctrlMap[IDC_PATH_DISPLAY] = { sx(18), sy(227) + listHeight + sy(5), listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
-    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, sy(140), sx(76), sy(14), WC_BUTTON, getLangStrLPCWSTR(L"panel_use_list"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, sy(140), sx(76), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_list"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 }
 
 void MultiReplace::initializeCtrlMap() {
@@ -844,7 +858,6 @@ void MultiReplace::updateListViewAndColumns() {
 
     SendMessage(listView, WM_SETREDRAW, TRUE, 0); // Enable redraw after resize
 }
-
 
 void MultiReplace::updateListViewTooltips()
 {
@@ -2016,7 +2029,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             DestroyWindow(hwndEdit);
         }
 
-        DeleteObject(_hFont);
+        DeleteObject(_hStandardFont);
+        DeleteObject(_hBoldFont);
 
         // Close the debug window if open
         if (hDebugWnd != NULL) {
@@ -6417,6 +6431,18 @@ std::vector<WCHAR> MultiReplace::createFilterString(const std::vector<std::pair<
 
     return filterString;
 }
+
+int MultiReplace::getFontHeight(HWND hwnd, HFONT hFont) {
+    // Get the font size from the specified font and window
+    TEXTMETRIC tm;
+    HDC hdc = GetDC(hwnd);  // Get the device context for the specified window
+    SelectObject(hdc, hFont);  // Select the specified font into the DC
+    GetTextMetrics(hdc, &tm);  // Retrieve the text metrics for the font
+    int fontHeight = tm.tmHeight;  // Extract the font height
+    ReleaseDC(hwnd, hdc);  // Release the device context
+    return fontHeight;  // Return the font height
+}
+
 
 #pragma endregion
 

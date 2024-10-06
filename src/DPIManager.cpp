@@ -51,8 +51,29 @@ void DPIManager::init()
         }
     }
 
+    // Check if GetSystemMetricsForDpi is supported
+    HMODULE hUser32 = LoadLibrary(TEXT("User32.dll"));
+    if (hUser32)
+    {
+        _pGetSystemMetricsForDpi = (decltype(GetSystemMetricsForDpi)*)GetProcAddress(hUser32, "GetSystemMetricsForDpi");
+        _isSystemMetricsForDpiSupported = (_pGetSystemMetricsForDpi != nullptr);
+        FreeLibrary(hUser32);
+    }
+
     _dpiX = dpiX;
     _dpiY = dpiY;
+}
+
+// Function for custom metrics with fallback.
+int DPIManager::getCustomMetricOrFallback(int nIndex, UINT dpi, int fallbackValue) const
+{
+    if (_isSystemMetricsForDpiSupported && _pGetSystemMetricsForDpi)
+    {
+        return _pGetSystemMetricsForDpi(nIndex, dpi);
+    }
+
+    // Return the fallback value if not supported
+    return fallbackValue;
 }
 
 // Updates the DPI values, typically called when DPI changes.

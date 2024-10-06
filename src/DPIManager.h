@@ -32,8 +32,6 @@ public:
     int getDPIY() const { return _dpiY; }
 
     // Converts raw pixels to scaled pixels, includes the custom scale factor.
-    //int scaleX(int x) const { return static_cast<int>(MulDiv(x, _dpiX, 120) * _customScaleFactor); }
-    //int scaleY(int y) const { return static_cast<int>(MulDiv(y, _dpiY, 120) * _customScaleFactor); }
     int scaleX(int x) const { return static_cast<int>(MulDiv(x, _dpiX, 96) * _customScaleFactor); }
     int scaleY(int y) const { return static_cast<int>(MulDiv(y, _dpiY, 96) * _customScaleFactor); }
 
@@ -53,13 +51,16 @@ public:
     // Updates DPI values (e.g., after a DPI change event).
     void updateDPI(HWND hwnd);
 
+    // Function for custom metrics with fallback.
+    int getCustomMetricOrFallback(int nIndex, UINT dpi, int fallbackValue) const;
+    
+private:
+    HWND _hwnd;  // Handle to the window.
     int _dpiX;   // Horizontal DPI.
     int _dpiY;   // Vertical DPI.
     float _customScaleFactor; // Custom scaling factor stored INI file.
-
-private:
-    HWND _hwnd;  // Handle to the window.
-
+    bool _isSystemMetricsForDpiSupported;  // To check if GetSystemMetricsForDpi is supported
+    decltype(GetSystemMetricsForDpi)* _pGetSystemMetricsForDpi; // Pointer to the function
 
     // Initializes the DPI values.
     void init();

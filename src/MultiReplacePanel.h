@@ -255,7 +255,8 @@ public:
         _hMarkMatchesButton(nullptr),
         _hReplaceAllButton(nullptr),
         _replaceListView(NULL),
-        _hFont(nullptr),
+        _hStandardFont(nullptr),
+        _hBoldFont(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
     {
@@ -362,7 +363,8 @@ private:
     HWND _hReplaceAllButton;
     HWND _replaceListView;
     HWND _hStatusMessage;
-    HFONT _hFont;
+    HFONT _hStandardFont;
+    HFONT _hBoldFont;
     COLORREF _statusMessageColor;
     HWND _hHeaderTooltip; // Handle to the tooltip for the ListView header
 
@@ -590,6 +592,7 @@ private:
     bool normalizeAndValidateNumber(std::string& str);
     std::vector<WCHAR> createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
     int getCharacterWidth(int elementID, const wchar_t* character);
+    int getFontHeight(HWND hwnd, HFONT hFont);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput) const;
