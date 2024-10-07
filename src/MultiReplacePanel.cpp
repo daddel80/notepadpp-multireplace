@@ -2952,6 +2952,7 @@ void MultiReplace::handleReplaceButton() {
             if (replaceListData[i].isEnabled && replaceOne(replaceListData[i], selection, searchResult, newPos, startPos)) {
                 replacements++;
                 updateCountColumns(i, -1, 1);
+                selectListItem(matchIndex);
             }
         }
 
@@ -2965,6 +2966,7 @@ void MultiReplace::handleReplaceButton() {
         if (replacements > 0) {
             if (searchResult.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
+                selectListItem(matchIndex);
                 showStatusMessage(getLangStr(L"status_replace_next_found", { std::to_wstring(replacements) }), RGB(0, 128, 0));
             }
             else {
@@ -4022,6 +4024,7 @@ void MultiReplace::handleFindNextButton() {
             result = performListSearchForward(replaceListData, 0, matchIndex);
             if (result.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
+                selectListItem(matchIndex); // Highlight the matched item in the list
                 showStatusMessage(getLangStr(L"status_wrapped"), RGB(0, 128, 0));
                 return;
             }
@@ -4030,6 +4033,7 @@ void MultiReplace::handleFindNextButton() {
         if (result.pos >= 0) {
             showStatusMessage(L"", RGB(0, 128, 0));
             updateCountColumns(matchIndex, 1);
+            selectListItem(matchIndex); // Highlight the matched item in the list
         }
         else {
             showStatusMessage(getLangStr(L"status_no_matches_found"), RGB(255, 0, 0));
@@ -4084,6 +4088,7 @@ void MultiReplace::handleFindPrevButton() {
 
         if (result.pos >= 0) {
             updateCountColumns(matchIndex, 1);
+            selectListItem(matchIndex); // Highlight the matched item in the list
             showStatusMessage(L"" + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
         }
         else if (wrapAroundEnabled)
@@ -4091,6 +4096,7 @@ void MultiReplace::handleFindPrevButton() {
             result = performListSearchBackward(replaceListData, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0), matchIndex);
             if (result.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
+                selectListItem(matchIndex); // Highlight the matched item in the list
                 showStatusMessage(getLangStr(L"status_wrapped_position", { addLineAndColumnMessage(result.pos) }), RGB(0, 128, 0));
             }
             else {
@@ -4459,6 +4465,20 @@ void MultiReplace::displayResultCentered(size_t posStart, size_t posEnd, bool is
     // the caret doesn't jump to an unexpected column
     ::SendMessage(_hScintilla, SCI_CHOOSECARETX, 0, 0);
 
+}
+
+void MultiReplace::selectListItem(size_t matchIndex) {
+    HWND hListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+    if (hListView && matchIndex != std::numeric_limits<size_t>::max()) {
+        // Deselect all items
+        ListView_SetItemState(hListView, -1, 0, LVIS_SELECTED);
+
+        // Select the item at matchIndex
+        ListView_SetItemState(hListView, static_cast<int>(matchIndex), LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+
+        // Ensure the item is visible
+        ListView_EnsureVisible(hListView, static_cast<int>(matchIndex), FALSE);
+    }
 }
 
 #pragma endregion

@@ -532,6 +532,7 @@ private:
     SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start);
     SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
     SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
+    void MultiReplace::selectListItem(size_t matchIndex);
 
     //Mark
     void handleMarkMatchesButton();
