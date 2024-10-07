@@ -2960,6 +2960,7 @@ void MultiReplace::handleReplaceButton() {
         if (replacements > 0) {
             if (searchResult.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
+                selectListItem(matchIndex); // Highlight the matched item in the list
                 showStatusMessage(getLangStr(L"status_replace_next_found", { std::to_wstring(replacements) }), RGB(0, 128, 0));
             }
             else {
@@ -2971,6 +2972,8 @@ void MultiReplace::handleReplaceButton() {
                 showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
             }
             else {
+                updateCountColumns(matchIndex, 1);
+                selectListItem(matchIndex); // Highlight the matched item in the list
                 showStatusMessage(getLangStr(L"status_found_text_not_replaced"), RGB(255, 0, 0));
             }
         }
