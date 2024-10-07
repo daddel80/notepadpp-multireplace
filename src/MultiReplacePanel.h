@@ -507,7 +507,7 @@ private:
     void handleReplaceAllButton();
     void handleReplaceButton();
     void replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount);
-    bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, Sci_Position startPos);
+    bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     bool MultiReplace::preProcessListForReplace();

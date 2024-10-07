@@ -2911,7 +2911,7 @@ void MultiReplace::handleReplaceButton() {
     // First check if the document is read-only
     LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
-        showStatusMessage(getLangStr(L"status_cannot_replace_read_only"), RGB(255, 0, 0));
+        showStatusMessage(getLangStrLPWSTR(L"status_cannot_replace_read_only"), RGB(255, 0, 0));
         return;
     }
 
@@ -2921,20 +2921,13 @@ void MultiReplace::handleReplaceButton() {
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
-    // Determine the scope
-    bool isSelectionScope = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
-
-    SelectionInfo selection = getSelectionInfo();
-
-    Sci_Position startPos = isSelectionScope ? selection.startPos : 0;
-    size_t matchIndex = std::numeric_limits<size_t>::max();
-
     SearchResult searchResult;
     searchResult.pos = -1;
     searchResult.length = 0;
     searchResult.foundText = "";
 
     Sci_Position newPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+    size_t matchIndex = std::numeric_limits<size_t>::max();
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
@@ -2947,12 +2940,13 @@ void MultiReplace::handleReplaceButton() {
             return;
         }
 
+        SelectionInfo selection = getSelectionInfo();
+
         int replacements = 0;  // Counter for replacements
         for (size_t i = 0; i < replaceListData.size(); ++i) {
-            if (replaceListData[i].isEnabled && replaceOne(replaceListData[i], selection, searchResult, newPos, startPos)) {
+            if (replaceListData[i].isEnabled && replaceOne(replaceListData[i], selection, searchResult, newPos)) {
                 replacements++;
                 updateCountColumns(i, -1, 1);
-                selectListItem(matchIndex);
             }
         }
 
@@ -2966,7 +2960,6 @@ void MultiReplace::handleReplaceButton() {
         if (replacements > 0) {
             if (searchResult.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
-                selectListItem(matchIndex);
                 showStatusMessage(getLangStr(L"status_replace_next_found", { std::to_wstring(replacements) }), RGB(0, 128, 0));
             }
             else {
@@ -2995,7 +2988,8 @@ void MultiReplace::handleReplaceButton() {
         std::string findTextUtf8 = convertAndExtend(replaceItem.findText, replaceItem.extended);
         int searchFlags = (replaceItem.wholeWord * SCFIND_WHOLEWORD) | (replaceItem.matchCase * SCFIND_MATCHCASE) | (replaceItem.regex * SCFIND_REGEXP);
 
-        bool wasReplaced = replaceOne(replaceItem, selection, searchResult, newPos, startPos);
+        SelectionInfo selection = getSelectionInfo();
+        bool wasReplaced = replaceOne(replaceItem, selection, searchResult, newPos);
 
         // Add the entered text to the combo box history
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), replaceItem.findText);
@@ -3027,23 +3021,13 @@ void MultiReplace::handleReplaceButton() {
     }
 }
 
-bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, Sci_Position startPos)
+bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos)
 {
     std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
     int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
-    searchResult = performSearchForward(findTextUtf8, searchFlags, true, startPos);
+    searchResult = performSearchForward(findTextUtf8, searchFlags, true, selection.startPos);
 
-    // Modify the condition to check if the found position matches the selection (only if scope is "Selection")
-    bool isSelectionScope = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
-
-    if (isSelectionScope) {
-        // If the scope is "Selection" and the found text does not match the selection, do not replace
-        if (searchResult.pos != selection.startPos || searchResult.length != selection.length) {
-            return false;
-        }
-    }
-
-    if (searchResult.pos >= 0) {
+    if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
         bool skipReplace = false;
         std::string replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
         std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
