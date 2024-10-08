@@ -427,6 +427,8 @@ private:
     int checkMarkWidth_scaled = 0;
     int crossWidth_scaled = 0;
     int boxWidth_scaled = 0;
+    bool highlightMatchEnabled = false;  // HighlightMatch
+
 
     // GUI control-related constants
     const std::vector<int> selectionRadioDisabledButtons = {

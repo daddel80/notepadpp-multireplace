@@ -4451,6 +4451,10 @@ void MultiReplace::displayResultCentered(size_t posStart, size_t posEnd, bool is
 }
 
 void MultiReplace::selectListItem(size_t matchIndex) {
+    if (!highlightMatchEnabled) {
+        return;
+    }
+
     HWND hListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
     if (hListView && matchIndex != std::numeric_limits<size_t>::max()) {
         // Deselect all items
@@ -4459,8 +4463,8 @@ void MultiReplace::selectListItem(size_t matchIndex) {
         // Select the item at matchIndex
         ListView_SetItemState(hListView, static_cast<int>(matchIndex), LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 
-        // Ensure the item is visible
-        ListView_EnsureVisible(hListView, static_cast<int>(matchIndex), FALSE);
+        // Ensure the item is visible, but only scroll if absolutely necessary
+        ListView_EnsureVisible(hListView, static_cast<int>(matchIndex), TRUE);
     }
 }
 
@@ -7237,6 +7241,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"UseVariables=" + std::to_wstring(useVariables) + L"\n");
     outFile << wstringToString(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
     outFile << wstringToString(L"UseList=" + std::to_wstring(useList) + L"\n");
+    outFile << wstringToString(L"HighlightMatch=" + std::to_wstring(highlightMatchEnabled ? 1 : 0) + L"\n");
 
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
@@ -7363,6 +7368,8 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     bool useList = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", true);
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, useList ? BST_CHECKED : BST_UNCHECKED, 0);
 
+    highlightMatchEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"HighlightMatch", true);
+
     // Loading and setting the scope with enabled state check
     int selection = readIntFromIniFile(iniFilePath, L"Scope", L"Selection", 0);
     int columnMode = readIntFromIniFile(iniFilePath, L"Scope", L"ColumnMode", 0);
@@ -7389,6 +7396,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
     if (selection) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_SELECTION_RADIO);
+        onSelectionChanged(); // check selection for IDC_SELECTION_RADIO
     }
     else if (columnMode) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_COLUMN_MODE_RADIO);
@@ -7396,7 +7404,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     else {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_ALL_TEXT_RADIO);
     }
-
+    
     setUIElementVisibility();
 
 }
