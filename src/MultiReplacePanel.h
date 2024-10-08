@@ -107,7 +107,7 @@ struct SearchResult {
 };
 
 struct SelectionInfo {
-    std::string text;
+
     Sci_Position startPos;
     Sci_Position length;
 };
@@ -430,12 +430,12 @@ private:
 
     // GUI control-related constants
     const std::vector<int> selectionRadioDisabledButtons = {
-        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_REPLACE_BUTTON
+        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON , IDC_REPLACE_BUTTON
     };
     const std::vector<int> columnRadioDependentElements = {
         IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
-  
+
     // Window related settings
     RECT windowRect; // Structure to store window position and size
     int findCountColumnWidth = 0; // Width of the "Find Count" column
@@ -601,7 +601,7 @@ private:
     std::string wstringToString(const std::wstring& input) const;
     std::wstring utf8ToWString(const char* cstr) const;
     std::string utf8ToCodepage(const std::string& utf8Str, int codepage) const;
-    std::wstring trim(const std::wstring& str);    
+    std::wstring trim(const std::wstring& str);
 
     //FileOperations
     std::wstring promptSaveListToCsv();

@@ -224,6 +224,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(360), sy(101), sx(184), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
     ctrlMap[IDC_SELECTION_RADIO] = { sx(360), sy(126), sx(184), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(361), sy(150), sx(40), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+
     ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(358), sy(182), sx(25), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_cols"), SS_RIGHT, NULL };
     ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(385), sy(182), sx(40), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_columns") };
     ctrlMap[IDC_DELIMITER_STATIC] = { sx(427), sy(182), sx(35), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
@@ -2926,7 +2927,11 @@ void MultiReplace::handleReplaceButton() {
     searchResult.length = 0;
     searchResult.foundText = "";
 
-    Sci_Position newPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+    SelectionInfo selection = getSelectionInfo();
+
+    // If there is a selection, set newPos to the start of the selection; otherwise, use the current cursor position
+    Sci_Position newPos = (selection.length > 0) ? selection.startPos : ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+
     size_t matchIndex = std::numeric_limits<size_t>::max();
 
     if (useListEnabled) {
@@ -2939,8 +2944,6 @@ void MultiReplace::handleReplaceButton() {
         if (!preProcessListForReplace()) {
             return;
         }
-
-        SelectionInfo selection = getSelectionInfo();
 
         int replacements = 0;  // Counter for replacements
         for (size_t i = 0; i < replaceListData.size(); ++i) {
@@ -2991,7 +2994,6 @@ void MultiReplace::handleReplaceButton() {
         std::string findTextUtf8 = convertAndExtend(replaceItem.findText, replaceItem.extended);
         int searchFlags = (replaceItem.wholeWord * SCFIND_WHOLEWORD) | (replaceItem.matchCase * SCFIND_MATCHCASE) | (replaceItem.regex * SCFIND_REGEXP);
 
-        SelectionInfo selection = getSelectionInfo();
         bool wasReplaced = replaceOne(replaceItem, selection, searchResult, newPos);
 
         // Add the entered text to the combo box history
@@ -3232,28 +3234,19 @@ bool MultiReplace::preProcessListForReplace() {
 
 SelectionInfo MultiReplace::getSelectionInfo() {
     // Get the number of selections
-    int selectionCount = static_cast<int>(::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0));
-
+    LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
     Sci_Position selectionStart = 0;
     Sci_Position selectionEnd = 0;
-    std::string selectedText = "";
 
-    if (selectionCount == 1) {
-        // Single selection
-        selectionStart = ::SendMessage(_hScintilla, SCI_GETSELECTIONSTART, 0, 0);
-        selectionEnd = ::SendMessage(_hScintilla, SCI_GETSELECTIONEND, 0, 0);
-        Sci_Position selectionLength = selectionEnd - selectionStart;
-
-        if (selectionLength > 0) {
-            std::vector<char> buffer(static_cast<size_t>(selectionLength) + 1);
-            ::SendMessage(_hScintilla, SCI_GETSELTEXT, 0, reinterpret_cast<LPARAM>(&buffer[0]));
-            selectedText = std::string(&buffer[0]);
-        }
+    if (selectionCount > 0) {
+        // Take the first selection in the list
+        selectionStart = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, 0, 0);
+        selectionEnd = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, 0, 0);
     }
 
-    // For multiple selections or no selection, return empty selection info
+    // Calculate the selection length
     Sci_Position selectionLength = selectionEnd - selectionStart;
-    return SelectionInfo{ selectedText, selectionStart, selectionLength };
+    return SelectionInfo{ selectionStart, selectionLength };
 }
 
 void MultiReplace::captureLuaGlobals(lua_State* L) {
@@ -4181,11 +4174,14 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
     SearchResult result;
     SelectionRange targetRange;
 
+    // If selectMatch is true, highlight the found text
+
     // Check if IDC_SELECTION_RADIO is enabled and selectMatch is false
     if (!selectMatch && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
         std::vector<SelectionRange> selections(selectionCount);
 
+        // Extract all Positions of detected Selections
         for (int i = 0; i < selectionCount; i++) {
             selections[i].start = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
             selections[i].end = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
@@ -7800,9 +7796,6 @@ void MultiReplace::onSelectionChanged() {
     }
 
     static bool wasTextSelected = false;  // This stores the previous state
-    const std::vector<int> selectionRadioDisabledButtons = {
-    IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_REPLACE_BUTTON
-    };
 
     // Get the start and end of the selection
     Sci_Position start = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
