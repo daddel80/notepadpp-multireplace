@@ -178,6 +178,13 @@ struct MenuState {
     bool allDisabled = false;;
 };
 
+struct MonitorEnumData {
+    std::wstring monitorInfo;
+    int monitorCount;
+    int currentMonitor;
+    int primaryMonitorIndex;
+};
+
 enum class ItemAction {
     Search,
     Edit,
@@ -595,7 +602,6 @@ private:
     bool normalizeAndValidateNumber(std::string& str);
     std::vector<WCHAR> createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
     int getCharacterWidth(int elementID, const wchar_t* character);
-    void showDPIAndFontInfo();
     int getFontHeight(HWND hwnd, HFONT hFont);
 
     //StringHandling
@@ -645,6 +651,10 @@ private:
     LPCWSTR getLangStrLPCWSTR(const std::wstring& id);
     LPWSTR getLangStrLPWSTR(const std::wstring& id);
     BYTE readByteFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, BYTE defaultValue);
+
+    // Debug DPI Information
+    void showDPIAndFontInfo();
+
 };
 
 extern std::unordered_map<std::wstring, std::wstring> languageMap;

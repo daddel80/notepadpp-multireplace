@@ -3731,8 +3731,8 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     }
 
     // Use the saved position and size if set, otherwise use default position and size
-    int width = debugWindowSizeSet ? debugWindowSize.cx : 400; // Set initial width
-    int height = debugWindowSizeSet ? debugWindowSize.cy : 500; // Set initial height
+    int width = debugWindowSizeSet ? debugWindowSize.cx : sx(260); // Set initial width
+    int height = debugWindowSizeSet ? debugWindowSize.cy : sy(400); // Set initial height
     int x = debugWindowPositionSet ? debugWindowPosition.x : (GetSystemMetrics(SM_CXSCREEN) - width) / 2; // Center horizontally
     int y = debugWindowPositionSet ? debugWindowPosition.y : (GetSystemMetrics(SM_CYSCREEN) - height) / 2; // Center vertically
 
@@ -6417,71 +6417,6 @@ int MultiReplace::getFontHeight(HWND hwnd, HFONT hFont) {
     return fontHeight;  // Return the font height
 }
 
-void MultiReplace::showDPIAndFontInfo()
-{
-    RECT sizeWindowRect;
-    GetClientRect(_hSelf, &sizeWindowRect);  // Get the dimensions of the client area of the window
-
-    HDC hDC = GetDC(_hSelf);  // Get the device context (DC) for the current window
-    if (hDC)
-    {
-        // Get the current font of the window
-        HFONT currentFont = (HFONT)SendMessage(_hSelf, WM_GETFONT, 0, 0);
-        HFONT hOldFont = (HFONT)SelectObject(hDC, currentFont);  // Select the current font into the DC
-
-        // Get the text metrics for the current font
-        TEXTMETRIC tmCurrent;
-        GetTextMetrics(hDC, &tmCurrent);  // Retrieve text metrics for the selected font
-
-        // Now get the standard font metrics (_hStandardFont)
-        SelectObject(hDC, _hStandardFont);  // Select the standard font into the DC
-        TEXTMETRIC tmStandard;
-        GetTextMetrics(hDC, &tmStandard);  // Retrieve text metrics for the standard font
-
-        // Calculate the base units
-        SIZE size;
-        GetTextExtentPoint32W(hDC, L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 52, &size);
-        int baseUnitX = (size.cx / 26 + 1) / 2;
-        int baseUnitY = tmCurrent.tmHeight;
-
-        // Calculate the window size in dialog units
-        int duWidth = MulDiv(sizeWindowRect.right, 4, baseUnitX);
-        int duHeight = MulDiv(sizeWindowRect.bottom, 8, baseUnitY);
-
-        // Get DPI values from the DPIManager
-        int dpix = dpiMgr->getDPIX();
-        int dpiy = dpiMgr->getDPIY();
-        float customScaleFactor = dpiMgr->getCustomScaleFactor();
-
-        // Calculate scaled DPI values
-        int scaledDpiX = dpiMgr->scaleX(96); // example using 96 for standard DPI
-        int scaledDpiY = dpiMgr->scaleY(96);
-
-        // Create a message box to display the window size, DPI, and font information
-        wchar_t sizeText[500];
-        swprintf(sizeText, 500, L"Window Size: %ld x %ld DUs\n"
-            L"DPI X: %d\nDPI Y: %d\nCustom Scale Factor: %.2f\n"
-            L"Scaled DPI X: %d\nScaled DPI Y: %d\n\n"
-            L"Current Font: Height = %d, Ascent = %d, Descent = %d, Weight = %d\n"
-            L"Standard Font: Height = %d, Ascent = %d, Descent = %d, Weight = %d",
-            duWidth, duHeight, dpix, dpiy, customScaleFactor, scaledDpiX, scaledDpiY,
-            tmCurrent.tmHeight, tmCurrent.tmAscent, tmCurrent.tmDescent, tmCurrent.tmWeight,
-            tmStandard.tmHeight, tmStandard.tmAscent, tmStandard.tmDescent, tmStandard.tmWeight);
-
-        MessageBox(nppData._nppHandle, sizeText, L"Window, DPI, and Font Info", MB_OK);
-
-        // Cleanup
-        SelectObject(hDC, hOldFont);  // Restore the previous font in the DC
-        ReleaseDC(_hSelf, hDC);  // Release the device context
-    }
-    else
-    {
-        MessageBox(_hSelf, L"Failed to retrieve device context (HDC).", L"Error", MB_OK | MB_ICONERROR);
-    }
-}
-
-
-
 #pragma endregion
 
 
@@ -7843,6 +7778,113 @@ void MultiReplace::onCaretPositionChanged()
         instance->showStatusMessage(instance->getLangStr(L"status_actual_position", { instance->addLineAndColumnMessage(startPosition) }), RGB(0, 128, 0));
     }
 
+}
+
+#pragma endregion
+
+
+#pragma region Debug DPI Information
+
+BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
+    (void)hdcMonitor;  // Mark hdcMonitor as unused
+    (void)lprcMonitor; // Mark lprcMonitor as unused
+
+    MonitorEnumData* pData = reinterpret_cast<MonitorEnumData*>(dwData);
+
+    MONITORINFOEX monitorInfoEx;
+    monitorInfoEx.cbSize = sizeof(MONITORINFOEX);
+    GetMonitorInfo(hMonitor, &monitorInfoEx);
+
+    int screenWidth = monitorInfoEx.rcMonitor.right - monitorInfoEx.rcMonitor.left;
+    int screenHeight = monitorInfoEx.rcMonitor.bottom - monitorInfoEx.rcMonitor.top;
+    BOOL isPrimary = (monitorInfoEx.dwFlags & MONITORINFOF_PRIMARY) != 0;
+
+    // Add monitor info to the buffer
+    pData->monitorInfo += L"Monitor " + std::to_wstring(pData->monitorCount + 1) + L": "
+        + (isPrimary ? L"Primary, " : L"Secondary, ")
+        + std::to_wstring(screenWidth) + L"x" + std::to_wstring(screenHeight) + L"\n";
+
+    // Increment the monitor counter
+    pData->monitorCount++;
+
+    // Check if this is the primary monitor
+    if (isPrimary) {
+        pData->primaryMonitorIndex = pData->monitorCount;
+    }
+
+    // Check if this is the current monitor where the window is
+    if (MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTONEAREST) == hMonitor) {
+        pData->currentMonitor = pData->monitorCount;
+    }
+
+    return TRUE;  // Continue enumerating monitors
+}
+
+void MultiReplace::showDPIAndFontInfo()
+{
+    RECT sizeWindowRect;
+    GetClientRect(_hSelf, &sizeWindowRect);  // Get window dimensions
+
+    HDC hDC = GetDC(_hSelf);  // Get the device context (DC) for the current window
+    if (hDC)
+    {
+        // Get current font of the window
+        HFONT currentFont = (HFONT)SendMessage(_hSelf, WM_GETFONT, 0, 0);
+        SelectObject(hDC, currentFont);  // Select current font into the DC
+
+        TEXTMETRIC tmCurrent;
+        GetTextMetrics(hDC, &tmCurrent);  // Retrieve text metrics for current font
+
+        SelectObject(hDC, _hStandardFont);  // Select standard font into the DC
+        TEXTMETRIC tmStandard;
+        GetTextMetrics(hDC, &tmStandard);  // Retrieve text metrics for standard font
+
+        SIZE size;
+        GetTextExtentPoint32W(hDC, L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 52, &size);
+        int baseUnitX = (size.cx / 26 + 1) / 2;
+        int baseUnitY = tmCurrent.tmHeight;
+        int duWidth = MulDiv(sizeWindowRect.right, 4, baseUnitX);
+        int duHeight = MulDiv(sizeWindowRect.bottom, 8, baseUnitY);
+
+        // Get DPI values from the DPIManager
+        int dpix = dpiMgr->getDPIX();
+        int dpiy = dpiMgr->getDPIY();
+        float customScaleFactor = dpiMgr->getCustomScaleFactor();
+        int scaledDpiX = dpiMgr->scaleX(96);
+        int scaledDpiY = dpiMgr->scaleY(96);
+
+        wchar_t scaleBuffer[10];
+        swprintf(scaleBuffer, 10, L"%.1f", customScaleFactor);
+
+        MonitorEnumData monitorData = {};
+        monitorData.monitorCount = 0;
+        monitorData.currentMonitor = 0;
+        monitorData.primaryMonitorIndex = 0;
+
+        EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, reinterpret_cast<LPARAM>(&monitorData));
+
+        std::wstring message =
+            L"On Monitor " + std::to_wstring(monitorData.currentMonitor) + L"\n"
+
+            + monitorData.monitorInfo + L"\n"
+
+            L"Window Size DUs: " + std::to_wstring(duWidth) + L"x" + std::to_wstring(duHeight) + L"\n"
+            L"Scaled DPI: " + std::to_wstring(dpix) + L"x" + std::to_wstring(dpiy) + L" * " + scaleBuffer + L" = "
+            + std::to_wstring(scaledDpiX) + L"x" + std::to_wstring(scaledDpiY) + L"\n\n"
+
+            L"Font Current: Height=" + std::to_wstring(tmCurrent.tmHeight) + L", Ascent=" + std::to_wstring(tmCurrent.tmAscent) +
+            L", Descent=" + std::to_wstring(tmCurrent.tmDescent) + L", Weight=" + std::to_wstring(tmCurrent.tmWeight) + L"\n"
+            L"Font Standard: Height=" + std::to_wstring(tmStandard.tmHeight) + L", Ascent=" + std::to_wstring(tmStandard.tmAscent) +
+            L", Descent=" + std::to_wstring(tmStandard.tmDescent) + L", Weight=" + std::to_wstring(tmStandard.tmWeight);
+
+        MessageBox(_hSelf, message.c_str(), L"Window, Monitor, DPI, and Font Info", MB_ICONINFORMATION | MB_OK);
+
+        ReleaseDC(_hSelf, hDC);
+    }
+    else
+    {
+        MessageBox(_hSelf, L"Failed to retrieve device context (HDC).", L"Error", MB_OK);
+    }
 }
 
 #pragma endregion
