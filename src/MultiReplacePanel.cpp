@@ -301,8 +301,8 @@ void MultiReplace::initializeCtrlMap() {
     SendMessage(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), EM_SETLIMITTEXT, (WPARAM)1, 0);
 
     // Enable IDC_SELECTION_RADIO based on text selection
-    Sci_Position start = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
-    Sci_Position end = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
+    Sci_Position start = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
+    Sci_Position end = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
     bool isTextSelected = (start != end);
     ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), isTextSelected);
 
@@ -1917,36 +1917,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         PostMessage(_hSelf, WM_POST_INIT, 0, 0);
 
         return TRUE;
-    }
-
-    case WM_DPICHANGED:
-    {
-        // Extract the new window size and position from lParam
-        RECT* pRect = (RECT*)lParam;
-        SetWindowPos(_hSelf, NULL, pRect->left, pRect->top,
-            pRect->right - pRect->left, pRect->bottom - pRect->top,
-            SWP_NOZORDER | SWP_NOACTIVATE);
-
-        // Update DPI values
-        if (dpiMgr)
-        {
-            dpiMgr->updateDPI(_hSelf);
-        }
-
-        // Apply scaled fonts after resizing controls
-        initializeFontStyles();
-
-        // Rescale and reposition UI elements
-        RECT rcClient;
-        GetClientRect(_hSelf, &rcClient);
-        positionAndResizeControls(rcClient.right - rcClient.left, rcClient.bottom - rcClient.top);
-
-        // Move and resize controls accordingly
-        moveAndResizeControls();
-
-        // Refresh the UI
-        InvalidateRect(_hSelf, NULL, TRUE);
-        return 0;
     }
 
     case WM_POST_INIT:
@@ -3883,7 +3853,6 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
                 debugWindowPosition.x = rect.left;
                 debugWindowPosition.y = rect.top;
                 debugWindowPositionSet = true;
-
                 debugWindowSize.cx = rect.right - rect.left;
                 debugWindowSize.cy = rect.bottom - rect.top;
                 debugWindowSizeSet = true;
@@ -3906,7 +3875,6 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
             debugWindowPosition.x = rect.left;
             debugWindowPosition.y = rect.top;
             debugWindowPositionSet = true;
-
             debugWindowSize.cx = rect.right - rect.left;
             debugWindowSize.cy = rect.bottom - rect.top;
             debugWindowSizeSet = true;
@@ -7644,7 +7612,7 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
     Sci_Position addedLines = notifyCode->linesAdded;
     Sci_Position notifyLength = notifyCode->length;
 
-    Sci_Position lineNumber = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_LINEFROMPOSITION, cursorPosition, 0);
+    Sci_Position lineNumber = ::SendMessage(getScintillaHandle(), SCI_LINEFROMPOSITION, cursorPosition, 0);
     if (notifyCode->modificationType & SC_MOD_INSERTTEXT) {
         if (addedLines != 0) {
             // Set the first entry as Modify
@@ -7741,8 +7709,8 @@ void MultiReplace::onSelectionChanged() {
     static bool wasTextSelected = false;  // This stores the previous state
 
     // Get the start and end of the selection
-    Sci_Position start = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
-    Sci_Position end = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
+    Sci_Position start = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
+    Sci_Position end = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
 
     // Enable or disable IDC_SELECTION_RADIO depending on whether text is selected
     bool isTextSelected = (start != end);
@@ -7773,7 +7741,7 @@ void MultiReplace::onCaretPositionChanged()
         return;
     }
 
-    LRESULT startPosition = ::SendMessage(MultiReplace::getScintillaHandle(), SCI_GETCURRENTPOS, 0, 0);
+    LRESULT startPosition = ::SendMessage(getScintillaHandle(), SCI_GETCURRENTPOS, 0, 0);
     if (instance != nullptr) {
         instance->showStatusMessage(instance->getLangStr(L"status_actual_position", { instance->addLineAndColumnMessage(startPosition) }), RGB(0, 128, 0));
     }

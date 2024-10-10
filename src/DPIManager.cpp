@@ -19,9 +19,9 @@ DPIManager::~DPIManager()
 // Initializes the DPI values using Win32 APIs.
 void DPIManager::init()
 {
-    UINT dpiX = 120, dpiY = 120; // Default DPI.
+    UINT dpiX = 96, dpiY = 96;  // Default DPI (96 is the standard base DPI)
 
-    // Attempt to load Shcore.dll for modern DPI functions.
+    // Step 1: Try to load Shcore.dll for modern DPI API
     HMODULE hShcore = LoadLibrary(TEXT("Shcore.dll"));
     if (hShcore)
     {
@@ -33,15 +33,26 @@ void DPIManager::init()
             HMONITOR hMonitor = MonitorFromWindow(_hwnd, MONITOR_DEFAULTTONEAREST);
             if (SUCCEEDED(pGetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY)))
             {
-                // Successfully retrieved DPI values.
+                // Successfully retrieved DPI values from modern API
+            }
+            else
+            {
+                // If GetDpiForMonitor fails, fallback to GetDeviceCaps
+                HDC hdc = GetDC(_hwnd);
+                if (hdc)
+                {
+                    dpiX = GetDeviceCaps(hdc, LOGPIXELSX); // Fallback to GetDeviceCaps
+                    dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
+                    ReleaseDC(_hwnd, hdc);
+                }
             }
         }
 
-        FreeLibrary(hShcore);
+        FreeLibrary(hShcore);  // Cleanup Shcore.dll
     }
     else
     {
-        // Fallback for older Windows versions.
+        // If Shcore.dll isn't available, use GetDeviceCaps directly
         HDC hdc = GetDC(_hwnd);
         if (hdc)
         {
@@ -51,7 +62,7 @@ void DPIManager::init()
         }
     }
 
-    // Check if GetSystemMetricsForDpi is supported
+    // Step 2: Optionally check for GetSystemMetricsForDpi support for DPI-aware system metrics
     HMODULE hUser32 = LoadLibrary(TEXT("User32.dll"));
     if (hUser32)
     {
@@ -60,6 +71,7 @@ void DPIManager::init()
         FreeLibrary(hUser32);
     }
 
+    // Store the DPI values
     _dpiX = dpiX;
     _dpiY = dpiY;
 }
