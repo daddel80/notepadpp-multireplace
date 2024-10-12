@@ -3231,18 +3231,26 @@ bool MultiReplace::preProcessListForReplace() {
 SelectionInfo MultiReplace::getSelectionInfo() {
     // Get the number of selections
     LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
-    Sci_Position selectionStart = 0;
-    Sci_Position selectionEnd = 0;
+    Sci_Position smallestStart = 0;
+    Sci_Position correspondingEnd = 0;
 
     if (selectionCount > 0) {
-        // Take the first selection in the list
-        selectionStart = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, 0, 0);
-        selectionEnd = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, 0, 0);
+        smallestStart = std::numeric_limits<Sci_Position>::max(); // Only used if there's a selection
+        // Iterate over all selections to find the one with the smallest start position
+        for (LRESULT i = 0; i < selectionCount; ++i) {
+            Sci_Position selectionStart = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
+            Sci_Position selectionEnd = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
+
+            if (selectionStart < smallestStart) {
+                smallestStart = selectionStart;
+                correspondingEnd = selectionEnd;
+            }
+        }
     }
 
     // Calculate the selection length
-    Sci_Position selectionLength = selectionEnd - selectionStart;
-    return SelectionInfo{ selectionStart, selectionEnd, selectionLength };
+    Sci_Position selectionLength = correspondingEnd - smallestStart;
+    return SelectionInfo{ smallestStart, correspondingEnd, selectionLength };
 }
 
 void MultiReplace::captureLuaGlobals(lua_State* L) {
