@@ -3765,9 +3765,42 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     UpdateWindow(hwnd);
 
     MSG msg = { 0 };
+
+    // Scintilla needs seperate key handling
     while (GetMessage(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        if (!IsDialogMessage(hwnd, &msg)) {
+            // Check if the Debug window is not focused and forward key combinations to Notepad++
+            if (GetForegroundWindow() != hwnd) {
+                if (msg.message == WM_KEYDOWN && (GetKeyState(VK_CONTROL) & 0x8000)) {
+                    // Handle Ctrl-C, Ctrl-V, and Ctrl-X
+                    if (msg.wParam == 'C') {
+                        SendMessage(nppData._scintillaMainHandle, SCI_COPY, 0, 0);
+                        continue;
+                    }
+                    else if (msg.wParam == 'V') {
+                        SendMessage(nppData._scintillaMainHandle, SCI_PASTE, 0, 0);
+                        continue;
+                    }
+                    else if (msg.wParam == 'X') {
+                        SendMessage(nppData._scintillaMainHandle, SCI_CUT, 0, 0);
+                        continue;
+                    }
+                    // Handle Ctrl-U for lowercase
+                    else if (msg.wParam == 'U' && !(GetKeyState(VK_SHIFT) & 0x8000)) {
+                        SendMessage(nppData._scintillaMainHandle, SCI_LOWERCASE, 0, 0);
+                        continue;
+                    }
+                    // Handle Ctrl-Shift-U for uppercase
+                    else if (msg.wParam == 'U' && (GetKeyState(VK_SHIFT) & 0x8000)) {
+                        SendMessage(nppData._scintillaMainHandle, SCI_UPPERCASE, 0, 0);
+                        continue;
+                    }
+                }
+            }
+            // Process other messages normally
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
 
         // Check for WM_QUIT after dispatching the message
         if (msg.message == WM_QUIT) {
