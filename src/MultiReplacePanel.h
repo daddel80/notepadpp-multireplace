@@ -109,6 +109,7 @@ struct SearchResult {
 struct SelectionInfo {
 
     Sci_Position startPos;
+    Sci_Position endPos;
     Sci_Position length;
 };
 
@@ -438,9 +439,6 @@ private:
 
 
     // GUI control-related constants
-    const std::vector<int> selectionRadioDisabledButtons = {
-        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON , IDC_REPLACE_BUTTON
-    };
     const std::vector<int> columnRadioDependentElements = {
         IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
@@ -493,10 +491,11 @@ private:
     void selectRows(const std::vector<size_t>& selectedIDs);
     void handleCopyToListButton();
     void resetCountColumns();
-    void updateCountColumns(size_t itemIndex, int findCount, int replaceCount = -1);
+    void updateCountColumns(const size_t itemIndex, const int findCount, int replaceCount = -1);
     void resizeCountColumns();
     void clearList();
     std::size_t computeListHash(const std::vector<ReplaceItemData>& list);
+    void refreshUIListView();
 
     //Contextmenu
     void toggleBooleanAt(int itemIndex, int Column);
@@ -515,11 +514,11 @@ private:
     //Replace
     void handleReplaceAllButton();
     void handleReplaceButton();
-    void replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount);
-    bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos);
+    bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX);
+    bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex = SIZE_MAX);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
-    bool MultiReplace::preProcessListForReplace();
+    bool preProcessListForReplace();
     SelectionInfo getSelectionInfo();
     void captureLuaGlobals(lua_State* L);
     void loadLuaGlobals(lua_State* L);

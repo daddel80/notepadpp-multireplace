@@ -301,9 +301,8 @@ void MultiReplace::initializeCtrlMap() {
     SendMessage(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), EM_SETLIMITTEXT, (WPARAM)1, 0);
 
     // Enable IDC_SELECTION_RADIO based on text selection
-    Sci_Position start = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
-    Sci_Position end = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
-    bool isTextSelected = (start != end);
+    SelectionInfo selection = getSelectionInfo();
+    bool isTextSelected = (selection.length > 0);
     ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), isTextSelected);
 
     isWindowOpen = true;
@@ -516,11 +515,6 @@ void MultiReplace::setUIElementVisibility() {
     // Enable or disable UI elements based on column mode
     for (int id : columnRadioDependentElements) {
         EnableWindow(GetDlgItem(_hSelf, id), columnModeChecked);
-    }
-
-    // Enable or disable buttons based on selection mode, excluding FIND_PREV_BUTTON
-    for (int id : selectionRadioDisabledButtons) {
-        EnableWindow(GetDlgItem(_hSelf, id), !selectionChecked);
     }
 
     // Specifically manage the FIND_PREV_BUTTON state based on regex and selection mode
@@ -1119,37 +1113,21 @@ void MultiReplace::resetCountColumns() {
     InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
-void MultiReplace::updateCountColumns(size_t itemIndex, int findCount, int replaceCount)
+void MultiReplace::updateCountColumns(const size_t itemIndex, const int findCount, int replaceCount)
 {
-    // Check if the itemIndex is valid
-    if (itemIndex >= replaceListData.size()) {
-        return;
-    }
-
     // Access the item data from the list
     ReplaceItemData& itemData = replaceListData[itemIndex];
 
     // Update findCount if provided
     if (findCount != -1) {
-        int currentFindCount = 0;
-        if (!itemData.findCount.empty()) {
-            currentFindCount = std::stoi(itemData.findCount);
-        }
-        itemData.findCount = std::to_wstring(currentFindCount + findCount);
+        itemData.findCount = std::to_wstring(findCount);
     }
 
     // Update replaceCount if provided
     if (replaceCount != -1) {
-        int currentReplaceCount = 0;
-        if (!itemData.replaceCount.empty()) {
-            currentReplaceCount = std::stoi(itemData.replaceCount);
-        }
-        itemData.replaceCount = std::to_wstring(currentReplaceCount + replaceCount);
+        itemData.replaceCount = std::to_wstring(replaceCount);
     }
 
-    // Update the list view to immediately reflect the changes
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
 void MultiReplace::resizeCountColumns() {
@@ -1239,6 +1217,12 @@ std::size_t MultiReplace::computeListHash(const std::vector<ReplaceItemData>& li
     }
 
     return combinedHash;
+}
+
+void MultiReplace::refreshUIListView()
+{
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
 #pragma endregion
@@ -2840,15 +2824,19 @@ void MultiReplace::handleReplaceAllButton() {
             {
                 int findCount = 0;
                 int replaceCount = 0;
-                replaceAll(replaceListData[i], findCount, replaceCount);
 
-                // Update counts in list item
-                if (findCount > 0) {
-                    updateCountColumns(i, findCount, replaceCount);
-                }
+                // Call replaceAll and break out if there is an error or a Debug Stop
+                bool success = replaceAll(replaceListData[i], findCount, replaceCount, i);
+
+                // Refresh ListView to show updated statistics
+                refreshUIListView();
 
                 // Accumulate total replacements
                 totalReplaceCount += replaceCount;
+
+                if (!success) {
+                    break;  // Exit loop on error or Debug Stop
+                }
             }
         }
         ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
@@ -2875,6 +2863,14 @@ void MultiReplace::handleReplaceAllButton() {
     }
     // Display status message
     showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), RGB(0, 128, 0));
+
+    // Disable selection radio and switch to "All Text" if it was Replaced an none selection left or it will be trapped
+    SelectionInfo selection = getSelectionInfo();
+    if (selection.length == 0 && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+        ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+        ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+        ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+    }
 }
 
 void MultiReplace::handleReplaceButton() {
@@ -2917,9 +2913,9 @@ void MultiReplace::handleReplaceButton() {
 
         int replacements = 0;  // Counter for replacements
         for (size_t i = 0; i < replaceListData.size(); ++i) {
-            if (replaceListData[i].isEnabled && replaceOne(replaceListData[i], selection, searchResult, newPos)) {
+            if (replaceListData[i].isEnabled && replaceOne(replaceListData[i], selection, searchResult, newPos, i)) {
                 replacements++;
-                updateCountColumns(i, -1, 1);
+                refreshUIListView(); // Refresh the ListView to show updated statistic
             }
         }
 
@@ -2933,6 +2929,7 @@ void MultiReplace::handleReplaceButton() {
         if (replacements > 0) {
             if (searchResult.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
+                refreshUIListView(); // Refresh the ListView to show updated statistic
                 selectListItem(matchIndex); // Highlight the matched item in the list
                 showStatusMessage(getLangStr(L"status_replace_next_found", { std::to_wstring(replacements) }), RGB(0, 128, 0));
             }
@@ -2946,6 +2943,7 @@ void MultiReplace::handleReplaceButton() {
             }
             else {
                 updateCountColumns(matchIndex, 1);
+                refreshUIListView(); // Refresh the ListView to show updated statistic
                 selectListItem(matchIndex); // Highlight the matched item in the list
                 showStatusMessage(getLangStr(L"status_found_text_not_replaced"), RGB(255, 0, 0));
             }
@@ -2994,18 +2992,31 @@ void MultiReplace::handleReplaceButton() {
             }
         }
     }
+
+    // Disable selection radio and switch to "All Text" if it was Replaced an none selection left or it will be trapped
+    selection = getSelectionInfo();
+    if (selection.length == 0 && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+        ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+        ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+        ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+    }
 }
 
-bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos)
+bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex)
 {
     std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
     int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
-    searchResult = performSearchForward(findTextUtf8, searchFlags, true, selection.startPos);
+    searchResult = performSearchForward(findTextUtf8, searchFlags, false, selection.startPos);
 
     if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
         bool skipReplace = false;
         std::string replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
         std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
+
+        if (itemIndex != SIZE_MAX) {
+            updateCountColumns(itemIndex, 1, -1);
+        }
+
         if (itemData.useVariables) {
             LuaVariables vars;
 
@@ -3036,6 +3047,11 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             else {
                 newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
             }
+
+            if (itemIndex != SIZE_MAX) {
+                updateCountColumns(itemIndex, -1, 1);
+            }
+
             return true;  // A replacement was made
         }
         else {
@@ -3048,12 +3064,12 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
     return false;  // No replacement was made
 }
 
-void MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount)
+bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount,  size_t itemIndex)
 {
     if (itemData.findText.empty()) {
         findCount = 0;
         replaceCount = 0;
-        return;
+        return true;
     }
 
     bool isReplaceFirstEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED);
@@ -3072,6 +3088,11 @@ void MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         bool skipReplace = false;
         findCount++;
         std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
+
+        if (itemIndex != SIZE_MAX) {  // check if used in List
+            updateCountColumns(itemIndex, findCount, -1);
+        }
+
         if (itemData.useVariables) {
             LuaVariables vars;
 
@@ -3099,7 +3120,7 @@ void MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             vars.MATCH = searchResult.foundText;
 
             if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
-                break;  // Exit the loop if error in syntax or process is stopped by debug
+                return false;  // Exit the loop if error in syntax or process is stopped by debug
             }
             replaceTextUtf8 = convertAndExtend(localReplaceTextUtf8, itemData.extended);
         }
@@ -3113,6 +3134,10 @@ void MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                 newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
             }
             replaceCount++;
+
+            if (itemIndex != SIZE_MAX) { // check if used in List
+                updateCountColumns(itemIndex, -1, replaceCount);
+            }
         }
         else {
             newPos = searchResult.pos + searchResult.length;
@@ -3128,6 +3153,7 @@ void MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         searchResult = performSearchForward(findTextUtf8, searchFlags, false, newPos);
     }
 
+    return true;
 }
 
 Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
@@ -3216,7 +3242,7 @@ SelectionInfo MultiReplace::getSelectionInfo() {
 
     // Calculate the selection length
     Sci_Position selectionLength = selectionEnd - selectionStart;
-    return SelectionInfo{ selectionStart, selectionLength };
+    return SelectionInfo{ selectionStart, selectionEnd, selectionLength };
 }
 
 void MultiReplace::captureLuaGlobals(lua_State* L) {
@@ -3629,6 +3655,10 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     // Show debug window if 'DEBUG' is true and clean the stack
     lua_getglobal(L, "DEBUG");
     if (lua_isboolean(L, -1) && lua_toboolean(L, -1)) {
+
+        // Refresh the ListView for Statistics
+        refreshUIListView();
+
         int response = ShowDebugWindow(combinedVariablesStr);
 
         if (response == 3) { // Stop button was pressed
@@ -3959,7 +3989,18 @@ void MultiReplace::handleFindNextButton() {
     bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
-    LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+    SelectionInfo selection = getSelectionInfo();
+
+    // Check if there is a selection and if the selection radio button is checked
+    Sci_Position searchPos;
+    if (selection.length > 0 && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED)) {
+        // Jump to the start of the selection if the selection exists and the radio button is checked
+        searchPos = selection.startPos;
+    }
+    else {
+        // Otherwise, use the current cursor position
+        searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+    }
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
@@ -3972,6 +4013,7 @@ void MultiReplace::handleFindNextButton() {
             result = performListSearchForward(replaceListData, 0, matchIndex);
             if (result.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
+                refreshUIListView(); // Refresh the ListView to show updated statistic
                 selectListItem(matchIndex); // Highlight the matched item in the list
                 showStatusMessage(getLangStr(L"status_wrapped"), RGB(0, 128, 0));
                 return;
@@ -3981,7 +4023,15 @@ void MultiReplace::handleFindNextButton() {
         if (result.pos >= 0) {
             showStatusMessage(L"", RGB(0, 128, 0));
             updateCountColumns(matchIndex, 1);
+            refreshUIListView(); // Refresh the ListView to show updated statistic
             selectListItem(matchIndex); // Highlight the matched item in the list
+
+            // Disable selection radio and switch to "All Text" if it was previously checked or Search will be trapped in new selection
+            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+                ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+                ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+                ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+            }
         }
         else {
             showStatusMessage(getLangStr(L"status_no_matches_found"), RGB(255, 0, 0));
@@ -4007,6 +4057,14 @@ void MultiReplace::handleFindNextButton() {
 
         if (result.pos >= 0) {
             showStatusMessage(L"", RGB(0, 128, 0));
+
+            // Disable selection radio and switch to "All Text" if it was previously checked or Search will be trapped in new selection
+            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+                ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+                ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+                ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+            }
+
         }
         else {
             showStatusMessage(getLangStr(L"status_no_matches_found_for", { findText }), RGB(255, 0, 0));
@@ -4036,6 +4094,7 @@ void MultiReplace::handleFindPrevButton() {
 
         if (result.pos >= 0) {
             updateCountColumns(matchIndex, 1);
+            refreshUIListView(); // Refresh the ListView to show updated statistic
             selectListItem(matchIndex); // Highlight the matched item in the list
             showStatusMessage(L"" + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
         }
@@ -4044,6 +4103,7 @@ void MultiReplace::handleFindPrevButton() {
             result = performListSearchBackward(replaceListData, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0), matchIndex);
             if (result.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
+                refreshUIListView(); // Refresh the ListView to show updated statistic
                 selectListItem(matchIndex); // Highlight the matched item in the list
                 showStatusMessage(getLangStr(L"status_wrapped_position", { addLineAndColumnMessage(result.pos) }), RGB(0, 128, 0));
             }
@@ -4145,7 +4205,7 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
     // If selectMatch is true, highlight the found text
 
     // Check if IDC_SELECTION_RADIO is enabled and selectMatch is false
-    if (!selectMatch && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+    if ( IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
         std::vector<SelectionRange> selections(selectionCount);
 
@@ -4463,6 +4523,7 @@ void MultiReplace::handleMarkMatchesButton() {
 
                 if (matchCount > 0) {
                     updateCountColumns(i, matchCount);
+                    refreshUIListView(); // Refresh the ListView to show updated statistic
                 }
             }
         }
