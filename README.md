@@ -40,7 +40,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
   
 ## Key Features
 
--   **Multiple Replacements**: Perform multiple replacements at once, allowing for efficient edits across one or all documents.
+-   **Multiple Replacements**: Perform multiple replacements in a single operation, in one document or across all open documents
 -   **Save and Load Lists**: Store and load search/replace lists for reuse across different sessions or projects, including all relevant settings.
 -   **Selection Support**: Supports rectangular and multiple selections for targeted replacements.
 -   **CSV Column Operations**: Search, replace, sort, or highlight specific columns in CSV or other delimited files by selecting column numbers.
