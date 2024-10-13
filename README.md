@@ -40,13 +40,14 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
   
 ## Key Features
 
--   **Multiple Replacements:** Execute multiple replacements in a single operation, in one document or across all opened documents.
--   **Entry Toggling:** Toggle list entries for replacement, highlighting, or searching.
--   **String Storage:** Store and load your search and replace strings in a list, facilitating reuse across different sessions or projects.
--   **CSV Scope Functionality:** Apply search, replace, or sort operations to specific columns in a CSV or other delimited file by selecting column numbers.
--   **Scripted Text Replacements:** Export to bash script for scripted text replacements.
--   **Highlighting:** Highlight multiple find words in unique colors for better visual distinction.
--   **Variable Usage:** Employ variables for conditional and computational operations within the replacement string.
+- **Multiple Replacements**: Perform multiple replacements at once, allowing for efficient edits across one or all documents.
+- **Save and Load Lists**: Store and load search/replace lists for reuse across different sessions or projects, including all relevant settings.
+- **Selection Support**: Supports rectangular and multiple selections for targeted replacements.
+- **CSV Column Operations**: Search, replace, sort, or highlight specific columns in CSV or other delimited files by selecting column numbers.
+- **Conditional Replacements**: Use variables, conditions, and mathematical operations for complex replacements, fully integrated into the replacement list like regular entries.
+- **Highlight Matches**: Mark multiple search terms in the text, each with a distinct color for easy differentiation.
+- **Bash Script Export**: Export replacement operations as a bash script for use outside of Notepad++.
+
 
 ## Match and Replace Options
 
