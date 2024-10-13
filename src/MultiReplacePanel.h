@@ -518,7 +518,7 @@ private:
     bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex = SIZE_MAX);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
-    bool preProcessListForReplace();
+    bool preProcessListForReplace(bool highlight);
     SelectionInfo getSelectionInfo();
     void captureLuaGlobals(lua_State* L);
     void loadLuaGlobals(lua_State* L);

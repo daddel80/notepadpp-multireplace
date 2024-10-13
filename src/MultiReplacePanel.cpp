@@ -2812,8 +2812,8 @@ void MultiReplace::handleReplaceAllButton() {
             return;
         }
 
-        // Check the status if stopped by DEBUG
-        if (!preProcessListForReplace()) {
+        // Check status for initial call if stopped by DEBUG, don't highlight entry
+        if (!preProcessListForReplace(/*highlightEntry=*/false)) {
             return;
         }
 
@@ -2906,8 +2906,8 @@ void MultiReplace::handleReplaceButton() {
             return;
         }
 
-        // Check the status if stopped by DEBUG
-        if (!preProcessListForReplace()) {
+        // Check status of initial if stopped by DEBUG, highlight entry
+        if (!preProcessListForReplace(/*highlightEntry=*/true)) {
             return;
         }
 
@@ -3014,7 +3014,8 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
         std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
 
         if (itemIndex != SIZE_MAX) {
-            updateCountColumns(itemIndex, 1, -1);
+            updateCountColumns(itemIndex, 1);
+            selectListItem(itemIndex);
         }
 
         if (itemData.useVariables) {
@@ -3210,11 +3211,14 @@ Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf
     return newTargetEnd;
 }
 
-bool MultiReplace::preProcessListForReplace() {
+bool MultiReplace::preProcessListForReplace(bool highlight) {
     if (!replaceListData.empty()) {
         for (size_t i = 0; i < replaceListData.size(); ++i) {
             if (replaceListData[i].isEnabled && replaceListData[i].useVariables) {
                 if (replaceListData[i].findText.empty()) {
+                    if (highlight) {
+                        selectListItem(i);  // Highlight the list entry
+                    }
                     std::string localReplaceTextUtf8 = wstringToString(replaceListData[i].replaceText);
                     bool skipReplace = false;
                     LuaVariables vars;
