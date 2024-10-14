@@ -138,6 +138,7 @@ void MultiReplace::initializeFontStyles() {
     SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
 
     // For ListView identify width of special characters
     // Add 15 units of padding to the widths of checkmark, cross, and box characters
@@ -159,10 +160,7 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     int borderWidth = ((tempWindowRect.right - tempWindowRect.left) - (clientRect.right - clientRect.left)) / 2;
     int titleBarHeight = (tempWindowRect.bottom - tempWindowRect.top) - (clientRect.bottom - clientRect.top) - borderWidth;
 
-    // Determine whether the Use List checkbox is checked
-    BOOL useListChecked = IsDlgButtonChecked(hwnd, IDC_USE_LIST_CHECKBOX) == BST_CHECKED;
-
-    int minHeight = useListChecked ? MIN_HEIGHT_scaled : SHRUNK_HEIGHT_scaled;
+    int minHeight = useListEnabled ? MIN_HEIGHT_scaled : SHRUNK_HEIGHT_scaled;
     int minWidth = MIN_WIDTH_scaled;
 
     // Adjust for window borders and title bar
@@ -196,13 +194,14 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     // Calculate dimensions without scaling
     int buttonX = windowWidth - sx(36 + 128);
-    int checkbox2X = buttonX + sx(138);
+    int checkbox2X = buttonX + sx(134);
+    int useListButtonX = buttonX + sx(134);
     int swapButtonX = windowWidth - sx(36 + 128 + 26);
     int comboWidth = windowWidth - sx(292);
-    int frameX = windowWidth - sx(256);
+    //int frameX = windowWidth - sx(256);
     int listWidth = windowWidth - sx(208);
     int listHeight = windowHeight - sy(248);
-    int checkboxX = buttonX - sx(84);
+    //int checkboxX = buttonX - sx(84);
 
     // Apply scaling only when assigning to ctrlMap
     ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(15), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_find_what"), SS_RIGHT, NULL };
@@ -245,7 +244,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(43), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(15), sx(128), sy(48), WC_BUTTON, getLangStrLPCWSTR(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_STATIC_FRAME] = { frameX, sy(79), sx(228), sy(130), WC_BUTTON, L"", BS_GROUPBOX, NULL };
+    //ctrlMap[IDC_STATIC_FRAME] = { frameX, sy(79), sx(228), sy(130), WC_BUTTON, L"", BS_GROUPBOX, NULL };
     ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(94), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(94), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(94), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
@@ -270,11 +269,11 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(4), sy(323), sx(24), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4), sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
-    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11), sx(132), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11), sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL };
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16), sx(96), sy(16), WC_STATIC, getLangStrLPCWSTR(L"panel_shift_lines"), SS_LEFT, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { sx(20), sy(227), listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
     ctrlMap[IDC_PATH_DISPLAY] = { sx(18), sy(227) + listHeight + sy(5), listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
-    ctrlMap[IDC_USE_LIST_CHECKBOX] = { checkboxX, sy(140), sx(76), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_list"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, windowHeight - sy(37), sx(24), sy(24), WC_BUTTON, useListEnabled ? L"∧" : L"∨", BS_PUSHBUTTON | WS_TABSTOP, useListEnabled ? NULL : getLangStrLPCWSTR(L"panel_use_list") };
 }
 
 void MultiReplace::initializeCtrlMap() {
@@ -404,7 +403,7 @@ void MultiReplace::moveAndResizeControls() {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON,
         IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON,
         IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
-        IDC_USE_LIST_CHECKBOX, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+        IDC_USE_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
         IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, IDC_PATH_DISPLAY
     };
 
@@ -456,7 +455,6 @@ void MultiReplace::moveAndResizeControls() {
 }
 
 void MultiReplace::updateButtonVisibilityBasedOnMode() {
-    BOOL useListChecked = IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED;
     BOOL twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
 
     // Replace-Buttons
@@ -475,24 +473,24 @@ void MultiReplace::updateButtonVisibilityBasedOnMode() {
     ShowWindow(GetDlgItem(_hSelf, IDC_MARK_BUTTON), ( !twoButtonsMode) ? SW_SHOW : SW_HIDE);
 
     // Load-Buttons
-    ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_LIST_BUTTON), (useListChecked && twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON), (useListChecked && twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), (useListChecked && !twoButtonsMode) ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_LIST_BUTTON), (useListEnabled && twoButtonsMode) ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON), (useListEnabled && twoButtonsMode) ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), (useListEnabled && !twoButtonsMode) ? SW_SHOW : SW_HIDE);
 
     // Save-Buttons
-    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), (useListChecked && twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_AS_BUTTON), (useListChecked && twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), (useListChecked && !twoButtonsMode) ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), (useListEnabled && twoButtonsMode) ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_AS_BUTTON), (useListEnabled && twoButtonsMode) ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), (useListEnabled && !twoButtonsMode) ? SW_SHOW : SW_HIDE);
 
     // Other Elements related to USE_LIST
-    ShowWindow(GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON), useListChecked ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_UP_BUTTON), useListChecked ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_DOWN_BUTTON), useListChecked ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_SHIFT_FRAME), useListChecked ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_SHIFT_TEXT), useListChecked ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), useListChecked ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), useListChecked ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, ID_STATISTICS_COLUMNS), useListChecked ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON), useListEnabled ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_UP_BUTTON), useListEnabled ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_DOWN_BUTTON), useListEnabled ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_SHIFT_FRAME), useListEnabled ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_SHIFT_TEXT), useListEnabled ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), useListEnabled ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), useListEnabled ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, ID_STATISTICS_COLUMNS), useListEnabled ? SW_SHOW : SW_HIDE);
 }
 
 void MultiReplace::setUIElementVisibility() {
@@ -582,8 +580,6 @@ void MultiReplace::SetWindowTransparency(HWND hwnd, BYTE alpha) {
 }
 
 void MultiReplace::adjustWindowSize() {
-    // Determine whether the Use List checkbox is checked
-    BOOL useListChecked = IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED;
 
     // Get the minimum allowed window size
     RECT minSize = calculateMinWindowFrame(_hSelf);
@@ -596,16 +592,7 @@ void MultiReplace::adjustWindowSize() {
     int currentX = currentRect.left;
     int currentY = currentRect.top;
 
-    int newHeight = 0;
-
-    if (useListChecked) {
-        // Use the stored useListOnHeight, ensuring it's at least the minimum height
-        newHeight = std::max(useListOnHeight, minHeight);
-    }
-    else {
-        // Set the height to useListOffHeight (SHRUNK_HEIGHT)
-        newHeight = useListOffHeight;
-    }
+    int newHeight = useListEnabled ? std::max(useListOnHeight, minHeight) : useListOffHeight;
 
     // Adjust the window size while keeping the current position and width
     SetWindowPos(_hSelf, NULL, currentX, currentY, currentWidth, newHeight, SWP_NOZORDER);
@@ -1097,7 +1084,8 @@ void MultiReplace::handleCopyToListButton() {
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
 
     // Enable the ListView accordingly
-    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, BST_CHECKED, 0);
+    useListEnabled = true;
+    SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, L"∧");
     adjustWindowSize();
 }
 
@@ -1919,10 +1907,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         // Allow horizontal resizing up to a maximum value
         pMMI->ptMaxTrackSize.x = MAXLONG;
 
-        // Determine whether the Use List checkbox is checked
-        BOOL useListChecked = IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED;
-
-        if (useListChecked) {
+        if (useListEnabled) {
             // Set minimum window height
             pMMI->ptMinTrackSize.y = adjustedSize.bottom;
             // Allow vertical resizing up to a maximum value
@@ -2040,10 +2025,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // Refresh UI and gripper by invalidating window
             InvalidateRect(_hSelf, NULL, TRUE);
 
-            // Determine whether the Use List checkbox is checked
-            BOOL useListChecked = IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED;
-
-            if (useListChecked) {
+            if (useListEnabled) {
                 // Update useListOnHeight with the new height
                 RECT currentRect;
                 GetWindowRect(_hSelf, &currentRect);
@@ -2453,9 +2435,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDC_USE_LIST_CHECKBOX:
+        case IDC_USE_LIST_BUTTON:
         {
-            // Adjust the window size based on the current Use List state
+            useListEnabled = !useListEnabled;
+            SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"∧" : L"∨");
             adjustWindowSize();
             return TRUE;
         }
@@ -2801,8 +2784,6 @@ void MultiReplace::handleReplaceAllButton() {
     globalLuaVariablesMap.clear();
 
     int totalReplaceCount = 0;
-    // Check if the "In List" option is enabled
-    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
 
     if (useListEnabled)
     {
@@ -2885,7 +2866,6 @@ void MultiReplace::handleReplaceButton() {
     // Clear all stored Lua Global Variables
     globalLuaVariablesMap.clear();
 
-    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
     SearchResult searchResult;
@@ -3014,7 +2994,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
         std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
 
         if (itemIndex != SIZE_MAX) {
-            updateCountColumns(itemIndex, 1);
+            updateCountColumns(itemIndex, 1); // no refreshUIListView() necessary as implemented in Debug Window
             selectListItem(itemIndex);
         }
 
@@ -3091,7 +3071,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
 
         if (itemIndex != SIZE_MAX) {  // check if used in List
-            updateCountColumns(itemIndex, findCount, -1);
+            updateCountColumns(itemIndex, findCount);
         }
 
         if (itemData.useVariables) {
@@ -4031,7 +4011,6 @@ void MultiReplace::CloseDebugWindow() {
 void MultiReplace::handleFindNextButton() {
     size_t matchIndex = std::numeric_limits<size_t>::max();
 
-    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
     SelectionInfo selection = getSelectionInfo();
@@ -4122,7 +4101,6 @@ void MultiReplace::handleFindPrevButton() {
 
     size_t matchIndex = std::numeric_limits<size_t>::max();
 
-    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
     LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
@@ -4548,7 +4526,6 @@ void MultiReplace::selectListItem(size_t matchIndex) {
 
 void MultiReplace::handleMarkMatchesButton() {
     int totalMatchCount = 0;
-    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     markedStringsCount = 0;
 
     if (useListEnabled) {
@@ -4604,7 +4581,7 @@ int MultiReplace::markString(const std::string& findTextUtf8, int searchFlags) {
         searchResult = performSearchForward(findTextUtf8, searchFlags, false, searchResult.pos + searchResult.length);
     }
 
-    if (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED && markCount > 0) {
+    if (useListEnabled && markCount > 0) {
         markedStringsCount++;
     }
 
@@ -4613,7 +4590,6 @@ int MultiReplace::markString(const std::string& findTextUtf8, int searchFlags) {
 
 void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8)
 {
-    bool useListEnabled = (IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED);
     long color = useListEnabled ? generateColorValue(findTextUtf8) : MARKER_COLOR;
 
     // Check if the color already has an associated style
@@ -7194,11 +7170,9 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int posX = currentRect.left;
     int posY = currentRect.top;
 
-    // Determine whether the Use List checkbox is checked
-    BOOL useListChecked = IsDlgButtonChecked(_hSelf, IDC_USE_LIST_CHECKBOX) == BST_CHECKED;
 
     // Update useListOnHeight if Use List is checked
-    if (useListChecked) {
+    if (useListEnabled) {
         useListOnHeight = height;
     }
 
@@ -7238,7 +7212,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int wrapAround = IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int useVariables = IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int ButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
-    int useList = useListChecked ? 1 : 0;
+    int useList = useListEnabled ? 1 : 0;
 
     outFile << wstringToString(L"[Options]\n");
     outFile << wstringToString(L"WholeWord=" + std::to_wstring(wholeWord) + L"\n");
@@ -7374,8 +7348,8 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     bool replaceButtonsMode = readBoolFromIniFile(iniFilePath, L"Options", L"ButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    bool useList = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", true);
-    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_CHECKBOX), BM_SETCHECK, useList ? BST_CHECKED : BST_UNCHECKED, 0);
+    useListEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", true);
+    SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"∧" : L"∨");
 
     highlightMatchEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"HighlightMatch", true);
 
@@ -7457,9 +7431,8 @@ void MultiReplace::loadUIConfigFromIni() {
     windowRect.top = readIntFromIniFile(iniFilePath, L"Window", L"PosY", POS_Y);
 
     // Load the state of the Use List checkbox from the ini file
-    int useList = readIntFromIniFile(iniFilePath, L"Options", L"UseList", 1); // Default to 1 if not found
-    // Set the checkbox state
-    CheckDlgButton(_hSelf, IDC_USE_LIST_CHECKBOX, useList ? BST_CHECKED : BST_UNCHECKED);
+    useListEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", true); // Default to true if not found
+    SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"∧" : L"∨");
 
     // Load window width
     int savedWidth = readIntFromIniFile(iniFilePath, L"Window", L"Width", MIN_WIDTH_scaled);
@@ -7471,8 +7444,7 @@ void MultiReplace::loadUIConfigFromIni() {
 
 
     // Set windowRect based on Use List state
-    BOOL useListChecked = (useList == 1);
-    int height = useListChecked ? useListOnHeight : useListOffHeight;
+    int height = useListEnabled ? useListOnHeight : useListOffHeight;
 
     windowRect.right = windowRect.left + width;
     windowRect.bottom = windowRect.top + height;

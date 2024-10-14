@@ -56,6 +56,7 @@
 #define IDC_SHIFT_TEXT					5030
 #define ID_REPLACE_ALL_OPTION           5031
 #define ID_REPLACE_IN_ALL_DOCS_OPTION   5032
+#define IDC_USE_LIST_BUTTON				5033
 
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101
@@ -130,7 +131,7 @@
 // Default window position and dimensions
 #define POS_X 92
 #define POS_Y 40
-#define MIN_WIDTH 818
+#define MIN_WIDTH 738
 #define MIN_HEIGHT 400
 #define SHRUNK_HEIGHT 224
 

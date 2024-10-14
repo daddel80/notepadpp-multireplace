@@ -195,7 +195,6 @@ enum class ItemAction {
     Delete
 };
 
-
 enum class SortDirection {
     Unsorted,
     Ascending,
@@ -427,6 +426,7 @@ private:
     sptr_t pSciWndData = 0;
 
     // List related
+    bool useListEnabled = false; // status for List enabled
     std::wstring listFilePath = L""; //to store the file path of loaded list
     const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ /uused for Hashing
     std::size_t originalListHash = 0;
