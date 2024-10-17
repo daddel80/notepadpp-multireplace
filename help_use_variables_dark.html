@@ -1,7 +1,7 @@
 
 <!DOCTYPE HTML>
 <html><head><meta charset="utf-8">
-<title>MultiRpelace Use Variables Option</title>
+<title>MultiReplace Use Variables Option</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 /* Dark Mode Base Styles */
@@ -76,17 +76,17 @@ body.dark-mode code {
     background-color: #282c34;
     padding: 6px 8px;
     border-radius: 5px;
-    border: 1px solid #3a3c43; /* Angepasste Randfarbe für besseren Kontrast */
+    border: 1px solid #3a3c43;
     font-weight: 600;
     font-size: 0.9em;
-    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3); /* Stärkerer Schatten für mehr Tiefe */
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
     display: inline-block;
     margin: 0 2px;
     vertical-align: middle;
     line-height: 1.4;
 }
 
-
+/* Base Styles */
 html, body                   {margin: 0; padding: 0; width: 100%; height: 100%;}
 body                         {display: flex; flex-direction: column; font: 1em Calibri, Tahoma, sans-serif;}
 
@@ -234,10 +234,57 @@ table .optionsTable .group {
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
+nav.pagenav {
+    background-color: #eee;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+nav.pagenav {
+    background-color: #eee;
+    padding: 5px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+nav.pagenav a {
+    color: #00c;
+    text-decoration: none;
+    margin: 0;
+    padding: 2px 0;
+}
+
+nav.pagenav a:hover {
+    text-decoration: underline;
+}
+
+nav.pagenav .sub-item {
+    margin-left: 15px;
+    font-size: 0.95em;
+}
+
+body.dark-mode nav.pagenav {
+     background-color: #333;
+}
+
+body.dark-mode nav.pagenav a {
+     color: #89b4ff;
+}
+
+body.dark-mode nav.pagenav a:hover {
+     color: #62d1c3;
+}
+
+body.dark-mode nav.pagenav .sub-item {
+     color: #89b4ff;
+}
 </style>
 <script>
-
-var isDarkModeEnabled = true;  // Set this variavle to true or false to activate or deactivate DarkMode
+var isDarkModeEnabled = true;  // Set this variable to true or false to activate or deactivate DarkMode
 
 function doPageLoad() {
     if (document.getElementById("fontdown")) {
@@ -278,8 +325,8 @@ function checkDarkMode() {
 document.addEventListener('DOMContentLoaded', function() {
     console.log("Document loaded");
     checkDarkMode();
+    doPageLoad();
 });
-
 </script>
 
 </head>
@@ -289,18 +336,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <main>
 
-<div id=centershortlines></div>
+<div id="centershortlines"></div>
 
-<nav class=pagenav>
-<a href="#Introduction">Introduction</a>
-<a href="#FirstSteps">First steps</a>
-<a href="#Variables">Variables</a>
-<a href="#Commands">Commands</a>
-<a href="#Operators"> Operators</a>
-<a href="#IfThenLogic"> If-Then Logic</a>
-<a href="#DebugOption"> Debug option</a>
-<a href="#FurtherFunctions">Math & String Functions</a>
-<a href="#Examples">Examples</a>
+<nav class="pagenav">
+    <a href="#Introduction">Introduction</a>
+    <a href="#FirstSteps">First Steps</a>
+    <a href="#Variables">Variables</a>
+    <a href="#Commands">Commands</a>
+    <a href="#setstrorcalc" class="sub-item">set()</a>
+    <a href="#condcondition-trueval-falseval" class="sub-item">cond()</a>
+    <a href="#initvariable1value1-variable2value2" class="sub-item">init()</a>
+    <a href="#fmtnnum-maxdecimals-fixeddecimals" class="sub-item">fmtN()</a>
+    <a href="#Operators">Operators</a>
+    <a href="#IfThenLogic">If-Then Logic</a>
+    <a href="#DebugOption">Debug Option</a>
+    <a href="#FurtherFunctions">Math &amp; String Functions</a>
+    <a href="#Examples">Examples</a>
 </nav>
 
 <article>
@@ -399,10 +450,13 @@ document.addEventListener('DOMContentLoaded', function() {
             </tr>
         </table>
 		
-        <h3>init({Variable1=Value1, Variable2=Value2, ...})</h3>
+        <h3 id="initvariable1value1-variable2value2">init({Variable1=Value1, Variable2=Value2, ...})</h3>
         Initializes custom variables for use in various commands, extending beyond standard variables like CNT, MATCH, CAP1. These variables can carry the status of previous find-and-replace operations to subsequent ones.<p>
         <p>
             Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. So they can transfer values from one list entry to the following ones. They reset at the start of each new document in 'Replace All in All Open Documents'.
+        </p>
+        <p>
+            <strong>Note:</strong> An empty Find string can be used to set variables for the entire Find and Replace list without linking it to a specific Find action. This string will not match any text but is triggered at the start of the 'Replace' or  'Replace All' process when 'Use List' is enabled, allowing the Replace field to initialize commands like init() for the entire operation. The position of the entry in the list is irrelevant.
         </p>
         <table class="optionsTable">
             <tr>
@@ -425,7 +479,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </tr>
         </table>
 
-        <h3>fmtN(num, maxDecimals, fixedDecimals)</h3>
+        <h3 id="fmtnnum-maxdecimals-fixeddecimals">fmtN(num, maxDecimals, fixedDecimals)</h3>
         <p>Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).</p>
         <p><strong>Note</strong>: The <code>fmtN</code> command can exclusively be used within the <code>set</code> and <code>cond</code> commands.</p>
         <table class="optionsTable">

@@ -1,6 +1,6 @@
 # MultiReplace for Notepad++
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-3.1.2.18-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/3.1.2.18)
+[![Latest Stable Version](https://img.shields.io/badge/version-4.0.0.19-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.0.0.19)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, perfect for use across different sessions or projects. It increases efficiency by enabling multiple replacements at once, supports sorting and applying operations to specific columns in CSV files, and offers flexible options for replacing text in various ways.
@@ -137,6 +137,8 @@ Initializes custom variables for use in various commands, extending beyond stand
 
 Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. So they can transfer values from one list entry to the following ones.  They reset at the start of each new document in 'Replace All in All Open Documents'.
 
+**Note**: An empty Find string can be used to set variables for the entire Find and Replace list without linking it to a specific Find action. This string will not match any text but is triggered at the start of 'Replace' or 'Replace All' process when 'Use List' is enabled, allowing the Replace field to initialize commands like init() for the entire operation. The position of the entry in the list is irrelevant.
+
 | Find:            | Replace:                                                                                                      | Before                             | After                                     |
 |------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------|-------------------------------------------|
 | `(\d+)`          | `init({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4); if COL==2 then COL2=CAP1 end; if COL==4 then COL4=CAP1 end;` | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` |
@@ -255,6 +257,7 @@ Additional Interactions:
 
 ### Import/Export
 -   Supports import/export of search and replace strings with their options in CSV format, including selection states.
+-   Allows loading list files via drag and drop into the Search and Replace list.
 -   Adherence to RFC 4180 standards for CSV, enabling compatibility and easy interaction with other CSV handling tools.
 -   Enables reuse of search and replace operations across sessions and projects.
 
@@ -263,6 +266,10 @@ Additional Interactions:
 - This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
 
 ## Window and Display Options
+
+### Window Scaling Factor
+
+The MultiReplace plugin window and UI elements can be resized according to preference by setting a custom scaling factor between 0.5 and 2.0 (default: 1.0). This is configured by modifying the `ScaleFactor` variable in the file `C:\Users\<Username>\AppData\Roaming\plugins\config\MultiReplace.ini`.
 
 ### Transparency Configuration
 

@@ -19,6 +19,8 @@
 #include "StaticDialog/StaticDialog.h"
 #include "StaticDialog/resource.h"
 #include "PluginInterface.h"
+#include "DropTarget.h"
+#include "DPIManager.h"
 
 #include <string>
 #include <vector>
@@ -66,6 +68,21 @@ struct ReplaceItemData
     }
 };
 
+// Hash function for ReplaceItemData
+struct ReplaceItemDataHasher {
+    std::size_t operator()(const ReplaceItemData& item) const {
+        std::size_t hash = std::hash<bool>{}(item.isEnabled);
+        hash ^= std::hash<std::wstring>{}(item.findText) << 1;
+        hash ^= std::hash<std::wstring>{}(item.replaceText) << 1;
+        hash ^= std::hash<bool>{}(item.wholeWord) << 1;
+        hash ^= std::hash<bool>{}(item.matchCase) << 1;
+        hash ^= std::hash<bool>{}(item.useVariables) << 1;
+        hash ^= std::hash<bool>{}(item.extended) << 1;
+        hash ^= std::hash<bool>{}(item.regex) << 1;
+        return hash;
+    }
+};
+
 struct WindowSettings {
     int posX;
     int posY;
@@ -90,8 +107,9 @@ struct SearchResult {
 };
 
 struct SelectionInfo {
-    std::string text;
+
     Sci_Position startPos;
+    Sci_Position endPos;
     Sci_Position length;
 };
 
@@ -140,7 +158,6 @@ struct ColumnInfo {
 struct CountColWidths {
     HWND listView;
     int listViewWidth;
-    bool hasVerticalScrollbar;
     int findCountWidth;
     int replaceCountWidth;
     int margin;
@@ -162,6 +179,13 @@ struct MenuState {
     bool allDisabled = false;;
 };
 
+struct MonitorEnumData {
+    std::wstring monitorInfo;
+    int monitorCount;
+    int currentMonitor;
+    int primaryMonitorIndex;
+};
+
 enum class ItemAction {
     Search,
     Edit,
@@ -170,7 +194,6 @@ enum class ItemAction {
     Cut,
     Delete
 };
-
 
 enum class SortDirection {
     Unsorted,
@@ -239,7 +262,8 @@ public:
         _hMarkMatchesButton(nullptr),
         _hReplaceAllButton(nullptr),
         _replaceListView(NULL),
-        _hFont(nullptr),
+        _hStandardFont(nullptr),
+        _hBoldFont(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
     {
@@ -247,6 +271,10 @@ public:
     };
 
     static MultiReplace* instance; // Static instance of the class
+
+    // Helper functions for scaling
+    inline int sx(int value) { return dpiMgr->scaleX(value); }
+    inline int sy(int value) { return dpiMgr->scaleY(value); }
 
     static inline void setInstance(MultiReplace* inst) {
         instance = inst;
@@ -299,6 +327,10 @@ public:
 
     static std::vector<LogEntry> logChanges;
 
+    // Drag-and-Drop functionality
+    DropTarget* dropTarget;  // Pointer to DropTarget instance
+    void loadListFromCsv(const std::wstring& filePath); // used in DropTarget.cpp
+    void initializeDragAndDrop();
 
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
@@ -310,14 +342,16 @@ private:
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
-    static constexpr int COUNT_COLUMN_WIDTH = 50; // Initial Size for Count Column
-    static constexpr int MIN_COLUMN_WIDTH = 60;  // Minimum size of Find and Replace Column
+    static constexpr int COUNT_COLUMN_WIDTH = 40; // Initial Size for Count Column
+    static constexpr int MIN_COLUMN_WIDTH = 48;  // Minimum size of Find and Replace Column
     static constexpr int STEP_SIZE = 5; // Speed for opening and closing Count Columns
     static constexpr wchar_t* symbolSortAsc = L"▼";
     static constexpr wchar_t* symbolSortDesc = L"▲";
     static constexpr wchar_t* symbolSortAscUnsorted = L"▽";
     static constexpr wchar_t* symbolSortDescUnsorted = L"△";
     static constexpr int MAX_CAP_GROUPS = 9; // Maximum number of capture groups supported by Notepad++
+
+    DPIManager* dpiMgr; // Pointer to DPIManager instance
 
     // Static variables related to GUI 
     static HWND s_hScintilla;
@@ -336,8 +370,11 @@ private:
     HWND _hReplaceAllButton;
     HWND _replaceListView;
     HWND _hStatusMessage;
-    HFONT _hFont;
+    HFONT _hStandardFont;
+    HFONT _hBoldFont;
     COLORREF _statusMessageColor;
+    HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
+    HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button
 
     // ContextMenuInfo structure instance
     POINT _contextMenuClickPoint;
@@ -389,10 +426,21 @@ private:
     SciFnDirect pSciMsg = nullptr;
     sptr_t pSciWndData = 0;
 
+    // List related
+    bool useListEnabled = false; // status for List enabled
+    std::wstring listFilePath = L""; //to store the file path of loaded list
+    const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ /uused for Hashing
+    std::size_t originalListHash = 0;
+    int useListOnHeight = MIN_HEIGHT;      // Default height when "Use List" is on
+    const int useListOffHeight = SHRUNK_HEIGHT; // Height when "Use List" is off (constant)
+    int checkMarkWidth_scaled = 0;
+    int crossWidth_scaled = 0;
+    int boxWidth_scaled = 0;
+    bool highlightMatchEnabled = false;  // HighlightMatch
+
+
     // GUI control-related constants
-    const std::vector<int> selectionRadioDisabledButtons = {
-        IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_REPLACE_BUTTON
-    };
+    const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
     const std::vector<int> columnRadioDependentElements = {
         IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
@@ -404,9 +452,17 @@ private:
     BYTE foregroundTransparency = 255; // Default to fully opaque
     BYTE backgroundTransparency = 190; // Default to semi-transparent
 
+    // Window DPI scaled size 
+    int MIN_WIDTH_scaled;
+    int MIN_HEIGHT_scaled;
+    int SHRUNK_HEIGHT_scaled;
+    int COUNT_COLUMN_WIDTH_scaled;
+    int MIN_COLUMN_WIDTH_scaled;
+
     //Initialization
     void initializeWindowSize();
     RECT calculateMinWindowFrame(HWND hwnd);
+    void initializeFontStyles();
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();
@@ -418,6 +474,8 @@ private:
     void updateStatisticsColumnButtonIcon();
     void drawGripper();
     void SetWindowTransparency(HWND hwnd, BYTE alpha);
+    void adjustWindowSize();
+    void updateUseListButtonState(bool isUpdate);
 
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);
@@ -425,7 +483,8 @@ private:
     void createListViewColumns(HWND listView);
     void insertReplaceListItem(const ReplaceItemData& itemData);
     int  calcDynamicColWidth(const CountColWidths& widths);
-    void updateListViewAndColumns(HWND listView, LPARAM lParam);
+    void updateListViewAndColumns();
+    void updateListViewTooltips();
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void shiftListItem(HWND listView, const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);
@@ -435,8 +494,11 @@ private:
     void selectRows(const std::vector<size_t>& selectedIDs);
     void handleCopyToListButton();
     void resetCountColumns();
-    void updateCountColumns(size_t itemIndex, int findCount, int replaceCount = -1);
+    void updateCountColumns(const size_t itemIndex, const int findCount, int replaceCount = -1);
     void resizeCountColumns();
+    void clearList();
+    std::size_t computeListHash(const std::vector<ReplaceItemData>& list);
+    void refreshUIListView();
 
     //Contextmenu
     void toggleBooleanAt(int itemIndex, int Column);
@@ -455,11 +517,11 @@ private:
     //Replace
     void handleReplaceAllButton();
     void handleReplaceButton();
-    void replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount);
-    bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos);
+    bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX);
+    bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex = SIZE_MAX);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
-    bool MultiReplace::preProcessListForReplace();
+    bool preProcessListForReplace(bool highlight);
     SelectionInfo getSelectionInfo();
     void captureLuaGlobals(lua_State* L);
     void loadLuaGlobals(lua_State* L);
@@ -481,6 +543,7 @@ private:
     SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start);
     SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
     SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
+    void MultiReplace::selectListItem(size_t matchIndex);
 
     //Mark
     void handleMarkMatchesButton();
@@ -525,33 +588,38 @@ private:
     int convertExtendedToString(const std::string& query, std::string& result);
     std::string convertAndExtend(const std::wstring& input, bool extended);
     std::string convertAndExtend(const std::string& input, bool extended);
-    static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 10);
+    static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 100);
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
     void setSelections(bool select, bool onlySelected = false);
     void updateHeaderSelection();
     void updateHeaderSortDirection();
     void showStatusMessage(const std::wstring& messageText, COLORREF color);
+    std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
+    void showListFilePath();
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
     LRESULT getEOLLength();
     std::string getEOLStyle();
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
     bool normalizeAndValidateNumber(std::string& str);
-    std::vector<WCHAR> MultiReplace::createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
+    std::vector<WCHAR> createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
+    int getCharacterWidth(int elementID, const wchar_t* character);
+    int getFontHeight(HWND hwnd, HFONT hFont);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput) const;
     std::string wstringToString(const std::wstring& input) const;
-    std::wstring MultiReplace::utf8ToWString(const char* cstr) const;
+    std::wstring utf8ToWString(const char* cstr) const;
     std::string utf8ToCodepage(const std::string& utf8Str, int codepage) const;
-    std::wstring trim(const std::wstring& str);    
+    std::wstring trim(const std::wstring& str);
 
     //FileOperations
-    std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension);
+    std::wstring promptSaveListToCsv();
+    std::wstring openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath);
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
-    void loadListFromCsv(const std::wstring& filePath);
+    void checkForFileChangesAtStartup();
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
 
@@ -566,12 +634,15 @@ private:
     std::pair<std::wstring, std::wstring> generateConfigFilePaths();
     void saveSettingsToIni(const std::wstring& iniFilePath);
     void saveSettings();
+    int checkForUnsavedChanges();
     void loadSettingsFromIni(const std::wstring& iniFilePath);
     void loadSettings();
     void loadUIConfigFromIni();
     std::wstring readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue);
     bool readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue);
     int readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue);
+    float readFloatFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, float defaultValue);
+    std::size_t readSizeTFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, std::size_t defaultValue);
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
 
     // Language
@@ -582,6 +653,10 @@ private:
     LPCWSTR getLangStrLPCWSTR(const std::wstring& id);
     LPWSTR getLangStrLPWSTR(const std::wstring& id);
     BYTE readByteFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, BYTE defaultValue);
+
+    // Debug DPI Information
+    void showDPIAndFontInfo();
+
 };
 
 extern std::unordered_map<std::wstring, std::wstring> languageMap;

@@ -109,6 +109,8 @@
     </ClCompile>
     <ClCompile Include="..\src\StaticDialog\StaticDialog.cpp" />
     <ClCompile Include="..\src\language_mapping.cpp" />
+    <ClCompile Include="..\src\DropTarget.cpp" />
+    <ClCompile Include="..\src\DPIManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -201,6 +203,8 @@
     </ClInclude>
     <ClInclude Include="..\src\StaticDialog\resource.h" />
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
+    <ClInclude Include="..\src\DropTarget.h" />
+    <ClInclude Include="..\src\DPIManager.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />
