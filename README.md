@@ -18,7 +18,14 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 - [Option 'Use Variables'](#option-use-variables)
   - [Variables Overview](#variables-overview)
   - [Command Overview](#command-overview)
+    - [set](#setstrorcalc)
+    - [cond](#condcondition-trueval-falseval)
+    - [init](#initvariable1value1-variable2value2-)
+    - [fmtN](#fmtnnum-maxdecimals-fixeddecimals)
+  - [Operators](#operators)
+  - [If-Then Logic](#if-then-logic)
   - [DEBUG option](#debug-option)
+  - [Examples](#more-examples)
 - [User Interaction and List Management](#user-interaction-and-list-management)
   - [Context Menu and Keyboard Shortcuts](#context-menu-and-keyboard-shortcuts)
   - [List Columns](#list-columns)
@@ -33,13 +40,14 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
   
 ## Key Features
 
--   **Multiple Replacements:** Execute multiple replacements in a single operation, in one document or across all opened documents.
--   **Entry Toggling:** Toggle list entries for replacement, highlighting, or searching.
--   **String Storage:** Store and load your search and replace strings in a list, facilitating reuse across different sessions or projects.
--   **CSV Scope Functionality:** Apply search, replace, or sort operations to specific columns in a CSV or other delimited file by selecting column numbers.
--   **Scripted Text Replacements:** Export to bash script for scripted text replacements.
--   **Highlighting:** Highlight multiple find words in unique colors for better visual distinction.
--   **Variable Usage:** Employ variables for conditional and computational operations within the replacement string.
+-   **Multiple Replacements**: Perform multiple replacements in a single operation, in one document or across all open documents
+-   **Save and Load Lists**: Store and load search/replace lists for reuse across different sessions or projects, including all relevant settings.
+-   **Selection Support**: Supports rectangular and multiple selections for targeted replacements.
+-   **CSV Column Operations**: Search, replace, sort, or highlight specific columns in CSV or other delimited files by selecting column numbers.
+-   **Conditional Replacements**: Use variables, conditions, and mathematical operations for complex replacements, fully integrated into the replacement list like regular entries.
+-   **Highlight Matches**: Mark multiple search terms in the text, each with a distinct color for easy differentiation.
+-   **Bash Script Export**: Export replacement operations as a bash script for use outside of Notepad++.
+
 
 ## Match and Replace Options
 
@@ -70,7 +78,7 @@ Scope functions define the range for searching and replacing strings:
 - **Clipboard Column Copying**: Copy columns with original delimiters to clipboard.
 
 ### Header Line Sorting Control
-- **Exclude Header Lines from Sorting**: Set `HeaderLines=<number>` in You can set the transparency levels for the MultiReplace plugin window in the INI file located at `C:\Program Files\Notepad++\plugins\MultiReplace\MultiReplace.ini`. to specify the number of top lines to exclude from sorting as headers.
+- **Exclude Header Lines from Sorting**: Set `HeaderLines=<number>` in You can set the transparency levels for the MultiReplace plugin window in the INI file located at `C:\Users\<YourUsername>\AppData\Roaming\Notepad++\plugins\Config\MultiReplace.ini`. to specify the number of top lines to exclude from sorting as headers.
 
 ### Numeric Sorting in CSV
 - For accurate numeric sorting in CSV files, the following settings and regex patterns can be used:
@@ -128,6 +136,8 @@ Implements if-then-else logic, or if-then if falseVal is omitted. Evates the con
 Initializes custom variables for use in various commands, extending beyond standard variables like CNT, MATCH, CAP1. These variables can carry the status of previous find-and-replace operations to subsequent ones.
 
 Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. So they can transfer values from one list entry to the following ones.  They reset at the start of each new document in 'Replace All in All Open Documents'.
+
+**Note**: An empty Find string can be used to set variables for the entire Find and Replace list without linking it to a specific Find action. This string will not match any text but is triggered at the start of 'Replace' or 'Replace All' process when 'Use List' is enabled, allowing the Replace field to initialize commands like init() for the entire operation. The position of the entry in the list is irrelevant.
 
 | Find:            | Replace:                                                                                                      | Before                             | After                                     |
 |------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------|-------------------------------------------|
@@ -258,7 +268,7 @@ Additional Interactions:
 
 ### Transparency Configuration
 
-You can set the transparency levels for the MultiReplace plugin window in the INI file located at `C:\Program Files\Notepad++\plugins\MultiReplace\MultiReplace.ini`.
+You can set the transparency levels for the MultiReplace plugin window in the INI file located at `C:\Users\<YourUsername>\AppData\Roaming\Notepad++\plugins\Config\MultiReplace.ini`.
 
 **INI File Settings:**
 - `ForegroundTransparency`: Transparency level when in focus (0-255, default 255).
