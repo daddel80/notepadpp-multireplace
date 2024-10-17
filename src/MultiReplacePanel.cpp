@@ -7312,11 +7312,14 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"ListFilePath=" + listFilePath + L"\n");
     outFile << wstringToString(L"OriginalListHash=" + std::to_wstring(originalListHash) + L"\n");
 
-    // Convert and Store "Find what" history
+    // Save the "Find what" history
     LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
+    int itemsToSave = std::min(static_cast<int>(findWhatCount), maxHistoryItems);
     outFile << wstringToString(L"[History]\n");
-    outFile << wstringToString(L"FindTextHistoryCount=" + std::to_wstring(findWhatCount) + L"\n");
-    for (LRESULT i = 0; i < findWhatCount; i++) {
+    outFile << wstringToString(L"FindTextHistoryCount=" + std::to_wstring(itemsToSave) + L"\n");
+
+    // Save only the newest maxHistoryItems entries (starting from index 0)
+    for (LRESULT i = 0; i < itemsToSave; i++) {
         LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
         SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
@@ -7324,10 +7327,13 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
         outFile << wstringToString(L"FindTextHistory" + std::to_wstring(i) + L"=" + findTextData + L"\n");
     }
 
-    // Store "Replace with" history
+    // Save the "Replace with" history
     LRESULT replaceWithCount = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETCOUNT, 0, 0);
-    outFile << wstringToString(L"ReplaceTextHistoryCount=" + std::to_wstring(replaceWithCount) + L"\n");
-    for (LRESULT i = 0; i < replaceWithCount; i++) {
+    int replaceItemsToSave = std::min(static_cast<int>(replaceWithCount), maxHistoryItems);
+    outFile << wstringToString(L"ReplaceTextHistoryCount=" + std::to_wstring(replaceItemsToSave) + L"\n");
+
+    // Save only the newest maxHistoryItems entries (starting from index 0)
+    for (LRESULT i = 0; i < replaceItemsToSave; i++) {
         LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
         SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
@@ -7361,15 +7367,16 @@ void MultiReplace::saveSettings() {
 }
 
 void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
-    // Loading the history for the Find and Replace text fields
+    // Loading the history for the Find text field in reverse order
     int findHistoryCount = readIntFromIniFile(iniFilePath, L"History", L"FindTextHistoryCount", 0);
-    for (int i = 0; i < findHistoryCount; i++) {
+    for (int i = findHistoryCount - 1; i >= 0; i--) {
         std::wstring findHistoryItem = readStringFromIniFile(iniFilePath, L"History", L"FindTextHistory" + std::to_wstring(i), L"");
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findHistoryItem);
     }
 
+    // Loading the history for the Replace text field in reverse order
     int replaceHistoryCount = readIntFromIniFile(iniFilePath, L"History", L"ReplaceTextHistoryCount", 0);
-    for (int i = 0; i < replaceHistoryCount; i++) {
+    for (int i = replaceHistoryCount - 1; i >= 0; i--) {
         std::wstring replaceHistoryItem = readStringFromIniFile(iniFilePath, L"History", L"ReplaceTextHistory" + std::to_wstring(i), L"");
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceHistoryItem);
     }

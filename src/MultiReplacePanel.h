@@ -440,6 +440,7 @@ private:
 
 
     // GUI control-related constants
+    const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
     const std::vector<int> columnRadioDependentElements = {
         IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
     };
@@ -587,7 +588,7 @@ private:
     int convertExtendedToString(const std::string& query, std::string& result);
     std::string convertAndExtend(const std::wstring& input, bool extended);
     std::string convertAndExtend(const std::string& input, bool extended);
-    static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 10);
+    static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 100);
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
     void setSelections(bool select, bool onlySelected = false);
     void updateHeaderSelection();
