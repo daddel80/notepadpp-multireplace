@@ -266,6 +266,10 @@ Additional Interactions:
 
 ## Window and Display Options
 
+### Window Scaling Factor
+
+The MultiReplace plugin window and UI elements can be resized according to preference by setting a custom scaling factor between 0.5 and 2.0 (default: 1.0). This is configured by modifying the `ScaleFactor` variable in the file `C:\Users\<Username>\AppData\Roaming\plugins\config\MultiReplace.ini`.
+
 ### Transparency Configuration
 
 You can set the transparency levels for the MultiReplace plugin window in the INI file located at `C:\Users\<YourUsername>\AppData\Roaming\Notepad++\plugins\Config\MultiReplace.ini`.
