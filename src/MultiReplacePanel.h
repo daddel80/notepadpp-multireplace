@@ -373,7 +373,8 @@ private:
     HFONT _hStandardFont;
     HFONT _hBoldFont;
     COLORREF _statusMessageColor;
-    HWND _hHeaderTooltip; // Handle to the tooltip for the ListView header
+    HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
+    HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button
 
     // ContextMenuInfo structure instance
     POINT _contextMenuClickPoint;
@@ -473,6 +474,7 @@ private:
     void drawGripper();
     void SetWindowTransparency(HWND hwnd, BYTE alpha);
     void adjustWindowSize();
+    void updateUseListButtonState(bool isUpdate);
 
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);

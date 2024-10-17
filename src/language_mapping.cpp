@@ -32,7 +32,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_save_list", L"Save List" },
 { L"panel_save_as", L"Save As..." },
 { L"panel_export_to_bash", L"Export to Bash" },
-{ L"panel_shift_lines", L"Shift Lines" },
+{ L"panel_move_lines", L"Move Lines" },
 { L"panel_use_list", L"Use List" },
 { L"panel_show", L"Show" },
 { L"panel_hide", L"Hide" },
@@ -58,6 +58,8 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"tooltip_display_statistics_columns", L"Show/Hide Statistics Columns" },
 { L"tooltip_new_list", L"New List" },
 { L"tooltip_save", L"Save List" },
+{ L"tooltip_enable_list", L"Enable list" },
+{ L"tooltip_disable_list", L"Disable list" },
 
 // header entries
 { L"header_find_count", L"Find Count" },
@@ -123,6 +125,8 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_no_find_replace_list_input", L"No 'Find' or 'Replace' string provided. Please enter a value." },
 { L"status_found_in_list", L"Entry found in the list." },
 { L"status_not_found_in_list", L"No entry found in the list based on input fields." },
+{ L"status_enable_list", L"List mode enabled. Actions will use list entries." },
+{ L"status_disable_list", L"List mode disabled. Actions will use 'Find what' and 'Replace with' fields." },
 
 // Dynamic Status message entries
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },

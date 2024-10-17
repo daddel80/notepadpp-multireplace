@@ -117,7 +117,7 @@ void MultiReplace::initializeFontStyles() {
 
     // Create and apply a bold font for specific controls
     _hBoldFont = CreateFont(
-        dpiMgr->scaleY(19), // Larger font height
+        dpiMgr->scaleY(20), // Larger font height
         0,
         0,
         0,
@@ -198,10 +198,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int useListButtonX = buttonX + sx(134);
     int swapButtonX = windowWidth - sx(36 + 128 + 26);
     int comboWidth = windowWidth - sx(292);
-    //int frameX = windowWidth - sx(256);
     int listWidth = windowWidth - sx(208);
     int listHeight = windowHeight - sy(248);
-    //int checkboxX = buttonX - sx(84);
+    int useListButtonY = windowHeight - sy(37);
 
     // Apply scaling only when assigning to ctrlMap
     ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(15), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_find_what"), SS_RIGHT, NULL };
@@ -214,22 +213,22 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_REPLACE_FIRST_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_first_match_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(176), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(160), sy(104), WC_BUTTON, getLangStrLPCWSTR(L"panel_search_mode"), BS_GROUPBOX, NULL };
+    ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(158), sy(104), WC_BUTTON, getLangStrLPCWSTR(L"panel_search_mode"), BS_GROUPBOX, NULL };
     ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(144), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
     ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(144), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(144), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SCOPE_GROUP] = { sx(352), sy(79), sx(198), sy(130), WC_BUTTON, getLangStrLPCWSTR(L"panel_scope"), BS_GROUPBOX, NULL };
+    ctrlMap[IDC_SCOPE_GROUP] = { sx(352), sy(79), sx(198), sy(125), WC_BUTTON, getLangStrLPCWSTR(L"panel_scope"), BS_GROUPBOX, NULL };
     ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(360), sy(101), sx(184), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
     ctrlMap[IDC_SELECTION_RADIO] = { sx(360), sy(126), sx(184), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(361), sy(150), sx(40), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(358), sy(182), sx(25), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_cols"), SS_RIGHT, NULL };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(385), sy(182), sx(40), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_columns") };
-    ctrlMap[IDC_DELIMITER_STATIC] = { sx(427), sy(182), sx(35), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
-    ctrlMap[IDC_DELIMITER_EDIT] = { sx(464), sy(182), sx(24), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_delimiter") };
-    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(490), sy(182), sx(35), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
-    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(527), sy(182), sx(12), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_quote") };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(358), sy(181), sx(25), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_cols"), SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(385), sy(181), sx(40), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_columns") };
+    ctrlMap[IDC_DELIMITER_STATIC] = { sx(427), sy(181), sx(35), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
+    ctrlMap[IDC_DELIMITER_EDIT] = { sx(464), sy(181), sx(24), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_delimiter") };
+    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(490), sy(181), sx(35), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(527), sy(181), sx(12), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_quote") };
 
     ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(406), sy(149), sx(14), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
     ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(421), sy(149), sx(14), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
@@ -244,22 +243,21 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(43), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(15), sx(128), sy(48), WC_BUTTON, getLangStrLPCWSTR(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    //ctrlMap[IDC_STATIC_FRAME] = { frameX, sy(79), sx(228), sy(130), WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(94), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(94), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(94), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
-    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(94), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_2_buttons_mode") };
-    ctrlMap[IDC_FIND_BUTTON] = { buttonX, sy(122), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_find_next"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[ID_STATISTICS_COLUMNS] = { sx(2), sy(228), sx(14), sy(19), WC_BUTTON, L"▶", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
+    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(91), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
+    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_2_buttons_mode") };
+    ctrlMap[IDC_FIND_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_find_next"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[ID_STATISTICS_COLUMNS] = { sx(2), sy(225), sx(14), sy(19), WC_BUTTON, L"▶", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
 
     findNextButtonText = L"▼ " + getLangStr(L"panel_find_next_small");
-    ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(122), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(122), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(150), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(150), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(150), sx(28), sy(24), WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") };
-    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(178), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") };
+    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227), sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_new_list") };
@@ -270,10 +268,10 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(4), sy(323), sx(24), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4), sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11), sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16), sx(96), sy(16), WC_STATIC, getLangStrLPCWSTR(L"panel_shift_lines"), SS_LEFT, NULL };
+    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16), sx(96), sy(16), WC_STATIC, getLangStrLPCWSTR(L"panel_move_lines"), SS_LEFT, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { sx(20), sy(227), listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
     ctrlMap[IDC_PATH_DISPLAY] = { sx(18), sy(227) + listHeight + sy(5), listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
-    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, windowHeight - sy(37), sx(24), sy(24), WC_BUTTON, useListEnabled ? L"∧" : L"∨", BS_PUSHBUTTON | WS_TABSTOP, useListEnabled ? NULL : getLangStrLPCWSTR(L"panel_use_list") };
+    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY, sx(24), sy(24), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 }
 
 void MultiReplace::initializeCtrlMap() {
@@ -295,6 +293,9 @@ void MultiReplace::initializeCtrlMap() {
     if (!createAndShowWindows()) {
         return;
     }
+
+    // Initialize the tooltip for the "Use List" button with dynamic text
+    updateUseListButtonState(false);
 
     // Limit the input for IDC_QUOTECHAR_EDIT to one character
     SendMessage(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), EM_SETLIMITTEXT, (WPARAM)1, 0);
@@ -443,7 +444,7 @@ void MultiReplace::moveAndResizeControls() {
     /*
     // IDs of controls to be redrawn
     const int redrawIds[] = {
-        IDC_USE_LIST_CHECKBOX, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
+        IDC_USE_LIST_BUTTON, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
         IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON,
         IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT
     };
@@ -599,6 +600,61 @@ void MultiReplace::adjustWindowSize() {
 
     // Update the visibility of UI elements based on the current modes
     updateButtonVisibilityBasedOnMode();
+}
+
+void MultiReplace::updateUseListButtonState(bool isUpdate)
+{
+    // Set the button text based on the current state
+    SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"∧" : L"∨");
+
+    // Create the tooltip window if it doesn't exist yet
+    if (!isUpdate && !_hUseListButtonTooltip)
+    {
+        _hUseListButtonTooltip = CreateWindowEx(
+            NULL, TOOLTIPS_CLASS, NULL,
+            WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON,  // Use the same styles as in createAndShowWindows
+            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+            _hSelf, NULL, hInstance, NULL);
+
+        if (!_hUseListButtonTooltip)
+        {
+            // Handle error if tooltip creation fails
+            return;
+        }
+
+        // Activate the tooltip
+        SendMessage(_hUseListButtonTooltip, TTM_ACTIVATE, TRUE, 0);
+    }
+
+    // Prepare the TOOLINFO structure
+    TOOLINFO ti = { 0 };
+    ti.cbSize = sizeof(TOOLINFO);
+    ti.hwnd = _hSelf;  // Parent window handle
+    ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+    ti.uId = (UINT_PTR)GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON);  // Associate with the specific control
+
+    // Get tooltip text based on the list state
+    LPCWSTR tooltipText = useListEnabled ? getLangStrLPCWSTR(L"tooltip_disable_list") : getLangStrLPCWSTR(L"tooltip_enable_list");
+    ti.lpszText = const_cast<LPWSTR>(tooltipText);  // Assign the tooltip text
+
+    // If it's an update, delete the old tooltip first
+    if (isUpdate)
+    {
+        SendMessage(_hUseListButtonTooltip, TTM_DELTOOL, 0, (LPARAM)&ti);
+    }
+
+    // Add or update the tooltip
+    SendMessage(_hUseListButtonTooltip, TTM_ADDTOOL, 0, (LPARAM)&ti);
+
+    // Set the status message depending on the list state
+    if (useListEnabled)
+    {
+        showStatusMessage(getLangStr(L"status_enable_list"), RGB(0, 128, 0));
+    }
+    else
+    {
+        showStatusMessage(getLangStr(L"status_disable_list"), RGB(0, 128, 0));
+    }
 }
 
 #pragma endregion
@@ -1085,7 +1141,7 @@ void MultiReplace::handleCopyToListButton() {
 
     // Enable the ListView accordingly
     useListEnabled = true;
-    SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, L"∧");
+    updateUseListButtonState(true);
     adjustWindowSize();
 }
 
@@ -1253,16 +1309,16 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
     // Adjust X position by the horizontal scroll position
     int correctedX = totalWidthBeforeColumn - siHorz.nPos;
 
-    // Adjust Y position considering the scroll position and adding an offset for better alignment
-    int rowHeight = 20; // Assumed row height, adjust as needed
-    SCROLLINFO siVert = { sizeof(siVert), SIF_POS };
-    GetScrollInfo(_replaceListView, SB_VERT, &siVert);
-    int visibleRowIndex = itemIndex - siVert.nPos; // Calculate the visible row index
-    int correctedY = (visibleRowIndex + 1) * rowHeight + 3; // Adjust Y position downwards by 3 pixels
+    // Get the rectangle for the current item to calculate Y position dynamically
+    RECT itemRect;
+    ListView_GetItemRect(_replaceListView, itemIndex, &itemRect, LVIR_BOUNDS);
+
+    // Correct the Y position based on the item's top coordinate
+    int correctedY = itemRect.top;
 
     // Create the Edit window with corrected coordinates and size
     hwndEdit = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-        correctedX, correctedY, columnWidth, rowHeight,
+        correctedX, correctedY, columnWidth, itemRect.bottom - itemRect.top,
         _replaceListView, NULL, (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE), NULL);
 
     // Set the initial text for the Edit window
@@ -1271,11 +1327,20 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
     itemText[MAX_TEXT_LENGTH - 1] = L'\0';
     SetWindowText(hwndEdit, itemText);
 
-    // Adjust font size for the Edit window
-    HFONT hFont = CreateFont(-11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
-        DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-    SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
+    // Get the ListView font and create a smaller version of it for the Edit control
+    HFONT hListViewFont = (HFONT)SendMessage(_replaceListView, WM_GETFONT, 0, 0);
+    if (hListViewFont) {
+        // Retrieve the LOGFONT structure of the current font
+        LOGFONT lf;
+        GetObject(hListViewFont, sizeof(LOGFONT), &lf);
+
+        // Decrease the font height by 4 units
+        lf.lfHeight -= 4;
+
+        // Create a new font for the Edit control
+        HFONT hEditFont = CreateFontIndirect(&lf);
+        SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hEditFont, TRUE);
+    }
 
     // Set focus and select all text
     SetFocus(hwndEdit);
@@ -2438,7 +2503,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_USE_LIST_BUTTON:
         {
             useListEnabled = !useListEnabled;
-            SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"∧" : L"∨");
+            updateUseListButtonState(true);
             adjustWindowSize();
             return TRUE;
         }
@@ -7349,7 +7414,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
 
     useListEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", true);
-    SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"∧" : L"∨");
+    updateUseListButtonState(false);
 
     highlightMatchEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"HighlightMatch", true);
 
@@ -7432,7 +7497,7 @@ void MultiReplace::loadUIConfigFromIni() {
 
     // Load the state of the Use List checkbox from the ini file
     useListEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", true); // Default to true if not found
-    SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"∧" : L"∨");
+    updateUseListButtonState(false);
 
     // Load window width
     int savedWidth = readIntFromIniFile(iniFilePath, L"Window", L"Width", MIN_WIDTH_scaled);
