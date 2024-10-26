@@ -92,7 +92,7 @@
 #define IDC_QUOTECHAR_STATIC            5465
 
 #define IDC_STATIC_FRAME                5501
-#define ID_STATISTICS_COLUMNS           5502
+#define IDC_COLUMN_VISIBILITY_BUTTON    5502
 #define IDC_REPLACE_LIST                5503
 
 #define IDD_ABOUT_DIALOG                5600
@@ -112,6 +112,11 @@
 #define IDM_SELECT_ALL                  5708
 #define IDM_ENABLE_LINES                5709
 #define IDM_DISABLE_LINES               5710
+
+#define IDM_TOGGLE_FIND_COUNT           5801
+#define IDM_TOGGLE_REPLACE_COUNT        5802
+#define IDM_TOGGLE_COMMENTS             5803
+
 
 #define STYLE1							60
 #define STYLE2							61

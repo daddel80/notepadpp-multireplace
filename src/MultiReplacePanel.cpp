@@ -248,7 +248,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
     ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_2_buttons_mode") };
     ctrlMap[IDC_FIND_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_find_next"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[ID_STATISTICS_COLUMNS] = { sx(2), sy(225), sx(14), sy(19), WC_BUTTON, L"▶", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
+    ctrlMap[IDC_COLUMN_VISIBILITY_BUTTON] = { sx(2), sy(225), sx(14), sy(19), WC_BUTTON, L"…", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
 
     findNextButtonText = L"▼ " + getLangStr(L"panel_find_next_small");
     ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
@@ -491,7 +491,7 @@ void MultiReplace::updateButtonVisibilityBasedOnMode() {
     ShowWindow(GetDlgItem(_hSelf, IDC_SHIFT_TEXT), useListEnabled ? SW_SHOW : SW_HIDE);
     ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), useListEnabled ? SW_SHOW : SW_HIDE);
     ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), useListEnabled ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, ID_STATISTICS_COLUMNS), useListEnabled ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_COLUMN_VISIBILITY_BUTTON), useListEnabled ? SW_SHOW : SW_HIDE);
 }
 
 void MultiReplace::setUIElementVisibility() {
@@ -518,15 +518,6 @@ void MultiReplace::setUIElementVisibility() {
 
     // Specifically manage the FIND_PREV_BUTTON state based on regex and selection mode
     EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !(regexChecked || selectionChecked));
-}
-
-void MultiReplace::updateStatisticsColumnButtonIcon() {
-    LPCWSTR icon = isStatisticsColumnsExpanded ? L"◀" : L"▶";
-    // LPCWSTR tooltip = isStatisticsColumnsExpanded ? L"Collapse statistics columns" : L"Expand statistics columns";
-
-    SetDlgItemText(_hSelf, ID_STATISTICS_COLUMNS, icon);
-
-    //updateButtonTooltip(ID_STATISTICS_COLUMNS, tooltip);
 }
 
 void MultiReplace::drawGripper() {
@@ -708,88 +699,151 @@ void MultiReplace::createListViewColumns(HWND listView) {
     lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
     lvc.fmt = LVCFMT_LEFT;
 
-    // Get the client rectangle
-    RECT rcClient;
-    GetClientRect(_hSelf, &rcClient);
-    // Extract width from the RECT
-    int windowWidth = rcClient.right - rcClient.left;
+    // Helper function to update the column width based on visibility
+    auto updateColumnWidth = [&](bool isVisible, ColumnID columnID, int& widthVar) {
+        // Check if the column exists by verifying if the column index is valid
+        int columnCount = Header_GetItemCount(ListView_GetHeader(listView)); // Get the number of current columns
 
-    // Calculate the remaining width for the first two columns 
-    // 225 equals (rcList.right - rcList.left); is fixed and has not to be calculated
-    int adjustedWidth = windowWidth - sx(225); // sx() Function to scale values for DPI awareness
+        if (isVisible) {
+            // If the column was not visible before or has not been created yet
+            if (columnIndices[columnID] == -1 || columnIndices[columnID] >= columnCount) {
+                widthVar = std::max(widthVar, MIN_GENERAL_WIDTH_scaled); // Use default width
+            }
+            else {
+                // If the column is already created and visible, get its current width
+                widthVar = ListView_GetColumnWidth(listView, columnIndices[columnID]);
+            }
+        }
+        else if (columnIndices[columnID] != -1 && columnIndices[columnID] < columnCount) {
+            // If the column is being disabled and was previously visible, save its width before hiding
+            widthVar = ListView_GetColumnWidth(listView, columnIndices[columnID]);
+        }
+        };
 
-    // Calculate the total width of columns 5 to 10 (Options and Delete Button)
-    int totalWidthColumn5to10 = (checkMarkWidth_scaled * 6) + crossWidth_scaled;
+    // Update global variables with the current column widths
+    updateColumnWidth(isFindCountVisible, ColumnID::FIND_COUNT, findCountColumnWidth);
+    updateColumnWidth(isReplaceCountVisible, ColumnID::REPLACE_COUNT, replaceCountColumnWidth);
+    updateColumnWidth(isCommentsColumnVisible, ColumnID::COMMENTS, commentsColumnWidth);
 
-    // Calculate the remaining width after subtracting the widths of the specified columns
-    int remainingWidth = adjustedWidth - findCountColumnWidth - replaceCountColumnWidth - totalWidthColumn5to10;
+    // Delete all existing columns first
+    int columnCount = Header_GetItemCount(ListView_GetHeader(listView));
+    for (int i = columnCount - 1; i >= 0; i--) {
+        ListView_DeleteColumn(listView, i);
+    }
+    columnIndices.clear();  // Clear previous indices after deleting
 
-    // Ensure remainingWidth is not less than the minimum width
-    remainingWidth = std::max(remainingWidth, MIN_COLUMN_WIDTH_scaled);  // Minimum size of Find and Replace Column
+    const ControlInfo& listCtrlInfo = ctrlMap[IDC_REPLACE_LIST];
 
-    lvc.iSubItem = 0;
-    lvc.pszText = L"";
-    lvc.cx = 0;
-    ListView_InsertColumn(listView, 0, &lvc);
+    // Define the ResizableColWidths struct to pass to calcDynamicColWidth
+    ResizableColWidths widths = {
+        listView,
+        listCtrlInfo.cx,
+        (isFindCountVisible) ? findCountColumnWidth : 0,
+        (isReplaceCountVisible) ? replaceCountColumnWidth : 0,
+        (isCommentsColumnVisible) ? commentsColumnWidth : 0,
+        GetSystemMetrics(SM_CXVSCROLL)
+    };
 
-    lvc.iSubItem = 1;
-    lvc.pszText = getLangStrLPWSTR(L"header_find_count");;
-    lvc.cx = findCountColumnWidth;
-    lvc.fmt = LVCFMT_RIGHT;
-    ListView_InsertColumn(listView, 1, &lvc);
+    // Calculate dynamic width for Find and Replace columns
+    int perColumnWidth = calcDynamicColWidth(widths);
 
-    lvc.iSubItem = 2;
-    lvc.pszText = getLangStrLPWSTR(L"header_replace_count");
-    lvc.cx = replaceCountColumnWidth;
-    lvc.fmt = LVCFMT_RIGHT;
-    ListView_InsertColumn(listView, 2, &lvc);
+    int currentIndex = 0;  // Start tracking columns
 
-    // Column for Selection
-    lvc.iSubItem = 3;
+    // Column 1: Find Count
+    if (isFindCountVisible) {
+        lvc.iSubItem = currentIndex;
+        lvc.pszText = getLangStrLPWSTR(L"header_find_count");
+        lvc.cx = findCountColumnWidth;
+        lvc.fmt = LVCFMT_RIGHT;
+        ListView_InsertColumn(listView, currentIndex, &lvc);
+        columnIndices[ColumnID::FIND_COUNT] = currentIndex;
+        ++currentIndex;
+    }
+    else {
+        columnIndices[ColumnID::FIND_COUNT] = -1;  // Mark as not visible
+    }
+
+    // Column 2: Replace Count
+    if (isReplaceCountVisible) {
+        lvc.iSubItem = currentIndex;
+        lvc.pszText = getLangStrLPWSTR(L"header_replace_count");
+        lvc.cx = replaceCountColumnWidth;
+        lvc.fmt = LVCFMT_RIGHT;
+        ListView_InsertColumn(listView, currentIndex, &lvc);
+        columnIndices[ColumnID::REPLACE_COUNT] = currentIndex;
+        ++currentIndex;
+    }
+    else {
+        columnIndices[ColumnID::REPLACE_COUNT] = -1;  // Mark as not visible
+    }
+
+    // Column 3: Selection Checkbox
+    lvc.iSubItem = currentIndex;
     lvc.pszText = L"\u2610";
     lvc.cx = boxWidth_scaled;
     lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
-    ListView_InsertColumn(listView, 3, &lvc);
+    ListView_InsertColumn(listView, currentIndex, &lvc);
+    columnIndices[ColumnID::SELECTION] = currentIndex;
+    ++currentIndex;
 
-    // Column for "Find" Text
-    lvc.iSubItem = 4;
+    // Column 4: Find Text (use calcDynamicColWidth for width)
+    lvc.iSubItem = currentIndex;
     lvc.pszText = getLangStrLPWSTR(L"header_find");
-    lvc.cx = remainingWidth / 2;
+    lvc.cx = perColumnWidth;  // Set Find Text width dynamically
     lvc.fmt = LVCFMT_LEFT;
-    ListView_InsertColumn(listView, 4, &lvc);
+    ListView_InsertColumn(listView, currentIndex, &lvc);
+    columnIndices[ColumnID::FIND_TEXT] = currentIndex;
+    ++currentIndex;
 
-    // Column for "Replace" Text
-    lvc.iSubItem = 5;
+    // Column 5: Replace Text (use calcDynamicColWidth for width)
+    lvc.iSubItem = currentIndex;
     lvc.pszText = getLangStrLPWSTR(L"header_replace");
-    lvc.cx = remainingWidth / 2;
-    ListView_InsertColumn(listView, 5, &lvc);
+    lvc.cx = perColumnWidth;  // Set Replace Text width dynamically
+    lvc.fmt = LVCFMT_LEFT;
+    ListView_InsertColumn(listView, currentIndex, &lvc);
+    columnIndices[ColumnID::REPLACE_TEXT] = currentIndex;
+    ++currentIndex;
 
-    // Columns for Options
+    // Columns 6 to 10: Options (Whole Word, Match Case, Use Variables, Extended, Regex)
     const std::wstring options[] = { L"header_whole_word", L"header_match_case", L"header_use_variables", L"header_extended", L"header_regex" };
-    for (int i = 0; i < 5; i++) {
-        lvc.iSubItem = 6 + i;
+    for (int i = 0; i < 5; ++i) {
+        lvc.iSubItem = currentIndex;
         lvc.pszText = getLangStrLPWSTR(options[i]);
         lvc.cx = checkMarkWidth_scaled;
         lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
-        ListView_InsertColumn(listView, 6 + i, &lvc);
+        ListView_InsertColumn(listView, currentIndex, &lvc);
+        columnIndices[static_cast<ColumnID>(static_cast<int>(ColumnID::WHOLE_WORD) + i)] = currentIndex;  // Map the option columns
+        ++currentIndex;
     }
 
-    // Column for Delete Button
-    lvc.iSubItem = 11;
+    // Column 11: Comments (if enabled, use the dynamic width calculated earlier)
+    if (isCommentsColumnVisible) {
+        lvc.iSubItem = currentIndex;
+        lvc.pszText = getLangStrLPWSTR(L"header_comments");
+        lvc.cx = commentsColumnWidth;  // Set Comments column width
+        lvc.fmt = LVCFMT_LEFT;
+        ListView_InsertColumn(listView, currentIndex, &lvc);
+        columnIndices[ColumnID::COMMENTS] = currentIndex;
+        ++currentIndex;
+    }
+    else {
+        columnIndices[ColumnID::COMMENTS] = -1;  // Mark as not visible
+    }
+
+    // Column 12: Delete Button
+    lvc.iSubItem = currentIndex;
     lvc.pszText = L"";
     lvc.cx = crossWidth_scaled;
-    ListView_InsertColumn(listView, 11, &lvc);
+    ListView_InsertColumn(listView, currentIndex, &lvc);
+    columnIndices[ColumnID::DELETE_BUTTON] = currentIndex;
 
-    //Adding Tooltips
+    // Adding Tooltips (if needed)
     HWND hwndHeader = ListView_GetHeader(listView);
     _hHeaderTooltip = CreateHeaderTooltip(hwndHeader);
 
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 6, getLangStrLPWSTR(L"tooltip_header_whole_word"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 7, getLangStrLPWSTR(L"tooltip_header_match_case"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 8, getLangStrLPWSTR(L"tooltip_header_use_variables"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 9, getLangStrLPWSTR(L"tooltip_header_extended"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 10, getLangStrLPWSTR(L"tooltip_header_regex"));
-
+    updateHeaderSortDirection();
+    updateHeaderSelection();
+    updateListViewTooltips();
 }
 
 void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
@@ -833,15 +887,21 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     updateHeaderSelection();
 }
 
-int MultiReplace::calcDynamicColWidth(const CountColWidths& widths) {
+int MultiReplace::calcDynamicColWidth(const ResizableColWidths& widths) {
+    int totalWidthColumn6to10 = boxWidth_scaled + (checkMarkWidth_scaled * 5) + crossWidth_scaled;  // Width of fixed columns (options and delete button)
 
-    int totalWidthColumn5to10 = (checkMarkWidth_scaled * 6) + crossWidth_scaled; // Calculation for fixed Option columns
+    // Calculate the total remaining width, subtracting the fixed widths and visible columns
+    int totalRemainingWidth = widths.listViewWidth
+        - widths.margin // Adjust for the margin (scrollbar width)
+        - totalWidthColumn6to10
+        - widths.findCountWidth
+        - widths.replaceCountWidth
+        - widths.commentsWidth;
 
-    // Directly calculate the width available for each dynamic column.
-    int totalRemainingWidth = widths.listViewWidth - widths.margin - totalWidthColumn5to10 - widths.findCountWidth - widths.replaceCountWidth;
-    int perColumnWidth = std::max(totalRemainingWidth, MIN_COLUMN_WIDTH_scaled * 2) / 2; // Ensure total min width is 120, then divide by 2.
+    // Ensure that the remaining width is not less than the minimum width
+    int perColumnWidth = std::max(totalRemainingWidth, MIN_FIND_REPLACE_WIDTH_scaled * 2) / 2;
 
-    return perColumnWidth; // Return width for a single column.
+    return perColumnWidth;  // Return the calculated width for each dynamic column
 }
 
 int MultiReplace::getCharacterWidth(int elementID, const wchar_t* character) {
@@ -867,34 +927,46 @@ int MultiReplace::getCharacterWidth(int elementID, const wchar_t* character) {
 }
 
 void MultiReplace::updateListViewAndColumns() {
-
     // Retrieve the control information for IDC_REPLACE_LIST from ctrlMap
     const ControlInfo& listCtrlInfo = ctrlMap[IDC_REPLACE_LIST];
 
     // Get the ListView handle directly
     HWND listView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
 
-    CountColWidths widths = {
+    // Set global column width variables based solely on columnIndices
+    findCountColumnWidth = (columnIndices[ColumnID::FIND_COUNT] != -1) ? ListView_GetColumnWidth(listView, columnIndices[ColumnID::FIND_COUNT]) : 0;
+    replaceCountColumnWidth = (columnIndices[ColumnID::REPLACE_COUNT] != -1) ? ListView_GetColumnWidth(listView, columnIndices[ColumnID::REPLACE_COUNT]) : 0;
+    commentsColumnWidth = (columnIndices[ColumnID::COMMENTS] != -1) ? ListView_GetColumnWidth(listView, columnIndices[ColumnID::COMMENTS]) : 0;
+
+    // Retrieve the current column widths dynamically, including comments
+    ResizableColWidths widths = {
         listView,
-        listCtrlInfo.cx, // Direct use of newWidth for listViewWidth
-        ListView_GetColumnWidth(listView, 1), // Current Find Count Width
-        ListView_GetColumnWidth(listView, 2), // Current Replace Count Width
-        GetSystemMetrics(SM_CXVSCROLL) // Width of Scrollbar
+        listCtrlInfo.cx,  // New width for ListView (dynamic based on window size)
+        findCountColumnWidth,
+        replaceCountColumnWidth,
+        commentsColumnWidth,
+        GetSystemMetrics(SM_CXVSCROLL)  // Width of the Scrollbar
     };
 
-    // Calculate width available for each dynamic column.
+    // Calculate dynamic column width, now considering the visibility of Comments column
     int perColumnWidth = calcDynamicColWidth(widths);
 
-    SendMessage(listView, WM_SETREDRAW, FALSE, 0); // Disable redraw during resize
+    // Disable redraw to prevent flickering during the update
+    SendMessage(listView, WM_SETREDRAW, FALSE, 0);
 
-    // Set column widths directly using calculated width.
-    ListView_SetColumnWidth(listView, 4, perColumnWidth); // Find Text
-    ListView_SetColumnWidth(listView, 5, perColumnWidth); // Replace Text
+    // Update widths of dynamic columns (Find Text, Replace Text) based on columnIndices
+    if (columnIndices[ColumnID::FIND_TEXT] != -1) {
+        ListView_SetColumnWidth(listView, columnIndices[ColumnID::FIND_TEXT], perColumnWidth);  // Set Find Text width dynamically
+    }
+    if (columnIndices[ColumnID::REPLACE_TEXT] != -1) {
+        ListView_SetColumnWidth(listView, columnIndices[ColumnID::REPLACE_TEXT], perColumnWidth);  // Set Replace Text width dynamically
+    }
 
-    // Move the window with the correct dimensions
+    // Resize the ListView control to the updated width and height
     MoveWindow(listView, listCtrlInfo.x, listCtrlInfo.y, listCtrlInfo.cx, listCtrlInfo.cy, TRUE);
 
-    SendMessage(listView, WM_SETREDRAW, TRUE, 0); // Enable redraw after resize
+    // Re-enable redraw after resizing
+    SendMessage(listView, WM_SETREDRAW, TRUE, 0);
 }
 
 void MultiReplace::updateListViewTooltips()
@@ -904,11 +976,11 @@ void MultiReplace::updateListViewTooltips()
         return;
 
     // Re-add tooltips for columns 6 to 10
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 6, getLangStrLPWSTR(L"tooltip_header_whole_word"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 7, getLangStrLPWSTR(L"tooltip_header_match_case"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 8, getLangStrLPWSTR(L"tooltip_header_use_variables"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 9, getLangStrLPWSTR(L"tooltip_header_extended"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, 10, getLangStrLPWSTR(L"tooltip_header_regex"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::WHOLE_WORD], getLangStrLPWSTR(L"tooltip_header_whole_word"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::MATCH_CASE], getLangStrLPWSTR(L"tooltip_header_match_case"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::USE_VARIABLES], getLangStrLPWSTR(L"tooltip_header_use_variables"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::EXTENDED], getLangStrLPWSTR(L"tooltip_header_extended"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::REGEX], getLangStrLPWSTR(L"tooltip_header_regex"));
 }
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
@@ -1045,24 +1117,24 @@ void MultiReplace::deleteSelectedLines(HWND listView) {
     showStatusMessage(getLangStr(L"status_lines_deleted", { std::to_wstring(numDeletedLines) }), RGB(0, 128, 0));
 }
 
-void MultiReplace::sortReplaceListData(int column, SortDirection direction) {
+void MultiReplace::sortReplaceListData(int columnID, SortDirection direction) {
     auto selectedRows = getSelectedRows(); // Preserve selection
 
-    // Sort based on column and direction
+    // Sort based on the actual ColumnID and direction
     std::sort(replaceListData.begin(), replaceListData.end(),
-        [this, column, direction](const ReplaceItemData& a, const ReplaceItemData& b) -> bool {
-            switch (column) {
-            case 1: { // Sort by findCount, converting "" to -1
+        [this, columnID, direction](const ReplaceItemData& a, const ReplaceItemData& b) -> bool {
+            switch (columnID) {
+            case ColumnID::FIND_COUNT: { // Sort by findCount, converting "" to -1
                 int numA = a.findCount.empty() ? -1 : std::stoi(a.findCount);
                 int numB = b.findCount.empty() ? -1 : std::stoi(b.findCount);
                 return direction == SortDirection::Ascending ? numA < numB : numA > numB;
             }
-            case 2: { // Sort by replaceCount, converting "" to -1
+            case ColumnID::REPLACE_COUNT: { // Sort by replaceCount, converting "" to -1
                 int numA = a.replaceCount.empty() ? -1 : std::stoi(a.replaceCount);
                 int numB = b.replaceCount.empty() ? -1 : std::stoi(b.replaceCount);
                 return direction == SortDirection::Ascending ? numA < numB : numA > numB;
             }
-            case 4: { // Sort by findText
+            case ColumnID::FIND_TEXT: { // Sort by findText
                 if (direction == SortDirection::Ascending) {
                     return a.findText < b.findText;
                 }
@@ -1070,7 +1142,7 @@ void MultiReplace::sortReplaceListData(int column, SortDirection direction) {
                     return a.findText > b.findText;
                 }
             }
-            case 5: { // Sort by replaceText
+            case ColumnID::REPLACE_TEXT: { // Sort by replaceText
                 if (direction == SortDirection::Ascending) {
                     return a.replaceText < b.replaceText;
                 }
@@ -1079,7 +1151,7 @@ void MultiReplace::sortReplaceListData(int column, SortDirection direction) {
                 }
             }
             default:
-                return false; // In case of an unknown column
+                return false; // In case of an unknown or non-sortable column
             }
         });
 
@@ -1174,58 +1246,6 @@ void MultiReplace::updateCountColumns(const size_t itemIndex, const int findCoun
 
 }
 
-void MultiReplace::resizeCountColumns() {
-    HWND listView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
-    RECT listRect;
-    GetClientRect(listView, &listRect);
-    
-    // Calculate the total width of the ListView
-    int listViewWidth = listRect.right - listRect.left;
-
-    // Determine Scrollbar width
-    LONG style = GetWindowLong(listView, GWL_STYLE);
-    bool hasVerticalScrollbar = (style & WS_VSCROLL) != 0;
-    int scrollbarWidth = GetSystemMetrics(SM_CXVSCROLL);
-    int margin = hasVerticalScrollbar ? 0 : scrollbarWidth;
-
-    CountColWidths widths = {
-        listView,
-        listViewWidth,
-        ListView_GetColumnWidth(_replaceListView, 1), // Current Find Count Width
-        ListView_GetColumnWidth(_replaceListView, 2), // Current Replace Count Width
-        margin - 2  // -2 as the Listview borders are not part of the columns
-    };
-
-    // Determine the direction of the adjustment
-    bool expandColumns = widths.findCountWidth < COUNT_COLUMN_WIDTH_scaled && widths.replaceCountWidth < COUNT_COLUMN_WIDTH_scaled;
-
-    // Perform the adjustment in steps
-    while ((expandColumns && (widths.findCountWidth < COUNT_COLUMN_WIDTH_scaled || widths.replaceCountWidth < COUNT_COLUMN_WIDTH_scaled)) ||
-        (!expandColumns && (widths.findCountWidth > 0 || widths.replaceCountWidth > 0))) {
-
-        if (expandColumns) {
-            widths.findCountWidth = std::min(widths.findCountWidth + STEP_SIZE, COUNT_COLUMN_WIDTH_scaled);
-            widths.replaceCountWidth = std::min(widths.replaceCountWidth + STEP_SIZE, COUNT_COLUMN_WIDTH_scaled);
-        }
-        else {
-            widths.findCountWidth = std::max(widths.findCountWidth - STEP_SIZE, 0);
-            widths.replaceCountWidth = std::max(widths.replaceCountWidth - STEP_SIZE, 0);
-        }
-
-        int perColumnWidth = calcDynamicColWidth(widths);
-
-        SendMessage(widths.listView, WM_SETREDRAW, FALSE, 0);
-        ListView_SetColumnWidth(widths.listView, 1, widths.findCountWidth);
-        ListView_SetColumnWidth(widths.listView, 2, widths.replaceCountWidth);
-        ListView_SetColumnWidth(widths.listView, 4, perColumnWidth);
-        ListView_SetColumnWidth(widths.listView, 5, perColumnWidth);
-        
-        SendMessage(widths.listView, WM_SETREDRAW, TRUE, 0);
-        InvalidateRect(widths.listView, NULL, TRUE);
-        UpdateWindow(widths.listView);
-    }
-}
-
 void MultiReplace::clearList() {
     // Check for unsaved changes before clearing the list
     if (checkForUnsavedChanges() == IDCANCEL) {
@@ -1272,21 +1292,88 @@ void MultiReplace::refreshUIListView()
 #pragma endregion
 
 
+#pragma region Contextmenu Display Columns
+
+void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
+    // Create a popup menu
+    HMENU hMenu = CreatePopupMenu();
+
+    // Add menu items with checkmarks based on current visibility
+    AppendMenu(hMenu, MF_STRING | (isFindCountVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_FIND_COUNT, getLangStrLPCWSTR(L"header_find_count"));
+    AppendMenu(hMenu, MF_STRING | (isReplaceCountVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_REPLACE_COUNT, getLangStrLPCWSTR(L"header_replace_count"));
+    AppendMenu(hMenu, MF_STRING | (isCommentsColumnVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_COMMENTS, getLangStrLPCWSTR(L"header_comments"));
+
+    // Display the menu at the specified location
+    TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, hWnd, NULL);
+
+    // Destroy the menu after use
+    DestroyMenu(hMenu);
+}
+
+void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
+    // Toggle the corresponding visibility flag
+    switch (menuId) {
+    case IDM_TOGGLE_FIND_COUNT:
+        isFindCountVisible = !isFindCountVisible;
+        break;
+    case IDM_TOGGLE_REPLACE_COUNT:
+        isReplaceCountVisible = !isReplaceCountVisible;
+        break;
+    case IDM_TOGGLE_COMMENTS:
+        isCommentsColumnVisible = !isCommentsColumnVisible;
+        break;
+    default:
+        return; // Unhandled menu ID
+    }
+
+    // Recreate the ListView columns to reflect the changes
+    HWND listView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+    createListViewColumns(listView);
+
+    // Refresh the ListView (if necessary)
+    InvalidateRect(listView, NULL, TRUE);
+}
+
+#pragma endregion
+
+
 #pragma region Contextmenu
 
-void MultiReplace::toggleBooleanAt(int itemIndex, int column) {
-    if (itemIndex < 0 || itemIndex >= static_cast<int>(replaceListData.size()) || !(column == 3 || (column >= 6 && column <= 10))) {
-        return; // Early return for invalid column or item index
+void MultiReplace::toggleBooleanAt(int itemIndex, int clickedColumn) {
+    if (itemIndex < 0 || itemIndex >= static_cast<int>(replaceListData.size())) {
+        return; // Early return for invalid item index
+    }
+
+    // Correct mapping from clickedColumn to ColumnID
+    int columnID = getColumnIDFromIndex(clickedColumn);
+    if (columnID == ColumnID::INVALID) {
+        return; // Invalid column, exit the function
     }
 
     ReplaceItemData& item = replaceListData[itemIndex];
-    switch (column) {
-    case 3: item.isEnabled = !item.isEnabled; break;
-    case 6: item.wholeWord = !item.wholeWord; break;
-    case 7: item.matchCase = !item.matchCase; break;
-    case 8: item.useVariables = !item.useVariables; break;
-    case 9: item.extended = !item.extended; break;
-    case 10: item.regex = !item.regex; break;
+
+    // Toggle the boolean field based on the ColumnID
+    switch (columnID) {
+    case ColumnID::SELECTION:
+        item.isEnabled = !item.isEnabled;
+        break;
+    case ColumnID::WHOLE_WORD:
+        item.wholeWord = !item.wholeWord;
+        break;
+    case ColumnID::MATCH_CASE:
+        item.matchCase = !item.matchCase;
+        break;
+    case ColumnID::USE_VARIABLES:
+        item.useVariables = !item.useVariables;
+        break;
+    case ColumnID::EXTENDED:
+        item.extended = !item.extended;
+        break;
+    case ColumnID::REGEX:
+        item.regex = !item.regex;
+        break;
+    default:
+        return; // Not a toggleable boolean column
     }
 
     ListView_RedrawItems(_replaceListView, itemIndex, itemIndex);
@@ -1323,7 +1410,7 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
 
     // Set the initial text for the Edit window
     wchar_t itemText[MAX_TEXT_LENGTH];
-    ListView_GetItemText(_replaceListView, itemIndex, column, itemText, sizeof(itemText) / sizeof(wchar_t));
+    ListView_GetItemText(_replaceListView, itemIndex, column, itemText, MAX_TEXT_LENGTH);
     itemText[MAX_TEXT_LENGTH - 1] = L'\0';
     SetWindowText(hwndEdit, itemText);
 
@@ -1349,8 +1436,10 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
     // Subclass the edit control to handle Enter and clicks outside
     SetWindowSubclass(hwndEdit, EditControlSubclassProc, 1, (DWORD_PTR)this);
 
+    // Store indices and column ID for use in the subclass procedure
     _editingItemIndex = itemIndex;
-    _editingColumn = column;
+    _editingColumnIndex = column;
+    _editingColumnID = getColumnIDFromIndex(column);
 }
 
 LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
@@ -1406,18 +1495,30 @@ LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPAR
         GetWindowText(hwnd, newText, MAX_TEXT_LENGTH);
 
         // Check if the column and item index are valid before updating
-        if (pThis->_editingColumn >= 0 && pThis->_editingItemIndex >= 0 && pThis->_editingItemIndex < static_cast<int>(pThis->replaceListData.size())) {
+        if (pThis->_editingColumnID != ColumnID::INVALID &&
+            pThis->_editingItemIndex >= 0 &&
+            pThis->_editingItemIndex < static_cast<int>(pThis->replaceListData.size())) {
+
             // Update the replaceListData vector with the new text
             ReplaceItemData& item = pThis->replaceListData[pThis->_editingItemIndex];
-            if (pThis->_editingColumn == 4) { // Assuming column 4 is for findText
+
+            // Update the correct field based on the ColumnID
+            switch (pThis->_editingColumnID) {
+            case ColumnID::FIND_TEXT:
                 item.findText = newText;
-            }
-            else if (pThis->_editingColumn == 5) { // Assuming column 5 is for replaceText
+                break;
+            case ColumnID::REPLACE_TEXT:
                 item.replaceText = newText;
+                break;
+            case ColumnID::COMMENTS:
+                item.comments = newText;
+                break;
+            default:
+                break; // Not a text-editable column, do nothing
             }
 
             // Reflect this change in the ListView
-            ListView_SetItemText(pThis->_replaceListView, pThis->_editingItemIndex, pThis->_editingColumn, newText);
+            ListView_SetItemText(pThis->_replaceListView, pThis->_editingItemIndex, pThis->_editingColumnIndex, newText);
         }
 
         // Clean up and remove subclass
@@ -1520,28 +1621,42 @@ MenuState MultiReplace::checkMenuConditions(HWND listView, POINT ptScreen) {
     int hitTestResult = ListView_HitTest(listView, &hitInfo);
     state.clickedOnItem = (hitTestResult != -1);
 
-    // Assuming editing should be allowed regardless of the horizontal scroll presence:
+    // Determine the clicked column
     int clickedColumn = -1;
-    int cumulativeWidth = 0;
-    int columnCount = Header_GetItemCount(ListView_GetHeader(listView));
+    int totalWidth = 0;
+    HWND header = ListView_GetHeader(listView);
+    int columnCount = Header_GetItemCount(header);
 
+    // Iterate through the columns and calculate the total width
     for (int i = 0; i < columnCount; i++) {
-        cumulativeWidth += ListView_GetColumnWidth(listView, i);
-        if (ptClient.x < cumulativeWidth) {
+        totalWidth += ListView_GetColumnWidth(listView, i);
+        if (ptClient.x < totalWidth) {
             clickedColumn = i;
             break;
         }
     }
 
-    // Enable editing if the clicked column is one of the editable columns and an item was actually clicked
-    if (state.clickedOnItem && ((clickedColumn == 3) || (clickedColumn >= 4 && clickedColumn <= 10))) {
-        state.canEdit = true;
-    }
+    // Map the clicked column to ColumnID, using a direct lookup in columnIndices
+    int columnID = getColumnIDFromIndex(clickedColumn);
+
+    // Enable editing if the clicked column is editable and currently visible
+    state.canEdit = state.clickedOnItem && (
+        columnID == ColumnID::SELECTION ||
+        columnID == ColumnID::WHOLE_WORD ||
+        columnID == ColumnID::MATCH_CASE ||
+        columnID == ColumnID::USE_VARIABLES ||
+        columnID == ColumnID::EXTENDED ||
+        columnID == ColumnID::REGEX ||
+        columnID == ColumnID::FIND_TEXT ||
+        columnID == ColumnID::REPLACE_TEXT ||
+        columnID == ColumnID::COMMENTS
+        );
 
     // Rest of the checks remain the same
     state.listNotEmpty = (ListView_GetItemCount(listView) > 0);
     state.canPaste = canPasteFromClipboard();
     state.hasSelection = (ListView_GetSelectedCount(listView) > 0);
+
     unsigned int enabledCount = 0, disabledCount = 0;
 
     int itemIndex = -1;
@@ -1591,41 +1706,38 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         }
     }
 
+    // Correct mapping from clickedColumn to ColumnID
+    int columnID = getColumnIDFromIndex(clickedColumn);
+
     switch (action) {
-    case ItemAction::Search: {
+    case ItemAction::Search:
         performSearchInList();
         break;
-    }
-    case ItemAction::Cut: {
-        // Copy selected items to clipboard
+    case ItemAction::Cut:
         copySelectedItemsToClipboard(_replaceListView);
-        // Remove the selected items from the list view
         deleteSelectedLines(_replaceListView);
         break;
-    }
-    case ItemAction::Copy: {
-        // Copy selected items to clipboard
+    case ItemAction::Copy:
         copySelectedItemsToClipboard(_replaceListView);
         break;
-    }
-    case ItemAction::Paste: {
-        // Paste items into list
+    case ItemAction::Paste:
         pasteItemsIntoList();
         break;
-    }
-    case ItemAction::Edit: {
-        // Exit if no item found at click position
-        if (hitTestResult == -1) return;
-
-        // Perform actions based on the clicked column
-        if ((clickedColumn == 3) || (clickedColumn >= 6 && clickedColumn <= 10)) {
-            toggleBooleanAt(hitTestResult, clickedColumn);
-        }
-        else if (clickedColumn == 4 || clickedColumn == 5) {
+    case ItemAction::Edit:
+        if (columnID == ColumnID::FIND_TEXT ||
+            columnID == ColumnID::REPLACE_TEXT ||
+            columnID == ColumnID::COMMENTS) {
             editTextAt(hitTestResult, clickedColumn);
         }
+        else if (columnID == ColumnID::SELECTION ||
+            columnID == ColumnID::WHOLE_WORD ||
+            columnID == ColumnID::MATCH_CASE ||
+            columnID == ColumnID::USE_VARIABLES ||
+            columnID == ColumnID::EXTENDED ||
+            columnID == ColumnID::REGEX) {
+            toggleBooleanAt(hitTestResult, clickedColumn);
+        }
         break;
-    }
     case ItemAction::Delete: {
         int selectedCount = ListView_GetSelectedCount(_replaceListView);
         std::wstring confirmationMessage;
@@ -1654,7 +1766,7 @@ void MultiReplace::copySelectedItemsToClipboard(HWND listView) {
     if (selectedCount > 0) {
         for (int i = 0; i < itemCount; ++i) {
             if (ListView_GetItemState(listView, i, LVIS_SELECTED) & LVIS_SELECTED) {
-                // Angenommen, der Index in der ListView entspricht dem Index in replaceListData
+                // Assuming the index in the ListView corresponds to the index in replaceListData
                 const ReplaceItemData& item = replaceListData[i];
                 std::wstring line = std::to_wstring(item.isEnabled) + L"," +
                     escapeCsvValue(item.findText) + L"," +
@@ -1663,7 +1775,8 @@ void MultiReplace::copySelectedItemsToClipboard(HWND listView) {
                     std::to_wstring(item.matchCase) + L"," +
                     std::to_wstring(item.useVariables) + L"," +
                     std::to_wstring(item.extended) + L"," +
-                    std::to_wstring(item.regex) + L"\n";
+                    std::to_wstring(item.regex) + L"," +
+                    escapeCsvValue(item.comments) + L"\n";  // Include Comments column
                 csvData += line;
             }
         }
@@ -1687,7 +1800,6 @@ void MultiReplace::copySelectedItemsToClipboard(HWND listView) {
             }
         }
     }
-
 }
 
 bool MultiReplace::canPasteFromClipboard() {
@@ -1711,37 +1823,11 @@ bool MultiReplace::canPasteFromClipboard() {
             while (std::getline(contentStream, line) && !canPaste) {
                 if (line.empty()) continue; // Skip empty lines
 
-                std::vector<std::wstring> columns;
-                std::wstring currentValue;
-                bool insideQuotes = false;
-
-                for (size_t i = 0; i < line.length(); ++i) {
-                    const wchar_t& ch = line[i];
-                    if (ch == L'"') {
-                        if (insideQuotes && i + 1 < line.length() && line[i + 1] == L'"') {
-                            // Escaped quote
-                            currentValue += L'"';
-                            ++i; // Skip the next quote
-                        }
-                        else {
-                            // Toggle the state
-                            insideQuotes = !insideQuotes;
-                        }
-                    }
-                    else if (ch == L',' && !insideQuotes) {
-                        // When not inside quotes, treat comma as column separator
-                        columns.push_back(unescapeCsvValue(currentValue));
-                        currentValue.clear();
-                    }
-                    else {
-                        currentValue += ch; // Append the character to the current value
-                    }
-                }
-                columns.push_back(unescapeCsvValue(currentValue)); // Add the last value
+                std::vector<std::wstring> columns = parseCsvLine(line);
 
                 // For the format to be considered valid, ensure each line has the correct number of columns
                 // and the second column (findText) must not be empty for a line to be valid
-                if (columns.size() == 8 && !columns[1].empty()) {
+                if ((columns.size() == 8 || columns.size() == 9) && !columns[1].empty()) {
                     canPaste = true; // Found at least one valid line, no need to check further
                 }
             }
@@ -1793,26 +1879,10 @@ void MultiReplace::pasteItemsIntoList() {
     while (std::getline(contentStream, line)) {
         if (line.empty()) continue; // Skip empty lines
 
-        std::vector<std::wstring> columns;
-        std::wstring currentValue;
-        bool insideQuotes = false;
-
-        for (const wchar_t& ch : line) {
-            if (ch == L'"') {
-                insideQuotes = !insideQuotes;
-            }
-            if (ch == L',' && !insideQuotes) {
-                columns.push_back(unescapeCsvValue(currentValue));
-                currentValue.clear();
-            }
-            else {
-                currentValue += ch;
-            }
-        }
-        columns.push_back(unescapeCsvValue(currentValue)); // Add the last value
+        std::vector<std::wstring> columns = parseCsvLine(line);
 
         // Check for proper column count and non-empty findText before adding to the list
-        if (columns.size() != 8 || columns[1].empty()) continue;
+        if ((columns.size() != 8 && columns.size() != 9) || columns[1].empty()) continue;
 
         ReplaceItemData item;
         try {
@@ -1824,6 +1894,13 @@ void MultiReplace::pasteItemsIntoList() {
             item.useVariables = std::stoi(columns[5]) != 0;
             item.extended = std::stoi(columns[6]) != 0;
             item.regex = std::stoi(columns[7]) != 0;
+            // Handle Comments column if present
+            if (columns.size() == 9) {
+                item.comments = columns[8];
+            }
+            else {
+                item.comments = L"";  // Initialize as empty string if not present
+            }
         }
         catch (const std::exception&) {
             continue; // Silently ignore lines with conversion errors
@@ -1939,13 +2016,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializePluginStyle();
         initializeCtrlMap();
         initializeFontStyles();
+        loadSettings();
         initializeListView();
         initializeDragAndDrop();
-        loadSettings();
         adjustWindowSize();
-        updateStatisticsColumnButtonIcon();
         
-
         // Activate Dark Mode
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
             static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
@@ -2137,14 +2212,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             case NM_CLICK:
             {
                 NMITEMACTIVATE* pnmia = reinterpret_cast<NMITEMACTIVATE*>(lParam);
-                if (pnmia->iSubItem == 11) { // Delete button column
-                    handleDeletion(pnmia);
-                }
-                if (pnmia->iSubItem == 3) { // Select button column
-                    // Get current selection status of the item
-                    bool currentSelectionStatus = replaceListData[pnmia->iItem].isEnabled;
-                    // Set the selection status to its opposite
-                    setSelections(!currentSelectionStatus, true);
+                int subItem = pnmia->iSubItem;
+                int itemIndex = pnmia->iItem;
+
+                // Ensure valid item index, as subItem 0 could refer to the first column or an invalid click area.
+                // This prevents accidental actions when clicking outside valid list items.
+                if (itemIndex >= 0 && itemIndex < static_cast<int>(replaceListData.size())) {
+                    if (columnIndices[ColumnID::DELETE_BUTTON] != -1 && subItem == columnIndices[ColumnID::DELETE_BUTTON]) {
+                        handleDeletion(pnmia);
+                    }
+                    else if (columnIndices[ColumnID::SELECTION] != -1 && subItem == columnIndices[ColumnID::SELECTION]) {
+                        bool currentSelectionStatus = replaceListData[itemIndex].isEnabled;
+                        setSelections(!currentSelectionStatus, true);
+                    }
                 }
                 return TRUE;
             }
@@ -2159,87 +2239,82 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             case LVN_GETDISPINFO:
             {
                 NMLVDISPINFO* plvdi = reinterpret_cast<NMLVDISPINFO*>(lParam);
+                int itemIndex = plvdi->item.iItem;
+                int subItem = plvdi->item.iSubItem;
 
-                // Get the data from the vector
-                ReplaceItemData& itemData = replaceListData[plvdi->item.iItem];
+                // Check if the item index is valid
+                if (itemIndex >= 0 && itemIndex < static_cast<int>(replaceListData.size())) {
+                    ReplaceItemData& itemData = replaceListData[itemIndex];
 
-                // Display the data based on the subitem
-                switch (plvdi->item.iSubItem)
-                {
-                case 1:
-                    plvdi->item.pszText = const_cast<LPWSTR>(itemData.findCount.c_str());
-                    break;
-                case 2:
-                    plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceCount.c_str());
-                    break;
-                case 3:
-                    if (itemData.isEnabled) {
-                        plvdi->item.pszText = L"\u25A0";
+                    // Display the data based on the subitem
+                    if (columnIndices[ColumnID::FIND_COUNT] != -1 && subItem == columnIndices[ColumnID::FIND_COUNT]) {
+                        plvdi->item.pszText = const_cast<LPWSTR>(itemData.findCount.c_str());
                     }
-                    else {
-                        plvdi->item.pszText = L"\u2610";
+                    else if (columnIndices[ColumnID::REPLACE_COUNT] != -1 && subItem == columnIndices[ColumnID::REPLACE_COUNT]) {
+                        plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceCount.c_str());
                     }
-                    break;
-                case 4:
-                    plvdi->item.pszText = const_cast<LPWSTR>(itemData.findText.c_str());
-                    break;
-                case 5:
-                    plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceText.c_str());
-                    break;
-                case 6:
-                    if (itemData.wholeWord) {
-                        plvdi->item.mask |= LVIF_TEXT;
-                        plvdi->item.pszText = L"\u2714";
+                    else if (columnIndices[ColumnID::SELECTION] != -1 && subItem == columnIndices[ColumnID::SELECTION]) {
+                        plvdi->item.pszText = itemData.isEnabled ? L"\u25A0" : L"\u2610";  // Square or checkbox
                     }
-                    break;
-                case 7:
-                    if (itemData.matchCase) {
-                        plvdi->item.mask |= LVIF_TEXT;
-                        plvdi->item.pszText = L"\u2714";
+                    else if (columnIndices[ColumnID::FIND_TEXT] != -1 && subItem == columnIndices[ColumnID::FIND_TEXT]) {
+                        plvdi->item.pszText = const_cast<LPWSTR>(itemData.findText.c_str());
                     }
-                    break;
-                case 8:
-                    if (itemData.useVariables) {
-                        plvdi->item.mask |= LVIF_TEXT;
-                        plvdi->item.pszText = L"\u2714";
+                    else if (columnIndices[ColumnID::REPLACE_TEXT] != -1 && subItem == columnIndices[ColumnID::REPLACE_TEXT]) {
+                        plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceText.c_str());
                     }
-                    break;
-                case 9:
-                    if (itemData.extended) {
-                        plvdi->item.mask |= LVIF_TEXT;
-                        plvdi->item.pszText = L"\u2714";
+                    else if (columnIndices[ColumnID::WHOLE_WORD] != -1 && subItem == columnIndices[ColumnID::WHOLE_WORD]) {
+                        plvdi->item.pszText = itemData.wholeWord ? L"\u2714" : L"";
                     }
-                    break;
-                case 10:
-                    if (itemData.regex) {
-                        plvdi->item.mask |= LVIF_TEXT;
-                        plvdi->item.pszText = L"\u2714";
+                    else if (columnIndices[ColumnID::MATCH_CASE] != -1 && subItem == columnIndices[ColumnID::MATCH_CASE]) {
+                        plvdi->item.pszText = itemData.matchCase ? L"\u2714" : L"";
                     }
-                    break;
-                case 11:
-                    plvdi->item.mask |= LVIF_TEXT;
-                    plvdi->item.pszText = L"\u2716";
-                    break;
+                    else if (columnIndices[ColumnID::USE_VARIABLES] != -1 && subItem == columnIndices[ColumnID::USE_VARIABLES]) {
+                        plvdi->item.pszText = itemData.useVariables ? L"\u2714" : L"";
+                    }
+                    else if (columnIndices[ColumnID::EXTENDED] != -1 && subItem == columnIndices[ColumnID::EXTENDED]) {
+                        plvdi->item.pszText = itemData.extended ? L"\u2714" : L"";
+                    }
+                    else if (columnIndices[ColumnID::REGEX] != -1 && subItem == columnIndices[ColumnID::REGEX]) {
+                        plvdi->item.pszText = itemData.regex ? L"\u2714" : L"";
+                    }
+                    else if (columnIndices[ColumnID::COMMENTS] != -1 && subItem == columnIndices[ColumnID::COMMENTS]) {
+                        plvdi->item.pszText = const_cast<LPWSTR>(itemData.comments.c_str());
+                    }
+                    else if (columnIndices[ColumnID::DELETE_BUTTON] != -1 && subItem == columnIndices[ColumnID::DELETE_BUTTON]) {
+                        plvdi->item.pszText = L"\u2716";  // Cross mark for delete
+                    }
                 }
                 return TRUE;
             }
+
 
             case LVN_COLUMNCLICK:
             {
                 NMLISTVIEW* pnmv = reinterpret_cast<NMLISTVIEW*>(lParam);
 
-                if (pnmv->iSubItem == 3) {
+                int clickedColumn = pnmv->iSubItem;
+
+                // Map the clicked column index to ColumnID
+                int columnID = getColumnIDFromIndex(clickedColumn);
+
+                if (columnID == ColumnID::INVALID) {
+                    // If no valid column is found, ignore the click
+                    return TRUE;
+                }
+
+                if (columnID == ColumnID::SELECTION) {
                     setSelections(!allSelected);
                 }
                 else {
-                    // Toggle or initialize the sort order for the clicked column
+                    // Toggle or initialize the sort order for the clicked ColumnID
                     SortDirection newDirection = SortDirection::Ascending; // Default direction
-                    if (columnSortOrder.find(pnmv->iSubItem) != columnSortOrder.end() && columnSortOrder[pnmv->iSubItem] == SortDirection::Ascending) {
+                    if (columnSortOrder.find(columnID) != columnSortOrder.end() && columnSortOrder[columnID] == SortDirection::Ascending) {
                         newDirection = SortDirection::Descending;
                     }
-                    columnSortOrder[pnmv->iSubItem] = newDirection;
-                    lastColumn = pnmv->iSubItem;
-                    sortReplaceListData(lastColumn, newDirection); // Now correctly passing SortDirection
+                    columnSortOrder[columnID] = newDirection;
+
+                    // Call sortReplaceListData with the ColumnID
+                    sortReplaceListData(columnID, newDirection);
                 }
                 return TRUE;
             }
@@ -2751,14 +2826,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case ID_STATISTICS_COLUMNS:
-        {
-            isStatisticsColumnsExpanded = !isStatisticsColumnsExpanded;
-            resizeCountColumns();
-            updateStatisticsColumnButtonIcon();
-            return TRUE;
-        }
-
         case IDM_SEARCH_IN_LIST:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Search);
@@ -2821,6 +2888,27 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
+        case IDC_COLUMN_VISIBILITY_BUTTON:
+        {
+            // Get the button's screen coordinates
+            RECT rcButton;
+            GetWindowRect(GetDlgItem(_hSelf, IDC_COLUMN_VISIBILITY_BUTTON), &rcButton);
+            POINT pt = { rcButton.left, rcButton.bottom };
+
+            // Show the context menu
+            showColumnVisibilityMenu(_hSelf, pt);
+            return TRUE;
+        }
+        // Handle menu commands
+        case IDM_TOGGLE_FIND_COUNT:
+        case IDM_TOGGLE_REPLACE_COUNT:
+        case IDM_TOGGLE_COMMENTS:
+        {
+            // Toggle the visibility based on the menu selection
+            handleColumnVisibilityToggle(LOWORD(wParam));
+            return TRUE;
+        }
+
         default:
             return FALSE;
         }
@@ -2829,6 +2917,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     default:
         return FALSE;
     }
+}
+
+int MultiReplace::getColumnIDFromIndex(int columnIndex) {
+    for (const auto& pair : columnIndices) {
+        if (pair.second == columnIndex) {
+            return pair.first;
+        }
+    }
+    return ColumnID::INVALID; // Return INVALID if not found
 }
 
 #pragma endregion
@@ -6175,6 +6272,7 @@ void MultiReplace::updateHeaderSelection() {
     LVCOLUMN lvc = { 0 };
     lvc.mask = LVCF_TEXT;
 
+    // Determine the symbol to show in the header
     if (allSelected) {
         lvc.pszText = L"\u25A0"; // Ballot box with check
     }
@@ -6185,36 +6283,66 @@ void MultiReplace::updateHeaderSelection() {
         lvc.pszText = L"\u2610"; // Ballot box without check
     }
 
-    ListView_SetColumn(_replaceListView, 3, &lvc);
+    // Update the Selection column header dynamically, if it's enabled
+    if (columnIndices[ColumnID::SELECTION] != -1) {
+        ListView_SetColumn(_replaceListView, columnIndices[ColumnID::SELECTION], &lvc);
+    }
+
 }
 
 void MultiReplace::updateHeaderSortDirection() {
-    const wchar_t* ascendingSymbol = L"▲ ";
-    const wchar_t* descendingSymbol = L"▼ ";
+    const wchar_t* ascendingSymbol = L" ▲";
+    const wchar_t* descendingSymbol = L" ▼";
 
-    // Iterate through each column that has a sort order defined in columnSortOrder
-    for (const auto& [columnIndex, direction] : columnSortOrder) {
-        std::wstring symbol = direction == SortDirection::Ascending ? ascendingSymbol : descendingSymbol;
+    // Iterate through all columns in columnIndices
+    for (const auto& [columnID, columnIndex] : columnIndices) {
+        // Skip columns that are not visible (columnIndex == -1)
+        if (columnIndex == -1) {
+            continue;
+        }
 
-        std::wstring headerText = L"" + symbol;
-        symbol = L" " + symbol;
+        // Only update headers for sortable columns
+        if (columnID != ColumnID::FIND_COUNT &&
+            columnID != ColumnID::REPLACE_COUNT &&
+            columnID != ColumnID::FIND_TEXT &&
+            columnID != ColumnID::REPLACE_TEXT) {
+            continue;
+        }
 
-        // Append the base column title, this should be adjusted according to your actual column titles
-        switch (columnIndex) {
-        case 1: headerText = getLangStr(L"header_find_count") + symbol; break;
-        case 2: headerText = getLangStr(L"header_replace_count") + symbol; break;
-        case 4: headerText = getLangStr(L"header_find") + symbol; break;
-        case 5: headerText = getLangStr(L"header_replace") + symbol; break;
-        default: continue; // Skip if it's not a sortable column
+        // Get the base header text
+        std::wstring headerText;
+        switch (columnID) {
+        case ColumnID::FIND_COUNT:
+            headerText = getLangStr(L"header_find_count");
+            break;
+        case ColumnID::REPLACE_COUNT:
+            headerText = getLangStr(L"header_replace_count");
+            break;
+        case ColumnID::FIND_TEXT:
+            headerText = getLangStr(L"header_find");
+            break;
+        case ColumnID::REPLACE_TEXT:
+            headerText = getLangStr(L"header_replace");
+            break;
+        default:
+            continue; // Skip if it's not a sortable column
+        }
+
+        // Append sort symbol if the column is currently sorted
+        auto sortIt = columnSortOrder.find(columnID);
+        if (sortIt != columnSortOrder.end()) {
+            SortDirection direction = sortIt->second;
+            const wchar_t* symbol = (direction == SortDirection::Ascending) ? ascendingSymbol : descendingSymbol;
+            headerText += symbol;
         }
 
         // Prepare the LVCOLUMN structure for updating the header
-        LVCOLUMN lvc = { 0 };
+        LVCOLUMN lvc = {};
         lvc.mask = LVCF_TEXT;
         lvc.pszText = const_cast<LPWSTR>(headerText.c_str());
 
-        // Correctly update the column header using the actual columnIndex without decrementing
-        ListView_SetColumn(_replaceListView, columnIndex, &lvc); // Use columnIndex directly
+        // Update the column header using the correct index
+        ListView_SetColumn(_replaceListView, columnIndex, &lvc);
     }
 }
 
@@ -6705,7 +6833,7 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
     }
 
     // Convert and Write CSV header
-    std::string utf8Header = wstringToString(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Regex,Extended\n");
+    std::string utf8Header = wstringToString(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Regex,Extended,Comments\n");
     outFile << utf8Header;
 
     // Write list items to CSV file
@@ -6717,7 +6845,8 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
             std::to_wstring(item.matchCase) + L"," +
             std::to_wstring(item.useVariables) + L"," +
             std::to_wstring(item.extended) + L"," +
-            std::to_wstring(item.regex) + L"\n";
+            std::to_wstring(item.regex) + L"," +
+            escapeCsvValue(item.comments) + L"\n";
         std::string utf8Line = wstringToString(line);
         outFile << utf8Line;
     }
@@ -6811,28 +6940,11 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
     std::wstring line;
     std::getline(contentStream, line); // Skip the CSV header
-    
+
     while (std::getline(contentStream, line)) {
-        std::wstringstream lineStream(line);
-        std::vector<std::wstring> columns;
-        bool insideQuotes = false;
-        std::wstring currentValue;
+        std::vector<std::wstring> columns = parseCsvLine(line);
 
-        for (const wchar_t& ch : lineStream.str()) {
-            if (ch == L'"') {
-                insideQuotes = !insideQuotes;
-            }
-            if (ch == L',' && !insideQuotes) {
-                columns.push_back(unescapeCsvValue(currentValue));
-                currentValue.clear();
-            }
-            else {
-                currentValue += ch;
-            }
-        }
-        columns.push_back(unescapeCsvValue(currentValue));
-
-        if (columns.size() != 8) {
+        if (columns.size() < 8 || columns.size() > 9) {
             throw CsvLoadException(wstringToString(getLangStr(L"status_invalid_column_count")));
         }
 
@@ -6846,6 +6958,14 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
             item.useVariables = std::stoi(columns[5]) != 0;
             item.extended = std::stoi(columns[6]) != 0;
             item.regex = std::stoi(columns[7]) != 0;
+
+            // Handle Comments column for compatibility with old format
+            if (columns.size() == 9) {
+                item.comments = columns[8];
+            }
+            else {
+                item.comments = L"";  // Initialize as empty string if not present
+            }
 
             tempList.push_back(item);
         }
@@ -6990,6 +7110,37 @@ std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
     }
 
     return unescapedValue;
+}
+
+std::vector<std::wstring> MultiReplace::parseCsvLine(const std::wstring& line) {
+    std::vector<std::wstring> columns;
+    std::wstring currentValue;
+    bool insideQuotes = false;
+
+    for (size_t i = 0; i < line.length(); ++i) {
+        const wchar_t& ch = line[i];
+        if (ch == L'"') {
+            if (insideQuotes && i + 1 < line.length() && line[i + 1] == L'"') {
+                // Escaped quote
+                currentValue += L'"';
+                ++i; // Skip the next quote
+            }
+            else {
+                // Toggle the state
+                insideQuotes = !insideQuotes;
+            }
+        }
+        else if (ch == L',' && !insideQuotes) {
+            // When not inside quotes, treat comma as column separator
+            columns.push_back(unescapeCsvValue(currentValue));
+            currentValue.clear();
+        }
+        else {
+            currentValue += ch; // Append the character to the current value
+        }
+    }
+    columns.push_back(unescapeCsvValue(currentValue)); // Add the last value
+    return columns;
 }
 
 #pragma endregion
@@ -7252,13 +7403,20 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"ForegroundTransparency=" + std::to_wstring(foregroundTransparency) + L"\n");
     outFile << wstringToString(L"BackgroundTransparency=" + std::to_wstring(backgroundTransparency) + L"\n");
 
-    // Store column widths for "Find Count" and "Replace Count"
-    findCountColumnWidth = ListView_GetColumnWidth(_replaceListView, 1);
-    replaceCountColumnWidth = ListView_GetColumnWidth(_replaceListView, 2);
+    // Store column widths for "Find Count", "Replace Count", and "Comments"
+    findCountColumnWidth = (columnIndices[ColumnID::FIND_COUNT] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::FIND_COUNT]) : findCountColumnWidth;
+    replaceCountColumnWidth = (columnIndices[ColumnID::REPLACE_COUNT] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::REPLACE_COUNT]) : replaceCountColumnWidth;
+    commentsColumnWidth = (columnIndices[ColumnID::COMMENTS] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::COMMENTS]) : commentsColumnWidth;
 
     outFile << wstringToString(L"[ListColumns]\n");
     outFile << wstringToString(L"FindCountWidth=" + std::to_wstring(findCountColumnWidth) + L"\n");
     outFile << wstringToString(L"ReplaceCountWidth=" + std::to_wstring(replaceCountColumnWidth) + L"\n");
+    outFile << wstringToString(L"CommentsWidth=" + std::to_wstring(commentsColumnWidth) + L"\n");
+
+    // Save column visibility states
+    outFile << wstringToString(L"FindCountVisible=" + std::to_wstring(isFindCountVisible) + L"\n");
+    outFile << wstringToString(L"ReplaceCountVisible=" + std::to_wstring(isReplaceCountVisible) + L"\n");
+    outFile << wstringToString(L"CommentsVisible=" + std::to_wstring(isCommentsColumnVisible) + L"\n");
 
     // Convert and Store the current "Find what" and "Replace with" texts
     std::wstring currentFindTextData = escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
@@ -7273,7 +7431,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int matchCase = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int extended = IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED ? 1 : 0;
     int regex = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0;
-	int replaceFirst = IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED ? 1 : 0;
+    int replaceFirst = IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int wrapAround = IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int useVariables = IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int ButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
@@ -7284,7 +7442,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"MatchCase=" + std::to_wstring(matchCase) + L"\n");
     outFile << wstringToString(L"Extended=" + std::to_wstring(extended) + L"\n");
     outFile << wstringToString(L"Regex=" + std::to_wstring(regex) + L"\n");
-	outFile << wstringToString(L"ReplaceFirst=" + std::to_wstring(replaceFirst) + L"\n");
+    outFile << wstringToString(L"ReplaceFirst=" + std::to_wstring(replaceFirst) + L"\n");
     outFile << wstringToString(L"WrapAround=" + std::to_wstring(wrapAround) + L"\n");
     outFile << wstringToString(L"UseVariables=" + std::to_wstring(useVariables) + L"\n");
     outFile << wstringToString(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
@@ -7492,11 +7650,13 @@ void MultiReplace::loadUIConfigFromIni() {
     dpiMgr->setCustomScaleFactor(customScaleFactor);
 
     // Scale Window and List Size after loading ScaleFactor
-    MIN_WIDTH_scaled          = sx(MIN_WIDTH);     // MIN_WIDTH from resource.rc
-    MIN_HEIGHT_scaled         = sy(MIN_HEIGHT);    // MIN_HEIGHT from resource.rc
-    SHRUNK_HEIGHT_scaled      = sy(SHRUNK_HEIGHT); // SHRUNK_HEIGHT from resource.rc
-    COUNT_COLUMN_WIDTH_scaled = sx(COUNT_COLUMN_WIDTH); // Scaled Size of Count Columns
-    MIN_COLUMN_WIDTH_scaled   = sx(MIN_COLUMN_WIDTH);   // Scaled Size of Minimum Size for Find and Replace 
+    MIN_WIDTH_scaled              = sx(MIN_WIDTH);          // MIN_WIDTH from resource.rc
+    MIN_HEIGHT_scaled             = sy(MIN_HEIGHT);         // MIN_HEIGHT from resource.rc
+    SHRUNK_HEIGHT_scaled          = sy(SHRUNK_HEIGHT);      // SHRUNK_HEIGHT from resource.rc
+    COUNT_COLUMN_WIDTH_scaled     = sx(COUNT_COLUMN_WIDTH); // Scaled Size of Count Columns
+    MIN_FIND_REPLACE_WIDTH_scaled = sx(MIN_FIND_REPLACE_WIDTH); // Scaled Size of Minimum Size for Find and Replace 
+    MIN_GENERAL_WIDTH_scaled      = sx(MIN_GENERAL_WIDTH);  // Scaled Size of Minimum Size for Find Count and Replace Count Comments
+    COMMENTS_COLUMN_WIDTH_scaled  = sx(COMMENTS_COLUMN_WIDTH);  // Scaled Size of Comments Column
 
     // Load window position
     windowRect.left = readIntFromIniFile(iniFilePath, L"Window", L"PosX", POS_X);
@@ -7514,7 +7674,6 @@ void MultiReplace::loadUIConfigFromIni() {
     useListOnHeight = readIntFromIniFile(iniFilePath, L"Window", L"Height", MIN_HEIGHT_scaled);
     useListOnHeight = std::max(useListOnHeight, MIN_HEIGHT_scaled); // Ensure minimum height
 
-
     // Set windowRect based on Use List state
     int height = useListEnabled ? useListOnHeight : useListOffHeight;
 
@@ -7522,10 +7681,14 @@ void MultiReplace::loadUIConfigFromIni() {
     windowRect.bottom = windowRect.top + height;
 
     // Read column widths
-    findCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", findCountColumnWidth);
-    replaceCountColumnWidth = readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountWidth", replaceCountColumnWidth);
+    findCountColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", MIN_GENERAL_WIDTH_scaled), COUNT_COLUMN_WIDTH_scaled);
+    replaceCountColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountWidth", MIN_GENERAL_WIDTH_scaled), COUNT_COLUMN_WIDTH_scaled);
+    commentsColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"CommentsWidth", MIN_GENERAL_WIDTH_scaled), COMMENTS_COLUMN_WIDTH_scaled);
 
-    isStatisticsColumnsExpanded = (findCountColumnWidth >= COUNT_COLUMN_WIDTH_scaled && replaceCountColumnWidth >= COUNT_COLUMN_WIDTH_scaled);
+    // Load column visibility states
+    isFindCountVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"FindCountVisible", true);
+    isReplaceCountVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountVisible", true);
+    isCommentsColumnVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"CommentsVisible", true);
 
     // Load transparency settings with defaults
     foregroundTransparency = readByteFromIniFile(iniFilePath, L"Window", L"ForegroundTransparency", foregroundTransparency);

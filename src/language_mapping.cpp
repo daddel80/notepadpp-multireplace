@@ -71,6 +71,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"header_use_variables", L"V" },
 { L"header_extended", L"E" },
 { L"header_regex", L"R" },
+{ L"header_comments", L"Comments" },
 
 // tooltip entries
 { L"tooltip_header_whole_word", L"Whole Word" },

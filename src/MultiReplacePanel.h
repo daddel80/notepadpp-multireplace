@@ -51,6 +51,7 @@ struct ReplaceItemData
     bool useVariables = false;
     bool extended = false;
     bool regex = false;
+    std::wstring comments = L"";
 
     bool operator==(const ReplaceItemData& rhs) const {
         return
@@ -79,6 +80,7 @@ struct ReplaceItemDataHasher {
         hash ^= std::hash<bool>{}(item.useVariables) << 1;
         hash ^= std::hash<bool>{}(item.extended) << 1;
         hash ^= std::hash<bool>{}(item.regex) << 1;
+        hash ^= std::hash<std::wstring>{}(item.comments) << 1;
         return hash;
     }
 };
@@ -225,6 +227,31 @@ enum class SortState {
     SortedDescending
 };
 
+enum ColumnID {
+    INVALID = -1,
+    FIND_COUNT,         // 0
+    REPLACE_COUNT,      // 1
+    SELECTION,          // 2
+    FIND_TEXT,          // 3
+    REPLACE_TEXT,       // 4
+    WHOLE_WORD,         // 5
+    MATCH_CASE,         // 6
+    USE_VARIABLES,      // 7
+    EXTENDED,           // 8
+    REGEX,              // 9
+    COMMENTS,           // 10
+    DELETE_BUTTON       // 11
+};
+
+struct ResizableColWidths {
+    HWND listView;
+    int listViewWidth;
+    int findCountWidth;
+    int replaceCountWidth;
+    int commentsWidth;  // Now includes comments column width
+    int margin;
+};
+
 struct LuaVariable {
     std::string name;
     LuaVariableType type;
@@ -342,8 +369,10 @@ private:
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
+    static constexpr int MIN_FIND_REPLACE_WIDTH  = 48;  // Minimum size of Find and Replace Column
+    static constexpr int MIN_GENERAL_WIDTH = 20;  // Minimum size of Find Count and Replace Count and Comments Column
     static constexpr int COUNT_COLUMN_WIDTH = 40; // Initial Size for Count Column
-    static constexpr int MIN_COLUMN_WIDTH = 48;  // Minimum size of Find and Replace Column
+    static constexpr int COMMENTS_COLUMN_WIDTH = 120; // Minimum size of Comments Column
     static constexpr int STEP_SIZE = 5; // Speed for opening and closing Count Columns
     static constexpr wchar_t* symbolSortAsc = L"▼";
     static constexpr wchar_t* symbolSortDesc = L"▲";
@@ -396,7 +425,6 @@ private:
     size_t markedStringsCount = 0;
     bool allSelected = true;
     std::unordered_map<long, int> colorToStyleMap;
-    int lastColumn = -1;
     std::map<int, SortDirection> columnSortOrder;
     ColumnDelimiterData columnDelimiterData;
     LRESULT eolLength = -1; // Stores the length of the EOL character sequence
@@ -414,9 +442,9 @@ private:
     static bool debugWindowSizeSet;
     static HWND hDebugWnd; // Handle for the debug window
 
-
     int _editingItemIndex;
-    int _editingColumn;
+    int _editingColumnIndex;
+    int _editingColumnID;
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
@@ -436,8 +464,8 @@ private:
     int checkMarkWidth_scaled = 0;
     int crossWidth_scaled = 0;
     int boxWidth_scaled = 0;
-    bool highlightMatchEnabled = false;  // HighlightMatch
-
+    bool highlightMatchEnabled = true;  // HighlightMatch during Find in List
+    std::map<int, int> columnIndices;  // Mapping of ColumnID to ColumnIndex due to dynamic Columns
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
@@ -447,17 +475,23 @@ private:
 
     // Window related settings
     RECT windowRect; // Structure to store window position and size
-    int findCountColumnWidth = 0; // Width of the "Find Count" column
-    int replaceCountColumnWidth = 0; // Width of the "Replace Count" column
     BYTE foregroundTransparency = 255; // Default to fully opaque
     BYTE backgroundTransparency = 190; // Default to semi-transparent
+    int findCountColumnWidth = 0; // Width of the "Find Count" column
+    int replaceCountColumnWidth = 0; // Width of the "Replace Count" column
+    int commentsColumnWidth = 0; // Width of the "Comments" column
+    bool isFindCountVisible = false; // Visibility of the "Find Count" column
+    bool isReplaceCountVisible = false; // Visibility of the "Replace Count" column
+    bool isCommentsColumnVisible = false; // Visibility of the "Comments" column
 
     // Window DPI scaled size 
     int MIN_WIDTH_scaled;
     int MIN_HEIGHT_scaled;
     int SHRUNK_HEIGHT_scaled;
     int COUNT_COLUMN_WIDTH_scaled;
-    int MIN_COLUMN_WIDTH_scaled;
+    int MIN_FIND_REPLACE_WIDTH_scaled;
+    int MIN_GENERAL_WIDTH_scaled;
+    int COMMENTS_COLUMN_WIDTH_scaled;
 
     //Initialization
     void initializeWindowSize();
@@ -471,7 +505,6 @@ private:
     void moveAndResizeControls();
     void updateButtonVisibilityBasedOnMode();
     void setUIElementVisibility();
-    void updateStatisticsColumnButtonIcon();
     void drawGripper();
     void SetWindowTransparency(HWND hwnd, BYTE alpha);
     void adjustWindowSize();
@@ -482,23 +515,26 @@ private:
     void AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnIndex, LPCTSTR pszText);
     void createListViewColumns(HWND listView);
     void insertReplaceListItem(const ReplaceItemData& itemData);
-    int  calcDynamicColWidth(const CountColWidths& widths);
+    int  calcDynamicColWidth(const ResizableColWidths& widths);
     void updateListViewAndColumns();
     void updateListViewTooltips();
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void shiftListItem(HWND listView, const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);
     void deleteSelectedLines(HWND listView);
-    void sortReplaceListData(int column, SortDirection direction);
+    void sortReplaceListData(int columnID, SortDirection direction);
     std::vector<size_t> getSelectedRows();
     void selectRows(const std::vector<size_t>& selectedIDs);
     void handleCopyToListButton();
     void resetCountColumns();
     void updateCountColumns(const size_t itemIndex, const int findCount, int replaceCount = -1);
-    void resizeCountColumns();
     void clearList();
     std::size_t computeListHash(const std::vector<ReplaceItemData>& list);
     void refreshUIListView();
+
+    //Contextmenu Display Columns
+    void showColumnVisibilityMenu(HWND hWnd, POINT pt);
+    void handleColumnVisibilityToggle(UINT menuId);
 
     //Contextmenu
     void toggleBooleanAt(int itemIndex, int Column);
@@ -513,6 +549,7 @@ private:
     void pasteItemsIntoList();
     void performSearchInList();
     int searchInListData(int startIdx, const std::wstring& findText, const std::wstring& replaceText);
+    int getColumnIDFromIndex(int columnIndex);
 
     //Replace
     void handleReplaceAllButton();
@@ -622,6 +659,7 @@ private:
     void checkForFileChangesAtStartup();
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
+    std::vector<std::wstring> parseCsvLine(const std::wstring& line);
 
     //Export
     void exportToBashScript(const std::wstring& fileName);
