@@ -22,3 +22,11 @@ vs.proj/.vs/
 *.lib
 /.vs/VSWorkspaceState.json
 /.vs/notepadpp-multireplace/v17/.wsuo
+*.tlog
+*.obj
+*.log
+*.ilk
+*.recipe
+*.idb
+*.pdb
+*.res
