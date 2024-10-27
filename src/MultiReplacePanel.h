@@ -368,7 +368,7 @@ private:
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
-    static constexpr int MIN_FIND_REPLACE_WIDTH  = 48;  // Minimum size of Find and Replace Column
+    static constexpr int MIN_FIND_REPLACE_WIDTH = 48;  // Minimum size of Find and Replace Column
     static constexpr int MIN_GENERAL_WIDTH = 20;  // Minimum size of Find Count and Replace Count and Comments Column
     static constexpr int COUNT_COLUMN_WIDTH = 40; // Initial Size for Count Column
     static constexpr int COMMENTS_COLUMN_WIDTH = 120; // Minimum size of Comments Column
