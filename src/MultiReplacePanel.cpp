@@ -239,6 +239,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(501), sy(149), sx(40), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_show"), BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
 
     ctrlMap[IDC_STATUS_MESSAGE] = { sx(11), sy(208), sx(504), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
+    //ctrlMap[IDC_COLUMN_VISIBILITY_BUTTON] = { sx(2), sy(225), sx(14), sy(19), WC_BUTTON, L"…", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(15), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -250,7 +251,6 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
     ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_2_buttons_mode") };
     ctrlMap[IDC_FIND_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_find_next"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_VISIBILITY_BUTTON] = { sx(2), sy(225), sx(14), sy(19), WC_BUTTON, L"…", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
 
     findNextButtonText = L"▼ " + getLangStr(L"panel_find_next_small");
     ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
@@ -1340,6 +1340,15 @@ void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
     InvalidateRect(listView, NULL, TRUE);
 }
 
+int MultiReplace::getColumnIDFromIndex(int columnIndex) {
+    for (const auto& pair : columnIndices) {
+        if (pair.second == columnIndex) {
+            return pair.first;
+        }
+    }
+    return ColumnID::INVALID; // Return INVALID if not found
+}
+
 #pragma endregion
 
 
@@ -1578,6 +1587,18 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         NMHDR* pnmhdr = reinterpret_cast<NMHDR*>(lParam);
         if (pnmhdr->hwndFrom == ListView_GetHeader(hwnd)) {
             int code = static_cast<int>(static_cast<short>(pnmhdr->code));
+
+            // Handle right-click (NM_RCLICK) on the header
+            if (code == NM_RCLICK) {
+                // Get the current cursor position
+                POINT ptScreen;
+                GetCursorPos(&ptScreen);
+
+                // Show the column visibility menu at the cursor position
+                pThis->showColumnVisibilityMenu(pThis->_hSelf, ptScreen);
+
+                return TRUE; // Indicate that the message has been handled
+            }
 
             // These values are derived from the HDN_ITEMCHANGEDW and HDN_ITEMCHANGEDA constants:
             // HDN_ITEMCHANGEDW = 0U - 300U - 21 = -321
@@ -2423,6 +2444,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_CONTEXTMENU:
     {
+        // Check if the right-click is on the ListView (not the header)
         if ((HWND)wParam == _replaceListView) {
             POINT ptScreen;
             ptScreen.x = LOWORD(lParam);
@@ -2946,15 +2968,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     default:
         return FALSE;
     }
-}
-
-int MultiReplace::getColumnIDFromIndex(int columnIndex) {
-    for (const auto& pair : columnIndices) {
-        if (pair.second == columnIndex) {
-            return pair.first;
-        }
-    }
-    return ColumnID::INVALID; // Return INVALID if not found
 }
 
 #pragma endregion

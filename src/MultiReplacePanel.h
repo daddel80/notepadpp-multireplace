@@ -533,6 +533,7 @@ private:
     std::size_t computeListHash(const std::vector<ReplaceItemData>& list);
     void refreshUIListView();
     void handleColumnVisibilityToggle(UINT menuId);
+    int getColumnIDFromIndex(int columnIndex);
 
     //Contextmenu Display Columns
     void showColumnVisibilityMenu(HWND hWnd, POINT pt);
@@ -550,7 +551,6 @@ private:
     void pasteItemsIntoList();
     void performSearchInList();
     int searchInListData(int startIdx, const std::wstring& findText, const std::wstring& replaceText);
-    int getColumnIDFromIndex(int columnIndex);
 
     //Replace
     void handleReplaceAllButton();
