@@ -146,6 +146,8 @@ void MultiReplace::initializeFontStyles() {
     crossWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2716") + 15;
     boxWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2610") + 15;
 
+    // For dynamic calculation of the list width in updateListViewAndColumns()
+    deleteButtonColumnWidth = crossWidth_scaled;
 }
 
 RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
@@ -720,10 +722,11 @@ void MultiReplace::createListViewColumns(HWND listView) {
         }
         };
 
-    // Update global variables with the current column widths
+    // Update global variables with the current column widths - only for sizable columns
     updateColumnWidth(isFindCountVisible, ColumnID::FIND_COUNT, findCountColumnWidth);
     updateColumnWidth(isReplaceCountVisible, ColumnID::REPLACE_COUNT, replaceCountColumnWidth);
     updateColumnWidth(isCommentsColumnVisible, ColumnID::COMMENTS, commentsColumnWidth);
+    updateColumnWidth(isDeleteButtonVisible, ColumnID::DELETE_BUTTON, deleteButtonColumnWidth);
 
     // Delete all existing columns first
     int columnCount = Header_GetItemCount(ListView_GetHeader(listView));
@@ -741,6 +744,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
         (isFindCountVisible) ? findCountColumnWidth : 0,
         (isReplaceCountVisible) ? replaceCountColumnWidth : 0,
         (isCommentsColumnVisible) ? commentsColumnWidth : 0,
+        (isDeleteButtonVisible) ? deleteButtonColumnWidth : 0,
         GetSystemMetrics(SM_CXVSCROLL)
     };
 
@@ -831,11 +835,18 @@ void MultiReplace::createListViewColumns(HWND listView) {
     }
 
     // Column 12: Delete Button
-    lvc.iSubItem = currentIndex;
-    lvc.pszText = L"";
-    lvc.cx = crossWidth_scaled;
-    ListView_InsertColumn(listView, currentIndex, &lvc);
-    columnIndices[ColumnID::DELETE_BUTTON] = currentIndex;
+    if (isDeleteButtonVisible) {
+        lvc.iSubItem = currentIndex;
+        lvc.pszText = L"";
+        lvc.cx = crossWidth_scaled;
+        lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
+        ListView_InsertColumn(listView, currentIndex, &lvc);
+        columnIndices[ColumnID::DELETE_BUTTON] = currentIndex;
+        ++currentIndex;
+    }
+    else {
+        columnIndices[ColumnID::DELETE_BUTTON] = -1;
+    }
 
     // Adding Tooltips (if needed)
     HWND hwndHeader = ListView_GetHeader(listView);
@@ -888,15 +899,16 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
 }
 
 int MultiReplace::calcDynamicColWidth(const ResizableColWidths& widths) {
-    int totalWidthColumn6to10 = boxWidth_scaled + (checkMarkWidth_scaled * 5) + crossWidth_scaled;  // Width of fixed columns (options and delete button)
+    int totalWidthFixedColumns = boxWidth_scaled + (checkMarkWidth_scaled * 5);
 
     // Calculate the total remaining width, subtracting the fixed widths and visible columns
     int totalRemainingWidth = widths.listViewWidth
         - widths.margin // Adjust for the margin (scrollbar width)
-        - totalWidthColumn6to10
+        - totalWidthFixedColumns
         - widths.findCountWidth
         - widths.replaceCountWidth
-        - widths.commentsWidth;
+        - widths.commentsWidth
+        - widths.deleteWidth;
 
     // Ensure that the remaining width is not less than the minimum width
     int perColumnWidth = std::max(totalRemainingWidth, MIN_FIND_REPLACE_WIDTH_scaled * 2) / 2;
@@ -927,25 +939,37 @@ int MultiReplace::getCharacterWidth(int elementID, const wchar_t* character) {
 }
 
 void MultiReplace::updateListViewAndColumns() {
-    // Retrieve the control information for IDC_REPLACE_LIST from ctrlMap
+    // Retrieve control information
     const ControlInfo& listCtrlInfo = ctrlMap[IDC_REPLACE_LIST];
-
-    // Get the ListView handle directly
     HWND listView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
 
-    // Set global column width variables based solely on columnIndices
-    findCountColumnWidth = (columnIndices[ColumnID::FIND_COUNT] != -1) ? ListView_GetColumnWidth(listView, columnIndices[ColumnID::FIND_COUNT]) : 0;
-    replaceCountColumnWidth = (columnIndices[ColumnID::REPLACE_COUNT] != -1) ? ListView_GetColumnWidth(listView, columnIndices[ColumnID::REPLACE_COUNT]) : 0;
-    commentsColumnWidth = (columnIndices[ColumnID::COMMENTS] != -1) ? ListView_GetColumnWidth(listView, columnIndices[ColumnID::COMMENTS]) : 0;
+    // Helper function to get column width for calculations
+    auto getColumnWidthForCalc = [&](ColumnID columnID, int& globalWidthVar) -> int {
+        if (columnIndices[columnID] != -1) {
+            int width = ListView_GetColumnWidth(listView, columnIndices[columnID]);
+            globalWidthVar = width;
+            return width;
+        }
+        else {
+            return 0;
+        }
+        };
 
-    // Retrieve the current column widths dynamically, including comments
+    // **Retrieve widths for calculations, updating global variables for visible columns**
+    int findCountWidthCalc = getColumnWidthForCalc(ColumnID::FIND_COUNT, findCountColumnWidth);
+    int replaceCountWidthCalc = getColumnWidthForCalc(ColumnID::REPLACE_COUNT, replaceCountColumnWidth);
+    int commentsWidthCalc = getColumnWidthForCalc(ColumnID::COMMENTS, commentsColumnWidth);
+    int deleteButtonWidthCalc = getColumnWidthForCalc(ColumnID::DELETE_BUTTON, deleteButtonColumnWidth);
+
+    // Prepare the ResizableColWidths struct for dynamic column width calculation
     ResizableColWidths widths = {
         listView,
-        listCtrlInfo.cx,  // New width for ListView (dynamic based on window size)
-        findCountColumnWidth,
-        replaceCountColumnWidth,
-        commentsColumnWidth,
-        GetSystemMetrics(SM_CXVSCROLL)  // Width of the Scrollbar
+        listCtrlInfo.cx,  // Width of the ListView control
+        findCountWidthCalc,
+        replaceCountWidthCalc,
+        commentsWidthCalc,
+        deleteButtonWidthCalc,
+        GetSystemMetrics(SM_CXVSCROLL)  // Width of the scrollbar
     };
 
     // Calculate dynamic column width, now considering the visibility of Comments column
@@ -1289,27 +1313,6 @@ void MultiReplace::refreshUIListView()
     InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
-#pragma endregion
-
-
-#pragma region Contextmenu Display Columns
-
-void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
-    // Create a popup menu
-    HMENU hMenu = CreatePopupMenu();
-
-    // Add menu items with checkmarks based on current visibility
-    AppendMenu(hMenu, MF_STRING | (isFindCountVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_FIND_COUNT, getLangStrLPCWSTR(L"header_find_count"));
-    AppendMenu(hMenu, MF_STRING | (isReplaceCountVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_REPLACE_COUNT, getLangStrLPCWSTR(L"header_replace_count"));
-    AppendMenu(hMenu, MF_STRING | (isCommentsColumnVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_COMMENTS, getLangStrLPCWSTR(L"header_comments"));
-
-    // Display the menu at the specified location
-    TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, hWnd, NULL);
-
-    // Destroy the menu after use
-    DestroyMenu(hMenu);
-}
-
 void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
     // Toggle the corresponding visibility flag
     switch (menuId) {
@@ -1321,6 +1324,9 @@ void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
         break;
     case IDM_TOGGLE_COMMENTS:
         isCommentsColumnVisible = !isCommentsColumnVisible;
+        break;
+    case IDM_TOGGLE_DELETE:
+        isDeleteButtonVisible = !isDeleteButtonVisible;
         break;
     default:
         return; // Unhandled menu ID
@@ -1337,7 +1343,29 @@ void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
 #pragma endregion
 
 
-#pragma region Contextmenu
+#pragma region Contextmenu Display Columns
+
+void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
+    // Create a popup menu
+    HMENU hMenu = CreatePopupMenu();
+
+    // Add menu items with checkmarks based on current visibility
+    AppendMenu(hMenu, MF_STRING | (isFindCountVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_FIND_COUNT, getLangStrLPCWSTR(L"header_find_count"));
+    AppendMenu(hMenu, MF_STRING | (isReplaceCountVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_REPLACE_COUNT, getLangStrLPCWSTR(L"header_replace_count"));
+    AppendMenu(hMenu, MF_STRING | (isCommentsColumnVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_COMMENTS, getLangStrLPCWSTR(L"header_comments"));
+    AppendMenu(hMenu, MF_STRING | (isDeleteButtonVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_DELETE, getLangStrLPCWSTR(L"header_delete_button"));
+
+    // Display the menu at the specified location
+    TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, hWnd, NULL);
+
+    // Destroy the menu after use
+    DestroyMenu(hMenu);
+}
+
+#pragma endregion
+
+
+#pragma region Contextmenu List
 
 void MultiReplace::toggleBooleanAt(int itemIndex, int clickedColumn) {
     if (itemIndex < 0 || itemIndex >= static_cast<int>(replaceListData.size())) {
@@ -2903,6 +2931,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDM_TOGGLE_FIND_COUNT:
         case IDM_TOGGLE_REPLACE_COUNT:
         case IDM_TOGGLE_COMMENTS:
+        case IDM_TOGGLE_DELETE:
         {
             // Toggle the visibility based on the menu selection
             handleColumnVisibilityToggle(LOWORD(wParam));
@@ -7417,6 +7446,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"FindCountVisible=" + std::to_wstring(isFindCountVisible) + L"\n");
     outFile << wstringToString(L"ReplaceCountVisible=" + std::to_wstring(isReplaceCountVisible) + L"\n");
     outFile << wstringToString(L"CommentsVisible=" + std::to_wstring(isCommentsColumnVisible) + L"\n");
+    outFile << wstringToString(L"DeleteButtonVisible=" + std::to_wstring(isDeleteButtonVisible ? 1 : 0) + L"\n");
 
     // Convert and Store the current "Find what" and "Replace with" texts
     std::wstring currentFindTextData = escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
@@ -7689,6 +7719,7 @@ void MultiReplace::loadUIConfigFromIni() {
     isFindCountVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"FindCountVisible", true);
     isReplaceCountVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountVisible", true);
     isCommentsColumnVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"CommentsVisible", true);
+    isDeleteButtonVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"DeleteButtonVisible", true);
 
     // Load transparency settings with defaults
     foregroundTransparency = readByteFromIniFile(iniFilePath, L"Window", L"ForegroundTransparency", foregroundTransparency);

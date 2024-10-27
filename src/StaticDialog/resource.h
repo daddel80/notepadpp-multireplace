@@ -116,7 +116,7 @@
 #define IDM_TOGGLE_FIND_COUNT           5801
 #define IDM_TOGGLE_REPLACE_COUNT        5802
 #define IDM_TOGGLE_COMMENTS             5803
-
+#define IDM_TOGGLE_DELETE               5804
 
 #define STYLE1							60
 #define STYLE2							61

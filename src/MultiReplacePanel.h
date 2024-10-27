@@ -248,7 +248,8 @@ struct ResizableColWidths {
     int listViewWidth;
     int findCountWidth;
     int replaceCountWidth;
-    int commentsWidth;  // Now includes comments column width
+    int commentsWidth;
+    int deleteWidth;
     int margin;
 };
 
@@ -364,8 +365,6 @@ protected:
 
 private:
     static constexpr int MAX_TEXT_LENGTH = 4096; // Maximum Textlength for Find and Replace String
-    static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
-    static constexpr int FONT_SIZE = 16;
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
@@ -477,12 +476,14 @@ private:
     RECT windowRect; // Structure to store window position and size
     BYTE foregroundTransparency = 255; // Default to fully opaque
     BYTE backgroundTransparency = 190; // Default to semi-transparent
-    int findCountColumnWidth = 0; // Width of the "Find Count" column
-    int replaceCountColumnWidth = 0; // Width of the "Replace Count" column
-    int commentsColumnWidth = 0; // Width of the "Comments" column
-    bool isFindCountVisible = false; // Visibility of the "Find Count" column
-    bool isReplaceCountVisible = false; // Visibility of the "Replace Count" column
+    int findCountColumnWidth = 0;      // Width of the "Find Count" column
+    int replaceCountColumnWidth = 0;   // Width of the "Replace Count" column
+    int commentsColumnWidth = 0;       // Width of the "Comments" column
+    int deleteButtonColumnWidth = 0;   // Width of the "Delete" column
+    bool isFindCountVisible = false;      // Visibility of the "Find Count" column
+    bool isReplaceCountVisible = false;   // Visibility of the "Replace Count" column
     bool isCommentsColumnVisible = false; // Visibility of the "Comments" column
+    bool isDeleteButtonVisible = true;    // Visibility of the "Delete" column
 
     // Window DPI scaled size 
     int MIN_WIDTH_scaled;
@@ -531,12 +532,12 @@ private:
     void clearList();
     std::size_t computeListHash(const std::vector<ReplaceItemData>& list);
     void refreshUIListView();
+    void handleColumnVisibilityToggle(UINT menuId);
 
     //Contextmenu Display Columns
     void showColumnVisibilityMenu(HWND hWnd, POINT pt);
-    void handleColumnVisibilityToggle(UINT menuId);
 
-    //Contextmenu
+    //Contextmenu List
     void toggleBooleanAt(int itemIndex, int Column);
     void editTextAt(int itemIndex, int column);
     static LRESULT CALLBACK ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
