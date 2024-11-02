@@ -429,6 +429,7 @@ private:
     LRESULT eolLength = -1; // Stores the length of the EOL character sequence
     std::vector<ReplaceItemData> replaceListData;
     std::vector<LineInfo> lineDelimiterPositions;
+    std::vector<char> lineBuffer; // reusable Buffer for findDelimitersInLine()
     bool isColumnHighlighted = false;
     std::map<int, bool> stateSnapshot; // stores the state of the Elements
     LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
@@ -468,9 +469,6 @@ private:
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
-    const std::vector<int> columnRadioDependentElements = {
-        IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
-    };
 
     // Window related settings
     RECT windowRect; // Structure to store window position and size

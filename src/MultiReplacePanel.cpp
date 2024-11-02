@@ -200,7 +200,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int useListButtonX = buttonX + sx(134);
     int swapButtonX = windowWidth - sx(36 + 128 + 26);
     int comboWidth = windowWidth - sx(292);
-    int listWidth = windowWidth - sx(208);
+    int listWidth = windowWidth - sx(202);
     int listHeight = windowHeight - sy(248);
     int useListButtonY = windowHeight - sy(37);
 
@@ -238,7 +238,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(472), sy(149), sx(20), sy(20), WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_columns") };
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(501), sy(149), sx(40), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_show"), BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
 
-    ctrlMap[IDC_STATUS_MESSAGE] = { sx(11), sy(208), sx(504), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
+    ctrlMap[IDC_STATUS_MESSAGE] = { sx(14), sy(208), sx(504), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
     //ctrlMap[IDC_COLUMN_VISIBILITY_BUTTON] = { sx(2), sy(225), sx(14), sy(19), WC_BUTTON, L"…", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
 
     // Dynamic positions and sizes
@@ -271,7 +271,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4), sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11), sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL };
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16), sx(96), sy(16), WC_STATIC, getLangStrLPCWSTR(L"panel_move_lines"), SS_LEFT, NULL };
-    ctrlMap[IDC_REPLACE_LIST] = { sx(20), sy(227), listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
+    ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227), listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
     ctrlMap[IDC_PATH_DISPLAY] = { sx(18), sy(227) + listHeight + sy(5), listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
     ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY, sx(24), sy(24), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 }
@@ -460,65 +460,60 @@ void MultiReplace::moveAndResizeControls() {
 void MultiReplace::updateButtonVisibilityBasedOnMode() {
     BOOL twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
 
+    auto setVisibility = [this](const std::vector<int>& elements, bool condition) {
+        for (int id : elements) {
+            ShowWindow(GetDlgItem(_hSelf, id), condition ? SW_SHOW : SW_HIDE);
+        }
+        };
+
     // Replace-Buttons
-    ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), (twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_BUTTON), (twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON), (!twoButtonsMode) ? SW_SHOW : SW_HIDE);
+    setVisibility({ IDC_REPLACE_ALL_SMALL_BUTTON, IDC_REPLACE_BUTTON }, twoButtonsMode);
+    setVisibility({ IDC_REPLACE_ALL_BUTTON }, !twoButtonsMode);
 
     // Find-Buttons
-    ShowWindow(GetDlgItem(_hSelf, IDC_FIND_NEXT_BUTTON), (twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), (twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_FIND_BUTTON), (!twoButtonsMode) ? SW_SHOW : SW_HIDE);
+    setVisibility({ IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON }, twoButtonsMode);
+    setVisibility({ IDC_FIND_BUTTON }, !twoButtonsMode);
 
     // Mark-Buttons
-    ShowWindow(GetDlgItem(_hSelf, IDC_MARK_MATCHES_BUTTON), (twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), (twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_MARK_BUTTON), (!twoButtonsMode) ? SW_SHOW : SW_HIDE);
+    setVisibility({ IDC_MARK_MATCHES_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON }, twoButtonsMode);
+    setVisibility({ IDC_MARK_BUTTON }, !twoButtonsMode);
 
     // Load-Buttons
-    ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_LIST_BUTTON), (useListEnabled && twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON), (useListEnabled && twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), (useListEnabled && !twoButtonsMode) ? SW_SHOW : SW_HIDE);
+    setVisibility({ IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON }, useListEnabled && twoButtonsMode);
+    setVisibility({ IDC_LOAD_FROM_CSV_BUTTON }, useListEnabled && !twoButtonsMode);
 
     // Save-Buttons
-    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), (useListEnabled && twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_AS_BUTTON), (useListEnabled && twoButtonsMode) ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), (useListEnabled && !twoButtonsMode) ? SW_SHOW : SW_HIDE);
+    setVisibility({ IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON }, useListEnabled && twoButtonsMode);
+    setVisibility({ IDC_SAVE_TO_CSV_BUTTON }, useListEnabled && !twoButtonsMode);
 
-    // Other Elements related to USE_LIST
-    ShowWindow(GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON), useListEnabled ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_UP_BUTTON), useListEnabled ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_DOWN_BUTTON), useListEnabled ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_SHIFT_FRAME), useListEnabled ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_SHIFT_TEXT), useListEnabled ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_REPLACE_LIST), useListEnabled ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), useListEnabled ? SW_SHOW : SW_HIDE);
-    ShowWindow(GetDlgItem(_hSelf, IDC_COLUMN_VISIBILITY_BUTTON), useListEnabled ? SW_SHOW : SW_HIDE);
+    // Other Elements related to useListEnabled
+    setVisibility({
+        IDC_EXPORT_BASH_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON,
+        IDC_SHIFT_FRAME, IDC_SHIFT_TEXT, IDC_REPLACE_LIST,
+        IDC_PATH_DISPLAY, IDC_COLUMN_VISIBILITY_BUTTON
+        }, useListEnabled);
 }
 
 void MultiReplace::setUIElementVisibility() {
     // Determine the state of mode radio buttons
     bool regexChecked = SendMessage(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
-    bool extendedChecked = SendMessage(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
     bool selectionChecked = SendMessage(GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
     bool columnModeChecked = SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_MODE_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
 
-    // Update radio button states and manage the Whole Word checkbox visibility
-    if (regexChecked) {
-        CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_REGEX_RADIO);
-        EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), FALSE);  // Hide if regex mode is active
-    }
-    else {
-        CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, extendedChecked ? IDC_EXTENDED_RADIO : IDC_NORMAL_RADIO);
-        EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), TRUE);  // Show otherwise
-    }
+    // Update the Whole Word checkbox visibility based on the Regex mode
+    EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), !regexChecked);
 
-    // Enable or disable UI elements based on column mode
+    const std::vector<int> columnRadioDependentElements = {
+        IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON,
+        IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
+    };
+
+    // Update the UI elements based on Column mode
     for (int id : columnRadioDependentElements) {
         EnableWindow(GetDlgItem(_hSelf, id), columnModeChecked);
     }
 
-    // Specifically manage the FIND_PREV_BUTTON state based on regex and selection mode
+    // Update the FIND_PREV_BUTTON state based on Regex and Selection mode
     EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !(regexChecked || selectionChecked));
 }
 
@@ -5556,7 +5551,7 @@ void MultiReplace::findAllDelimitersInDocument() {
     // Clear list for new data
     lineDelimiterPositions.clear();
 
-    // Reset TextModiefeid Trigger
+    // Reset TextModified Trigger
     textModified = false;
     logChanges.clear();
 
@@ -5571,11 +5566,11 @@ void MultiReplace::findAllDelimitersInDocument() {
 
     // Find and store delimiter positions for each line
     for (LRESULT line = 0; line < totalLines; ++line) {
-
-        // Find delimiters in line
         findDelimitersInLine(line);
-
     }
+
+    // Shrink the reusable buffer used to read each line to release unused memory
+    lineBuffer.shrink_to_fit();
 
     // Clear log queue
     logChanges.clear();
@@ -5592,12 +5587,15 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
 
     // Get line length and allocate buffer
     LRESULT lineLength = send(SCI_LINELENGTH, line, 0);
-    char* buf = new char[lineLength + 1];
+    
+    // Resize the lineBuffer only if needed
+    if (lineBuffer.size() < static_cast<size_t>(lineLength + 1)) {
+        lineBuffer.resize(lineLength + 1);  // Increase the buffer size if necessary
+    }
 
     // Get line content
-    send(SCI_GETLINE, line, reinterpret_cast<sptr_t>(buf));
-    std::string lineContent(buf, lineLength);
-    delete[] buf;
+    send(SCI_GETLINE, line, reinterpret_cast<sptr_t>(lineBuffer.data()));
+    std::string lineContent(lineBuffer.data(), lineLength);
 
     // Define structure to store delimiter position
     DelimiterPosition delimiterPos = { 0 };
@@ -5702,11 +5700,12 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     // Initialize column styles
     initializeColumnStyles();
 
+    // Get the total number of lines
+    LRESULT totalLines = static_cast<LRESULT>(lineDelimiterPositions.size());
+
     // Iterate over each line's delimiter positions
-    LRESULT line = 0;
-    while (line < static_cast<LRESULT>(lineDelimiterPositions.size())) {
+    for (LRESULT line = 0; line < totalLines; ++line) {
         highlightColumnsInLine(line);
-        ++line;
     }
 
     // Show Row and Column Position
@@ -5718,9 +5717,8 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, getLangStrLPCWSTR(L"panel_hide"));
 
     isColumnHighlighted = true;
+    isCaretPositionEnabled = true;  // Enable Position detection
 
-    // Enable Position detection
-    isCaretPositionEnabled = true;
 }
 
 void MultiReplace::highlightColumnsInLine(LRESULT line) {
@@ -5787,6 +5785,13 @@ void MultiReplace::handleClearColumnMarks() {
 
     // Disable Position detection
     isCaretPositionEnabled = false;
+
+    // Force Scintilla to recalculate word wrapping as highlighting is affecting layout
+    int originalWrapMode = static_cast<int>(::SendMessage(_hScintilla, SCI_GETWRAPMODE, 0, 0));
+    if (originalWrapMode != SC_WRAP_NONE) {
+        ::SendMessage(_hScintilla, SCI_SETWRAPMODE, SC_WRAP_NONE, 0);
+        ::SendMessage(_hScintilla, SCI_SETWRAPMODE, originalWrapMode, 0);
+    }
 }
 
 std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
@@ -8201,9 +8206,9 @@ void MultiReplace::showDPIAndFontInfo()
             L"Scaled DPI: " + std::to_wstring(dpix) + L"x" + std::to_wstring(dpiy) + L" * " + scaleBuffer + L" = "
             + std::to_wstring(scaledDpiX) + L"x" + std::to_wstring(scaledDpiY) + L"\n\n"
 
-            L"Font Current: Height=" + std::to_wstring(tmCurrent.tmHeight) + L", Ascent=" + std::to_wstring(tmCurrent.tmAscent) +
+            L"Windows Font: Height=" + std::to_wstring(tmCurrent.tmHeight) + L", Ascent=" + std::to_wstring(tmCurrent.tmAscent) +
             L", Descent=" + std::to_wstring(tmCurrent.tmDescent) + L", Weight=" + std::to_wstring(tmCurrent.tmWeight) + L"\n"
-            L"Font Standard: Height=" + std::to_wstring(tmStandard.tmHeight) + L", Ascent=" + std::to_wstring(tmStandard.tmAscent) +
+            L"Plugin Font: Height=" + std::to_wstring(tmStandard.tmHeight) + L", Ascent=" + std::to_wstring(tmStandard.tmAscent) +
             L", Descent=" + std::to_wstring(tmStandard.tmDescent) + L", Weight=" + std::to_wstring(tmStandard.tmWeight);
 
         MessageBox(_hSelf, message.c_str(), L"Window, Monitor, DPI, and Font Info", MB_ICONINFORMATION | MB_OK);
