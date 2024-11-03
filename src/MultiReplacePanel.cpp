@@ -140,6 +140,26 @@ void MultiReplace::initializeFontStyles() {
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
 
+
+    // Create and apply a normal font for specific controls
+    _hNormalFont = CreateFont(
+        dpiMgr->scaleY(20), // Larger font height
+        0,
+        0,
+        0,
+        FW_NORMAL,          // Normal weight
+        FALSE,
+        FALSE,
+        FALSE,
+        DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        DEFAULT_QUALITY,
+        DEFAULT_PITCH | FF_DONTCARE,
+        L"Courier New"     // Font name
+    );
+    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont, TRUE);
+
     // For ListView identify width of special characters
     // Add 15 units of padding to the widths of checkmark, cross, and box characters
     checkMarkWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2714") + 15;
@@ -232,14 +252,13 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(490), sy(181), sx(35), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
     ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(527), sy(181), sx(12), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_quote") };
 
-    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(406), sy(149), sx(14), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
-    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(421), sy(149), sx(14), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
-    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(443), sy(149), sx(20), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_drop_columns") };
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(407), sy(149), sx(14), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(422), sy(149), sx(14), sy(20), WC_BUTTON, symbolSortAsc,  BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(444), sy(149), sx(20), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_drop_columns") };
     ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(472), sy(149), sx(20), sy(20), WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_columns") };
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(501), sy(149), sx(40), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_show"), BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(500), sy(149), sx(40), sy(20), WC_BUTTON, L"◐", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
 
     ctrlMap[IDC_STATUS_MESSAGE] = { sx(14), sy(208), sx(504), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
-    //ctrlMap[IDC_COLUMN_VISIBILITY_BUTTON] = { sx(2), sy(225), sx(14), sy(19), WC_BUTTON, L"…", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, getLangStrLPCWSTR(L"tooltip_display_statistics_columns") };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(15), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -490,7 +509,7 @@ void MultiReplace::updateButtonVisibilityBasedOnMode() {
     setVisibility({
         IDC_EXPORT_BASH_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON,
         IDC_SHIFT_FRAME, IDC_SHIFT_TEXT, IDC_REPLACE_LIST,
-        IDC_PATH_DISPLAY, IDC_COLUMN_VISIBILITY_BUTTON
+        IDC_PATH_DISPLAY
         }, useListEnabled);
 }
 
@@ -2937,17 +2956,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDC_COLUMN_VISIBILITY_BUTTON:
-        {
-            // Get the button's screen coordinates
-            RECT rcButton;
-            GetWindowRect(GetDlgItem(_hSelf, IDC_COLUMN_VISIBILITY_BUTTON), &rcButton);
-            POINT pt = { rcButton.left, rcButton.bottom };
-
-            // Show the context menu
-            showColumnVisibilityMenu(_hSelf, pt);
-            return TRUE;
-        }
         // Handle menu commands
         case IDM_TOGGLE_FIND_COUNT:
         case IDM_TOGGLE_REPLACE_COUNT:
@@ -5714,7 +5722,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
         showStatusMessage(getLangStr(L"status_actual_position", { addLineAndColumnMessage(startPosition) }), RGB(0, 128, 0));
     }
 
-    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, getLangStrLPCWSTR(L"panel_hide"));
+    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"◑");
 
     isColumnHighlighted = true;
     isCaretPositionEnabled = true;  // Enable Position detection
@@ -5779,7 +5787,7 @@ void MultiReplace::handleClearColumnMarks() {
     send(SCI_STARTSTYLING, 0, 0);
     send(SCI_SETSTYLING, textLength, STYLE_DEFAULT);
 
-    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, getLangStrLPCWSTR(L"panel_show"));
+    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"◐");
 
     isColumnHighlighted = false;
 
@@ -8038,7 +8046,7 @@ void MultiReplace::onDocumentSwitched() {
         documentSwitched = true;
         isCaretPositionEnabled = false;
         scannedDelimiterBufferID = currentBufferID;
-        SetDlgItemText(s_hDlg, IDC_COLUMN_HIGHLIGHT_BUTTON, _MultiReplace.getLangStrLPCWSTR(L"panel_show"));
+        SetDlgItemText(s_hDlg, IDC_COLUMN_HIGHLIGHT_BUTTON, L"◐");
         if (instance != nullptr) {
             instance->isColumnHighlighted = false;
             instance->showStatusMessage(L"", RGB(0, 0, 0));

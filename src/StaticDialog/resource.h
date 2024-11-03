@@ -92,8 +92,7 @@
 #define IDC_QUOTECHAR_STATIC            5465
 
 #define IDC_STATIC_FRAME                5501
-#define IDC_COLUMN_VISIBILITY_BUTTON    5502
-#define IDC_REPLACE_LIST                5503
+#define IDC_REPLACE_LIST                5502
 
 #define IDD_ABOUT_DIALOG                5600
 #define IDC_NAME_STATIC	                5601
