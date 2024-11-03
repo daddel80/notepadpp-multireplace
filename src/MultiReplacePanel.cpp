@@ -140,9 +140,28 @@ void MultiReplace::initializeFontStyles() {
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
 
+    // Create and apply a normal font for specific controls
+    _hNormalFont1 = CreateFont(
+        dpiMgr->scaleY(15), // Larger font height
+        0,
+        0,
+        0,
+        FW_NORMAL,          // Normal weight
+        FALSE,
+        FALSE,
+        FALSE,
+        DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        DEFAULT_QUALITY,
+        DEFAULT_PITCH | FF_DONTCARE,
+        L"Courier New"     // Font name
+    );
+    SendMessage(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont1, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont1, TRUE);
 
     // Create and apply a normal font for specific controls
-    _hNormalFont = CreateFont(
+    _hNormalFont2 = CreateFont(
         dpiMgr->scaleY(20), // Larger font height
         0,
         0,
@@ -158,7 +177,7 @@ void MultiReplace::initializeFontStyles() {
         DEFAULT_PITCH | FF_DONTCARE,
         L"Courier New"     // Font name
     );
-    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont2, TRUE);
 
     // For ListView identify width of special characters
     // Add 15 units of padding to the widths of checkmark, cross, and box characters

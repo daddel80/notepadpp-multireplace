@@ -292,7 +292,8 @@ public:
         _replaceListView(NULL),
         _hStandardFont(nullptr),
         _hBoldFont(nullptr),
-        _hNormalFont(nullptr),
+        _hNormalFont1(nullptr),
+        _hNormalFont2(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
     {
@@ -401,7 +402,8 @@ private:
     HWND _hStatusMessage;
     HFONT _hStandardFont;
     HFONT _hBoldFont;
-    HFONT _hNormalFont;
+    HFONT _hNormalFont1;
+    HFONT _hNormalFont2;
     COLORREF _statusMessageColor;
     HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
     HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button
