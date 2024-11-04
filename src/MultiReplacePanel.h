@@ -294,6 +294,8 @@ public:
         _hBoldFont(nullptr),
         _hNormalFont1(nullptr),
         _hNormalFont2(nullptr),
+        _hNormalFont3(nullptr),
+        _hNormalFont4(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
     {
@@ -404,6 +406,8 @@ private:
     HFONT _hBoldFont;
     HFONT _hNormalFont1;
     HFONT _hNormalFont2;
+    HFONT _hNormalFont3;
+    HFONT _hNormalFont4;
     COLORREF _statusMessageColor;
     HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
     HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button

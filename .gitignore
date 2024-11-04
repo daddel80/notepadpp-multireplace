@@ -30,3 +30,7 @@ vs.proj/.vs/
 *.idb
 *.pdb
 *.res
+/.vs/notepadpp-multireplace/v17/DocumentLayout.json
+/.vs/notepadpp-multireplace/v17/Browse.VC.db
+/.vs/notepadpp-multireplace/v17/Solution.VC.db
+/.vs/notepadpp-multireplace/v17/DocumentLayout.backup.json

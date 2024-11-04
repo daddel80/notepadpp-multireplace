@@ -34,8 +34,6 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_export_to_bash", L"Export to Bash" },
 { L"panel_move_lines", L"Move Lines" },
 { L"panel_use_list", L"Use List" },
-{ L"panel_show", L"Show" },
-{ L"panel_hide", L"Hide" },
 { L"panel_help", L"?" },
 
 // File Dialog

@@ -92,100 +92,61 @@ void MultiReplace::initializeWindowSize() {
 void MultiReplace::initializeFontStyles() {
     if (!dpiMgr) return;
 
-    // Create a standard scaled font
-    _hStandardFont = CreateFont(
-        dpiMgr->scaleY(14), // Font height
-        0,                  // Font width (0 means default)
-        0,                  // Escapement
-        0,                  // Orientation
-        FW_NORMAL,          // Weight
-        FALSE,              // Italic
-        FALSE,              // Underline
-        FALSE,              // Strikeout
-        DEFAULT_CHARSET,    // Char set
-        OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS,
-        DEFAULT_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE,
-        L"Segoe UI"         // Font name
-    );
+    // Helper lambda to create a font
+    auto createFont = [&](int height, int weight, const wchar_t* fontName) {
+        return ::CreateFont(
+            dpiMgr->scaleY(height),  // Font height
+            0,                       // Font width (0 means default)
+            0,                       // Escapement
+            0,                       // Orientation
+            weight,                  // Font weight
+            FALSE,                   // Italic
+            FALSE,                   // Underline
+            FALSE,                   // Strikeout
+            DEFAULT_CHARSET,         // Character set
+            OUT_DEFAULT_PRECIS,
+            CLIP_DEFAULT_PRECIS,
+            DEFAULT_QUALITY,
+            DEFAULT_PITCH | FF_DONTCARE,
+            fontName                 // Font name
+        );
+        };
 
-    // Apply the standard font to all controls
+    // Standard and bold fonts
+    _hStandardFont = createFont(13, FW_NORMAL, L"MS Shell Dlg 2");
+    _hBoldFont = createFont(20, FW_BOLD, L"Courier New");
+
+    // Apply standard font to all controls in ctrlMap
     for (const auto& pair : ctrlMap) {
         SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)_hStandardFont, TRUE);
     }
 
-    // Create and apply a bold font for specific controls
-    _hBoldFont = CreateFont(
-        dpiMgr->scaleY(20), // Larger font height
-        0,
-        0,
-        0,
-        FW_BOLD,           // Bold weight
-        FALSE,
-        FALSE,
-        FALSE,
-        DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS,
-        DEFAULT_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE,
-        L"Courier New"     // Font name
-    );
+    // Apply bold font to specific controls
+    for (int controlId : { IDC_SWAP_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_USE_LIST_BUTTON }) {
+        SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
+    }
 
-    // Apply the bold font to specific controls
-    SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
-
-    // Create and apply a normal font for specific controls
-    _hNormalFont1 = CreateFont(
-        dpiMgr->scaleY(15), // Larger font height
-        0,
-        0,
-        0,
-        FW_NORMAL,          // Normal weight
-        FALSE,
-        FALSE,
-        FALSE,
-        DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS,
-        DEFAULT_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE,
-        L"Courier New"     // Font name
-    );
+    // Fonts for specific controls
+    _hNormalFont1 = createFont(14, FW_NORMAL, L"Courier New");
     SendMessage(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont1, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont1, TRUE);
 
-    // Create and apply a normal font for specific controls
-    _hNormalFont2 = CreateFont(
-        dpiMgr->scaleY(20), // Larger font height
-        0,
-        0,
-        0,
-        FW_NORMAL,          // Normal weight
-        FALSE,
-        FALSE,
-        FALSE,
-        DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS,
-        DEFAULT_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE,
-        L"Courier New"     // Font name
-    );
-    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont2, TRUE);
+    _hNormalFont2 = createFont(14, FW_NORMAL, L"MS Shell Dlg 2");
+    for (int controlId : { IDC_FIND_EDIT, IDC_REPLACE_EDIT }) {
+        SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hNormalFont2, TRUE);
+    }
 
-    // For ListView identify width of special characters
-    // Add 15 units of padding to the widths of checkmark, cross, and box characters
+    _hNormalFont3 = createFont(20, FW_NORMAL, L"Courier New");
+    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont3, TRUE);
+
+    _hNormalFont4 = createFont(22, FW_NORMAL, L"Courier New");
+    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont4, TRUE);
+
+    // For ListView: calculate widths of special characters and add padding
     checkMarkWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2714") + 15;
     crossWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2716") + 15;
     boxWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2610") + 15;
 
-    // For dynamic calculation of the list width in updateListViewAndColumns()
+    // Set delete button column width
     deleteButtonColumnWidth = crossWidth_scaled;
 }
 
@@ -244,8 +205,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int useListButtonY = windowHeight - sy(37);
 
     // Apply scaling only when assigning to ctrlMap
-    ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(15), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_find_what"), SS_RIGHT, NULL };
-    ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(43), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_replace_with"), SS_RIGHT };
+    ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_find_what"), SS_RIGHT, NULL };
+    ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_replace_with"), SS_RIGHT };
 
     ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
@@ -255,9 +216,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(176), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(158), sy(104), WC_BUTTON, getLangStrLPCWSTR(L"panel_search_mode"), BS_GROUPBOX, NULL };
-    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(144), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(144), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(144), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(146), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(146), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(146), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_SCOPE_GROUP] = { sx(352), sy(79), sx(198), sy(125), WC_BUTTON, getLangStrLPCWSTR(L"panel_scope"), BS_GROUPBOX, NULL };
     ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(360), sy(101), sx(184), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
@@ -280,10 +241,10 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_STATUS_MESSAGE] = { sx(14), sy(208), sx(504), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
     // Dynamic positions and sizes
-    ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(15), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(43), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(12), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(44), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(15), sx(128), sy(48), WC_BUTTON, getLangStrLPCWSTR(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(14), sx(128), sy(52), WC_BUTTON, getLangStrLPCWSTR(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(91), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
@@ -1495,8 +1456,8 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
         LOGFONT lf;
         GetObject(hListViewFont, sizeof(LOGFONT), &lf);
 
-        // Decrease the font height by 4 units
-        lf.lfHeight -= 4;
+        // Decrease the font height by 2 units
+        lf.lfHeight -= sy(2);
 
         // Create a new font for the Edit control
         HFONT hEditFont = CreateFontIndirect(&lf);
