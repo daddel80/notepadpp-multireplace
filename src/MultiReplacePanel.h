@@ -291,7 +291,9 @@ public:
         _hReplaceAllButton(nullptr),
         _replaceListView(NULL),
         _hStandardFont(nullptr),
-        _hBoldFont(nullptr),
+        _hBoldFont1(nullptr),
+        _hBoldFont2(nullptr),
+        _hBoldFont3(nullptr),
         _hNormalFont1(nullptr),
         _hNormalFont2(nullptr),
         _hNormalFont3(nullptr),
@@ -403,7 +405,9 @@ private:
     HWND _replaceListView;
     HWND _hStatusMessage;
     HFONT _hStandardFont;
-    HFONT _hBoldFont;
+    HFONT _hBoldFont1;
+    HFONT _hBoldFont2;
+    HFONT _hBoldFont3;;
     HFONT _hNormalFont1;
     HFONT _hNormalFont2;
     HFONT _hNormalFont3;

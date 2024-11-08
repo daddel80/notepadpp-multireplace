@@ -95,8 +95,8 @@ void MultiReplace::initializeFontStyles() {
     // Helper lambda to create a font
     auto createFont = [&](int height, int weight, const wchar_t* fontName) {
         return ::CreateFont(
-            dpiMgr->scaleY(height),  // Font height
-            0,                       // Font width (0 means default)
+            dpiMgr->scaleY(height),  // Scale font height
+            0,                       // Default font width
             0,                       // Escapement
             0,                       // Orientation
             weight,                  // Font weight
@@ -112,34 +112,40 @@ void MultiReplace::initializeFontStyles() {
         );
         };
 
-    // Standard and bold fonts
+    // Define standard and normal fonts
     _hStandardFont = createFont(13, FW_NORMAL, L"MS Shell Dlg 2");
-    _hBoldFont = createFont(20, FW_BOLD, L"Courier New");
+    _hNormalFont1 = createFont(14, FW_NORMAL, L"MS Shell Dlg 2");
+    _hNormalFont2 = createFont(12, FW_NORMAL, L"Courier New");
+    _hNormalFont3 = createFont(13, FW_NORMAL, L"Courier New");
+    _hNormalFont4 = createFont(22, FW_NORMAL, L"Courier New");
 
     // Apply standard font to all controls in ctrlMap
     for (const auto& pair : ctrlMap) {
         SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)_hStandardFont, TRUE);
     }
 
-    // Apply bold font to specific controls
-    for (int controlId : { IDC_SWAP_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_USE_LIST_BUTTON }) {
-        SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hBoldFont, TRUE);
-    }
-
-    // Fonts for specific controls
-    _hNormalFont1 = createFont(14, FW_NORMAL, L"Courier New");
-    SendMessage(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont1, TRUE);
-
-    _hNormalFont2 = createFont(14, FW_NORMAL, L"MS Shell Dlg 2");
+    // Specific controls using normal fonts
     for (int controlId : { IDC_FIND_EDIT, IDC_REPLACE_EDIT }) {
+        SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hNormalFont1, TRUE);
+    }
+    for (int controlId : { IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON }) {
         SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hNormalFont2, TRUE);
     }
 
-    _hNormalFont3 = createFont(20, FW_NORMAL, L"Courier New");
-    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont3, TRUE);
-
-    _hNormalFont4 = createFont(22, FW_NORMAL, L"Courier New");
+    SendMessage(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont3, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont4, TRUE);
+
+    // Define bold fonts, ordered by size
+    _hBoldFont1 = createFont(14, FW_NORMAL, L"Courier New");
+    _hBoldFont2 = createFont(16, FW_NORMAL, L"Courier New");
+    _hBoldFont3 = createFont(20, FW_BOLD, L"Courier New");
+
+    // Specific controls using bold fonts, adjusted to match the correct sizes
+    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont1, TRUE); // Smallest bold font (14)
+    SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont2, TRUE); // Medium bold font (16)
+    for (int controlId : { IDC_SWAP_BUTTON, IDC_USE_LIST_BUTTON }) {
+        SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hBoldFont3, TRUE); // Largest bold font (20)
+    }
 
     // For ListView: calculate widths of special characters and add padding
     checkMarkWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2714") + 15;
@@ -235,13 +241,13 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(407), sy(149), sx(14), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
     ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(422), sy(149), sx(14), sy(20), WC_BUTTON, symbolSortAsc,  BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
     ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(444), sy(149), sx(20), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_drop_columns") };
-    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(472), sy(149), sx(20), sy(20), WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_columns") };
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(500), sy(149), sx(40), sy(20), WC_BUTTON, L"◐", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(472), sy(149), sx(20), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_columns") }; //🗍
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(500), sy(149), sx(40), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
 
     ctrlMap[IDC_STATUS_MESSAGE] = { sx(14), sy(208), sx(504), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
     // Dynamic positions and sizes
-    ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(12), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(44), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(14), sx(128), sy(52), WC_BUTTON, getLangStrLPCWSTR(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
@@ -257,7 +263,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"🗍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") };
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") }; //🗍
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
@@ -2157,7 +2163,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
 
         DeleteObject(_hStandardFont);
-        DeleteObject(_hBoldFont);
+        DeleteObject(_hBoldFont1); // Assuming this font was missing previously
+        DeleteObject(_hBoldFont2);
+        DeleteObject(_hNormalFont1);
+        DeleteObject(_hNormalFont2);
+        DeleteObject(_hNormalFont3);
+        DeleteObject(_hNormalFont4);
 
         // Close the debug window if open
         if (hDebugWnd != NULL) {
@@ -5702,7 +5713,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
         showStatusMessage(getLangStr(L"status_actual_position", { addLineAndColumnMessage(startPosition) }), RGB(0, 128, 0));
     }
 
-    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"◑");
+    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"🧽");
 
     isColumnHighlighted = true;
     isCaretPositionEnabled = true;  // Enable Position detection
@@ -5767,7 +5778,7 @@ void MultiReplace::handleClearColumnMarks() {
     send(SCI_STARTSTYLING, 0, 0);
     send(SCI_SETSTYLING, textLength, STYLE_DEFAULT);
 
-    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"◐");
+    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"🖍");
 
     isColumnHighlighted = false;
 
@@ -8026,7 +8037,7 @@ void MultiReplace::onDocumentSwitched() {
         documentSwitched = true;
         isCaretPositionEnabled = false;
         scannedDelimiterBufferID = currentBufferID;
-        SetDlgItemText(s_hDlg, IDC_COLUMN_HIGHLIGHT_BUTTON, L"◐");
+        SetDlgItemText(s_hDlg, IDC_COLUMN_HIGHLIGHT_BUTTON, L"🖍");
         if (instance != nullptr) {
             instance->isColumnHighlighted = false;
             instance->showStatusMessage(L"", RGB(0, 0, 0));
