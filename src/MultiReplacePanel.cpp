@@ -117,7 +117,8 @@ void MultiReplace::initializeFontStyles() {
     _hNormalFont1 = createFont(14, FW_NORMAL, L"MS Shell Dlg 2");
     _hNormalFont2 = createFont(12, FW_NORMAL, L"Courier New");
     _hNormalFont3 = createFont(13, FW_NORMAL, L"Courier New");
-    _hNormalFont4 = createFont(22, FW_NORMAL, L"Courier New");
+    _hNormalFont4 = createFont(18, FW_NORMAL, L"Courier New");
+    _hNormalFont5 = createFont(22, FW_NORMAL, L"Courier New");
 
     // Apply standard font to all controls in ctrlMap
     for (const auto& pair : ctrlMap) {
@@ -125,7 +126,7 @@ void MultiReplace::initializeFontStyles() {
     }
 
     // Specific controls using normal fonts
-    for (int controlId : { IDC_FIND_EDIT, IDC_REPLACE_EDIT }) {
+    for (int controlId : { IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_STATUS_MESSAGE, IDC_PATH_DISPLAY }) {
         SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hNormalFont1, TRUE);
     }
     for (int controlId : { IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON }) {
@@ -133,7 +134,8 @@ void MultiReplace::initializeFontStyles() {
     }
 
     SendMessage(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont3, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont4, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont4, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont5, TRUE);
 
     // Define bold fonts, ordered by size
     _hBoldFont1 = createFont(14, FW_NORMAL, L"Courier New");
@@ -141,11 +143,9 @@ void MultiReplace::initializeFontStyles() {
     _hBoldFont3 = createFont(20, FW_BOLD, L"Courier New");
 
     // Specific controls using bold fonts, adjusted to match the correct sizes
-    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont1, TRUE); // Smallest bold font (14)
-    SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont2, TRUE); // Medium bold font (16)
-    for (int controlId : { IDC_SWAP_BUTTON, IDC_USE_LIST_BUTTON }) {
-        SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hBoldFont3, TRUE); // Largest bold font (20)
-    }
+    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont1, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont2, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont3, TRUE);
 
     // For ListView: calculate widths of special characters and add padding
     checkMarkWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2714") + 15;
@@ -201,14 +201,14 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int radioButtonHeight = std::max(radioButtonBaseHeight, fontHeight);
 
     // Calculate dimensions without scaling
-    int buttonX = windowWidth - sx(36 + 128);
+    int buttonX = windowWidth - sx(33 + 128);
     int checkbox2X = buttonX + sx(134);
-    int useListButtonX = buttonX + sx(134);
-    int swapButtonX = windowWidth - sx(36 + 128 + 26);
-    int comboWidth = windowWidth - sx(292);
+    int useListButtonX = buttonX + sx(133);
+    int swapButtonX = windowWidth - sx(33 + 128 + 26);
+    int comboWidth = windowWidth - sx(289);
     int listWidth = windowWidth - sx(202);
-    int listHeight = windowHeight - sy(248);
-    int useListButtonY = windowHeight - sy(37);
+    int listHeight = std::max(windowHeight - sy(245), sy(20)); // Minimum listHeight to prevent IDC_PATH_DISPLAY from overlapping with IDC_STATUS_MESSAGE
+    int useListButtonY = windowHeight - sy(34);
 
     // Apply scaling only when assigning to ctrlMap
     ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_find_what"), SS_RIGHT, NULL };
@@ -236,7 +236,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_DELIMITER_STATIC] = { sx(427), sy(181), sx(35), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
     ctrlMap[IDC_DELIMITER_EDIT] = { sx(464), sy(181), sx(24), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_delimiter") };
     ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(490), sy(181), sx(35), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
-    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(527), sy(181), sx(12), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_quote") };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(527), sy(181), sx(12), sy(16), WC_EDIT, NULL, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_quote") };
 
     ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(407), sy(149), sx(14), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
     ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(422), sy(149), sx(14), sy(20), WC_BUTTON, symbolSortAsc,  BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
@@ -244,7 +244,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(472), sy(149), sx(20), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_columns") }; //🗍
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(500), sy(149), sx(40), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
 
-    ctrlMap[IDC_STATUS_MESSAGE] = { sx(14), sy(208), sx(504), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
+    ctrlMap[IDC_STATUS_MESSAGE] = { sx(14), sy(208), sx(530), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -277,8 +277,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11), sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL };
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16), sx(96), sy(16), WC_STATIC, getLangStrLPCWSTR(L"panel_move_lines"), SS_LEFT, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227), listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
-    ctrlMap[IDC_PATH_DISPLAY] = { sx(18), sy(227) + listHeight + sy(5), listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
-    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY, sx(24), sy(24), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5), listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
+    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY, sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 }
 
 void MultiReplace::initializeCtrlMap() {
@@ -302,7 +302,7 @@ void MultiReplace::initializeCtrlMap() {
     }
 
     // Initialize the tooltip for the "Use List" button with dynamic text
-    updateUseListButtonState(false);
+    updateUseListState(false);
 
     // Limit the input for IDC_QUOTECHAR_EDIT to one character
     SendMessage(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), EM_SETLIMITTEXT, (WPARAM)1, 0);
@@ -374,7 +374,7 @@ bool MultiReplace::createAndShowWindows() {
     return true;
 }
 
-void MultiReplace::initializePluginStyle() {
+void MultiReplace::initializeMarkerStyle() {
     // Initialize for non-list marker
     long standardMarkerColor = MARKER_COLOR;
     int standardMarkerStyle = textStyles[0];
@@ -462,7 +462,7 @@ void MultiReplace::moveAndResizeControls() {
     }*/
 }
 
-void MultiReplace::updateButtonVisibilityBasedOnMode() {
+void MultiReplace::updateTwoButtonsVisibility() {
     BOOL twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
 
     auto setVisibility = [this](const std::vector<int>& elements, bool condition) {
@@ -483,20 +483,14 @@ void MultiReplace::updateButtonVisibilityBasedOnMode() {
     setVisibility({ IDC_MARK_MATCHES_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON }, twoButtonsMode);
     setVisibility({ IDC_MARK_BUTTON }, !twoButtonsMode);
 
-    // Load-Buttons
-    setVisibility({ IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON }, useListEnabled && twoButtonsMode);
-    setVisibility({ IDC_LOAD_FROM_CSV_BUTTON }, useListEnabled && !twoButtonsMode);
+    // Load-Buttons (only depend on twoButtonsMode now)
+    setVisibility({ IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON }, twoButtonsMode);
+    setVisibility({ IDC_LOAD_FROM_CSV_BUTTON }, !twoButtonsMode);
 
-    // Save-Buttons
-    setVisibility({ IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON }, useListEnabled && twoButtonsMode);
-    setVisibility({ IDC_SAVE_TO_CSV_BUTTON }, useListEnabled && !twoButtonsMode);
+    // Save-Buttons (only depend on twoButtonsMode now)
+    setVisibility({ IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON }, twoButtonsMode);
+    setVisibility({ IDC_SAVE_TO_CSV_BUTTON }, !twoButtonsMode);
 
-    // Other Elements related to useListEnabled
-    setVisibility({
-        IDC_EXPORT_BASH_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON,
-        IDC_SHIFT_FRAME, IDC_SHIFT_TEXT, IDC_REPLACE_LIST,
-        IDC_PATH_DISPLAY
-        }, useListEnabled);
 }
 
 void MultiReplace::setUIElementVisibility() {
@@ -590,15 +584,13 @@ void MultiReplace::adjustWindowSize() {
 
     // Adjust the window size while keeping the current position and width
     SetWindowPos(_hSelf, NULL, currentX, currentY, currentWidth, newHeight, SWP_NOZORDER);
-
-    // Update the visibility of UI elements based on the current modes
-    updateButtonVisibilityBasedOnMode();
 }
 
-void MultiReplace::updateUseListButtonState(bool isUpdate)
-{
+void MultiReplace::updateUseListState(bool isUpdate)
+{   // isUpdate - specifies whether to update the existing tooltip (true) or create a new one (false)
+
     // Set the button text based on the current state
-    SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"∧" : L"∨");
+    SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"˄" : L"˅");
 
     // Create the tooltip window if it doesn't exist yet
     if (!isUpdate && !_hUseListButtonTooltip)
@@ -1241,7 +1233,7 @@ void MultiReplace::handleCopyToListButton() {
 
     // Enable the ListView accordingly
     useListEnabled = true;
-    updateUseListButtonState(true);
+    updateUseListState(true);
     adjustWindowSize();
 }
 
@@ -1445,7 +1437,7 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
     int correctedY = itemRect.top;
 
     // Create the Edit window with corrected coordinates and size
-    hwndEdit = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+    hwndEdit = CreateWindowEx(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
         correctedX, correctedY, columnWidth, itemRect.bottom - itemRect.top,
         _replaceListView, NULL, (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE), NULL);
 
@@ -1458,16 +1450,7 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
     // Get the ListView font and create a smaller version of it for the Edit control
     HFONT hListViewFont = (HFONT)SendMessage(_replaceListView, WM_GETFONT, 0, 0);
     if (hListViewFont) {
-        // Retrieve the LOGFONT structure of the current font
-        LOGFONT lf;
-        GetObject(hListViewFont, sizeof(LOGFONT), &lf);
-
-        // Decrease the font height by 2 units
-        lf.lfHeight -= sy(2);
-
-        // Create a new font for the Edit control
-        HFONT hEditFont = CreateFontIndirect(&lf);
-        SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hEditFont, TRUE);
+        SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hListViewFont, TRUE);
     }
 
     // Set focus and select all text
@@ -2066,10 +2049,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         loadLanguage();
         initializeWindowSize();
         pointerToScintilla();
-        initializePluginStyle();
+        initializeMarkerStyle();
         initializeCtrlMap();
         initializeFontStyles();
         loadSettings();
+        updateTwoButtonsVisibility();
         initializeListView();
         initializeDragAndDrop();
         adjustWindowSize();
@@ -2165,10 +2149,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         DeleteObject(_hStandardFont);
         DeleteObject(_hBoldFont1); // Assuming this font was missing previously
         DeleteObject(_hBoldFont2);
+        DeleteObject(_hBoldFont3);
         DeleteObject(_hNormalFont1);
         DeleteObject(_hNormalFont2);
         DeleteObject(_hNormalFont3);
         DeleteObject(_hNormalFont4);
+        DeleteObject(_hNormalFont5);
 
         // Close the debug window if open
         if (hDebugWnd != NULL) {
@@ -2535,7 +2521,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // Check if the Find checkbox has been clicked
             if (HIWORD(wParam) == BN_CLICKED)
             {
-                updateButtonVisibilityBasedOnMode();
+                updateTwoButtonsVisibility();
                 return TRUE;
             }
             return FALSE;
@@ -2637,7 +2623,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_USE_LIST_BUTTON:
         {
             useListEnabled = !useListEnabled;
-            updateUseListButtonState(true);
+            updateUseListState(true);
             adjustWindowSize();
             return TRUE;
         }
@@ -6398,7 +6384,7 @@ void MultiReplace::updateHeaderSortDirection() {
 
 void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color)
 {
-    const size_t MAX_DISPLAY_LENGTH = 120;  // Maximum length of the message to be displayed
+    const size_t MAX_DISPLAY_LENGTH = 150;  // Maximum length of the message to be displayed
 
     // Filter out non-printable characters while keeping all printable Unicode characters
     std::wstring strMessage;
@@ -6505,7 +6491,7 @@ std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int ma
     return displayPath;
 }
 
-void MultiReplace::showListFilePath() {
+void MultiReplace::showListFilePath() { 
     std::wstring path = listFilePath;
 
     // Obtain handle and device context for the path display control
@@ -7630,7 +7616,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
 
     useListEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", true);
-    updateUseListButtonState(false);
+    updateUseListState(false);
 
     highlightMatchEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"HighlightMatch", true);
 
@@ -7715,7 +7701,7 @@ void MultiReplace::loadUIConfigFromIni() {
 
     // Load the state of the Use List checkbox from the ini file
     useListEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", true); // Default to true if not found
-    updateUseListButtonState(false);
+    updateUseListState(false);
 
     // Load window width
     int savedWidth = readIntFromIniFile(iniFilePath, L"Window", L"Width", MIN_WIDTH_scaled);

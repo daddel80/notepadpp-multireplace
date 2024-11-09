@@ -298,6 +298,7 @@ public:
         _hNormalFont2(nullptr),
         _hNormalFont3(nullptr),
         _hNormalFont4(nullptr),
+        _hNormalFont5(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
     {
@@ -319,6 +320,7 @@ public:
     };
 
     inline void setParent(HWND parent2set) {
+        _hParent = parent2set;
         _hParent = parent2set;
     };
 
@@ -412,6 +414,7 @@ private:
     HFONT _hNormalFont2;
     HFONT _hNormalFont3;
     HFONT _hNormalFont4;
+    HFONT _hNormalFont5;
     COLORREF _statusMessageColor;
     HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
     HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button
@@ -511,15 +514,15 @@ private:
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();
-    void initializePluginStyle();
+    void initializeMarkerStyle();
     void initializeListView();
     void moveAndResizeControls();
-    void updateButtonVisibilityBasedOnMode();
+    void updateTwoButtonsVisibility();
     void setUIElementVisibility();
     void drawGripper();
     void SetWindowTransparency(HWND hwnd, BYTE alpha);
     void adjustWindowSize();
-    void updateUseListButtonState(bool isUpdate);
+    void updateUseListState(bool isUpdate);
 
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);
