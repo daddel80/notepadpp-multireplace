@@ -342,31 +342,27 @@ bool MultiReplace::createAndShowWindows() {
             return false;
         }
 
-        // Create the tooltip for this control if it has tooltip text
-        if (pair.second.tooltipText != NULL && pair.second.tooltipText[0] != '\0')
+        // Only create tooltips if enabled and text is available
+        if (tooltipsEnabled && pair.second.tooltipText != nullptr && pair.second.tooltipText[0] != '\0')
         {
-            HWND hwndTooltip = CreateWindowEx(NULL, TOOLTIPS_CLASS, NULL,
+            HWND hwndTooltip = CreateWindowEx(
+                NULL, TOOLTIPS_CLASS, NULL,
                 WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON,
-                CW_USEDEFAULT, CW_USEDEFAULT,
-                CW_USEDEFAULT, CW_USEDEFAULT,
+                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
                 _hSelf, NULL, hInstance, NULL);
 
-            if (!hwndTooltip)
+            if (hwndTooltip)
             {
-                // Handle error
-                continue;
+                // Associate the tooltip with the control
+                TOOLINFO toolInfo = { 0 };
+                toolInfo.cbSize = sizeof(toolInfo);
+                toolInfo.hwnd = _hSelf;
+                toolInfo.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+                toolInfo.uId = (UINT_PTR)hwndControl;
+                toolInfo.lpszText = (LPWSTR)pair.second.tooltipText;
+                SendMessage(hwndTooltip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
             }
-
-            // Associate the tooltip with the control
-            TOOLINFO toolInfo = { 0 };
-            toolInfo.cbSize = sizeof(toolInfo);
-            toolInfo.hwnd = _hSelf;
-            toolInfo.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
-            toolInfo.uId = (UINT_PTR)hwndControl;
-            toolInfo.lpszText = (LPWSTR)pair.second.tooltipText;
-            SendMessage(hwndTooltip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
         }
-
         // Show the window
         ShowWindow(hwndControl, SW_SHOW);
         UpdateWindow(hwndControl);
@@ -592,6 +588,14 @@ void MultiReplace::updateUseListState(bool isUpdate)
     // Set the button text based on the current state
     SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"˄" : L"˅");
 
+    // Set the status message based on the list state
+    showStatusMessage(useListEnabled ? getLangStr(L"status_enable_list") : getLangStr(L"status_disable_list"), RGB(0, 128, 0));
+
+    // Return early if tooltips are disabled
+    if (!tooltipsEnabled) {
+        return;
+    }
+
     // Create the tooltip window if it doesn't exist yet
     if (!isUpdate && !_hUseListButtonTooltip)
     {
@@ -630,16 +634,6 @@ void MultiReplace::updateUseListState(bool isUpdate)
 
     // Add or update the tooltip
     SendMessage(_hUseListButtonTooltip, TTM_ADDTOOL, 0, (LPARAM)&ti);
-
-    // Set the status message depending on the list state
-    if (useListEnabled)
-    {
-        showStatusMessage(getLangStr(L"status_enable_list"), RGB(0, 128, 0));
-    }
-    else
-    {
-        showStatusMessage(getLangStr(L"status_disable_list"), RGB(0, 128, 0));
-    }
 }
 
 #pragma endregion
@@ -982,6 +976,11 @@ void MultiReplace::updateListViewAndColumns() {
 }
 
 void MultiReplace::updateListViewTooltips() {
+
+    if (!tooltipsEnabled) {
+        return;
+    }
+
     HWND hwndHeader = ListView_GetHeader(_replaceListView);
     if (!hwndHeader)
         return;
@@ -7485,6 +7484,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
     outFile << wstringToString(L"UseList=" + std::to_wstring(useList) + L"\n");
     outFile << wstringToString(L"HighlightMatch=" + std::to_wstring(highlightMatchEnabled ? 1 : 0) + L"\n");
+    outFile << wstringToString(L"Tooltips=" + std::to_wstring(tooltipsEnabled ? 1 : 0) + L"\n");
 
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
@@ -7731,6 +7731,9 @@ void MultiReplace::loadUIConfigFromIni() {
     // Load transparency settings with defaults
     foregroundTransparency = readByteFromIniFile(iniFilePath, L"Window", L"ForegroundTransparency", foregroundTransparency);
     backgroundTransparency = readByteFromIniFile(iniFilePath, L"Window", L"BackgroundTransparency", backgroundTransparency);
+
+    // Load Tooltip setting
+    tooltipsEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"Tooltips", true);
 }
 
 std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue) {

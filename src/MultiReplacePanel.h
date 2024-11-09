@@ -497,6 +497,7 @@ private:
     bool isReplaceCountVisible = false;   // Visibility of the "Replace Count" column
     bool isCommentsColumnVisible = false; // Visibility of the "Comments" column
     bool isDeleteButtonVisible = true;    // Visibility of the "Delete" column
+    bool tooltipsEnabled = true;
 
     // Window DPI scaled size 
     int MIN_WIDTH_scaled;
