@@ -386,6 +386,9 @@ private:
     static constexpr wchar_t* symbolSortAscUnsorted = L"▽";
     static constexpr wchar_t* symbolSortDescUnsorted = L"△";
     static constexpr int MAX_CAP_GROUPS = 9; // Maximum number of capture groups supported by Notepad++
+    static constexpr COLORREF COLOR_SUCCESS = RGB(0, 128, 0); // Green for success messages
+    static constexpr COLORREF COLOR_ERROR = RGB(255, 0, 0);   // Red for error messages
+    static constexpr COLORREF COLOR_INFO = RGB(0, 0, 128);    // Blue for informational messages
 
     DPIManager* dpiMgr; // Pointer to DPIManager instance
 
@@ -497,7 +500,8 @@ private:
     bool isReplaceCountVisible = false;   // Visibility of the "Replace Count" column
     bool isCommentsColumnVisible = false; // Visibility of the "Comments" column
     bool isDeleteButtonVisible = true;    // Visibility of the "Delete" column
-    bool tooltipsEnabled = true;
+    bool tooltipsEnabled = true;       // Status for showing Tooltips on Panel
+    bool alertNotFoundEnabled = true;  // Status for Bell if String hasn't be found
 
     // Window DPI scaled size 
     int MIN_WIDTH_scaled;
@@ -645,7 +649,7 @@ private:
     void setSelections(bool select, bool onlySelected = false);
     void updateHeaderSelection();
     void updateHeaderSortDirection();
-    void showStatusMessage(const std::wstring& messageText, COLORREF color);
+    void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color, bool isNotFound = false);
     std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
     void showListFilePath();
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);

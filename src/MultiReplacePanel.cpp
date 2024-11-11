@@ -229,7 +229,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_SCOPE_GROUP] = { sx(352), sy(79), sx(198), sy(125), WC_BUTTON, getLangStrLPCWSTR(L"panel_scope"), BS_GROUPBOX, NULL };
     ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(360), sy(101), sx(184), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
     ctrlMap[IDC_SELECTION_RADIO] = { sx(360), sy(126), sx(184), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(361), sy(150), sx(40), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(360), sy(150), sx(40), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(358), sy(181), sx(25), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_cols"), SS_RIGHT, NULL };
     ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(385), sy(181), sx(40), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_columns") };
@@ -589,7 +589,7 @@ void MultiReplace::updateUseListState(bool isUpdate)
     SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"˄" : L"˅");
 
     // Set the status message based on the list state
-    showStatusMessage(useListEnabled ? getLangStr(L"status_enable_list") : getLangStr(L"status_disable_list"), RGB(0, 128, 0));
+    showStatusMessage(useListEnabled ? getLangStr(L"status_enable_list") : getLangStr(L"status_disable_list"), COLOR_INFO);
 
     // Return early if tooltips are disabled
     if (!tooltipsEnabled) {
@@ -844,7 +844,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
 
     // Return early if findText is empty and "Use Variables" is not enabled
     if (itemData.findText.empty() && useVariables == 0) {
-        showStatusMessage(getLangStr(L"status_no_find_string"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_no_find_string"), COLOR_ERROR);
         return;
     }
 
@@ -871,7 +871,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     else {
         message = getLangStr(L"status_value_added");
     }
-    showStatusMessage(message, RGB(0, 128, 0));
+    showStatusMessage(message, COLOR_SUCCESS);
 
     // Update the item count in the ListView
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
@@ -1031,7 +1031,7 @@ void MultiReplace::shiftListItem(HWND listView, const Direction& direction) {
     }
 
     if (selectedIndices.empty()) {
-        showStatusMessage(getLangStr(L"status_no_rows_selected_to_shift"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_no_rows_selected_to_shift"), COLOR_ERROR);
         return;
     }
 
@@ -1069,7 +1069,7 @@ void MultiReplace::shiftListItem(HWND listView, const Direction& direction) {
     }
 
     // Show status message when rows are successfully shifted
-    showStatusMessage(getLangStr(L"status_rows_shifted", { std::to_wstring(selectedIndices.size()) }), RGB(0, 128, 0));
+    showStatusMessage(getLangStr(L"status_rows_shifted", { std::to_wstring(selectedIndices.size()) }), COLOR_SUCCESS);
 
 }
 
@@ -1092,7 +1092,7 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 
     InvalidateRect(_replaceListView, NULL, TRUE);
 
-    showStatusMessage(getLangStr(L"status_one_line_deleted"), RGB(0, 128, 0));
+    showStatusMessage(getLangStr(L"status_one_line_deleted"), COLOR_SUCCESS);
 }
 
 void MultiReplace::deleteSelectedLines(HWND listView) {
@@ -1133,7 +1133,7 @@ void MultiReplace::deleteSelectedLines(HWND listView) {
 
     InvalidateRect(_replaceListView, NULL, TRUE);
 
-    showStatusMessage(getLangStr(L"status_lines_deleted", { std::to_wstring(numDeletedLines) }), RGB(0, 128, 0));
+    showStatusMessage(getLangStr(L"status_lines_deleted", { std::to_wstring(numDeletedLines) }), COLOR_SUCCESS);
 }
 
 void MultiReplace::sortReplaceListData(int columnID, SortDirection direction) {
@@ -1282,7 +1282,7 @@ void MultiReplace::clearList() {
     listFilePath.clear();
 
     // Show a status message to indicate the list was cleared
-    showStatusMessage(getLangStr(L"status_list_cleared"), RGB(0, 128, 0));
+    showStatusMessage(getLangStr(L"status_list_cleared"), COLOR_SUCCESS);
 
     // Call showListFilePath to update the UI with the cleared file path
     showListFilePath();
@@ -1969,7 +1969,7 @@ void MultiReplace::performSearchInList() {
 
     // Exit if both fields are empty
     if (findText.empty() && replaceText.empty()) {
-        showStatusMessage(getLangStr(L"status_no_find_replace_list_input"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_no_find_replace_list_input"), COLOR_ERROR);
         return;
     }
 
@@ -1986,11 +1986,11 @@ void MultiReplace::performSearchInList() {
         // Highlight the matched item
         ListView_SetItemState(_replaceListView, matchIdx, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
         ListView_EnsureVisible(_replaceListView, matchIdx, FALSE);
-        showStatusMessage(getLangStr(L"status_found_in_list"), RGB(0, 128, 0));
+        showStatusMessage(getLangStr(L"status_found_in_list"), COLOR_SUCCESS);
     }
     else {
         // Show failure status message if no match found
-        showStatusMessage(getLangStr(L"status_not_found_in_list"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_not_found_in_list"), COLOR_ERROR);
     }
 }
 
@@ -2614,7 +2614,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             }
             else {
                 handleClearColumnMarks();
-                showStatusMessage(getLangStr(L"status_column_marks_cleared"), RGB(0, 128, 0));
+                showStatusMessage(getLangStr(L"status_column_marks_cleared"), COLOR_SUCCESS);
             }
             return TRUE;
         }
@@ -2755,7 +2755,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             resetCountColumns();
             handleClearTextMarksButton();
-            showStatusMessage(getLangStr(L"status_all_marks_cleared"), RGB(0, 128, 0));
+            showStatusMessage(getLangStr(L"status_all_marks_cleared"), COLOR_SUCCESS);
             return TRUE;
         }
 
@@ -2963,7 +2963,7 @@ void MultiReplace::handleReplaceAllButton() {
     // First check if the document is read-only
     LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
-        showStatusMessage(getLangStr(L"status_cannot_replace_read_only"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_cannot_replace_read_only"), COLOR_ERROR);
         return;
     }
 
@@ -2976,7 +2976,7 @@ void MultiReplace::handleReplaceAllButton() {
     {
         // Check if the replaceListData is empty and warn the user if so
         if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_add_values_instructions"), RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_add_values_instructions"), COLOR_ERROR);
             return;
         }
 
@@ -3030,7 +3030,7 @@ void MultiReplace::handleReplaceAllButton() {
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
     }
     // Display status message
-    showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), RGB(0, 128, 0));
+    showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), COLOR_SUCCESS);
 
     // Disable selection radio and switch to "All Text" if it was Replaced an none selection left or it will be trapped
     SelectionInfo selection = getSelectionInfo();
@@ -3046,7 +3046,7 @@ void MultiReplace::handleReplaceButton() {
     // First check if the document is read-only
     LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
-        showStatusMessage(getLangStrLPWSTR(L"status_cannot_replace_read_only"), RGB(255, 0, 0));
+        showStatusMessage(getLangStrLPWSTR(L"status_cannot_replace_read_only"), COLOR_ERROR);
         return;
     }
 
@@ -3069,7 +3069,7 @@ void MultiReplace::handleReplaceButton() {
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_add_values_or_uncheck"), RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_add_values_or_uncheck"), COLOR_ERROR);
             return;
         }
 
@@ -3098,21 +3098,21 @@ void MultiReplace::handleReplaceButton() {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView(); // Refresh the ListView to show updated statistic
                 selectListItem(matchIndex); // Highlight the matched item in the list
-                showStatusMessage(getLangStr(L"status_replace_next_found", { std::to_wstring(replacements) }), RGB(0, 128, 0));
+                showStatusMessage(getLangStr(L"status_replace_next_found", { std::to_wstring(replacements) }), COLOR_INFO);
             }
             else {
-                showStatusMessage(getLangStr(L"status_replace_none_left", { std::to_wstring(replacements) }), RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_replace_none_left", { std::to_wstring(replacements) }), COLOR_INFO);
             }
         }
         else {
             if (searchResult.pos < 0) {
-                showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_no_occurrence_found"), COLOR_ERROR, true);
             }
             else {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView(); // Refresh the ListView to show updated statistic
                 selectListItem(matchIndex); // Highlight the matched item in the list
-                showStatusMessage(getLangStr(L"status_found_text_not_replaced"), RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_found_text_not_replaced"), COLOR_INFO);
             }
         }
     }
@@ -3144,18 +3144,18 @@ void MultiReplace::handleReplaceButton() {
 
         if (wasReplaced) {
             if (searchResult.pos >= 0) {
-                showStatusMessage(getLangStr(L"status_replace_one_next_found"), RGB(0, 128, 0));
+                showStatusMessage(getLangStr(L"status_replace_one_next_found"), COLOR_SUCCESS);
             }
             else {
-                showStatusMessage(getLangStr(L"status_replace_one_none_left"), RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_replace_one_none_left"), COLOR_INFO);
             }
         }
         else {
             if (searchResult.pos < 0) {
-                showStatusMessage(getLangStr(L"status_no_occurrence_found"), RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_no_occurrence_found"), COLOR_ERROR, true);
             }
             else {
-                showStatusMessage(getLangStr(L"status_found_text_not_replaced"), RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_found_text_not_replaced"), COLOR_INFO);
             }
         }
     }
@@ -4215,7 +4215,7 @@ void MultiReplace::handleFindNextButton() {
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_add_values_or_find_directly"), RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_add_values_or_find_directly"), COLOR_ERROR);
             return;
         }
 
@@ -4226,13 +4226,13 @@ void MultiReplace::handleFindNextButton() {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView(); // Refresh the ListView to show updated statistic
                 selectListItem(matchIndex); // Highlight the matched item in the list
-                showStatusMessage(getLangStr(L"status_wrapped"), RGB(0, 128, 0));
+                showStatusMessage(getLangStr(L"status_wrapped"), COLOR_INFO);
                 return;
             }
         }
 
         if (result.pos >= 0) {
-            showStatusMessage(L"", RGB(0, 128, 0));
+            showStatusMessage(L"", COLOR_SUCCESS);
             updateCountColumns(matchIndex, 1);
             refreshUIListView(); // Refresh the ListView to show updated statistic
             selectListItem(matchIndex); // Highlight the matched item in the list
@@ -4245,11 +4245,13 @@ void MultiReplace::handleFindNextButton() {
             }
         }
         else {
-            showStatusMessage(getLangStr(L"status_no_matches_found"), RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_no_matches_found"), COLOR_ERROR, true);
         }
     }
     else {
         std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+
         bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
         bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
         bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
@@ -4261,13 +4263,13 @@ void MultiReplace::handleFindNextButton() {
         if (result.pos < 0 && wrapAroundEnabled) {
             result = performSearchForward(findTextUtf8, searchFlags, true, 0);
             if (result.pos >= 0) {
-                showStatusMessage(getLangStr(L"status_wrapped"), RGB(0, 128, 0));
+                showStatusMessage(getLangStr(L"status_wrapped"), COLOR_INFO);
                 return;
             }
         }
 
         if (result.pos >= 0) {
-            showStatusMessage(L"", RGB(0, 128, 0));
+            showStatusMessage(L"", COLOR_SUCCESS);
 
             // Disable selection radio and switch to "All Text" if it was previously checked or Search will be trapped in new selection
             if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
@@ -4278,9 +4280,8 @@ void MultiReplace::handleFindNextButton() {
 
         }
         else {
-            showStatusMessage(getLangStr(L"status_no_matches_found_for", { findText }), RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_no_matches_found_for", { findText }), COLOR_ERROR, true);
         }
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
 }
 
@@ -4293,43 +4294,39 @@ void MultiReplace::handleFindPrevButton() {
     LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
     searchPos = (searchPos > 0) ? ::SendMessage(_hScintilla, SCI_POSITIONBEFORE, searchPos, 0) : searchPos;
 
-    if (useListEnabled)
-    {
+    if (useListEnabled) {
         if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_add_values_or_find_directly"), RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_add_values_or_find_directly"), COLOR_ERROR);
             return;
         }
 
         SearchResult result = performListSearchBackward(replaceListData, searchPos, matchIndex);
 
-        if (result.pos >= 0) {
-            updateCountColumns(matchIndex, 1);
-            refreshUIListView(); // Refresh the ListView to show updated statistic
-            selectListItem(matchIndex); // Highlight the matched item in the list
-            showStatusMessage(L"" + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
-        }
-        else if (wrapAroundEnabled)
-        {
+        if (result.pos < 0 && wrapAroundEnabled) {
             result = performListSearchBackward(replaceListData, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0), matchIndex);
             if (result.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView(); // Refresh the ListView to show updated statistic
                 selectListItem(matchIndex); // Highlight the matched item in the list
-                showStatusMessage(getLangStr(L"status_wrapped_position", { addLineAndColumnMessage(result.pos) }), RGB(0, 128, 0));
+                showStatusMessage(getLangStr(L"status_wrapped"), COLOR_INFO);
+                return;
             }
-            else {
-                showStatusMessage(getLangStr(L"status_no_matches_after_wrap"), RGB(255, 0, 0));
-            }
-        }
-        else
-        {
-            showStatusMessage(getLangStr(L"status_no_matches_found"), RGB(255, 0, 0));
         }
 
+        if (result.pos >= 0) {
+            showStatusMessage(L"", COLOR_SUCCESS);
+            updateCountColumns(matchIndex, 1);
+            refreshUIListView(); // Refresh the ListView to show updated statistic
+            selectListItem(matchIndex); // Highlight the matched item in the list
+        }
+        else {
+            showStatusMessage(getLangStr(L"status_no_matches_found"), COLOR_ERROR, true);
+        }
     }
     else
     {
         std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
         bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
         bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
         bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
@@ -4340,25 +4337,22 @@ void MultiReplace::handleFindPrevButton() {
 
         SearchResult result = performSearchBackward(findTextUtf8, searchFlags, searchPos);
 
-        if (result.pos >= 0) {
-            showStatusMessage(L"" + addLineAndColumnMessage(result.pos), RGB(0, 128, 0));
-        }
-        else if (wrapAroundEnabled)
+        if (result.pos < 0 && wrapAroundEnabled)
         {
             result = performSearchBackward(findTextUtf8, searchFlags, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
             if (result.pos >= 0) {
-                showStatusMessage(getLangStr(L"status_wrapped_find", { findText, addLineAndColumnMessage(result.pos) }), RGB(0, 128, 0));
+                showStatusMessage(getLangStr(L"status_wrapped"), COLOR_INFO);
+                return;
             }
-            else {
-                showStatusMessage(getLangStr(L"status_no_matches_after_wrap_for", { findText }), RGB(255, 0, 0));
-            }
-        }
-        else
-        {
-            showStatusMessage(getLangStr(L"status_no_matches_found_for", { findText }), RGB(255, 0, 0));
         }
 
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+        if (result.pos >= 0) {
+            showStatusMessage(L"", COLOR_SUCCESS);
+        }
+        else {
+            showStatusMessage(getLangStr(L"status_no_matches_found_for", { findText }), COLOR_ERROR, true);
+        }
+
     }
 }
 
@@ -4717,7 +4711,7 @@ void MultiReplace::handleMarkMatchesButton() {
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_add_values_or_mark_directly"), RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_add_values_or_mark_directly"), COLOR_ERROR);
             return;
         }
 
@@ -4752,7 +4746,7 @@ void MultiReplace::handleMarkMatchesButton() {
 
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
-    showStatusMessage(getLangStr(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), RGB(0, 0, 128));
+    showStatusMessage(getLangStr(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), COLOR_INFO);
 }
 
 int MultiReplace::markString(const std::string& findTextUtf8, int searchFlags) {
@@ -4894,7 +4888,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
 void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
 {
     if (text.empty()) {
-        showStatusMessage(getLangStr(L"status_no_text_to_copy"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_no_text_to_copy"), COLOR_ERROR);
         return;
     }
 
@@ -4911,16 +4905,16 @@ void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
                 GlobalUnlock(hClipboardData);
                 if (SetClipboardData(CF_UNICODETEXT, hClipboardData) != NULL)
                 {
-                    showStatusMessage(getLangStr(L"status_items_copied_to_clipboard", { std::to_wstring(textCount) }), RGB(0, 128, 0));
+                    showStatusMessage(getLangStr(L"status_items_copied_to_clipboard", { std::to_wstring(textCount) }), COLOR_SUCCESS);
                 }
                 else
                 {
-                    showStatusMessage(getLangStr(L"status_failed_to_copy"), RGB(255, 0, 0));
+                    showStatusMessage(getLangStr(L"status_failed_to_copy"), COLOR_ERROR);
                 }
             }
             else
             {
-                showStatusMessage(getLangStr(L"status_failed_allocate_memory"), RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_failed_allocate_memory"), COLOR_ERROR);
                 GlobalFree(hClipboardData);
             }
         }
@@ -4957,7 +4951,7 @@ bool MultiReplace::confirmColumnDeletion() {
 void MultiReplace::handleDeleteColumns()
 {
     if (!columnDelimiterData.isValid()) {
-        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), COLOR_ERROR);
         return;
     }
 
@@ -5012,13 +5006,13 @@ void MultiReplace::handleDeleteColumns()
     ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 
     // Show status message
-    showStatusMessage(getLangStr(L"status_deleted_fields_count", { std::to_wstring(deletedFieldsCount) }), RGB(0, 255, 0));
+    showStatusMessage(getLangStr(L"status_deleted_fields_count", { std::to_wstring(deletedFieldsCount) }), COLOR_SUCCESS);
 }
 
 void MultiReplace::handleCopyColumnsToClipboard()
 {
     if (!columnDelimiterData.isValid()) {
-        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), COLOR_ERROR);
         return;
     }
 
@@ -5145,7 +5139,7 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
 void MultiReplace::sortRowsByColumn(SortDirection sortDirection) {
     // Validate column delimiter data
     if (!columnDelimiterData.isValid()) {
-        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), COLOR_ERROR);
         return;
     }
     SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
@@ -5389,7 +5383,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     columnDataString.erase(columnDataString.find_last_not_of(L',') + 1);
 
     if (columnDataString.empty() || delimiterData.empty()) {
-        showStatusMessage(getLangStr(L"status_missing_column_or_delimiter_data"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_missing_column_or_delimiter_data"), COLOR_ERROR);
         columnDelimiterData.columns.clear();
         columnDelimiterData.extendedDelimiter = "";
         return false;
@@ -5412,7 +5406,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                 int endRange = std::stoi(block.substr(dashPos + 1));
 
                 if (startRange < 1 || endRange < startRange) {
-                    showStatusMessage(getLangStr(L"status_invalid_range_in_column_data"), RGB(255, 0, 0));
+                    showStatusMessage(getLangStr(L"status_invalid_range_in_column_data"), COLOR_ERROR);
                     columnDelimiterData.columns.clear();
                     return false;
                 }
@@ -5424,7 +5418,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                 }
             }
             catch (const std::exception&) {
-                showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), COLOR_ERROR);
                 columnDelimiterData.columns.clear();
                 return false;
             }
@@ -5435,7 +5429,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                 int column = std::stoi(block);
 
                 if (column < 1) {
-                    showStatusMessage(getLangStr(L"status_invalid_column_number"), RGB(255, 0, 0));
+                    showStatusMessage(getLangStr(L"status_invalid_column_number"), COLOR_ERROR);
                     columnDelimiterData.columns.clear();
                     return false;
                 }
@@ -5445,7 +5439,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
                 }
             }
             catch (const std::exception&) {
-                showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), COLOR_ERROR);
                 columnDelimiterData.columns.clear();
                 return false;
             }
@@ -5466,7 +5460,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             int endRange = std::stoi(lastBlock.substr(dashPos + 1));
 
             if (startRange < 1 || endRange < startRange) {
-                showStatusMessage(getLangStr(L"status_invalid_range_in_column_data"), RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_invalid_range_in_column_data"), COLOR_ERROR);
                 columnDelimiterData.columns.clear();
                 return false;
             }
@@ -5478,7 +5472,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             }
         }
         catch (const std::exception&) {
-            showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), COLOR_ERROR);
             columnDelimiterData.columns.clear();
             return false;
         }
@@ -5488,7 +5482,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             int column = std::stoi(lastBlock);
 
             if (column < 1) {
-                showStatusMessage(getLangStr(L"status_invalid_column_number"), RGB(255, 0, 0));
+                showStatusMessage(getLangStr(L"status_invalid_column_number"), COLOR_ERROR);
                 columnDelimiterData.columns.clear();
                 return false;
             }
@@ -5498,7 +5492,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
             }
         }
         catch (const std::exception&) {
-            showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), RGB(255, 0, 0));
+            showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), COLOR_ERROR);
             columnDelimiterData.columns.clear();
             return false;
         }
@@ -5507,13 +5501,13 @@ bool MultiReplace::parseColumnAndDelimiterData() {
 
     // Check delimiter data
     if (tempExtendedDelimiter.empty()) {
-        showStatusMessage(getLangStr(L"status_extended_delimiter_empty"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_extended_delimiter_empty"), COLOR_ERROR);
         return false;
     }
 
     // Check Quote Character
     if (!quoteCharString.empty() && (quoteCharString.length() != 1 || !(quoteCharString[0] == L'"' || quoteCharString[0] == L'\''))) {
-        showStatusMessage(getLangStr(L"status_invalid_quote_character"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_invalid_quote_character"), COLOR_ERROR);
         return false;
     }
 
@@ -5695,10 +5689,8 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     // Show Row and Column Position
     if (!lineDelimiterPositions.empty()) {
         LRESULT startPosition = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
-        showStatusMessage(getLangStr(L"status_actual_position", { addLineAndColumnMessage(startPosition) }), RGB(0, 128, 0));
+        showStatusMessage(getLangStr(L"status_actual_position", { addLineAndColumnMessage(startPosition) }), COLOR_SUCCESS);
     }
-
-    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"🧽");
 
     isColumnHighlighted = true;
     isCaretPositionEnabled = true;  // Enable Position detection
@@ -5762,8 +5754,6 @@ void MultiReplace::handleClearColumnMarks() {
 
     send(SCI_STARTSTYLING, 0, 0);
     send(SCI_SETSTYLING, textLength, STYLE_DEFAULT);
-
-    SetDlgItemText(_hSelf, IDC_COLUMN_HIGHLIGHT_BUTTON, L"🖍");
 
     isColumnHighlighted = false;
 
@@ -6381,7 +6371,7 @@ void MultiReplace::updateHeaderSortDirection() {
     }
 }
 
-void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color)
+void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color, bool isNotFound)
 {
     const size_t MAX_DISPLAY_LENGTH = 150;  // Maximum length of the message to be displayed
 
@@ -6410,6 +6400,22 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF c
     MapWindowPoints(HWND_DESKTOP, GetParent(hStatusMessage), (LPPOINT)&rect, 2);
     InvalidateRect(GetParent(hStatusMessage), &rect, TRUE);
     UpdateWindow(GetParent(hStatusMessage));
+
+    if (isNotFound && alertNotFoundEnabled)
+    {
+        // Play the default beep sound
+        MessageBeep(MB_ICONEXCLAMATION);
+
+        // Flash the window caption and taskbar button
+        FLASHWINFO fwInfo = { 0 };
+        fwInfo.cbSize = sizeof(FLASHWINFO);
+        fwInfo.hwnd = _hSelf;          // Handle to your window
+        fwInfo.dwFlags = FLASHW_ALL;   // Flash both the caption and the taskbar button
+        fwInfo.uCount = 3;             // Number of times to flash the window
+        fwInfo.dwTimeout = 100;          // Default cursor blink rate
+
+        FlashWindowEx(&fwInfo);
+    }
 }
 
 std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC) {
@@ -6893,11 +6899,11 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
 
 void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
     if (!saveListToCsvSilent(filePath, list)) {
-        showStatusMessage(getLangStr(L"status_unable_to_save_file"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_unable_to_save_file"), COLOR_ERROR);
         return;
     }
 
-    showStatusMessage(getLangStr(L"status_saved_items_to_csv", { std::to_wstring(list.size()) }), RGB(0, 128, 0));
+    showStatusMessage(getLangStr(L"status_saved_items_to_csv", { std::to_wstring(list.size()) }), COLOR_SUCCESS);
 
     // Update the file path and original hash after a successful save
     listFilePath = filePath;
@@ -7025,15 +7031,15 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
     }
     catch (const CsvLoadException& ex) {
         // Resolve the error key to a localized string when displaying the message
-        showStatusMessage(stringToWString(ex.what()), RGB(255, 0, 0));
+        showStatusMessage(stringToWString(ex.what()), COLOR_ERROR);
         return;
     }
 
     if (replaceListData.empty()) {
-        showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), COLOR_ERROR);
     }
     else {
-        showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), RGB(0, 128, 0));
+        showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), COLOR_SUCCESS);
     }
 
     // Update the list view control, if necessary
@@ -7073,15 +7079,15 @@ void MultiReplace::checkForFileChangesAtStartup() {
     }
     catch (const CsvLoadException& ex) {
         // Resolve the error key to a localized string when displaying the message
-        showStatusMessage(stringToWString(ex.what()), RGB(255, 0, 0));
+        showStatusMessage(stringToWString(ex.what()), COLOR_ERROR);
         return;
     }
 
     if (replaceListData.empty()) {
-        showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), COLOR_ERROR);
     }
     else {
-        showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), RGB(0, 128, 0));
+        showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), COLOR_SUCCESS);
 
         // Update the list view control, if necessary
         ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
@@ -7186,7 +7192,7 @@ std::vector<std::wstring> MultiReplace::parseCsvLine(const std::wstring& line) {
 void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     std::ofstream file(fileName);
     if (!file.is_open()) {
-        showStatusMessage(getLangStr(L"status_unable_to_save_file"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_unable_to_save_file"), COLOR_ERROR);
         return;
     }
 
@@ -7268,11 +7274,11 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     file.close();
 
     if (file.fail()) {
-        showStatusMessage(getLangStr(L"status_unable_to_save_file"), RGB(255, 0, 0));
+        showStatusMessage(getLangStr(L"status_unable_to_save_file"), COLOR_ERROR);
         return;
     }
 
-    showStatusMessage(getLangStr(L"status_list_exported_to_bash"), RGB(0, 128, 0));
+    showStatusMessage(getLangStr(L"status_list_exported_to_bash"), COLOR_SUCCESS);
 
 }
 
@@ -7485,6 +7491,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"UseList=" + std::to_wstring(useList) + L"\n");
     outFile << wstringToString(L"HighlightMatch=" + std::to_wstring(highlightMatchEnabled ? 1 : 0) + L"\n");
     outFile << wstringToString(L"Tooltips=" + std::to_wstring(tooltipsEnabled ? 1 : 0) + L"\n");
+    outFile << wstringToString(L"AlertNotFound=" + std::to_wstring(alertNotFoundEnabled ? 1 : 0) + L"\n");
 
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
@@ -7619,6 +7626,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     updateUseListState(false);
 
     highlightMatchEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"HighlightMatch", true);
+    alertNotFoundEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"AlertNotFound", true);
 
     // Loading and setting the scope with enabled state check
     int selection = readIntFromIniFile(iniFilePath, L"Scope", L"Selection", 0);
@@ -8026,7 +8034,6 @@ void MultiReplace::onDocumentSwitched() {
         documentSwitched = true;
         isCaretPositionEnabled = false;
         scannedDelimiterBufferID = currentBufferID;
-        SetDlgItemText(s_hDlg, IDC_COLUMN_HIGHLIGHT_BUTTON, L"🖍");
         if (instance != nullptr) {
             instance->isColumnHighlighted = false;
             instance->showStatusMessage(L"", RGB(0, 0, 0));
@@ -8097,7 +8104,7 @@ void MultiReplace::onCaretPositionChanged()
 
     LRESULT startPosition = ::SendMessage(getScintillaHandle(), SCI_GETCURRENTPOS, 0, 0);
     if (instance != nullptr) {
-        instance->showStatusMessage(instance->getLangStr(L"status_actual_position", { instance->addLineAndColumnMessage(startPosition) }), RGB(0, 128, 0));
+        instance->showStatusMessage(instance->getLangStr(L"status_actual_position", { instance->addLineAndColumnMessage(startPosition) }), COLOR_SUCCESS);
     }
 
 }
