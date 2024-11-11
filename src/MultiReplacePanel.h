@@ -502,6 +502,7 @@ private:
     bool isDeleteButtonVisible = true;    // Visibility of the "Delete" column
     bool tooltipsEnabled = true;       // Status for showing Tooltips on Panel
     bool alertNotFoundEnabled = true;  // Status for Bell if String hasn't be found
+    bool doubleClickEditsEnabled = true; // Double click to Edit List entries
 
     // Window DPI scaled size 
     int MIN_WIDTH_scaled;
@@ -569,6 +570,7 @@ private:
     void pasteItemsIntoList();
     void performSearchInList();
     int searchInListData(int startIdx, const std::wstring& findText, const std::wstring& replaceText);
+    void handleEditOnDoubleClick(int itemIndex, int clickedColumn);
 
     //Replace
     void handleReplaceAllButton();

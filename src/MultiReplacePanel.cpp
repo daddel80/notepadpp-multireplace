@@ -2032,6 +2032,25 @@ int MultiReplace::searchInListData(int startIdx, const std::wstring& findText, c
     return -1;
 }
 
+void MultiReplace::handleEditOnDoubleClick(int itemIndex, int clickedColumn) {
+    // Initialize columnID with a default value first
+    ColumnID columnID = ColumnID::INVALID;
+    columnID = static_cast<ColumnID>(getColumnIDFromIndex(clickedColumn));
+
+    if (columnID == ColumnID::FIND_TEXT || columnID == ColumnID::REPLACE_TEXT) {
+        editTextAt(itemIndex, clickedColumn);
+    }
+    else if (columnID == ColumnID::SELECTION ||
+        columnID == ColumnID::WHOLE_WORD ||
+        columnID == ColumnID::MATCH_CASE ||
+        columnID == ColumnID::USE_VARIABLES ||
+        columnID == ColumnID::EXTENDED ||
+        columnID == ColumnID::REGEX) {
+        toggleBooleanAt(itemIndex, clickedColumn);
+    }
+}
+
+
 #pragma endregion
 
 
@@ -2275,7 +2294,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             case NM_DBLCLK:
             {
                 NMITEMACTIVATE* pnmia = reinterpret_cast<NMITEMACTIVATE*>(lParam);
-                handleCopyBack(pnmia);
+                int itemIndex = pnmia->iItem;
+                int clickedColumn = pnmia->iSubItem;
+
+                if (itemIndex != -1 && clickedColumn != -1) {
+                    if (doubleClickEditsEnabled) {
+                        handleEditOnDoubleClick(itemIndex, clickedColumn);
+                    }
+                    else {
+                        handleCopyBack(pnmia);
+                    }
+                }
                 return TRUE;
             }
 
@@ -7492,6 +7521,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"HighlightMatch=" + std::to_wstring(highlightMatchEnabled ? 1 : 0) + L"\n");
     outFile << wstringToString(L"Tooltips=" + std::to_wstring(tooltipsEnabled ? 1 : 0) + L"\n");
     outFile << wstringToString(L"AlertNotFound=" + std::to_wstring(alertNotFoundEnabled ? 1 : 0) + L"\n");
+    outFile << wstringToString(L"DoubleClickEdits=" + std::to_wstring(doubleClickEditsEnabled ? 1 : 0) + L"\n");
 
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
@@ -7627,6 +7657,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
     highlightMatchEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"HighlightMatch", true);
     alertNotFoundEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"AlertNotFound", true);
+    doubleClickEditsEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"DoubleClickEdits", true);
 
     // Loading and setting the scope with enabled state check
     int selection = readIntFromIniFile(iniFilePath, L"Scope", L"Selection", 0);
