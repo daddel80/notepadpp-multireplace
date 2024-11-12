@@ -492,7 +492,6 @@ void MultiReplace::updateTwoButtonsVisibility() {
 void MultiReplace::setUIElementVisibility() {
     // Determine the state of mode radio buttons
     bool regexChecked = SendMessage(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
-    bool selectionChecked = SendMessage(GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
     bool columnModeChecked = SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_MODE_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
 
     // Update the Whole Word checkbox visibility based on the Regex mode
@@ -509,7 +508,7 @@ void MultiReplace::setUIElementVisibility() {
     }
 
     // Update the FIND_PREV_BUTTON state based on Regex and Selection mode
-    EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !(regexChecked || selectionChecked));
+    EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !regexChecked );
 }
 
 void MultiReplace::drawGripper() {
@@ -4315,15 +4314,46 @@ void MultiReplace::handleFindNextButton() {
 }
 
 void MultiReplace::handleFindPrevButton() {
-
-    size_t matchIndex = std::numeric_limits<size_t>::max();
-
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
-    LRESULT searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+    Sci_Position searchPos;
+    LRESULT selectionCount = 0; // Declare selectionCount at the beginning
+    std::vector<SelectionRange> selections; // Declare selections at the beginning
+
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+        selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
+        if (selectionCount > 0) {
+            // Retrieve all selections
+            selections.resize(selectionCount);
+            for (int i = 0; i < selectionCount; i++) {
+                selections[i].start = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
+                selections[i].end = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
+            }
+
+            // Sort selections in descending order based on start position
+            std::sort(selections.begin(), selections.end(), [](const SelectionRange& a, const SelectionRange& b) {
+                return a.start > b.start;
+                });
+
+            // Start from the end position of the last selection (which is now selections[0])
+            searchPos = selections[0].end;
+        }
+        else {
+            // No selections, use current cursor position
+            searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+        }
+    }
+    else {
+        // "All Text" is selected, use current cursor position
+        searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+    }
+
+    // Decrement search position if possible
     searchPos = (searchPos > 0) ? ::SendMessage(_hScintilla, SCI_POSITIONBEFORE, searchPos, 0) : searchPos;
 
     if (useListEnabled) {
+        size_t matchIndex = std::numeric_limits<size_t>::max();
+
         if (replaceListData.empty()) {
             showStatusMessage(getLangStr(L"status_add_values_or_find_directly"), COLOR_ERROR);
             return;
@@ -4332,12 +4362,31 @@ void MultiReplace::handleFindPrevButton() {
         SearchResult result = performListSearchBackward(replaceListData, searchPos, matchIndex);
 
         if (result.pos < 0 && wrapAroundEnabled) {
-            result = performListSearchBackward(replaceListData, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0), matchIndex);
+            // Wrap-around logic
+            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && selectionCount > 0) {
+                // Wrap around to the end of the last selection
+                searchPos = selections[0].end;
+            }
+            else {
+                // Wrap around to the end of the document
+                searchPos = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+            }
+
+            result = performListSearchBackward(replaceListData, searchPos, matchIndex);
+
             if (result.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView(); // Refresh the ListView to show updated statistic
                 selectListItem(matchIndex); // Highlight the matched item in the list
                 showStatusMessage(getLangStr(L"status_wrapped"), COLOR_INFO);
+
+                // Disable selection radio and switch to "All Text" if it was previously checked or Search will be trapped in new selection
+                if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+                    ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+                    ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+                    ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+                }
+
                 return;
             }
         }
@@ -4347,13 +4396,19 @@ void MultiReplace::handleFindPrevButton() {
             updateCountColumns(matchIndex, 1);
             refreshUIListView(); // Refresh the ListView to show updated statistic
             selectListItem(matchIndex); // Highlight the matched item in the list
+
+            // Disable selection radio and switch to "All Text" if it was previously checked or Search will be trapped in new selection
+            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+                ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+                ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+                ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+            }
         }
         else {
             showStatusMessage(getLangStr(L"status_no_matches_found"), COLOR_ERROR, true);
         }
     }
-    else
-    {
+    else {
         std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
         bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
@@ -4366,17 +4421,42 @@ void MultiReplace::handleFindPrevButton() {
 
         SearchResult result = performSearchBackward(findTextUtf8, searchFlags, searchPos);
 
-        if (result.pos < 0 && wrapAroundEnabled)
-        {
-            result = performSearchBackward(findTextUtf8, searchFlags, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+        if (result.pos < 0 && wrapAroundEnabled) {
+            // Wrap-around logic
+            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && selectionCount > 0) {
+                // Wrap around to the end of the last selection
+                searchPos = selections[0].end;
+            }
+            else {
+                // Wrap around to the end of the document
+                searchPos = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+            }
+
+            result = performSearchBackward(findTextUtf8, searchFlags, searchPos);
+
             if (result.pos >= 0) {
                 showStatusMessage(getLangStr(L"status_wrapped"), COLOR_INFO);
+
+                // Disable selection radio and switch to "All Text" if it was previously checked or Search will be trapped in new selection
+                if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+                    ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+                    ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+                    ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+                }
+
                 return;
             }
         }
 
         if (result.pos >= 0) {
             showStatusMessage(L"", COLOR_SUCCESS);
+
+            // Disable selection radio and switch to "All Text" if previously checked
+            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+                ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+                ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+                ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+            }
         }
         else {
             showStatusMessage(getLangStr(L"status_no_matches_found_for", { findText }), COLOR_ERROR, true);
@@ -4545,14 +4625,65 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
     return result;
 }
 
-SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start)
-{
+SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start) {
     SearchResult result;
-    SelectionRange targetRange;
 
-    // Check if IDC_COLUMN_MODE_RADIO is enabled, and column delimiter data is set
-    if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED && columnDelimiterData.isValid()) {
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+        // Handle backward search within selections
+        LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
+        if (selectionCount == 0) {
+            return SearchResult(); // No selections to search
+        }
 
+        std::vector<SelectionRange> selections(selectionCount);
+        for (int i = 0; i < selectionCount; ++i) {
+            selections[i].start = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
+            selections[i].end = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
+        }
+
+        // Sort selections in descending order (from bottom to top)
+        std::sort(selections.begin(), selections.end(), [](const SelectionRange& a, const SelectionRange& b) {
+            return a.start > b.start;
+            });
+
+        LRESULT currentStart = start;
+
+        // Iterate over selections
+        for (const auto& selection : selections) {
+            if (currentStart < selection.start) {
+                // Current position is before the selection; move to the next one
+                continue;
+            }
+
+            // Set the target range within the selection
+            LRESULT targetStart = std::min(currentStart, selection.end);
+            LRESULT targetEnd = selection.start;
+
+            if (targetStart <= targetEnd) {
+                // Invalid range, skip to the next selection
+                currentStart = selection.start - 1;
+                continue;
+            }
+
+            SelectionRange targetRange;
+            targetRange.start = targetStart;
+            targetRange.end = targetEnd;
+
+            // Perform the search within the target range
+            result = performSingleSearch(findTextUtf8, searchFlags , true, targetRange);
+            if (result.pos >= 0) {
+                return result;
+            }
+
+            // Update currentStart for the next iteration
+            currentStart = selection.start - 1;
+        }
+
+        // No match found in any selection
+        return SearchResult();
+    }
+    else if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED && columnDelimiterData.isValid()) {
+        // Handle backward search in column mode
         // Identify Column to Start
         ColumnInfo columnInfo = getColumnInfo(start);
         LRESULT startLine = columnInfo.startLine;
@@ -4598,7 +4729,10 @@ SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8
 
                     // Perform search within the column range
                     if (start >= endColumn) {
-                        targetRange = { endColumn, startColumn };
+                        SelectionRange targetRange;
+                        targetRange.start = endColumn;
+                        targetRange.end = startColumn;
+
                         result = performSingleSearch(findTextUtf8, searchFlags, true, targetRange);
 
                         // Check if a match was found
@@ -4606,17 +4740,19 @@ SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8
                             return result;
                         }
                     }
-
                 }
             }
         }
+
+        // No match found in column mode
+        return SearchResult();
     }
     else {
-        // Setting up the range to search backward from 'start' to the beginning
-        SelectionRange searchRange;
-        searchRange.start = start;
-        searchRange.end = 0;
-        result = performSingleSearch(findTextUtf8, searchFlags, true, searchRange);
+        // Default backward search in the whole document
+        SelectionRange targetRange;
+        targetRange.start = start;
+        targetRange.end = 0; // Beginning of the document
+        result = performSingleSearch(findTextUtf8, searchFlags, true, targetRange);
     }
 
     return result;
