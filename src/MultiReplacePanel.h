@@ -203,6 +203,11 @@ enum class SortDirection {
     Descending
 };
 
+enum class SearchDirection {
+    Forward,
+    Backward
+};
+
 // Lua Engine
 struct LuaVariables {
     int CNT = 0;
@@ -292,13 +297,12 @@ public:
         _replaceListView(NULL),
         _hStandardFont(nullptr),
         _hBoldFont1(nullptr),
-        _hBoldFont2(nullptr),
-        _hBoldFont3(nullptr),
         _hNormalFont1(nullptr),
         _hNormalFont2(nullptr),
         _hNormalFont3(nullptr),
         _hNormalFont4(nullptr),
         _hNormalFont5(nullptr),
+        _hNormalFont6(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
     {
@@ -411,13 +415,12 @@ private:
     HWND _hStatusMessage;
     HFONT _hStandardFont;
     HFONT _hBoldFont1;
-    HFONT _hBoldFont2;
-    HFONT _hBoldFont3;;
     HFONT _hNormalFont1;
     HFONT _hNormalFont2;
     HFONT _hNormalFont3;
     HFONT _hNormalFont4;
     HFONT _hNormalFont5;
+    HFONT _hNormalFont6;
     COLORREF _statusMessageColor;
     HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
     HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button
@@ -580,7 +583,7 @@ private:
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     bool preProcessListForReplace(bool highlight);
-    SelectionInfo getSelectionInfo();
+    SelectionInfo getSelectionInfo(bool isBackward);
     void captureLuaGlobals(lua_State* L);
     void loadLuaGlobals(lua_State* L);
     std::string escapeForRegex(const std::string& input);
@@ -598,7 +601,9 @@ private:
     void handleFindPrevButton();
     SearchResult performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range);
     SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
-    SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start);
+    SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
+    SearchResult performSearchSelection(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
+    SearchResult performSearchColumn    (const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
     SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
     SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
     void MultiReplace::selectListItem(size_t matchIndex);

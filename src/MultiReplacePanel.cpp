@@ -116,9 +116,10 @@ void MultiReplace::initializeFontStyles() {
     _hStandardFont = createFont(13, FW_NORMAL, L"MS Shell Dlg 2");
     _hNormalFont1 = createFont(14, FW_NORMAL, L"MS Shell Dlg 2");
     _hNormalFont2 = createFont(12, FW_NORMAL, L"Courier New");
-    _hNormalFont3 = createFont(13, FW_NORMAL, L"Courier New");
-    _hNormalFont4 = createFont(18, FW_NORMAL, L"Courier New");
-    _hNormalFont5 = createFont(22, FW_NORMAL, L"Courier New");
+    _hNormalFont3 = createFont(14, FW_NORMAL, L"Courier New");
+    _hNormalFont4 = createFont(16, FW_NORMAL, L"Courier New");
+    _hNormalFont5 = createFont(18, FW_NORMAL, L"Courier New");
+    _hNormalFont6 = createFont(22, FW_NORMAL, L"Courier New");
 
     // Apply standard font to all controls in ctrlMap
     for (const auto& pair : ctrlMap) {
@@ -134,18 +135,16 @@ void MultiReplace::initializeFontStyles() {
     }
 
     SendMessage(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont3, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont4, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont5, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont3, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont4, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont5, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont6, TRUE);
 
-    // Define bold fonts, ordered by size
-    _hBoldFont1 = createFont(14, FW_NORMAL, L"Courier New");
-    _hBoldFont2 = createFont(16, FW_NORMAL, L"Courier New");
-    _hBoldFont3 = createFont(20, FW_BOLD, L"Courier New");
+    // Define bold fonts
+    _hBoldFont1 = createFont(22, FW_BOLD, L"Courier New");
 
     // Specific controls using bold fonts, adjusted to match the correct sizes
-    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont1, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont2, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont3, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont1, TRUE);
 
     // For ListView: calculate widths of special characters and add padding
     checkMarkWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2714") + 15;
@@ -308,7 +307,7 @@ void MultiReplace::initializeCtrlMap() {
     SendMessage(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), EM_SETLIMITTEXT, (WPARAM)1, 0);
 
     // Enable IDC_SELECTION_RADIO based on text selection
-    SelectionInfo selection = getSelectionInfo();
+    SelectionInfo selection = getSelectionInfo(false);
     bool isTextSelected = (selection.length > 0);
     ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), isTextSelected);
 
@@ -2164,14 +2163,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
 
         DeleteObject(_hStandardFont);
-        DeleteObject(_hBoldFont1); // Assuming this font was missing previously
-        DeleteObject(_hBoldFont2);
-        DeleteObject(_hBoldFont3);
+        DeleteObject(_hBoldFont1);
         DeleteObject(_hNormalFont1);
         DeleteObject(_hNormalFont2);
         DeleteObject(_hNormalFont3);
         DeleteObject(_hNormalFont4);
         DeleteObject(_hNormalFont5);
+        DeleteObject(_hNormalFont6);
 
         // Close the debug window if open
         if (hDebugWnd != NULL) {
@@ -3061,7 +3059,7 @@ void MultiReplace::handleReplaceAllButton() {
     showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), COLOR_SUCCESS);
 
     // Disable selection radio and switch to "All Text" if it was Replaced an none selection left or it will be trapped
-    SelectionInfo selection = getSelectionInfo();
+    SelectionInfo selection = getSelectionInfo(false);
     if (selection.length == 0 && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
         ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
@@ -3088,7 +3086,7 @@ void MultiReplace::handleReplaceButton() {
     searchResult.length = 0;
     searchResult.foundText = "";
 
-    SelectionInfo selection = getSelectionInfo();
+    SelectionInfo selection = getSelectionInfo(false);
 
     // If there is a selection, set newPos to the start of the selection; otherwise, use the current cursor position
     Sci_Position newPos = (selection.length > 0) ? selection.startPos : ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
@@ -3189,7 +3187,7 @@ void MultiReplace::handleReplaceButton() {
     }
 
     // Disable selection radio and switch to "All Text" if it was Replaced an none selection left or it will be trapped
-    selection = getSelectionInfo();
+    selection = getSelectionInfo(false);
     if (selection.length == 0 && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
         ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
@@ -3427,29 +3425,47 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
     return true;
 }
 
-SelectionInfo MultiReplace::getSelectionInfo() {
+SelectionInfo MultiReplace::getSelectionInfo(bool isBackward) {
     // Get the number of selections
     LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
-    Sci_Position smallestStart = 0;
+    Sci_Position selectedStart = 0;
     Sci_Position correspondingEnd = 0;
+    std::vector<SelectionRange> selections; // Store all selections for sorting
 
     if (selectionCount > 0) {
-        smallestStart = std::numeric_limits<Sci_Position>::max(); // Only used if there's a selection
-        // Iterate over all selections to find the one with the smallest start position
-        for (LRESULT i = 0; i < selectionCount; ++i) {
-            Sci_Position selectionStart = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
-            Sci_Position selectionEnd = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
+        selections.resize(selectionCount);
 
-            if (selectionStart < smallestStart) {
-                smallestStart = selectionStart;
-                correspondingEnd = selectionEnd;
-            }
+        // Retrieve all selections
+        for (LRESULT i = 0; i < selectionCount; ++i) {
+            selections[i].start = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
+            selections[i].end = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
         }
+
+        // Sort selections based on direction
+        if (isBackward) {
+            std::sort(selections.begin(), selections.end(), [](const SelectionRange& a, const SelectionRange& b) {
+                return a.start > b.start;
+                });
+        }
+        else {
+            std::sort(selections.begin(), selections.end(), [](const SelectionRange& a, const SelectionRange& b) {
+                return a.start < b.start;
+                });
+        }
+
+        // Set the start and end based on the sorted selection
+        selectedStart = selections[0].start;
+        correspondingEnd = selections[0].end;
+    }
+    else {
+        // No selection case: use current cursor position
+        selectedStart = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+        correspondingEnd = selectedStart;
     }
 
     // Calculate the selection length
-    Sci_Position selectionLength = correspondingEnd - smallestStart;
-    return SelectionInfo{ smallestStart, correspondingEnd, selectionLength };
+    Sci_Position selectionLength = correspondingEnd - selectedStart;
+    return SelectionInfo{ selectedStart, correspondingEnd, selectionLength };
 }
 
 void MultiReplace::captureLuaGlobals(lua_State* L) {
@@ -4228,7 +4244,7 @@ void MultiReplace::handleFindNextButton() {
 
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
-    SelectionInfo selection = getSelectionInfo();
+    SelectionInfo selection = getSelectionInfo(false);
 
     // Check if there is a selection and if the selection radio button is checked
     Sci_Position searchPos;
@@ -4316,39 +4332,20 @@ void MultiReplace::handleFindNextButton() {
 void MultiReplace::handleFindPrevButton() {
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
+    SelectionInfo selection = getSelectionInfo(true);
     Sci_Position searchPos;
-    LRESULT selectionCount = 0; // Declare selectionCount at the beginning
-    std::vector<SelectionRange> selections; // Declare selections at the beginning
 
-    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
-        if (selectionCount > 0) {
-            // Retrieve all selections
-            selections.resize(selectionCount);
-            for (int i = 0; i < selectionCount; i++) {
-                selections[i].start = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
-                selections[i].end = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
-            }
-
-            // Sort selections in descending order based on start position
-            std::sort(selections.begin(), selections.end(), [](const SelectionRange& a, const SelectionRange& b) {
-                return a.start > b.start;
-                });
-
-            // Start from the end position of the last selection (which is now selections[0])
-            searchPos = selections[0].end;
-        }
-        else {
-            // No selections, use current cursor position
-            searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
-        }
+    // Determine starting position based on selection
+    if (selection.length > 0 && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED)) {
+        // Start from the end of the selection for backward search
+        searchPos = selection.endPos;
     }
     else {
-        // "All Text" is selected, use current cursor position
+        // Default to current cursor position if no selection
         searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
     }
 
-    // Decrement search position if possible
+    // Move back one position if possible
     searchPos = (searchPos > 0) ? ::SendMessage(_hScintilla, SCI_POSITIONBEFORE, searchPos, 0) : searchPos;
 
     if (useListEnabled) {
@@ -4362,15 +4359,7 @@ void MultiReplace::handleFindPrevButton() {
         SearchResult result = performListSearchBackward(replaceListData, searchPos, matchIndex);
 
         if (result.pos < 0 && wrapAroundEnabled) {
-            // Wrap-around logic
-            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && selectionCount > 0) {
-                // Wrap around to the end of the last selection
-                searchPos = selections[0].end;
-            }
-            else {
-                // Wrap around to the end of the document
-                searchPos = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
-            }
+            searchPos = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
 
             result = performListSearchBackward(replaceListData, searchPos, matchIndex);
 
@@ -4419,20 +4408,20 @@ void MultiReplace::handleFindPrevButton() {
 
         std::string findTextUtf8 = convertAndExtend(findText, extended);
 
-        SearchResult result = performSearchBackward(findTextUtf8, searchFlags, searchPos);
+        SearchResult result = performSearchBackward(findTextUtf8, searchFlags, true, searchPos);
 
         if (result.pos < 0 && wrapAroundEnabled) {
             // Wrap-around logic
-            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && selectionCount > 0) {
+            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
                 // Wrap around to the end of the last selection
-                searchPos = selections[0].end;
+                searchPos = selection.endPos;
             }
             else {
                 // Wrap around to the end of the document
                 searchPos = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
             }
 
-            result = performSearchBackward(findTextUtf8, searchFlags, searchPos);
+            result = performSearchBackward(findTextUtf8, searchFlags, true, searchPos);
 
             if (result.pos >= 0) {
                 showStatusMessage(getLangStr(L"status_wrapped"), COLOR_INFO);
@@ -4512,250 +4501,192 @@ SearchResult MultiReplace::performSingleSearch(const std::string& findTextUtf8, 
 
 SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start)
 {
-    SearchResult result;
+    // Set search direction to forward
+    bool isBackward = false;
+
     SelectionRange targetRange;
+    SearchResult result;
 
-    // If selectMatch is true, highlight the found text
-
-    // Check if IDC_SELECTION_RADIO is enabled and selectMatch is false
+    // Check if selection mode is active
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
-        std::vector<SelectionRange> selections(selectionCount);
-
-        // Extract all Positions of detected Selections
-        for (int i = 0; i < selectionCount; i++) {
-            selections[i].start = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
-            selections[i].end = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
-        }
-
-        // Sort selections based on their start position
-        std::sort(selections.begin(), selections.end(), [](const SelectionRange& a, const SelectionRange& b) {
-            return a.start < b.start;
-            });
-
-        // Perform search within each selection
-        for (const auto& selection : selections) {
-            if (start >= selection.start && start < selection.end) {
-                // If the start position is within the current selection
-                targetRange = { start, selection.end };
-                result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
-            }
-            else if (start < selection.start) {
-                // If the start position is lower than the current selection
-                targetRange = selection;
-                result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
-            }
-
-            // Check if a match was found
-            if (result.pos >= 0) {
-                return result;
-            }
-        }
+        // Perform search within selection
+        result = performSearchSelection(findTextUtf8, searchFlags, selectMatch, start, isBackward);
     }
     // Check if IDC_COLUMN_MODE_RADIO is enabled, selectMatch is false, and column delimiter data is set
     else if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED && columnDelimiterData.isValid()) {
-
-        // Identify Column to Start
-        ColumnInfo columnInfo = getColumnInfo(start);
-        LRESULT totalLines = columnInfo.totalLines;
-        LRESULT startLine = columnInfo.startLine;
-        SIZE_T startColumnIndex = columnInfo.startColumnIndex;
-
-        // Iterate over each line
-        for (LRESULT line = startLine; line < totalLines; ++line) {
-            if (line < static_cast<LRESULT>(lineDelimiterPositions.size())) {
-                const auto& linePositions = lineDelimiterPositions[line].positions;
-                SIZE_T totalColumns = linePositions.size() + 1;
-
-                // Handle search for specific columns from columnDelimiterData
-                for (SIZE_T column = startColumnIndex; column <= totalColumns; ++column) {
-
-                    LRESULT startColumn = 0;
-                    LRESULT endColumn = 0;
-
-                    // Set start and end positions based on column index
-                    if (column == 1) {
-                        startColumn = lineDelimiterPositions[line].startPosition;
-                    }
-                    else {
-                        startColumn = linePositions[column - 2].position + columnDelimiterData.delimiterLength;
-                    }
-
-                    if (column == linePositions.size() + 1) {
-                        endColumn = lineDelimiterPositions[line].endPosition;
-                    }
-                    else {
-                        endColumn = linePositions[column - 1].position;
-                    }
-
-                    // Check if the current column is included in the specified columns
-                    if (columnDelimiterData.columns.find(static_cast<int>(column)) == columnDelimiterData.columns.end()) {
-                        // If it's not included, skip this iteration
-                        continue;
-                    }
-
-                    // If start position is within the column range, adjust startColumn
-                    if (start >= startColumn && start <= endColumn) {
-                        startColumn = start;
-                    }
-
-                    // Perform search within the column range
-                    if (start <= startColumn) {
-                        targetRange = { startColumn, endColumn };
-                        result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
-
-                        // Check if a match was found
-                        if (result.pos >= 0) {
-                            return result;
-                        }
-                    }
-                }
-                // Reset startColumnIndex for the next lines
-                startColumnIndex = 1;
-            }
-        }
+        // Perform search within columns
+        result = performSearchColumn(findTextUtf8, searchFlags, selectMatch, start, isBackward);
     }
     else {
         // If neither IDC_SELECTION_RADIO nor IDC_COLUMN_MODE_RADIO, perform search within the whole document
         targetRange.start = start;
-        targetRange.end = send(SCI_GETLENGTH, 0, 0);
+        targetRange.end = send(SCI_GETLENGTH, 0, 0); // End of the document
         result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
     }
 
     return result;
 }
 
-SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start) {
+SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start) {
+
+    // Set search direction to backward
+    bool isBackward = true;
+
+    SelectionRange targetRange;
     SearchResult result;
 
+    // Check if selection mode is active
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        // Handle backward search within selections
-        LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
-        if (selectionCount == 0) {
-            return SearchResult(); // No selections to search
-        }
-
-        std::vector<SelectionRange> selections(selectionCount);
-        for (int i = 0; i < selectionCount; ++i) {
-            selections[i].start = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
-            selections[i].end = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
-        }
-
-        // Sort selections in descending order (from bottom to top)
-        std::sort(selections.begin(), selections.end(), [](const SelectionRange& a, const SelectionRange& b) {
-            return a.start > b.start;
-            });
-
-        LRESULT currentStart = start;
-
-        // Iterate over selections
-        for (const auto& selection : selections) {
-            if (currentStart < selection.start) {
-                // Current position is before the selection; move to the next one
-                continue;
-            }
-
-            // Set the target range within the selection
-            LRESULT targetStart = std::min(currentStart, selection.end);
-            LRESULT targetEnd = selection.start;
-
-            if (targetStart <= targetEnd) {
-                // Invalid range, skip to the next selection
-                currentStart = selection.start - 1;
-                continue;
-            }
-
-            SelectionRange targetRange;
-            targetRange.start = targetStart;
-            targetRange.end = targetEnd;
-
-            // Perform the search within the target range
-            result = performSingleSearch(findTextUtf8, searchFlags , true, targetRange);
-            if (result.pos >= 0) {
-                return result;
-            }
-
-            // Update currentStart for the next iteration
-            currentStart = selection.start - 1;
-        }
-
-        // No match found in any selection
-        return SearchResult();
+        // Perform search within selection
+        result = performSearchSelection(findTextUtf8, searchFlags, selectMatch, start, isBackward);
     }
     else if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED && columnDelimiterData.isValid()) {
-        // Handle backward search in column mode
-        // Identify Column to Start
-        ColumnInfo columnInfo = getColumnInfo(start);
-        LRESULT startLine = columnInfo.startLine;
-        SIZE_T startColumnIndex = columnInfo.startColumnIndex;
-
-        // Iterate over each line in reverse
-        for (LRESULT line = startLine; line >= 0; --line) {
-            if (line < static_cast<LRESULT>(lineDelimiterPositions.size())) {
-                const auto& linePositions = lineDelimiterPositions[line].positions;
-                SIZE_T totalColumns = linePositions.size() + 1;
-
-                // Handle search for specific columns from columnDelimiterData
-                for (SIZE_T column = (line == startLine ? startColumnIndex : totalColumns); column >= 1; --column) {
-
-                    // Set start and end positions based on column index
-                    LRESULT startColumn = 0;
-                    LRESULT endColumn = 0;
-
-                    if (column == 1) {
-                        startColumn = lineDelimiterPositions[line].startPosition;
-                    }
-                    else {
-                        startColumn = linePositions[column - 2].position + columnDelimiterData.delimiterLength;
-                    }
-
-                    if (column == linePositions.size() + 1) {
-                        endColumn = lineDelimiterPositions[line].endPosition;
-                    }
-                    else {
-                        endColumn = linePositions[column - 1].position;
-                    }
-
-                    // Check if the current column is included in the specified columns
-                    if (columnDelimiterData.columns.find(static_cast<int>(column)) == columnDelimiterData.columns.end()) {
-                        // If it's not included, skip this iteration
-                        continue;
-                    }
-
-                    // Perform search within the column range
-                    if (start >= startColumn && start <= endColumn) {
-                        endColumn = start;
-                    }
-
-                    // Perform search within the column range
-                    if (start >= endColumn) {
-                        SelectionRange targetRange;
-                        targetRange.start = endColumn;
-                        targetRange.end = startColumn;
-
-                        result = performSingleSearch(findTextUtf8, searchFlags, true, targetRange);
-
-                        // Check if a match was found
-                        if (result.pos >= 0) {
-                            return result;
-                        }
-                    }
-                }
-            }
-        }
-
-        // No match found in column mode
-        return SearchResult();
+        // Perform search within columns
+        result = performSearchColumn(findTextUtf8, searchFlags, selectMatch, start, isBackward);
     }
     else {
         // Default backward search in the whole document
-        SelectionRange targetRange;
         targetRange.start = start;
         targetRange.end = 0; // Beginning of the document
-        result = performSingleSearch(findTextUtf8, searchFlags, true, targetRange);
+        result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
     }
 
     return result;
+}
+
+SearchResult MultiReplace::performSearchSelection(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward) {
+    SearchResult result;
+    SelectionRange targetRange;
+    std::vector<SelectionRange> selections;
+
+    LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
+    if (selectionCount == 0) {
+        return SearchResult(); // No selections to search
+    }
+
+    // Gather all selection positions
+    selections.resize(selectionCount);
+    for (int i = 0; i < selectionCount; i++) {
+        selections[i].start = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
+        selections[i].end = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
+    }
+
+    // Sort selections based on the search direction
+    if (isBackward) {
+        std::sort(selections.begin(), selections.end(), [](const SelectionRange& a, const SelectionRange& b) { return a.start > b.start; });
+    }
+    else {
+        std::sort(selections.begin(), selections.end(), [](const SelectionRange& a, const SelectionRange& b) { return a.start < b.start; });
+    }
+
+    // Iterate through each selection range based on the search direction
+    for (const auto& selection : selections) {
+        if ((isBackward && start < selection.start) || (!isBackward && start > selection.end)) {
+            continue; // Skip selections outside the current search range
+        }
+
+        // Set the target range within the selection
+        targetRange.start = isBackward ? std::min(start, selection.end) : std::max(start, selection.start);
+        targetRange.end = isBackward ? selection.start : selection.end;
+
+        // Skip if the range is invalid
+        if (targetRange.start == targetRange.end) continue;
+
+        // Perform the search within the target range
+        result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
+        if (result.pos >= 0) return result;
+
+        // Update the starting position for the next iteration
+        start = isBackward ? selection.start - 1 : selection.end + 1;
+    }
+
+    return result; // No match found
+}
+
+SearchResult MultiReplace::performSearchColumn(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward)
+{
+    SearchResult result;
+    SelectionRange targetRange;
+
+    // Identify column start information based on the starting position
+    ColumnInfo columnInfo = getColumnInfo(start);
+    LRESULT startLine = columnInfo.startLine;
+    SIZE_T startColumnIndex = columnInfo.startColumnIndex;
+    LRESULT totalLines = columnInfo.totalLines;
+
+    // Set line iteration based on search direction
+    LRESULT line = startLine;
+    while (isBackward ? (line >= 0) : (line < totalLines)) {
+        if (line >= static_cast<LRESULT>(lineDelimiterPositions.size())) {
+            break; // Avoid out-of-bounds access
+        }
+
+        const auto& linePositions = lineDelimiterPositions[line].positions;
+        SIZE_T totalColumns = linePositions.size() + 1;
+
+        // Set column iteration range and step based on direction
+        SIZE_T column = isBackward ? (line == startLine ? startColumnIndex : totalColumns) : startColumnIndex;
+        SIZE_T endColumnIndex = isBackward ? 1 : totalColumns;
+        int columnStep = isBackward ? -1 : 1;
+
+        // Iterate over columns in the specified direction
+        for (; (isBackward ? (column >= endColumnIndex) : (column <= endColumnIndex)); column += columnStep) {
+            LRESULT startColumn = 0;
+            LRESULT endColumn = 0;
+
+            // Define start and end positions for the current column
+            if (column == 1) {
+                startColumn = lineDelimiterPositions[line].startPosition;
+            }
+            else {
+                startColumn = linePositions[column - 2].position + columnDelimiterData.delimiterLength;
+            }
+
+            if (column == totalColumns) {
+                endColumn = lineDelimiterPositions[line].endPosition;
+            }
+            else {
+                endColumn = linePositions[column - 1].position;
+            }
+
+            // Skip columns not specified in columnDelimiterData
+            if (columnDelimiterData.columns.find(static_cast<int>(column)) == columnDelimiterData.columns.end()) {
+                continue;
+            }
+
+            // Adjust the target range based on start position and search direction
+            if (isBackward && start >= startColumn && start <= endColumn) {
+                endColumn = start;
+            }
+            else if (!isBackward && start >= startColumn && start <= endColumn) {
+                startColumn = start;
+            }
+
+            // Define target range for the search
+            targetRange.start = isBackward ? endColumn : startColumn;
+            targetRange.end = isBackward ? startColumn : endColumn;
+
+            // Perform search within the target range
+            result = performSingleSearch(
+                findTextUtf8,
+                searchFlags ,
+                selectMatch,
+                targetRange
+            );
+
+            // Return if a match is found
+            if (result.pos >= 0) {
+                return result;
+            }
+        }
+
+        // Move to the next line based on search direction
+        line += (isBackward ? -1 : 1);
+        // Reset column index for subsequent lines
+        startColumnIndex = isBackward ? totalColumns : 1;
+    }
+
+    return result; // No match found in column mode
 }
 
 SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex) {
@@ -4772,7 +4703,7 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
                 (list[i].matchCase * SCFIND_MATCHCASE) |
                 (list[i].regex * SCFIND_REGEXP);
             std::string findTextUtf8 = convertAndExtend(list[i].findText, list[i].extended);
-            SearchResult result = performSearchBackward(findTextUtf8, searchFlags, cursorPos);
+            SearchResult result = performSearchBackward(findTextUtf8, searchFlags, false, cursorPos);
 
             // If a match was found and it's closer to the cursor than the current closest match, update the closest match
             if (result.pos >= 0 && (closestMatch.pos < 0 || (result.pos + result.length) >(closestMatch.pos + closestMatch.length))) {
