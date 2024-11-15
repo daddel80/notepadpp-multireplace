@@ -709,6 +709,8 @@ void MultiReplace::createListViewColumns(HWND listView) {
     // Update global variables with the current column widths - only for sizable columns
     updateColumnWidth(isFindCountVisible, ColumnID::FIND_COUNT, findCountColumnWidth);
     updateColumnWidth(isReplaceCountVisible, ColumnID::REPLACE_COUNT, replaceCountColumnWidth);
+    updateColumnWidth(true, ColumnID::FIND_TEXT, findColumnWidth);
+    updateColumnWidth(true, ColumnID::REPLACE_TEXT, replaceColumnWidth);
     updateColumnWidth(isCommentsColumnVisible, ColumnID::COMMENTS, commentsColumnWidth);
     updateColumnWidth(isDeleteButtonVisible, ColumnID::DELETE_BUTTON, deleteButtonColumnWidth);
 
@@ -727,6 +729,8 @@ void MultiReplace::createListViewColumns(HWND listView) {
         listCtrlInfo.cx,
         (isFindCountVisible) ? findCountColumnWidth : 0,
         (isReplaceCountVisible) ? replaceCountColumnWidth : 0,
+        findColumnWidth,
+        replaceColumnWidth,
         (isCommentsColumnVisible) ? commentsColumnWidth : 0,
         (isDeleteButtonVisible) ? deleteButtonColumnWidth : 0,
         GetSystemMetrics(SM_CXVSCROLL)
@@ -777,7 +781,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     // Column 4: Find Text (use calcDynamicColWidth for width)
     lvc.iSubItem = currentIndex;
     lvc.pszText = getLangStrLPWSTR(L"header_find");
-    lvc.cx = perColumnWidth;  // Set Find Text width dynamically
+    lvc.cx = (findColumnLockedEnabled ? findColumnWidth : perColumnWidth);
     lvc.fmt = LVCFMT_LEFT;
     ListView_InsertColumn(listView, currentIndex, &lvc);
     columnIndices[ColumnID::FIND_TEXT] = currentIndex;
@@ -786,7 +790,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     // Column 5: Replace Text (use calcDynamicColWidth for width)
     lvc.iSubItem = currentIndex;
     lvc.pszText = getLangStrLPWSTR(L"header_replace");
-    lvc.cx = perColumnWidth;  // Set Replace Text width dynamically
+    lvc.cx = (replaceColumnLockedEnabled ? replaceColumnWidth : perColumnWidth);
     lvc.fmt = LVCFMT_LEFT;
     ListView_InsertColumn(listView, currentIndex, &lvc);
     columnIndices[ColumnID::REPLACE_TEXT] = currentIndex;
@@ -878,24 +882,6 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     updateHeaderSelection();
 }
 
-int MultiReplace::calcDynamicColWidth(const ResizableColWidths& widths) {
-    int totalWidthFixedColumns = boxWidth_scaled + (checkMarkWidth_scaled * 5);
-
-    // Calculate the total remaining width, subtracting the fixed widths and visible columns
-    int totalRemainingWidth = widths.listViewWidth
-        - widths.margin // Adjust for the margin (scrollbar width)
-        - totalWidthFixedColumns
-        - widths.findCountWidth
-        - widths.replaceCountWidth
-        - widths.commentsWidth
-        - widths.deleteWidth;
-
-    // Ensure that the remaining width is not less than the minimum width
-    int perColumnWidth = std::max(totalRemainingWidth, MIN_FIND_REPLACE_WIDTH_scaled * 2) / 2;
-
-    return perColumnWidth;  // Return the calculated width for each dynamic column
-}
-
 int MultiReplace::getCharacterWidth(int elementID, const wchar_t* character) {
     // Get the HWND of the element by its ID
     HWND hwndElement = GetDlgItem(_hSelf, elementID);
@@ -918,16 +904,45 @@ int MultiReplace::getCharacterWidth(int elementID, const wchar_t* character) {
     return size.cx;
 }
 
+int MultiReplace::calcDynamicColWidth(const ResizableColWidths& widths) {
+    // Calculate the total width of fixed columns
+    int totalWidthFixedColumns = boxWidth_scaled + (checkMarkWidth_scaled * 5);
+
+    // Calculate the remaining width by subtracting fixed widths and visible static column widths
+    int totalRemainingWidth = widths.listViewWidth
+        - widths.margin  // Adjust for the vertical scrollbar margin
+        - totalWidthFixedColumns
+        - widths.findCountWidth
+        - widths.replaceCountWidth
+        - (findColumnLockedEnabled ? widths.findWidth : 0)
+        - (replaceColumnLockedEnabled ? widths.replaceWidth : 0)
+        - widths.commentsWidth
+        - widths.deleteWidth;
+
+    // Calculate the number of dynamic columns
+    int dynamicColumnCount = (!findColumnLockedEnabled)
+        + (!replaceColumnLockedEnabled)
+        ;
+
+    // Ensure at least one dynamic column is present for safety
+    dynamicColumnCount = std::max(dynamicColumnCount, 1);
+
+    // Calculate the width for each dynamic column
+    int perColumnWidth = std::max(totalRemainingWidth / dynamicColumnCount, MIN_FIND_REPLACE_WIDTH_scaled);
+
+    return perColumnWidth; // Return the calculated width for each dynamic column
+}
+
 void MultiReplace::updateListViewAndColumns() {
     // Retrieve control information
     const ControlInfo& listCtrlInfo = ctrlMap[IDC_REPLACE_LIST];
     HWND listView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
 
-    // Helper function to get column width for calculations
+    // Helper function to get column width and update global variables
     auto getColumnWidthForCalc = [&](ColumnID columnID, int& globalWidthVar) -> int {
         if (columnIndices[columnID] != -1) {
             int width = ListView_GetColumnWidth(listView, columnIndices[columnID]);
-            globalWidthVar = width;
+            globalWidthVar = width; // Update the global variable
             return width;
         }
         else {
@@ -935,41 +950,47 @@ void MultiReplace::updateListViewAndColumns() {
         }
         };
 
-    // **Retrieve widths for calculations, updating global variables for visible columns**
+    // Retrieve widths for calculations, updating global variables for visible columns
     int findCountWidthCalc = getColumnWidthForCalc(ColumnID::FIND_COUNT, findCountColumnWidth);
     int replaceCountWidthCalc = getColumnWidthForCalc(ColumnID::REPLACE_COUNT, replaceCountColumnWidth);
     int commentsWidthCalc = getColumnWidthForCalc(ColumnID::COMMENTS, commentsColumnWidth);
     int deleteButtonWidthCalc = getColumnWidthForCalc(ColumnID::DELETE_BUTTON, deleteButtonColumnWidth);
 
-    // Prepare the ResizableColWidths struct for dynamic column width calculation
+    // Always update widths for Find and Replace text columns
+    int findTextWidthCalc = getColumnWidthForCalc(ColumnID::FIND_TEXT, findColumnWidth);
+    int replaceTextWidthCalc = getColumnWidthForCalc(ColumnID::REPLACE_TEXT, replaceColumnWidth);
+
+    // Prepare the ResizableColWidths struct for dynamic width calculations
     ResizableColWidths widths = {
         listView,
         listCtrlInfo.cx,  // Width of the ListView control
         findCountWidthCalc,
         replaceCountWidthCalc,
+        findTextWidthCalc,
+        replaceTextWidthCalc,
         commentsWidthCalc,
         deleteButtonWidthCalc,
-        GetSystemMetrics(SM_CXVSCROLL)  // Width of the scrollbar
+        GetSystemMetrics(SM_CXVSCROLL)  // Width of the vertical scrollbar
     };
 
-    // Calculate dynamic column width, now considering the visibility of Comments column
+    // Calculate dynamic column width
     int perColumnWidth = calcDynamicColWidth(widths);
 
-    // Disable redraw to prevent flickering during the update
+    // Disable redraw to prevent flickering during updates
     SendMessage(listView, WM_SETREDRAW, FALSE, 0);
 
-    // Update widths of dynamic columns (Find Text, Replace Text) based on columnIndices
-    if (columnIndices[ColumnID::FIND_TEXT] != -1) {
-        ListView_SetColumnWidth(listView, columnIndices[ColumnID::FIND_TEXT], perColumnWidth);  // Set Find Text width dynamically
+    // Update widths of dynamic columns (Find Text, Replace Text) if they are not locked
+    if (columnIndices[ColumnID::FIND_TEXT] != -1 && !findColumnLockedEnabled) {
+        ListView_SetColumnWidth(listView, columnIndices[ColumnID::FIND_TEXT], perColumnWidth);
     }
-    if (columnIndices[ColumnID::REPLACE_TEXT] != -1) {
-        ListView_SetColumnWidth(listView, columnIndices[ColumnID::REPLACE_TEXT], perColumnWidth);  // Set Replace Text width dynamically
+    if (columnIndices[ColumnID::REPLACE_TEXT] != -1 && !replaceColumnLockedEnabled) {
+        ListView_SetColumnWidth(listView, columnIndices[ColumnID::REPLACE_TEXT], perColumnWidth);
     }
 
     // Resize the ListView control to the updated width and height
     MoveWindow(listView, listCtrlInfo.x, listCtrlInfo.y, listCtrlInfo.cx, listCtrlInfo.cy, TRUE);
 
-    // Re-enable redraw after resizing
+    // Re-enable redraw after updates
     SendMessage(listView, WM_SETREDRAW, TRUE, 0);
 }
 
@@ -1580,6 +1601,25 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
 
                 // Show the column visibility menu at the cursor position
                 pThis->showColumnVisibilityMenu(pThis->_hSelf, ptScreen);
+
+                return TRUE; // Indicate that the message has been handled
+            }
+
+            if (code == HDN_DIVIDERDBLCLICK) {
+                NMHEADER* phdn = reinterpret_cast<NMHEADER*>(lParam);
+
+                // Identify the clicked column based on phdn->iItem
+                int clickedColumn = phdn->iItem;
+
+                // Lock or unlock the column based on the clicked divider
+                if (clickedColumn == pThis->columnIndices[ColumnID::FIND_TEXT]) {
+                    pThis->findColumnLockedEnabled = !pThis->findColumnLockedEnabled;
+                    pThis->updateHeaderSortDirection();
+                }
+                else if (clickedColumn == pThis->columnIndices[ColumnID::REPLACE_TEXT]) {
+                    pThis->replaceColumnLockedEnabled = !pThis->replaceColumnLockedEnabled;
+                    pThis->updateHeaderSortDirection();
+                }
 
                 return TRUE; // Indicate that the message has been handled
             }
@@ -6414,6 +6454,7 @@ void MultiReplace::updateHeaderSelection() {
 void MultiReplace::updateHeaderSortDirection() {
     const wchar_t* ascendingSymbol = L" ▲";
     const wchar_t* descendingSymbol = L" ▼";
+    const wchar_t* lockedSymbol = L" 🔒"; // Lock symbol for locked columns
 
     // Iterate through all columns in columnIndices
     for (const auto& [columnID, columnIndex] : columnIndices) {
@@ -6441,9 +6482,17 @@ void MultiReplace::updateHeaderSortDirection() {
             break;
         case ColumnID::FIND_TEXT:
             headerText = getLangStr(L"header_find");
+            // Append lock symbol if the FIND_TEXT column is locked
+            if (findColumnLockedEnabled) {
+                headerText += lockedSymbol;
+            }
             break;
         case ColumnID::REPLACE_TEXT:
             headerText = getLangStr(L"header_replace");
+            // Append lock symbol if the REPLACE_TEXT column is locked
+            if (replaceColumnLockedEnabled) {
+                headerText += lockedSymbol;
+            }
             break;
         default:
             continue; // Skip if it's not a sortable column

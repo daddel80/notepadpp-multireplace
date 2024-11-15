@@ -157,14 +157,6 @@ struct ColumnInfo {
     SIZE_T startColumnIndex;
 };
 
-struct CountColWidths {
-    HWND listView;
-    int listViewWidth;
-    int findCountWidth;
-    int replaceCountWidth;
-    int margin;
-};
-
 struct ContextMenuInfo {
     int hitItem = -1;
     int clickedColumn = -1;
@@ -253,6 +245,8 @@ struct ResizableColWidths {
     int listViewWidth;
     int findCountWidth;
     int replaceCountWidth;
+    int findWidth;
+    int replaceWidth;
     int commentsWidth;
     int deleteWidth;
     int margin;
@@ -487,6 +481,9 @@ private:
     int boxWidth_scaled = 0;
     bool highlightMatchEnabled = true;  // HighlightMatch during Find in List
     std::map<int, int> columnIndices;  // Mapping of ColumnID to ColumnIndex due to dynamic Columns
+    bool findColumnLockedEnabled = false;
+    bool replaceColumnLockedEnabled = false;
+    bool commentsColumnLockedEnabled = true;
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
@@ -497,6 +494,8 @@ private:
     BYTE backgroundTransparency = 190; // Default to semi-transparent
     int findCountColumnWidth = 0;      // Width of the "Find Count" column
     int replaceCountColumnWidth = 0;   // Width of the "Replace Count" column
+    int findColumnWidth = 0;
+    int replaceColumnWidth = 0;
     int commentsColumnWidth = 0;       // Width of the "Comments" column
     int deleteButtonColumnWidth = 0;   // Width of the "Delete" column
     bool isFindCountVisible = false;      // Visibility of the "Find Count" column
