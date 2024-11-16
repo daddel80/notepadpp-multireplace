@@ -812,7 +812,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     if (isCommentsColumnVisible) {
         lvc.iSubItem = currentIndex;
         lvc.pszText = getLangStrLPWSTR(L"header_comments");
-        lvc.cx = commentsColumnWidth;  // Set Comments column width
+        lvc.cx = (commentsColumnLockedEnabled ? commentsColumnWidth : perColumnWidth);
         lvc.fmt = LVCFMT_LEFT;
         ListView_InsertColumn(listView, currentIndex, &lvc);
         columnIndices[ColumnID::COMMENTS] = currentIndex;
@@ -916,13 +916,13 @@ int MultiReplace::calcDynamicColWidth(const ResizableColWidths& widths) {
         - widths.replaceCountWidth
         - (findColumnLockedEnabled ? widths.findWidth : 0)
         - (replaceColumnLockedEnabled ? widths.replaceWidth : 0)
-        - widths.commentsWidth
+        - (commentsColumnLockedEnabled ? widths.commentsWidth : 0)
         - widths.deleteWidth;
 
     // Calculate the number of dynamic columns
-    int dynamicColumnCount = (!findColumnLockedEnabled)
-        + (!replaceColumnLockedEnabled)
-        ;
+        int dynamicColumnCount = (!findColumnLockedEnabled)
+            + (!replaceColumnLockedEnabled)
+            + (!commentsColumnLockedEnabled && isCommentsColumnVisible);
 
     // Ensure at least one dynamic column is present for safety
     dynamicColumnCount = std::max(dynamicColumnCount, 1);
@@ -985,6 +985,9 @@ void MultiReplace::updateListViewAndColumns() {
     }
     if (columnIndices[ColumnID::REPLACE_TEXT] != -1 && !replaceColumnLockedEnabled) {
         ListView_SetColumnWidth(listView, columnIndices[ColumnID::REPLACE_TEXT], perColumnWidth);
+    }
+    if (columnIndices[ColumnID::COMMENTS] != -1 && !commentsColumnLockedEnabled) {
+        ListView_SetColumnWidth(listView, columnIndices[ColumnID::COMMENTS], perColumnWidth);
     }
 
     // Resize the ListView control to the updated width and height
@@ -1186,6 +1189,14 @@ void MultiReplace::sortReplaceListData(int columnID, SortDirection direction) {
                 }
                 else {
                     return a.replaceText > b.replaceText;
+                }
+            }
+            case ColumnID::COMMENTS: { // Sort by comments
+                if (direction == SortDirection::Ascending) {
+                    return a.comments < b.comments;
+                }
+                else {
+                    return a.comments > b.comments;
                 }
             }
             default:
@@ -1618,6 +1629,10 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
                 }
                 else if (clickedColumn == pThis->columnIndices[ColumnID::REPLACE_TEXT]) {
                     pThis->replaceColumnLockedEnabled = !pThis->replaceColumnLockedEnabled;
+                    pThis->updateHeaderSortDirection();
+                }
+                else if (clickedColumn == pThis->columnIndices[ColumnID::COMMENTS]) {
+                    pThis->commentsColumnLockedEnabled = !pThis->commentsColumnLockedEnabled;
                     pThis->updateHeaderSortDirection();
                 }
 
@@ -2075,7 +2090,7 @@ void MultiReplace::handleEditOnDoubleClick(int itemIndex, int clickedColumn) {
     ColumnID columnID = ColumnID::INVALID;
     columnID = static_cast<ColumnID>(getColumnIDFromIndex(clickedColumn));
 
-    if (columnID == ColumnID::FIND_TEXT || columnID == ColumnID::REPLACE_TEXT) {
+    if (columnID == ColumnID::FIND_TEXT || columnID == ColumnID::REPLACE_TEXT || columnID == ColumnID::COMMENTS) {
         editTextAt(itemIndex, clickedColumn);
     }
     else if (columnID == ColumnID::SELECTION ||
@@ -6467,7 +6482,8 @@ void MultiReplace::updateHeaderSortDirection() {
         if (columnID != ColumnID::FIND_COUNT &&
             columnID != ColumnID::REPLACE_COUNT &&
             columnID != ColumnID::FIND_TEXT &&
-            columnID != ColumnID::REPLACE_TEXT) {
+            columnID != ColumnID::REPLACE_TEXT &&
+            columnID != ColumnID::COMMENTS) {
             continue;
         }
 
@@ -6491,6 +6507,12 @@ void MultiReplace::updateHeaderSortDirection() {
             headerText = getLangStr(L"header_replace");
             // Append lock symbol if the REPLACE_TEXT column is locked
             if (replaceColumnLockedEnabled) {
+                headerText += lockedSymbol;
+            }
+            break;
+        case ColumnID::COMMENTS:
+            headerText = getLangStr(L"header_comments");
+            if (commentsColumnLockedEnabled) {
                 headerText += lockedSymbol;
             }
             break;
