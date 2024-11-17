@@ -374,10 +374,21 @@ private:
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
-    static constexpr int MIN_FIND_REPLACE_WIDTH = 48;  // Minimum size of Find and Replace Column
-    static constexpr int MIN_GENERAL_WIDTH = 20;  // Minimum size of Find Count and Replace Count and Comments Column
-    static constexpr int COUNT_COLUMN_WIDTH = 40; // Initial Size for Count Column
-    static constexpr int COMMENTS_COLUMN_WIDTH = 120; // Minimum size of Comments Column
+
+    static constexpr int MIN_COLUMN_WIDTH_FIND_REPLACE = 48; // Minimum size for Find and Replace Columns
+    static constexpr int MIN_COLUMN_WIDTH_COUNT = 20;       // Minimum size for Find Count and Replace Count Columns
+    static constexpr int MIN_COLUMN_WIDTH_COMMENTS = 40;    // Minimum size for Comments Column
+    static constexpr int DEFAULT_COLUMN_WIDTH_FIND = 150;   // Default size for Find Column
+    static constexpr int DEFAULT_COLUMN_WIDTH_REPLACE = 150; // Default size for Replace Column
+    static constexpr int DEFAULT_COLUMN_WIDTH_COMMENTS = 120; // Default size for Comments Column
+    static constexpr int DEFAULT_COLUMN_WIDTH_FIND_COUNT = 80; // Default size for Find Count Column
+    static constexpr int DEFAULT_COLUMN_WIDTH_REPLACE_COUNT = 80; // Default size for Replace Count Column
+
+    static constexpr BYTE MIN_TRANSPARENCY = 50;  // Minimum visible transparency
+    static constexpr BYTE MAX_TRANSPARENCY = 255; // Fully opaque
+    static constexpr BYTE DEFAULT_FOREGROUND_TRANSPARENCY = 255; // Default foreground transparency
+    static constexpr BYTE DEFAULT_BACKGROUND_TRANSPARENCY = 190; // Default background transparency
+
     static constexpr int STEP_SIZE = 5; // Speed for opening and closing Count Columns
     static constexpr wchar_t* symbolSortAsc = L"▼";
     static constexpr wchar_t* symbolSortDesc = L"▲";
@@ -470,41 +481,41 @@ private:
     sptr_t pSciWndData = 0;
 
     // List related
-    bool useListEnabled = false; // status for List enabled
+    bool useListEnabled; // status for List enabled
     std::wstring listFilePath = L""; //to store the file path of loaded list
     const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ /uused for Hashing
     std::size_t originalListHash = 0;
     int useListOnHeight = MIN_HEIGHT;      // Default height when "Use List" is on
     const int useListOffHeight = SHRUNK_HEIGHT; // Height when "Use List" is off (constant)
-    int checkMarkWidth_scaled = 0;
-    int crossWidth_scaled = 0;
-    int boxWidth_scaled = 0;
-    bool highlightMatchEnabled = true;  // HighlightMatch during Find in List
+    int checkMarkWidth_scaled;
+    int crossWidth_scaled;
+    int boxWidth_scaled;
+    bool highlightMatchEnabled;  // HighlightMatch during Find in List
     std::map<int, int> columnIndices;  // Mapping of ColumnID to ColumnIndex due to dynamic Columns
-    bool findColumnLockedEnabled = false;
-    bool replaceColumnLockedEnabled = false;
-    bool commentsColumnLockedEnabled = true;
+    bool findColumnLockedEnabled;
+    bool replaceColumnLockedEnabled;
+    bool commentsColumnLockedEnabled;
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
 
     // Window related settings
     RECT windowRect; // Structure to store window position and size
-    BYTE foregroundTransparency = 255; // Default to fully opaque
-    BYTE backgroundTransparency = 190; // Default to semi-transparent
-    int findCountColumnWidth = 0;      // Width of the "Find Count" column
-    int replaceCountColumnWidth = 0;   // Width of the "Replace Count" column
-    int findColumnWidth = 0;
-    int replaceColumnWidth = 0;
-    int commentsColumnWidth = 0;       // Width of the "Comments" column
-    int deleteButtonColumnWidth = 0;   // Width of the "Delete" column
-    bool isFindCountVisible = false;      // Visibility of the "Find Count" column
-    bool isReplaceCountVisible = false;   // Visibility of the "Replace Count" column
-    bool isCommentsColumnVisible = false; // Visibility of the "Comments" column
-    bool isDeleteButtonVisible = true;    // Visibility of the "Delete" column
-    bool tooltipsEnabled = true;       // Status for showing Tooltips on Panel
-    bool alertNotFoundEnabled = true;  // Status for Bell if String hasn't be found
-    bool doubleClickEditsEnabled = true; // Double click to Edit List entries
+    BYTE foregroundTransparency; // Default to fully opaque
+    BYTE backgroundTransparency; // Default to semi-transparent
+    int findCountColumnWidth;      // Width of the "Find Count" column
+    int replaceCountColumnWidth;   // Width of the "Replace Count" column
+    int findColumnWidth;
+    int replaceColumnWidth;
+    int commentsColumnWidth;       // Width of the "Comments" column
+    int deleteButtonColumnWidth;   // Width of the "Delete" column
+    bool isFindCountVisible;      // Visibility of the "Find Count" column
+    bool isReplaceCountVisible;   // Visibility of the "Replace Count" column
+    bool isCommentsColumnVisible; // Visibility of the "Comments" column
+    bool isDeleteButtonVisible;    // Visibility of the "Delete" column
+    bool tooltipsEnabled;       // Status for showing Tooltips on Panel
+    bool alertNotFoundEnabled;  // Status for Bell if String hasn't be found
+    bool doubleClickEditsEnabled; // Double click to Edit List entries
 
     // Window DPI scaled size 
     int MIN_WIDTH_scaled;
@@ -514,6 +525,15 @@ private:
     int MIN_FIND_REPLACE_WIDTH_scaled;
     int MIN_GENERAL_WIDTH_scaled;
     int COMMENTS_COLUMN_WIDTH_scaled;
+    int DEFAULT_COLUMN_WIDTH_FIND_scaled;
+    int DEFAULT_COLUMN_WIDTH_REPLACE_scaled;
+    int DEFAULT_COLUMN_WIDTH_COMMENTS_scaled;
+    int DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled;
+    int DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled;
+    int MIN_COLUMN_WIDTH_FIND_REPLACE_scaled;
+    int MIN_COLUMN_WIDTH_COMMENTS_scaled;
+    int MIN_COLUMN_WIDTH_COUNT_scaled;
+
 
     //Initialization
     void initializeWindowSize();

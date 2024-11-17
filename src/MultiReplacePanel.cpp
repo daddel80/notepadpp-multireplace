@@ -686,7 +686,7 @@ void MultiReplace::createListViewColumns(HWND listView) {
     lvc.fmt = LVCFMT_LEFT;
 
     // Helper function to update the column width based on visibility
-    auto updateColumnWidth = [&](bool isVisible, ColumnID columnID, int& widthVar) {
+    auto determineColumnWidth = [&](bool isVisible, ColumnID columnID, int& widthVar) {
         // Check if the column exists by verifying if the column index is valid
         int columnCount = Header_GetItemCount(ListView_GetHeader(listView)); // Get the number of current columns
 
@@ -707,12 +707,12 @@ void MultiReplace::createListViewColumns(HWND listView) {
         };
 
     // Update global variables with the current column widths - only for sizable columns
-    updateColumnWidth(isFindCountVisible, ColumnID::FIND_COUNT, findCountColumnWidth);
-    updateColumnWidth(isReplaceCountVisible, ColumnID::REPLACE_COUNT, replaceCountColumnWidth);
-    updateColumnWidth(true, ColumnID::FIND_TEXT, findColumnWidth);
-    updateColumnWidth(true, ColumnID::REPLACE_TEXT, replaceColumnWidth);
-    updateColumnWidth(isCommentsColumnVisible, ColumnID::COMMENTS, commentsColumnWidth);
-    updateColumnWidth(isDeleteButtonVisible, ColumnID::DELETE_BUTTON, deleteButtonColumnWidth);
+    determineColumnWidth(isFindCountVisible, ColumnID::FIND_COUNT, findCountColumnWidth);
+    determineColumnWidth(isReplaceCountVisible, ColumnID::REPLACE_COUNT, replaceCountColumnWidth);
+    determineColumnWidth(true, ColumnID::FIND_TEXT, findColumnWidth);
+    determineColumnWidth(true, ColumnID::REPLACE_TEXT, replaceColumnWidth);
+    determineColumnWidth(isCommentsColumnVisible, ColumnID::COMMENTS, commentsColumnWidth);
+    determineColumnWidth(isDeleteButtonVisible, ColumnID::DELETE_BUTTON, deleteButtonColumnWidth);
 
     // Delete all existing columns first
     int columnCount = Header_GetItemCount(ListView_GetHeader(listView));
@@ -7614,11 +7614,15 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     // Store column widths for "Find Count", "Replace Count", and "Comments"
     findCountColumnWidth = (columnIndices[ColumnID::FIND_COUNT] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::FIND_COUNT]) : findCountColumnWidth;
     replaceCountColumnWidth = (columnIndices[ColumnID::REPLACE_COUNT] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::REPLACE_COUNT]) : replaceCountColumnWidth;
+    findColumnWidth = (columnIndices[ColumnID::FIND_TEXT] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::FIND_TEXT]) : findColumnWidth;
+    replaceColumnWidth = (columnIndices[ColumnID::REPLACE_TEXT] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::REPLACE_TEXT]) : replaceColumnWidth;
     commentsColumnWidth = (columnIndices[ColumnID::COMMENTS] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::COMMENTS]) : commentsColumnWidth;
 
     outFile << wstringToString(L"[ListColumns]\n");
     outFile << wstringToString(L"FindCountWidth=" + std::to_wstring(findCountColumnWidth) + L"\n");
     outFile << wstringToString(L"ReplaceCountWidth=" + std::to_wstring(replaceCountColumnWidth) + L"\n");
+    outFile << wstringToString(L"FindWidth=" + std::to_wstring(findColumnWidth) + L"\n");
+    outFile << wstringToString(L"ReplaceWidth=" + std::to_wstring(replaceColumnWidth) + L"\n");
     outFile << wstringToString(L"CommentsWidth=" + std::to_wstring(commentsColumnWidth) + L"\n");
 
     // Save column visibility states
@@ -7626,6 +7630,11 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"ReplaceCountVisible=" + std::to_wstring(isReplaceCountVisible) + L"\n");
     outFile << wstringToString(L"CommentsVisible=" + std::to_wstring(isCommentsColumnVisible) + L"\n");
     outFile << wstringToString(L"DeleteButtonVisible=" + std::to_wstring(isDeleteButtonVisible ? 1 : 0) + L"\n");
+
+    // Save column lock states
+    outFile << wstringToString(L"FindColumnLocked=" + std::to_wstring(findColumnLockedEnabled ? 1 : 0) + L"\n");
+    outFile << wstringToString(L"ReplaceColumnLocked=" + std::to_wstring(replaceColumnLockedEnabled ? 1 : 0) + L"\n");
+    outFile << wstringToString(L"CommentsColumnLocked=" + std::to_wstring(commentsColumnLockedEnabled ? 1 : 0) + L"\n");
 
     // Convert and Store the current "Find what" and "Replace with" texts
     std::wstring currentFindTextData = escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
@@ -7864,13 +7873,17 @@ void MultiReplace::loadUIConfigFromIni() {
     dpiMgr->setCustomScaleFactor(customScaleFactor);
 
     // Scale Window and List Size after loading ScaleFactor
-    MIN_WIDTH_scaled              = sx(MIN_WIDTH);          // MIN_WIDTH from resource.rc
-    MIN_HEIGHT_scaled             = sy(MIN_HEIGHT);         // MIN_HEIGHT from resource.rc
-    SHRUNK_HEIGHT_scaled          = sy(SHRUNK_HEIGHT);      // SHRUNK_HEIGHT from resource.rc
-    COUNT_COLUMN_WIDTH_scaled     = sx(COUNT_COLUMN_WIDTH); // Scaled Size of Count Columns
-    MIN_FIND_REPLACE_WIDTH_scaled = sx(MIN_FIND_REPLACE_WIDTH); // Scaled Size of Minimum Size for Find and Replace 
-    MIN_GENERAL_WIDTH_scaled      = sx(MIN_GENERAL_WIDTH);  // Scaled Size of Minimum Size for Find Count and Replace Count Comments
-    COMMENTS_COLUMN_WIDTH_scaled  = sx(COMMENTS_COLUMN_WIDTH);  // Scaled Size of Comments Column
+    MIN_WIDTH_scaled = sx(MIN_WIDTH);              // MIN_WIDTH from resource.rc
+    MIN_HEIGHT_scaled = sy(MIN_HEIGHT);             // MIN_HEIGHT from resource.rc
+    SHRUNK_HEIGHT_scaled = sy(SHRUNK_HEIGHT);          // SHRUNK_HEIGHT from resource.rc
+    DEFAULT_COLUMN_WIDTH_FIND_scaled = sx(DEFAULT_COLUMN_WIDTH_FIND);   // Scaled Default Size of Find Column
+    DEFAULT_COLUMN_WIDTH_REPLACE_scaled = sx(DEFAULT_COLUMN_WIDTH_REPLACE); // Scaled Default Size of Replace Column
+    DEFAULT_COLUMN_WIDTH_COMMENTS_scaled = sx(DEFAULT_COLUMN_WIDTH_COMMENTS); // Scaled Default Size of Comments Column
+    DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled = sx(DEFAULT_COLUMN_WIDTH_FIND_COUNT); // Scaled Default Size of Find Count Column
+    DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled = sx(DEFAULT_COLUMN_WIDTH_REPLACE_COUNT); // Scaled Default Size of Replace Count Column
+    MIN_COLUMN_WIDTH_FIND_REPLACE_scaled = sx(MIN_COLUMN_WIDTH_FIND_REPLACE); // Scaled Minimum Size of Find and Replace Columns
+    MIN_COLUMN_WIDTH_COMMENTS_scaled = sx(MIN_COLUMN_WIDTH_COMMENTS); // Scaled Minimum Size of Comments Column
+    MIN_COLUMN_WIDTH_COUNT_scaled = sx(MIN_COLUMN_WIDTH_COUNT);   // Scaled Minimum Size of Count Columns
 
     // Load window position
     windowRect.left = readIntFromIniFile(iniFilePath, L"Window", L"PosX", POS_X);
@@ -7895,20 +7908,26 @@ void MultiReplace::loadUIConfigFromIni() {
     windowRect.bottom = windowRect.top + height;
 
     // Read column widths
-    findCountColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", MIN_GENERAL_WIDTH_scaled), COUNT_COLUMN_WIDTH_scaled);
-    replaceCountColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountWidth", MIN_GENERAL_WIDTH_scaled), COUNT_COLUMN_WIDTH_scaled);
-    commentsColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"CommentsWidth", MIN_GENERAL_WIDTH_scaled), COMMENTS_COLUMN_WIDTH_scaled);
+    findColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"FindWidth", DEFAULT_COLUMN_WIDTH_FIND), MIN_COLUMN_WIDTH_FIND_REPLACE);
+    replaceColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceWidth", DEFAULT_COLUMN_WIDTH_REPLACE), MIN_COLUMN_WIDTH_FIND_REPLACE);
+    commentsColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"CommentsWidth", DEFAULT_COLUMN_WIDTH_COMMENTS), MIN_COLUMN_WIDTH_COMMENTS);
+    findCountColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT), MIN_COLUMN_WIDTH_COUNT);
+    replaceCountColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountWidth", DEFAULT_COLUMN_WIDTH_REPLACE_COUNT), MIN_COLUMN_WIDTH_COUNT);
 
     // Load column visibility states
-    isFindCountVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"FindCountVisible", true);
-    isReplaceCountVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountVisible", true);
-    isCommentsColumnVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"CommentsVisible", true);
+    isFindCountVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"FindCountVisible", false);
+    isReplaceCountVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountVisible", false);
+    isCommentsColumnVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"CommentsVisible", false);
     isDeleteButtonVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"DeleteButtonVisible", true);
 
-    // Load transparency settings with defaults
-    foregroundTransparency = readByteFromIniFile(iniFilePath, L"Window", L"ForegroundTransparency", foregroundTransparency);
-    backgroundTransparency = readByteFromIniFile(iniFilePath, L"Window", L"BackgroundTransparency", backgroundTransparency);
+    // Load column lock states
+    findColumnLockedEnabled = readBoolFromIniFile(iniFilePath, L"ListColumns", L"FindColumnLocked", true);
+    replaceColumnLockedEnabled = readBoolFromIniFile(iniFilePath, L"ListColumns", L"ReplaceColumnLocked", false);
+    commentsColumnLockedEnabled = readBoolFromIniFile(iniFilePath, L"ListColumns", L"CommentsColumnLocked", true);
 
+    // Load transparency settings with defaults
+    foregroundTransparency = std::clamp(readByteFromIniFile(iniFilePath, L"Window", L"ForegroundTransparency", DEFAULT_FOREGROUND_TRANSPARENCY), MIN_TRANSPARENCY, MAX_TRANSPARENCY);
+    backgroundTransparency = std::clamp(readByteFromIniFile(iniFilePath, L"Window", L"BackgroundTransparency", DEFAULT_BACKGROUND_TRANSPARENCY), MIN_TRANSPARENCY, MAX_TRANSPARENCY);
     // Load Tooltip setting
     tooltipsEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"Tooltips", true);
 }
