@@ -375,14 +375,12 @@ private:
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
 
-    static constexpr int MIN_COLUMN_WIDTH_FIND_REPLACE = 48; // Minimum size for Find and Replace Columns
-    static constexpr int MIN_COLUMN_WIDTH_COUNT = 20;       // Minimum size for Find Count and Replace Count Columns
-    static constexpr int MIN_COLUMN_WIDTH_COMMENTS = 40;    // Minimum size for Comments Column
+    static constexpr int MIN_GENERAL_WIDTH = 40;
     static constexpr int DEFAULT_COLUMN_WIDTH_FIND = 150;   // Default size for Find Column
     static constexpr int DEFAULT_COLUMN_WIDTH_REPLACE = 150; // Default size for Replace Column
     static constexpr int DEFAULT_COLUMN_WIDTH_COMMENTS = 120; // Default size for Comments Column
-    static constexpr int DEFAULT_COLUMN_WIDTH_FIND_COUNT = 80; // Default size for Find Count Column
-    static constexpr int DEFAULT_COLUMN_WIDTH_REPLACE_COUNT = 80; // Default size for Replace Count Column
+    static constexpr int DEFAULT_COLUMN_WIDTH_FIND_COUNT = 50; // Default size for Find Count Column
+    static constexpr int DEFAULT_COLUMN_WIDTH_REPLACE_COUNT = 50; // Default size for Replace Count Column
 
     static constexpr BYTE MIN_TRANSPARENCY = 50;  // Minimum visible transparency
     static constexpr BYTE MAX_TRANSPARENCY = 255; // Fully opaque
@@ -491,31 +489,31 @@ private:
     int crossWidth_scaled;
     int boxWidth_scaled;
     bool highlightMatchEnabled;  // HighlightMatch during Find in List
-    std::map<int, int> columnIndices;  // Mapping of ColumnID to ColumnIndex due to dynamic Columns
-    bool findColumnLockedEnabled;
-    bool replaceColumnLockedEnabled;
-    bool commentsColumnLockedEnabled;
+    std::map<ColumnID, int> columnIndices;  // Mapping of ColumnID to ColumnIndex due to dynamic Columns
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
 
     // Window related settings
     RECT windowRect; // Structure to store window position and size
-    BYTE foregroundTransparency; // Default to fully opaque
-    BYTE backgroundTransparency; // Default to semi-transparent
-    int findCountColumnWidth;      // Width of the "Find Count" column
-    int replaceCountColumnWidth;   // Width of the "Replace Count" column
-    int findColumnWidth;
-    int replaceColumnWidth;
-    int commentsColumnWidth;       // Width of the "Comments" column
-    int deleteButtonColumnWidth;   // Width of the "Delete" column
-    bool isFindCountVisible;      // Visibility of the "Find Count" column
-    bool isReplaceCountVisible;   // Visibility of the "Replace Count" column
-    bool isCommentsColumnVisible; // Visibility of the "Comments" column
-    bool isDeleteButtonVisible;    // Visibility of the "Delete" column
-    bool tooltipsEnabled;       // Status for showing Tooltips on Panel
-    bool alertNotFoundEnabled;  // Status for Bell if String hasn't be found
-    bool doubleClickEditsEnabled; // Double click to Edit List entries
+    BYTE foregroundTransparency;     // Default Foreground transparency
+    BYTE backgroundTransparency;     // Default Background transparency
+    int findCountColumnWidth;        // Width of the "Find Count" column
+    int replaceCountColumnWidth;     // Width of the "Replace Count" column
+    int findColumnWidth;             // Width of the "Find what" column
+    int replaceColumnWidth;          // Width of the "Replace" column
+    int commentsColumnWidth;         // Width of the "Comments" column
+    int deleteButtonColumnWidth;     // Width of the "Delete" column
+    bool isFindCountVisible;         // Visibility of the "Find Count" column
+    bool isReplaceCountVisible;      // Visibility of the "Replace Count" column
+    bool isCommentsColumnVisible;    // Visibility of the "Comments" column
+    bool isDeleteButtonVisible;      // Visibility of the "Delete" column
+    bool findColumnLockedEnabled;    // Indicates if the "Find what" column is locked
+    bool replaceColumnLockedEnabled; // Indicates if the "Replace" column is locked
+    bool commentsColumnLockedEnabled;// Indicates if the "Comments" column is locked
+    bool tooltipsEnabled;            // Status for showing Tooltips on Panel
+    bool alertNotFoundEnabled;       // Status for Bell if String hasn't be found
+    bool doubleClickEditsEnabled;    // Double click to Edit List entries
 
     // Window DPI scaled size 
     int MIN_WIDTH_scaled;
@@ -530,9 +528,6 @@ private:
     int DEFAULT_COLUMN_WIDTH_COMMENTS_scaled;
     int DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled;
     int DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled;
-    int MIN_COLUMN_WIDTH_FIND_REPLACE_scaled;
-    int MIN_COLUMN_WIDTH_COMMENTS_scaled;
-    int MIN_COLUMN_WIDTH_COUNT_scaled;
 
 
     //Initialization
@@ -555,15 +550,16 @@ private:
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);
     void AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnIndex, LPCTSTR pszText);
-    void createListViewColumns(HWND listView);
+    void createListViewColumns();
     void insertReplaceListItem(const ReplaceItemData& itemData);
+    int  getColumnWidth(ColumnID columnID);
     int  calcDynamicColWidth(const ResizableColWidths& widths);
     void updateListViewAndColumns();
     void updateListViewTooltips();
     void handleCopyBack(NMITEMACTIVATE* pnmia);
-    void shiftListItem(HWND listView, const Direction& direction);
+    void shiftListItem( const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);
-    void deleteSelectedLines(HWND listView);
+    void deleteSelectedLines();
     void sortReplaceListData(int columnID, SortDirection direction);
     std::vector<size_t> getSelectedRows();
     void selectRows(const std::vector<size_t>& selectedIDs);
@@ -585,9 +581,9 @@ private:
     static LRESULT CALLBACK ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
     void createContextMenu(HWND hwnd, POINT ptScreen, MenuState state);
-    MenuState checkMenuConditions(HWND listView, POINT ptScreen);
+    MenuState checkMenuConditions(POINT ptScreen);
     void performItemAction(POINT pt, ItemAction action);
-    void copySelectedItemsToClipboard(HWND listView);
+    void copySelectedItemsToClipboard();
     bool canPasteFromClipboard();
     void pasteItemsIntoList();
     void performSearchInList();
