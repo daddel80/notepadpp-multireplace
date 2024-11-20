@@ -13,7 +13,6 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 - [Scope Functions](#scope-functions)
 - [CSV Processing Functions](#csv-processing-functions)
   - [Sorting, Deleting, and Copying](#sorting-deleting-and-copying)
-  - [Header Line Sorting Control](#header-line-sorting-control)
   - [Numeric Sorting in CSV](#numeric-sorting-in-csv)
 - [Option 'Use Variables'](#option-use-variables)
   - [Variables Overview](#variables-overview)
@@ -30,12 +29,12 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
   - [Context Menu and Keyboard Shortcuts](#context-menu-and-keyboard-shortcuts)
   - [List Columns](#list-columns)
   - [List Toggling](#list-toggling)
-  - [Statistical Columns Button](#statistical-columns-button)
 - [Data Handling](#data-handling)
   - [Import/Export](#importexport)
   - [Bash Script Export](#bash-script-export)
-- [Window and Display Options](#window-and-display-options)
-  - [Transparency Configuration](#transparency-configuration)
+- [UI and Behavior Settings](#ui-and-behavior-settings)
+  - [Column Locking](#column-locking)
+  - [Configuration Settings](#configuration-settings)
   - [Multilingual UI Support](#multilingual-ui-support)
   
 ## Key Features
@@ -72,16 +71,14 @@ Scope functions define the range for searching and replacing strings:
 ## CSV Processing Functions
 
 ### Sorting, Deleting, and Copying
-- **Sorting Lines in CSV by Columns**:Ascend or descend, combining columns in any prioritized order.
+- **Sorting Lines in CSV by Columns**: Ascend or descend, combining columns in any prioritized order.
 - **Toggle Sort**: Allows users to return columns to their initial unsorted state with just an extra click on the sorting button. This feature is effective even after rows are modified, deleted, or added.
+- **Exclude Header Lines from Sorting**: When sorting CSV files with the CSV scope selected, you can exclude a specified number of top lines (usually header rows) from sorting. Configure this behavior using the `HeaderLines` parameter in the INI file. For details, see the [`INI File Settings`](#configuration-settings).
 - **Deleting Multiple Columns**: Remove multiple columns at once, cleaning obsolete delimiters.
 - **Clipboard Column Copying**: Copy columns with original delimiters to clipboard.
 
-### Header Line Sorting Control
-- **Exclude Header Lines from Sorting**: Set `HeaderLines=<number>` in You can set the transparency levels for the MultiReplace plugin window in the INI file located at `C:\Users\<YourUsername>\AppData\Roaming\Notepad++\plugins\Config\MultiReplace.ini`. to specify the number of top lines to exclude from sorting as headers.
-
 ### Numeric Sorting in CSV
-- For accurate numeric sorting in CSV files, the following settings and regex patterns can be used:
+For accurate numeric sorting in CSV files, the following settings and regex patterns can be used:
 
 | Purpose                                   | Find Pattern        | Replace With   | Regex | Use Variables |
 |-------------------------------------------|---------------------|----------------|-------|---------------|
@@ -230,23 +227,25 @@ Additional Interactions:
 - **Double-Click**: Mirrors the 'Transfer to Input Fields' action by transferring the contents of a row with their options to the input fields, equivalent to pressing Alt+Up.
 
 ### List Columns
-| Column | Description |
-|--------|-------------|
-| **W**  | Watch whole word only |
-| **C**  | Match case |
-| **V**  | Use Variables |
-| **N**  | Normal |
-| **E**  | Extended |
-| **R**  | Regular expression |
+- **Find**: The text or pattern to search for.
+- **Replace**: The text or pattern to replace with.
+- **Options Columns**:
+  - **W**: Match whole word only.
+  - **C**: Match case.
+  - **V**: Use Variables.
+  - **N**: Normal search mode.
+  - **E**: Extended search mode.
+  - **R**: Regular expression mode.
+- **Additional Columns**:
+  - **Find Count**: Displays the number of times each 'Find what' string is detected.
+  - **Replace Count**: Shows the number of replacements made for each 'Replace with' string.
+  - **Comments**: Add custom comments to entries for annotations or additional context.
+  - **Delete**: Contains a delete button for each entry, allowing quick removal from the list.
+
+You can manage the visibility of the additional columns via the **Header Column Menu** by right-clicking on the header row.
 
 ### List Toggling
 - "Use List" checkbox toggles operation application between all list entries or the "Find what:" and "Replace with:" fields.
-
-### Statistical Columns Button
-- **Statistics Button**: Located to the left of the list, this button when clicked, opens two new columns:
-    - **Find Count**: Displays the number of times each 'Find what' string is detected.
-    - **Replace Count**: Shows the number of replacements made for each 'Replace what' string.
-- **Note**: The values in 'Find Count' and 'Replace Count' can differ, especially when 'Use Variables' is employed to conditionally modify text.
 
 ### Entry Interaction and Limits
 - **Manage Entries**: Manage search and replace strings in a list, and enable or disable entries for replacement, highlighting or searching within the list.
@@ -265,19 +264,48 @@ Additional Interactions:
 - Exports Find and Replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
 - This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
 
-## Window and Display Options
 
-### Window Scaling Factor
+## UI and Behavior Settings
 
-The MultiReplace plugin window and UI elements can be resized according to preference by setting a custom scaling factor between 0.5 and 2.0 (default: 1.0). This is configured by modifying the `ScaleFactor` variable in the file `C:\Users\<Username>\AppData\Roaming\plugins\config\MultiReplace.ini`.
+### Column Locking
 
-### Transparency Configuration
+Lock column widths to prevent resizing during window adjustments. This is useful for key columns like **Find**, **Replace**, and **Comments**.
+- **How to Lock**: Double-click the column divider in the header to toggle locking. A lock icon appears in the header for locked columns.
+- **Effect**: Locked columns keep their width fixed, while unlocked ones adjust dynamically.
 
-You can set the transparency levels for the MultiReplace plugin window in the INI file located at `C:\Users\<YourUsername>\AppData\Roaming\Notepad++\plugins\Config\MultiReplace.ini`.
+### Configuration Settings
 
-**INI File Settings:**
-- `ForegroundTransparency`: Transparency level when in focus (0-255, default 255).
-- `BackgroundTransparency`: Transparency level when not in focus (0-255, default 190).
+The MultiReplace plugin provides several configuration options, including transparency, scaling, and behavior settings, that can be adjusted via the INI file located at:
+
+`C:\Users\<Username>\AppData\Roaming\Notepad++\plugins\Config\MultiReplace.ini`
+
+#### INI File Settings:
+
+- **HeaderLines**: Specifies the number of top lines to exclude from sorting as headers.
+  - **Default**: `HeaderLines=1` (first line is excluded from sorting).
+  - **Description**: Set this value to exclude a specific number of lines at the top of the file from being sorted during CSV operations. Useful for preserving header rows in CSV files.
+  - **Note**: If set to `0`, no lines are excluded from sorting.
+
+- **Transparency Settings**:
+  - `ForegroundTransparency`: Transparency level when in focus (0-255, default 255).
+  - `BackgroundTransparency`: Transparency level when not in focus (0-255, default 190).
+
+- **ScaleFactor**: Controls the scaling of the plugin window and UI elements.
+  - **Default**: `ScaleFactor=1.0` (normal size).
+  - **Range**: 0.5 to 2.0.
+  - **Description**: Adjust this value to resize the plugin window and UI elements. A lower value shrinks the interface, while a higher value enlarges it.
+
+- **DoubleClickEdits**: Controls the behavior of double-clicking on list entries.
+  - **Default**: `DoubleClickEdits=1` (enabled).
+  - **Description**: When enabled (`1`), double-clicking on a list entry allows direct in-place editing. When disabled (`0`), double-clicking transfers the entry to the input fields for editing.
+
+- **Tooltips**: Controls the display of tooltips in the UI.
+  - **Default**: `Tooltips=1` (enabled).
+  - **Description**: To disable tooltips, set `Tooltips=0` in the INI file.
+
+- **AlertNotFound**: Controls notifications for unsuccessful searches.
+  - **Default**: `AlertNotFound=1` (enabled).
+  - **Description**: To disable the bell sound for unsuccessful searches, set `AlertNotFound=0` in the INI file.
 
 ### Multilingual UI Support
 
