@@ -92,8 +92,7 @@
 #define IDC_QUOTECHAR_STATIC            5465
 
 #define IDC_STATIC_FRAME                5501
-#define ID_STATISTICS_COLUMNS           5502
-#define IDC_REPLACE_LIST                5503
+#define IDC_REPLACE_LIST                5502
 
 #define IDD_ABOUT_DIALOG                5600
 #define IDC_NAME_STATIC	                5601
@@ -113,6 +112,11 @@
 #define IDM_ENABLE_LINES                5709
 #define IDM_DISABLE_LINES               5710
 
+#define IDM_TOGGLE_FIND_COUNT           5801
+#define IDM_TOGGLE_REPLACE_COUNT        5802
+#define IDM_TOGGLE_COMMENTS             5803
+#define IDM_TOGGLE_DELETE               5804
+
 #define STYLE1							60
 #define STYLE2							61
 #define STYLE3							62
@@ -131,7 +135,7 @@
 // Default window position and dimensions
 #define POS_X 92
 #define POS_Y 40
-#define MIN_WIDTH 738
+#define MIN_WIDTH 743
 #define MIN_HEIGHT 400
 #define SHRUNK_HEIGHT 224
 

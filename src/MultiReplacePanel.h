@@ -51,6 +51,7 @@ struct ReplaceItemData
     bool useVariables = false;
     bool extended = false;
     bool regex = false;
+    std::wstring comments = L"";
 
     bool operator==(const ReplaceItemData& rhs) const {
         return
@@ -79,6 +80,7 @@ struct ReplaceItemDataHasher {
         hash ^= std::hash<bool>{}(item.useVariables) << 1;
         hash ^= std::hash<bool>{}(item.extended) << 1;
         hash ^= std::hash<bool>{}(item.regex) << 1;
+        hash ^= std::hash<std::wstring>{}(item.comments) << 1;
         return hash;
     }
 };
@@ -155,14 +157,6 @@ struct ColumnInfo {
     SIZE_T startColumnIndex;
 };
 
-struct CountColWidths {
-    HWND listView;
-    int listViewWidth;
-    int findCountWidth;
-    int replaceCountWidth;
-    int margin;
-};
-
 struct ContextMenuInfo {
     int hitItem = -1;
     int clickedColumn = -1;
@@ -201,6 +195,11 @@ enum class SortDirection {
     Descending
 };
 
+enum class SearchDirection {
+    Forward,
+    Backward
+};
+
 // Lua Engine
 struct LuaVariables {
     int CNT = 0;
@@ -223,6 +222,34 @@ enum class SortState {
     Unsorted,
     SortedAscending,
     SortedDescending
+};
+
+enum ColumnID {
+    INVALID = -1,
+    FIND_COUNT,         // 0
+    REPLACE_COUNT,      // 1
+    SELECTION,          // 2
+    FIND_TEXT,          // 3
+    REPLACE_TEXT,       // 4
+    WHOLE_WORD,         // 5
+    MATCH_CASE,         // 6
+    USE_VARIABLES,      // 7
+    EXTENDED,           // 8
+    REGEX,              // 9
+    COMMENTS,           // 10
+    DELETE_BUTTON       // 11
+};
+
+struct ResizableColWidths {
+    HWND listView;
+    int listViewWidth;
+    int findCountWidth;
+    int replaceCountWidth;
+    int findWidth;
+    int replaceWidth;
+    int commentsWidth;
+    int deleteWidth;
+    int margin;
 };
 
 struct LuaVariable {
@@ -263,7 +290,13 @@ public:
         _hReplaceAllButton(nullptr),
         _replaceListView(NULL),
         _hStandardFont(nullptr),
-        _hBoldFont(nullptr),
+        _hBoldFont1(nullptr),
+        _hNormalFont1(nullptr),
+        _hNormalFont2(nullptr),
+        _hNormalFont3(nullptr),
+        _hNormalFont4(nullptr),
+        _hNormalFont5(nullptr),
+        _hNormalFont6(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
     {
@@ -285,6 +318,7 @@ public:
     };
 
     inline void setParent(HWND parent2set) {
+        _hParent = parent2set;
         _hParent = parent2set;
     };
 
@@ -337,19 +371,31 @@ protected:
 
 private:
     static constexpr int MAX_TEXT_LENGTH = 4096; // Maximum Textlength for Find and Replace String
-    static constexpr const TCHAR* FONT_NAME = TEXT("MS Shell Dlg");
-    static constexpr int FONT_SIZE = 16;
     static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
-    static constexpr int COUNT_COLUMN_WIDTH = 40; // Initial Size for Count Column
-    static constexpr int MIN_COLUMN_WIDTH = 48;  // Minimum size of Find and Replace Column
+
+    static constexpr int MIN_GENERAL_WIDTH = 40;
+    static constexpr int DEFAULT_COLUMN_WIDTH_FIND = 150;   // Default size for Find Column
+    static constexpr int DEFAULT_COLUMN_WIDTH_REPLACE = 150; // Default size for Replace Column
+    static constexpr int DEFAULT_COLUMN_WIDTH_COMMENTS = 120; // Default size for Comments Column
+    static constexpr int DEFAULT_COLUMN_WIDTH_FIND_COUNT = 50; // Default size for Find Count Column
+    static constexpr int DEFAULT_COLUMN_WIDTH_REPLACE_COUNT = 50; // Default size for Replace Count Column
+
+    static constexpr BYTE MIN_TRANSPARENCY = 50;  // Minimum visible transparency
+    static constexpr BYTE MAX_TRANSPARENCY = 255; // Fully opaque
+    static constexpr BYTE DEFAULT_FOREGROUND_TRANSPARENCY = 255; // Default foreground transparency
+    static constexpr BYTE DEFAULT_BACKGROUND_TRANSPARENCY = 190; // Default background transparency
+
     static constexpr int STEP_SIZE = 5; // Speed for opening and closing Count Columns
     static constexpr wchar_t* symbolSortAsc = L"▼";
     static constexpr wchar_t* symbolSortDesc = L"▲";
     static constexpr wchar_t* symbolSortAscUnsorted = L"▽";
     static constexpr wchar_t* symbolSortDescUnsorted = L"△";
     static constexpr int MAX_CAP_GROUPS = 9; // Maximum number of capture groups supported by Notepad++
+    static constexpr COLORREF COLOR_SUCCESS = RGB(0, 128, 0); // Green for success messages
+    static constexpr COLORREF COLOR_ERROR = RGB(255, 0, 0);   // Red for error messages
+    static constexpr COLORREF COLOR_INFO = RGB(0, 0, 128);    // Blue for informational messages
 
     DPIManager* dpiMgr; // Pointer to DPIManager instance
 
@@ -371,7 +417,13 @@ private:
     HWND _replaceListView;
     HWND _hStatusMessage;
     HFONT _hStandardFont;
-    HFONT _hBoldFont;
+    HFONT _hBoldFont1;
+    HFONT _hNormalFont1;
+    HFONT _hNormalFont2;
+    HFONT _hNormalFont3;
+    HFONT _hNormalFont4;
+    HFONT _hNormalFont5;
+    HFONT _hNormalFont6;
     COLORREF _statusMessageColor;
     HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
     HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button
@@ -396,12 +448,12 @@ private:
     size_t markedStringsCount = 0;
     bool allSelected = true;
     std::unordered_map<long, int> colorToStyleMap;
-    int lastColumn = -1;
     std::map<int, SortDirection> columnSortOrder;
     ColumnDelimiterData columnDelimiterData;
     LRESULT eolLength = -1; // Stores the length of the EOL character sequence
     std::vector<ReplaceItemData> replaceListData;
     std::vector<LineInfo> lineDelimiterPositions;
+    std::vector<char> lineBuffer; // reusable Buffer for findDelimitersInLine()
     bool isColumnHighlighted = false;
     std::map<int, bool> stateSnapshot; // stores the state of the Elements
     LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
@@ -414,9 +466,9 @@ private:
     static bool debugWindowSizeSet;
     static HWND hDebugWnd; // Handle for the debug window
 
-
     int _editingItemIndex;
-    int _editingColumn;
+    int _editingColumnIndex;
+    int _editingColumnID;
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
@@ -427,37 +479,56 @@ private:
     sptr_t pSciWndData = 0;
 
     // List related
-    bool useListEnabled = false; // status for List enabled
+    bool useListEnabled; // status for List enabled
     std::wstring listFilePath = L""; //to store the file path of loaded list
     const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ /uused for Hashing
     std::size_t originalListHash = 0;
     int useListOnHeight = MIN_HEIGHT;      // Default height when "Use List" is on
     const int useListOffHeight = SHRUNK_HEIGHT; // Height when "Use List" is off (constant)
-    int checkMarkWidth_scaled = 0;
-    int crossWidth_scaled = 0;
-    int boxWidth_scaled = 0;
-    bool highlightMatchEnabled = false;  // HighlightMatch
-
+    int checkMarkWidth_scaled;
+    int crossWidth_scaled;
+    int boxWidth_scaled;
+    bool highlightMatchEnabled;  // HighlightMatch during Find in List
+    std::map<ColumnID, int> columnIndices;  // Mapping of ColumnID to ColumnIndex due to dynamic Columns
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
-    const std::vector<int> columnRadioDependentElements = {
-        IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
-    };
 
     // Window related settings
     RECT windowRect; // Structure to store window position and size
-    int findCountColumnWidth = 0; // Width of the "Find Count" column
-    int replaceCountColumnWidth = 0; // Width of the "Replace Count" column
-    BYTE foregroundTransparency = 255; // Default to fully opaque
-    BYTE backgroundTransparency = 190; // Default to semi-transparent
+    BYTE foregroundTransparency;     // Default Foreground transparency
+    BYTE backgroundTransparency;     // Default Background transparency
+    int findCountColumnWidth;        // Width of the "Find Count" column
+    int replaceCountColumnWidth;     // Width of the "Replace Count" column
+    int findColumnWidth;             // Width of the "Find what" column
+    int replaceColumnWidth;          // Width of the "Replace" column
+    int commentsColumnWidth;         // Width of the "Comments" column
+    int deleteButtonColumnWidth;     // Width of the "Delete" column
+    bool isFindCountVisible;         // Visibility of the "Find Count" column
+    bool isReplaceCountVisible;      // Visibility of the "Replace Count" column
+    bool isCommentsColumnVisible;    // Visibility of the "Comments" column
+    bool isDeleteButtonVisible;      // Visibility of the "Delete" column
+    bool findColumnLockedEnabled;    // Indicates if the "Find what" column is locked
+    bool replaceColumnLockedEnabled; // Indicates if the "Replace" column is locked
+    bool commentsColumnLockedEnabled;// Indicates if the "Comments" column is locked
+    bool tooltipsEnabled;            // Status for showing Tooltips on Panel
+    bool alertNotFoundEnabled;       // Status for Bell if String hasn't be found
+    bool doubleClickEditsEnabled;    // Double click to Edit List entries
 
     // Window DPI scaled size 
     int MIN_WIDTH_scaled;
     int MIN_HEIGHT_scaled;
     int SHRUNK_HEIGHT_scaled;
     int COUNT_COLUMN_WIDTH_scaled;
-    int MIN_COLUMN_WIDTH_scaled;
+    int MIN_FIND_REPLACE_WIDTH_scaled;
+    int MIN_GENERAL_WIDTH_scaled;
+    int COMMENTS_COLUMN_WIDTH_scaled;
+    int DEFAULT_COLUMN_WIDTH_FIND_scaled;
+    int DEFAULT_COLUMN_WIDTH_REPLACE_scaled;
+    int DEFAULT_COLUMN_WIDTH_COMMENTS_scaled;
+    int DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled;
+    int DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled;
+
 
     //Initialization
     void initializeWindowSize();
@@ -466,53 +537,58 @@ private:
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();
-    void initializePluginStyle();
+    void initializeMarkerStyle();
     void initializeListView();
     void moveAndResizeControls();
-    void updateButtonVisibilityBasedOnMode();
+    void updateTwoButtonsVisibility();
     void setUIElementVisibility();
-    void updateStatisticsColumnButtonIcon();
     void drawGripper();
     void SetWindowTransparency(HWND hwnd, BYTE alpha);
     void adjustWindowSize();
-    void updateUseListButtonState(bool isUpdate);
+    void updateUseListState(bool isUpdate);
 
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);
     void AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnIndex, LPCTSTR pszText);
-    void createListViewColumns(HWND listView);
+    void createListViewColumns();
     void insertReplaceListItem(const ReplaceItemData& itemData);
-    int  calcDynamicColWidth(const CountColWidths& widths);
+    int  getColumnWidth(ColumnID columnID);
+    int  calcDynamicColWidth(const ResizableColWidths& widths);
     void updateListViewAndColumns();
     void updateListViewTooltips();
     void handleCopyBack(NMITEMACTIVATE* pnmia);
-    void shiftListItem(HWND listView, const Direction& direction);
+    void shiftListItem( const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);
-    void deleteSelectedLines(HWND listView);
-    void sortReplaceListData(int column, SortDirection direction);
+    void deleteSelectedLines();
+    void sortReplaceListData(int columnID, SortDirection direction);
     std::vector<size_t> getSelectedRows();
     void selectRows(const std::vector<size_t>& selectedIDs);
     void handleCopyToListButton();
     void resetCountColumns();
     void updateCountColumns(const size_t itemIndex, const int findCount, int replaceCount = -1);
-    void resizeCountColumns();
     void clearList();
     std::size_t computeListHash(const std::vector<ReplaceItemData>& list);
     void refreshUIListView();
+    void handleColumnVisibilityToggle(UINT menuId);
+    int getColumnIDFromIndex(int columnIndex);
 
-    //Contextmenu
+    //Contextmenu Display Columns
+    void showColumnVisibilityMenu(HWND hWnd, POINT pt);
+
+    //Contextmenu List
     void toggleBooleanAt(int itemIndex, int Column);
     void editTextAt(int itemIndex, int column);
     static LRESULT CALLBACK ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
     void createContextMenu(HWND hwnd, POINT ptScreen, MenuState state);
-    MenuState checkMenuConditions(HWND listView, POINT ptScreen);
+    MenuState checkMenuConditions(POINT ptScreen);
     void performItemAction(POINT pt, ItemAction action);
-    void copySelectedItemsToClipboard(HWND listView);
+    void copySelectedItemsToClipboard();
     bool canPasteFromClipboard();
     void pasteItemsIntoList();
     void performSearchInList();
     int searchInListData(int startIdx, const std::wstring& findText, const std::wstring& replaceText);
+    void handleEditOnDoubleClick(int itemIndex, int clickedColumn);
 
     //Replace
     void handleReplaceAllButton();
@@ -522,7 +598,7 @@ private:
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     bool preProcessListForReplace(bool highlight);
-    SelectionInfo getSelectionInfo();
+    SelectionInfo getSelectionInfo(bool isBackward);
     void captureLuaGlobals(lua_State* L);
     void loadLuaGlobals(lua_State* L);
     std::string escapeForRegex(const std::string& input);
@@ -540,7 +616,9 @@ private:
     void handleFindPrevButton();
     SearchResult performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range);
     SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
-    SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, LRESULT start);
+    SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
+    SearchResult performSearchSelection(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
+    SearchResult performSearchColumn    (const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
     SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
     SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
     void MultiReplace::selectListItem(size_t matchIndex);
@@ -593,7 +671,7 @@ private:
     void setSelections(bool select, bool onlySelected = false);
     void updateHeaderSelection();
     void updateHeaderSortDirection();
-    void showStatusMessage(const std::wstring& messageText, COLORREF color);
+    void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color, bool isNotFound = false);
     std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
     void showListFilePath();
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
@@ -622,6 +700,7 @@ private:
     void checkForFileChangesAtStartup();
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
+    std::vector<std::wstring> parseCsvLine(const std::wstring& line);
 
     //Export
     void exportToBashScript(const std::wstring& fileName);

@@ -99,9 +99,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
     break;
     case SCN_MODIFIED:
     {
-        if (notifyCode->modificationType & SC_MOD_INSERTTEXT ||
-            notifyCode->modificationType & SC_MOD_DELETETEXT)
-        {
+        if (notifyCode->modificationType & (SC_MOD_INSERTTEXT | SC_MOD_DELETETEXT)) {
             MultiReplace::onTextChanged();
             MultiReplace::processTextChange(notifyCode);
             MultiReplace::processLog();

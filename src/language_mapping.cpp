@@ -34,8 +34,6 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_export_to_bash", L"Export to Bash" },
 { L"panel_move_lines", L"Move Lines" },
 { L"panel_use_list", L"Use List" },
-{ L"panel_show", L"Show" },
-{ L"panel_hide", L"Hide" },
 { L"panel_help", L"?" },
 
 // File Dialog
@@ -71,6 +69,8 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"header_use_variables", L"V" },
 { L"header_extended", L"E" },
 { L"header_regex", L"R" },
+{ L"header_comments", L"Comments" },
+{ L"header_delete_button", L"Delete Entry" },
 
 // tooltip entries
 { L"tooltip_header_whole_word", L"Whole Word" },
@@ -133,18 +133,15 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_lines_deleted", L"$REPLACE_STRING lines deleted." },
 { L"status_column_sorted", L"Column sorted in $REPLACE_STRING order." },
 { L"status_occurrences_replaced", L"$REPLACE_STRING occurrences were replaced." },
-{ L"status_replace_next_found", L"Replace: $REPLACE_STRING replaced. Next occurrence found." },
-{ L"status_replace_none_left", L"Replace: $REPLACE_STRING replaced. None left." },
+{ L"status_replace_next_found", L"$REPLACE_STRING occurrence(s) replaced. Next occurrence found." },
+{ L"status_replace_none_left", L"$REPLACE_STRING occurrence(s) replaced. No occurrences left." },
 { L"status_no_matches_found_for", L"No matches found for '$REPLACE_STRING'." },
 { L"status_actual_position", L"Actual Position $REPLACE_STRING" },
 { L"status_items_loaded_from_csv", L"$REPLACE_STRING items loaded from CSV." },
-{ L"status_wrapped_position", L"Wrapped at $REPLACE_STRING" },
 { L"status_occurrences_marked", L"$REPLACE_STRING occurrences were marked." },
 { L"status_items_copied_to_clipboard", L"$REPLACE_STRING items copied into Clipboard." },
 { L"status_no_matches_after_wrap_for", L"No matches found for '$REPLACE_STRING' after wrap." },
 { L"status_deleted_fields_count", L"Deleted $REPLACE_STRING fields." },
-{ L"status_wrapped_find", L"Wrapped '$REPLACE_STRING1'. Position: $REPLACE_STRING2" },
-{ L"status_wrapped_no_find", L"Wrapped. Position: $REPLACE_STRING" },
 { L"status_line_and_column_position", L" (Line: $REPLACE_STRING, Column: $REPLACE_STRING1)" },
 { L"status_unable_to_open_file", L"Failed to open the file: $REPLACE_STRING1" },
 
