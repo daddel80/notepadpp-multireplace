@@ -209,7 +209,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int listWidth = windowWidth - sx(202);
     int listHeight = std::max(windowHeight - sy(245), sy(20)); // Minimum listHeight to prevent IDC_PATH_DISPLAY from overlapping with IDC_STATUS_MESSAGE
     int useListButtonY = windowHeight - sy(34);
-
+    
     // Apply scaling only when assigning to ctrlMap
     ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_find_what"), SS_RIGHT, NULL };
     ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_replace_with"), SS_RIGHT };
@@ -243,9 +243,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(449), sy(149), sx(20), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_drop_columns") };
     ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(477), sy(149), sx(20), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_columns") }; //🗍
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(505), sy(149), sx(40), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
-
+    
     ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(208), sx(530), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
-
+    
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(44), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -259,7 +259,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     findNextButtonText = L"▼ " + getLangStr(L"panel_find_next_small");
     ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-
+    
     ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
@@ -285,7 +285,7 @@ void MultiReplace::initializeCtrlMap() {
 
     hInstance = (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE);
     s_hDlg = _hSelf;
-
+    
     // Get the client rectangle
     RECT rcClient;
     GetClientRect(_hSelf, &rcClient);
@@ -295,7 +295,7 @@ void MultiReplace::initializeCtrlMap() {
 
     // Define Position for all Elements
     positionAndResizeControls(windowWidth, windowHeight);
-
+    
     // Now iterate over the controls and create each one.
     if (!createAndShowWindows()) {
         return;
@@ -2186,19 +2186,49 @@ void MultiReplace::handleEditOnDoubleClick(int itemIndex, int clickedColumn) {
 
 #pragma region Dialog
 
+void checkStackUsage() {
+    MEMORY_BASIC_INFORMATION mbi;
+
+    // VirtualQuery prüfen, ob sie erfolgreich ist
+    if (VirtualQuery(&mbi, &mbi, sizeof(mbi)) == 0) {
+        MessageBoxW(NULL, L"VirtualQuery failed!", L"Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    // Speicherwerte berechnen, wenn VirtualQuery erfolgreich war
+    DWORD_PTR stackBase = (DWORD_PTR)mbi.AllocationBase;
+    DWORD_PTR currentStackPointer = (DWORD_PTR)&mbi;
+    SIZE_T stackUsed = stackBase > currentStackPointer ? stackBase - currentStackPointer : 0;
+    SIZE_T stackCommitted = mbi.RegionSize;
+    SIZE_T stackFree = stackCommitted > stackUsed ? stackCommitted - stackUsed : 0;
+
+    // Nachricht anzeigen
+    std::wostringstream oss;
+    oss << L"Stack Base: " << stackBase << L"\n"
+        << L"Current Stack Pointer: " << currentStackPointer << L"\n"
+        << L"Stack Used: " << stackUsed << L" bytes\n"
+        << L"Stack Free: " << stackFree << L" bytes\n"
+        << L"Stack Committed: " << stackCommitted << L" bytes";
+
+    MessageBoxW(NULL, oss.str().c_str(), L"Stack Usage Info", MB_OK | MB_ICONINFORMATION);
+}
+
+
 INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
     case WM_INITDIALOG:
     {
-        // Instantiate DPIManager
         dpiMgr = new DPIManager(_hSelf);
+        checkStackUsage();
         loadLanguage();
         initializeWindowSize();
         pointerToScintilla();
         initializeMarkerStyle();
+        MessageBoxW(_hSelf, L"Debug: Before initializeCtrlMap", L"DEBUG", MB_OK | MB_ICONINFORMATION);
         initializeCtrlMap();
+        MessageBoxW(_hSelf, L"Debug: After initializeCtrlMap", L"DEBUG", MB_OK | MB_ICONINFORMATION);
         initializeFontStyles();
         loadSettings();
         updateTwoButtonsVisibility();

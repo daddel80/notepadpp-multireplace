@@ -452,6 +452,11 @@ private:
     ColumnDelimiterData columnDelimiterData;
     LRESULT eolLength = -1; // Stores the length of the EOL character sequence
     std::vector<ReplaceItemData> replaceListData;
+
+    // ** ANY NEW VECTOR is CAUSING a CRASH
+    std::vector<ReplaceItemData> replaceListData2;
+    // ** 
+
     std::vector<LineInfo> lineDelimiterPositions;
     std::vector<char> lineBuffer; // reusable Buffer for findDelimitersInLine()
     bool isColumnHighlighted = false;
