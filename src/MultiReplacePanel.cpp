@@ -1992,7 +1992,7 @@ bool MultiReplace::canPasteFromClipboard() {
 
                 // For the format to be considered valid, ensure each line has the correct number of columns
                 // and the second column (findText) must not be empty for a line to be valid
-                if ((columns.size() == 8 || columns.size() == 9) && !columns[1].empty()) {
+                if ((columns.size() == 8 || columns.size() == 9)) {
                     canPaste = true; // Found at least one valid line, no need to check further
                 }
             }
