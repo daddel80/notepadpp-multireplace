@@ -85,6 +85,11 @@ struct ReplaceItemDataHasher {
     }
 };
 
+struct UndoRedoAction {
+    std::function<void()> undoAction;
+    std::function<void()> redoAction;
+};
+
 struct WindowSettings {
     int posX;
     int posY;
@@ -169,8 +174,10 @@ struct MenuState {
     bool canPaste = false;
     bool hasSelection = false;
     bool clickedOnItem = false;
-    bool allEnabled = false;;
-    bool allDisabled = false;;
+    bool allEnabled = false;
+    bool allDisabled = false;
+    bool canUndo = false;
+    bool canRedo = false;
 };
 
 struct MonitorEnumData {
@@ -186,7 +193,9 @@ enum class ItemAction {
     Paste,
     Copy,
     Cut,
-    Delete
+    Delete,
+    Undo,
+    Redo
 };
 
 enum class SortDirection {
@@ -209,6 +218,8 @@ struct LuaVariables {
     int APOS = 0;
     int COL = 0;
     std::string MATCH = "";
+    std::string FPATH = "";
+    std::string FNAME = "";
 };
 
 enum class LuaVariableType {
@@ -276,6 +287,11 @@ private:
 
 class LuaSyntaxException : public std::exception {
 };
+
+// each new Vector has to be delared outside of the class due to unresolved memory behaviours, 
+// possible initial limited stack size bei N++ for Plugins
+inline std::vector<UndoRedoAction> undoStack;
+inline std::vector<UndoRedoAction> redoStack;
 
 class MultiReplace : public StaticDialog
 {
@@ -442,7 +458,7 @@ private:
     */
     std::vector<int> textStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
     std::vector<int> hColumnStyles = { STYLE1, STYLE2, STYLE3, STYLE4, STYLE5, STYLE6, STYLE7, STYLE8, STYLE9, STYLE10 };
-    std::vector<long> columnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
+    std::vector<int> columnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
 
     // Data-related variables 
     size_t markedStringsCount = 0;
@@ -452,11 +468,6 @@ private:
     ColumnDelimiterData columnDelimiterData;
     LRESULT eolLength = -1; // Stores the length of the EOL character sequence
     std::vector<ReplaceItemData> replaceListData;
-
-    // ** ANY NEW VECTOR is CAUSING a CRASH
-    std::vector<ReplaceItemData> replaceListData2;
-    // ** 
-
     std::vector<LineInfo> lineDelimiterPositions;
     std::vector<char> lineBuffer; // reusable Buffer for findDelimitersInLine()
     bool isColumnHighlighted = false;
@@ -470,7 +481,6 @@ private:
     static SIZE debugWindowSize;
     static bool debugWindowSizeSet;
     static HWND hDebugWnd; // Handle for the debug window
-
     int _editingItemIndex;
     int _editingColumnIndex;
     int _editingColumnID;
@@ -552,6 +562,14 @@ private:
     void adjustWindowSize();
     void updateUseListState(bool isUpdate);
 
+    // Undo
+    void undo();
+    void redo();
+    void addItemsToReplaceList(const std::vector<ReplaceItemData>& items);
+    void removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove);
+    void modifyItemInReplaceList(size_t index, const ReplaceItemData& newData);
+    void moveItemsInReplaceList(const std::vector<size_t>& indices, Direction direction);
+
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);
     void AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnIndex, LPCTSTR pszText);
@@ -562,7 +580,7 @@ private:
     void updateListViewAndColumns();
     void updateListViewTooltips();
     void handleCopyBack(NMITEMACTIVATE* pnmia);
-    void shiftListItem( const Direction& direction);
+    void shiftListItem(const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);
     void deleteSelectedLines();
     void sortReplaceListData(int columnID, SortDirection direction);
@@ -575,14 +593,17 @@ private:
     std::size_t computeListHash(const std::vector<ReplaceItemData>& list);
     void refreshUIListView();
     void handleColumnVisibilityToggle(UINT menuId);
-    int getColumnIDFromIndex(int columnIndex);
+    ColumnID getColumnIDFromIndex(int columnIndex) const;
+    int getColumnIndexFromID(ColumnID columnID) const;
+    void updateListViewItem(size_t index);
 
     //Contextmenu Display Columns
     void showColumnVisibilityMenu(HWND hWnd, POINT pt);
 
     //Contextmenu List
-    void toggleBooleanAt(int itemIndex, int Column);
-    void editTextAt(int itemIndex, int column);
+    void toggleBooleanAt(int itemIndex, ColumnID columnID);
+    void editTextAt(int itemIndex, ColumnID columnID);
+    void closeEditField(bool commitChanges);
     static LRESULT CALLBACK ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
     void createContextMenu(HWND hwnd, POINT ptScreen, MenuState state);
@@ -593,7 +614,7 @@ private:
     void pasteItemsIntoList();
     void performSearchInList();
     int searchInListData(int startIdx, const std::wstring& findText, const std::wstring& replaceText);
-    void handleEditOnDoubleClick(int itemIndex, int clickedColumn);
+    void handleEditOnDoubleClick(int itemIndex, ColumnID columnID);
 
     //Replace
     void handleReplaceAllButton();
@@ -609,6 +630,7 @@ private:
     std::string escapeForRegex(const std::string& input);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
     void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
+    void setLuaFileVars(LuaVariables& vars);
 
     //DebugWindow
     int ShowDebugWindow(const std::string& message);
@@ -623,7 +645,7 @@ private:
     SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
     SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
     SearchResult performSearchSelection(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
-    SearchResult performSearchColumn    (const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
+    SearchResult performSearchColumn(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
     SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
     SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
     void MultiReplace::selectListItem(size_t matchIndex);

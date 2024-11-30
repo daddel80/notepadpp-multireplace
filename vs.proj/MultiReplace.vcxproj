@@ -290,8 +290,12 @@ copy ..\languages.ini $(OutDir)languages.ini</Command>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>shlwapi.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;ComCtl32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ImportLibrary>$(TargetName).lib</ImportLibrary>
-      <StackReserveSize>8388608 </StackReserveSize>
-      <StackCommitSize>4096 </StackCommitSize>
+      <StackReserveSize>
+      </StackReserveSize>
+      <StackCommitSize>
+      </StackCommitSize>
+      <HeapReserveSize>
+      </HeapReserveSize>
     </Link>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt

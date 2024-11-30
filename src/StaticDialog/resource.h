@@ -111,6 +111,8 @@
 #define IDM_SELECT_ALL                  5708
 #define IDM_ENABLE_LINES                5709
 #define IDM_DISABLE_LINES               5710
+#define IDM_UNDO                        5711
+#define IDM_REDO                        5712
 
 #define IDM_TOGGLE_FIND_COUNT           5801
 #define IDM_TOGGLE_REPLACE_COUNT        5802

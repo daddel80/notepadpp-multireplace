@@ -179,6 +179,8 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     return minSize;
 }
 
+
+
 void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 {
     // Helper functions sx() and sy() are used to scale values for DPI awareness.
@@ -638,6 +640,293 @@ void MultiReplace::updateUseListState(bool isUpdate)
 #pragma endregion
 
 
+#pragma region Undo stack
+
+void MultiReplace::undo() {
+    if (!undoStack.empty()) {
+        // Get the last action
+        UndoRedoAction action = undoStack.back();
+        undoStack.pop_back();
+
+        // Execute the undo action
+        action.undoAction();
+
+        // Push the action onto the redoStack
+        redoStack.push_back(action);
+    }
+    else {
+        showStatusMessage(L"Nothing to undo.", COLOR_INFO);
+    }
+}
+
+void MultiReplace::redo() {
+    if (!redoStack.empty()) {
+        // Get the last action
+        UndoRedoAction action = redoStack.back();
+        redoStack.pop_back();
+
+        // Execute the redo action
+        action.redoAction();
+
+        // Push the action back onto the undoStack
+        undoStack.push_back(action);
+    }
+    else {
+        showStatusMessage(L"Nothing to redo.", COLOR_INFO);
+    }
+}
+
+void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& items) {
+    size_t startIndex = replaceListData.size();
+    replaceListData.insert(replaceListData.end(), items.begin(), items.end());
+    size_t endIndex = replaceListData.size() - 1;
+
+    // Update the ListView
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+
+    // Clear the redoStack since a new action invalidates the redo history
+    redoStack.clear();
+
+    // Create undo and redo lambdas
+    UndoRedoAction action;
+
+    // Undo action: Remove the added items
+    action.undoAction = [this, startIndex, endIndex]() {
+        // Remove items from the replace list
+        replaceListData.erase(replaceListData.begin() + startIndex, replaceListData.begin() + endIndex + 1);
+
+        // Update the ListView
+        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+        };
+
+    // Redo action: Re-insert the items
+    std::vector<ReplaceItemData> itemsToRedo = std::vector<ReplaceItemData>(replaceListData.begin() + startIndex, replaceListData.begin() + endIndex + 1);
+    action.redoAction = [this, itemsToRedo, startIndex]() {
+        replaceListData.insert(replaceListData.begin() + startIndex, itemsToRedo.begin(), itemsToRedo.end());
+
+        // Update the ListView
+        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+        };
+
+    // Push the action onto the undoStack
+    undoStack.push_back(action);
+}
+
+void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove) {
+    // Sort the indices in descending order to avoid shifting issues during removal
+    std::vector<size_t> sortedIndices = indicesToRemove;
+    std::sort(sortedIndices.rbegin(), sortedIndices.rend());
+
+    // Store the items to be removed, including their indices
+    std::vector<std::pair<size_t, ReplaceItemData>> removedItemsWithIndices;
+    for (size_t index : sortedIndices) {
+        if (index < replaceListData.size()) {
+            removedItemsWithIndices.emplace_back(index, replaceListData[index]);
+            replaceListData.erase(replaceListData.begin() + index);
+        }
+    }
+
+    // Update the ListView
+    ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+
+    // Clear the redoStack
+    redoStack.clear();
+
+    // Create undo and redo lambdas
+    UndoRedoAction action;
+
+    // Undo action: Re-insert the removed items at their original positions
+    action.undoAction = [this, removedItemsWithIndices]() {
+        for (auto it = removedItemsWithIndices.rbegin(); it != removedItemsWithIndices.rend(); ++it) {
+            const auto& [index, item] = *it;
+            if (index <= replaceListData.size()) {
+                replaceListData.insert(replaceListData.begin() + index, item);
+            }
+        }
+
+        // Update the ListView
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Reselect the restored rows
+        for (const auto& [index, _] : removedItemsWithIndices) {
+            if (index < replaceListData.size()) {
+                ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
+            }
+        }
+        };
+
+    // Redo action: Remove the same items again
+    action.redoAction = [this, removedItemsWithIndices]() {
+        // Sort indices in descending order to avoid shifting issues during removal
+        std::vector<size_t> sortedIndices;
+        for (const auto& [index, _] : removedItemsWithIndices) {
+            sortedIndices.push_back(index);
+        }
+        std::sort(sortedIndices.rbegin(), sortedIndices.rend());
+
+        for (size_t index : sortedIndices) {
+            if (index < replaceListData.size()) {
+                replaceListData.erase(replaceListData.begin() + index);
+            }
+        }
+
+        // Update the ListView
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+        };
+
+    // Push the action onto the undoStack
+    undoStack.push_back(action);
+}
+
+void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& newData) {
+    // Ursprüngliche Daten speichern
+    ReplaceItemData originalData = replaceListData[index];
+
+    // Eintrag modifizieren
+    replaceListData[index] = newData;
+
+    // ListView aktualisieren
+    updateListViewItem(index);
+
+    // Redo-Stack leeren
+    redoStack.clear();
+
+    // Undo/Redo-Aktionen erstellen
+    UndoRedoAction action;
+
+    // Undo-Aktion: Ursprüngliche Daten wiederherstellen
+    action.undoAction = [this, index, originalData]() {
+        replaceListData[index] = originalData;
+        updateListViewItem(index);
+
+        // Alle Selektionen aufheben
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+        // Spezifische Zeile selektieren
+        ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
+
+        // Sicherstellen, dass die Zeile sichtbar ist
+        ListView_EnsureVisible(_replaceListView, static_cast<int>(index), FALSE);
+
+        // Fokus auf die ListView setzen
+        SetFocus(_replaceListView);
+        };
+
+    // Redo-Aktion: Neue Daten erneut anwenden
+    action.redoAction = [this, index, newData]() {
+        replaceListData[index] = newData;
+        updateListViewItem(index);
+
+        // Alle Selektionen aufheben
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+        // Spezifische Zeile selektieren
+        ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
+
+        // Sicherstellen, dass die Zeile sichtbar ist
+        ListView_EnsureVisible(_replaceListView, static_cast<int>(index), FALSE);
+
+        // Fokus auf die ListView setzen
+        SetFocus(_replaceListView);
+        };
+
+    // Aktion auf den undoStack legen
+    undoStack.push_back(action);
+}
+
+void MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, Direction direction) {
+    if (indices.empty()) {
+        return; // No items to move
+    }
+
+    // Check the bounds
+    if ((direction == Direction::Up && indices.front() == 0) ||
+        (direction == Direction::Down && indices.back() == replaceListData.size() - 1)) {
+        return; // Out of bounds, do nothing
+    }
+
+    // Store pre-move indices for undo
+    std::vector<size_t> preMoveIndices = indices;
+
+    // Adjust indices for the move
+    std::vector<size_t> postMoveIndices = indices;
+
+    if (direction == Direction::Up) {
+        for (size_t& idx : postMoveIndices) {
+            idx -= 1;
+        }
+    }
+    else { // Direction::Down
+        for (size_t& idx : postMoveIndices) {
+            idx += 1;
+        }
+    }
+
+    // Perform the move
+    for (size_t i = 0; i < indices.size(); ++i) {
+        std::swap(replaceListData[preMoveIndices[i]], replaceListData[postMoveIndices[i]]);
+    }
+
+    // Update the ListView
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+
+    // Create Undo/Redo actions
+    UndoRedoAction action;
+
+    action.undoAction = [this, preMoveIndices, postMoveIndices]() {
+        // Swap back the moved items
+        for (size_t i = 0; i < preMoveIndices.size(); ++i) {
+            std::swap(replaceListData[preMoveIndices[i]], replaceListData[postMoveIndices[i]]);
+        }
+
+        // Update the ListView
+        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Reselect the original positions
+        for (size_t idx : preMoveIndices) {
+            ListView_SetItemState(_replaceListView, idx, LVIS_SELECTED, LVIS_SELECTED);
+        }
+        };
+
+    action.redoAction = [this, preMoveIndices, postMoveIndices]() {
+        // Swap items to their new positions again
+        for (size_t i = 0; i < preMoveIndices.size(); ++i) {
+            std::swap(replaceListData[preMoveIndices[i]], replaceListData[postMoveIndices[i]]);
+        }
+
+        // Update the ListView
+        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Reselect the moved positions
+        for (size_t idx : postMoveIndices) {
+            ListView_SetItemState(_replaceListView, idx, LVIS_SELECTED, LVIS_SELECTED);
+        }
+        };
+
+    // Push the action onto the undoStack
+    undoStack.push_back(action);
+
+    // Clear the redoStack
+    redoStack.clear();
+
+    // Select the moved rows in their new positions
+    for (size_t idx : postMoveIndices) {
+        ListView_SetItemState(_replaceListView, idx, LVIS_SELECTED, LVIS_SELECTED);
+    }
+}
+
+#pragma endregion
+
+
 #pragma region ListView
 
 HWND MultiReplace::CreateHeaderTooltip(HWND hwndParent)
@@ -848,14 +1137,13 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
         }
     }
 
-    // Add the data to the vector
-    ReplaceItemData newItemData = itemData;
-    replaceListData.push_back(newItemData);
+    std::vector<ReplaceItemData> itemsToAdd = { itemData };
+    addItemsToReplaceList(itemsToAdd);
 
     // Show a status message indicating the value added to the list
     std::wstring message;
     if (isDuplicate) {
-        message = getLangStr(L"status_duplicate_entry") + newItemData.findText;
+        message = getLangStr(L"status_duplicate_entry") + itemData.findText;
     }
     else {
         message = getLangStr(L"status_value_added");
@@ -1074,6 +1362,25 @@ void MultiReplace::updateListViewAndColumns() {
     SendMessage(listView, WM_SETREDRAW, TRUE, 0);
 }
 
+void MultiReplace::updateListViewItem(size_t index) {
+    if (index >= replaceListData.size()) return;
+
+    const ReplaceItemData& item = replaceListData[index];
+
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::FIND_TEXT], const_cast<LPWSTR>(item.findText.c_str()));
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::REPLACE_TEXT], const_cast<LPWSTR>(item.replaceText.c_str()));
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::COMMENTS], const_cast<LPWSTR>(item.comments.c_str()));
+
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::WHOLE_WORD], item.wholeWord ? L"\u2714" : L"");
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::MATCH_CASE], item.matchCase ? L"\u2714" : L"");
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::USE_VARIABLES], item.useVariables ? L"\u2714" : L"");
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::EXTENDED], item.extended ? L"\u2714" : L"");
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::REGEX], item.regex ? L"\u2714" : L"");
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::SELECTION], item.isEnabled ? L"\u25A0" : L"\u2610");
+
+    ListView_RedrawItems(_replaceListView, static_cast<int>(index), static_cast<int>(index));
+}
+
 void MultiReplace::updateListViewTooltips() {
 
     if (!tooltipsEnabled) {
@@ -1122,9 +1429,10 @@ void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
 }
 
 void MultiReplace::shiftListItem(const Direction& direction) {
-
     std::vector<size_t> selectedIndices;
     int i = -1;
+
+    // Collect selected indices
     while ((i = ListView_GetNextItem(_replaceListView, i, LVNI_SELECTED)) != -1) {
         selectedIndices.push_back(i);
     }
@@ -1134,28 +1442,8 @@ void MultiReplace::shiftListItem(const Direction& direction) {
         return;
     }
 
-    // Check the bounds
-    if ((direction == Direction::Up && selectedIndices.front() == 0) || (direction == Direction::Down && selectedIndices.back() == replaceListData.size() - 1)) {
-        return; // Don't perform the move if it's out of bounds
-    }
-
-    // Perform the shift operation
-    if (direction == Direction::Up) {
-        for (size_t& index : selectedIndices) {
-            size_t swapIndex = index - 1;
-            std::swap(replaceListData[index], replaceListData[swapIndex]);
-            index = swapIndex;
-        }
-    }
-    else { // direction is Down
-        for (auto it = selectedIndices.rbegin(); it != selectedIndices.rend(); ++it) {
-            size_t swapIndex = *it + 1;
-            std::swap(replaceListData[*it], replaceListData[swapIndex]);
-            *it = swapIndex;
-        }
-    }
-
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    // Pass the selected indices to moveItemsInReplaceList
+    moveItemsInReplaceList(selectedIndices, direction);
 
     // Deselect all items
     for (int j = 0; j < ListView_GetItemCount(_replaceListView); ++j) {
@@ -1163,13 +1451,23 @@ void MultiReplace::shiftListItem(const Direction& direction) {
     }
 
     // Re-select the shifted items
+    if (direction == Direction::Up) {
+        for (size_t& index : selectedIndices) {
+            index--; // Indices have moved up
+        }
+    }
+    else {
+        for (size_t& index : selectedIndices) {
+            index++; // Indices have moved down
+        }
+    }
+
     for (size_t index : selectedIndices) {
         ListView_SetItemState(_replaceListView, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
     }
 
     // Show status message when rows are successfully shifted
     showStatusMessage(getLangStr(L"status_rows_shifted", { std::to_wstring(selectedIndices.size()) }), COLOR_SUCCESS);
-
 }
 
 void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
@@ -1177,14 +1475,14 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
     if (pnmia == nullptr || static_cast<size_t>(pnmia->iItem) >= replaceListData.size()) {
         return;
     }
-    // Remove the item from the ListView
-    ListView_DeleteItem(_replaceListView, pnmia->iItem);
+    // Store the index of the item to be deleted
+    size_t itemIndex = static_cast<size_t>(pnmia->iItem);
 
-    // Remove the item from the replaceListData vector
-    replaceListData.erase(replaceListData.begin() + pnmia->iItem);
+    // Prepare a vector containing the index of the item to remove
+    std::vector<size_t> indicesToRemove = { itemIndex };
 
-    // Update the item count in the ListView
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    // Delegate the deletion and undo/redo logic to removeItemsFromReplaceList
+    removeItemsFromReplaceList(indicesToRemove);
 
     // Update Header if there might be any changes
     updateHeaderSelection();
@@ -1195,44 +1493,45 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 }
 
 void MultiReplace::deleteSelectedLines() {
-    std::vector<int> selectedIndices;
+    // Collect selected indices
+    std::vector<size_t> selectedIndices;
     int i = -1;
     while ((i = ListView_GetNextItem(_replaceListView, i, LVNI_SELECTED)) != -1) {
-        selectedIndices.push_back(i);
+        selectedIndices.push_back(static_cast<size_t>(i));
     }
 
     if (selectedIndices.empty()) {
+        showStatusMessage(getLangStr(L"status_no_rows_selected_to_delete"), COLOR_ERROR);
         return;
     }
 
-    size_t numDeletedLines = selectedIndices.size();
-    //int firstSelectedIndex = selectedIndices.front();
-    int lastSelectedIndex = selectedIndices.back();
-
-    // Remove the selected lines from replaceListData
-    for (auto it = selectedIndices.rbegin(); it != selectedIndices.rend(); ++it) {
-        replaceListData.erase(replaceListData.begin() + *it);
+    // Ensure indices are valid before calling removeItemsFromReplaceList
+    for (size_t index : selectedIndices) {
+        if (index >= replaceListData.size()) {
+            showStatusMessage(getLangStr(L"status_invalid_indices"), COLOR_ERROR);
+            return;
+        }
     }
 
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    // Call the removeItemsFromReplaceList function
+    removeItemsFromReplaceList(selectedIndices);
 
     // Deselect all items
-    for (int j = 0; j < ListView_GetItemCount(_replaceListView); ++j) {
-        ListView_SetItemState(_replaceListView, j, 0, LVIS_SELECTED | LVIS_FOCUSED);
-    }
+    ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
 
     // Select the next available line
-    int nextIndexToSelect = lastSelectedIndex < ListView_GetItemCount(_replaceListView) ? lastSelectedIndex : ListView_GetItemCount(_replaceListView) - 1;
-    if (nextIndexToSelect >= 0) {
-        ListView_SetItemState(_replaceListView, nextIndexToSelect, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+    size_t nextIndexToSelect = selectedIndices.back() < replaceListData.size()
+        ? selectedIndices.back()
+        : replaceListData.size() - 1;
+    if (nextIndexToSelect < replaceListData.size()) {
+        ListView_SetItemState(_replaceListView, static_cast<int>(nextIndexToSelect), LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
     }
 
     // Update Header if there might be any changes
     updateHeaderSelection();
 
-    InvalidateRect(_replaceListView, NULL, TRUE);
-
-    showStatusMessage(getLangStr(L"status_lines_deleted", { std::to_wstring(numDeletedLines) }), COLOR_SUCCESS);
+    // Show status message
+    showStatusMessage(getLangStr(L"status_lines_deleted", { std::to_wstring(selectedIndices.size()) }), COLOR_SUCCESS);
 }
 
 void MultiReplace::sortReplaceListData(int columnID, SortDirection direction) {
@@ -1442,13 +1741,22 @@ void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
     InvalidateRect(listView, NULL, TRUE);
 }
 
-int MultiReplace::getColumnIDFromIndex(int columnIndex) {
-    for (const auto& pair : columnIndices) {
-        if (pair.second == columnIndex) {
-            return pair.first;
-        }
-    }
-    return ColumnID::INVALID; // Return INVALID if not found
+ColumnID MultiReplace::getColumnIDFromIndex(int columnIndex) const {
+    auto it = std::find_if(
+        columnIndices.begin(),
+        columnIndices.end(),
+        [columnIndex](const auto& pair) { return pair.second == columnIndex; });
+
+    return (it != columnIndices.end()) ? it->first : ColumnID::INVALID;
+}
+
+int MultiReplace::getColumnIndexFromID(ColumnID columnID) const {
+    auto it = std::find_if(
+        columnIndices.begin(),
+        columnIndices.end(),
+        [columnID](const auto& pair) { return pair.first == columnID; });
+
+    return (it != columnIndices.end()) ? it->second : -1; // Return -1 if not found
 }
 
 #pragma endregion
@@ -1478,47 +1786,52 @@ void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
 
 #pragma region Contextmenu List
 
-void MultiReplace::toggleBooleanAt(int itemIndex, int clickedColumn) {
+void MultiReplace::toggleBooleanAt(int itemIndex, ColumnID columnID) {
     if (itemIndex < 0 || itemIndex >= static_cast<int>(replaceListData.size())) {
         return; // Early return for invalid item index
     }
 
-    // Correct mapping from clickedColumn to ColumnID
-    int columnID = getColumnIDFromIndex(clickedColumn);
-    if (columnID == ColumnID::INVALID) {
-        return; // Invalid column, exit the function
-    }
+    // Store the original data
+    ReplaceItemData originalData = replaceListData[itemIndex];
 
-    ReplaceItemData& item = replaceListData[itemIndex];
+    // Create a new data object to represent the modified state
+    ReplaceItemData newData = originalData;
 
     // Toggle the boolean field based on the ColumnID
     switch (columnID) {
     case ColumnID::SELECTION:
-        item.isEnabled = !item.isEnabled;
+        newData.isEnabled = !newData.isEnabled;
         break;
     case ColumnID::WHOLE_WORD:
-        item.wholeWord = !item.wholeWord;
+        newData.wholeWord = !newData.wholeWord;
         break;
     case ColumnID::MATCH_CASE:
-        item.matchCase = !item.matchCase;
+        newData.matchCase = !newData.matchCase;
         break;
     case ColumnID::USE_VARIABLES:
-        item.useVariables = !item.useVariables;
+        newData.useVariables = !newData.useVariables;
         break;
     case ColumnID::EXTENDED:
-        item.extended = !item.extended;
+        newData.extended = !newData.extended;
         break;
     case ColumnID::REGEX:
-        item.regex = !item.regex;
+        newData.regex = !newData.regex;
         break;
     default:
         return; // Not a toggleable boolean column
     }
 
-    ListView_RedrawItems(_replaceListView, itemIndex, itemIndex);
+    // Use modifyItemInReplaceList to handle the change and Undo/Redo
+    modifyItemInReplaceList(static_cast<size_t>(itemIndex), newData);
 }
 
-void MultiReplace::editTextAt(int itemIndex, int column) {
+void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
+    // Map ColumnID to the column index
+    int column = getColumnIndexFromID(columnID); // Convert ColumnID to column index
+    if (column == -1) {
+        return; // Invalid ColumnID, exit the function
+    }
+
     // Calculate the total width of previous columns to get the X coordinate for the start of the selected column
     int totalWidthBeforeColumn = 0;
     for (int i = 0; i < column; ++i) {
@@ -1553,7 +1866,7 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
     itemText[MAX_TEXT_LENGTH - 1] = L'\0';
     SetWindowText(hwndEdit, itemText);
 
-    // Get the ListView font and create a smaller version of it for the Edit control
+    // Get the ListView font and set it for the Edit control
     HFONT hListViewFont = (HFONT)SendMessage(_replaceListView, WM_GETFONT, 0, 0);
     if (hListViewFont) {
         SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hListViewFont, TRUE);
@@ -1568,8 +1881,55 @@ void MultiReplace::editTextAt(int itemIndex, int column) {
 
     // Store indices and column ID for use in the subclass procedure
     _editingItemIndex = itemIndex;
-    _editingColumnIndex = column;
-    _editingColumnID = getColumnIDFromIndex(column);
+    _editingColumnIndex = column; // Store column index for GUI logic
+    _editingColumnID = columnID;  // Store column ID for semantic clarity
+}
+
+void MultiReplace::closeEditField(bool commitChanges) {
+    if (!hwndEdit) {
+        return; // No active edit field present
+    }
+
+    if (commitChanges &&
+        _editingColumnID != ColumnID::INVALID &&
+        _editingItemIndex >= 0 &&
+        _editingItemIndex < static_cast<int>(replaceListData.size())) {
+
+        // Retrieve the new text from the edit field
+        wchar_t newText[MAX_TEXT_LENGTH];
+        GetWindowText(hwndEdit, newText, MAX_TEXT_LENGTH);
+
+        // Store the original data
+        ReplaceItemData originalData = replaceListData[_editingItemIndex];
+
+        // Create new data based on the edited column
+        ReplaceItemData newData = originalData;
+        switch (_editingColumnID) {
+        case ColumnID::FIND_TEXT:
+            newData.findText = newText;
+            break;
+        case ColumnID::REPLACE_TEXT:
+            newData.replaceText = newText;
+            break;
+        case ColumnID::COMMENTS:
+            newData.comments = newText;
+            break;
+        default:
+            break; // Non-editable column
+        }
+
+        // Apply changes and manage Undo/Redo
+        modifyItemInReplaceList(_editingItemIndex, newData);
+    }
+
+    // Destroy the edit field
+    DestroyWindow(hwndEdit);
+    hwndEdit = nullptr;
+
+    // Reset editing state
+    _editingItemIndex = -1;
+    _editingColumnIndex = -1;
+    _editingColumnID = ColumnID::INVALID;
 }
 
 LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
@@ -1620,41 +1980,8 @@ LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPAR
     case WM_KILLFOCUS: {
         MultiReplace* pThis = reinterpret_cast<MultiReplace*>(dwRefData);
 
-        // Retrieve the new text from the edit control
-        wchar_t newText[MAX_TEXT_LENGTH];
-        GetWindowText(hwnd, newText, MAX_TEXT_LENGTH);
-
-        // Check if the column and item index are valid before updating
-        if (pThis->_editingColumnID != ColumnID::INVALID &&
-            pThis->_editingItemIndex >= 0 &&
-            pThis->_editingItemIndex < static_cast<int>(pThis->replaceListData.size())) {
-
-            // Update the replaceListData vector with the new text
-            ReplaceItemData& item = pThis->replaceListData[pThis->_editingItemIndex];
-
-            // Update the correct field based on the ColumnID
-            switch (pThis->_editingColumnID) {
-            case ColumnID::FIND_TEXT:
-                item.findText = newText;
-                break;
-            case ColumnID::REPLACE_TEXT:
-                item.replaceText = newText;
-                break;
-            case ColumnID::COMMENTS:
-                item.comments = newText;
-                break;
-            default:
-                break; // Not a text-editable column, do nothing
-            }
-
-            // Reflect this change in the ListView
-            ListView_SetItemText(pThis->_replaceListView, pThis->_editingItemIndex, pThis->_editingColumnIndex, newText);
-        }
-
-        // Clean up and remove subclass
+        pThis->closeEditField(true); // Commit changes on focus loss
         RemoveWindowSubclass(hwnd, EditControlSubclassProc, uIdSubclass);
-        DestroyWindow(hwnd);
-
         return 0;
     }
     }
@@ -1756,6 +2083,9 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
 void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state) {
     HMENU hMenu = CreatePopupMenu();
     if (hMenu) {
+        AppendMenu(hMenu, MF_STRING | (state.canUndo ? MF_ENABLED : MF_GRAYED), IDM_UNDO, getLangStr(L"ctxmenu_undo").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.canRedo ? MF_ENABLED : MF_GRAYED), IDM_REDO, getLangStr(L"ctxmenu_redo").c_str());
+        AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, getLangStr(L"ctxmenu_transfer_to_input_fields").c_str());
         AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_SEARCH_IN_LIST, getLangStr(L"ctxmenu_search_in_list").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
@@ -1838,6 +2168,9 @@ MenuState MultiReplace::checkMenuConditions(POINT ptScreen) {
     state.allEnabled = (enabledCount == ListView_GetSelectedCount(_replaceListView));
     state.allDisabled = (disabledCount == ListView_GetSelectedCount(_replaceListView));
 
+    state.canUndo = !undoStack.empty();
+    state.canRedo = !redoStack.empty();
+
     return state;
 }
 
@@ -1872,9 +2205,15 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
     }
 
     // Correct mapping from clickedColumn to ColumnID
-    int columnID = getColumnIDFromIndex(clickedColumn);
+    ColumnID columnID = getColumnIDFromIndex(clickedColumn);
 
     switch (action) {
+    case ItemAction::Undo:
+        undo();
+        break;
+    case ItemAction::Redo:
+        redo();
+        break;
     case ItemAction::Search:
         performSearchInList();
         break;
@@ -1892,7 +2231,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         if (columnID == ColumnID::FIND_TEXT ||
             columnID == ColumnID::REPLACE_TEXT ||
             columnID == ColumnID::COMMENTS) {
-            editTextAt(hitTestResult, clickedColumn);
+            editTextAt(hitTestResult, columnID);
         }
         else if (columnID == ColumnID::SELECTION ||
             columnID == ColumnID::WHOLE_WORD ||
@@ -1900,7 +2239,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
             columnID == ColumnID::USE_VARIABLES ||
             columnID == ColumnID::EXTENDED ||
             columnID == ColumnID::REGEX) {
-            toggleBooleanAt(hitTestResult, clickedColumn);
+            toggleBooleanAt(hitTestResult, columnID);
         }
         break;
     case ItemAction::Delete: {
@@ -2047,7 +2386,7 @@ void MultiReplace::pasteItemsIntoList() {
         std::vector<std::wstring> columns = parseCsvLine(line);
 
         // Check for proper column count and non-empty findText before adding to the list
-        if ((columns.size() != 8 && columns.size() != 9) || columns[1].empty()) continue;
+        if ((columns.size() != 8 && columns.size() != 9)) continue;
 
         ReplaceItemData item;
         try {
@@ -2162,13 +2501,10 @@ int MultiReplace::searchInListData(int startIdx, const std::wstring& findText, c
     return -1;
 }
 
-void MultiReplace::handleEditOnDoubleClick(int itemIndex, int clickedColumn) {
-    // Initialize columnID with a default value first
-    ColumnID columnID = ColumnID::INVALID;
-    columnID = static_cast<ColumnID>(getColumnIDFromIndex(clickedColumn));
-
+void MultiReplace::handleEditOnDoubleClick(int itemIndex, ColumnID columnID) {
+    // Perform the appropriate action based on the ColumnID
     if (columnID == ColumnID::FIND_TEXT || columnID == ColumnID::REPLACE_TEXT || columnID == ColumnID::COMMENTS) {
-        editTextAt(itemIndex, clickedColumn);
+        editTextAt(itemIndex, columnID); // Pass ColumnID directly
     }
     else if (columnID == ColumnID::SELECTION ||
         columnID == ColumnID::WHOLE_WORD ||
@@ -2176,10 +2512,9 @@ void MultiReplace::handleEditOnDoubleClick(int itemIndex, int clickedColumn) {
         columnID == ColumnID::USE_VARIABLES ||
         columnID == ColumnID::EXTENDED ||
         columnID == ColumnID::REGEX) {
-        toggleBooleanAt(itemIndex, clickedColumn);
+        toggleBooleanAt(itemIndex, columnID); // Pass ColumnID directly
     }
 }
-
 
 #pragma endregion
 
@@ -2202,17 +2537,17 @@ void checkStackUsage() {
     SIZE_T stackCommitted = mbi.RegionSize;
     SIZE_T stackFree = stackCommitted > stackUsed ? stackCommitted - stackUsed : 0;
 
-    // Nachricht anzeigen
+    // Stackinformationen formatieren
     std::wostringstream oss;
-    oss << L"Stack Base: " << stackBase << L"\n"
+    oss << L"Stack Base Address: " << stackBase << L"\n"
+        << L"Stack Limit Address: " << stackLimit << L"\n"
         << L"Current Stack Pointer: " << currentStackPointer << L"\n"
+        << L"Stack Reserved Size: " << (stackBase - stackLimit) << L" bytes\n"
         << L"Stack Used: " << stackUsed << L" bytes\n"
-        << L"Stack Free: " << stackFree << L" bytes\n"
-        << L"Stack Committed: " << stackCommitted << L" bytes";
+        << L"Stack Free: " << stackFree << L" bytes\n";
 
-    MessageBoxW(NULL, oss.str().c_str(), L"Stack Usage Info", MB_OK | MB_ICONINFORMATION);
+    MessageBoxW(NULL, oss.str().c_str(), L"Full Stack Info", MB_OK | MB_ICONINFORMATION);
 }
-
 
 INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -2220,21 +2555,20 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
     case WM_INITDIALOG:
     {
+        // checkFullStackInfo();
         dpiMgr = new DPIManager(_hSelf);
-        checkStackUsage();
         loadLanguage();
         initializeWindowSize();
         pointerToScintilla();
         initializeMarkerStyle();
-        MessageBoxW(_hSelf, L"Debug: Before initializeCtrlMap", L"DEBUG", MB_OK | MB_ICONINFORMATION);
         initializeCtrlMap();
-        MessageBoxW(_hSelf, L"Debug: After initializeCtrlMap", L"DEBUG", MB_OK | MB_ICONINFORMATION);
         initializeFontStyles();
         loadSettings();
         updateTwoButtonsVisibility();
         initializeListView();
         initializeDragAndDrop();
         adjustWindowSize();
+        // checkFullStackInfo();
 
         // Activate Dark Mode
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
@@ -2439,12 +2773,22 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // Ensure valid item index, as subItem 0 could refer to the first column or an invalid click area.
                 // This prevents accidental actions when clicking outside valid list items.
                 if (itemIndex >= 0 && itemIndex < static_cast<int>(replaceListData.size())) {
-                    if (columnIndices[ColumnID::DELETE_BUTTON] != -1 && subItem == columnIndices[ColumnID::DELETE_BUTTON]) {
+                    ColumnID columnID = getColumnIDFromIndex(subItem);
+
+                    switch (columnID) {
+                    case ColumnID::DELETE_BUTTON:
                         handleDeletion(pnmia);
-                    }
-                    else if (columnIndices[ColumnID::SELECTION] != -1 && subItem == columnIndices[ColumnID::SELECTION]) {
+                        break;
+
+                    case ColumnID::SELECTION:
+                    {
                         bool currentSelectionStatus = replaceListData[itemIndex].isEnabled;
                         setSelections(!currentSelectionStatus, true);
+                    }
+                    break;
+
+                    default:
+                        break;
                     }
                 }
                 return TRUE;
@@ -2458,7 +2802,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
                 if (itemIndex != -1 && clickedColumn != -1) {
                     if (doubleClickEditsEnabled) {
-                        handleEditOnDoubleClick(itemIndex, clickedColumn);
+                        ColumnID columnID = getColumnIDFromIndex(clickedColumn);
+                        handleEditOnDoubleClick(itemIndex, columnID);
                     }
                     else {
                         handleCopyBack(pnmia);
@@ -2956,8 +3301,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_SAVE_AS_BUTTON:
         case IDC_SAVE_TO_CSV_BUTTON:
         {
-            // Use the promptSaveListToCsv function to get the file path
             std::wstring filePath = promptSaveListToCsv();
+
+            if (!filePath.empty()) {
+                saveListToCsv(filePath, replaceListData);
+
+                // For "Save As", update the global listFilePath to the new file path
+                if (wParam == IDC_SAVE_AS_BUTTON) {
+                    listFilePath = filePath;
+                }
+            }
+            ;
 
             return TRUE;
         }
@@ -3060,6 +3414,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             performItemAction(_contextMenuClickPoint, ItemAction::Search);
             return TRUE;
         }
+
+        case IDM_UNDO: {
+            performItemAction(_contextMenuClickPoint, ItemAction::Undo);
+            return TRUE;
+        }
+
+        case IDM_REDO:
+            performItemAction(_contextMenuClickPoint, ItemAction::Redo);
+            return TRUE;
 
         case IDM_COPY_DATA_TO_FIELDS:
         {
@@ -3376,10 +3739,14 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
             int previousLineStartPosition = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
 
+            // Setting FNAME and FPATH
+            setLuaFileVars(vars);
+
             if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
                 ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
                 vars.COL = static_cast<int>(columnInfo.startColumnIndex);
             }
+
             vars.CNT = 1;
             vars.LCNT = 1;
             vars.APOS = static_cast<int>(searchResult.pos) + 1;
@@ -3461,6 +3828,14 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             if (currentLineIndex != previousLineIndex) {
                 lineFindCount = 0;
                 previousLineIndex = currentLineIndex;
+            }
+
+            // Setting FNAME and FPATH
+            setLuaFileVars(vars);
+
+            if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
+                ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
+                vars.COL = static_cast<int>(columnInfo.startColumnIndex);
             }
 
             lineFindCount++;
@@ -3574,6 +3949,7 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                     std::string localReplaceTextUtf8 = wstringToString(replaceListData[i].replaceText);
                     bool skipReplace = false;
                     LuaVariables vars;
+                    setLuaFileVars(vars);   // Setting FNAME and FPATH
                     if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, replaceListData[i].regex)) {
                         return false;
                     }
@@ -3732,6 +4108,8 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     luaL_dostring(L, "APOS = math.tointeger(APOS)");
     luaL_dostring(L, "COL = math.tointeger(COL)");
 
+    setLuaVariable(L, "FPATH", vars.FPATH);
+    setLuaVariable(L, "FNAME", vars.FNAME);
     setLuaVariable(L, "MATCH", vars.MATCH);
     // Get CAPs from Scintilla using SCI_GETTAG
     std::vector<std::string> capNames;  // Vector to store the names of the set CAP variables for DEBUG Window
@@ -4083,6 +4461,26 @@ void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std:
         lua_pushstring(L, value.c_str());
     }
     lua_setglobal(L, varName.c_str()); // Set the global variable in Lua
+}
+
+void MultiReplace::setLuaFileVars(LuaVariables& vars) {
+    wchar_t filePathBuffer[MAX_PATH] = { 0 };
+    wchar_t fileNameBuffer[MAX_PATH] = { 0 };
+
+    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(filePathBuffer));
+    ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH, reinterpret_cast<LPARAM>(fileNameBuffer));
+
+    std::string filePath = wstringToString(std::wstring(filePathBuffer));
+    std::string fileName = wstringToString(std::wstring(fileNameBuffer));
+
+    if (!filePath.empty() && (filePath.find('\\') != std::string::npos || filePath.find('/') != std::string::npos)) {
+        vars.FPATH = filePath; // Assign the full path if valid
+    }
+    else {
+        vars.FPATH.clear(); // Clear FPATH if it's not a valid path
+    }
+
+    vars.FNAME = fileName; // Assign the extracted file name
 }
 
 #pragma endregion
@@ -6524,12 +6922,14 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
         return;
     }
 
-    int i = 0;
-    do {
-        if (!onlySelected || ListView_GetItemState(_replaceListView, i, LVIS_SELECTED)) {
+    // Store the original data for all affected items
+    std::vector<std::pair<size_t, ReplaceItemData>> originalDataList;
+    for (size_t i = 0; i < replaceListData.size(); ++i) {
+        if (!onlySelected || ListView_GetItemState(_replaceListView, static_cast<int>(i), LVIS_SELECTED)) {
+            originalDataList.emplace_back(i, replaceListData[i]);
             replaceListData[i].isEnabled = select;
         }
-    } while ((i = ListView_GetNextItem(_replaceListView, i, LVNI_ALL)) != -1);
+    }
 
     // Update the allSelected flag if all items were selected/deselected
     if (!onlySelected) {
@@ -6539,8 +6939,37 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
     // Update the header after changing the selection status of the items
     updateHeaderSelection();
 
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
+    // Update the ListView
+    for (const auto& [index, _] : originalDataList) {
+        updateListViewItem(index);
+    }
+
+    // Clear the redoStack
+    redoStack.clear();
+
+    // Create Undo/Redo actions
+    UndoRedoAction action;
+
+    // Undo action: Restore the original data
+    action.undoAction = [this, originalDataList]() {
+        for (const auto& [index, data] : originalDataList) {
+            replaceListData[index] = data;
+            updateListViewItem(index);
+        }
+        updateHeaderSelection();
+        };
+
+    // Redo action: Apply the new selection status
+    action.redoAction = [this, originalDataList]() {
+        for (const auto& [index, data] : originalDataList) {
+            replaceListData[index].isEnabled = !data.isEnabled;
+            updateListViewItem(index);
+        }
+        updateHeaderSelection();
+        };
+
+    // Push the action onto the undoStack
+    undoStack.push_back(action);
 }
 
 void MultiReplace::updateHeaderSelection() {
@@ -7878,7 +8307,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     std::wstring replaceText = readStringFromIniFile(iniFilePath, L"Current", L"ReplaceText", L"");
     setTextInDialogItem(_hSelf, IDC_FIND_EDIT, findText);
     setTextInDialogItem(_hSelf, IDC_REPLACE_EDIT, replaceText);
-
+    
     // Setting options based on the INI file
     bool wholeWord = readBoolFromIniFile(iniFilePath, L"Options", L"WholeWord", false);
     SendMessage(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), BM_SETCHECK, wholeWord ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -7911,7 +8340,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
     bool replaceButtonsMode = readBoolFromIniFile(iniFilePath, L"Options", L"ButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
-
+    
     useListEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", true);
     updateUseListState(false);
 
@@ -7963,7 +8392,7 @@ void MultiReplace::loadSettings() {
     auto [iniFilePath, csvFilePath] = generateConfigFilePaths();
 
     try {
-        loadSettingsFromIni(iniFilePath);
+        loadSettingsFromIni(iniFilePath);        
         loadListFromCsvSilent(csvFilePath, replaceListData);
     }
     catch (const CsvLoadException& ex) {
@@ -7972,7 +8401,6 @@ void MultiReplace::loadSettings() {
         // MessageBox(NULL, errorMessage.c_str(), L"Error", MB_OK | MB_ICONERROR);
     }
     updateHeaderSelection();
-
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
 
@@ -7980,6 +8408,25 @@ void MultiReplace::loadSettings() {
 
 void MultiReplace::loadUIConfigFromIni() {
     auto [iniFilePath, _] = generateConfigFilePaths(); // Generating config file paths
+
+    if (!dpiMgr) {
+        MessageBoxA(NULL, "DPI Manager is not initialized!", "Error", MB_OK | MB_ICONERROR);
+    }
+
+    // Initialize DPI Manager if not already done
+    if (!dpiMgr) {
+        dpiMgr = new DPIManager(_hSelf); // Use the current window handle
+        MessageBoxA(NULL, "DPIManager: Initialization finished", "Debug", MB_OK);
+    }
+
+    if (!dpiMgr) {
+        MessageBoxA(NULL, "DPI Manager initialization failed!", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    else
+    {
+        MessageBoxA(NULL, "DPIManager: is correctly initialized", "Debug", MB_OK);
+    }
 
     // Load DPI Scaling factor from INI file
     float customScaleFactor = readFloatFromIniFile(iniFilePath, L"Window", L"ScaleFactor", 1.0f);
