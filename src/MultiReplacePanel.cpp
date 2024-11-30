@@ -2521,21 +2521,42 @@ void MultiReplace::handleEditOnDoubleClick(int itemIndex, ColumnID columnID) {
 
 #pragma region Dialog
 
-void checkStackUsage() {
-    MEMORY_BASIC_INFORMATION mbi;
+typedef struct _THREAD_BASIC_INFORMATION {
+    PVOID Reserved1;
+    PVOID TebBaseAddress;
+    PVOID Reserved2[2];
+    ULONG_PTR UniqueThreadId;
+    ULONG_PTR Reserved3;
+} THREAD_BASIC_INFORMATION;
 
-    // VirtualQuery prüfen, ob sie erfolgreich ist
-    if (VirtualQuery(&mbi, &mbi, sizeof(mbi)) == 0) {
-        MessageBoxW(NULL, L"VirtualQuery failed!", L"Error", MB_OK | MB_ICONERROR);
+typedef NTSTATUS(WINAPI* NtQueryInformationThread_t)(
+    HANDLE ThreadHandle,
+    ULONG ThreadInformationClass,
+    PVOID ThreadInformation,
+    ULONG ThreadInformationLength,
+    PULONG ReturnLength
+    );
+
+void checkFullStackInfo() {
+    // Zugriff auf den Thread Environment Block (TEB)
+    NT_TIB* tib = (NT_TIB*)NtCurrentTeb();
+
+    // Stack Base und Limit direkt aus der TEB
+    DWORD_PTR stackBase = (DWORD_PTR)tib->StackBase;
+    DWORD_PTR stackLimit = (DWORD_PTR)tib->StackLimit;
+
+    // Aktueller Stack-Pointer (liegt garantiert im gültigen Bereich)
+    DWORD_PTR currentStackPointer = (DWORD_PTR)&stackBase;
+
+    // Validierung: Liegt der Stack-Pointer im gültigen Bereich?
+    if (currentStackPointer < stackLimit || currentStackPointer > stackBase) {
+        MessageBoxW(NULL, L"Current Stack Pointer is out of range!", L"Error", MB_OK | MB_ICONERROR);
         return;
     }
 
-    // Speicherwerte berechnen, wenn VirtualQuery erfolgreich war
-    DWORD_PTR stackBase = (DWORD_PTR)mbi.AllocationBase;
-    DWORD_PTR currentStackPointer = (DWORD_PTR)&mbi;
-    SIZE_T stackUsed = stackBase > currentStackPointer ? stackBase - currentStackPointer : 0;
-    SIZE_T stackCommitted = mbi.RegionSize;
-    SIZE_T stackFree = stackCommitted > stackUsed ? stackCommitted - stackUsed : 0;
+    // Berechnungen für verwendeten und freien Stack
+    SIZE_T stackUsed = stackBase - currentStackPointer;
+    SIZE_T stackFree = currentStackPointer - stackLimit;
 
     // Stackinformationen formatieren
     std::wostringstream oss;
@@ -2548,6 +2569,7 @@ void checkStackUsage() {
 
     MessageBoxW(NULL, oss.str().c_str(), L"Full Stack Info", MB_OK | MB_ICONINFORMATION);
 }
+
 
 INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -2568,7 +2590,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializeListView();
         initializeDragAndDrop();
         adjustWindowSize();
-        // checkFullStackInfo();
 
         // Activate Dark Mode
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
@@ -8408,25 +8429,6 @@ void MultiReplace::loadSettings() {
 
 void MultiReplace::loadUIConfigFromIni() {
     auto [iniFilePath, _] = generateConfigFilePaths(); // Generating config file paths
-
-    if (!dpiMgr) {
-        MessageBoxA(NULL, "DPI Manager is not initialized!", "Error", MB_OK | MB_ICONERROR);
-    }
-
-    // Initialize DPI Manager if not already done
-    if (!dpiMgr) {
-        dpiMgr = new DPIManager(_hSelf); // Use the current window handle
-        MessageBoxA(NULL, "DPIManager: Initialization finished", "Debug", MB_OK);
-    }
-
-    if (!dpiMgr) {
-        MessageBoxA(NULL, "DPI Manager initialization failed!", "Error", MB_OK | MB_ICONERROR);
-        return;
-    }
-    else
-    {
-        MessageBoxA(NULL, "DPIManager: is correctly initialized", "Debug", MB_OK);
-    }
 
     // Load DPI Scaling factor from INI file
     float customScaleFactor = readFloatFromIniFile(iniFilePath, L"Window", L"ScaleFactor", 1.0f);
