@@ -2047,7 +2047,7 @@ void MultiReplace::pasteItemsIntoList() {
         std::vector<std::wstring> columns = parseCsvLine(line);
 
         // Check for proper column count and non-empty findText before adding to the list
-        if ((columns.size() != 8 && columns.size() != 9) || columns[1].empty()) continue;
+        if ((columns.size() != 8 && columns.size() != 9)) continue;
 
         ReplaceItemData item;
         try {
@@ -2080,6 +2080,7 @@ void MultiReplace::pasteItemsIntoList() {
         else {
             replaceListData.push_back(item);
             insertedItemsIndices.push_back(static_cast<int>(replaceListData.size() - 1)); // Track inserted item index at the end
+            ++insertPosition;
         }
     }
 
@@ -2926,9 +2927,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_SAVE_AS_BUTTON:
         case IDC_SAVE_TO_CSV_BUTTON:
         {
-            // Use the promptSaveListToCsv function to get the file path
             std::wstring filePath = promptSaveListToCsv();
 
+            if (!filePath.empty()) {
+                saveListToCsv(filePath, replaceListData);
+
+                // For "Save As", update the global listFilePath to the new file path
+                if (wParam == IDC_SAVE_AS_BUTTON) {
+                    listFilePath = filePath;
+                }
+            }
+            
             return TRUE;
         }
 
@@ -3346,6 +3355,9 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
             int previousLineStartPosition = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
 
+            // Setting FNAME and FPATH
+            setLuaFileVars(vars);
+
             if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
                 ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
                 vars.COL = static_cast<int>(columnInfo.startColumnIndex);
@@ -3426,6 +3438,9 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
             int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
             int previousLineStartPosition = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
+
+            // Setting FNAME and FPATH
+            setLuaFileVars(vars);
 
             // Reset lineReplaceCount if the line has changed
             if (currentLineIndex != previousLineIndex) {
@@ -3544,6 +3559,7 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                     std::string localReplaceTextUtf8 = wstringToString(replaceListData[i].replaceText);
                     bool skipReplace = false;
                     LuaVariables vars;
+                    setLuaFileVars(vars);   // Setting FNAME and FPATH
                     if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, replaceListData[i].regex)) {
                         return false;
                     }
@@ -3702,6 +3718,8 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     luaL_dostring(L, "APOS = math.tointeger(APOS)");
     luaL_dostring(L, "COL = math.tointeger(COL)");
 
+    setLuaVariable(L, "FPATH", vars.FPATH);
+    setLuaVariable(L, "FNAME", vars.FNAME);
     setLuaVariable(L, "MATCH", vars.MATCH);
     // Get CAPs from Scintilla using SCI_GETTAG
     std::vector<std::string> capNames;  // Vector to store the names of the set CAP variables for DEBUG Window
@@ -4054,6 +4072,27 @@ void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std:
     }
     lua_setglobal(L, varName.c_str()); // Set the global variable in Lua
 }
+
+void MultiReplace::setLuaFileVars(LuaVariables& vars) {
+    wchar_t filePathBuffer[MAX_PATH] = { 0 };
+    wchar_t fileNameBuffer[MAX_PATH] = { 0 };
+
+    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(filePathBuffer));
+    ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH, reinterpret_cast<LPARAM>(fileNameBuffer));
+
+    std::string filePath = wstringToString(std::wstring(filePathBuffer));
+    std::string fileName = wstringToString(std::wstring(fileNameBuffer));
+
+    if (!filePath.empty() && (filePath.find('\\') != std::string::npos || filePath.find('/') != std::string::npos)) {
+        vars.FPATH = filePath; // Assign the full path if valid
+    }
+    else {
+        vars.FPATH.clear(); // Clear FPATH if it's not a valid path
+    }
+
+    vars.FNAME = fileName; // Assign the extracted file name
+}
+
 
 #pragma endregion
 

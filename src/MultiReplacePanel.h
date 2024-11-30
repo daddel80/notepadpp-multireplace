@@ -209,6 +209,8 @@ struct LuaVariables {
     int APOS = 0;
     int COL = 0;
     std::string MATCH = "";
+    std::string FPATH = "";
+    std::string FNAME = "";
 };
 
 enum class LuaVariableType {
@@ -604,6 +606,7 @@ private:
     std::string escapeForRegex(const std::string& input);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
     void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
+    void setLuaFileVars(LuaVariables& vars);
 
     //DebugWindow
     int ShowDebugWindow(const std::string& message);
