@@ -1,6 +1,6 @@
 # MultiReplace for Notepad++
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-4.1.0.20-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.1.0.20)
+[![Latest Stable Version](https://img.shields.io/badge/version-4.1.1.21-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.1.1.21)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, perfect for use across different sessions or projects. It increases efficiency by enabling multiple replacements at once, supports sorting and applying operations to specific columns in CSV files, and offers flexible options for replacing text in various ways.
@@ -102,6 +102,8 @@ Activate the '**Use Variables**' checkbox to employ variables associated with sp
 | **LCNT** | Count of the detected string within the line. |
 | **COL**  | Column number where the string was found (CSV-Scope option selected).|
 | **MATCH**| Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
+| **FNAME**| Filename or window title for new, unsaved files. |
+| **FPATH**| Full path including the filename, or empty for new, unsaved files. |
 | **CAP1**, **CAP2**, ...  | These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.|
 
 **Decimal Separator**<br>
