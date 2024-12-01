@@ -179,8 +179,6 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     return minSize;
 }
 
-
-
 void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 {
     // Helper functions sx() and sy() are used to scale values for DPI awareness.
@@ -224,9 +222,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(176), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(163), sy(104), WC_BUTTON, getLangStrLPCWSTR(L"panel_search_mode"), BS_GROUPBOX, NULL };
-    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(146), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(146), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(146), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(150), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(150), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(150), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_SCOPE_GROUP] = { sx(357), sy(79), sx(198), sy(125), WC_BUTTON, getLangStrLPCWSTR(L"panel_scope"), BS_GROUPBOX, NULL };
     ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(365), sy(101), sx(184), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
@@ -2330,8 +2328,7 @@ bool MultiReplace::canPasteFromClipboard() {
                 std::vector<std::wstring> columns = parseCsvLine(line);
 
                 // For the format to be considered valid, ensure each line has the correct number of columns
-                // and the second column (findText) must not be empty for a line to be valid
-                if ((columns.size() == 8 || columns.size() == 9) && !columns[1].empty()) {
+                if ((columns.size() == 8 || columns.size() == 9) ) {
                     canPaste = true; // Found at least one valid line, no need to check further
                 }
             }
@@ -2414,12 +2411,12 @@ void MultiReplace::pasteItemsIntoList() {
         if (static_cast<size_t>(insertPosition) < replaceListData.size()) {
             replaceListData.insert(replaceListData.begin() + insertPosition, item);
             insertedItemsIndices.push_back(insertPosition); // Track inserted item index
-            ++insertPosition; // Adjust position for the next insert
         }
         else {
             replaceListData.push_back(item);
             insertedItemsIndices.push_back(static_cast<int>(replaceListData.size() - 1)); // Track inserted item index at the end
         }
+        ++insertPosition;
     }
 
     // Selecting newly inserted items in the list view
@@ -3356,6 +3353,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_LOAD_LIST_BUTTON:
         case IDC_LOAD_FROM_CSV_BUTTON:
         {
+            // Check for unsaved changes before proceeding
+            int userChoice = checkForUnsavedChanges();
+            if (userChoice == IDCANCEL) {
+                return TRUE;
+            }
+
             std::wstring csvDescription = getLangStr(L"filetype_csv");  // "CSV Files (*.csv)"
             std::wstring allFilesDescription = getLangStr(L"filetype_all_files");  // "All Files (*.*)"
 
@@ -7652,11 +7655,11 @@ int MultiReplace::checkForUnsavedChanges() {
         if (!listFilePath.empty()) {
             // Get the shortened file path and build the message
             std::wstring shortenedFilePath = getShortenedFilePath(listFilePath, 500);
-            message = getLangStr(L"msgbox_save_list_file", { shortenedFilePath });
+            message = getLangStr(L"msgbox_unsaved_changes_file", { shortenedFilePath });
         }
         else {
             // If no file is associated, use the alternative message
-            message = getLangStr(L"msgbox_save_list");
+            message = getLangStr(L"msgbox_unsaved_changes");
         }
 
         // Show the MessageBox with the appropriate message
@@ -7750,31 +7753,45 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 }
 
 void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
+
+    // Check for unsaved data
+    if (checkForUnsavedChanges() == IDCANCEL) {
+        return;
+    }
+
     try {
         loadListFromCsvSilent(filePath, replaceListData);
+
         // Store the file path only if loading was successful
         listFilePath = filePath;
+
         // Display the path below the list
         showListFilePath();
+
         // Calculate the original list hash after loading
         originalListHash = computeListHash(replaceListData);
+
+        // Clear the Undo and Redo stacks after successful load
+        undoStack.clear();
+        redoStack.clear();
+
+        // Update the list view control
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Show success message
+        if (replaceListData.empty()) {
+            showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), COLOR_ERROR);
+        }
+        else {
+            showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), COLOR_SUCCESS);
+        }
     }
     catch (const CsvLoadException& ex) {
         // Resolve the error key to a localized string when displaying the message
         showStatusMessage(stringToWString(ex.what()), COLOR_ERROR);
         return;
     }
-
-    if (replaceListData.empty()) {
-        showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), COLOR_ERROR);
-    }
-    else {
-        showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), COLOR_SUCCESS);
-    }
-
-    // Update the list view control, if necessary
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
 void MultiReplace::checkForFileChangesAtStartup() {
