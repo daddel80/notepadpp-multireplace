@@ -2960,6 +2960,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_LOAD_LIST_BUTTON:
         case IDC_LOAD_FROM_CSV_BUTTON:
         {
+            // Check for unsaved changes before proceeding
+            int userChoice = checkForUnsavedChanges();
+            if (userChoice == IDCANCEL) {
+                return TRUE;
+            }
+
             std::wstring csvDescription = getLangStr(L"filetype_csv");  // "CSV Files (*.csv)"
             std::wstring allFilesDescription = getLangStr(L"filetype_all_files");  // "All Files (*.*)"
 
@@ -7211,11 +7217,11 @@ int MultiReplace::checkForUnsavedChanges() {
         if (!listFilePath.empty()) {
             // Get the shortened file path and build the message
             std::wstring shortenedFilePath = getShortenedFilePath(listFilePath, 500);
-            message = getLangStr(L"msgbox_save_list_file", { shortenedFilePath });
+            message = getLangStr(L"msgbox_unsaved_changes_file", { shortenedFilePath });
         }
         else {
             // If no file is associated, use the alternative message
-            message = getLangStr(L"msgbox_save_list");
+            message = getLangStr(L"msgbox_unsaved_changes");
         }
 
         // Show the MessageBox with the appropriate message
@@ -7309,6 +7315,12 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 }
 
 void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
+    
+    // Check for unsaved data
+    if (checkForUnsavedChanges() == IDCANCEL) {
+        return;
+    }
+
     try {
         loadListFromCsvSilent(filePath, replaceListData);
         // Store the file path only if loading was successful
@@ -7317,23 +7329,24 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         showListFilePath();
         // Calculate the original list hash after loading
         originalListHash = computeListHash(replaceListData);
+
+        // Update the list view control
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Show success message
+        if (replaceListData.empty()) {
+            showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), COLOR_ERROR);
+        }
+        else {
+            showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), COLOR_SUCCESS);
+        }
     }
     catch (const CsvLoadException& ex) {
         // Resolve the error key to a localized string when displaying the message
         showStatusMessage(stringToWString(ex.what()), COLOR_ERROR);
         return;
     }
-
-    if (replaceListData.empty()) {
-        showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), COLOR_ERROR);
-    }
-    else {
-        showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), COLOR_SUCCESS);
-    }
-
-    // Update the list view control, if necessary
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
 }
 
 void MultiReplace::checkForFileChangesAtStartup() {
