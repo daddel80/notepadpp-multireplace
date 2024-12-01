@@ -7754,11 +7754,6 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
 void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
 
-    // Check for unsaved data
-    if (checkForUnsavedChanges() == IDCANCEL) {
-        return;
-    }
-
     try {
         loadListFromCsvSilent(filePath, replaceListData);
 
