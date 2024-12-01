@@ -101,6 +101,8 @@ Activate the '**Use Variables**' checkbox to employ variables associated with sp
 | **LPOS** | Relative line position. |
 | **LCNT** | Count of the detected string within the line. |
 | **COL**  | Column number where the string was found (CSV-Scope option selected).|
+| **FNAME**| Filename or window title for new, unsaved files. |
+| **FPATH**| Full path including the filename, or empty for new, unsaved files. |
 | **MATCH**| Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
 | **CAP1**, **CAP2**, ...  | These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.|
 
