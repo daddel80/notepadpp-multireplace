@@ -135,7 +135,7 @@
 // Default window position and dimensions
 #define POS_X 92
 #define POS_Y 40
-#define MIN_WIDTH 743
+#define MIN_WIDTH 748
 #define MIN_HEIGHT 400
 #define SHRUNK_HEIGHT 224
 
