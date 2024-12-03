@@ -505,6 +505,11 @@ private:
     int boxWidth_scaled;
     bool highlightMatchEnabled;  // HighlightMatch during Find in List
     std::map<ColumnID, int> columnIndices;  // Mapping of ColumnID to ColumnIndex due to dynamic Columns
+    int lastTooltipRow;
+    int lastTooltipSubItem;
+    int lastMouseX;
+    int lastMouseY;
+    bool isHoverTextEnabled = false; // Important to set on false as TIMER will be triggered at startup.
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
@@ -596,6 +601,7 @@ private:
     ColumnID getColumnIDFromIndex(int columnIndex) const;
     int getColumnIndexFromID(ColumnID columnID) const;
     void updateListViewItem(size_t index);
+    bool isTextTruncated(const std::wstring& text, RECT rect);
 
     //Contextmenu Display Columns
     void showColumnVisibilityMenu(HWND hWnd, POINT pt);
