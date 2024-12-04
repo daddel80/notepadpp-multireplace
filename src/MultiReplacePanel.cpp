@@ -680,14 +680,21 @@ void MultiReplace::redo() {
         showStatusMessage(L"Nothing to redo.", COLOR_INFO);
     }
 }
+/*
+void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& items, size_t insertPosition = std::numeric_limits<size_t>::max()) {
+    // Determine the insert position
+    if (insertPosition > replaceListData.size()) {
+        insertPosition = replaceListData.size();
+    }
 
-void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& items) {
-    size_t startIndex = replaceListData.size();
-    replaceListData.insert(replaceListData.end(), items.begin(), items.end());
-    size_t endIndex = replaceListData.size() - 1;
+    size_t startIndex = insertPosition;
+    size_t endIndex = startIndex + items.size() - 1;
+
+    // Insert items at the specified position
+    replaceListData.insert(replaceListData.begin() + insertPosition, items.begin(), items.end());
 
     // Update the ListView
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
 
     // Clear the redoStack since a new action invalidates the redo history
@@ -702,30 +709,45 @@ void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& ite
         replaceListData.erase(replaceListData.begin() + startIndex, replaceListData.begin() + endIndex + 1);
 
         // Update the ListView
-        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
         };
 
     // Redo action: Re-insert the items
-    std::vector<ReplaceItemData> itemsToRedo = std::vector<ReplaceItemData>(replaceListData.begin() + startIndex, replaceListData.begin() + endIndex + 1);
-    action.redoAction = [this, itemsToRedo, startIndex]() {
+    std::vector<ReplaceItemData> itemsToRedo(items); // Copy of items to redo
+    action.redoAction = [this, itemsToRedo, startIndex, endIndex]() {
         replaceListData.insert(replaceListData.begin() + startIndex, itemsToRedo.begin(), itemsToRedo.end());
 
         // Update the ListView
-        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+        // Select the re-inserted items
+        for (size_t i = startIndex; i <= endIndex; ++i) {
+            ListView_SetItemState(_replaceListView, static_cast<int>(i), LVIS_SELECTED, LVIS_SELECTED);
+        }
+
+        // Ensure visibility of the inserted items
+        scrollToEnsureItemsVisible(startIndex, endIndex);
         };
+
 
     // Push the action onto the undoStack
     undoStack.push_back(action);
 }
 
 void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove) {
-    // Sort the indices in descending order to avoid shifting issues during removal
+    // Sort indices in descending order to handle shifting issues during removal
     std::vector<size_t> sortedIndices = indicesToRemove;
     std::sort(sortedIndices.rbegin(), sortedIndices.rend());
 
-    // Store the items to be removed, including their indices
+    // Store removed items along with their indices for undo purposes
     std::vector<std::pair<size_t, ReplaceItemData>> removedItemsWithIndices;
     for (size_t index : sortedIndices) {
         if (index < replaceListData.size()) {
@@ -734,17 +756,17 @@ void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indices
         }
     }
 
-    // Update the ListView
+    // Update the ListView to reflect changes
     ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
 
-    // Clear the redoStack
+    // Clear redoStack since a new action invalidates redo history
     redoStack.clear();
 
-    // Create undo and redo lambdas
+    // Create undo and redo actions
     UndoRedoAction action;
 
-    // Undo action: Re-insert the removed items at their original positions
+    // Undo action: Reinsert the removed items at their original positions
     action.undoAction = [this, removedItemsWithIndices]() {
         for (auto it = removedItemsWithIndices.rbegin(); it != removedItemsWithIndices.rend(); ++it) {
             const auto& [index, item] = *it;
@@ -753,21 +775,33 @@ void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indices
             }
         }
 
-        // Update the ListView
+        // Update the ListView to include restored items
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, NULL, TRUE);
 
-        // Reselect the restored rows
+        // Deselect all items before reselecting restored ones
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+        // Select restored rows
         for (const auto& [index, _] : removedItemsWithIndices) {
             if (index < replaceListData.size()) {
                 ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
             }
         }
+
+        // Calculate visible range and ensure restored rows are visible
+        std::vector<size_t> indices;
+        for (const auto& [index, _] : removedItemsWithIndices) {
+            indices.push_back(index);
+        }
+        size_t firstIndex = *std::min_element(indices.begin(), indices.end());
+        size_t lastIndex = *std::max_element(indices.begin(), indices.end());
+        scrollToEnsureItemsVisible(firstIndex, lastIndex);
         };
 
     // Redo action: Remove the same items again
     action.redoAction = [this, removedItemsWithIndices]() {
-        // Sort indices in descending order to avoid shifting issues during removal
+        // Sort indices in descending order to avoid shifting issues
         std::vector<size_t> sortedIndices;
         for (const auto& [index, _] : removedItemsWithIndices) {
             sortedIndices.push_back(index);
@@ -780,68 +814,67 @@ void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indices
             }
         }
 
-        // Update the ListView
+        // Update the ListView to reflect removal
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
         };
 
-    // Push the action onto the undoStack
+    // Push the action to the undoStack
     undoStack.push_back(action);
 }
 
 void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& newData) {
-    // Ursprüngliche Daten speichern
+    // Store the original data
     ReplaceItemData originalData = replaceListData[index];
 
-    // Eintrag modifizieren
+    // Modify the item
     replaceListData[index] = newData;
 
-    // ListView aktualisieren
+    // Update the ListView item
     updateListViewItem(index);
 
-    // Redo-Stack leeren
+    // Clear the redoStack
     redoStack.clear();
 
-    // Undo/Redo-Aktionen erstellen
+    // Create Undo/Redo actions
     UndoRedoAction action;
 
-    // Undo-Aktion: Ursprüngliche Daten wiederherstellen
+    // Undo action: Restore the original data
     action.undoAction = [this, index, originalData]() {
         replaceListData[index] = originalData;
         updateListViewItem(index);
 
-        // Alle Selektionen aufheben
+        // Deselect all items
         ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
 
-        // Spezifische Zeile selektieren
+        // Select and ensure visibility of the modified item
         ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
+        scrollToEnsureItemsVisible(index, index);
 
-        // Sicherstellen, dass die Zeile sichtbar ist
-        ListView_EnsureVisible(_replaceListView, static_cast<int>(index), FALSE);
-
-        // Fokus auf die ListView setzen
+        // Set focus to the ListView
         SetFocus(_replaceListView);
         };
 
-    // Redo-Aktion: Neue Daten erneut anwenden
+    // Redo action: Apply the new data again
     action.redoAction = [this, index, newData]() {
         replaceListData[index] = newData;
         updateListViewItem(index);
 
-        // Alle Selektionen aufheben
+        // Deselect all items
         ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
 
-        // Spezifische Zeile selektieren
+        // Select and ensure visibility of the modified item
         ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
+        scrollToEnsureItemsVisible(index, index);
 
-        // Sicherstellen, dass die Zeile sichtbar ist
-        ListView_EnsureVisible(_replaceListView, static_cast<int>(index), FALSE);
-
-        // Fokus auf die ListView setzen
+        // Set focus to the ListView
         SetFocus(_replaceListView);
         };
 
-    // Aktion auf den undoStack legen
+    // Push the action onto the undoStack
     undoStack.push_back(action);
 }
 
@@ -879,7 +912,7 @@ void MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, Di
     }
 
     // Update the ListView
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
 
     // Create Undo/Redo actions
@@ -892,13 +925,21 @@ void MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, Di
         }
 
         // Update the ListView
-        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
 
         // Reselect the original positions
         for (size_t idx : preMoveIndices) {
-            ListView_SetItemState(_replaceListView, idx, LVIS_SELECTED, LVIS_SELECTED);
+            ListView_SetItemState(_replaceListView, static_cast<int>(idx), LVIS_SELECTED, LVIS_SELECTED);
         }
+
+        // Ensure visibility of the moved items
+        size_t firstIndex = preMoveIndices.front();
+        size_t lastIndex = preMoveIndices.back();
+        scrollToEnsureItemsVisible(firstIndex, lastIndex);
         };
 
     action.redoAction = [this, preMoveIndices, postMoveIndices]() {
@@ -908,13 +949,21 @@ void MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, Di
         }
 
         // Update the ListView
-        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
 
         // Reselect the moved positions
         for (size_t idx : postMoveIndices) {
-            ListView_SetItemState(_replaceListView, idx, LVIS_SELECTED, LVIS_SELECTED);
+            ListView_SetItemState(_replaceListView, static_cast<int>(idx), LVIS_SELECTED, LVIS_SELECTED);
         }
+
+        // Ensure visibility of the moved items
+        size_t firstIndex = postMoveIndices.front();
+        size_t lastIndex = postMoveIndices.back();
+        scrollToEnsureItemsVisible(firstIndex, lastIndex);
         };
 
     // Push the action onto the undoStack
@@ -923,9 +972,421 @@ void MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, Di
     // Clear the redoStack
     redoStack.clear();
 
+    // Deselect all items
+    ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
     // Select the moved rows in their new positions
     for (size_t idx : postMoveIndices) {
-        ListView_SetItemState(_replaceListView, idx, LVIS_SELECTED, LVIS_SELECTED);
+        ListView_SetItemState(_replaceListView, static_cast<int>(idx), LVIS_SELECTED, LVIS_SELECTED);
+    }
+
+    // Ensure the first selected item is visible
+    if (!postMoveIndices.empty()) {
+        ListView_EnsureVisible(_replaceListView, static_cast<int>(postMoveIndices.front()), FALSE);
+    }
+}
+
+void MultiReplace::scrollToEnsureItemsVisible(size_t firstIndex, size_t lastIndex) {
+    if (firstIndex > lastIndex || lastIndex >= replaceListData.size()) {
+        return; // Ungültige Indizes
+    }
+
+    // Größe des Client-Bereichs ermitteln
+    RECT rcClient;
+    GetClientRect(_replaceListView, &rcClient);
+
+    // Höhe eines Listenelements ermitteln
+    int itemHeight = ListView_GetItemSpacing(_replaceListView, TRUE) >> 16;
+
+    // Anzahl der vollständig sichtbaren Elemente berechnen
+    int visibleItemCount = rcClient.bottom / itemHeight;
+
+    // Gewünschte obere Indexposition berechnen
+    int totalItems = static_cast<int>(replaceListData.size());
+    int desiredTopIndex = static_cast<int>(firstIndex) - (visibleItemCount / 2);
+
+    // Grenzen überprüfen
+    if (desiredTopIndex < 0) {
+        desiredTopIndex = 0;
+    }
+    else if (desiredTopIndex + visibleItemCount > totalItems) {
+        desiredTopIndex = totalItems - visibleItemCount;
+        if (desiredTopIndex < 0) {
+            desiredTopIndex = 0;
+        }
+    }
+
+    // Aktuellen Top-Index ermitteln
+    int currentTopIndex = ListView_GetTopIndex(_replaceListView);
+
+    // Scroll-Offset berechnen
+    int scrollItems = desiredTopIndex - currentTopIndex;
+
+    // Scrollen, falls notwendig
+    if (scrollItems != 0) {
+        ListView_Scroll(_replaceListView, 0, scrollItems * itemHeight);
+    }
+}
+*/
+
+void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& items, size_t insertPosition = std::numeric_limits<size_t>::max()) {
+    // Determine the insert position
+    if (insertPosition > replaceListData.size()) {
+        insertPosition = replaceListData.size();
+    }
+
+    size_t startIndex = insertPosition;
+    size_t endIndex = startIndex + items.size() - 1;
+
+    // Insert items at the specified position
+    replaceListData.insert(replaceListData.begin() + insertPosition, items.begin(), items.end());
+
+    // Update the ListView
+    ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+
+    // Clear the redoStack since a new action invalidates the redo history
+    redoStack.clear();
+
+    // Create undo and redo actions
+    UndoRedoAction action;
+
+    // Undo action: Remove the added items
+    action.undoAction = [this, startIndex, endIndex]() {
+        // Remove items from the replace list
+        replaceListData.erase(replaceListData.begin() + startIndex, replaceListData.begin() + endIndex + 1);
+
+        // Update the ListView
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+        // Scroll to the position where items were removed
+        scrollToIndices(startIndex, startIndex);
+        };
+
+    // Redo action: Re-insert the items
+    std::vector<ReplaceItemData> itemsToRedo(items); // Copy of items to redo
+    action.redoAction = [this, itemsToRedo, startIndex, endIndex]() {
+        replaceListData.insert(replaceListData.begin() + startIndex, itemsToRedo.begin(), itemsToRedo.end());
+
+        // Update the ListView
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+        // Select the re-inserted items
+        for (size_t i = startIndex; i <= endIndex; ++i) {
+            ListView_SetItemState(_replaceListView, static_cast<int>(i), LVIS_SELECTED, LVIS_SELECTED);
+        }
+
+        // Ensure visibility of the inserted items
+        scrollToIndices(startIndex, endIndex);
+        };
+
+    // Push the action onto the undoStack
+    undoStack.push_back(action);
+}
+
+void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove) {
+    // Sort indices in descending order to handle shifting issues during removal
+    std::vector<size_t> sortedIndices = indicesToRemove;
+    std::sort(sortedIndices.rbegin(), sortedIndices.rend());
+
+    // Store removed items along with their indices for undo purposes
+    std::vector<std::pair<size_t, ReplaceItemData>> removedItemsWithIndices;
+    for (size_t index : sortedIndices) {
+        if (index < replaceListData.size()) {
+            removedItemsWithIndices.emplace_back(index, replaceListData[index]);
+            replaceListData.erase(replaceListData.begin() + index);
+        }
+    }
+
+    // Update the ListView to reflect changes
+    ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+
+    // Clear redoStack since a new action invalidates redo history
+    redoStack.clear();
+
+    // Create undo and redo actions
+    UndoRedoAction action;
+
+    // Undo action: Re-insert the removed items at their original positions
+    action.undoAction = [this, removedItemsWithIndices]() {
+        for (auto it = removedItemsWithIndices.rbegin(); it != removedItemsWithIndices.rend(); ++it) {
+            const auto& [index, item] = *it;
+            if (index <= replaceListData.size()) {
+                replaceListData.insert(replaceListData.begin() + index, item);
+            }
+        }
+
+        // Update the ListView to include restored items
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+        // Select restored rows
+        for (const auto& [index, _] : removedItemsWithIndices) {
+            if (index < replaceListData.size()) {
+                ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
+            }
+        }
+
+        // Calculate visible range and ensure restored rows are visible
+        std::vector<size_t> indices;
+        for (const auto& [index, _] : removedItemsWithIndices) {
+            indices.push_back(index);
+        }
+        size_t firstIndex = *std::min_element(indices.begin(), indices.end());
+        size_t lastIndex = *std::max_element(indices.begin(), indices.end());
+        scrollToIndices(firstIndex, lastIndex);
+        };
+
+    // Redo action: Remove the same items again
+    action.redoAction = [this, removedItemsWithIndices]() {
+        // Sort indices in descending order to avoid shifting issues
+        std::vector<size_t> sortedIndices;
+        for (const auto& [index, _] : removedItemsWithIndices) {
+            sortedIndices.push_back(index);
+        }
+        std::sort(sortedIndices.rbegin(), sortedIndices.rend());
+
+        for (size_t index : sortedIndices) {
+            if (index < replaceListData.size()) {
+                replaceListData.erase(replaceListData.begin() + index);
+            }
+        }
+
+        // Update the ListView to reflect removal
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+        // Scroll to the position where deletion occurred
+        if (!sortedIndices.empty()) {
+            size_t minIndex = sortedIndices.back(); // Since sortedIndices is descending
+            scrollToIndices(minIndex, minIndex);
+        }
+        };
+
+    // Push the action to the undoStack
+    undoStack.push_back(action);
+}
+
+void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& newData) {
+    // Store the original data
+    ReplaceItemData originalData = replaceListData[index];
+
+    // Modify the item
+    replaceListData[index] = newData;
+
+    // Update the ListView item
+    updateListViewItem(index);
+
+    // Clear the redoStack
+    redoStack.clear();
+
+    // Create Undo/Redo actions
+    UndoRedoAction action;
+
+    // Undo action: Restore the original data
+    action.undoAction = [this, index, originalData]() {
+        replaceListData[index] = originalData;
+        updateListViewItem(index);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+        // Select and ensure visibility of the modified item
+        ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
+        scrollToIndices(index, index);
+
+        // Set focus to the ListView
+        SetFocus(_replaceListView);
+        };
+
+    // Redo action: Apply the new data again
+    action.redoAction = [this, index, newData]() {
+        replaceListData[index] = newData;
+        updateListViewItem(index);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+        // Select and ensure visibility of the modified item
+        ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
+        scrollToIndices(index, index);
+
+        // Set focus to the ListView
+        SetFocus(_replaceListView);
+        };
+
+    // Push the action onto the undoStack
+    undoStack.push_back(action);
+}
+
+void MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, Direction direction) {
+    if (indices.empty()) {
+        return; // No items to move
+    }
+
+    // Check the bounds
+    if ((direction == Direction::Up && indices.front() == 0) ||
+        (direction == Direction::Down && indices.back() == replaceListData.size() - 1)) {
+        return; // Out of bounds, do nothing
+    }
+
+    // Store pre-move indices for undo
+    std::vector<size_t> preMoveIndices = indices;
+
+    // Adjust indices for the move
+    std::vector<size_t> postMoveIndices = indices;
+
+    if (direction == Direction::Up) {
+        for (size_t& idx : postMoveIndices) {
+            idx -= 1;
+        }
+    }
+    else { // Direction::Down
+        for (size_t& idx : postMoveIndices) {
+            idx += 1;
+        }
+    }
+
+    // Perform the move
+    for (size_t i = 0; i < indices.size(); ++i) {
+        std::swap(replaceListData[preMoveIndices[i]], replaceListData[postMoveIndices[i]]);
+    }
+
+    // Update the ListView
+    ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, NULL, TRUE);
+
+    // Clear the redoStack
+    redoStack.clear();
+
+    // Create Undo/Redo actions
+    UndoRedoAction action;
+
+    action.undoAction = [this, preMoveIndices, postMoveIndices]() {
+        // Swap back the moved items
+        for (size_t i = 0; i < preMoveIndices.size(); ++i) {
+            std::swap(replaceListData[preMoveIndices[i]], replaceListData[postMoveIndices[i]]);
+        }
+
+        // Update the ListView
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+        // Select the original positions
+        for (size_t idx : preMoveIndices) {
+            ListView_SetItemState(_replaceListView, static_cast<int>(idx), LVIS_SELECTED, LVIS_SELECTED);
+        }
+
+        // Ensure visibility of the moved items
+        size_t firstIndex = *std::min_element(preMoveIndices.begin(), preMoveIndices.end());
+        size_t lastIndex = *std::max_element(preMoveIndices.begin(), preMoveIndices.end());
+        scrollToIndices(firstIndex, lastIndex);
+        };
+
+    action.redoAction = [this, preMoveIndices, postMoveIndices]() {
+        // Swap items to their new positions again
+        for (size_t i = 0; i < preMoveIndices.size(); ++i) {
+            std::swap(replaceListData[preMoveIndices[i]], replaceListData[postMoveIndices[i]]);
+        }
+
+        // Update the ListView
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+
+        // Deselect all items
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+        // Select the moved positions
+        for (size_t idx : postMoveIndices) {
+            ListView_SetItemState(_replaceListView, static_cast<int>(idx), LVIS_SELECTED, LVIS_SELECTED);
+        }
+
+        // Ensure visibility of the moved items
+        size_t firstIndex = *std::min_element(postMoveIndices.begin(), postMoveIndices.end());
+        size_t lastIndex = *std::max_element(postMoveIndices.begin(), postMoveIndices.end());
+        scrollToIndices(firstIndex, lastIndex);
+        };
+
+    // Push the action onto the undoStack
+    undoStack.push_back(action);
+
+    // Deselect all items
+    ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+    // Select the moved rows in their new positions
+    for (size_t idx : postMoveIndices) {
+        ListView_SetItemState(_replaceListView, static_cast<int>(idx), LVIS_SELECTED, LVIS_SELECTED);
+    }
+
+    // Ensure visibility of the moved items
+    size_t firstIndex = *std::min_element(postMoveIndices.begin(), postMoveIndices.end());
+    size_t lastIndex = *std::max_element(postMoveIndices.begin(), postMoveIndices.end());
+    scrollToIndices(firstIndex, lastIndex);
+}
+
+void MultiReplace::scrollToIndices(size_t firstIndex, size_t lastIndex) {
+    if (firstIndex > lastIndex) {
+        std::swap(firstIndex, lastIndex);
+    }
+    if (lastIndex >= replaceListData.size()) {
+        lastIndex = replaceListData.empty() ? 0 : replaceListData.size() - 1;
+    }
+
+    // Get the client area of the ListView
+    RECT rcClient;
+    GetClientRect(_replaceListView, &rcClient);
+
+    // Calculate the height of a single item in the ListView
+    int itemHeight = ListView_GetItemSpacing(_replaceListView, TRUE) >> 16;
+
+    // Calculate the number of fully visible items in the client area
+    int visibleItemCount = rcClient.bottom / itemHeight;
+
+    // Calculate the middle index of the range
+    size_t middleIndex = firstIndex + (lastIndex - firstIndex) / 2;
+
+    // Determine the desired top index so that the middle of the range is centered
+    int desiredTopIndex = static_cast<int>(middleIndex) - (visibleItemCount / 2);
+
+    // Ensure the desired top index is within valid bounds
+    if (desiredTopIndex < 0) {
+        desiredTopIndex = 0;
+    }
+    else if (desiredTopIndex + visibleItemCount > static_cast<int>(replaceListData.size())) {
+        desiredTopIndex = static_cast<int>(replaceListData.size()) - visibleItemCount;
+        if (desiredTopIndex < 0) {
+            desiredTopIndex = 0;
+        }
+    }
+
+    // Get the current top index of the ListView
+    int currentTopIndex = ListView_GetTopIndex(_replaceListView);
+
+    // Calculate the scroll offset in items
+    int scrollItems = desiredTopIndex - currentTopIndex;
+
+    // Scroll the ListView if necessary
+    if (scrollItems != 0) {
+        int scrollPixels = scrollItems * itemHeight;
+        ListView_Scroll(_replaceListView, 0, scrollPixels);
     }
 }
 
@@ -1157,6 +1618,12 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
 
     // Update the item count in the ListView
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+
+    // Select newly added line
+    size_t newItemIndex = replaceListData.size() - 1;
+    ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED); // Entferne vorherige Selektionen
+    ListView_SetItemState(_replaceListView, static_cast<int>(newItemIndex), LVIS_SELECTED, LVIS_SELECTED);
+    ListView_EnsureVisible(_replaceListView, static_cast<int>(newItemIndex), FALSE);
 
     // Update Header if there might be any changes
     updateHeaderSelection();
@@ -1909,22 +2376,34 @@ void MultiReplace::closeEditField(bool commitChanges) {
 
         // Create new data based on the edited column
         ReplaceItemData newData = originalData;
+        bool hasChanged = false;
         switch (_editingColumnID) {
         case ColumnID::FIND_TEXT:
-            newData.findText = newText;
+            if (wcscmp(originalData.findText.c_str(), newText) != 0) {
+                newData.findText = newText;
+                hasChanged = true;
+            }
             break;
         case ColumnID::REPLACE_TEXT:
-            newData.replaceText = newText;
+            if (wcscmp(originalData.replaceText.c_str(), newText) != 0) {
+                newData.replaceText = newText;
+                hasChanged = true;
+            }
             break;
         case ColumnID::COMMENTS:
-            newData.comments = newText;
+            if (wcscmp(originalData.comments.c_str(), newText) != 0) {
+                newData.comments = newText;
+                hasChanged = true;
+            }
             break;
         default:
             break; // Non-editable column
         }
 
-        // Apply changes and manage Undo/Redo
-        modifyItemInReplaceList(_editingItemIndex, newData);
+        if (hasChanged) {
+            // Apply changes and manage Undo/Redo
+            modifyItemInReplaceList(_editingItemIndex, newData);
+        }
     }
 
     // Destroy the edit field
@@ -2444,7 +2923,7 @@ void MultiReplace::pasteItemsIntoList() {
 
     std::wstringstream contentStream(content);
     std::wstring line;
-    std::vector<int> insertedItemsIndices; // To track indices of inserted items
+    std::vector<ReplaceItemData> itemsToInsert; // Collect items to insert
 
     // Determine insert position based on focused item or default to end if none is focused
     int insertPosition = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
@@ -2462,7 +2941,7 @@ void MultiReplace::pasteItemsIntoList() {
 
         std::vector<std::wstring> columns = parseCsvLine(line);
 
-        // Check for proper column count and non-empty findText before adding to the list
+        // Check for proper column count before adding to the list
         if ((columns.size() != 8 && columns.size() != 9)) continue;
 
         ReplaceItemData item;
@@ -2480,33 +2959,35 @@ void MultiReplace::pasteItemsIntoList() {
                 item.comments = columns[8];
             }
             else {
-                item.comments = L"";  // Initialize as empty string if not present
+                item.comments = L"";
             }
         }
         catch (const std::exception&) {
             continue; // Silently ignore lines with conversion errors
         }
 
-        // Inserting item into the list
-        if (static_cast<size_t>(insertPosition) < replaceListData.size()) {
-            replaceListData.insert(replaceListData.begin() + insertPosition, item);
-            insertedItemsIndices.push_back(insertPosition); // Track inserted item index
-        }
-        else {
-            replaceListData.push_back(item);
-            insertedItemsIndices.push_back(static_cast<int>(replaceListData.size() - 1)); // Track inserted item index at the end
-        }
-        ++insertPosition;
+        itemsToInsert.push_back(item);
     }
 
-    // Selecting newly inserted items in the list view
-    for (int idx : insertedItemsIndices) {
-        ListView_SetItemState(_replaceListView, idx, LVIS_SELECTED, LVIS_SELECTED);
+    if (itemsToInsert.empty()) {
+        // No items were collected, so nothing to insert
+        return;
     }
 
-    // Refresh the ListView to reflect the changes and new selections
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
+    // Use addItemsToReplaceList to insert items at the specified position
+    addItemsToReplaceList(itemsToInsert, static_cast<size_t>(insertPosition));
+
+    // Deselect all items first
+    ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+
+    // Select newly inserted items in the list view
+    for (size_t i = 0; i < itemsToInsert.size(); ++i) {
+        size_t idx = static_cast<size_t>(insertPosition) + i;
+        ListView_SetItemState(_replaceListView, static_cast<int>(idx), LVIS_SELECTED, LVIS_SELECTED);
+    }
+
+    // Ensure the first inserted item is visible
+    ListView_EnsureVisible(_replaceListView, insertPosition, FALSE);
 }
 
 void MultiReplace::performSearchInList() {

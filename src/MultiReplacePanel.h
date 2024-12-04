@@ -570,10 +570,11 @@ private:
     // Undo
     void undo();
     void redo();
-    void addItemsToReplaceList(const std::vector<ReplaceItemData>& items);
+    void addItemsToReplaceList(const std::vector<ReplaceItemData>& items, size_t insertPosition);
     void removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove);
     void modifyItemInReplaceList(size_t index, const ReplaceItemData& newData);
     void moveItemsInReplaceList(const std::vector<size_t>& indices, Direction direction);
+    void scrollToIndices(size_t firstIndex, size_t lastIndex);
 
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);
