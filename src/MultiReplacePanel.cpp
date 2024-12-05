@@ -1001,6 +1001,63 @@ void MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, Di
     scrollToIndices(firstIndex, lastIndex);
 }
 
+void MultiReplace::sortItemsInReplaceList(const std::vector<size_t>& originalOrder,
+    const std::vector<size_t>& newOrder,
+    const std::map<int, SortDirection>& previousColumnSortOrder,
+    int columnID,
+    SortDirection direction) {
+    UndoRedoAction action;
+
+    // Undo action: Restore original order and sort state
+    action.undoAction = [this, originalOrder, previousColumnSortOrder]() {
+        // Restore original order
+        std::unordered_map<size_t, ReplaceItemData> idToItemMap;
+        for (const auto& item : replaceListData) {
+            idToItemMap[item.id] = item;
+        }
+
+        replaceListData.clear();
+        for (size_t id : originalOrder) {
+            replaceListData.push_back(idToItemMap[id]);
+        }
+
+        // Restore previous sort order
+        columnSortOrder = previousColumnSortOrder;
+
+        // Update UI
+        updateHeaderSortDirection();
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+        };
+
+    // Redo action: Restore sorted order and current sort state
+    action.redoAction = [this, newOrder, columnID, direction]() {
+        // Restore sorted order
+        std::unordered_map<size_t, ReplaceItemData> idToItemMap;
+        for (const auto& item : replaceListData) {
+            idToItemMap[item.id] = item;
+        }
+
+        replaceListData.clear();
+        for (size_t id : newOrder) {
+            replaceListData.push_back(idToItemMap[id]);
+        }
+
+        // Update sort state
+        columnSortOrder.clear();
+        columnSortOrder[columnID] = direction;
+
+        // Update UI
+        updateHeaderSortDirection();
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+        };
+
+    // Push the action onto the undo stack
+    undoStack.push_back(action);
+}
+
+
 void MultiReplace::scrollToIndices(size_t firstIndex, size_t lastIndex) {
     if (firstIndex > lastIndex) {
         std::swap(firstIndex, lastIndex);
@@ -1731,56 +1788,10 @@ void MultiReplace::sortReplaceListData(int columnID) {
     InvalidateRect(_replaceListView, NULL, TRUE);
     selectRows(selectedIDs);
 
-    // Create undo/redo actions
-    UndoRedoAction action;
-
-    action.undoAction = [this, originalOrder, previousColumnSortOrder, selectedIDs]() {
-        // Restore the original state
-        std::unordered_map<size_t, ReplaceItemData> idToItemMap;
-        for (const auto& item : replaceListData) {
-            idToItemMap[item.id] = item;
-        }
-
-        replaceListData.clear();
-        for (size_t id : originalOrder) {
-            replaceListData.push_back(idToItemMap[id]);
-        }
-
-        columnSortOrder = previousColumnSortOrder;
-
-        // Update the UI
-        updateHeaderSortDirection();
-        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
-        };
-
-    action.redoAction = [this, newOrder, columnID, direction, selectedIDs]() {
-        // Restore the new sorted state
-        std::unordered_map<size_t, ReplaceItemData> idToItemMap;
-        for (const auto& item : replaceListData) {
-            idToItemMap[item.id] = item;
-        }
-
-        replaceListData.clear();
-        for (size_t id : newOrder) {
-            replaceListData.push_back(idToItemMap[id]);
-        }
-
-        columnSortOrder.clear();
-        columnSortOrder[columnID] = direction;
-
-        // Update the UI
-        updateHeaderSortDirection();
-        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
-        };
-
-    // Push the action onto the undo stack
-    undoStack.push_back(action);
-
-    // Restore the selection after sorting or undo/redo
-    selectRows(selectedIDs);
+    // Delegate undo/redo creation to the new function
+    sortItemsInReplaceList(originalOrder, newOrder, previousColumnSortOrder, columnID, direction);
 }
+
 
 std::vector<size_t> MultiReplace::getSelectedRows() {
     std::vector<size_t> selectedIDs;

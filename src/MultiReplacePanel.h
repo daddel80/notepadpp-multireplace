@@ -568,6 +568,11 @@ private:
     void removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove);
     void modifyItemInReplaceList(size_t index, const ReplaceItemData& newData);
     void moveItemsInReplaceList(const std::vector<size_t>& indices, Direction direction);
+    void sortItemsInReplaceList(const std::vector<size_t>& originalOrder,
+        const std::vector<size_t>& newOrder,
+        const std::map<int, SortDirection>& previousColumnSortOrder,
+        int columnID,
+        SortDirection direction);
     void scrollToIndices(size_t firstIndex, size_t lastIndex);
 
     //ListView
