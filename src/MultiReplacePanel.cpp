@@ -395,6 +395,13 @@ void MultiReplace::initializeListView() {
         extendedStyle |= LVS_EX_INFOTIP; // Enable tooltips
     }
     ListView_SetExtendedListViewStyle(_replaceListView, extendedStyle);
+
+    // Initialize columnSortOrder with Unsorted state for all sortable columns
+    columnSortOrder[ColumnID::FIND_COUNT] = SortDirection::Unsorted;
+    columnSortOrder[ColumnID::REPLACE_COUNT] = SortDirection::Unsorted;
+    columnSortOrder[ColumnID::FIND_TEXT] = SortDirection::Unsorted;
+    columnSortOrder[ColumnID::REPLACE_TEXT] = SortDirection::Unsorted;
+    columnSortOrder[ColumnID::COMMENTS] = SortDirection::Unsorted;
 }
 
 void MultiReplace::initializeDragAndDrop() {
@@ -680,354 +687,6 @@ void MultiReplace::redo() {
         showStatusMessage(L"Nothing to redo.", COLOR_INFO);
     }
 }
-/*
-void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& items, size_t insertPosition = std::numeric_limits<size_t>::max()) {
-    // Determine the insert position
-    if (insertPosition > replaceListData.size()) {
-        insertPosition = replaceListData.size();
-    }
-
-    size_t startIndex = insertPosition;
-    size_t endIndex = startIndex + items.size() - 1;
-
-    // Insert items at the specified position
-    replaceListData.insert(replaceListData.begin() + insertPosition, items.begin(), items.end());
-
-    // Update the ListView
-    ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
-
-    // Clear the redoStack since a new action invalidates the redo history
-    redoStack.clear();
-
-    // Create undo and redo lambdas
-    UndoRedoAction action;
-
-    // Undo action: Remove the added items
-    action.undoAction = [this, startIndex, endIndex]() {
-        // Remove items from the replace list
-        replaceListData.erase(replaceListData.begin() + startIndex, replaceListData.begin() + endIndex + 1);
-
-        // Update the ListView
-        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
-
-        // Deselect all items
-        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
-        };
-
-    // Redo action: Re-insert the items
-    std::vector<ReplaceItemData> itemsToRedo(items); // Copy of items to redo
-    action.redoAction = [this, itemsToRedo, startIndex, endIndex]() {
-        replaceListData.insert(replaceListData.begin() + startIndex, itemsToRedo.begin(), itemsToRedo.end());
-
-        // Update the ListView
-        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
-
-        // Deselect all items
-        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
-
-        // Select the re-inserted items
-        for (size_t i = startIndex; i <= endIndex; ++i) {
-            ListView_SetItemState(_replaceListView, static_cast<int>(i), LVIS_SELECTED, LVIS_SELECTED);
-        }
-
-        // Ensure visibility of the inserted items
-        scrollToEnsureItemsVisible(startIndex, endIndex);
-        };
-
-
-    // Push the action onto the undoStack
-    undoStack.push_back(action);
-}
-
-void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove) {
-    // Sort indices in descending order to handle shifting issues during removal
-    std::vector<size_t> sortedIndices = indicesToRemove;
-    std::sort(sortedIndices.rbegin(), sortedIndices.rend());
-
-    // Store removed items along with their indices for undo purposes
-    std::vector<std::pair<size_t, ReplaceItemData>> removedItemsWithIndices;
-    for (size_t index : sortedIndices) {
-        if (index < replaceListData.size()) {
-            removedItemsWithIndices.emplace_back(index, replaceListData[index]);
-            replaceListData.erase(replaceListData.begin() + index);
-        }
-    }
-
-    // Update the ListView to reflect changes
-    ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
-
-    // Clear redoStack since a new action invalidates redo history
-    redoStack.clear();
-
-    // Create undo and redo actions
-    UndoRedoAction action;
-
-    // Undo action: Reinsert the removed items at their original positions
-    action.undoAction = [this, removedItemsWithIndices]() {
-        for (auto it = removedItemsWithIndices.rbegin(); it != removedItemsWithIndices.rend(); ++it) {
-            const auto& [index, item] = *it;
-            if (index <= replaceListData.size()) {
-                replaceListData.insert(replaceListData.begin() + index, item);
-            }
-        }
-
-        // Update the ListView to include restored items
-        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
-
-        // Deselect all items before reselecting restored ones
-        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
-
-        // Select restored rows
-        for (const auto& [index, _] : removedItemsWithIndices) {
-            if (index < replaceListData.size()) {
-                ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
-            }
-        }
-
-        // Calculate visible range and ensure restored rows are visible
-        std::vector<size_t> indices;
-        for (const auto& [index, _] : removedItemsWithIndices) {
-            indices.push_back(index);
-        }
-        size_t firstIndex = *std::min_element(indices.begin(), indices.end());
-        size_t lastIndex = *std::max_element(indices.begin(), indices.end());
-        scrollToEnsureItemsVisible(firstIndex, lastIndex);
-        };
-
-    // Redo action: Remove the same items again
-    action.redoAction = [this, removedItemsWithIndices]() {
-        // Sort indices in descending order to avoid shifting issues
-        std::vector<size_t> sortedIndices;
-        for (const auto& [index, _] : removedItemsWithIndices) {
-            sortedIndices.push_back(index);
-        }
-        std::sort(sortedIndices.rbegin(), sortedIndices.rend());
-
-        for (size_t index : sortedIndices) {
-            if (index < replaceListData.size()) {
-                replaceListData.erase(replaceListData.begin() + index);
-            }
-        }
-
-        // Update the ListView to reflect removal
-        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
-
-        // Deselect all items
-        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
-        };
-
-    // Push the action to the undoStack
-    undoStack.push_back(action);
-}
-
-void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& newData) {
-    // Store the original data
-    ReplaceItemData originalData = replaceListData[index];
-
-    // Modify the item
-    replaceListData[index] = newData;
-
-    // Update the ListView item
-    updateListViewItem(index);
-
-    // Clear the redoStack
-    redoStack.clear();
-
-    // Create Undo/Redo actions
-    UndoRedoAction action;
-
-    // Undo action: Restore the original data
-    action.undoAction = [this, index, originalData]() {
-        replaceListData[index] = originalData;
-        updateListViewItem(index);
-
-        // Deselect all items
-        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
-
-        // Select and ensure visibility of the modified item
-        ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
-        scrollToEnsureItemsVisible(index, index);
-
-        // Set focus to the ListView
-        SetFocus(_replaceListView);
-        };
-
-    // Redo action: Apply the new data again
-    action.redoAction = [this, index, newData]() {
-        replaceListData[index] = newData;
-        updateListViewItem(index);
-
-        // Deselect all items
-        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
-
-        // Select and ensure visibility of the modified item
-        ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
-        scrollToEnsureItemsVisible(index, index);
-
-        // Set focus to the ListView
-        SetFocus(_replaceListView);
-        };
-
-    // Push the action onto the undoStack
-    undoStack.push_back(action);
-}
-
-void MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, Direction direction) {
-    if (indices.empty()) {
-        return; // No items to move
-    }
-
-    // Check the bounds
-    if ((direction == Direction::Up && indices.front() == 0) ||
-        (direction == Direction::Down && indices.back() == replaceListData.size() - 1)) {
-        return; // Out of bounds, do nothing
-    }
-
-    // Store pre-move indices for undo
-    std::vector<size_t> preMoveIndices = indices;
-
-    // Adjust indices for the move
-    std::vector<size_t> postMoveIndices = indices;
-
-    if (direction == Direction::Up) {
-        for (size_t& idx : postMoveIndices) {
-            idx -= 1;
-        }
-    }
-    else { // Direction::Down
-        for (size_t& idx : postMoveIndices) {
-            idx += 1;
-        }
-    }
-
-    // Perform the move
-    for (size_t i = 0; i < indices.size(); ++i) {
-        std::swap(replaceListData[preMoveIndices[i]], replaceListData[postMoveIndices[i]]);
-    }
-
-    // Update the ListView
-    ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
-
-    // Create Undo/Redo actions
-    UndoRedoAction action;
-
-    action.undoAction = [this, preMoveIndices, postMoveIndices]() {
-        // Swap back the moved items
-        for (size_t i = 0; i < preMoveIndices.size(); ++i) {
-            std::swap(replaceListData[preMoveIndices[i]], replaceListData[postMoveIndices[i]]);
-        }
-
-        // Update the ListView
-        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
-
-        // Deselect all items
-        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
-
-        // Reselect the original positions
-        for (size_t idx : preMoveIndices) {
-            ListView_SetItemState(_replaceListView, static_cast<int>(idx), LVIS_SELECTED, LVIS_SELECTED);
-        }
-
-        // Ensure visibility of the moved items
-        size_t firstIndex = preMoveIndices.front();
-        size_t lastIndex = preMoveIndices.back();
-        scrollToEnsureItemsVisible(firstIndex, lastIndex);
-        };
-
-    action.redoAction = [this, preMoveIndices, postMoveIndices]() {
-        // Swap items to their new positions again
-        for (size_t i = 0; i < preMoveIndices.size(); ++i) {
-            std::swap(replaceListData[preMoveIndices[i]], replaceListData[postMoveIndices[i]]);
-        }
-
-        // Update the ListView
-        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
-
-        // Deselect all items
-        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
-
-        // Reselect the moved positions
-        for (size_t idx : postMoveIndices) {
-            ListView_SetItemState(_replaceListView, static_cast<int>(idx), LVIS_SELECTED, LVIS_SELECTED);
-        }
-
-        // Ensure visibility of the moved items
-        size_t firstIndex = postMoveIndices.front();
-        size_t lastIndex = postMoveIndices.back();
-        scrollToEnsureItemsVisible(firstIndex, lastIndex);
-        };
-
-    // Push the action onto the undoStack
-    undoStack.push_back(action);
-
-    // Clear the redoStack
-    redoStack.clear();
-
-    // Deselect all items
-    ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
-
-    // Select the moved rows in their new positions
-    for (size_t idx : postMoveIndices) {
-        ListView_SetItemState(_replaceListView, static_cast<int>(idx), LVIS_SELECTED, LVIS_SELECTED);
-    }
-
-    // Ensure the first selected item is visible
-    if (!postMoveIndices.empty()) {
-        ListView_EnsureVisible(_replaceListView, static_cast<int>(postMoveIndices.front()), FALSE);
-    }
-}
-
-void MultiReplace::scrollToEnsureItemsVisible(size_t firstIndex, size_t lastIndex) {
-    if (firstIndex > lastIndex || lastIndex >= replaceListData.size()) {
-        return; // Ungültige Indizes
-    }
-
-    // Größe des Client-Bereichs ermitteln
-    RECT rcClient;
-    GetClientRect(_replaceListView, &rcClient);
-
-    // Höhe eines Listenelements ermitteln
-    int itemHeight = ListView_GetItemSpacing(_replaceListView, TRUE) >> 16;
-
-    // Anzahl der vollständig sichtbaren Elemente berechnen
-    int visibleItemCount = rcClient.bottom / itemHeight;
-
-    // Gewünschte obere Indexposition berechnen
-    int totalItems = static_cast<int>(replaceListData.size());
-    int desiredTopIndex = static_cast<int>(firstIndex) - (visibleItemCount / 2);
-
-    // Grenzen überprüfen
-    if (desiredTopIndex < 0) {
-        desiredTopIndex = 0;
-    }
-    else if (desiredTopIndex + visibleItemCount > totalItems) {
-        desiredTopIndex = totalItems - visibleItemCount;
-        if (desiredTopIndex < 0) {
-            desiredTopIndex = 0;
-        }
-    }
-
-    // Aktuellen Top-Index ermitteln
-    int currentTopIndex = ListView_GetTopIndex(_replaceListView);
-
-    // Scroll-Offset berechnen
-    int scrollItems = desiredTopIndex - currentTopIndex;
-
-    // Scrollen, falls notwendig
-    if (scrollItems != 0) {
-        ListView_Scroll(_replaceListView, 0, scrollItems * itemHeight);
-    }
-}
-*/
 
 void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& items, size_t insertPosition = std::numeric_limits<size_t>::max()) {
     // Determine the insert position
@@ -2006,76 +1665,137 @@ void MultiReplace::deleteSelectedLines() {
     showStatusMessage(getLangStr(L"status_lines_deleted", { std::to_wstring(selectedIndices.size()) }), COLOR_SUCCESS);
 }
 
-void MultiReplace::sortReplaceListData(int columnID, SortDirection direction) {
-    auto selectedRows = getSelectedRows(); // Preserve selection
+void MultiReplace::sortReplaceListData(int columnID) {
+    // Preserve the selection
+    auto selectedIDs = getSelectedRows();
 
-    // Sort based on the actual ColumnID and direction
+    // Ensure IDs are assigned
+    for (auto& item : replaceListData) {
+        if (item.id == 0) {
+            item.id = generateUniqueID();
+        }
+    }
+
+    // Capture the original order and previous sort state
+    std::vector<size_t> originalOrder;
+    for (const auto& item : replaceListData) {
+        originalOrder.push_back(item.id);
+    }
+    auto previousColumnSortOrder = columnSortOrder;
+
+    // Determine the new sort direction
+    SortDirection direction = SortDirection::Ascending;
+    auto it = columnSortOrder.find(columnID);
+    if (it != columnSortOrder.end() && it->second == SortDirection::Ascending) {
+        direction = SortDirection::Descending;
+    }
+
+    // Update the column sort order
+    columnSortOrder.clear();
+    columnSortOrder[columnID] = direction;
+
+    // Perform the sorting
     std::sort(replaceListData.begin(), replaceListData.end(),
         [this, columnID, direction](const ReplaceItemData& a, const ReplaceItemData& b) -> bool {
             switch (columnID) {
-            case ColumnID::FIND_COUNT: { // Sort by findCount, converting "" to -1
+            case ColumnID::FIND_COUNT: {
                 int numA = a.findCount.empty() ? -1 : std::stoi(a.findCount);
                 int numB = b.findCount.empty() ? -1 : std::stoi(b.findCount);
                 return direction == SortDirection::Ascending ? numA < numB : numA > numB;
             }
-            case ColumnID::REPLACE_COUNT: { // Sort by replaceCount, converting "" to -1
+            case ColumnID::REPLACE_COUNT: {
                 int numA = a.replaceCount.empty() ? -1 : std::stoi(a.replaceCount);
                 int numB = b.replaceCount.empty() ? -1 : std::stoi(b.replaceCount);
                 return direction == SortDirection::Ascending ? numA < numB : numA > numB;
             }
-            case ColumnID::FIND_TEXT: { // Sort by findText
-                if (direction == SortDirection::Ascending) {
-                    return a.findText < b.findText;
-                }
-                else {
-                    return a.findText > b.findText;
-                }
-            }
-            case ColumnID::REPLACE_TEXT: { // Sort by replaceText
-                if (direction == SortDirection::Ascending) {
-                    return a.replaceText < b.replaceText;
-                }
-                else {
-                    return a.replaceText > b.replaceText;
-                }
-            }
-            case ColumnID::COMMENTS: { // Sort by comments
-                if (direction == SortDirection::Ascending) {
-                    return a.comments < b.comments;
-                }
-                else {
-                    return a.comments > b.comments;
-                }
-            }
+            case ColumnID::FIND_TEXT:
+                return direction == SortDirection::Ascending ? a.findText < b.findText : a.findText > b.findText;
+            case ColumnID::REPLACE_TEXT:
+                return direction == SortDirection::Ascending ? a.replaceText < b.replaceText : a.replaceText > b.replaceText;
+            case ColumnID::COMMENTS:
+                return direction == SortDirection::Ascending ? a.comments < b.comments : a.comments > b.comments;
             default:
-                return false; // In case of an unknown or non-sortable column
+                return false;
             }
         });
 
-    // Update UI and restore selection
+    // Capture the new order after sorting
+    std::vector<size_t> newOrder;
+    for (const auto& item : replaceListData) {
+        newOrder.push_back(item.id);
+    }
+
+    // Update the UI and restore the selection
     updateHeaderSortDirection();
-    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
-    selectRows(selectedRows);
+    selectRows(selectedIDs);
+
+    // Create undo/redo actions
+    UndoRedoAction action;
+
+    action.undoAction = [this, originalOrder, previousColumnSortOrder, selectedIDs]() {
+        // Restore the original state
+        std::unordered_map<size_t, ReplaceItemData> idToItemMap;
+        for (const auto& item : replaceListData) {
+            idToItemMap[item.id] = item;
+        }
+
+        replaceListData.clear();
+        for (size_t id : originalOrder) {
+            replaceListData.push_back(idToItemMap[id]);
+        }
+
+        columnSortOrder = previousColumnSortOrder;
+
+        // Update the UI
+        updateHeaderSortDirection();
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+        };
+
+    action.redoAction = [this, newOrder, columnID, direction, selectedIDs]() {
+        // Restore the new sorted state
+        std::unordered_map<size_t, ReplaceItemData> idToItemMap;
+        for (const auto& item : replaceListData) {
+            idToItemMap[item.id] = item;
+        }
+
+        replaceListData.clear();
+        for (size_t id : newOrder) {
+            replaceListData.push_back(idToItemMap[id]);
+        }
+
+        columnSortOrder.clear();
+        columnSortOrder[columnID] = direction;
+
+        // Update the UI
+        updateHeaderSortDirection();
+        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+        };
+
+    // Push the action onto the undo stack
+    undoStack.push_back(action);
+
+    // Restore the selection after sorting or undo/redo
+    selectRows(selectedIDs);
 }
 
 std::vector<size_t> MultiReplace::getSelectedRows() {
-    // Initialize row IDs
-    size_t counter = 1;
-    for (auto& row : replaceListData) {
-        row.id = counter++;
-    }
-
-    // Collect IDs of selected rows
     std::vector<size_t> selectedIDs;
-    int index = -1; // Use int to properly handle -1 case and comparison with ListView_GetNextItem return value
+    int index = -1; // Use int to properly handle -1 case
     while ((index = ListView_GetNextItem(_replaceListView, index, LVNI_SELECTED)) != -1) {
         if (index >= 0 && static_cast<size_t>(index) < replaceListData.size()) {
             selectedIDs.push_back(replaceListData[index].id);
         }
     }
-
     return selectedIDs;
+}
+
+size_t MultiReplace::generateUniqueID() {
+    static size_t currentID = 0;
+    return ++currentID;
 }
 
 void MultiReplace::selectRows(const std::vector<size_t>& selectedIDs) {
@@ -3461,15 +3181,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     setSelections(!allSelected);
                 }
                 else {
-                    // Toggle or initialize the sort order for the clicked ColumnID
-                    SortDirection newDirection = SortDirection::Ascending; // Default direction
-                    if (columnSortOrder.find(columnID) != columnSortOrder.end() && columnSortOrder[columnID] == SortDirection::Ascending) {
-                        newDirection = SortDirection::Descending;
-                    }
-                    columnSortOrder[columnID] = newDirection;
-
-                    // Call sortReplaceListData with the ColumnID
-                    sortReplaceListData(columnID, newDirection);
+                    sortReplaceListData(columnID);
                 }
                 return TRUE;
             }
@@ -7651,8 +7363,13 @@ void MultiReplace::updateHeaderSortDirection() {
         auto sortIt = columnSortOrder.find(columnID);
         if (sortIt != columnSortOrder.end()) {
             SortDirection direction = sortIt->second;
-            const wchar_t* symbol = (direction == SortDirection::Ascending) ? ascendingSymbol : descendingSymbol;
-            headerText += symbol;
+            if (direction == SortDirection::Ascending) {
+                headerText += ascendingSymbol;
+            }
+            else if (direction == SortDirection::Descending) {
+                headerText += descendingSymbol;
+            }
+            // Do not append any symbol if direction is Unsorted
         }
 
         // Prepare the LVCOLUMN structure for updating the header

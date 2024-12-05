@@ -229,12 +229,6 @@ enum class LuaVariableType {
     None
 };
 
-enum class SortState {
-    Unsorted,
-    SortedAscending,
-    SortedDescending
-};
-
 enum ColumnID {
     INVALID = -1,
     FIND_COUNT,         // 0
@@ -589,7 +583,8 @@ private:
     void shiftListItem(const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);
     void deleteSelectedLines();
-    void sortReplaceListData(int columnID, SortDirection direction);
+    void sortReplaceListData(int columnID);
+    size_t generateUniqueID();
     std::vector<size_t> getSelectedRows();
     void selectRows(const std::vector<size_t>& selectedIDs);
     void handleCopyToListButton();
