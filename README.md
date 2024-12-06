@@ -227,7 +227,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 When you paste text into the edit field, any line breaks are automatically removed. This simplifies the process of inserting complex, structured 'Use Variables' statements without the need to convert them into a single line first. However, make sure to include the necessary final semicolons and spaces.
 
 Additional Interactions:
-- **Space Key**: Toggles the activation state of selected entries, similar to using Alt+E to enable or Alt+D to disable.
+- **Space Key**: Toggles the activation state of selected entries, similar to using Alt+A to enable or Alt+D to disable.
 - **Double-Click**: Double-clicking on a list entry allows direct in-place editing. This behavior can be adjusted via the [`DoubleClickEdits`](#configuration-settings) parameter.
 
 ### List Columns
