@@ -1,6 +1,6 @@
 # MultiReplace for Notepad++
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-4.1.0.20-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.1.0.20)
+[![Latest Stable Version](https://img.shields.io/badge/version-4.2.0.22-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.2.0.22)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, perfect for use across different sessions or projects. It increases efficiency by enabling multiple replacements at once, supports sorting and applying operations to specific columns in CSV files, and offers flexible options for replacing text in various ways.
@@ -101,9 +101,9 @@ Activate the '**Use Variables**' checkbox to employ variables associated with sp
 | **LPOS** | Relative line position. |
 | **LCNT** | Count of the detected string within the line. |
 | **COL**  | Column number where the string was found (CSV-Scope option selected).|
+| **MATCH**| Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
 | **FNAME**| Filename or window title for new, unsaved files. |
 | **FPATH**| Full path including the filename, or empty for new, unsaved files. |
-| **MATCH**| Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
 | **CAP1**, **CAP2**, ...  | These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.|
 
 **Decimal Separator**<br>
@@ -210,15 +210,17 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 
 | Menu Item                | Shortcut      | Description                                     |
 |--------------------------|---------------|-------------------------------------------------|
+| Undo                     | Ctrl+Z        | Reverts the last change made to the list, including sorting and moving rows. |
+| Redo                     | Ctrl+Y        | Reapplies the last action that was undone, restoring previous changes. |
 | Transfer to Input Fields | Alt+Up        | Transfers the selected entry to the input fields for editing.|
 | Search in List           | Ctrl+F        | Initiates a search within the list entries. Inputs are entered in the "Find what" and "Replace with" fields.|
 | Cut                      | Ctrl+X        | Cuts the selected entry to the clipboard.       |
 | Copy                     | Ctrl+C        | Copies the selected entry to the clipboard.     |
 | Paste                    | Ctrl+V        | Pastes content from the clipboard into the list.|
-| Edit Field               |               | Opens the selected entry for direct editing.    |
+| Edit Field               |               | Opens the selected list entry for direct editing.|
 | Delete                   | Del           | Removes the selected entry from the list.       |
 | Select All               | Ctrl+A        | Selects all entries in the list.                |
-| Enable                   | Alt+E         | Enables the selected entries, making them active for operations. |
+| Enable                   | Alt+A         | Enables the selected entries, making them active for operations. |
 | Disable                  | Alt+D         | Disables the selected entries to prevent them from being included in operations. |
 
 **Note on the 'Edit Field' option:**
@@ -226,7 +228,7 @@ When you paste text into the edit field, any line breaks are automatically remov
 
 Additional Interactions:
 - **Space Key**: Toggles the activation state of selected entries, similar to using Alt+E to enable or Alt+D to disable.
-- **Double-Click**: Mirrors the 'Transfer to Input Fields' action by transferring the contents of a row with their options to the input fields, equivalent to pressing Alt+Up.
+- **Double-Click**: Double-clicking on a list entry allows direct in-place editing. This behavior can be adjusted via the [`DoubleClickEdits`](#configuration-settings) parameter.
 
 ### List Columns
 - **Find**: The text or pattern to search for.
@@ -300,6 +302,10 @@ The MultiReplace plugin provides several configuration options, including transp
 - **DoubleClickEdits**: Controls the behavior of double-clicking on list entries.
   - **Default**: `DoubleClickEdits=1` (enabled).
   - **Description**: When enabled (`1`), double-clicking on a list entry allows direct in-place editing. When disabled (`0`), double-clicking transfers the entry to the input fields for editing.
+
+- **HoverText**: Enables or disables the display of full text for truncated entries in the **Find**, **Replace**, and **Comment** columns when hovering over them.
+  - **Default**: `HoverText=1` (enabled).
+  - **Description**: When enabled (`1`), hovering over a truncated entry shows its full content in a pop-up. Set to `0` to disable this functionality.
 
 - **Tooltips**: Controls the display of tooltips in the UI.
   - **Default**: `Tooltips=1` (enabled).
