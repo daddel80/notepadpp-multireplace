@@ -667,7 +667,7 @@ void MultiReplace::undo() {
         redoStack.push_back(action);
     }
     else {
-        showStatusMessage(L"Nothing to undo.", COLOR_INFO);
+        // showStatusMessage(L"Nothing to undo.", COLOR_INFO);
     }
 }
 
@@ -684,7 +684,7 @@ void MultiReplace::redo() {
         undoStack.push_back(action);
     }
     else {
-        showStatusMessage(L"Nothing to redo.", COLOR_INFO);
+        // showStatusMessage(L"Nothing to redo.", COLOR_INFO);
     }
 }
 
@@ -1723,6 +1723,15 @@ void MultiReplace::deleteSelectedLines() {
 }
 
 void MultiReplace::sortReplaceListData(int columnID) {
+    // Check if the column is sortable
+    if (columnID != ColumnID::FIND_COUNT &&
+        columnID != ColumnID::REPLACE_COUNT &&
+        columnID != ColumnID::FIND_TEXT &&
+        columnID != ColumnID::REPLACE_TEXT &&
+        columnID != ColumnID::COMMENTS) {
+        return;
+    }
+
     // Preserve the selection
     auto selectedIDs = getSelectedRows();
 
@@ -2810,56 +2819,6 @@ void MultiReplace::handleEditOnDoubleClick(int itemIndex, ColumnID columnID) {
 
 #pragma region Dialog
 
-typedef struct _THREAD_BASIC_INFORMATION {
-    PVOID Reserved1;
-    PVOID TebBaseAddress;
-    PVOID Reserved2[2];
-    ULONG_PTR UniqueThreadId;
-    ULONG_PTR Reserved3;
-} THREAD_BASIC_INFORMATION;
-
-typedef NTSTATUS(WINAPI* NtQueryInformationThread_t)(
-    HANDLE ThreadHandle,
-    ULONG ThreadInformationClass,
-    PVOID ThreadInformation,
-    ULONG ThreadInformationLength,
-    PULONG ReturnLength
-    );
-
-void checkFullStackInfo() {
-    // Zugriff auf den Thread Environment Block (TEB)
-    NT_TIB* tib = (NT_TIB*)NtCurrentTeb();
-
-    // Stack Base und Limit direkt aus der TEB
-    DWORD_PTR stackBase = (DWORD_PTR)tib->StackBase;
-    DWORD_PTR stackLimit = (DWORD_PTR)tib->StackLimit;
-
-    // Aktueller Stack-Pointer (liegt garantiert im gültigen Bereich)
-    DWORD_PTR currentStackPointer = (DWORD_PTR)&stackBase;
-
-    // Validierung: Liegt der Stack-Pointer im gültigen Bereich?
-    if (currentStackPointer < stackLimit || currentStackPointer > stackBase) {
-        MessageBoxW(NULL, L"Current Stack Pointer is out of range!", L"Error", MB_OK | MB_ICONERROR);
-        return;
-    }
-
-    // Berechnungen für verwendeten und freien Stack
-    SIZE_T stackUsed = stackBase - currentStackPointer;
-    SIZE_T stackFree = currentStackPointer - stackLimit;
-
-    // Stackinformationen formatieren
-    std::wostringstream oss;
-    oss << L"Stack Base Address: " << stackBase << L"\n"
-        << L"Stack Limit Address: " << stackLimit << L"\n"
-        << L"Current Stack Pointer: " << currentStackPointer << L"\n"
-        << L"Stack Reserved Size: " << (stackBase - stackLimit) << L" bytes\n"
-        << L"Stack Used: " << stackUsed << L" bytes\n"
-        << L"Stack Free: " << stackFree << L" bytes\n";
-
-    MessageBoxW(NULL, oss.str().c_str(), L"Full Stack Info", MB_OK | MB_ICONINFORMATION);
-}
-
-
 INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
@@ -3206,6 +3165,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // Handling keyboard shortcuts for menu actions
                 if (GetKeyState(VK_CONTROL) & 0x8000) { // If Ctrl is pressed
                     switch (pnkd->wVKey) {
+                    case 'Z': // Ctrl+Z for Undo
+                        undo();
+                        break;
+                    case 'Y': // Ctrl+Y for Redo
+                        redo();
+                        break;
                     case 'F': // Ctrl+F for Search in List
                         performItemAction(_contextMenuClickPoint, ItemAction::Search);
                         break;
@@ -3226,7 +3191,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
                 else if (GetKeyState(VK_MENU) & 0x8000) { // If Alt is pressed
                     switch (pnkd->wVKey) {
-                    case 'A': // Alt+A for Enable Line
+                    case 'E': // Alt+E for Enable Line
                         setSelections(true, ListView_GetSelectedCount(_replaceListView) > 0);
                         break;
                     case 'D': // Alt+D for Disable Line
@@ -3788,7 +3753,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        // Handle menu commands
         case IDM_TOGGLE_FIND_COUNT:
         case IDM_TOGGLE_REPLACE_COUNT:
         case IDM_TOGGLE_COMMENTS:
