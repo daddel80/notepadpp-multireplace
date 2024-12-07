@@ -893,15 +893,15 @@ void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& 
     undoStack.push_back(action);
 }
 
-void MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, Direction direction) {
+bool  MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, Direction direction) {
     if (indices.empty()) {
-        return; // No items to move
+        return false; // No items to move
     }
 
     // Check the bounds
     if ((direction == Direction::Up && indices.front() == 0) ||
         (direction == Direction::Down && indices.back() == replaceListData.size() - 1)) {
-        return; // Out of bounds, do nothing
+        return false; // Out of bounds, do nothing
     }
 
     // Store pre-move indices for undo
@@ -999,6 +999,8 @@ void MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, Di
     size_t firstIndex = *std::min_element(postMoveIndices.begin(), postMoveIndices.end());
     size_t lastIndex = *std::max_element(postMoveIndices.begin(), postMoveIndices.end());
     scrollToIndices(firstIndex, lastIndex);
+
+    return true;
 }
 
 void MultiReplace::sortItemsInReplaceList(const std::vector<size_t>& originalOrder,
@@ -1631,7 +1633,9 @@ void MultiReplace::shiftListItem(const Direction& direction) {
     }
 
     // Pass the selected indices to moveItemsInReplaceList
-    moveItemsInReplaceList(selectedIndices, direction);
+    if (!moveItemsInReplaceList(selectedIndices, direction)) {
+        return;
+    }
 
     // Deselect all items
     for (int j = 0; j < ListView_GetItemCount(_replaceListView); ++j) {
