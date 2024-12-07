@@ -568,7 +568,7 @@ private:
     void addItemsToReplaceList(const std::vector<ReplaceItemData>& items, size_t insertPosition);
     void removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove);
     void modifyItemInReplaceList(size_t index, const ReplaceItemData& newData);
-    bool moveItemsInReplaceList(const std::vector<size_t>& indices, Direction direction);
+    bool moveItemsInReplaceList(std::vector<size_t>& indices, Direction direction);
     void sortItemsInReplaceList(const std::vector<size_t>& originalOrder,
         const std::vector<size_t>& newOrder,
         const std::map<int, SortDirection>& previousColumnSortOrder,

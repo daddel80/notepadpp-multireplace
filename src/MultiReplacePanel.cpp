@@ -893,7 +893,7 @@ void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& 
     undoStack.push_back(action);
 }
 
-bool  MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, Direction direction) {
+bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Direction direction) {
     if (indices.empty()) {
         return false; // No items to move
     }
@@ -908,38 +908,36 @@ bool  MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, D
     std::vector<size_t> preMoveIndices = indices;
 
     // Adjust indices for the move
-    std::vector<size_t> postMoveIndices = indices;
-
     if (direction == Direction::Up) {
-        for (size_t& idx : postMoveIndices) {
-            idx -= 1;
+        for (size_t& idx : indices) {
+            idx -= 1; // Adjust indices upwards
         }
     }
     else { // Direction::Down
-        for (size_t& idx : postMoveIndices) {
-            idx += 1;
+        for (size_t& idx : indices) {
+            idx += 1; // Adjust indices downwards
         }
     }
 
     // Perform the move
-    for (size_t i = 0; i < indices.size(); ++i) {
-        std::swap(replaceListData[preMoveIndices[i]], replaceListData[postMoveIndices[i]]);
+    for (size_t i = 0; i < preMoveIndices.size(); ++i) {
+        std::swap(replaceListData[preMoveIndices[i]], replaceListData[indices[i]]);
     }
 
     // Update the ListView
     ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
 
-    // Clear the redoStack
+    // Clear the redoStack to invalidate future actions
     redoStack.clear();
 
     // Create Undo/Redo actions
     UndoRedoAction action;
 
-    action.undoAction = [this, preMoveIndices, postMoveIndices]() {
+    action.undoAction = [this, preMoveIndices, indices]() {
         // Swap back the moved items
         for (size_t i = 0; i < preMoveIndices.size(); ++i) {
-            std::swap(replaceListData[preMoveIndices[i]], replaceListData[postMoveIndices[i]]);
+            std::swap(replaceListData[preMoveIndices[i]], replaceListData[indices[i]]);
         }
 
         // Update the ListView
@@ -960,10 +958,10 @@ bool  MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, D
         scrollToIndices(firstIndex, lastIndex);
         };
 
-    action.redoAction = [this, preMoveIndices, postMoveIndices]() {
+    action.redoAction = [this, preMoveIndices, indices]() {
         // Swap items to their new positions again
         for (size_t i = 0; i < preMoveIndices.size(); ++i) {
-            std::swap(replaceListData[preMoveIndices[i]], replaceListData[postMoveIndices[i]]);
+            std::swap(replaceListData[preMoveIndices[i]], replaceListData[indices[i]]);
         }
 
         // Update the ListView
@@ -974,13 +972,13 @@ bool  MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, D
         ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
 
         // Select the moved positions
-        for (size_t idx : postMoveIndices) {
+        for (size_t idx : indices) {
             ListView_SetItemState(_replaceListView, static_cast<int>(idx), LVIS_SELECTED, LVIS_SELECTED);
         }
 
         // Ensure visibility of the moved items
-        size_t firstIndex = *std::min_element(postMoveIndices.begin(), postMoveIndices.end());
-        size_t lastIndex = *std::max_element(postMoveIndices.begin(), postMoveIndices.end());
+        size_t firstIndex = *std::min_element(indices.begin(), indices.end());
+        size_t lastIndex = *std::max_element(indices.begin(), indices.end());
         scrollToIndices(firstIndex, lastIndex);
         };
 
@@ -991,13 +989,13 @@ bool  MultiReplace::moveItemsInReplaceList(const std::vector<size_t>& indices, D
     ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
 
     // Select the moved rows in their new positions
-    for (size_t idx : postMoveIndices) {
+    for (size_t idx : indices) {
         ListView_SetItemState(_replaceListView, static_cast<int>(idx), LVIS_SELECTED, LVIS_SELECTED);
     }
 
     // Ensure visibility of the moved items
-    size_t firstIndex = *std::min_element(postMoveIndices.begin(), postMoveIndices.end());
-    size_t lastIndex = *std::max_element(postMoveIndices.begin(), postMoveIndices.end());
+    size_t firstIndex = *std::min_element(indices.begin(), indices.end());
+    size_t lastIndex = *std::max_element(indices.begin(), indices.end());
     scrollToIndices(firstIndex, lastIndex);
 
     return true;
@@ -1643,19 +1641,8 @@ void MultiReplace::shiftListItem(const Direction& direction) {
     }
 
     // Re-select the shifted items
-    if (direction == Direction::Up) {
-        for (size_t& index : selectedIndices) {
-            index--; // Indices have moved up
-        }
-    }
-    else {
-        for (size_t& index : selectedIndices) {
-            index++; // Indices have moved down
-        }
-    }
-
     for (size_t index : selectedIndices) {
-        ListView_SetItemState(_replaceListView, index, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+        ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
     }
 
     // Show status message when rows are successfully shifted
