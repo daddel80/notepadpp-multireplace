@@ -222,7 +222,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | Disable                  | Alt+D         | Disables the selected entries to prevent them from being included in operations. |
 
 **Note on the 'Edit Field' option:**
-When you paste text into the edit field, any line breaks are automatically removed. This simplifies the process of inserting complex, structured 'Use Variables' statements without the need to convert them into a single line first. However, make sure to include the necessary final semicolons and spaces.
+When you paste text into the edit field opened in the list, any line breaks are automatically removed. This simplifies the process of inserting complex, structured 'Use Variables' statements without the need to convert them into a single line first. However, make sure to include the necessary final semicolons and spaces.
 
 Additional Interactions:
 - **Space Key**: Toggles the activation state of selected entries, similar to using Alt+E to enable or Alt+D to disable.
