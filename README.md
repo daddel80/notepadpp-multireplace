@@ -220,7 +220,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | Edit Field               |               | Opens the selected list entry for direct editing.|
 | Delete                   | Del           | Removes the selected entry from the list.       |
 | Select All               | Ctrl+A        | Selects all entries in the list.                |
-| Enable                   | Alt+A         | Enables the selected entries, making them active for operations. |
+| Enable                   | Alt+E         | Enables the selected entries, making them active for operations. |
 | Disable                  | Alt+D         | Disables the selected entries to prevent them from being included in operations. |
 
 **Note on the 'Edit Field' option:**
