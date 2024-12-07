@@ -195,7 +195,8 @@ enum class ItemAction {
     Cut,
     Delete,
     Undo,
-    Redo
+    Redo,
+    Add
 };
 
 enum class SortDirection {

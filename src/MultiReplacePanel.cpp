@@ -1337,7 +1337,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
 
     // Select newly added line
     size_t newItemIndex = replaceListData.size() - 1;
-    ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED); // Entferne vorherige Selektionen
+    ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED); // Delete previous selection
     ListView_SetItemState(_replaceListView, static_cast<int>(newItemIndex), LVIS_SELECTED, LVIS_SELECTED);
     ListView_EnsureVisible(_replaceListView, static_cast<int>(newItemIndex), FALSE);
 
@@ -2383,15 +2383,17 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
         AppendMenu(hMenu, MF_STRING | (state.canUndo ? MF_ENABLED : MF_GRAYED), IDM_UNDO, getLangStr(L"ctxmenu_undo").c_str());
         AppendMenu(hMenu, MF_STRING | (state.canRedo ? MF_ENABLED : MF_GRAYED), IDM_REDO, getLangStr(L"ctxmenu_redo").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, getLangStr(L"ctxmenu_transfer_to_input_fields").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_SEARCH_IN_LIST, getLangStr(L"ctxmenu_search_in_list").c_str());
-        AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_CUT_LINES_TO_CLIPBOARD, getLangStr(L"ctxmenu_cut").c_str());
         AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, getLangStr(L"ctxmenu_copy").c_str());
         AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_LINES_FROM_CLIPBOARD, getLangStr(L"ctxmenu_paste").c_str());
+        AppendMenu(hMenu, MF_STRING, IDM_SELECT_ALL, getLangStr(L"ctxmenu_select_all").c_str());
+        AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, getLangStr(L"ctxmenu_edit").c_str());
         AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, getLangStr(L"ctxmenu_delete").c_str());
-        AppendMenu(hMenu, MF_STRING, IDM_SELECT_ALL, getLangStr(L"ctxmenu_select_all").c_str());
+        AppendMenu(hMenu, MF_STRING, IDM_ADD_NEW_LINE, getLangStr(L"ctxmenu_add_new_line").c_str());
+        AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+        AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, getLangStr(L"ctxmenu_transfer_to_input_fields").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_SEARCH_IN_LIST, getLangStr(L"ctxmenu_search_in_list").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, getLangStr(L"ctxmenu_enable").c_str());
         AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allDisabled ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_LINES, getLangStr(L"ctxmenu_disable").c_str());
@@ -2554,6 +2556,24 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         if (msgBoxID == IDYES) {
             deleteSelectedLines();
         }
+        break;
+    }
+    case ItemAction::Add: {
+        int insertPosition = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
+        if (insertPosition != -1) {
+            insertPosition++;
+        }
+        else {
+            insertPosition = ListView_GetItemCount(_replaceListView);
+        }
+        ReplaceItemData newItem; // Default-initialized
+        std::vector<ReplaceItemData> itemsToAdd = { newItem };
+        addItemsToReplaceList(itemsToAdd, static_cast<size_t>(insertPosition));
+
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+        ListView_SetItemState(_replaceListView, insertPosition, LVIS_SELECTED, LVIS_SELECTED);
+        ListView_EnsureVisible(_replaceListView, insertPosition, FALSE);
+
         break;
     }
     }
@@ -3186,7 +3206,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     case 'A': // Ctrl+A for Select All
                         ListView_SetItemState(_replaceListView, -1, LVIS_SELECTED, LVIS_SELECTED);
                         break;
-                        // Add more Ctrl+ shortcuts here if needed
+                    case 'I': // Ctrl+I for Adding new Line
+                        performItemAction(_contextMenuClickPoint, ItemAction::Add);
+                        break;
                     }
                 }
                 else if (GetKeyState(VK_MENU) & 0x8000) { // If Alt is pressed
@@ -3760,6 +3782,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             // Toggle the visibility based on the menu selection
             handleColumnVisibilityToggle(LOWORD(wParam));
+            return TRUE;
+        }
+
+        case IDM_ADD_NEW_LINE:
+        {
+            performItemAction(_contextMenuClickPoint, ItemAction::Add);
             return TRUE;
         }
 

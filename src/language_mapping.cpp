@@ -177,5 +177,6 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"ctxmenu_enable", L"E&nable\tAlt+E" },
 { L"ctxmenu_disable", L"D&isable\tAlt+D" },
 { L"ctxmenu_undo", L"U&ndo\tCtrl+Z" },
-{ L"ctxmenu_redo", L"R&edo\tCtrl+Y" }
+{ L"ctxmenu_redo", L"R&edo\tCtrl+Y" },
+{ L"ctxmenu_add_new_line", L"&Add New Line\tCtrl+I" }
 };

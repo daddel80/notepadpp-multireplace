@@ -101,18 +101,19 @@
 #define IDC_LICENSE_STATIC              5604
 #define IDC_AUTHOR_STATIC               5605
 
-#define IDM_COPY_DATA_TO_FIELDS         5701
-#define IDM_SEARCH_IN_LIST              5702
-#define IDM_CUT_LINES_TO_CLIPBOARD      5703
-#define IDM_COPY_LINES_TO_CLIPBOARD     5704
-#define IDM_PASTE_LINES_FROM_CLIPBOARD  5705
-#define IDM_EDIT_VALUE                  5706
-#define IDM_DELETE_LINES                5707
-#define IDM_SELECT_ALL                  5708
-#define IDM_ENABLE_LINES                5709
-#define IDM_DISABLE_LINES               5710
-#define IDM_UNDO                        5711
-#define IDM_REDO                        5712
+#define IDM_UNDO                        5701
+#define IDM_REDO                        5702
+#define IDM_COPY_DATA_TO_FIELDS         5703
+#define IDM_SEARCH_IN_LIST              5704
+#define IDM_CUT_LINES_TO_CLIPBOARD      5705
+#define IDM_ADD_NEW_LINE                5706
+#define IDM_COPY_LINES_TO_CLIPBOARD     5707
+#define IDM_PASTE_LINES_FROM_CLIPBOARD  5708
+#define IDM_EDIT_VALUE                  5709
+#define IDM_DELETE_LINES                5710
+#define IDM_SELECT_ALL                  5711
+#define IDM_ENABLE_LINES                5712
+#define IDM_DISABLE_LINES               5713
 
 #define IDM_TOGGLE_FIND_COUNT           5801
 #define IDM_TOGGLE_REPLACE_COUNT        5802
