@@ -266,6 +266,7 @@ You can manage the visibility of the additional columns via the **Header Column 
 
 ### Bash Script Export
 - Exports Find and Replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
+- Entries flagged with "Use Variables" are skipped as they are not supported in the exported script.
 - This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
 
 
