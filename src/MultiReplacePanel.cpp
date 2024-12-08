@@ -402,6 +402,7 @@ void MultiReplace::initializeListView() {
     columnSortOrder[ColumnID::FIND_TEXT] = SortDirection::Unsorted;
     columnSortOrder[ColumnID::REPLACE_TEXT] = SortDirection::Unsorted;
     columnSortOrder[ColumnID::COMMENTS] = SortDirection::Unsorted;
+
 }
 
 void MultiReplace::initializeDragAndDrop() {
@@ -2289,12 +2290,12 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         LVHITTESTINFO hitTestInfo = {};
         hitTestInfo.pt = pt;
 
-        int hitResult = ListView_HitTest(hwnd, &hitTestInfo);
+        int hitResult = ListView_HitTest(hwnd, &hitTestInfo); 
         if (hitResult != -1) {
-
             int currentRow = hitTestInfo.iItem;
             int currentSubItem = hitTestInfo.iSubItem;
 
+            // Update only if the row, sub-item, or mouse position has significantly changed
             if (currentRow != pThis->lastTooltipRow || currentSubItem != pThis->lastTooltipSubItem ||
                 abs(pt.x - pThis->lastMouseX) > 5 || abs(pt.y - pThis->lastMouseY) > 5) {
 
@@ -2303,21 +2304,12 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
                 pThis->lastMouseX = pt.x;
                 pThis->lastMouseY = pt.y;
 
-                RECT rect = {};
-                if (ListView_GetSubItemRect(hwnd, currentRow, currentSubItem, LVIR_LABEL, &rect)) {
-                    const ReplaceItemData& itemData = pThis->replaceListData[currentRow];
-                    const std::wstring& text = (currentSubItem == pThis->getColumnIndexFromID(ColumnID::FIND_TEXT)) ? itemData.findText :
-                        (currentSubItem == pThis->getColumnIndexFromID(ColumnID::REPLACE_TEXT)) ? itemData.replaceText :
-                        itemData.comments;
-
-                    if (pThis->isTextTruncated(text, rect)) {
-                        // Tooltip logic (e.g., create and display a custom tooltip)
-                    }
-                }
-
+                // Temporarily disable LVS_EX_INFOTIP to force tooltip update
                 DWORD extendedStyle = ListView_GetExtendedListViewStyle(hwnd);
                 ListView_SetExtendedListViewStyle(hwnd, extendedStyle & ~LVS_EX_INFOTIP);
-                SetTimer(hwnd, 1, 10, NULL); // 10ms delay
+
+                // Set a timer to re-enable LVS_EX_INFOTIP after 10ms
+                SetTimer(hwnd, 1, 10, NULL);
             }
         }
         break;
@@ -2341,30 +2333,6 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
     }
 
     return CallWindowProc(pThis->originalListViewProc, hwnd, msg, wParam, lParam);
-}
-
-bool MultiReplace::isTextTruncated(const std::wstring& text, RECT rect) {
-    int columnWidth = rect.right - rect.left;
-    HDC hdc = GetDC(_replaceListView);
-    if (!hdc) return false;
-
-    HFONT hFont = (HFONT)SendMessage(_replaceListView, WM_GETFONT, 0, 0);
-    HFONT hOldFont = nullptr;
-    if (hFont) {
-        hOldFont = (HFONT)SelectObject(hdc, hFont);
-    }
-
-    SIZE size = {};
-    if (!GetTextExtentPoint32W(hdc, text.c_str(), static_cast<int>(text.length()), &size)) {
-        size.cx = 0; // Default to 0 if text measurement fails
-    }
-
-    if (hOldFont) {
-        SelectObject(hdc, hOldFont);
-    }
-    ReleaseDC(_replaceListView, hdc);
-
-    return size.cx > columnWidth - 4;
 }
 
 void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state) {

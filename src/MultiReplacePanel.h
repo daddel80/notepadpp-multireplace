@@ -603,7 +603,6 @@ private:
     ColumnID getColumnIDFromIndex(int columnIndex) const;
     int getColumnIndexFromID(ColumnID columnID) const;
     void updateListViewItem(size_t index);
-    bool isTextTruncated(const std::wstring& text, RECT rect);
 
     //Contextmenu Display Columns
     void showColumnVisibilityMenu(HWND hWnd, POINT pt);
