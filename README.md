@@ -304,7 +304,7 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Default**: `DoubleClickEdits=1` (enabled).
   - **Description**: When enabled (`1`), double-clicking on a list entry allows direct in-place editing. When disabled (`0`), double-clicking transfers the entry to the input fields for editing.
 
-- **HoverText**: Enables or disables the display of full text for truncated entries in the **Find**, **Replace**, and **Comment** columns when hovering over them.
+- **HoverText**: Enables or disables the display of full text for truncated list entries when hovering over them.
   - **Default**: `HoverText=1` (enabled).
   - **Description**: When enabled (`1`), hovering over a truncated entry shows its full content in a pop-up. Set to `0` to disable this functionality.
 
