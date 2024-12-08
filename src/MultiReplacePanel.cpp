@@ -1792,7 +1792,6 @@ void MultiReplace::sortReplaceListData(int columnID) {
     sortItemsInReplaceList(originalOrder, newOrder, previousColumnSortOrder, columnID, direction);
 }
 
-
 std::vector<size_t> MultiReplace::getSelectedRows() {
     std::vector<size_t> selectedIDs;
     int index = -1; // Use int to properly handle -1 case
@@ -8258,8 +8257,14 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     file << "cp $inputFile $outputFile\n\n";
 
     file << "# processLine arguments: \"findString\" \"replaceString\" wholeWord matchCase normal extended regex\n";
+
+    bool hasExcludedItems = false;
     for (const auto& itemData : replaceListData) {
         if (!itemData.isEnabled) continue; // Skip if this item is not selected
+        if (itemData.useVariables) {
+            hasExcludedItems = true; // Mark as excluded
+            continue;
+        }
 
         std::string find;
         std::string replace;
@@ -8293,6 +8298,14 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     }
 
     showStatusMessage(getLangStr(L"status_list_exported_to_bash"), COLOR_SUCCESS);
+
+    // Show message box if excluded items were found
+    if (hasExcludedItems) {
+        MessageBox(_hSelf,
+            getLangStr(L"msgbox_use_variables_not_exported").c_str(),
+            getLangStr(L"msgbox_title_warning").c_str(),
+            MB_OK | MB_ICONWARNING);
+    }
 
 }
 

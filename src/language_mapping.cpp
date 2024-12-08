@@ -152,6 +152,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_title_use_variables_execution_error", L"Use Variables: Execution Error" },
 { L"msgbox_title_save_list", L"Save list" },
 { L"msgbox_title_reload", L"Reload" },
+{ L"msgbox_title_warning", L"Warning" },
 
 // MessageBox Messages
 { L"msgbox_failed_create_control", L"Failed to create control with ID: $REPLACE_STRING1, GetLastError returned: $REPLACE_STRING2" },
@@ -164,6 +165,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_unsaved_changes_file", L"You have unsaved changes in the list: '$REPLACE_STRING'.<br/>Would you like to save them?" },
 { L"msgbox_unsaved_changes", L"You have unsaved changes.<br/>Would you like to save them?" },
 { L"msgbox_file_modified_prompt", L"'$REPLACE_STRING'<br/><br/>The file has been modified by another program.<br/>Do you want to load the changes and lose unsaved modifications?" },
+{ L"msgbox_use_variables_not_exported", L"Some items with 'Use Variables' enabled were not exported." },
 
 // Context Menu Strings
 { L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },
