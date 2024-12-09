@@ -136,12 +136,18 @@ Initializes custom variables for use in various commands, extending beyond stand
 
 Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. So they can transfer values from one list entry to the following ones.  They reset at the start of each new document in 'Replace All in All Open Documents'.
 
-**Note**: An empty Find string can be used to set variables for the entire Find and Replace list without linking it to a specific Find action. This string will not match any text but is triggered at the start of 'Replace' or 'Replace All' process when 'Use List' is enabled, allowing the Replace field to initialize commands like init() for the entire operation. The position of the entry in the list is irrelevant.
+| Find             | Replace                                                                                                     | Before                              | After                                 | Regex | Scope CSV | Description                                                                                     |
+|-------------------|-----------------------------------------------------------------------------------------------------------|-------------------------------------|---------------------------------------|-------|-----------|-------------------------------------------------------------------------------------------------|
+| `(\d+)`          | `init({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);`<br>`if COL==2 then COL2=CAP1 end;`<br> `if COL==4 then COL4=CAP1 end;` | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` | Yes   | Yes       | Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line. |
+| `\d{2}-[A-Z]{3}` | `init({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                               | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`            | No    | No        | Uses MATCH_PREV to track the value of the first match in the line and shift it to the 2nd (LCNT) match during replacements. |
 
-| Find:            | Replace:                                                                                                      | Before                             | After                                     |
-|------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------|-------------------------------------------|
-| `(\d+)`          | `init({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4); if COL==2 then COL2=CAP1 end; if COL==4 then COL4=CAP1 end;` | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` |
-| `\d{2}-[A-Z]{3}`| `init({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                                   | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`       |
+An empty Find string can be used to set variables for the entire Find and Replace list without being tied to a specific Find action. This entry does not match any text but is executed once at the beginning of the 'Replace' or 'Replace All' process when 'Use List' is enabled. It allows the Replace field to run initialization commands like `init()` for the entire operation. The position of this entry in the list does not affect its behavior.
+
+| Find      | Replace                                                                                                 | Description/Expected Output                                                                                     |
+|-------------------|-------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|
+|                   | `init({ `<br>`VpersonName = FNAME:sub(1, (FNAME:find(" - ", 1, true) or 0) - 1),`<br>`Vdepartment = FNAME:sub((FNAME:find(" - ", 1, true) or #FNAME + 1) + 3, (FNAME:find(".", 1, true) or 0) - 1) })` | Extracts `VpersonName` and `Vdepartment` from the filename of the active document in the format `<Name> - <Department>.xml` using the `init` action. Triggered only once at the start of the replace process when `Find` is empty. |
+| `personname`      | `set(VpersonName)`                                                                                               | Replaces `personname` with the content of the variable `VpersonName`, previously initialized by the `init` action. |
+| `department`      | `set(Vdepartment)`                                                                                               | Replaces `department` with the content of the variable `Vdepartment`, previously initialized by the `init` action. |
 
 #### **fmtN(num, maxDecimals, fixedDecimals)**
 Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).
@@ -181,13 +187,13 @@ This example shows how to use `if` statements with `cond()` to manage variables 
 
 The `DEBUG` option lets you inspect global variables during replacements. When enabled, it opens a message box displaying the current values of all global variables for each replacement hit, requiring confirmation to proceed to the next match. Initialize the `DEBUG` option in your replacement string to enable it.
 
-| Find:      | Replace with:                              |
+| Find      | Replace                              |
 |------------|--------------------------------------------|
 | `(\d+)`    | `init({DEBUG=true}); set("Number: "..CAP1)`|
 
 ### More Examples
 
-| Find in:            | Replace with:                                                                 | Description/Expected Output                                                                                     | Regex | Scope CSV |
+| Find            | Replace                                                                 | Description/Expected Output                                                                                     | Regex | Scope CSV |
 |---------------------|-------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|-------|-----------|
 | `;`                 | `cond(LCNT==5,";Column5;")`                                                    | Adds a 5th Column for each line into a `;` delimited file.                                                    | No    | No        |
 | `key`                 | `set("key"..CNT)` | Enumerates key values by appending the count of detected strings. E.g., key1, key2, key3, etc. | No | No |
