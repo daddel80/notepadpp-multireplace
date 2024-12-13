@@ -136,12 +136,18 @@ Initializes custom variables for use in various commands, extending beyond stand
 
 Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. So they can transfer values from one list entry to the following ones.  They reset at the start of each new document in 'Replace All in All Open Documents'.
 
-**Note**: An empty Find string can be used to set variables for the entire Find and Replace list without linking it to a specific Find action. This string will not match any text but is triggered at the start of 'Replace' or 'Replace All' process when 'Use List' is enabled, allowing the Replace field to initialize commands like init() for the entire operation. The position of the entry in the list is irrelevant.
+| Find             | Replace                                                                                                     | Before                              | After                                 | Regex | Scope CSV | Description                                                                                     |
+|-------------------|-----------------------------------------------------------------------------------------------------------|-------------------------------------|---------------------------------------|-------|-----------|-------------------------------------------------------------------------------------------------|
+| `(\d+)`          | `init({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);`<br>`if COL==2 then COL2=CAP1 end;`<br> `if COL==4 then COL4=CAP1 end;` | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` | Yes   | Yes       | Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line. |
+| `\d{2}-[A-Z]{3}` | `init({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                               | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`            | Yes    | No        | Uses MATCH_PREV to track the value of the first match in the line and shift it to the 2nd (LCNT) match during replacements. |
 
-| Find:            | Replace:                                                                                                      | Before                             | After                                     |
-|------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------|-------------------------------------------|
-| `(\d+)`          | `init({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4); if COL==2 then COL2=CAP1 end; if COL==4 then COL4=CAP1 end;` | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` |
-| `\d{2}-[A-Z]{3}`| `init({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                                   | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`       |
+An empty Find string can be used to set variables for the entire Find and Replace list without being tied to a specific Find action. This entry does not match any text but is executed once at the beginning of the 'Replace' or 'Replace All' process when 'Use List' is enabled. It allows the Replace field to run initialization commands like `init()` for the entire operation. The position of this entry in the list does not affect its behavior.
+
+| Find      | Replace                                                                                                 | Description/Expected Output                                                                                     |
+|-------------------|-------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|
+|                   | `init({ `<br>`VpersonName = FNAME:sub(1, (FNAME:find(" - ", 1, true) or 0) - 1),`<br>`Vdepartment = FNAME:sub((FNAME:find(" - ", 1, true) or #FNAME + 1) + 3, (FNAME:find(".", 1, true) or 0) - 1) })` | Extracts `VpersonName` and `Vdepartment` from the filename of the active document in the format `<Name> - <Department>.xml` using the `init` action. Triggered only once at the start of the replace process when `Find` is empty. |
+| `personname`      | `set(VpersonName)`                                                                                               | Replaces `personname` with the content of the variable `VpersonName`, previously initialized by the `init` action. |
+| `department`      | `set(Vdepartment)`                                                                                               | Replaces `department` with the content of the variable `Vdepartment`, previously initialized by the `init` action. |
 
 #### **fmtN(num, maxDecimals, fixedDecimals)**
 Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).
@@ -181,23 +187,24 @@ This example shows how to use `if` statements with `cond()` to manage variables 
 
 The `DEBUG` option lets you inspect global variables during replacements. When enabled, it opens a message box displaying the current values of all global variables for each replacement hit, requiring confirmation to proceed to the next match. Initialize the `DEBUG` option in your replacement string to enable it.
 
-| Find:      | Replace with:                              |
+| Find      | Replace                              |
 |------------|--------------------------------------------|
 | `(\d+)`    | `init({DEBUG=true}); set("Number: "..CAP1)`|
 
 ### More Examples
 
-| Find in:            | Replace with:                                                                 | Description/Expected Output                                                                                     | Regex | Scope CSV |
-|---------------------|-------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|-------|-----------|
-| `;`                 | `cond(LCNT==5,";Column5;")`                                                    | Adds a 5th Column for each line into a `;` delimited file.                                                    | No    | No        |
-| `key`                 | `set("key"..CNT)` | Enumerates key values by appending the count of detected strings. E.g., key1, key2, key3, etc. | No | No |
-| `(\d+)`               | `set(CAP1.."€ The VAT is: ".. (CAP1 * 0.15).."€ Total with VAT: ".. (CAP1 + (CAP1 * 0.15)).."€")` | Finds a number and calculates the VAT at 15%, then displays the original amount, the VAT, and the total amount. E.g., `50` becomes `50€ The VAT is: 7.5€ Total with VAT: 57.5€` | Yes | No |
-| `---`               | `cond(COL==1 and LINE<3, "0-2", cond(COL==2 and LINE>2 and LINE<5, "3-4", cond(COL==3 and LINE>=5 and LINE<10, "5-9", cond(COL==4 and LINE>=10, "10+"))))` | Replaces `---` with a specific range based on the `COL` and `LINE` values. E.g., `3-4` in column 2 of lines 3-4, and `5-9` in column 3 of lines 5-9 assuming `---` is found in all lines and columns.| No    | Yes       |
-| `(\d+)\.(\d+)\.(\d+)`| `cond(CAP1 > 0 and CAP2 == 0 and CAP3 == 0, MATCH, cond(CAP2 > 0 and CAP3 == 0, " " .. MATCH, " " .. MATCH))` | Alters the spacing based on the hierarchy of the version numbers, aligning lower hierarchies with spaces as needed. E.g., `1.0.0` remains `1.0.0`, `1.2.0` becomes ` 1.2.0`, indicating a second-level version change.| Yes   | No        |
-| `(\d+)`             | `set(CAP1 * 2)`                                                               | Doubles the matched number. E.g., `100` becomes `200`.                                                         | Yes   | No        |
-| `;`                 | `cond(LCNT == 1, string.rep(" ", 20- (LPOS))..";")`                             | Inserts spaces before the semicolon to align it to the 20th character position if it's the first occurrence.    | No    | No        |
-| `-`                   | `cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), "*", " ")` | Draws a sine wave across a canvas of '-' characters spanning at least 20 lines and 80 characters per line. | No | No |
-| `^(.*)$`            | `init({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;` | Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses `MATCH_PREV` to identify and remove consecutive duplicates. | Yes | No  |
+| Find             | Replace                                                                                                     | Regex | Scope CSV | Description                                                                                     |
+|-------------------|-----------------------------------------------------------------------------------------------------------|-------|-----------|-------------------------------------------------------------------------------------------------|
+| `;`              | `cond(LCNT==5,";Column5;")`                                                                               | No    | No        | Adds a 5th Column for each line into a `;` delimited file.                                      |
+| `key`            | `set("key"..CNT)`                                                                                         | No    | No        | Enumerates key values by appending the count of detected strings. E.g., key1, key2, key3, etc.  |
+| `(\d+)`          | `set(CAP1.."€ The VAT is: ".. (CAP1 * 0.15).."€ Total with VAT: ".. (CAP1 + (CAP1 * 0.15)).."€")`          | Yes   | No        | Finds a number and calculates the VAT at 15%, then displays the original amount, the VAT, and the total amount. E.g., `50` becomes `50€ The VAT is: 7.5€ Total with VAT: 57.5€`. |
+| `---`            | `cond(COL==1 and LINE<3, "0-2", cond(COL==2 and LINE>2 and LINE<5, "3-4", cond(COL==3 and LINE>=5 and LINE<10, "5-9", cond(COL==4 and LINE>=10, "10+"))))` | No    | Yes       | Replaces `---` with a specific range based on the `COL` and `LINE` values. E.g., `3-4` in column 2 of lines 3-4, and `5-9` in column 3 of lines 5-9 assuming `---` is found in all lines and columns. |
+| `(\d+)\.(\d+)\.(\d+)` | `cond(CAP1 > 0 and CAP2 == 0 and CAP3 == 0, MATCH, cond(CAP2 > 0 and CAP3 == 0, " " .. MATCH, " " .. MATCH))` | Yes   | No        | Alters the spacing based on the hierarchy of the version numbers, aligning lower hierarchies with spaces as needed. E.g., `1.0.0` remains `1.0.0`, `1.2.0` becomes ` 1.2.0`, indicating a second-level version change. |
+| `(\d+)`          | `set(CAP1 * 2)`                                                                                           | Yes   | No        | Doubles the matched number. E.g., `100` becomes `200`.                                          |
+| `;`              | `cond(LCNT == 1, string.rep(" ", 20- (LPOS))..";")`                                                       | No    | No        | Inserts spaces before the semicolon to align it to the 20th character position if it's the first occurrence. |
+| `-`              | `cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), "*", " ")`                    | No    | No        | Draws a sine wave across a canvas of '-' characters spanning at least 20 lines and 80 characters per line. |
+| `^(.*)$`         | `init({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;`                                   | Yes   | No        | Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses `MATCH_PREV` to identify and remove consecutive duplicates. |
+
 
 #### Engine Overview
 MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math operations and string methods. Refer to [Lua String Manipulation](https://www.lua.org/manual/5.4/manual.html#6.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.4/manual.html#6.6) for more information.
@@ -304,7 +311,7 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Default**: `DoubleClickEdits=1` (enabled).
   - **Description**: When enabled (`1`), double-clicking on a list entry allows direct in-place editing. When disabled (`0`), double-clicking transfers the entry to the input fields for editing.
 
-- **HoverText**: Enables or disables the display of full text for truncated entries in the **Find**, **Replace**, and **Comment** columns when hovering over them.
+- **HoverText**: Enables or disables the display of full text for truncated list entries when hovering over them.
   - **Default**: `HoverText=1` (enabled).
   - **Description**: When enabled (`1`), hovering over a truncated entry shows its full content in a pop-up. Set to `0` to disable this functionality.
 
