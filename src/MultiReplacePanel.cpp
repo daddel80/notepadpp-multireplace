@@ -3673,9 +3673,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDM_REDO:
+        case IDM_REDO: {
             performItemAction(_contextMenuClickPoint, ItemAction::Redo);
             return TRUE;
+        }
 
         case IDM_COPY_DATA_TO_FIELDS:
         {
@@ -3773,8 +3774,9 @@ void MultiReplace::handleReplaceAllButton() {
         return;
     }
 
-    // Clear all stored Lua Global Variables
-    globalLuaVariablesMap.clear();
+    globalLuaVariablesMap.clear(); // Clear all stored Lua Global Variables
+    
+    hashTablesMap.clear(); // Clear all stored Lua Hash Tables
 
     int totalReplaceCount = 0;
 
@@ -3855,9 +3857,10 @@ void MultiReplace::handleReplaceButton() {
         showStatusMessage(getLangStrLPWSTR(L"status_cannot_replace_read_only"), COLOR_ERROR);
         return;
     }
-
-    // Clear all stored Lua Global Variables
-    globalLuaVariablesMap.clear();
+    
+    globalLuaVariablesMap.clear(); // Clear all stored Lua Global Variables
+   
+    hashTablesMap.clear();   // Clear all stored Lua Hash Tables
 
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
@@ -4295,6 +4298,43 @@ void MultiReplace::captureLuaGlobals(lua_State* L) {
     lua_pop(L, 1);
 }
 
+void MultiReplace::captureHashTables(lua_State* L) {
+
+    // Get hashTables from Lua
+    lua_getglobal(L, "hashTables");
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        return; // Not a valid table, do nothing
+    }
+
+    // Iterate over hashTables[hpath]
+    lua_pushnil(L);
+    while (lua_next(L, -2) != 0) {
+        // key = hpath (string), value = hpathTable (table)
+        if (lua_isstring(L, -2) && lua_istable(L, -1)) {
+            std::string hpath = lua_tostring(L, -2);
+            LuaHashTable hTable;
+            hTable.hpath = hpath;
+
+            lua_pushnil(L);
+            while (lua_next(L, -2) != 0) {
+                // key = entry key, value = entry value (both expected to be strings)
+                if (lua_isstring(L, -2) && lua_isstring(L, -1)) {
+                    std::string k = lua_tostring(L, -2);
+                    std::string v = lua_tostring(L, -1);
+                    hTable.entries[k] = v;
+                }
+                lua_pop(L, 1); // pop value, keep key for next iteration
+            }
+
+            hashTablesMap[hpath] = hTable;
+        }
+        lua_pop(L, 1); // pop hpathTable
+    }
+
+    lua_pop(L, 1); // pop hashTables table
+}
+
 void MultiReplace::loadLuaGlobals(lua_State* L) {
     for (const auto& pair : globalLuaVariablesMap) {
         const LuaVariable& var = pair.second;
@@ -4315,6 +4355,35 @@ void MultiReplace::loadLuaGlobals(lua_State* L) {
 
         lua_setglobal(L, var.name.c_str());
     }
+}
+
+void MultiReplace::loadHashTables(lua_State* L) {
+    // Create a new table for hashTables in Lua
+    lua_newtable(L); // stack: {..., hashTablesTable}
+
+    // Iterate over all stored hash tables in hashTablesMap
+    for (const auto& pair : hashTablesMap) {
+        const std::string& hpath = pair.first;
+        const LuaHashTable& hTable = pair.second;
+
+        // Create a sub-table for this particular hash table
+        lua_newtable(L); // stack: {..., hashTablesTable, hpathTable}
+
+        // Populate the hpathTable with key-value pairs
+        for (const auto& kv : hTable.entries) {
+            lua_pushstring(L, kv.first.c_str());  // push key
+            lua_pushstring(L, kv.second.c_str()); // push value
+            lua_settable(L, -3); // hpathTable[key] = value
+        }
+
+        // Assign hpathTable to hashTables[hpath]
+        lua_pushstring(L, hpath.c_str());
+        lua_insert(L, -2); // move hpathTable below hpath key
+        lua_settable(L, -3); // hashTables[hpath] = hpathTable
+    }
+
+    // Set hashTables as a global variable
+    lua_setglobal(L, "hashTables");
 }
 
 std::string MultiReplace::escapeForRegex(const std::string& input) {
@@ -4341,6 +4410,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     luaL_openlibs(L);  // Load standard libraries
 
     loadLuaGlobals(L); // Load global Lua variables
+    loadHashTables(L);
 
     // Set variables
     lua_pushnumber(L, vars.CNT);
@@ -4573,6 +4643,127 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "  return resultTable  -- Return the existing or new resultTable\n"
         "end\n");
 
+    luaL_dostring(L,
+        // 1) Helper function: Load file in a sandboxed environment
+        "local function safeLoadFileSandbox(path)\n"
+        "  -- Minimal Environment: Only safe base functions are allowed\n"
+        "  local safeEnv = {\n"
+        "    pairs = pairs,\n"
+        "    ipairs = ipairs,\n"
+        "    type = type,\n"
+        "    tonumber = tonumber,\n"
+        "    tostring = tostring,\n"
+        "    table = table,\n"
+        "    math = math,\n"
+        "    string = string,\n"
+        "  }\n"
+        "  setmetatable(safeEnv, { __index = function(_, k)\n"
+        "    -- Explicitly block access to critical globals like _G, os, io, etc.\n"
+        "    if k == '_G' or k == 'os' or k == 'io' or k == 'dofile' or k == 'require' then\n"
+        "      return nil  -- Access is denied\n"
+        "    end\n"
+        "    return _G[k]  -- Allow specific standard functions if needed\n"
+        "  end})\n"
+
+        "  -- Lua 5.2+ supports loadfile(path, 't', environment)\n"
+        "  local chunk, err = loadfile(path, 't', safeEnv)\n"
+        "  if not chunk then\n"
+        "    return false, err\n"
+        "  end\n"
+
+        "  return pcall(chunk)  -- Execute the code safely\n"
+        "end\n"
+
+        // 2) lkp function that uses the sandboxed file loader
+        "function lkp(key, hpath, inner)\n"
+        "  -- Initialize the result table\n"
+        "  local res = { result = '', skip = false }\n"
+
+        "  -- Convert numeric keys to strings\n"
+        "  if type(key) == 'number' then\n"
+        "    key = tostring(key)\n"
+        "  end\n"
+
+        "  -- Validate 'key'\n"
+        "  if key == nil then\n"
+        "    error('lkp: key passed to file is nil in ' .. tostring(hpath))\n"
+        "  end\n"
+
+        "  -- Validate 'hpath'\n"
+        "  if hpath == nil or hpath == '' then\n"
+        "    error('lkp: file path is invalid or empty')\n"
+        "  end\n"
+
+        "  -- Default 'inner' to false\n"
+        "  if inner == nil then\n"
+        "    inner = false\n"
+        "  end\n"
+
+        "  -- Load the hash table if it has not been loaded yet\n"
+        "  if hashTables[hpath] == nil then\n"
+        "    -- Use the sandboxed file loader to load the file\n"
+        "    local success, dataEntries = safeLoadFileSandbox(hpath)\n"
+        "    if not success then\n"
+        "      error('lkp: failed to safely load file at ' .. tostring(hpath) .. ': ' .. tostring(dataEntries))\n"
+        "    end\n"
+
+        "    -- Ensure the file returns a table\n"
+        "    if type(dataEntries) ~= 'table' then\n"
+        "      error('lkp: invalid format in file at ' .. tostring(hpath))\n"
+        "    end\n"
+
+        "    local tbl = {}\n"
+        "    -- Iterate through dataEntries, expected to be an array of {keys, value}\n"
+        "    for _, entry in ipairs(dataEntries) do\n"
+        "      local keys = entry[1]\n"
+        "      local value = entry[2]\n"
+
+        "      if value == nil then\n"
+        "        goto continue\n"
+        "      end\n"
+
+        "      -- Process multiple or single keys\n"
+        "      if type(keys) == 'table' then\n"
+        "        for _, k in ipairs(keys) do\n"
+        "          if type(k) == 'number' then\n"
+        "            k = tostring(k)\n"
+        "          end\n"
+        "          tbl[k] = value\n"
+        "        end\n"
+        "      elseif type(keys) == 'string' or type(keys) == 'number' then\n"
+        "        if type(keys) == 'number' then\n"
+        "          keys = tostring(keys)\n"
+        "        end\n"
+        "        tbl[keys] = value\n"
+        "      else\n"
+        "        -- Skip unknown key types\n"
+        "        goto continue\n"
+        "      end\n"
+
+        "      ::continue::\n"
+        "    end\n"
+        "    hashTables[hpath] = tbl\n"
+        "  end\n"
+
+        "  -- Look up the key\n"
+        "  local val = hashTables[hpath][key]\n"
+        
+        "  -- Handle lookup result\n"
+        "  if val == nil then\n"
+        "    if inner then\n"
+        "      res.result = nil\n"
+        "    else\n"
+        "      res.result = key\n"
+        "    end\n"
+        "  else\n"
+        "    res.result = val\n"
+        "  end\n"
+        
+        "  resultTable = res\n"
+        "  return res\n"
+        "end\n"
+    );
+
 
     // Show syntax error
     if (luaL_dostring(L, inputString.c_str()) != LUA_OK) {
@@ -4651,6 +4842,10 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
     // Read Lua global Variables
     captureLuaGlobals(L);
+
+    // Capture updated HASH tables
+    captureHashTables(L);
+
     std::string luaVariablesStr;
     for (const auto& pair : globalLuaVariablesMap) {
         const LuaVariable& var = pair.second;

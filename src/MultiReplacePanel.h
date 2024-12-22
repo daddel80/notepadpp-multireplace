@@ -270,6 +270,14 @@ struct LuaVariable {
 
 using LuaVariablesMap = std::map<std::string, LuaVariable>;
 
+struct LuaHashTable {
+    std::string hpath;                            // The identifier/path for this hash table
+    std::map<std::string, std::string> entries;   // Key-value pairs: Key -> Value
+};
+
+// We define a map for all hash tables, similar to globalLuaVariablesMap for global variables
+using LuaHashTablesMap = std::map<std::string, LuaHashTable>;
+
 class CsvLoadException : public std::exception {
 public:
     explicit CsvLoadException(const std::string& message) : message_(message) {}
@@ -287,6 +295,7 @@ class LuaSyntaxException : public std::exception {
 // possible initial limited stack size bei N++ for Plugins
 inline std::vector<UndoRedoAction> undoStack;
 inline std::vector<UndoRedoAction> redoStack;
+inline LuaHashTablesMap hashTablesMap; // Stores hash tables persistently between calls
 
 class MultiReplace : public StaticDialog
 {
@@ -633,7 +642,9 @@ private:
     bool preProcessListForReplace(bool highlight);
     SelectionInfo getSelectionInfo(bool isBackward);
     void captureLuaGlobals(lua_State* L);
+    void captureHashTables(lua_State* L);
     void loadLuaGlobals(lua_State* L);
+    void loadHashTables(lua_State* L);
     std::string escapeForRegex(const std::string& input);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
     void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
