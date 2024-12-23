@@ -4644,8 +4644,12 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "end\n");
 
     luaL_dostring(L,
+        "vars = init  -- Alias 'vars' to the existing 'init' function for compatibility\n"
+    );
+
+    luaL_dostring(L,
         // 1) Helper function: Load file in a sandboxed environment
-        "local function safeLoadFileSandbox(path)\n"
+        "function safeLoadFileSandbox(path)\n"
         "  -- Minimal Environment: Only safe base functions are allowed\n"
         "  local safeEnv = {\n"
         "    pairs = pairs,\n"
@@ -4764,6 +4768,62 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "end\n"
     );
 
+    luaL_dostring(L,
+        "function lvars(filePath)\n"
+        "  local res = {result = '', skip = true}  -- Default values for resultTable\n"
+
+        "  -- Validate the file path\n"
+        "  if filePath == nil or filePath == '' then\n"
+        "    error('lvars: file path is invalid or empty')\n"
+        "    return res\n"
+        "  end\n"
+
+        "  -- Load file in a sandboxed environment\n"
+        "  local success, dataTable = safeLoadFileSandbox(filePath)\n"
+        "  if not success then\n"
+        "    error('lvars: failed to safely load file at ' .. tostring(filePath) .. ': ' .. tostring(dataTable))\n"
+        "  end\n"
+
+        "  -- Ensure the loaded data is a table\n"
+        "  if type(dataTable) ~= 'table' then\n"
+        "    error('lvars: invalid data format in file at ' .. tostring(filePath))\n"
+        "  end\n"
+
+        "  -- Set variables in the global environment (_G)\n"
+        "  for name, value in pairs(dataTable) do\n"
+        "    if type(name) ~= 'string' then\n"
+        "      error('lvars: Variable name must be a string. Found invalid key \"' .. tostring(name) .. '\"')\n"
+        "    end\n"
+        "    if not string.match(name, '^[A-Za-z_][A-Za-z0-9_]*$') then\n"
+        "      error('lvars: Invalid variable name \"' .. tostring(name) .. '\"')\n"
+        "    end\n"
+        "    if value == nil then\n"
+        "      error('lvars: Value missing for variable \"' .. tostring(name) .. '\"')\n"
+        "    end\n"
+
+        "    -- Escape backslashes if REGEX is true and value is a string\n"
+        "    if REGEX and type(value) == 'string' then\n"
+        "      value = value:gsub('\\\\', '\\\\\\\\')\n"
+        "    end\n"
+
+        "    _G[name] = value\n"
+        "  end\n"
+
+        "  -- Forward or initialize resultTable\n"
+        "  if resultTable == nil then\n"
+        "    resultTable = res  -- Initialize resultTable if it does not exist\n"
+        "  else\n"
+        "    -- Ensure required fields are present without overwriting existing values\n"
+        "    if resultTable.result == nil then\n"
+        "      resultTable.result = res.result\n"
+        "    end\n"
+        "    if resultTable.skip == nil then\n"
+        "      resultTable.skip = res.skip\n"
+        "    end\n"
+        "  end\n"
+
+        "  return resultTable  -- Return the existing or new resultTable\n"
+        "end\n");
 
     // Show syntax error
     if (luaL_dostring(L, inputString.c_str()) != LUA_OK) {
