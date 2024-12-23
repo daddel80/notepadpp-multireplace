@@ -4781,7 +4781,10 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     lua_getglobal(L, "resultTable");
     if (lua_istable(L, -1)) {
         lua_getfield(L, -1, "result");
-        if (lua_isstring(L, -1) || lua_isnumber(L, -1)) {
+        if (lua_isnil(L, -1)) {
+            inputString.clear();  // Clear inputString to represent nil
+        }
+        else if (lua_isstring(L, -1) || lua_isnumber(L, -1)) {
             std::string result = lua_tostring(L, -1);  // Get the result as a string
             if (regex) {
                 result = escapeForRegex(result);  // Escape result if it will be used in regex
