@@ -19,7 +19,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
   - [Command Overview](#command-overview)
     - [set](#setstrorcalc)
     - [cond](#condcondition-trueval-falseval)
-    - [init](#initvariable1value1-variable2value2-)
+    - [vars](#varsvariable1value1-variable2value2-)
     - [fmtN](#fmtnnum-maxdecimals-fixeddecimals)
   - [Operators](#operators)
   - [If-Then Logic](#if-then-logic)
@@ -131,23 +131,23 @@ Implements if-then-else logic, or if-then if falseVal is omitted. Evates the con
 | `cond(LINE<3, "Modify this line")`                         | (Original text remains unchanged)     |
 | `cond(LINE<10, cond(LINE<5, cond(LINE>2, "3-4", "0-2"), "5-9"), "10+")` | "5-9" (Nested condition) |
 
-#### **init({Variable1=Value1, Variable2=Value2, ...})**
+#### **vars({Variable1=Value1, Variable2=Value2, ...})**
 Initializes custom variables for use in various commands, extending beyond standard variables like CNT, MATCH, CAP1. These variables can carry the status of previous find-and-replace operations to subsequent ones.
 
 Custom variables maintain their values throughout a single Replace-All or within the list of multiple Replace operations. So they can transfer values from one list entry to the following ones.  They reset at the start of each new document in 'Replace All in All Open Documents'.
 
 | Find             | Replace                                                                                                     | Before                              | After                                 | Regex | Scope CSV | Description                                                                                     |
 |-------------------|-----------------------------------------------------------------------------------------------------------|-------------------------------------|---------------------------------------|-------|-----------|-------------------------------------------------------------------------------------------------|
-| `(\d+)`          | `init({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);`<br>`if COL==2 then COL2=CAP1 end;`<br> `if COL==4 then COL4=CAP1 end;` | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` | Yes   | Yes       | Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line. |
-| `\d{2}-[A-Z]{3}` | `init({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                               | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`            | Yes    | No        | Uses MATCH_PREV to track the value of the first match in the line and shift it to the 2nd (LCNT) match during replacements. |
+| `(\d+)`          | `vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);`<br>`if COL==2 then COL2=CAP1 end;`<br> `if COL==4 then COL4=CAP1 end;` | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` | Yes   | Yes       | Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line. |
+| `\d{2}-[A-Z]{3}` | `vars({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                               | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`            | Yes    | No        | Uses MATCH_PREV to track the value of the first match in the line and shift it to the 2nd (LCNT) match during replacements. |
 
-An empty Find string can be used to set variables for the entire Find and Replace list without being tied to a specific Find action. This entry does not match any text but is executed once at the beginning of the 'Replace' or 'Replace All' process when 'Use List' is enabled. It allows the Replace field to run initialization commands like `init()` for the entire operation. The position of this entry in the list does not affect its behavior.
+An empty Find string can be used to set variables for the entire Find and Replace list without being tied to a specific Find action. This entry does not match any text but is executed once at the beginning of the 'Replace' or 'Replace All' process when 'Use List' is enabled. It allows the Replace field to run initialization commands like `vars()` for the entire operation. The position of this entry in the list does not affect its behavior.
 
 | Find      | Replace                                                                                                 | Description/Expected Output                                                                                     |
 |-------------------|-------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|
-|                   | `init({ `<br>`VpersonName = FNAME:sub(1, (FNAME:find(" - ", 1, true) or 0) - 1),`<br>`Vdepartment = FNAME:sub((FNAME:find(" - ", 1, true) or #FNAME + 1) + 3, (FNAME:find(".", 1, true) or 0) - 1) })` | Extracts `VpersonName` and `Vdepartment` from the filename of the active document in the format `<Name> - <Department>.xml` using the `init` action. Triggered only once at the start of the replace process when `Find` is empty. |
-| `personname`      | `set(VpersonName)`                                                                                               | Replaces `personname` with the content of the variable `VpersonName`, previously initialized by the `init` action. |
-| `department`      | `set(Vdepartment)`                                                                                               | Replaces `department` with the content of the variable `Vdepartment`, previously initialized by the `init` action. |
+|                   | `vars({ `<br>`VpersonName = FNAME:sub(1, (FNAME:find(" - ", 1, true) or 0) - 1),`<br>`Vdepartment = FNAME:sub((FNAME:find(" - ", 1, true) or #FNAME + 1) + 3, (FNAME:find(".", 1, true) or 0) - 1) })` | Extracts `VpersonName` and `Vdepartment` from the filename of the active document in the format `<Name> - <Department>.xml` using the `vars` action. Triggered only once at the start of the replace process when `Find` is empty. |
+| `personname`      | `set(VpersonName)`                                                                                               | Replaces `personname` with the content of the variable `VpersonName`, previously initialized by the `vars` action. |
+| `department`      | `set(Vdepartment)`                                                                                               | Replaces `department` with the content of the variable `Vdepartment`, previously initialized by the `vars` action. |
 
 #### **fmtN(num, maxDecimals, fixedDecimals)**
 Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).
@@ -170,7 +170,7 @@ Formats numbers based on precision (maxDecimals) and whether the number of decim
 ### If-Then Logic
 If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.
 
-**Note**: Do not embed `cond()`, `set()`, or `init()` within if statements; if statements are exclusively for adjusting custom variables.
+**Note**: Do not embed `cond()`, `set()`, or `vars()` within if statements; if statements are exclusively for adjusting custom variables.
 
 ##### Syntax Combinations
 - `if condition then ... end`
@@ -181,7 +181,7 @@ If-then logic is integral for dynamic replacements, allowing users to set custom
 ##### Example
 This example shows how to use `if` statements with `cond()` to manage variables based on conditions:
 
-`init({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end`
+`vars({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end`
 
 ### DEBUG option
 
@@ -189,7 +189,7 @@ The `DEBUG` option lets you inspect global variables during replacements. When e
 
 | Find      | Replace                              |
 |------------|--------------------------------------------|
-| `(\d+)`    | `init({DEBUG=true}); set("Number: "..CAP1)`|
+| `(\d+)`    | `vars({DEBUG=true}); set("Number: "..CAP1)`|
 
 ### More Examples
 
@@ -203,7 +203,7 @@ The `DEBUG` option lets you inspect global variables during replacements. When e
 | `(\d+)`          | `set(CAP1 * 2)`                                                                                           | Yes   | No        | Doubles the matched number. E.g., `100` becomes `200`.                                          |
 | `;`              | `cond(LCNT == 1, string.rep(" ", 20- (LPOS))..";")`                                                       | No    | No        | Inserts spaces before the semicolon to align it to the 20th character position if it's the first occurrence. |
 | `-`              | `cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), "*", " ")`                    | No    | No        | Draws a sine wave across a canvas of '-' characters spanning at least 20 lines and 80 characters per line. |
-| `^(.*)$`         | `init({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;`                                   | Yes   | No        | Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses `MATCH_PREV` to identify and remove consecutive duplicates. |
+| `^(.*)$`         | `vars({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;`                                   | Yes   | No        | Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses `MATCH_PREV` to identify and remove consecutive duplicates. |
 
 
 #### Engine Overview
