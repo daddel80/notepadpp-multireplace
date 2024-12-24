@@ -169,7 +169,7 @@ Performs an external lookup of **key** against an indexed data file located at *
   - Long Bracket String: `[[C:\path\to\file.lkp]]`  
 
 ##### Data File Format
-Each `lkp`  file is expected to return an array of entries structured as `{ [keys], value }`, where **[keys]** can be:
+Each lkp file must be defined as a table of entries in the form `{ [keys], value }`, where `[keys]` can be:
 - A single key (e.g., `"001"`).  
 - An array of keys (e.g., `{ "001", "1", 1 }`) mapping to the same value.
 
