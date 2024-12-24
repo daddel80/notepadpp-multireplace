@@ -4601,20 +4601,20 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "  return output\n"
         "end\n");
 
-    // Declare the init function
+    // Declare the vars function
     luaL_dostring(L,
-        "function init(args)\n"
+        "function vars(args)\n"
         "  for name, value in pairs(args) do\n"
         "    -- Set the global variable only if it does not already exist\n"
         "    if _G[name] == nil then\n"
         "      if type(name) ~= 'string' then\n"
-        "        error('init: Variable name must be a string')\n"
+        "        error('vars: Variable name must be a string')\n"
         "      end\n"
         "      if not string.match(name, '^[A-Za-z_][A-Za-z0-9_]*$') then\n"
-        "        error('init: Invalid variable name')\n"
+        "        error('vars: Invalid variable name')\n"
         "      end\n"
         "      if value == nil then\n"
-        "        error('init: Value missing')\n"
+        "        error('vars: Value missing')\n"
         "      end\n"
         "      -- Check if the value is a string and REGEX is true, then preprocess backslashes\n"
         "      if type(value) == 'string' and REGEX then\n"
@@ -4643,8 +4643,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "  return resultTable  -- Return the existing or new resultTable\n"
         "end\n");
 
+    // 'init' to the existing 'vars' function for compatibility
     luaL_dostring(L,
-        "vars = init  -- Alias 'vars' to the existing 'init' function for compatibility\n"
+        "init = vars\n"
     );
 
     luaL_dostring(L,
