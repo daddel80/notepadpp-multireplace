@@ -20,6 +20,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
     - [set](#setstrorcalc)
     - [cond](#condcondition-trueval-falseval)
     - [vars](#varsvariable1value1-variable2value2-)
+    - [lkp](#lkpkey-hpath-inner)
     - [fmtN](#fmtnnum-maxdecimals-fixeddecimals)
   - [Operators](#operators)
   - [If-Then Logic](#if-then-logic)
