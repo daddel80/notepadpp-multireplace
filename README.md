@@ -45,6 +45,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 -   **CSV Column Operations**: Search, replace, sort, or highlight specific columns in CSV or other delimited files by selecting column numbers.
 -   **Conditional Replacements**: Use variables, conditions, and mathematical operations for complex replacements, fully integrated into the replacement list like regular entries.
 -   **Highlight Matches**: Mark multiple search terms in the text, each with a distinct color for easy differentiation.
+-   **External Lookups**: Replace matches with values from external hash or lookup files for externalizing large or frequently updated mapping tables.
 -   **Bash Script Export**: Export replacement operations as a bash script for use outside of Notepad++.
 
 
@@ -148,6 +149,59 @@ An empty Find string can be used to set variables for the entire Find and Replac
 |                   | `vars({ `<br>`VpersonName = FNAME:sub(1, (FNAME:find(" - ", 1, true) or 0) - 1),`<br>`Vdepartment = FNAME:sub((FNAME:find(" - ", 1, true) or #FNAME + 1) + 3, (FNAME:find(".", 1, true) or 0) - 1) })` | Extracts `VpersonName` and `Vdepartment` from the filename of the active document in the format `<Name> - <Department>.xml` using the `vars` action. Triggered only once at the start of the replace process when `Find` is empty. |
 | `personname`      | `set(VpersonName)`                                                                                               | Replaces `personname` with the content of the variable `VpersonName`, previously initialized by the `vars` action. |
 | `department`      | `set(Vdepartment)`                                                                                               | Replaces `department` with the content of the variable `Vdepartment`, previously initialized by the `vars` action. |
+
+#### **lkp(key, hpath, inner)**
+
+##### Description
+Performs an external lookup of **key** against an indexed data file located at **hpath** and returns the corresponding value. By default, if the **key** is not found, `lkp()` simply reverts to the key itself. Setting **inner** to `true` instead yields a `nil` result when the key is missing, allowing for conditional checks or deeper nested logic.
+
+##### Key and File Path
+- **Key**:  
+  The **key** can be either a string or a number. Numbers are automatically converted to strings to ensure compatibility in the lookup process.
+  
+- **File Path (hpath)**:  
+  The **hpath** must point to a valid `.lkp` file that returns a table of data.
+
+  **Supported Path Formats**:  
+  - Escaped Backslashes: `"C:\\path\\to\\file.lkp"`  
+  - Forward Slashes: `"C:/path/to/file.lkp"`  
+  - Long Bracket String: `[[C:\path\to\file.lkp]]`  
+
+##### Data File Format
+Each `lkp`  file is expected to return an array of entries structured as `{ [keys], value }`, where **[keys]** can be:
+- A single key (e.g., `"001"`).  
+- An array of keys (e.g., `{ "001", "1", 1 }`) mapping to the same value.
+
+**Example**:
+```lua
+return {
+    { {"001", "1", 1}, "One" },
+    { 2, "Two" },
+    { "003", "Three" }
+}
+```
+**Note:** The `return` statement must be included to define the mapping data properly.
+
+In this example:
+- `'001'`, `'1'`, and `1` all correspond to `"One"`.  
+- `2` corresponds to `"Two"`.  
+- `'003'` directly maps to `"Three"`.   
+
+##### Caching Mechanism
+Once `lkp()` loads the data file for **hpath**, the parsed table is cached in memory for the duration of the Replace-All operation.
+
+##### inner Flag
+- **`false` ((default, can be omitted))**: If the key is not found, `lkp()` returns the original key.  
+- **`true`**: If the key is not found, `lkp()` yields a `nil` result, which can be used with `cond()` for conditional handling.
+
+##### Examples
+
+| **Find**   | **Replace**                                                                                               | **Regex** | **Scope CSV** | **Description**                                                                                      |
+|------------|-----------------------------------------------------------------------------------------------------------|-----------|---------------|------------------------------------------------------------------------------------------------------|
+| `\b\w+\b`  | `lkp(MATCH, [[C:\tmp\hash.lkp]], true)`                                                                    | Yes       | No            | Uses **inner = true**: If a match is found in the lookup file, replaces it with the mapped value. If no match is found, the original word is removed. |
+| `(\d+)`    | `lkp(CAP1, "C:/path/to/myLookupFile.lkp")`                                                                | Yes       | No            | Uses **inner = false** (default): If a match is found in the lookup file, replaces it with the mapped value. If no match is found, the original text (`CAP1`) is returned. |
+| `\b\w+\b`  | `cond(lkp(MATCH, [[C:\tmp\hash.lkp]], true).result ~= nil, lkp(MATCH, [[C:\tmp\hash.lkp]], true).result, "NoKey")` | Yes       | No            | Uses **inner = true**: If the lookup result is non-`nil`, replaces with the mapped value. Otherwise, replaces with `"NoKey"`. |
+| `\b\w+\b`  | `cond(COL==3, lkp(MATCH, [[C:/tmp/col3_hash.lkp]]))`                                               | No        | Yes           | Looks up values in the third column (`COL==3`) using a separate lookup file (`col3_hash.lkp`). If a match is found, replaces it; otherwise, leaves it unchanged. |
 
 #### **fmtN(num, maxDecimals, fixedDecimals)**
 Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).
