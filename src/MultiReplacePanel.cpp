@@ -2035,6 +2035,14 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
         return; // Invalid ColumnID, exit the function
     }
 
+    // Suppress hover text only while editing
+    isHoverTextSuppressed = true;
+
+    // Also remove LVS_EX_INFOTIP style from the ListView itself
+    DWORD extendedStyle = ListView_GetExtendedListViewStyle(_replaceListView);
+    extendedStyle &= ~LVS_EX_INFOTIP;
+    ListView_SetExtendedListViewStyle(_replaceListView, extendedStyle);
+
     // Calculate the total width of previous columns to get the X coordinate for the start of the selected column
     int totalWidthBeforeColumn = 0;
     for (int i = 0; i < column; ++i) {
@@ -2145,6 +2153,19 @@ void MultiReplace::closeEditField(bool commitChanges) {
     _editingItemIndex = -1;
     _editingColumnIndex = -1;
     _editingColumnID = ColumnID::INVALID;
+
+    // Restore hover text only if we suppressed it
+    if (isHoverTextSuppressed)
+    {
+        isHoverTextSuppressed = false;
+
+        // If user has hover text enabled in general, re-add LVS_EX_INFOTIP
+        if (isHoverTextEnabled) {
+            DWORD extendedStyle = ListView_GetExtendedListViewStyle(_replaceListView);
+            extendedStyle |= LVS_EX_INFOTIP;
+            ListView_SetExtendedListViewStyle(_replaceListView, extendedStyle);
+        }
+    }
 }
 
 LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
@@ -2279,7 +2300,7 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
 
     case WM_MOUSEMOVE: {
 
-        if (!pThis->isHoverTextEnabled) {
+        if (!pThis->isHoverTextEnabled || pThis->isHoverTextSuppressed) {
             return CallWindowProc(pThis->originalListViewProc, hwnd, msg, wParam, lParam);
         }
 
@@ -2318,7 +2339,7 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
     case WM_TIMER: {
         if (wParam == 1) { // Tooltip re-enable timer   
             KillTimer(hwnd, 1); // Kill the timer first to prevent it from firing again
-            if (!pThis->isHoverTextEnabled) {
+            if (!pThis->isHoverTextEnabled || pThis->isHoverTextSuppressed) {
                 return 0;
             }
             // Re-enable LVS_EX_INFOTIP

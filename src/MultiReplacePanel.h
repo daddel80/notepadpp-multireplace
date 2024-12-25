@@ -505,6 +505,7 @@ private:
     int lastMouseX;
     int lastMouseY;
     bool isHoverTextEnabled = false; // Important to set on false as TIMER will be triggered at startup.
+    bool isHoverTextSuppressed = false;
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
