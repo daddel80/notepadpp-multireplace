@@ -2028,78 +2028,108 @@ void MultiReplace::toggleBooleanAt(int itemIndex, ColumnID columnID) {
     modifyItemInReplaceList(static_cast<size_t>(itemIndex), newData);
 }
 
-void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
-    // Map ColumnID to the column index
-    int column = getColumnIndexFromID(columnID); // Convert ColumnID to column index
-    if (column == -1) {
-        return; // Invalid ColumnID, exit the function
-    }
+void MultiReplace::editTextAt(int itemIndex, ColumnID columnID)
+{
+    // Determine column index and validate
+    int column = getColumnIndexFromID(columnID);
+    if (column == -1)
+        return;
 
-    // Suppress hover text only while editing
+    // Suppress hover text and disable tooltips
     isHoverTextSuppressed = true;
-
-    // Also remove LVS_EX_INFOTIP style from the ListView itself
     DWORD extendedStyle = ListView_GetExtendedListViewStyle(_replaceListView);
     extendedStyle &= ~LVS_EX_INFOTIP;
     ListView_SetExtendedListViewStyle(_replaceListView, extendedStyle);
 
-    // Calculate the total width of previous columns to get the X coordinate for the start of the selected column
+    // Calculate X position of the column based on scrolling and widths
     int totalWidthBeforeColumn = 0;
     for (int i = 0; i < column; ++i) {
         totalWidthBeforeColumn += ListView_GetColumnWidth(_replaceListView, i);
     }
-
-    // Determine the width of the current column
     int columnWidth = ListView_GetColumnWidth(_replaceListView, column);
 
-    // Get horizontal scroll position
     SCROLLINFO siHorz = { sizeof(siHorz), SIF_POS };
     GetScrollInfo(_replaceListView, SB_HORZ, &siHorz);
-
-    // Adjust X position by the horizontal scroll position
     int correctedX = totalWidthBeforeColumn - siHorz.nPos;
 
-    // Get the rectangle for the current item to calculate Y position dynamically
+    // Retrieve Y position and height of the row
     RECT itemRect;
     ListView_GetItemRect(_replaceListView, itemIndex, &itemRect, LVIR_BOUNDS);
-
-    // Correct the Y position based on the item's top coordinate
     int correctedY = itemRect.top;
+    int editHeight = itemRect.bottom - itemRect.top;
 
-    // Create the Edit window with corrected coordinates and size
-    hwndEdit = CreateWindowEx(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-        correctedX, correctedY, columnWidth, itemRect.bottom - itemRect.top,
-        _replaceListView, NULL, (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE), NULL);
+    // Create multi-line edit control with vertical and horizontal scrollbars
+    hwndEdit = CreateWindowEx(
+        0,
+        L"EDIT",
+        L"",
+        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN,
+        correctedX,
+        correctedY,
+        columnWidth - 20, // Leave space for the toggle button
+        editHeight,
+        _replaceListView,
+        NULL,
+        (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE),
+        NULL
+    );
 
-    // Set the initial text for the Edit window
+    // Create an expand/collapse toggle button next to the edit control
+    HWND hwndExpandBtnLocal = CreateWindowEx(
+        0,
+        L"BUTTON",
+        L"↓", // Indicator for expand/collapse
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        correctedX + (columnWidth - 20),
+        correctedY,
+        20,          // Button width
+        editHeight,  // Button height matches edit height
+        _replaceListView,
+        (HMENU)ID_EDIT_EXPAND_BUTTON,
+        (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE),
+        NULL
+    );
+
+    // Set the initial text of the edit control
     wchar_t itemText[MAX_TEXT_LENGTH];
     ListView_GetItemText(_replaceListView, itemIndex, column, itemText, MAX_TEXT_LENGTH);
     itemText[MAX_TEXT_LENGTH - 1] = L'\0';
     SetWindowText(hwndEdit, itemText);
 
-    // Get the ListView font and set it for the Edit control
+    // Apply the ListView font to the edit control and toggle button
     HFONT hListViewFont = (HFONT)SendMessage(_replaceListView, WM_GETFONT, 0, 0);
     if (hListViewFont) {
         SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hListViewFont, TRUE);
+        SendMessage(hwndExpandBtnLocal, WM_SETFONT, (WPARAM)hListViewFont, TRUE);
     }
 
-    // Set focus and select all text
+    // Focus the edit control and select all its text
     SetFocus(hwndEdit);
     SendMessage(hwndEdit, EM_SETSEL, 0, -1);
 
-    // Subclass the edit control to handle Enter and clicks outside
-    SetWindowSubclass(hwndEdit, EditControlSubclassProc, 1, (DWORD_PTR)this);
+    // Create a context instance to manage the MultiReplace instance and button handle
+    EditControlContext* ctx = new EditControlContext{ this, hwndExpandBtnLocal };
 
-    // Store indices and column ID for use in the subclass procedure
+    // Subclass the edit control for custom keyboard handling
+    SetWindowSubclass(hwndEdit, EditControlSubclassProc, 1, (DWORD_PTR)ctx);
+
+    // Store the editing state
     _editingItemIndex = itemIndex;
-    _editingColumnIndex = column; // Store column index for GUI logic
-    _editingColumnID = columnID;  // Store column ID for semantic clarity
+    _editingColumnIndex = column;
+    _editingColumnID = columnID;
+    _editIsExpanded = false; // Initial state is collapsed
 }
+
 
 void MultiReplace::closeEditField(bool commitChanges) {
     if (!hwndEdit) {
         return; // No active edit field present
     }
+
+    // Retrieve the context associated with hwndEdit
+    EditControlContext* ctx;
+    GetWindowSubclass(hwndEdit, EditControlSubclassProc, 1, reinterpret_cast<DWORD_PTR*>(&ctx));
+    HWND hwndExpandBtn = ctx ? ctx->hwndExpandBtn : nullptr;
 
     if (commitChanges &&
         _editingColumnID != ColumnID::INVALID &&
@@ -2149,6 +2179,13 @@ void MultiReplace::closeEditField(bool commitChanges) {
     DestroyWindow(hwndEdit);
     hwndEdit = nullptr;
 
+    // destroy the expand button if it exists
+    if (hwndExpandBtn && IsWindow(hwndExpandBtn)) {
+        DestroyWindow(hwndExpandBtn);
+        hwndExpandBtn = nullptr;
+    }
+    _editIsExpanded = false;
+
     // Reset editing state
     _editingItemIndex = -1;
     _editingColumnIndex = -1;
@@ -2169,57 +2206,39 @@ void MultiReplace::closeEditField(bool commitChanges) {
 }
 
 LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    MultiReplace* pThis = reinterpret_cast<MultiReplace*>(dwRefData);
+    EditControlContext* ctx = reinterpret_cast<EditControlContext*>(dwRefData);
     switch (msg) {
-    case WM_PASTE: {
-        // Check if the clipboard contains Unicode text
-        if (IsClipboardFormatAvailable(CF_UNICODETEXT)) {
-            if (OpenClipboard(hwnd)) {
-                HGLOBAL hglb = GetClipboardData(CF_UNICODETEXT);
-                if (hglb != NULL) {
-                    // Retrieve text from the clipboard
-                    wchar_t* lptstr = static_cast<wchar_t*>(GlobalLock(hglb));
-                    if (lptstr != NULL) {
-                        // Remove newlines from the clipboard text
-                        std::wstring text = lptstr;
-                        std::wstring cleanText;
-                        for (wchar_t ch : text) {
-                            if (ch != L'\n' && ch != L'\r') {
-                                cleanText += ch;
-                            }
-                        }
-                        GlobalUnlock(hglb);
-
-                        // Get the current selection in the edit control
-                        DWORD start, end;
-                        SendMessage(hwnd, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
-
-                        // Get the current text in the edit control
-                        int len = GetWindowTextLength(hwnd);
-                        std::wstring currentText(len + 1, L'\0');
-                        GetWindowText(hwnd, &currentText[0], len + 1);
-                        currentText.resize(len);
-
-                        // Replace the selected text with the cleaned clipboard text
-                        std::wstring newText = currentText.substr(0, start) + cleanText + currentText.substr(end);
-
-                        // Set the new text and adjust the cursor position
-                        SetWindowText(hwnd, newText.c_str());
-                        SendMessage(hwnd, EM_SETSEL, start + cleanText.size(), start + cleanText.size());
-                    }
-                }
-                CloseClipboard();
-            }
-            return 0; // Mark the message as handled
+    case WM_CHAR: {
+        if (wParam == VK_RETURN) {
+            // If multiline, let's allow Enter to create a newline:
+            // do nothing special => DefSubclassProc
+            // If single-line, we might want to close or commit
+            // But currently we have ES_MULTILINE always
+        }
+        else if (wParam == VK_ESCAPE) {
+            // Possibly close or revert changes
+            pThis->closeEditField(false);
+            RemoveWindowSubclass(hwnd, EditControlSubclassProc, uIdSubclass);
+            return 0;
         }
         break;
     }
-    case WM_KILLFOCUS: {
-        MultiReplace* pThis = reinterpret_cast<MultiReplace*>(dwRefData);
 
-        pThis->closeEditField(true); // Commit changes on focus loss
+    case WM_KILLFOCUS:
+    {
+        HWND newFocus = GetFocus();
+        if (newFocus == ctx->hwndExpandBtn) {
+            return 0;
+        }
+
+        ctx->pThis->closeEditField(true);
         RemoveWindowSubclass(hwnd, EditControlSubclassProc, uIdSubclass);
+        delete ctx;
         return 0;
     }
+
+
     }
     return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
@@ -2348,12 +2367,67 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         }
         break;
     }
+    case WM_COMMAND: {
+        // Check if the source is our expand button
+        WORD wId = LOWORD(wParam);
+        WORD wEvent = HIWORD(wParam);
+
+        if (wId == ID_EDIT_EXPAND_BUTTON && wEvent == BN_CLICKED) {
+            // user clicked the expand button
+            pThis->toggleEditExpand();
+            return 0;
+        }
+        break;
+    }
 
     default:
         break;
     }
 
     return CallWindowProc(pThis->originalListViewProc, hwnd, msg, wParam, lParam);
+}
+
+void MultiReplace::toggleEditExpand()
+{
+    // Retrieve context for button handle
+    EditControlContext* ctx;
+    GetWindowSubclass(hwndEdit, EditControlSubclassProc, 1, reinterpret_cast<DWORD_PTR*>(&ctx));
+    HWND hwndExpandBtn = ctx ? ctx->hwndExpandBtn : nullptr;
+
+    if (!hwndEdit || !hwndExpandBtn)
+        return;
+
+    // Get current position and size of the edit control in ListView coordinates
+    RECT rc;
+    GetWindowRect(hwndEdit, &rc);
+    POINT ptLT = { rc.left, rc.top };
+    POINT ptRB = { rc.right, rc.bottom };
+    MapWindowPoints(NULL, _replaceListView, &ptLT, 1);
+    MapWindowPoints(NULL, _replaceListView, &ptRB, 1);
+
+    int curWidth = ptRB.x - ptLT.x;
+    int curHeight = ptRB.y - ptLT.y;
+
+    // Calculate new height (expand or collapse)
+    int newHeight;
+    if (_editIsExpanded) {
+        newHeight = curHeight / 3; // Collapse
+        SetWindowText(hwndExpandBtn, L"↓");
+    }
+    else {
+        newHeight = curHeight * 3; // Expand
+        SetWindowText(hwndExpandBtn, L"↑");
+    }
+    _editIsExpanded = !_editIsExpanded;
+
+    // Update position and size of edit control and button
+    MoveWindow(hwndEdit, ptLT.x, ptLT.y, curWidth, newHeight, TRUE);
+    MoveWindow(hwndExpandBtn, ptLT.x + curWidth, ptLT.y, 20, newHeight, TRUE);
+
+    // Bring controls to the top and ensure edit has focus
+    SetWindowPos(hwndEdit, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    SetWindowPos(hwndExpandBtn, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    SetFocus(hwndEdit);
 }
 
 void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state) {

@@ -291,11 +291,19 @@ private:
 class LuaSyntaxException : public std::exception {
 };
 
+struct EditControlContext
+{
+    MultiReplace* pThis;
+    HWND hwndExpandBtn;
+};
+
 // each new Vector has to be delared outside of the class due to unresolved memory behaviours, 
 // possible initial limited stack size bei N++ for Plugins
 inline std::vector<UndoRedoAction> undoStack;
 inline std::vector<UndoRedoAction> redoStack;
 inline LuaHashTablesMap hashTablesMap; // Stores hash tables persistently between calls
+
+inline bool _editIsExpanded = false; // track expand state
 
 class MultiReplace : public StaticDialog
 {
@@ -322,7 +330,6 @@ public:
     {
         setInstance(this);
     };
-
     static MultiReplace* instance; // Static instance of the class
 
     // Helper functions for scaling
@@ -623,6 +630,7 @@ private:
     void closeEditField(bool commitChanges);
     static LRESULT CALLBACK ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+    void toggleEditExpand();
     void createContextMenu(HWND hwnd, POINT ptScreen, MenuState state);
     MenuState checkMenuConditions(POINT ptScreen);
     void performItemAction(POINT pt, ItemAction action);

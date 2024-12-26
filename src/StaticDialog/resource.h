@@ -120,6 +120,8 @@
 #define IDM_TOGGLE_COMMENTS             5803
 #define IDM_TOGGLE_DELETE               5804
 
+#define ID_EDIT_EXPAND_BUTTON           6000
+
 #define STYLE1							60
 #define STYLE2							61
 #define STYLE3							62
