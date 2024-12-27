@@ -235,10 +235,10 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(369), sy(181), sx(30), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_cols"), SS_RIGHT, NULL };
     ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(400), sy(181), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_columns") };
-    ctrlMap[IDC_DELIMITER_STATIC] = { sx(442), sy(181), sx(36), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
-    ctrlMap[IDC_DELIMITER_EDIT] = { sx(479), sy(181), sx(25), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_delimiter") };
-    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(504), sy(181), sx(37), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
-    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(542), sy(181), sx(17), sy(16), WC_EDIT, NULL, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_quote") };
+    ctrlMap[IDC_DELIMITER_STATIC] = { sx(442), sy(181), sx(38), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
+    ctrlMap[IDC_DELIMITER_EDIT] = { sx(481), sy(181), sx(25), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_delimiter") };
+    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(506), sy(181), sx(37), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(544), sy(181), sx(15), sy(16), WC_EDIT, NULL, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_quote") };
 
     ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(418), sy(149), sx(19), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
     ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(437), sy(149), sx(19), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
