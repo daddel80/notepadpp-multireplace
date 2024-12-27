@@ -142,9 +142,11 @@ void MultiReplace::initializeFontStyles() {
 
     // Define bold fonts
     _hBoldFont1 = createFont(22, FW_BOLD, L"Courier New");
+    _hBoldFont2 = createFont(12, FW_BOLD, L"MS Shell Dlg 2");
 
     // Specific controls using bold fonts, adjusted to match the correct sizes
     SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont1, TRUE);
+    SendMessage(GetDlgItem(_hSelf, ID_EDIT_EXPAND_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont2, TRUE);
 
     // For ListView: calculate widths of special characters and add padding
     checkMarkWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2714") + 15;
@@ -2028,8 +2030,7 @@ void MultiReplace::toggleBooleanAt(int itemIndex, ColumnID columnID) {
     modifyItemInReplaceList(static_cast<size_t>(itemIndex), newData);
 }
 
-void MultiReplace::editTextAt(int itemIndex, ColumnID columnID)
-{
+void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
     // Determine column index and validate
     int column = getColumnIndexFromID(columnID);
     if (column == -1)
@@ -2058,6 +2059,13 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID)
     int correctedY = itemRect.top;
     int editHeight = itemRect.bottom - itemRect.top;
 
+    // Calculate scaled button dimensions
+    int buttonWidth = sx(20);
+    int buttonHeight = editHeight + 2;
+
+    // Adjust edit control width to reserve space for the button
+    int editWidth = columnWidth - buttonWidth;
+
     // Create multi-line edit control with vertical and horizontal scrollbars
     hwndEdit = CreateWindowEx(
         0,
@@ -2066,7 +2074,7 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID)
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN,
         correctedX,
         correctedY,
-        columnWidth - 20, // Leave space for the toggle button
+        editWidth,
         editHeight,
         _replaceListView,
         NULL,
@@ -2080,15 +2088,18 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID)
         L"BUTTON",
         L"↓", // Indicator for expand/collapse
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        correctedX + (columnWidth - 20),
-        correctedY,
-        20,          // Button width
-        editHeight,  // Button height matches edit height
+        correctedX + editWidth,
+        correctedY - 1, // Adjust for button alignment
+        buttonWidth,
+        buttonHeight,
         _replaceListView,
         (HMENU)ID_EDIT_EXPAND_BUTTON,
         (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE),
         NULL
     );
+
+    // Set the _hBoldFont2 to the expand/collapse button
+    SendMessage(hwndExpandBtnLocal, WM_SETFONT, (WPARAM)_hBoldFont2, TRUE);
 
     // Set the initial text of the edit control
     wchar_t itemText[MAX_TEXT_LENGTH];
@@ -2096,11 +2107,10 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID)
     itemText[MAX_TEXT_LENGTH - 1] = L'\0';
     SetWindowText(hwndEdit, itemText);
 
-    // Apply the ListView font to the edit control and toggle button
+    // Get the ListView font and set it for the Edit control
     HFONT hListViewFont = (HFONT)SendMessage(_replaceListView, WM_GETFONT, 0, 0);
     if (hListViewFont) {
         SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hListViewFont, TRUE);
-        SendMessage(hwndExpandBtnLocal, WM_SETFONT, (WPARAM)hListViewFont, TRUE);
     }
 
     // Focus the edit control and select all its text
@@ -2119,7 +2129,6 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID)
     _editingColumnID = columnID;
     _editIsExpanded = false; // Initial state is collapsed
 }
-
 
 void MultiReplace::closeEditField(bool commitChanges) {
     if (!hwndEdit) {
@@ -2420,9 +2429,12 @@ void MultiReplace::toggleEditExpand()
     }
     _editIsExpanded = !_editIsExpanded;
 
+    // Set the _hBoldFont2 to the expand/collapse button
+    SendMessage(hwndExpandBtn, WM_SETFONT, (WPARAM)_hBoldFont2, TRUE);
+
     // Update position and size of edit control and button
     MoveWindow(hwndEdit, ptLT.x, ptLT.y, curWidth, newHeight, TRUE);
-    MoveWindow(hwndExpandBtn, ptLT.x + curWidth, ptLT.y, 20, newHeight, TRUE);
+    MoveWindow(hwndExpandBtn, ptLT.x + curWidth, ptLT.y - 1 , sx(20), newHeight + 2, TRUE);
 
     // Bring controls to the top and ensure edit has focus
     SetWindowPos(hwndEdit, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
