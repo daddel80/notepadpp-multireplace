@@ -2824,26 +2824,52 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
     case WM_INITDIALOG:
     {
-        // checkFullStackInfo();
-        dpiMgr = new DPIManager(_hSelf);
-        loadLanguage();
-        initializeWindowSize();
-        pointerToScintilla();
-        initializeMarkerStyle();
-        initializeCtrlMap();
-        initializeFontStyles();
-        loadSettings();
-        updateTwoButtonsVisibility();
-        initializeListView();
-        initializeDragAndDrop();
-        adjustWindowSize();
+        MessageBox(_hSelf, TEXT("Entering WM_INITDIALOG"), TEXT("Debug"), MB_OK);
 
-        // Activate Dark Mode
+        dpiMgr = new DPIManager(_hSelf);
+        MessageBox(_hSelf, TEXT("DPIManager initialized"), TEXT("Debug"), MB_OK);
+
+        loadLanguage();
+        MessageBox(_hSelf, TEXT("Language loaded"), TEXT("Debug"), MB_OK);
+
+        initializeWindowSize();
+        MessageBox(_hSelf, TEXT("Window size initialized"), TEXT("Debug"), MB_OK);
+
+        pointerToScintilla();
+        MessageBox(_hSelf, TEXT("Pointer to Scintilla set"), TEXT("Debug"), MB_OK);
+
+        initializeMarkerStyle();
+        MessageBox(_hSelf, TEXT("Marker style initialized"), TEXT("Debug"), MB_OK);
+
+        initializeCtrlMap();
+        MessageBox(_hSelf, TEXT("Control map initialized"), TEXT("Debug"), MB_OK);
+
+        initializeFontStyles();
+        MessageBox(_hSelf, TEXT("Font styles initialized"), TEXT("Debug"), MB_OK);
+
+        loadSettings();
+        MessageBox(_hSelf, TEXT("Settings loaded"), TEXT("Debug"), MB_OK);
+
+        updateTwoButtonsVisibility();
+        MessageBox(_hSelf, TEXT("Buttons visibility updated"), TEXT("Debug"), MB_OK);
+
+        initializeListView();
+        MessageBox(_hSelf, TEXT("ListView initialized"), TEXT("Debug"), MB_OK);
+
+        initializeDragAndDrop();
+        MessageBox(_hSelf, TEXT("Drag and drop initialized"), TEXT("Debug"), MB_OK);
+
+        adjustWindowSize();
+        MessageBox(_hSelf, TEXT("Window size adjusted"), TEXT("Debug"), MB_OK);
+
+        // Dark Mode aktivieren
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
             static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
+        MessageBox(_hSelf, TEXT("Dark mode activated"), TEXT("Debug"), MB_OK);
 
-        // Post a custom message to perform post-initialization tasks after the dialog is shown
+        // PostMessage für nachträgliche Initialisierungsaufgaben
         PostMessage(_hSelf, WM_POST_INIT, 0, 0);
+        MessageBox(_hSelf, TEXT("PostMessage sent"), TEXT("Debug"), MB_OK);
 
         return TRUE;
     }
