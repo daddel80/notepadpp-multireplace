@@ -2083,7 +2083,7 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
     );
 
     // Create an expand/collapse toggle button next to the edit control
-    HWND hwndExpandBtnLocal = CreateWindowEx(
+    hwndExpandBtn = CreateWindowEx(
         0,
         L"BUTTON",
         L"↓", // Indicator for expand/collapse
@@ -2099,7 +2099,9 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
     );
 
     // Set the _hBoldFont2 to the expand/collapse button
-    SendMessage(hwndExpandBtnLocal, WM_SETFONT, (WPARAM)_hBoldFont2, TRUE);
+    if (_hBoldFont2) {
+        SendMessage(hwndExpandBtn, WM_SETFONT, (WPARAM)_hBoldFont2, TRUE);
+    }
 
     // Set the initial text of the edit control
     wchar_t itemText[MAX_TEXT_LENGTH];
@@ -2117,11 +2119,8 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
     SetFocus(hwndEdit);
     SendMessage(hwndEdit, EM_SETSEL, 0, -1);
 
-    // Create a context instance to manage the MultiReplace instance and button handle
-    EditControlContext* ctx = new EditControlContext{ this, hwndExpandBtnLocal };
-
     // Subclass the edit control for custom keyboard handling
-    SetWindowSubclass(hwndEdit, EditControlSubclassProc, 1, (DWORD_PTR)ctx);
+    SetWindowSubclass(hwndEdit, EditControlSubclassProc, 1, (DWORD_PTR)this);
 
     // Store the editing state
     _editingItemIndex = itemIndex;
@@ -2134,11 +2133,6 @@ void MultiReplace::closeEditField(bool commitChanges) {
     if (!hwndEdit) {
         return; // No active edit field present
     }
-
-    // Retrieve the context associated with hwndEdit
-    EditControlContext* ctx;
-    GetWindowSubclass(hwndEdit, EditControlSubclassProc, 1, reinterpret_cast<DWORD_PTR*>(&ctx));
-    HWND hwndExpandBtn = ctx ? ctx->hwndExpandBtn : nullptr;
 
     if (commitChanges &&
         _editingColumnID != ColumnID::INVALID &&
@@ -2188,7 +2182,7 @@ void MultiReplace::closeEditField(bool commitChanges) {
     DestroyWindow(hwndEdit);
     hwndEdit = nullptr;
 
-    // destroy the expand button if it exists
+    // Destroy the expand button if it exists
     if (hwndExpandBtn && IsWindow(hwndExpandBtn)) {
         DestroyWindow(hwndExpandBtn);
         hwndExpandBtn = nullptr;
@@ -2201,8 +2195,7 @@ void MultiReplace::closeEditField(bool commitChanges) {
     _editingColumnID = ColumnID::INVALID;
 
     // Restore hover text only if we suppressed it
-    if (isHoverTextSuppressed)
-    {
+    if (isHoverTextSuppressed) {
         isHoverTextSuppressed = false;
 
         // If user has hover text enabled in general, re-add LVS_EX_INFOTIP
@@ -2215,38 +2208,29 @@ void MultiReplace::closeEditField(bool commitChanges) {
 }
 
 LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    // Access the instance of MultiReplace
     MultiReplace* pThis = reinterpret_cast<MultiReplace*>(dwRefData);
-    EditControlContext* ctx = reinterpret_cast<EditControlContext*>(dwRefData);
+
     switch (msg) {
-    case WM_CHAR: {
-        if (wParam == VK_RETURN) {
-            // If multiline, let's allow Enter to create a newline:
-            // do nothing special => DefSubclassProc
-            // If single-line, we might want to close or commit
-            // But currently we have ES_MULTILINE always
-        }
-        else if (wParam == VK_ESCAPE) {
-            // Possibly close or revert changes
-            pThis->closeEditField(false);
+    case WM_KEYDOWN:
+        if (wParam == VK_ESCAPE || wParam == VK_TAB) {
+            pThis->closeEditField(true);
             RemoveWindowSubclass(hwnd, EditControlSubclassProc, uIdSubclass);
             return 0;
         }
         break;
-    }
 
     case WM_KILLFOCUS:
     {
         HWND newFocus = GetFocus();
-        if (newFocus == ctx->hwndExpandBtn) {
+        if (newFocus == hwndExpandBtn) {
             return 0;
         }
 
-        ctx->pThis->closeEditField(true);
+        pThis->closeEditField(true);
         RemoveWindowSubclass(hwnd, EditControlSubclassProc, uIdSubclass);
-        delete ctx;
         return 0;
     }
-
 
     }
     return DefSubclassProc(hwnd, msg, wParam, lParam);
@@ -2398,11 +2382,6 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
 
 void MultiReplace::toggleEditExpand()
 {
-    // Retrieve context for button handle
-    EditControlContext* ctx;
-    GetWindowSubclass(hwndEdit, EditControlSubclassProc, 1, reinterpret_cast<DWORD_PTR*>(&ctx));
-    HWND hwndExpandBtn = ctx ? ctx->hwndExpandBtn : nullptr;
-
     if (!hwndEdit || !hwndExpandBtn)
         return;
 
@@ -2434,7 +2413,7 @@ void MultiReplace::toggleEditExpand()
 
     // Update position and size of edit control and button
     MoveWindow(hwndEdit, ptLT.x, ptLT.y, curWidth, newHeight, TRUE);
-    MoveWindow(hwndExpandBtn, ptLT.x + curWidth, ptLT.y - 1 , sx(20), newHeight + 2, TRUE);
+    MoveWindow(hwndExpandBtn, ptLT.x + curWidth, ptLT.y - 1, sx(20), newHeight + 2, TRUE);
 
     // Bring controls to the top and ensure edit has focus
     SetWindowPos(hwndEdit, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);

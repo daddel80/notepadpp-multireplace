@@ -302,6 +302,7 @@ struct EditControlContext
 inline std::vector<UndoRedoAction> undoStack;
 inline std::vector<UndoRedoAction> redoStack;
 inline LuaHashTablesMap hashTablesMap; // Stores hash tables persistently between calls
+inline HWND hwndExpandBtn = nullptr;
 inline HFONT _hBoldFont2;
 
 inline bool _editIsExpanded = false; // track expand state
