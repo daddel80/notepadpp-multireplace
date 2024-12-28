@@ -6036,7 +6036,7 @@ int MultiReplace::markString(const std::string& findTextUtf8, int searchFlags) {
 
 void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8)
 {
-    long color = useListEnabled ? generateColorValue(findTextUtf8) : MARKER_COLOR;
+    int color = useListEnabled ? generateColorValue(findTextUtf8) : MARKER_COLOR;
 
     // Check if the color already has an associated style
     int indicatorStyle;
@@ -6062,7 +6062,7 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::strin
     ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, pos, len);
 }
 
-long MultiReplace::generateColorValue(const std::string& str) {
+int MultiReplace::generateColorValue(const std::string& str) {
     // DJB2 hash
     unsigned long hash = 5381;
     for (char c : str) {
@@ -6075,7 +6075,7 @@ long MultiReplace::generateColorValue(const std::string& str) {
     int b = hash & 0xFF;
 
     // Convert RGB to long
-    long color = (r << 16) | (g << 8) | b;
+    int color = (r << 16) | (g << 8) | b;
 
     return color;
 }

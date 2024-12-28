@@ -400,7 +400,7 @@ protected:
 
 private:
     static constexpr int MAX_TEXT_LENGTH = 4096; // Maximum Textlength for Find and Replace String
-    static constexpr long MARKER_COLOR = 0x007F00; // Color for non-list Marker
+    static constexpr int MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
 
@@ -469,14 +469,14 @@ private:
        Styles 0 - 7 are reserved for syntax style.
        Styles 21 - 29, 31 are reserved by N++ (see SciLexer.h).
     */
-    std::vector<int> textStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
-    std::vector<int> hColumnStyles = { STYLE1, STYLE2, STYLE3, STYLE4, STYLE5, STYLE6, STYLE7, STYLE8, STYLE9, STYLE10 };
-    std::vector<int> columnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
+    const std::vector<int> textStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
+    const std::vector<int> hColumnStyles = { STYLE1, STYLE2, STYLE3, STYLE4, STYLE5, STYLE6, STYLE7, STYLE8, STYLE9, STYLE10 };
+    const std::vector<int> columnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
 
     // Data-related variables 
     size_t markedStringsCount = 0;
     bool allSelected = true;
-    std::unordered_map<long, int> colorToStyleMap;
+    std::unordered_map<int, int> colorToStyleMap;
     std::map<int, SortDirection> columnSortOrder;
     ColumnDelimiterData columnDelimiterData;
     LRESULT eolLength = -1; // Stores the length of the EOL character sequence
@@ -683,7 +683,7 @@ private:
     void handleMarkMatchesButton();
     int markString(const std::string& findTextUtf8, int searchFlags);
     void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
-    long generateColorValue(const std::string& str);
+    int generateColorValue(const std::string& str);
     void handleClearTextMarksButton();
     void handleCopyMarkedTextToClipboardButton();
     void copyTextToClipboard(const std::wstring& text, int textCount);
