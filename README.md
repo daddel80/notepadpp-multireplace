@@ -3,7 +3,7 @@
 [![Latest Stable Version](https://img.shields.io/badge/version-4.2.0.22-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.2.0.22)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
-MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, perfect for use across different sessions or projects. It increases efficiency by enabling multiple replacements at once, supports sorting and applying operations to specific columns in CSV files, and offers flexible options for replacing text in various ways.
+MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, perfect for use across different sessions or projects. It increases efficiency by enabling multiple replacements at once, supports sorting and applying operations to specific columns in CSV files, and offers flexible options for replacing text in various ways, including the use of external hash tables for efficient data lookups.
 
 ![MultiReplace Screenshot](./MultiReplace.gif)
 
@@ -314,7 +314,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | Disable                  | Alt+D         | Disables the selected entries to prevent them from being included in operations. |
 
 **Note on the 'Edit Field' option:**
-When you paste text into the edit field opened in the list, any line breaks are automatically removed. This simplifies the process of inserting complex, structured 'Use Variables' statements without the need to convert them into a single line first. However, make sure to include the necessary final semicolons and spaces.
+The edit field supports multiple lines, preserving text with line breaks. This simplifies inserting and managing complex, structured 'Use Variables' statements.
 
 Additional Interactions:
 - **Space Key**: Toggles the activation state of selected entries, similar to using Alt+A to enable or Alt+D to disable.
@@ -405,6 +405,11 @@ The MultiReplace plugin provides several configuration options, including transp
 - **AlertNotFound**: Controls notifications for unsuccessful searches.
   - **Default**: `AlertNotFound=1` (enabled).
   - **Description**: To disable the bell sound for unsuccessful searches, set `AlertNotFound=0` in the INI file.
+ 
+- **EditFieldSize**: Configures the size adjustment of the edit field in the list during toggling.
+  - **Default**: `editFieldSize=5` (normal size).
+  - **Range**: 2 to 20.
+  - **Description**: Sets the factor by which the edit field in the list expands or collapses when toggling its size.
 
 ### Multilingual UI Support
 
