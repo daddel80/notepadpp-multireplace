@@ -7902,7 +7902,7 @@ bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
             dotCount++;
             c = '.';  // Potentially replace comma with dot in tempStr
         }
-        else if (!isdigit(c)) {
+        else if (!iswdigit(c)) {
             return false;  // Contains non-numeric characters
         }
 
