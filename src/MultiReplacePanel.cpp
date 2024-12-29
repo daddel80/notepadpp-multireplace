@@ -528,6 +528,7 @@ void MultiReplace::setUIElementVisibility() {
     EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !regexChecked );
 }
 
+
 void MultiReplace::drawGripper() {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(_hSelf, &ps);
@@ -537,12 +538,12 @@ void MultiReplace::drawGripper() {
     GetClientRect(_hSelf, &rect);
 
     // Determine where to draw the gripper
-    int gripperAreaSize = 13; // Total size of the gripper area
+    int gripperAreaSize = sx(11); // Total size of the gripper area
     POINT startPoint = { rect.right - gripperAreaSize, rect.bottom - gripperAreaSize };
 
     // Define the new size and reduced gap of the gripper dots
-    int dotSize = 3; // Increased dot size
-    int gap = 1; // Reduced gap between dots
+    int dotSize = sx(2); // Increased dot size
+    int gap = std::max(sx(1), 1); // Reduced gap between dots
 
     // Brush Color for Gripper
     HBRUSH hBrush = CreateSolidBrush(RGB(200, 200, 200));
