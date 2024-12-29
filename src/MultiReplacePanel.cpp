@@ -528,7 +528,6 @@ void MultiReplace::setUIElementVisibility() {
     EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !regexChecked );
 }
 
-
 void MultiReplace::drawGripper() {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(_hSelf, &ps);
@@ -2400,11 +2399,11 @@ void MultiReplace::toggleEditExpand()
     // Calculate new height (expand or collapse)
     int newHeight;
     if (_editIsExpanded) {
-        newHeight = curHeight / 3; // Collapse
+        newHeight = curHeight / editFieldSize; // Collapse
         SetWindowText(hwndExpandBtn, L"↓");
     }
     else {
-        newHeight = curHeight * 3; // Expand
+        newHeight = curHeight * editFieldSize; // Expand
         SetWindowText(hwndExpandBtn, L"↑");
     }
     _editIsExpanded = !_editIsExpanded;
@@ -8844,6 +8843,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"AlertNotFound=" + std::to_wstring(alertNotFoundEnabled ? 1 : 0) + L"\n");
     outFile << wstringToString(L"DoubleClickEdits=" + std::to_wstring(doubleClickEditsEnabled ? 1 : 0) + L"\n");
     outFile << wstringToString(L"HoverText=" + std::to_wstring(isHoverTextEnabled ? 1 : 0) + L"\n");
+    outFile << wstringToString(L"EditFieldSize=" + std::to_wstring(editFieldSize) + L"\n");
 
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
@@ -8981,6 +8981,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     alertNotFoundEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"AlertNotFound", true);
     doubleClickEditsEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"DoubleClickEdits", true);
     isHoverTextEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"HoverText", true);
+    editFieldSize = std::clamp(readIntFromIniFile(iniFilePath, L"Options", L"EditFieldSize", 5), MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
 
     // Loading and setting the scope with enabled state check
     int selection = readIntFromIniFile(iniFilePath, L"Scope", L"Selection", 0);

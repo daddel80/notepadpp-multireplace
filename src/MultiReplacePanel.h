@@ -416,6 +416,9 @@ private:
     static constexpr BYTE DEFAULT_FOREGROUND_TRANSPARENCY = 255; // Default foreground transparency
     static constexpr BYTE DEFAULT_BACKGROUND_TRANSPARENCY = 190; // Default background transparency
 
+    static constexpr int MIN_EDIT_FIELD_SIZE = 2; // Minimum size for Multiline Editor
+    static constexpr int MAX_EDIT_FIELD_SIZE = 20; // MAximum size for Multiline Editor
+
     static constexpr int STEP_SIZE = 5; // Speed for opening and closing Count Columns
     static constexpr wchar_t* symbolSortAsc = L"▼";
     static constexpr wchar_t* symbolSortDesc = L"▲";
@@ -524,6 +527,7 @@ private:
     int lastMouseY;
     bool isHoverTextEnabled = false; // Important to set on false as TIMER will be triggered at startup.
     bool isHoverTextSuppressed = false; // Temporarily supress HoverText to avoid flickering wehn Edit in list is open
+    int editFieldSize;
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
