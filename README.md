@@ -407,8 +407,8 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Description**: To disable the bell sound for unsuccessful searches, set `AlertNotFound=0` in the INI file.
  
 - **EditFieldSize**: Configures the size adjustment of the edit field in the list during toggling.
-  - **Default**: `editFieldSize=3` (normal size).
-  - **Range**: 2 to 10.
+  - **Default**: `editFieldSize=5` (normal size).
+  - **Range**: 2 to 20.
   - **Description**: Sets the factor by which the edit field in the list expands or collapses when toggling its size.
 
 ### Multilingual UI Support
