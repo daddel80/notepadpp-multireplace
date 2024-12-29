@@ -314,7 +314,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | Disable                  | Alt+D         | Disables the selected entries to prevent them from being included in operations. |
 
 **Note on the 'Edit Field' option:**
-When you paste text into the edit field opened in the list, any line breaks are automatically removed. This simplifies the process of inserting complex, structured 'Use Variables' statements without the need to convert them into a single line first. However, make sure to include the necessary final semicolons and spaces.
+The edit field supports multiple lines, preserving text with line breaks. This simplifies inserting and managing complex, structured 'Use Variables' statements.
 
 Additional Interactions:
 - **Space Key**: Toggles the activation state of selected entries, similar to using Alt+A to enable or Alt+D to disable.
@@ -405,6 +405,11 @@ The MultiReplace plugin provides several configuration options, including transp
 - **AlertNotFound**: Controls notifications for unsuccessful searches.
   - **Default**: `AlertNotFound=1` (enabled).
   - **Description**: To disable the bell sound for unsuccessful searches, set `AlertNotFound=0` in the INI file.
+ 
+- **EditFieldSize**: Configures the size adjustment of the edit field in the list during toggling.
+  - **Default**: `editFieldSize=3` (normal size).
+  - **Range**: 2 to 10.
+  - **Description**: Sets the factor by which the edit field in the list expands or collapses when toggling its size.
 
 ### Multilingual UI Support
 
