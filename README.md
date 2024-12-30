@@ -117,22 +117,29 @@ When `MATCH` and `CAP` variables are used to read numerical values for further c
 `..` is employed for concatenation.  
 E.g., `"Detected "..CNT.." times."`
 
-#### set(strOrCalc)
-Directly outputs strings or numbers, replacing the matched text in the Replace String with the specified or calculated value.
+### set(strOrCalc)
+Directly outputs strings or numbers, replacing the matched text with a specified or calculated value.
 
-| Example                              | Result (assuming LINE = 5, CNT = 3) |
-|--------------------------------------|-------------------------------------|
-| `set("replaceString"..CNT)`          | "replaceString3"                    |
-| `set(LINE+5)`                        | "10"                                |
+| Find      | Replace with                            | Regex | Description/Expected Output                                                 |
+|-----------|-----------------------------------------|-------|-----------------------------------------------------------------------------|
+| `apple`   | `set("banana")`                         | No    | Replaces every occurrence of `apple` with the string `"banana"`.           |
+| `(\d+)`   | `set(CAP1 * 2)`                         | Yes   | Doubles any found number; e.g., `10` becomes `20`.                         |
+| `found`   | `set("Found #"..CNT.." at position "..APOS)` | No    | Shows how many times `found` was detected and its absolute position.       |
+| `$price` | `set(fmtN(123.456, 2, true))`           | No    | Replaces `$price` with `"123.46"` (fixed decimal, 2 places).               |
+| `(\w+)`   | `set("Captured: "..CAP1)`               | Yes   | Captures a word (`\w+`) and prepends `"Captured: "`. E.g., `Hello` → `Captured: Hello`. |
 
-#### **cond(condition, trueVal, \[falseVal\])**
-Implements if-then-else logic, or if-then if falseVal is omitted. Evates the condition and pushes the corresponding value (trueVal or falseVal) to the Replace String.
 
-| Example                                                      | Result (assuming LINE = 5)            |
-|--------------------------------------------------------------|---------------------------------------|
-| `cond(LINE<=5 or LINE>=9, "edge", "center")`                 | "edge"                                |
-| `cond(LINE<3, "Modify this line")`                         | (Original text remains unchanged)     |
-| `cond(LINE<10, cond(LINE<5, cond(LINE>2, "3-4", "0-2"), "5-9"), "10+")` | "5-9" (Nested condition) |
+### cond(condition, trueVal, [falseVal])
+Evaluates the condition and outputs `trueVal` if the condition is true, otherwise `falseVal`. If `falseVal` is omitted, the original text remains unchanged when the condition is false.
+
+| Find        | Replace with                                                                          | Regex | Description/Expected Output                                                                                             |
+|-------------|---------------------------------------------------------------------------------------|-------|-------------------------------------------------------------------------------------------------------------------------|
+| `word`      | `cond(CNT==1, "First 'word'", "Another 'word'")`                                      | No    | For the first occurrence of `word` → `"First 'word'"`; for subsequent matches → `"Another 'word'"`.                    |
+| `(\d+)`     | `cond(CAP1>100, "Large number", cond(CAP1>50, "Medium number", "Small number"))`      | Yes   | For a numeric match: if > 100 → `"Large number"`, if > 50 → `"Medium number"`, otherwise → `"Small number"`.           |
+| `anymatch`  | `cond(APOS<50, "Early in document", "Later in document")`                             | No    | If the absolute position `APOS` is under 50 → `"Early in document"`, otherwise → `"Later in document"`.                |
+| `\b\w+\b`    | `cond(LCNT==2, "Second match in this line", "Other match in this line")`              | Yes   | If this is the second match (`LCNT == 2`) in the current line → `"Second match in this line"`, else → `"Other match"`. |
+| `---`       | `cond(COL==1, "First column", cond(COL==2, "Second column", "Other column"))`         | No    | If found in the first column → `"First column"`, in second → `"Second column"`, else → `"Other column"`.              |
+
 
 #### **vars({Variable1=Value1, Variable2=Value2, ...})**
 **Note:** This command was previously named `init(...)` and has been renamed to `vars(...)`. For compatibility, `init(...)` still works.
