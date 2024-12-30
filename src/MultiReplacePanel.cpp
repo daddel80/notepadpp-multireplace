@@ -211,7 +211,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int listWidth = windowWidth - sx(202);
     int listHeight = std::max(windowHeight - sy(245), sy(20)); // Minimum listHeight to prevent IDC_PATH_DISPLAY from overlapping with IDC_STATUS_MESSAGE
     int useListButtonY = windowHeight - sy(34);
-    
+
     // Apply scaling only when assigning to ctrlMap
     ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_find_what"), SS_RIGHT, NULL };
     ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_replace_with"), SS_RIGHT };
@@ -247,7 +247,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(515), sy(149), sx(45), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
 
     ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(208), sx(530), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
-    
+
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(44), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -261,7 +261,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     findNextButtonText = L"▼ " + getLangStr(L"panel_find_next_small");
     ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    
+
     ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
@@ -287,7 +287,7 @@ void MultiReplace::initializeCtrlMap() {
 
     hInstance = (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE);
     s_hDlg = _hSelf;
-    
+
     // Get the client rectangle
     RECT rcClient;
     GetClientRect(_hSelf, &rcClient);
@@ -297,7 +297,7 @@ void MultiReplace::initializeCtrlMap() {
 
     // Define Position for all Elements
     positionAndResizeControls(windowWidth, windowHeight);
-    
+
     // Now iterate over the controls and create each one.
     if (!createAndShowWindows()) {
         return;
@@ -525,7 +525,7 @@ void MultiReplace::setUIElementVisibility() {
     }
 
     // Update the FIND_PREV_BUTTON state based on Regex and Selection mode
-    EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !regexChecked );
+    EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !regexChecked);
 }
 
 void MultiReplace::drawGripper() {
@@ -2323,7 +2323,7 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         LVHITTESTINFO hitTestInfo = {};
         hitTestInfo.pt = pt;
 
-        int hitResult = ListView_HitTest(hwnd, &hitTestInfo); 
+        int hitResult = ListView_HitTest(hwnd, &hitTestInfo);
         if (hitResult != -1) {
             int currentRow = hitTestInfo.iItem;
             int currentSubItem = hitTestInfo.iSubItem;
@@ -2691,7 +2691,7 @@ bool MultiReplace::canPasteFromClipboard() {
                 std::vector<std::wstring> columns = parseCsvLine(line);
 
                 // For the format to be considered valid, ensure each line has the correct number of columns
-                if ((columns.size() == 8 || columns.size() == 9) ) {
+                if ((columns.size() == 8 || columns.size() == 9)) {
                     canPaste = true; // Found at least one valid line, no need to check further
                 }
             }
@@ -3861,7 +3861,7 @@ void MultiReplace::handleReplaceAllButton() {
     }
 
     globalLuaVariablesMap.clear(); // Clear all stored Lua Global Variables
-    
+
     hashTablesMap.clear(); // Clear all stored Lua Hash Tables
 
     int totalReplaceCount = 0;
@@ -3943,9 +3943,9 @@ void MultiReplace::handleReplaceButton() {
         showStatusMessage(getLangStrLPWSTR(L"status_cannot_replace_read_only"), COLOR_ERROR);
         return;
     }
-    
+
     globalLuaVariablesMap.clear(); // Clear all stored Lua Global Variables
-   
+
     hashTablesMap.clear();   // Clear all stored Lua Hash Tables
 
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
@@ -4838,7 +4838,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
         "  -- Look up the key\n"
         "  local val = hashTables[hpath][key]\n"
-        
+
         "  -- Handle lookup result\n"
         "  if val == nil then\n"
         "    if inner then\n"
@@ -4849,7 +4849,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         "  else\n"
         "    res.result = val\n"
         "  end\n"
-        
+
         "  resultTable = res\n"
         "  return res\n"
         "end\n"
@@ -5838,7 +5838,7 @@ SearchResult MultiReplace::performSearchColumn(const std::string& findTextUtf8, 
             // Perform search within the target range
             result = performSingleSearch(
                 findTextUtf8,
-                searchFlags ,
+                searchFlags,
                 selectMatch,
                 targetRange
             );
@@ -6830,7 +6830,7 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
 
     // Get line length and allocate buffer
     LRESULT lineLength = send(SCI_LINELENGTH, line, 0);
-    
+
     // Resize the lineBuffer only if needed
     if (lineBuffer.size() < static_cast<size_t>(lineLength + 1)) {
         lineBuffer.resize(lineLength + 1);  // Increase the buffer size if necessary
@@ -7813,7 +7813,7 @@ std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int ma
     return displayPath;
 }
 
-void MultiReplace::showListFilePath() { 
+void MultiReplace::showListFilePath() {
     std::wstring path = listFilePath;
 
     // Obtain handle and device context for the path display control
@@ -7948,7 +7948,7 @@ sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, b
 }
 */
 
-bool MultiReplace::normalizeAndValidateNumber(std::string& str) {   
+bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
     if (str.empty()) {
         return false;  // An empty string is not a valid number
     }
@@ -8940,7 +8940,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     std::wstring replaceText = readStringFromIniFile(iniFilePath, L"Current", L"ReplaceText", L"");
     setTextInDialogItem(_hSelf, IDC_FIND_EDIT, findText);
     setTextInDialogItem(_hSelf, IDC_REPLACE_EDIT, replaceText);
-    
+
     // Setting options based on the INI file
     bool wholeWord = readBoolFromIniFile(iniFilePath, L"Options", L"WholeWord", false);
     SendMessage(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), BM_SETCHECK, wholeWord ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -8973,7 +8973,7 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 
     bool replaceButtonsMode = readBoolFromIniFile(iniFilePath, L"Options", L"ButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
-    
+
     useListEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", true);
     updateUseListState(false);
 
@@ -9027,7 +9027,7 @@ void MultiReplace::loadSettings() {
     auto [iniFilePath, csvFilePath] = generateConfigFilePaths();
 
     try {
-        loadSettingsFromIni(iniFilePath);        
+        loadSettingsFromIni(iniFilePath);
         loadListFromCsvSilent(csvFilePath, replaceListData);
     }
     catch (const CsvLoadException& ex) {

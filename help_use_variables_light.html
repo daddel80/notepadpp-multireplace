@@ -415,48 +415,87 @@
         <h2>Commands</h2>
 
         <h3 id="setstrorcalc">set(strOrCalc)</h3>
-        <p>Outputs strings or numbers directly.</p>
+        <p>Directly outputs strings or numbers, replacing the matched text with a specified or calculated value.</p>
         <table class="optionsTable">
             <tr>
-                <th>Example</th>
-                <th>Result (assuming LINE = 5, CNT = 3)</th>
+                <th>Find</th>
+                <th>Replace with</th>
+                <th>Regex</th>
+                <th>Description/Expected Output</th>
             </tr>
             <tr>
-                <td><code>set("replaceString"..CNT)</code></td>
-                <td>"replaceString3"</td>
+                <td><code>apple</code></td>
+                <td><code>set("banana")</code></td>
+                <td>No</td>
+                <td>Replaces every occurrence of <code>apple</code> with the string <code>"banana"</code>.</td>
             </tr>
             <tr>
-                <td><code>set(LINE+5)</code></td>
-                <td>"10"</td>
+                <td><code>(\d+)</code></td>
+                <td><code>set(CAP1 * 2)</code></td>
+                <td>Yes</td>
+                <td>Doubles any found number; e.g., <code>10</code> becomes <code>20</code>.</td>
+            </tr>
+            <tr>
+                <td><code>found</code></td>
+                <td><code>set("Found #"..CNT.." at position "..APOS)</code></td>
+                <td>No</td>
+                <td>Shows how many times <code>found</code> was detected and its absolute position.</td>
+            </tr>
+            <tr>
+                <td><code>$price</code></td>
+                <td><code>set(fmtN(123.456, 2, true))</code></td>
+                <td>No</td>
+                <td>Replaces <code>$price</code> with <code>"123.46"</code> (fixed decimal, 2 places).</td>
+            </tr>
+            <tr>
+                <td><code>(\w+)</code></td>
+                <td><code>set("Captured: "..CAP1)</code></td>
+                <td>Yes</td>
+                <td>Captures a word and prepends <code>"Captured: "</code>. E.g., <code>Hello</code> → <code>Captured: Hello</code>.</td>
+            </tr>
+        </table>
+        
+        <h3 id="condcondition-trueval-falseval">cond(condition, trueVal, [falseVal])</h3>
+        <p>Evaluates the condition and outputs <code>trueVal</code> if the condition is true, otherwise <code>falseVal</code>. If <code>falseVal</code> is omitted, the original text remains unchanged when the condition is false.</p>
+        <table class="optionsTable">
+            <tr>
+                <th>Find</th>
+                <th>Replace with</th>
+                <th>Regex</th>
+                <th>Description/Expected Output</th>
+            </tr>
+            <tr>
+                <td><code>word</code></td>
+                <td><code>cond(CNT==1, "First 'word'", "Another 'word'")</code></td>
+                <td>No</td>
+                <td>For the first occurrence of <code>word</code> → <code>"First 'word'"</code>; for subsequent matches → <code>"Another 'word'"</code>.</td>
+            </tr>
+            <tr>
+                <td><code>(\d+)</code></td>
+                <td><code>cond(CAP1>100, "Large number", cond(CAP1>50, "Medium number", "Small number"))</code></td>
+                <td>Yes</td>
+                <td>For a numeric match: if &gt; 100 → <code>"Large number"</code>, if &gt; 50 → <code>"Medium number"</code>, otherwise → <code>"Small number"</code>.</td>
+            </tr>
+            <tr>
+                <td><code>anymatch</code></td>
+                <td><code>cond(APOS<50, "Early in document", "Later in document")</code></td>
+                <td>No</td>
+                <td>If the absolute position <code>APOS</code> is under 50 → <code>"Early in document"</code>, otherwise → <code>"Later in document"</code>.</td>
+            </tr>
+            <tr>
+                <td><code>\b\w+\b</code></td>
+                <td><code>cond(LCNT==2, "Second match in this line", "Other match in this line")</code></td>
+                <td>Yes</td>
+                <td>If this is the second match (<code>LCNT == 2</code>) in the current line → <code>"Second match in this line"</code>, else → <code>"Other match in this line"</code>.</td>
+            </tr>
+            <tr>
+                <td><code>---</code></td>
+                <td><code>cond(COL==1, "First column", cond(COL==2, "Second column", "Other column"))</code></td>
+                <td>No</td>
+                <td>If found in the first column → <code>"First column"</code>, in second → <code>"Second column"</code>, else → <code>"Other column"</code>.</td>
             </tr>
         </table>
 
-        <h3 id="condcondition-trueval-falseval">cond(condition, trueVal, [falseVal])</h3>
-        <p>Implements if-then-else logic, or if-then if <em>falseVal</em> is omitted.</p>
-        <table class="optionsTable">
-            <tr>
-                <th>Example</th>
-                <th>Result (assuming LINE = 5)</th>
-            </tr>
-            <tr>
-                <td><code>cond(LINE&lt;=5 or LINE&gt;=9, "edge", "center")</code></td>
-                <td>"edge"</td>
-            </tr>
-            <tr>
-                <td><code>cond(LINE&lt;3, "Modify this line")</code></td>
-                <td>(Original text remains unchanged)</td>
-            </tr>
-            <tr>
-                <td>
-                    <code>cond(LINE&lt;10,
-                          cond(LINE&lt;5,
-                            cond(LINE&gt;2, "3-4", "0-2"),
-                          "5-9"),
-                        "10+")</code>
-                </td>
-                <td>"5-9" (Nested condition)</td>
-            </tr>
-        </table>
 
         <!-- vars({Variable1=Value1, Variable2=Value2, ...}) -->
         <h3 id="varsvariable1value1-variable2value2-">vars({Variable1=Value1, Variable2=Value2, ...})</h3>
