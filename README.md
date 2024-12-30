@@ -50,6 +50,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 -   **External Lookups**: Replace matches with values from external hash or lookup files for externalizing large or frequently updated mapping tables.
 -   **Bash Script Export**: Export replacement operations as a bash script for use outside of Notepad++.
 
+<br>
 
 ## Match and Replace Options
 
@@ -63,6 +64,8 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 
 **Wrap Around:** When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
 
+<br>
+
 ## Scope Functions
 Scope functions define the range for searching and replacing strings:
 -   **Selection Option**: Supports Rectangular and Multiselect to focus on specific areas for search or replace.
@@ -71,16 +74,16 @@ Scope functions define the range for searching and replacing strings:
     -   `Delim`: Define the delimiter character.
     -   `Quote`: Delineate areas where characters are not recognized as delimiters.
 
-## CSV Processing Functions
+### CSV Processing Functions
 
-### Sorting, Deleting, and Copying
+#### Sorting, Deleting, and Copying
 - **Sorting Lines in CSV by Columns**: Ascend or descend, combining columns in any prioritized order.
 - **Toggle Sort**: Allows users to return columns to their initial unsorted state with just an extra click on the sorting button. This feature is effective even after rows are modified, deleted, or added.
 - **Exclude Header Lines from Sorting**: When sorting CSV files with the CSV scope selected, you can exclude a specified number of top lines (usually header rows) from sorting. Configure this behavior using the `HeaderLines` parameter in the INI file. For details, see the [`INI File Settings`](#configuration-settings).
 - **Deleting Multiple Columns**: Remove multiple columns at once, cleaning obsolete delimiters.
 - **Clipboard Column Copying**: Copy columns with original delimiters to clipboard.
 
-### Numeric Sorting in CSV
+#### Numeric Sorting in CSV
 For accurate numeric sorting in CSV files, the following settings and regex patterns can be used:
 
 | Purpose                                   | Find Pattern        | Replace With   | Regex | Use Variables |
@@ -89,6 +92,8 @@ For accurate numeric sorting in CSV files, the following settings and regex patt
 | Align Numbers with Leading Zeros (Non-decimal) | `\b(\d+)`           | `set(string.rep("0",9-string.len(CAP1))..CAP1)` | Yes   | Yes           |
 | Remove Leading Zeros (Decimal)                 | `\b0+(\d*\.\d+)`    | `$1`           | Yes   | No            |
 | Remove Leading Zeros (Non-decimal)             | `\b0+(\d*)`         | `$1`           | Yes   | No            |
+
+<br>
 
 ## Option 'Use Variables'
 Activate the '**Use Variables**' checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options. This functionality relies on the [Lua engine](https://www.lua.org/).
@@ -112,12 +117,16 @@ Activate the '**Use Variables**' checkbox to employ variables associated with sp
 **Decimal Separator**<br>
 When `MATCH` and `CAP` variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.
 
+<br>
+
 ### Command Overview
 #### String Composition
 `..` is employed for concatenation.  
 E.g., `"Detected "..CNT.." times."`
 
-### set(strOrCalc)
+<br>
+
+#### set(strOrCalc)
 Directly outputs strings or numbers, replacing the matched text with a specified or calculated value.
 
 | Find      | Replace with                            | Regex | Description/Expected Output                                                 |
@@ -128,8 +137,9 @@ Directly outputs strings or numbers, replacing the matched text with a specified
 | `$price` | `set(fmtN(123.456, 2, true))`           | No    | Replaces `$price` with `"123.46"` (fixed decimal, 2 places).               |
 | `(\w+)`   | `set("Captured: "..CAP1)`               | Yes   | Captures a word (`\w+`) and prepends `"Captured: "`. E.g., `Hello` → `Captured: Hello`. |
 
+<br>
 
-### cond(condition, trueVal, [falseVal])
+#### cond(condition, trueVal, [falseVal])
 Evaluates the condition and outputs `trueVal` if the condition is true, otherwise `falseVal`. If `falseVal` is omitted, the original text remains unchanged when the condition is false.
 
 | Find        | Replace with                                                                          | Regex | Description/Expected Output                                                                                             |
@@ -140,6 +150,7 @@ Evaluates the condition and outputs `trueVal` if the condition is true, otherwis
 | `\b\w+\b`    | `cond(LCNT==2, "Second match in this line", "Other match in this line")`              | Yes   | If this is the second match (`LCNT == 2`) in the current line → `"Second match in this line"`, else → `"Other match"`. |
 | `---`       | `cond(COL==1, "First column", cond(COL==2, "Second column", "Other column"))`         | No    | If found in the first column → `"First column"`, in second → `"Second column"`, else → `"Other column"`.              |
 
+<br>
 
 #### **vars({Variable1=Value1, Variable2=Value2, ...})**
 **Note:** This command was previously named `init(...)` and has been renamed to `vars(...)`. For compatibility, `init(...)` still works.
@@ -160,6 +171,8 @@ An empty Find string (`*(empty)*`) can be used to set variables for the entire F
 | *(empty)*          | `vars({ `<br>`VpersonName = FNAME:sub(1, (FNAME:find(" - ", 1, true) or 0) - 1),`<br>`Vdepartment = FNAME:sub((FNAME:find(" - ", 1, true) or #FNAME + 1) + 3, (FNAME:find(".", 1, true) or 0) - 1) })` | Extracts `VpersonName` and `Vdepartment` from the active document’s filename in the format `<Name> - <Department>.xml` using the `vars` action. Triggered only once at the start of the replace process when **Find** is empty. |
 | `personname`       | `set(VpersonName)`                                                                                                       | Replaces `personname` with the content of the variable `VpersonName`, previously initialized by the `vars` action.                     |
 | `department`       | `set(Vdepartment)`                                                                                                       | Replaces `department` with the content of the variable `Vdepartment`, previously initialized by the `vars` action.                     |
+
+<br>
 
 #### **lvars(filePath)**
 
@@ -187,6 +200,7 @@ return {
 
 An empty Find string (`*(empty)*`) initializes variables globally at the start of the 'Replace' or 'Replace All' process when "Use List" is enabled. This initialization runs only once and is independent of specific matches or its position in the list. Alternatively, variables can be loaded conditionally by combining `lvars` or `vars` with a Find string, triggering the variable assignment only when the specified string is matched.
 
+<br>
 
 #### **lkp(key, hpath, inner)**
 Performs an external lookup of **key** against an indexed data file located at **hpath** and returns the corresponding value. By default, if the **key** is not found, `lkp()` simply reverts to the key itself. Setting **inner** to `true` instead yields a `nil` result when the key is missing, allowing for conditional checks or deeper nested logic.
@@ -239,6 +253,8 @@ Once `lkp()` loads the data file for **hpath**, the parsed table is cached in me
 | `\b\w+\b`  | `cond(lkp(MATCH, [[C:\tmp\hash.lkp]], true).result ~= nil, lkp(MATCH, [[C:\tmp\hash.lkp]], true).result, "NoKey")` | Yes       | No            | Uses **inner = true**: If the lookup result is non-`nil`, replaces with the mapped value. Otherwise, replaces with `"NoKey"`. |
 | `\b\w+\b`  | `cond(COL==3, lkp(MATCH, [[C:/tmp/col3_hash.lkp]]))`                                               | No        | Yes           | Looks up values in the third column (`COL==3`) using a separate lookup file (`col3_hash.lkp`). If a match is found, replaces it; otherwise, leaves it unchanged. |
 
+<br>
+
 #### **fmtN(num, maxDecimals, fixedDecimals)**
 Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).
 
@@ -250,12 +266,16 @@ Formats numbers based on precision (maxDecimals) and whether the number of decim
 | `set(fmtN(5.73652, 4, false))`      | "5.7365"|
 | `set(fmtN(5.0, 4, false))`          | "5"     |
 
+<br>
+
 ### Operators 
 | Type        | Operators                     |
 |-------------|-------------------------------|
 | Arithmetic  | `+`, `-`, `*`, `/`, `^`, `%`  |
 | Relational  | `==`, `~=`, `<`, `>`, `<=`, `>=`|
 | Logical     | `and`, `or`, `not`            |
+
+<br>
 
 ### If-Then Logic
 If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.
@@ -273,6 +293,8 @@ This example shows how to use `if` statements with `cond()` to manage variables 
 
 `vars({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end`
 
+<br>
+
 ### DEBUG option
 
 The `DEBUG` option lets you inspect global variables during replacements. When enabled, it opens a message box displaying the current values of all global variables for each replacement hit, requiring confirmation to proceed to the next match. Initialize the `DEBUG` option in your replacement string to enable it.
@@ -280,6 +302,8 @@ The `DEBUG` option lets you inspect global variables during replacements. When e
 | Find      | Replace                              |
 |------------|--------------------------------------------|
 | `(\d+)`    | `vars({DEBUG=true}); set("Number: "..CAP1)`|
+
+<br>
 
 ### More Examples
 
@@ -295,9 +319,10 @@ The `DEBUG` option lets you inspect global variables during replacements. When e
 | `-`              | `cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), "*", " ")`                    | No    | No        | Draws a sine wave across a canvas of '-' characters spanning at least 20 lines and 80 characters per line. |
 | `^(.*)$`         | `vars({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;`                                   | Yes   | No        | Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses `MATCH_PREV` to identify and remove consecutive duplicates. |
 
-
 #### Engine Overview
 MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math operations and string methods. Refer to [Lua String Manipulation](https://www.lua.org/manual/5.4/manual.html#6.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.4/manual.html#6.6) for more information.
+
+<br>
 
 ### User Interaction and List Management
 Manage search and replace strings within the list using the context menu, which provides comprehensive functionalities accessible by right-clicking on an entry, using direct keyboard shortcuts, or mouse interactions. Here are the detailed actions available:
@@ -353,6 +378,8 @@ You can manage the visibility of the additional columns via the **Header Column 
 - **Highlighting**: Highlight multiple find words in unique colors for better visual distinction, with over 20 distinct colors available.
 - **Character Limit**: Field limits of 4096 characters for "Find what:" and "Replace with:" fields.
 
+<br>
+
 ## Data Handling
 
 ### Import/Export
@@ -367,6 +394,8 @@ You can manage the visibility of the additional columns via the **Header Column 
 - This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
 
 
+<br>
+
 ## UI and Behavior Settings
 
 ### Column Locking
@@ -378,7 +407,6 @@ Lock column widths to prevent resizing during window adjustments. This is useful
 ### Configuration Settings
 
 The MultiReplace plugin provides several configuration options, including transparency, scaling, and behavior settings, that can be adjusted via the INI file located at:
-
 `C:\Users\<Username>\AppData\Roaming\Notepad++\plugins\Config\MultiReplace.ini`
 
 #### INI File Settings:
