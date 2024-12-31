@@ -134,8 +134,6 @@ Directly outputs strings or numbers, replacing the matched text with a specified
 | `apple`   | `set("banana")`                         | No    | Replaces every occurrence of `apple` with the string `"banana"`.           |
 | `(\d+)`   | `set(CAP1 * 2)`                         | Yes   | Doubles any found number; e.g., `10` becomes `20`.                         |
 | `found`   | `set("Found #"..CNT.." at position "..APOS)` | No    | Shows how many times `found` was detected and its absolute position.       |
-| `$price` | `set(fmtN(123.456, 2, true))`           | No    | Replaces `$price` with `"123.46"` (fixed decimal, 2 places).               |
-| `(\w+)`   | `set("Captured: "..CAP1)`               | Yes   | Captures a word (`\w+`) and prepends `"Captured: "`. E.g., `Hello` → `Captured: Hello`. |
 
 <br>
 
@@ -147,8 +145,6 @@ Evaluates the condition and outputs `trueVal` if the condition is true, otherwis
 | `word`      | `cond(CNT==1, "First 'word'", "Another 'word'")`                                      | No    | For the first occurrence of `word` → `"First 'word'"`; for subsequent matches → `"Another 'word'"`.                    |
 | `(\d+)`     | `cond(CAP1>100, "Large number", cond(CAP1>50, "Medium number", "Small number"))`      | Yes   | For a numeric match: if > 100 → `"Large number"`, if > 50 → `"Medium number"`, otherwise → `"Small number"`.           |
 | `anymatch`  | `cond(APOS<50, "Early in document", "Later in document")`                             | No    | If the absolute position `APOS` is under 50 → `"Early in document"`, otherwise → `"Later in document"`.                |
-| `\b\w+\b`    | `cond(LCNT==2, "Second match in this line", "Other match in this line")`              | Yes   | If this is the second match (`LCNT == 2`) in the current line → `"Second match in this line"`, else → `"Other match"`. |
-| `---`       | `cond(COL==1, "First column", cond(COL==2, "Second column", "Other column"))`         | No    | If found in the first column → `"First column"`, in second → `"Second column"`, else → `"Other column"`.              |
 
 <br>
 
