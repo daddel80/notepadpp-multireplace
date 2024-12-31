@@ -99,6 +99,8 @@ For accurate numeric sorting in CSV files, the following settings and regex patt
 ## Option 'Use Variables'
 Activate the '**Use Variables**' checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options. This functionality relies on the [Lua engine](https://www.lua.org/).
 
+---
+
 ### Quick Start: Use Variables
 
 1. **Enable "Use Variables":**  
