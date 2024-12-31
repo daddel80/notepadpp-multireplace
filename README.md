@@ -15,6 +15,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
   - [Sorting, Deleting, and Copying](#sorting-deleting-and-copying)
   - [Numeric Sorting in CSV](#numeric-sorting-in-csv)
 - [Option 'Use Variables'](#option-use-variables)
+  - [Quick Start: Use Variables](#quick-start-use-variables)  
   - [Variables Overview](#variables-overview)
   - [Command Overview](#command-overview)
     - [set](#setstrorcalc)
@@ -98,7 +99,36 @@ For accurate numeric sorting in CSV files, the following settings and regex patt
 ## Option 'Use Variables'
 Activate the '**Use Variables**' checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options. This functionality relies on the [Lua engine](https://www.lua.org/).
 
-**Note**: Utilize either the [`set()`](#setstrorcalc) or [`cond()`](#condcondition-trueval-falseval) command in 'Replace with:' to channel the output as the replacement string. Only one of these commands should be used at a time.
+### Quick Start: Use Variables
+
+1. **Enable "Use Variables":**  
+   Enable the checkbox labeled "**Use Variables**" in the Replace interface.
+
+2. **Pick a Command:**
+
+   **Option 1: [`set(...)`](#setstrorcalc) – Outputs a value directly.  
+   - Example:  
+     - **Find**: `(\d+)`  
+     - **Replace**: `set(CAP1 * 2)`  
+
+     *(Enable "Regular Expression" in 'Search Mode' to use `(\d+)` as a capture group.)*  
+   - Doubles any matched number (e.g., `50` → `100`).
+
+   **Option 2: [`cond(...)`](#condcondition-trueval-falseval) – Replaces only if the condition is true; otherwise leaves the text unchanged.  
+   - Example:  
+     - **Find**: `word`  
+     - **Replace**: `cond(CNT==1, "FirstWord")`  
+   - Changes only the first occurrence of “word” to “FirstWord.”
+
+3. **Use Basic Variables:**  
+   - **`CNT`**: Inserts the current match number (e.g., "1" for the first match, "2" for the second).
+   - **`CAP1`**, **`CAP2`**, etc.: Holds captured groups when Regex is enabled.  
+     > **Capture Groups:**  
+     > With a regex in parentheses `(...)`, matched text is stored in `CAP` variables (e.g., `(\d+)` in `Item 123` stores `123` in `CAP1`).  
+
+   See the [Variables Overview](#variables-overview) for a complete list.
+
+---
 
 ### Variables Overview
 | Variable | Description |
