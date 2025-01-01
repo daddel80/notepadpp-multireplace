@@ -351,10 +351,10 @@
 
     <section id="Introduction">
         <h2>Introduction</h2>
-        <p>
-        Activate the <strong>Use Variables</strong> checkbox to employ variables associated with specified strings, allowing for conditional and computational operations within the replacement string. This Dynamic Substitution is compatible with all search settings of Search Mode, Scope, and the other options. The functionality relies on the 
-        <a href="https://www.lua.org/" target="_blank">Lua engine</a>.
-        </p>
+            <p>
+            Enable the <strong>Use Variables</strong> option to enhance replacements with calculations and logic based on the matched text. This feature lets you create dynamic replacement patterns, handle conditions, and produce flexible outputs—all configured directly in the Replace field. The functionality relies on the 
+            <a href="https://www.lua.org/" target="_blank">Lua engine</a>.
+            </p>
     </section>
 
     <section id="QuickStart">
@@ -366,30 +366,28 @@
             </li>
             <li>
                 <strong>Pick a Command:</strong>
+                <p>
+                    <strong>Option 1:</strong> <a href="#setstrorcalc"><code>set(...)</code></a> – Outputs a value directly.
+                </p>
                 <ul>
-                    <li>
-                        <strong>Option 1:</strong> <a href="#setstrorcalc"><code>set(...)</code></a> – Outputs a value directly.  
-                        <p>
-                            Example:
-                            <ul>
-                                <li><strong>Find:</strong> <code>(\d+)</code></li>
-                                <li><strong>Replace:</strong> <code>set(CAP1 * 2)</code></li>
-                            </ul>
-                            *(Enable "Regular Expression" in 'Search Mode' to use <code>(\d+)</code> as a capture group.)*  
-                            Doubles any matched number (e.g., <code>50</code> → <code>100</code>).
-                        </p>
-                    </li>
-                    <li>
-                        <strong>Option 2:</strong> <a href="#condcondition-trueval-falseval"><code>cond(...)</code></a> – Replaces only if the condition is true; otherwise leaves the text unchanged.  
-                        <p>
-                            Example:
-                            <ul>
-                                <li><strong>Find:</strong> <code>word</code></li>
-                                <li><strong>Replace:</strong> <code>cond(CNT==1, "FirstWord")</code></li>
-                            </ul>
-                            Changes only the first occurrence of “word” to “FirstWord.”
-                        </p>
-                    </li>
+                    <li><strong>Example:</strong></li>
+                    <ul>
+                        <li><strong>Find:</strong> <code>(\d+)</code></li>
+                        <li><strong>Replace:</strong> <code>set(CAP1 * 2)</code></li>
+                    </ul>
+                    <em>(Enable "Regular Expression" in 'Search Mode' to use <code>(\d+)</code> as a capture group.)</em><br>
+                    Doubles any matched number (e.g., <code>50</code> → <code>100</code>).
+                </ul>
+                <p>
+                    <strong>Option 2:</strong> <a href="#condcondition-trueval-falseval"><code>cond(...)</code></a> – Replaces only if the condition is true; otherwise leaves the text unchanged.
+                </p>
+                <ul>
+                    <li><strong>Example:</strong></li>
+                    <ul>
+                        <li><strong>Find:</strong> <code>word</code></li>
+                        <li><strong>Replace:</strong> <code>cond(CNT==1, "FirstWord")</code></li>
+                    </ul>
+                    Changes only the first occurrence of “word” to “FirstWord.”
                 </ul>
             </li>
             <li>
@@ -399,7 +397,7 @@
                     <li><strong><code>CAP1</code>, <code>CAP2</code>, etc.:</strong> Holds captured groups when Regex is enabled.  
                         <p>
                             <strong>Capture Groups:</strong>  
-                            With a regex in parentheses <code>(...)</code>, matched text is stored in <code>CAP</code> variables (e.g., <code>(\d+)</code> in <code>Item 123</code> stores <code>123</code> in <code>CAP1</code>).
+                            With a regex in parentheses <code>(...)</code>, matched text is stored in <code>CAP</code> variables (e.g., <code>(\d+)</code> in <code>Item 123</code> stores <code>123</code> in <code>CAP1</code>). For more details, refer to regex documentation.
                         </p>
                     </li>
                 </ul>
