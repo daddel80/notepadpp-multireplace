@@ -126,7 +126,7 @@ Enable the '**Use Variables**' option to enhance replacements with calculations 
    - **`CNT`**: Inserts the current match number (e.g., "1" for the first match, "2" for the second).
    - **`CAP1`**, **`CAP2`**, etc.: Holds captured groups when Regex is enabled.  
      > **Capture Groups:**  
-     > With a regex in parentheses `(...)`, matched text is stored in `CAP` variables (e.g., `(\d+)` in `Item 123` stores `123` in `CAP1`).  
+     > With a regex in parentheses `(...)`, matched text is stored in `CAP` variables (e.g., `(\d+)` in `Item 123` stores `123` in `CAP1`).  For more details, refer to regex documentation.
 
    See the [Variables Overview](#variables-overview) for a complete list.
 
