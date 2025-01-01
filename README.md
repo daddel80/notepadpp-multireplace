@@ -108,7 +108,7 @@ Activate the '**Use Variables**' checkbox to employ variables associated with sp
 
 2. **Pick a Command:**
 
-   **Option 1: [`set(...)`](#setstrorcalc) – Outputs a value directly.  
+   **Option 1:** [`set(...)`](#setstrorcalc) – Outputs a value directly.  
    - Example:  
      - **Find**: `(\d+)`  
      - **Replace**: `set(CAP1 * 2)`  
@@ -116,7 +116,7 @@ Activate the '**Use Variables**' checkbox to employ variables associated with sp
      *(Enable "Regular Expression" in 'Search Mode' to use `(\d+)` as a capture group.)*  
    - Doubles any matched number (e.g., `50` → `100`).
 
-   **Option 2: [`cond(...)`](#condcondition-trueval-falseval) – Replaces only if the condition is true; otherwise leaves the text unchanged.  
+   **Option 2:** [`cond(...)`](#condcondition-trueval-falseval) – Replaces only if the condition is true; otherwise leaves the text unchanged.  
    - Example:  
      - **Find**: `word`  
      - **Replace**: `cond(CNT==1, "FirstWord")`  
