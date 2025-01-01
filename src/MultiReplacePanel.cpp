@@ -79,14 +79,21 @@ HWND MultiReplace::hDebugWnd = NULL;
 
 #pragma region Initialization
 
-void MultiReplace::initializeWindowSize() {
-
-    loadUIConfigFromIni(); // Loads the UI configuration, including window size and position
+void MultiReplace::initializeWindowSize()
+{
+    // Loads the UI configuration, including window size and position
+    loadUIConfigFromIni();
 
     // Set the window position and size based on the loaded settings
-    SetWindowPos(_hSelf, NULL, windowRect.left, windowRect.top,
+    SetWindowPos(
+        _hSelf,
+        NULL,
+        windowRect.left,
+        windowRect.top,
         windowRect.right - windowRect.left,
-        windowRect.bottom - windowRect.top, SWP_NOZORDER);
+        windowRect.bottom - windowRect.top,
+        SWP_NOZORDER
+    );
 }
 
 void MultiReplace::initializeFontStyles() {
@@ -669,9 +676,6 @@ void MultiReplace::undo() {
         // Push the action onto the redoStack
         redoStack.push_back(action);
     }
-    else {
-        // showStatusMessage(L"Nothing to undo.", COLOR_INFO);
-    }
 }
 
 void MultiReplace::redo() {
@@ -685,9 +689,6 @@ void MultiReplace::redo() {
 
         // Push the action back onto the undoStack
         undoStack.push_back(action);
-    }
-    else {
-        // showStatusMessage(L"Nothing to redo.", COLOR_INFO);
     }
 }
 
@@ -9340,15 +9341,15 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
     if (notifyCode->modificationType & SC_MOD_INSERTTEXT) {
         if (addedLines != 0) {
             // Set the first entry as Modify
-            MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
+            logChanges.push_back({ ChangeType::Modify, lineNumber });
             for (Sci_Position i = 1; i <= abs(addedLines); i++) {
-                MultiReplace::logChanges.push_back({ ChangeType::Insert, lineNumber + i });
+                logChanges.push_back({ ChangeType::Insert, lineNumber + i });
             }
         }
         else {
             // Check if the last entry is a Modify on the same line
-            if (MultiReplace::logChanges.empty() || MultiReplace::logChanges.back().changeType != ChangeType::Modify || MultiReplace::logChanges.back().lineNumber != lineNumber) {
-                MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
+            if (logChanges.empty() || logChanges.back().changeType != ChangeType::Modify || logChanges.back().lineNumber != lineNumber) {
+                logChanges.push_back({ ChangeType::Modify, lineNumber });
             }
         }
     }
@@ -9356,20 +9357,20 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
         if (addedLines != 0) {
             // Special handling for deletions at position 0
             if (cursorPosition == 0 && notifyLength == 0) {
-                MultiReplace::logChanges.push_back({ ChangeType::Delete, 0 });
+                logChanges.push_back({ ChangeType::Delete, 0 });
                 return;
             }
             // Then, log the deletes in descending order
             for (Sci_Position i = abs(addedLines); i > 0; i--) {
-                MultiReplace::logChanges.push_back({ ChangeType::Delete, lineNumber + i });
+                logChanges.push_back({ ChangeType::Delete, lineNumber + i });
             }
             // Set the first entry as Modify for the smallest lineNumber
-            MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
+            logChanges.push_back({ ChangeType::Modify, lineNumber });
         }
         else {
             // Check if the last entry is a Modify on the same line
-            if (MultiReplace::logChanges.empty() || MultiReplace::logChanges.back().changeType != ChangeType::Modify || MultiReplace::logChanges.back().lineNumber != lineNumber) {
-                MultiReplace::logChanges.push_back({ ChangeType::Modify, lineNumber });
+            if (logChanges.empty() || logChanges.back().changeType != ChangeType::Modify || logChanges.back().lineNumber != lineNumber) {
+                logChanges.push_back({ ChangeType::Modify, lineNumber });
             }
         }
     }

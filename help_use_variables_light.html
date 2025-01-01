@@ -331,7 +331,7 @@
 
 <nav class="pagenav">
     <a href="#Introduction">Introduction</a>
-    <a href="#FirstSteps">First Steps</a>
+    <a href="#QuickStart">Quick Start</a>
     <a href="#Variables">Variables</a>
     <a href="#Commands">Commands</a>
     <a href="#setstrorcalc" class="sub-item">set()</a>
@@ -357,13 +357,57 @@
         </p>
     </section>
 
-    <section id="FirstSteps">
-        <h2>First Steps</h2>
-        <p>
-        Utilize either the <a href="#setstrorcalc"><code>set()</code></a> or <a href="#condcondition-trueval-falseval"><code>cond()</code></a> command in 'Replace with:' to channel the output as the replacement string. Only one of these commands should be used at a time.
-        </p>
+    <section id="QuickStart">
+        <h2>Quick Start: Use Variables</h2>
+        <ol>
+            <li>
+                <strong>Enable "Use Variables":</strong>  
+                Enable the checkbox labeled <strong>"Use Variables"</strong> in the Replace interface.
+            </li>
+            <li>
+                <strong>Pick a Command:</strong>
+                <ul>
+                    <li>
+                        <strong>Option 1:</strong> <a href="#setstrorcalc"><code>set(...)</code></a> – Outputs a value directly.  
+                        <p>
+                            Example:
+                            <ul>
+                                <li><strong>Find:</strong> <code>(\d+)</code></li>
+                                <li><strong>Replace:</strong> <code>set(CAP1 * 2)</code></li>
+                            </ul>
+                            *(Enable "Regular Expression" in 'Search Mode' to use <code>(\d+)</code> as a capture group.)*  
+                            Doubles any matched number (e.g., <code>50</code> → <code>100</code>).
+                        </p>
+                    </li>
+                    <li>
+                        <strong>Option 2:</strong> <a href="#condcondition-trueval-falseval"><code>cond(...)</code></a> – Replaces only if the condition is true; otherwise leaves the text unchanged.  
+                        <p>
+                            Example:
+                            <ul>
+                                <li><strong>Find:</strong> <code>word</code></li>
+                                <li><strong>Replace:</strong> <code>cond(CNT==1, "FirstWord")</code></li>
+                            </ul>
+                            Changes only the first occurrence of “word” to “FirstWord.”
+                        </p>
+                    </li>
+                </ul>
+            </li>
+            <li>
+                <strong>Use Basic Variables:</strong>  
+                <ul>
+                    <li><strong><code>CNT</code></strong>: Inserts the current match number (e.g., "1" for the first match, "2" for the second).</li>
+                    <li><strong><code>CAP1</code>, <code>CAP2</code>, etc.:</strong> Holds captured groups when Regex is enabled.  
+                        <p>
+                            <strong>Capture Groups:</strong>  
+                            With a regex in parentheses <code>(...)</code>, matched text is stored in <code>CAP</code> variables (e.g., <code>(\d+)</code> in <code>Item 123</code> stores <code>123</code> in <code>CAP1</code>).
+                        </p>
+                    </li>
+                </ul>
+                See the <a href="#Variables">Variables Overview</a> for a complete list.
+            </li>
+        </ol>
     </section>
-	
+
     <section id="Variables">
         <h2>Variables</h2>
         <table class="optionsTable">
@@ -441,18 +485,6 @@
                 <td>No</td>
                 <td>Shows how many times <code>found</code> was detected and its absolute position.</td>
             </tr>
-            <tr>
-                <td><code>$price</code></td>
-                <td><code>set(fmtN(123.456, 2, true))</code></td>
-                <td>No</td>
-                <td>Replaces <code>$price</code> with <code>"123.46"</code> (fixed decimal, 2 places).</td>
-            </tr>
-            <tr>
-                <td><code>(\w+)</code></td>
-                <td><code>set("Captured: "..CAP1)</code></td>
-                <td>Yes</td>
-                <td>Captures a word and prepends <code>"Captured: "</code>. E.g., <code>Hello</code> → <code>Captured: Hello</code>.</td>
-            </tr>
         </table>
         
         <h3 id="condcondition-trueval-falseval">cond(condition, trueVal, [falseVal])</h3>
@@ -481,18 +513,6 @@
                 <td><code>cond(APOS<50, "Early in document", "Later in document")</code></td>
                 <td>No</td>
                 <td>If the absolute position <code>APOS</code> is under 50 → <code>"Early in document"</code>, otherwise → <code>"Later in document"</code>.</td>
-            </tr>
-            <tr>
-                <td><code>\b\w+\b</code></td>
-                <td><code>cond(LCNT==2, "Second match in this line", "Other match in this line")</code></td>
-                <td>Yes</td>
-                <td>If this is the second match (<code>LCNT == 2</code>) in the current line → <code>"Second match in this line"</code>, else → <code>"Other match in this line"</code>.</td>
-            </tr>
-            <tr>
-                <td><code>---</code></td>
-                <td><code>cond(COL==1, "First column", cond(COL==2, "Second column", "Other column"))</code></td>
-                <td>No</td>
-                <td>If found in the first column → <code>"First column"</code>, in second → <code>"Second column"</code>, else → <code>"Other column"</code>.</td>
             </tr>
         </table>
 
