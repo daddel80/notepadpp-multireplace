@@ -1,5 +1,5 @@
 # MultiReplace for Notepad++
-[![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
 [![Latest Stable Version](https://img.shields.io/badge/version-4.2.0.22-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.2.0.22)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
