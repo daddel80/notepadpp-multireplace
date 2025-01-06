@@ -166,7 +166,7 @@ The parameter **filePath** must specify a valid path to a file. Supported path f
 **Example File:**
 ```lua
 -- Local variables remain private
-local PATH = [[C:\Data\Projects\Example/]]
+local PATH = [[C:\Data\Projects\Example\]]
 
 -- Only the returned variables are accessible in Replace operations
 return {
