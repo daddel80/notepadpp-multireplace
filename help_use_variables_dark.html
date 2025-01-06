@@ -606,17 +606,17 @@
         </ul>
 
         <p><strong>Example File:</strong></p>
-        <pre><code>-- Local variables remain private
-        local PATH = [[C:\Data\Projects\Example\]]
-        
-        -- Only the returned variables are accessible in Replace operations
-        return {
-            userName = "Alice",
-            threshold = 10,
-            enableFeature = true,
-            fullPath = PATH .. "dataFile.lkp" -- Combine a local variable with a string
-        }
-        </code></pre>
+<pre><code>-- Local variables remain private
+local PATH = [[C:\Data\Projects\Example\]]
+
+-- Only the returned variables are accessible in Replace operations
+return {
+    userName = "Alice",
+    threshold = 10,
+    enableFeature = true,
+    fullPath = PATH .. "dataFile.lkp" -- Combine a local variable with a string
+}
+</code></pre>
 
         <table class="optionsTable">
             <tr>
