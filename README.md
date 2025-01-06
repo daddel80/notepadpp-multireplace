@@ -192,7 +192,7 @@ Custom variables maintain their values throughout a single Replace-All or within
 | `(\d+)`         | `vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);`<br>`if COL==2 then COL2=CAP1 end;`<br>`if COL==4 then COL4=CAP1 end;`               | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` | Yes      | Yes          | Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line.                |
 | `\d{2}-[A-Z]{3}`| `vars({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                                                           | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC`  | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`      | Yes      | No           | Uses `MATCH_PREV` to track the first match in the line and shift it to the 2nd (`LCNT`) match during replacements.           |
 
-An empty Find string (`*(empty)*`) can be used to set variables for the entire Find and Replace list without being tied to a specific Find action. This entry does **not** match any text but is executed once at the beginning of the **'Replace'** or **'Replace All'** process when **'Use List'** is enabled. It allows the Replace field to run initialization commands like `vars()` for the entire operation. The position of this entry in the list does not affect its behavior.
+An empty Find string (`*(empty)*`) can be used to set variables for the entire Find and Replace list without being tied to a specific Find action. This entry does **not** match any text but is executed once at the beginning of the **'Replace'** or **'Replace All'** process when **'Use List'** is enabled. It allows the Replace field to run initialization commands like `vars()` for the entire operation. This entry is always executed first, regardless of its position in the list.
 
 | **Find**           | **Replace**                                                                                                             | **Description/Expected Output**                                                                                                       |
 |--------------------|-------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
@@ -213,20 +213,28 @@ The parameter **filePath** must specify a valid path to a file. Supported path f
 
 **Example File:**
 ```lua
+-- Local variables remain private
+local PATH = [[C:\Data\Projects\Example\]]
+
+-- Only the returned variables are accessible in Replace operations
 return {
     userName = "Alice",
     threshold = 10,
-    enableFeature = true
+    enableFeature = true,
+    fullPath = PATH .. "dataFile.lkp" -- Combine a local variable with a string
 }
 ```
 
 | Find          | Replace                                                                       | Regex | Scope CSV | Description                                                                                          |
 |---------------|-------------------------------------------------------------------------------|-------|-----------|------------------------------------------------------------------------------------------------------|
-| *(empty)*     | `lvars([[C:/tmp/myVars.vars]])`                                              | No    | No        | Loads variables such as `userName = "Alice"` and `threshold = 10` from `myVars.vars`.               |
+| *(empty)*     | `lvars([[C:\tmp\m\Vars.vars]])`                                              | No    | No        | Loads variables such as `userName = "Alice"` and `threshold = 10` from `myVars.vars`.               |
 | `Hello`       | `set(userName)`                                                              | No    | No        | Replaces `Hello` with the value of the variable `userName`, e.g., `"Alice"`.                        |
 | `(\d+)`       | `cond(threshold > 5, "Above", "Below")`                                      | Yes   | No        | Replaces the match based on the condition evaluated using the variable `threshold`.                 |
 
-An empty Find string (`*(empty)*`) initializes variables globally at the start of the 'Replace' or 'Replace All' process when "Use List" is enabled. This initialization runs only once and is independent of specific matches or its position in the list. Alternatively, variables can be loaded conditionally by combining `lvars` or `vars` with a Find string, triggering the variable assignment only when the specified string is matched.
+**Key Points**
+- **Initialization**: An empty Find string (*(empty)*) initializes variables globally at the start of the Replace or Replace All process when "Use List" is enabled. This initialization occurs only once, regardless of its position in the list.
+- **Conditional Loading**: Variables can be loaded conditionally by placing lvars(filePath) alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.
+- **Local vs. Returned Variables**: Only variables explicitly included in the return table of the .vars file are available for use. Any local variables remain private to the file.
 
 <br>
 
@@ -258,7 +266,6 @@ return {
     { "003", "Three" }
 }
 ```
-**Note:** The `return` statement must be included to define the mapping data properly.
 
 In this example:
 - `'001'`, `'1'`, and `1` all correspond to `"One"`.  
