@@ -165,20 +165,30 @@ The parameter **filePath** must specify a valid path to a file. Supported path f
 
 **Example File:**
 ```lua
+-- Local variables remain private
+local PATH = [[C:\Data\Projects\Example/]]
+
+-- Only the returned variables are accessible in Replace operations
 return {
     userName = "Alice",
     threshold = 10,
-    enableFeature = true
+    enableFeature = true,
+    fullPath = PATH .. "dataFile.lkp" -- Combine a local variable with a string
 }
 ```
 
 | Find          | Replace                                                                       | Regex | Scope CSV | Description                                                                                          |
 |---------------|-------------------------------------------------------------------------------|-------|-----------|------------------------------------------------------------------------------------------------------|
-| *(empty)*     | `lvars([[C:/tmp/myVars.vars]])`                                              | No    | No        | Loads variables such as `userName = "Alice"` and `threshold = 10` from `myVars.vars`.               |
+| *(empty)*     | `lvars([[C:\tmp\m\Vars.vars]])`                                              | No    | No        | Loads variables such as `userName = "Alice"` and `threshold = 10` from `myVars.vars`.               |
 | `Hello`       | `set(userName)`                                                              | No    | No        | Replaces `Hello` with the value of the variable `userName`, e.g., `"Alice"`.                        |
 | `(\d+)`       | `cond(threshold > 5, "Above", "Below")`                                      | Yes   | No        | Replaces the match based on the condition evaluated using the variable `threshold`.                 |
 
-An empty Find string (`*(empty)*`) initializes variables globally at the start of the 'Replace' or 'Replace All' process when "Use List" is enabled. This initialization runs only once and is independent of specific matches or its position in the list. Alternatively, variables can be loaded conditionally by combining `lvars` or `vars` with a Find string, triggering the variable assignment only when the specified string is matched.
+**Key Points**
+- **Initialization**: An empty Find string (*(empty)*) initializes variables globally at the start of the Replace or Replace All process when "Use List" is enabled. This initialization occurs only once, regardless of its position in the list.
+- **Conditional Loading**: Variables can be loaded conditionally by placing lvars(filePath) alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.
+- **Local vs. Returned Variables**: Only variables explicitly included in the return table of the .vars file are available for use. Any local variables remain private to the file.
+
+
 
 
 #### **lkp(key, hpath, inner)**
@@ -209,7 +219,6 @@ return {
     { "003", "Three" }
 }
 ```
-**Note:** The `return` statement must be included to define the mapping data properly.
 
 In this example:
 - `'001'`, `'1'`, and `1` all correspond to `"One"`.  
