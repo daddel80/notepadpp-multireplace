@@ -3861,9 +3861,11 @@ void MultiReplace::handleReplaceAllButton() {
         return;
     }
 
-    globalLuaVariablesMap.clear(); // Clear all stored Lua Global Variables
-
-    hashTablesMap.clear(); // Clear all stored Lua Hash Tables
+    if (!initLuaState()) {
+        // Fallback: The _luaInitialized flag remains false, 
+        // so resolveLuaSyntax(...) calls will fail safely inside
+        // and effectively do nothing. We just continue.
+    }
 
     int totalReplaceCount = 0;
 
@@ -3934,6 +3936,8 @@ void MultiReplace::handleReplaceAllButton() {
         ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
         ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
     }
+
+    closeLuaState(); // Clear Lua Environment
 }
 
 void MultiReplace::handleReplaceButton() {
@@ -3945,9 +3949,11 @@ void MultiReplace::handleReplaceButton() {
         return;
     }
 
-    globalLuaVariablesMap.clear(); // Clear all stored Lua Global Variables
-
-    hashTablesMap.clear();   // Clear all stored Lua Hash Tables
+    if (!initLuaState()) {
+        // Fallback: The _luaInitialized flag remains false, 
+        // so resolveLuaSyntax(...) calls will fail safely inside
+        // and effectively do nothing. We just continue.
+    }
 
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
@@ -4063,6 +4069,8 @@ void MultiReplace::handleReplaceButton() {
         ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
         ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
     }
+
+    closeLuaState(); // Clear Lua Environment
 }
 
 bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex)
@@ -4385,6 +4393,7 @@ void MultiReplace::captureLuaGlobals(lua_State* L) {
     lua_pop(L, 1);
 }
 
+/*
 void MultiReplace::captureHashTables(lua_State* L) {
 
     // Get hashTables from Lua
@@ -4421,7 +4430,9 @@ void MultiReplace::captureHashTables(lua_State* L) {
 
     lua_pop(L, 1); // pop hashTables table
 }
+*/
 
+/*
 void MultiReplace::loadLuaGlobals(lua_State* L) {
     for (const auto& pair : globalLuaVariablesMap) {
         const LuaVariable& var = pair.second;
@@ -4443,7 +4454,9 @@ void MultiReplace::loadLuaGlobals(lua_State* L) {
         lua_setglobal(L, var.name.c_str());
     }
 }
+*/
 
+/*
 void MultiReplace::loadHashTables(lua_State* L) {
     // Create a new table for hashTables in Lua
     lua_newtable(L); // stack: {..., hashTablesTable}
@@ -4472,6 +4485,7 @@ void MultiReplace::loadHashTables(lua_State* L) {
     // Set hashTables as a global variable
     lua_setglobal(L, "hashTables");
 }
+*/
 
 std::string MultiReplace::escapeForRegex(const std::string& input) {
     std::string escaped;
@@ -4491,6 +4505,7 @@ std::string MultiReplace::escapeForRegex(const std::string& input) {
     return escaped;
 }
 
+/*
 bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
 {
     lua_State* L = luaL_newstate();  // Create a new Lua environment
@@ -5047,6 +5062,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     return true;
 
 }
+*/
 
 void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std::string value) {
     // Check if the input string is a number
@@ -5085,6 +5101,554 @@ void MultiReplace::setLuaFileVars(LuaVariables& vars) {
     }
 
     vars.FNAME = fileName; // Assign the extracted file name
+}
+
+bool MultiReplace::initLuaState()
+{
+    if (_luaInitialized) {
+        return true; // Already initialized
+    }
+
+    _luaState = luaL_newstate();
+    if (!_luaState) {
+        // Failed to create Lua state
+        return false;
+    }
+
+    luaL_openlibs(_luaState);
+
+    // Consolidate all Lua function definitions into one large script
+    const char* initScript = R"(
+------------------------------------------------------------------
+-- 1) cond function
+------------------------------------------------------------------
+function cond(cond, trueVal, falseVal)
+  local res = {result = '', skip = false}  -- Initialize result table with defaults
+  if cond == nil then
+    error('cond: condition cannot be nil')
+    return res
+  end
+
+  if cond and trueVal == nil then
+    error('cond: trueVal cannot be nil')
+    return res
+  end
+
+  if not cond and falseVal == nil then
+    res.skip = true  -- Skip ONLY if falseVal is not provided
+  end
+
+  if type(trueVal) == 'function' then
+    trueVal = trueVal()
+  end
+
+  if type(falseVal) == 'function' then
+    falseVal = falseVal()
+  end
+
+  if cond then
+    if type(trueVal) == 'table' then
+      res.result = trueVal.result
+      res.skip = trueVal.skip
+    else
+      res.result = trueVal
+      res.skip = false
+    end
+  else
+    if not res.skip then
+      if type(falseVal) == 'table' then
+        res.result = falseVal.result
+        res.skip = falseVal.skip
+      else
+        res.result = falseVal
+      end
+    end
+  end
+  resultTable = res
+  return res
+end
+
+------------------------------------------------------------------
+-- 2) set function
+------------------------------------------------------------------
+function set(strOrCalc)
+  local res = {result = '', skip = false}
+  if strOrCalc == nil then
+    error('set: cannot be nil')
+    return
+  end
+  if type(strOrCalc) == 'string' then
+    res.result = strOrCalc
+  elseif type(strOrCalc) == 'number' then
+    res.result = tostring(strOrCalc)
+  else
+    error('set: Expected string or number')
+    return
+  end
+  resultTable = res
+  return res
+end
+
+------------------------------------------------------------------
+-- 3) fmtN function
+------------------------------------------------------------------
+function fmtN(num, maxDecimals, fixedDecimals)
+  if num == nil then
+    error('fmtN: num cannot be nil')
+    return
+  elseif type(num) ~= 'number' then
+    error('fmtN: Invalid type for num. Expected a number')
+    return
+  end
+  if maxDecimals == nil then
+    error('fmtN: maxDecimals cannot be nil')
+    return
+  elseif type(maxDecimals) ~= 'number' then
+    error('fmtN: Invalid type for maxDecimals. Expected a number')
+    return
+  end
+  if fixedDecimals == nil then
+    error('fmtN: fixedDecimals cannot be nil')
+    return
+  elseif type(fixedDecimals) ~= 'boolean' then
+    error('fmtN: Invalid type for fixedDecimals. Expected a boolean')
+    return
+  end
+
+  local multiplier = 10 ^ maxDecimals
+  local rounded = math.floor(num * multiplier + 0.5) / multiplier
+  local output = ''
+  if fixedDecimals then
+    output = string.format('%.' .. maxDecimals .. 'f', rounded)
+  else
+    local intPart, fracPart = math.modf(rounded)
+    if fracPart == 0 then
+      output = tostring(intPart)
+    else
+      output = tostring(rounded)
+    end
+  end
+  return output
+end
+
+------------------------------------------------------------------
+-- 4) vars function (and init alias)
+------------------------------------------------------------------
+function vars(args)
+  for name, value in pairs(args) do
+    -- Set the global variable only if it does not already exist
+    if _G[name] == nil then
+      if type(name) ~= 'string' then
+        error('vars: Variable name must be a string')
+      end
+      if not string.match(name, '^[A-Za-z_][A-Za-z0-9_]*$') then
+        error('vars: Invalid variable name')
+      end
+      if value == nil then
+        error('vars: Value missing')
+      end
+      -- If REGEX is true and value is a string, escape backslashes
+      if type(value) == 'string' and REGEX then
+        value = value:gsub('\\\\', '\\\\\\\\')
+      end
+      _G[name] = value
+    end
+  end
+
+  -- Forward or initialize resultTable
+  local res = {result = '', skip = true}
+  if resultTable == nil then
+    resultTable = res
+  else
+    if resultTable.result == nil then
+      resultTable.result = res.result
+    end
+    if resultTable.skip == nil then
+      resultTable.skip = res.skip
+    end
+  end
+  return resultTable
+end
+
+init = vars  -- 'init' alias for compatibility
+
+------------------------------------------------------------------
+-- 5) safeLoadFileSandbox and lkp
+------------------------------------------------------------------
+hashTables = {}
+
+function safeLoadFileSandbox(path)
+  -- Minimal environment
+  local safeEnv = {
+    pairs = pairs,
+    ipairs = ipairs,
+    type = type,
+    tonumber = tonumber,
+    tostring = tostring,
+    table = table,
+    math = math,
+    string = string,
+  }
+  setmetatable(safeEnv, {
+    __index = function(_, k)
+      -- Block access to critical globals
+      if k == '_G' or k == 'os' or k == 'io' or k == 'dofile' or k == 'require' then
+        return nil
+      end
+      return _G[k]
+    end
+  })
+
+  local chunk, err = loadfile(path, 't', safeEnv)
+  if not chunk then
+    return false, err
+  end
+  return pcall(chunk)
+end
+
+function lkp(key, hpath, inner)
+  local res = { result = '', skip = false }
+
+  if type(key) == 'number' then
+    key = tostring(key)
+  end
+
+  if key == nil then
+    error('lkp: key passed to file is nil in ' .. tostring(hpath))
+  end
+  if hpath == nil or hpath == '' then
+    error('lkp: file path is invalid or empty')
+  end
+  if inner == nil then
+    inner = false
+  end
+
+  if hashTables[hpath] == nil then
+    local success, dataEntries = safeLoadFileSandbox(hpath)
+    if not success then
+      error('lkp: failed to safely load file at ' .. tostring(hpath) .. ': ' .. tostring(dataEntries))
+    end
+    if type(dataEntries) ~= 'table' then
+      error('lkp: invalid format in file at ' .. tostring(hpath))
+    end
+
+    local tbl = {}
+    for _, entry in ipairs(dataEntries) do
+      local keys = entry[1]
+      local value = entry[2]
+
+      if value == nil then
+        goto continue
+      end
+
+      if type(keys) == 'table' then
+        for _, k in ipairs(keys) do
+          if type(k) == 'number' then
+            k = tostring(k)
+          end
+          tbl[k] = value
+        end
+      elseif type(keys) == 'string' or type(keys) == 'number' then
+        if type(keys) == 'number' then
+          keys = tostring(keys)
+        end
+        tbl[keys] = value
+      else
+        goto continue
+      end
+      ::continue::
+    end
+    hashTables[hpath] = tbl
+  end
+
+  local val = hashTables[hpath][key]
+  if val == nil then
+    if inner then
+      res.result = nil
+    else
+      res.result = key
+    end
+  else
+    res.result = val
+  end
+
+  resultTable = res
+  return res
+end
+
+------------------------------------------------------------------
+-- 6) lvars function
+------------------------------------------------------------------
+function lvars(filePath)
+  local res = {result = '', skip = true}
+
+  if filePath == nil or filePath == '' then
+    error('lvars: file path is invalid or empty')
+    return res
+  end
+
+  local success, dataTable = safeLoadFileSandbox(filePath)
+  if not success then
+    error('lvars: failed to safely load file at ' .. tostring(filePath) .. ': ' .. tostring(dataTable))
+  end
+  if type(dataTable) ~= 'table' then
+    error('lvars: invalid data format in file at ' .. tostring(filePath))
+  end
+
+  for name, value in pairs(dataTable) do
+    if type(name) ~= 'string' then
+      error('lvars: Variable name must be a string. Found invalid key \"' .. tostring(name) .. '\"')
+    end
+    if not string.match(name, '^[A-Za-z_][A-Za-z0-9_]*$') then
+      error('lvars: Invalid variable name \"' .. tostring(name) .. '\"')
+    end
+    if value == nil then
+      error('lvars: Value missing for variable \"' .. tostring(name) .. '\"')
+    end
+    if REGEX and type(value) == 'string' then
+      value = value:gsub('\\\\', '\\\\\\\\')
+    end
+    _G[name] = value
+  end
+
+  if resultTable == nil then
+    resultTable = res
+  else
+    if resultTable.result == nil then
+      resultTable.result = res.result
+    end
+    if resultTable.skip == nil then
+      resultTable.skip = res.skip
+    end
+  end
+  return resultTable
+end
+)";
+    // End of initScript
+
+    // Execute the entire script to load and define all functions
+    if (luaL_dostring(_luaState, initScript) != LUA_OK) {
+        const char* errMsg = lua_tostring(_luaState, -1);
+        std::cerr << "[Lua Error] " << (errMsg ? errMsg : "") << std::endl;
+        lua_pop(_luaState, 1);   // remove error from stack
+        lua_close(_luaState);
+        _luaState = nullptr;
+        return false;
+    }
+
+    _luaInitialized = true;
+    return true;
+}
+
+bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
+{
+    // 1) Ensure the Lua environment is initialized
+    if (!_luaInitialized || !_luaState) {
+        return false;
+    }
+
+    // 2) Push numeric globals
+    lua_pushinteger(_luaState, vars.CNT);
+    lua_setglobal(_luaState, "CNT");
+
+    lua_pushinteger(_luaState, vars.LCNT);
+    lua_setglobal(_luaState, "LCNT");
+
+    lua_pushinteger(_luaState, vars.LINE);
+    lua_setglobal(_luaState, "LINE");
+
+    lua_pushinteger(_luaState, vars.LPOS);
+    lua_setglobal(_luaState, "LPOS");
+
+    lua_pushinteger(_luaState, vars.APOS);
+    lua_setglobal(_luaState, "APOS");
+
+    lua_pushinteger(_luaState, vars.COL);
+    lua_setglobal(_luaState, "COL");
+
+    // 3) Push string globals
+    setLuaVariable(_luaState, "FPATH", vars.FPATH);
+    setLuaVariable(_luaState, "FNAME", vars.FNAME);
+    setLuaVariable(_luaState, "MATCH", vars.MATCH);
+
+    // 4) Set REGEX flag
+    lua_pushboolean(_luaState, regex);
+    lua_setglobal(_luaState, "REGEX");
+
+    // 5) If regex is enabled, push CAP variables
+    std::vector<std::string> capNames;
+    if (regex)
+    {
+        for (int i = 1; i <= MAX_CAP_GROUPS; ++i)
+        {
+            sptr_t length = send(SCI_GETTAG, i, 0, true);
+            if (length < 0) {
+                // No more captures
+                break;
+            }
+
+            std::string capValue;
+            if (length > 0) {
+                std::vector<char> buffer(length + 1, '\0');
+                sptr_t result = send(SCI_GETTAG, i, reinterpret_cast<sptr_t>(buffer.data()), false);
+                if (result >= 0) {
+                    capValue.assign(buffer.data());
+                }
+            }
+
+            // Set CAP# in Lua
+            std::string capName = "CAP" + std::to_string(i);
+            setLuaVariable(_luaState, capName, capValue);
+            capNames.push_back(capName);
+        }
+    }
+
+    // 6) Execute the Lua code in 'inputString'
+    if (luaL_dostring(_luaState, inputString.c_str()) != LUA_OK)
+    {
+        const char* errMsg = lua_tostring(_luaState, -1);
+        if (errMsg)
+        {
+            // Optional console log
+            std::cerr << "[Lua Error] " << errMsg << std::endl;
+
+            // Show a message box if user enabled it
+            if (isLuaErrorDialogEnabled)
+            {
+                std::wstring error_message = utf8ToWString(errMsg);
+                MessageBox(nppData._nppHandle,
+                    error_message.c_str(),
+                    getLangStr(L"msgbox_title_use_variables_syntax_error").c_str(),
+                    MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+            }
+        }
+        lua_pop(_luaState, 1); // pop the error message
+        return false;
+    }
+
+    // 7) Retrieve resultTable
+    lua_getglobal(_luaState, "resultTable");
+    if (!lua_istable(_luaState, -1))
+    {
+        // If missing or not a table
+        lua_pop(_luaState, 1);
+        if (isLuaErrorDialogEnabled)
+        {
+            std::wstring errorMsg = getLangStr(L"msgbox_use_variables_execution_error",
+                { utf8ToWString(inputString.c_str()) });
+            std::wstring errorTitle = getLangStr(L"msgbox_title_use_variables_execution_error");
+            MessageBox(nppData._nppHandle, errorMsg.c_str(), errorTitle.c_str(), MB_OK);
+        }
+        return false;
+    }
+
+    // 8) Extract 'result'
+    lua_getfield(_luaState, -1, "result");
+    if (lua_isnil(_luaState, -1)) {
+        inputString.clear();
+    }
+    else if (lua_isstring(_luaState, -1) || lua_isnumber(_luaState, -1))
+    {
+        std::string result = lua_tostring(_luaState, -1);
+        if (regex) {
+            result = escapeForRegex(result);
+        }
+        inputString = result;
+    }
+    lua_pop(_luaState, 1); // pop "result"
+
+    // 9) Extract 'skip'
+    lua_getfield(_luaState, -1, "skip");
+    if (lua_isboolean(_luaState, -1)) {
+        skip = (lua_toboolean(_luaState, -1) != 0);
+    }
+    else {
+        skip = false;
+    }
+    lua_pop(_luaState, 1); // pop "skip"
+
+    // 10) Pop resultTable
+    lua_pop(_luaState, 1);
+
+    // 11) Gather CAP variable info, then remove them from Lua
+    std::string capVariablesStr;
+
+    for (const auto& capName : capNames)
+    {
+        lua_getglobal(_luaState, capName.c_str());
+        if (lua_isstring(_luaState, -1)) {
+            capVariablesStr += capName + "\tString\t" + lua_tostring(_luaState, -1) + "\n\n";
+        }
+        else if (lua_isnumber(_luaState, -1)) {
+            double numVal = lua_tonumber(_luaState, -1);
+            capVariablesStr += capName + "\tNumber\t" + std::to_string(numVal) + "\n\n";
+        }
+        else if (lua_isboolean(_luaState, -1)) {
+            bool boolVal = (lua_toboolean(_luaState, -1) != 0);
+            capVariablesStr += capName + "\tBoolean\t" + (boolVal ? "true" : "false") + "\n\n";
+        }
+        else {
+            capVariablesStr += capName + "\t<nil>\n\n";
+        }
+        lua_pop(_luaState, 1);
+
+        // Remove CAP from Lua
+        lua_pushnil(_luaState);
+        lua_setglobal(_luaState, capName.c_str());
+    }
+
+    // 12) Check if DEBUG == true
+    lua_getglobal(_luaState, "DEBUG");
+    if (lua_isboolean(_luaState, -1) && lua_toboolean(_luaState, -1))
+    {
+        // For performance, only capture globals if DEBUG is on
+        globalLuaVariablesMap.clear();
+        captureLuaGlobals(_luaState);
+
+        // Build debug string for captured globals
+        std::string luaGlobalsStr;
+        luaGlobalsStr += "Global Lua variables:\n\n";
+        for (const auto& pair : globalLuaVariablesMap) {
+            const LuaVariable& var = pair.second;
+            if (var.type == LuaVariableType::String) {
+                luaGlobalsStr += var.name + "\tString\t" + var.stringValue + "\n\n";
+            }
+            else if (var.type == LuaVariableType::Number) {
+                luaGlobalsStr += var.name + "\tNumber\t" + std::to_string(var.numberValue) + "\n\n";
+            }
+            else if (var.type == LuaVariableType::Boolean) {
+                luaGlobalsStr += var.name + "\tBoolean\t" + (var.booleanValue ? "true" : "false") + "\n\n";
+            }
+        }
+
+        // Combine CAP variables and captured globals
+        std::string combinedVariablesStr = capVariablesStr + luaGlobalsStr;
+
+        // Refresh UI as in original code
+        refreshUIListView();
+
+        // Show debug window
+        int response = ShowDebugWindow(combinedVariablesStr);
+        if (response == 3) { // "Stop" pressed
+            lua_pop(_luaState, 1); // pop DEBUG
+            return false;
+        }
+    }
+
+    // pop DEBUG or non-boolean
+    lua_pop(_luaState, 1);
+
+    // 13) Return success
+    return true;
+}
+
+void MultiReplace::closeLuaState()
+{
+    if (_luaInitialized && _luaState) {
+        lua_close(_luaState);
+        _luaState = nullptr;
+        _luaInitialized = false;
+    }
 }
 
 #pragma endregion

@@ -270,14 +270,6 @@ struct LuaVariable {
 
 using LuaVariablesMap = std::map<std::string, LuaVariable>;
 
-struct LuaHashTable {
-    std::string hpath;                            // The identifier/path for this hash table
-    std::map<std::string, std::string> entries;   // Key-value pairs: Key -> Value
-};
-
-// We define a map for all hash tables, similar to globalLuaVariablesMap for global variables
-using LuaHashTablesMap = std::map<std::string, LuaHashTable>;
-
 class CsvLoadException : public std::exception {
 public:
     explicit CsvLoadException(const std::string& message) : message_(message) {}
@@ -301,9 +293,10 @@ struct EditControlContext
 // possible initial limited stack size bei N++ for Plugins
 inline std::vector<UndoRedoAction> undoStack;
 inline std::vector<UndoRedoAction> redoStack;
-inline LuaHashTablesMap hashTablesMap; // Stores hash tables persistently between calls
 inline HWND hwndExpandBtn = nullptr;
 inline HFONT _hBoldFont2;
+inline lua_State* _luaState = nullptr;    // Reused Lua state
+inline bool       _luaInitialized = false;
 
 inline bool _editIsExpanded = false; // track expand state
 
@@ -664,6 +657,8 @@ private:
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
     void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
     void setLuaFileVars(LuaVariables& vars);
+    bool initLuaState();
+    void closeLuaState();
 
     //DebugWindow
     int ShowDebugWindow(const std::string& message);
