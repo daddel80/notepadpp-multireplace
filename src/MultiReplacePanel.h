@@ -650,9 +650,6 @@ private:
     bool preProcessListForReplace(bool highlight);
     SelectionInfo getSelectionInfo(bool isBackward);
     void captureLuaGlobals(lua_State* L);
-    void captureHashTables(lua_State* L);
-    void loadLuaGlobals(lua_State* L);
-    void loadHashTables(lua_State* L);
     std::string escapeForRegex(const std::string& input);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
     void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
