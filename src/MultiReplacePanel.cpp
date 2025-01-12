@@ -4149,16 +4149,14 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         return true;
     }
 
-    bool isReplaceFirstEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED);
-    int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
-
     std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
-    std::string replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
+    int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
+    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, false, 0);
 
+    bool isReplaceFirstEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED);
     int previousLineIndex = -1;
     int lineFindCount = 0;
-
-    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, false, 0);
+    std::string replaceTextUtf8;
 
     while (searchResult.pos >= 0)
     {
