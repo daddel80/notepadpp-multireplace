@@ -7807,58 +7807,6 @@ sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, b
     }
 }
 
-/*
-sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, bool useDirect) {
-    sptr_t result;
-
-    if (useDirect && pSciMsg) {
-        result = pSciMsg(pSciWndData, iMessage, wParam, lParam);
-    }
-    else {
-        result = ::SendMessage(_hScintilla, iMessage, wParam, lParam);
-    }
-
-    // Check Scintilla's error status
-    int status = static_cast<int>(::SendMessage(_hScintilla, SCI_GETSTATUS, 0, 0));
-
-    if (status != SC_STATUS_OK) {
-        wchar_t buffer[512];
-        switch (status) {
-        case SC_STATUS_FAILURE:
-            wcscpy(buffer, L"Error: Generic failure");
-            break;
-        case SC_STATUS_BADALLOC:
-            wcscpy(buffer, L"Error: Memory is exhausted");
-            break;
-        case SC_STATUS_WARN_REGEX:
-            wcscpy(buffer, L"Warning: Regular expression is invalid");
-            break;
-        default:
-            swprintf(buffer, L"Error/Warning with status code: %d", status);
-            break;
-        }
-
-        // Append the function call details
-        wchar_t callDetails[512];
-        #if defined(_WIN64)
-            swprintf(callDetails, L"\niMessage: %u\nwParam: %llu\nlParam: %lld", iMessage, static_cast<unsigned long long>(wParam), static_cast<long long>(lParam));
-        #else
-            swprintf(callDetails, L"\niMessage: %u\nwParam: %lu\nlParam: %ld", iMessage, static_cast<unsigned long>(wParam), static_cast<long>(lParam));
-        #endif
-
-
-        wcscat(buffer, callDetails);
-
-        MessageBox(NULL, buffer, L"Scintilla Error/Warning", MB_OK | (status >= SC_STATUS_WARN_START ? MB_ICONWARNING : MB_ICONERROR));
-
-        // Clear the error status
-        ::SendMessage(_hScintilla, SCI_SETSTATUS, SC_STATUS_OK, 0);
-    }
-
-    return result;
-}
-*/
-
 bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
     if (str.empty()) {
         return false;  // An empty string is not a valid number
@@ -8194,31 +8142,42 @@ int MultiReplace::checkForUnsavedChanges() {
 }
 
 void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list) {
-    // Open file in binary mode to read UTF-8 data
+    // Open the CSV file
     std::ifstream inFile(filePath);
     if (!inFile.is_open()) {
         std::wstring shortenedFilePathW = getShortenedFilePath(filePath, 500);
-        std::string errorMessage = wstringToString(getLangStr(L"status_unable_to_open_file", { shortenedFilePathW }));
-        throw CsvLoadException(errorMessage);
+        throw CsvLoadException(wstringToString(getLangStr(L"status_unable_to_open_file", { shortenedFilePathW })));
     }
 
-    std::vector<ReplaceItemData> tempList;  // Temporary list to hold items
+    // Read the file content into a UTF-8 string
     std::string utf8Content((std::istreambuf_iterator<char>(inFile)), std::istreambuf_iterator<char>());
+    inFile.close();
+
+    // Convert UTF-8 string to std::wstring
     std::wstring content = stringToWString(utf8Content);
     std::wstringstream contentStream(content);
 
-    std::wstring line;
-    std::getline(contentStream, line); // Skip the CSV header
+    // Read the header line
+    std::wstring headerLine;
+    if (!std::getline(contentStream, headerLine)) {
+        throw CsvLoadException(wstringToString(getLangStr(L"status_invalid_column_count")));
+    }
 
+    // Temporary list to hold parsed items
+    std::vector<ReplaceItemData> tempList;
+    std::wstring line;
+
+    // Read and process each line in the file
     while (std::getline(contentStream, line)) {
         std::vector<std::wstring> columns = parseCsvLine(line);
 
+        // Check if column count is valid
         if (columns.size() < 8 || columns.size() > 9) {
             throw CsvLoadException(wstringToString(getLangStr(L"status_invalid_column_count")));
         }
 
-        ReplaceItemData item;
         try {
+            ReplaceItemData item;
             item.isEnabled = std::stoi(columns[0]) != 0;
             item.findText = columns[1];
             item.replaceText = columns[2];
@@ -8227,15 +8186,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
             item.useVariables = std::stoi(columns[5]) != 0;
             item.extended = std::stoi(columns[6]) != 0;
             item.regex = std::stoi(columns[7]) != 0;
-
-            // Handle Comments column for compatibility with old format
-            if (columns.size() == 9) {
-                item.comments = columns[8];
-            }
-            else {
-                item.comments = L"";  // Initialize as empty string if not present
-            }
-
+            item.comments = (columns.size() == 9) ? columns[8] : L"";
             tempList.push_back(item);
         }
         catch (const std::exception&) {
@@ -8243,33 +8194,35 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
         }
     }
 
-    inFile.close();
-    list = tempList;  // Transfer data from temporary list to the final list
+    // Check if the file contains valid data rows
+    if (tempList.empty()) {
+        throw CsvLoadException(wstringToString(getLangStr(L"status_no_valid_items_in_csv")));
+    }
+
+    // Transfer parsed data to the target list
+    list = std::move(tempList);
 }
 
 void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
-
     try {
         loadListFromCsvSilent(filePath, replaceListData);
 
-        // Store the file path only if loading was successful
+        // Update the file path and display it
         listFilePath = filePath;
-
-        // Display the path below the list
         showListFilePath();
 
-        // Calculate the original list hash after loading
+        // Compute the hash of the loaded list
         originalListHash = computeListHash(replaceListData);
 
-        // Clear the Undo and Redo stacks after successful load
+        // Clear Undo and Redo stacks
         undoStack.clear();
         redoStack.clear();
 
-        // Update the list view control
+        // Update the ListView
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, NULL, TRUE);
 
-        // Show success message
+        // Display success or error message based on the loaded data
         if (replaceListData.empty()) {
             showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), COLOR_ERROR);
         }
@@ -8278,9 +8231,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         }
     }
     catch (const CsvLoadException& ex) {
-        // Resolve the error key to a localized string when displaying the message
         showStatusMessage(stringToWString(ex.what()), COLOR_ERROR);
-        return;
     }
 }
 
@@ -8289,25 +8240,16 @@ void MultiReplace::checkForFileChangesAtStartup() {
         return;
     }
 
-    std::wstring shortenedFilePath = getShortenedFilePath(listFilePath, 500);
-
     try {
         std::vector<ReplaceItemData> tempListFromFile;
-        loadListFromCsvSilent(listFilePath, tempListFromFile);  // Load the list into a temporary list
+        loadListFromCsvSilent(listFilePath, tempListFromFile);
 
-        std::size_t newFileHash = computeListHash(tempListFromFile);  // Calculate the new file hash
-
-        // Check if the file has been modified externally
+        std::size_t newFileHash = computeListHash(tempListFromFile);
         if (newFileHash != originalListHash) {
+            std::wstring shortenedFilePath = getShortenedFilePath(listFilePath, 500);
             std::wstring message = getLangStr(L"msgbox_file_modified_prompt", { shortenedFilePath });
 
-            int response = MessageBox(
-                nppData._nppHandle,
-                message.c_str(),
-                getLangStr(L"msgbox_title_reload").c_str(),
-                MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND
-            );
-
+            int response = MessageBox(nppData._nppHandle, message.c_str(), getLangStr(L"msgbox_title_reload").c_str(), MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND);
             if (response == IDYES) {
                 replaceListData = tempListFromFile;
                 originalListHash = newFileHash;
@@ -8315,9 +8257,7 @@ void MultiReplace::checkForFileChangesAtStartup() {
         }
     }
     catch (const CsvLoadException& ex) {
-        // Resolve the error key to a localized string when displaying the message
         showStatusMessage(stringToWString(ex.what()), COLOR_ERROR);
-        return;
     }
 
     if (replaceListData.empty()) {
@@ -8325,8 +8265,6 @@ void MultiReplace::checkForFileChangesAtStartup() {
     }
     else {
         showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), COLOR_SUCCESS);
-
-        // Update the list view control, if necessary
         ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, NULL, TRUE);
     }
@@ -8934,7 +8872,6 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
 }
 
 void MultiReplace::loadSettings() {
-    // Generate the paths to the configuration files
     auto [iniFilePath, csvFilePath] = generateConfigFilePaths();
 
     try {
@@ -8949,7 +8886,6 @@ void MultiReplace::loadSettings() {
     updateHeaderSelection();
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
-
 }
 
 void MultiReplace::loadUIConfigFromIni() {
