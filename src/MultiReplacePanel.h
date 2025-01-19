@@ -299,6 +299,8 @@ inline lua_State* _luaState = nullptr;    // Reused Lua state
 inline bool       _luaInitialized = false;
 
 inline bool _editIsExpanded = false; // track expand state
+using IniData = std::map<std::wstring, std::map<std::wstring, std::wstring>>;
+inline IniData iniCache;
 
 class MultiReplace : public StaticDialog
 {
@@ -619,6 +621,7 @@ private:
     ColumnID getColumnIDFromIndex(int columnIndex) const;
     int getColumnIndexFromID(ColumnID columnID) const;
     void updateListViewItem(size_t index);
+    void onPathDisplayDoubleClick();
 
     //Contextmenu Display Columns
     void showColumnVisibilityMenu(HWND hWnd, POINT pt);
@@ -766,15 +769,17 @@ private:
     void saveSettingsToIni(const std::wstring& iniFilePath);
     void saveSettings();
     int checkForUnsavedChanges();
-    void loadSettingsFromIni(const std::wstring& iniFilePath);
+    void loadSettingsFromIni();
     void loadSettings();
     void loadUIConfigFromIni();
-    std::wstring readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue);
-    bool readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue);
-    int readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue);
-    float readFloatFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, float defaultValue);
-    std::size_t readSizeTFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, std::size_t defaultValue);
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
+    bool parseIniFile(const std::wstring& iniFilePath);
+    std::wstring readStringFromIniCache(const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue);
+    bool readBoolFromIniCache(const std::wstring& section, const std::wstring& key, bool defaultValue);
+    int readIntFromIniCache(const std::wstring& section, const std::wstring& key, int defaultValue);
+    BYTE readByteFromIniCache(const std::wstring& section, const std::wstring& key, BYTE defaultValue);
+    float readFloatFromIniCache(const std::wstring& section, const std::wstring& key, float defaultValue);
+    std::size_t readSizeTFromIniCache(const std::wstring& section, const std::wstring& key, std::size_t defaultValue);
 
     // Language
     void loadLanguage();
@@ -783,7 +788,6 @@ private:
     std::wstring getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements = {});
     LPCWSTR getLangStrLPCWSTR(const std::wstring& id);
     LPWSTR getLangStrLPWSTR(const std::wstring& id);
-    BYTE readByteFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, BYTE defaultValue);
 
     // Debug DPI Information
     void showDPIAndFontInfo();

@@ -286,7 +286,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11), sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL };
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16), sx(96), sy(16), WC_STATIC, getLangStrLPCWSTR(L"panel_move_lines"), SS_LEFT, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227), listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
-    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5), listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
+    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5), listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
     ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY, sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 }
 
@@ -1965,6 +1965,15 @@ int MultiReplace::getColumnIndexFromID(ColumnID columnID) const {
     return (it != columnIndices.end()) ? it->second : -1; // Return -1 if not found
 }
 
+void MultiReplace::onPathDisplayDoubleClick()
+{
+    if (listFilePath.empty())
+        return;
+
+    std::wstring cmdParam = L"/select,\"" + listFilePath + L"\"";
+    ShellExecuteW(nullptr, L"open", L"explorer.exe", cmdParam.c_str(), nullptr, SW_SHOWNORMAL);
+}
+
 #pragma endregion
 
 
@@ -3361,6 +3370,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         switch (LOWORD(wParam))
         {
+
+        case IDC_PATH_DISPLAY:
+        {
+            if (HIWORD(wParam) == STN_DBLCLK)
+            {
+                onPathDisplayDoubleClick();
+                return TRUE;
+            }
+            return FALSE;
+        }
+
         case IDC_USE_VARIABLES_HELP:
         {
             auto n = SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, 0, 0);
@@ -6265,18 +6285,36 @@ void MultiReplace::handleCopyColumnsToClipboard()
 
 #pragma region CSV Sort
 
-std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, SIZE_T lineCount) {
+std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, SIZE_T endLine)
+{
     std::vector<CombinedColumns> combinedData;
-    for (SIZE_T i = startLine; i < lineCount; ++i) {
-        const auto& lineInfo = lineDelimiterPositions[i]; // Stelle sicher, dass lineDelimiterPositions definiert ist
+    combinedData.reserve(endLine - startLine); // Preallocate space to avoid reallocations
+
+    for (SIZE_T i = startLine; i < endLine; ++i) {
+        const auto& lineInfo = lineDelimiterPositions[i];
+
+        // Read the entire line content in one call to minimize SendMessage overhead
+        LRESULT lineStart = lineInfo.startPosition;
+        LRESULT lineEnd = lineInfo.endPosition;
+        const size_t lineLength = static_cast<size_t>(lineEnd - lineStart);
+
+        // Use the reusable lineBuffer from the class
+        lineBuffer.resize(lineLength + 1, '\0'); // Adjust size for the current line
+        {
+            Sci_TextRangeFull tr;
+            tr.chrg.cpMin = lineStart;
+            tr.chrg.cpMax = lineEnd;
+            tr.lpstrText = lineBuffer.data();
+            SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
+        }
+
         CombinedColumns rowData;
-        rowData.columns.resize(columnDelimiterData.inputColumns.size()); // Stelle sicher, dass columnDelimiterData definiert ist
+        rowData.columns.resize(columnDelimiterData.inputColumns.size());
 
         size_t columnIndex = 0;
         for (SIZE_T columnNumber : columnDelimiterData.inputColumns) {
+            // Calculate column start and end positions relative to the line
             LRESULT startPos, endPos;
-
-            // Berechne Start- und Endpositionen für jede Spalte
             if (columnNumber == 1) {
                 startPos = lineInfo.startPosition;
             }
@@ -6284,29 +6322,33 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
                 startPos = lineInfo.positions[columnNumber - 2].position + columnDelimiterData.delimiterLength;
             }
             else {
-                continue;
+                continue; // Skip invalid columns
             }
 
             if (columnNumber - 1 < lineInfo.positions.size()) {
                 endPos = lineInfo.positions[columnNumber - 1].position;
             }
             else {
-                endPos = lineInfo.endPosition;
+                endPos = lineInfo.endPosition; // Last column goes to the line's end
             }
 
-            // Puffer, um den Text zu halten
-            std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1);
-            Sci_TextRangeFull tr;
-            tr.chrg.cpMin = startPos;
-            tr.chrg.cpMax = endPos;
-            tr.lpstrText = buffer.data();
+            // Map absolute positions to local offsets in the line buffer
+            const size_t localStart = static_cast<size_t>(startPos - lineStart);
+            const size_t localEnd = static_cast<size_t>(endPos - lineStart);
 
-            // Extrahiere Text für die Spalte
-            SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
-            rowData.columns[columnIndex++] = std::string(buffer.data());
+            if (localStart < localEnd && localEnd <= lineLength) {
+                // Extract column text using local offsets
+                const size_t colSize = localEnd - localStart;
+                rowData.columns[columnIndex] = std::string(lineBuffer.data() + localStart, colSize);
+            }
+            else {
+                rowData.columns[columnIndex].clear(); // Empty column if invalid range
+            }
+
+            ++columnIndex;
         }
 
-        combinedData.push_back(rowData);
+        combinedData.push_back(std::move(rowData)); // Add parsed row to the result
     }
 
     return combinedData;
@@ -8769,40 +8811,41 @@ void MultiReplace::saveSettings() {
     settingsSaved = true;
 }
 
-void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
+void MultiReplace::loadSettingsFromIni() {
+
     // Loading the history for the Find text field in reverse order
-    int findHistoryCount = readIntFromIniFile(iniFilePath, L"History", L"FindTextHistoryCount", 0);
+    int findHistoryCount = readIntFromIniCache(L"History", L"FindTextHistoryCount", 0);
     for (int i = findHistoryCount - 1; i >= 0; i--) {
-        std::wstring findHistoryItem = readStringFromIniFile(iniFilePath, L"History", L"FindTextHistory" + std::to_wstring(i), L"");
+        std::wstring findHistoryItem = readStringFromIniCache(L"History", L"FindTextHistory" + std::to_wstring(i), L"");
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findHistoryItem);
     }
 
     // Loading the history for the Replace text field in reverse order
-    int replaceHistoryCount = readIntFromIniFile(iniFilePath, L"History", L"ReplaceTextHistoryCount", 0);
+    int replaceHistoryCount = readIntFromIniCache(L"History", L"ReplaceTextHistoryCount", 0);
     for (int i = replaceHistoryCount - 1; i >= 0; i--) {
-        std::wstring replaceHistoryItem = readStringFromIniFile(iniFilePath, L"History", L"ReplaceTextHistory" + std::to_wstring(i), L"");
+        std::wstring replaceHistoryItem = readStringFromIniCache(L"History", L"ReplaceTextHistory" + std::to_wstring(i), L"");
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceHistoryItem);
     }
 
     // Reading and setting current "Find what" and "Replace with" texts
-    std::wstring findText = readStringFromIniFile(iniFilePath, L"Current", L"FindText", L"");
-    std::wstring replaceText = readStringFromIniFile(iniFilePath, L"Current", L"ReplaceText", L"");
+    std::wstring findText = readStringFromIniCache(L"Current", L"FindText", L"");
+    std::wstring replaceText = readStringFromIniCache(L"Current", L"ReplaceText", L"");
     setTextInDialogItem(_hSelf, IDC_FIND_EDIT, findText);
     setTextInDialogItem(_hSelf, IDC_REPLACE_EDIT, replaceText);
 
     // Setting options based on the INI file
-    bool wholeWord = readBoolFromIniFile(iniFilePath, L"Options", L"WholeWord", false);
+    bool wholeWord = readBoolFromIniCache(L"Options", L"WholeWord", false);
     SendMessage(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), BM_SETCHECK, wholeWord ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    bool matchCase = readBoolFromIniFile(iniFilePath, L"Options", L"MatchCase", false);
+    bool matchCase = readBoolFromIniCache(L"Options", L"MatchCase", false);
     SendMessage(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), BM_SETCHECK, matchCase ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    bool useVariables = readBoolFromIniFile(iniFilePath, L"Options", L"UseVariables", false);
+    bool useVariables = readBoolFromIniCache(L"Options", L"UseVariables", false);
     SendMessage(GetDlgItem(_hSelf, IDC_USE_VARIABLES_CHECKBOX), BM_SETCHECK, useVariables ? BST_CHECKED : BST_UNCHECKED, 0);
 
     // Selecting the appropriate search mode radio button based on the settings
-    bool extended = readBoolFromIniFile(iniFilePath, L"Options", L"Extended", false);
-    bool regex = readBoolFromIniFile(iniFilePath, L"Options", L"Regex", false);
+    bool extended = readBoolFromIniCache(L"Options", L"Extended", false);
+    bool regex = readBoolFromIniCache(L"Options", L"Regex", false);
     if (regex) {
         CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_REGEX_RADIO);
     }
@@ -8814,51 +8857,52 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     }
 
     // Setting additional options
-    bool wrapAround = readBoolFromIniFile(iniFilePath, L"Options", L"WrapAround", false);
+    bool wrapAround = readBoolFromIniCache(L"Options", L"WrapAround", false);
     SendMessage(GetDlgItem(_hSelf, IDC_WRAP_AROUND_CHECKBOX), BM_SETCHECK, wrapAround ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    bool replaceFirst = readBoolFromIniFile(iniFilePath, L"Options", L"ReplaceFirst", false);
+    bool replaceFirst = readBoolFromIniCache(L"Options", L"ReplaceFirst", false);
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_FIRST_CHECKBOX), BM_SETCHECK, replaceFirst ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    bool replaceButtonsMode = readBoolFromIniFile(iniFilePath, L"Options", L"ButtonsMode", false);
+    bool replaceButtonsMode = readBoolFromIniCache(L"Options", L"ButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    useListEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", true);
+    useListEnabled = readBoolFromIniCache(L"Options", L"UseList", true);
     updateUseListState(false);
 
-    highlightMatchEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"HighlightMatch", true);
-    alertNotFoundEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"AlertNotFound", true);
-    doubleClickEditsEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"DoubleClickEdits", true);
-    isHoverTextEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"HoverText", true);
-    editFieldSize = std::clamp(readIntFromIniFile(iniFilePath, L"Options", L"EditFieldSize", 5), MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
+    highlightMatchEnabled = readBoolFromIniCache(L"Options", L"HighlightMatch", true);
+    alertNotFoundEnabled = readBoolFromIniCache(L"Options", L"AlertNotFound", true);
+    doubleClickEditsEnabled = readBoolFromIniCache(L"Options", L"DoubleClickEdits", true);
+    isHoverTextEnabled = readBoolFromIniCache(L"Options", L"HoverText", true);
 
-    // Loading and setting the scope with enabled state check
-    int selection = readIntFromIniFile(iniFilePath, L"Scope", L"Selection", 0);
-    int columnMode = readIntFromIniFile(iniFilePath, L"Scope", L"ColumnMode", 0);
+    // readIntFromIniCache for editFieldSize
+    editFieldSize = readIntFromIniCache(L"Options", L"EditFieldSize", 5);
+    editFieldSize = std::clamp(editFieldSize, MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
+
+    // Loading and setting the scope
+    int selection = readIntFromIniCache(L"Scope", L"Selection", 0);
+    int columnMode = readIntFromIniCache(L"Scope", L"ColumnMode", 0);
 
     // Reading and setting specific scope settings
-    std::wstring columnNum = readStringFromIniFile(iniFilePath, L"Scope", L"ColumnNum", L"1-50");
+    std::wstring columnNum = readStringFromIniCache(L"Scope", L"ColumnNum", L"1-50");
     setTextInDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT, columnNum);
 
-    std::wstring delimiter = readStringFromIniFile(iniFilePath, L"Scope", L"Delimiter", L",");
+    std::wstring delimiter = readStringFromIniCache(L"Scope", L"Delimiter", L",");
     setTextInDialogItem(_hSelf, IDC_DELIMITER_EDIT, delimiter);
 
-    std::wstring quoteChar = readStringFromIniFile(iniFilePath, L"Scope", L"QuoteChar", L"\"");
+    std::wstring quoteChar = readStringFromIniCache(L"Scope", L"QuoteChar", L"\"");
     setTextInDialogItem(_hSelf, IDC_QUOTECHAR_EDIT, quoteChar);
 
-    CSVheaderLinesCount = readIntFromIniFile(iniFilePath, L"Scope", L"HeaderLines", 1);
+    CSVheaderLinesCount = readIntFromIniCache(L"Scope", L"HeaderLines", 1);
 
-    // Load file path and original hash from the INI file
-    listFilePath = readStringFromIniFile(iniFilePath, L"File", L"ListFilePath", L"");
-    originalListHash = readSizeTFromIniFile(iniFilePath, L"File", L"OriginalListHash", 0);
+    // Load file path and original hash
+    listFilePath = readStringFromIniCache(L"File", L"ListFilePath", L"");
+    originalListHash = readSizeTFromIniCache(L"File", L"OriginalListHash", 0);
+
     showListFilePath();
-
-    // Adjusting UI elements based on the selected scope
-
 
     if (selection) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_SELECTION_RADIO);
-        onSelectionChanged(); // check selection for IDC_SELECTION_RADIO
+        onSelectionChanged();
     }
     else if (columnMode) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_COLUMN_MODE_RADIO);
@@ -8868,14 +8912,18 @@ void MultiReplace::loadSettingsFromIni(const std::wstring& iniFilePath) {
     }
 
     setUIElementVisibility();
-
 }
 
 void MultiReplace::loadSettings() {
-    auto [iniFilePath, csvFilePath] = generateConfigFilePaths();
+    auto [_, csvFilePath] = generateConfigFilePaths();
+
+    // Read all settings from the cache
+    loadSettingsFromIni();
+
+    // Clear the cache to free memory
+    iniCache.clear();
 
     try {
-        loadSettingsFromIni(iniFilePath);
         loadListFromCsvSilent(csvFilePath, replaceListData);
     }
     catch (const CsvLoadException& ex) {
@@ -8890,167 +8938,231 @@ void MultiReplace::loadSettings() {
 
 void MultiReplace::loadUIConfigFromIni() {
     auto [iniFilePath, _] = generateConfigFilePaths(); // Generating config file paths
+    parseIniFile(iniFilePath);
 
     // Load DPI Scaling factor from INI file
-    float customScaleFactor = readFloatFromIniFile(iniFilePath, L"Window", L"ScaleFactor", 1.0f);
+    float customScaleFactor = readFloatFromIniCache(L"Window", L"ScaleFactor", 1.0f);
     dpiMgr->setCustomScaleFactor(customScaleFactor);
 
     // Scale Window and List Size after loading ScaleFactor
-    MIN_WIDTH_scaled = sx(MIN_WIDTH);               // MIN_WIDTH from resource.rc
-    MIN_HEIGHT_scaled = sy(MIN_HEIGHT);              // MIN_HEIGHT from resource.rc
-    SHRUNK_HEIGHT_scaled = sy(SHRUNK_HEIGHT);          // SHRUNK_HEIGHT from resource.rc
-    DEFAULT_COLUMN_WIDTH_FIND_scaled = sx(DEFAULT_COLUMN_WIDTH_FIND);   // Scaled Default Size of Find Column
-    DEFAULT_COLUMN_WIDTH_REPLACE_scaled = sx(DEFAULT_COLUMN_WIDTH_REPLACE); // Scaled Default Size of Replace Column
-    DEFAULT_COLUMN_WIDTH_COMMENTS_scaled = sx(DEFAULT_COLUMN_WIDTH_COMMENTS); // Scaled Default Size of Comments Column
-    DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled = sx(DEFAULT_COLUMN_WIDTH_FIND_COUNT); // Scaled Default Size of Find Count Column
-    DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled = sx(DEFAULT_COLUMN_WIDTH_REPLACE_COUNT); // Scaled Default Size of Replace Count Column
+    MIN_WIDTH_scaled = sx(MIN_WIDTH);
+    MIN_HEIGHT_scaled = sy(MIN_HEIGHT);
+    SHRUNK_HEIGHT_scaled = sy(SHRUNK_HEIGHT);
+    DEFAULT_COLUMN_WIDTH_FIND_scaled = sx(DEFAULT_COLUMN_WIDTH_FIND);
+    DEFAULT_COLUMN_WIDTH_REPLACE_scaled = sx(DEFAULT_COLUMN_WIDTH_REPLACE);
+    DEFAULT_COLUMN_WIDTH_COMMENTS_scaled = sx(DEFAULT_COLUMN_WIDTH_COMMENTS);
+    DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled = sx(DEFAULT_COLUMN_WIDTH_FIND_COUNT);
+    DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled = sx(DEFAULT_COLUMN_WIDTH_REPLACE_COUNT);
     MIN_GENERAL_WIDTH_scaled = sx(MIN_GENERAL_WIDTH);
 
-    // Load window position
-    windowRect.left = readIntFromIniFile(iniFilePath, L"Window", L"PosX", POS_X);
-    windowRect.top = readIntFromIniFile(iniFilePath, L"Window", L"PosY", POS_Y);
+    // Load window position (using readIntFromIniCache)
+    windowRect.left = readIntFromIniCache(L"Window", L"PosX", POS_X);
+    windowRect.top = readIntFromIniCache(L"Window", L"PosY", POS_Y);
 
-    // Load the state of the Use List checkbox from the ini file
-    useListEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"UseList", true); // Default to true if not found
+    // Load the state of UseList
+    useListEnabled = readBoolFromIniCache(L"Options", L"UseList", true);
     updateUseListState(false);
 
     // Load window width
-    int savedWidth = readIntFromIniFile(iniFilePath, L"Window", L"Width", MIN_WIDTH_scaled);
+    int savedWidth = readIntFromIniCache(L"Window", L"Width", MIN_WIDTH_scaled);
     int width = std::max(savedWidth, MIN_WIDTH_scaled);
 
-    // Load useListOnHeight from INI file
-    useListOnHeight = readIntFromIniFile(iniFilePath, L"Window", L"Height", MIN_HEIGHT_scaled);
-    useListOnHeight = std::max(useListOnHeight, MIN_HEIGHT_scaled); // Ensure minimum height
+    // Load useListOnHeight
+    useListOnHeight = readIntFromIniCache(L"Window", L"Height", MIN_HEIGHT_scaled);
+    useListOnHeight = std::max(useListOnHeight, MIN_HEIGHT_scaled);
 
-    // Set windowRect based on Use List state
     int height = useListEnabled ? useListOnHeight : useListOffHeight;
-
     windowRect.right = windowRect.left + width;
     windowRect.bottom = windowRect.top + height;
 
     // Read column widths
-    findColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"FindWidth", DEFAULT_COLUMN_WIDTH_FIND_scaled), MIN_GENERAL_WIDTH_scaled);
-    replaceColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceWidth", DEFAULT_COLUMN_WIDTH_REPLACE_scaled), MIN_GENERAL_WIDTH_scaled);
-    commentsColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"CommentsWidth", DEFAULT_COLUMN_WIDTH_COMMENTS_scaled), MIN_GENERAL_WIDTH_scaled);
-    findCountColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
-    replaceCountColumnWidth = std::max(readIntFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountWidth", DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
+    findColumnWidth = std::max(readIntFromIniCache(L"ListColumns", L"FindWidth", DEFAULT_COLUMN_WIDTH_FIND_scaled), MIN_GENERAL_WIDTH_scaled);
+    replaceColumnWidth = std::max(readIntFromIniCache(L"ListColumns", L"ReplaceWidth", DEFAULT_COLUMN_WIDTH_REPLACE_scaled), MIN_GENERAL_WIDTH_scaled);
+    commentsColumnWidth = std::max(readIntFromIniCache(L"ListColumns", L"CommentsWidth", DEFAULT_COLUMN_WIDTH_COMMENTS_scaled), MIN_GENERAL_WIDTH_scaled);
+    findCountColumnWidth = std::max(readIntFromIniCache(L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
+    replaceCountColumnWidth = std::max(readIntFromIniCache(L"ListColumns", L"ReplaceCountWidth", DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
 
     // Load column visibility states
-    isFindCountVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"FindCountVisible", false);
-    isReplaceCountVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"ReplaceCountVisible", false);
-    isCommentsColumnVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"CommentsVisible", false);
-    isDeleteButtonVisible = readBoolFromIniFile(iniFilePath, L"ListColumns", L"DeleteButtonVisible", true);
+    isFindCountVisible = readBoolFromIniCache(L"ListColumns", L"FindCountVisible", false);
+    isReplaceCountVisible = readBoolFromIniCache(L"ListColumns", L"ReplaceCountVisible", false);
+    isCommentsColumnVisible = readBoolFromIniCache(L"ListColumns", L"CommentsVisible", false);
+    isDeleteButtonVisible = readBoolFromIniCache(L"ListColumns", L"DeleteButtonVisible", true);
 
     // Load column lock states
-    findColumnLockedEnabled = readBoolFromIniFile(iniFilePath, L"ListColumns", L"FindColumnLocked", true);
-    replaceColumnLockedEnabled = readBoolFromIniFile(iniFilePath, L"ListColumns", L"ReplaceColumnLocked", false);
-    commentsColumnLockedEnabled = readBoolFromIniFile(iniFilePath, L"ListColumns", L"CommentsColumnLocked", true);
+    findColumnLockedEnabled = readBoolFromIniCache(L"ListColumns", L"FindColumnLocked", true);
+    replaceColumnLockedEnabled = readBoolFromIniCache(L"ListColumns", L"ReplaceColumnLocked", false);
+    commentsColumnLockedEnabled = readBoolFromIniCache(L"ListColumns", L"CommentsColumnLocked", true);
 
-    // Load transparency settings with defaults
-    foregroundTransparency = std::clamp(readByteFromIniFile(iniFilePath, L"Window", L"ForegroundTransparency", DEFAULT_FOREGROUND_TRANSPARENCY), MIN_TRANSPARENCY, MAX_TRANSPARENCY);
-    backgroundTransparency = std::clamp(readByteFromIniFile(iniFilePath, L"Window", L"BackgroundTransparency", DEFAULT_BACKGROUND_TRANSPARENCY), MIN_TRANSPARENCY, MAX_TRANSPARENCY);
+    // Load transparency settings (readByteFromIniCache)
+    foregroundTransparency = std::clamp(readByteFromIniCache(L"Window", L"ForegroundTransparency", DEFAULT_FOREGROUND_TRANSPARENCY),MIN_TRANSPARENCY, MAX_TRANSPARENCY);
+    backgroundTransparency = std::clamp(readByteFromIniCache(L"Window", L"BackgroundTransparency", DEFAULT_BACKGROUND_TRANSPARENCY),MIN_TRANSPARENCY, MAX_TRANSPARENCY);
+
     // Load Tooltip setting
-    tooltipsEnabled = readBoolFromIniFile(iniFilePath, L"Options", L"Tooltips", true);
+    tooltipsEnabled = readBoolFromIniCache(L"Options", L"Tooltips", true);
 }
 
-std::wstring MultiReplace::readStringFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue) {
-    // Convert std::wstring path to std::string path using WideCharToMultiByte
-    int size_needed = WideCharToMultiByte(CP_UTF8, 0, iniFilePath.c_str(), (int)iniFilePath.size(), NULL, 0, NULL, NULL);
+void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {
+    ::SetDlgItemTextW(hDlg, itemID, text.c_str());
+}
+
+bool MultiReplace::parseIniFile(const std::wstring& iniFilePath)
+{
+    // Clear any old data
+    iniCache.clear();
+
+    // Convert iniFilePath from wide string to UTF-8
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, iniFilePath.c_str(), (int)iniFilePath.size(), nullptr, 0, nullptr, nullptr);
     std::string filePath(size_needed, 0);
-    WideCharToMultiByte(CP_UTF8, 0, iniFilePath.c_str(), (int)iniFilePath.size(), &filePath[0], size_needed, NULL, NULL);
+    WideCharToMultiByte(CP_UTF8, 0, iniFilePath.c_str(), (int)iniFilePath.size(), &filePath[0], size_needed, nullptr, nullptr);
 
     // Open file in binary mode to read UTF-8 data
     std::ifstream iniFile(filePath, std::ios::binary);
     if (!iniFile.is_open()) {
-        return defaultValue; // Return default value if file can't be opened
+        // Could not open the file
+        return false;
     }
 
-    // Read the file content into a std::string
+    // Read the entire file content into a std::string
     std::string utf8Content((std::istreambuf_iterator<char>(iniFile)), std::istreambuf_iterator<char>());
+    iniFile.close();
 
-    // Convert UTF-8 std::string to std::wstring
-    int len = MultiByteToWideChar(CP_UTF8, 0, utf8Content.c_str(), -1, NULL, 0);
+    // Convert that UTF-8 string to std::wstring
+    int len = MultiByteToWideChar(CP_UTF8, 0, utf8Content.c_str(), -1, nullptr, 0);
     std::wstring wContent(len, 0);
     MultiByteToWideChar(CP_UTF8, 0, utf8Content.c_str(), -1, &wContent[0], len);
 
-    // Process the content line by line
+    // We'll parse it line by line
     std::wstringstream contentStream(wContent);
     std::wstring line;
-    bool correctSection = false;
+    std::wstring currentSection;
 
     while (std::getline(contentStream, line)) {
-        if (line[0] == L'[') {
+        line = trim(line);
+
+        // Skip empty lines or lines starting with ';' or '#'
+        if (line.empty() || line[0] == L';' || line[0] == L'#') {
+            continue;
+        }
+
+        // Check if this is a [Section]
+        if (!line.empty() && line[0] == L'[') {
             size_t closingBracketPos = line.find(L']');
             if (closingBracketPos != std::wstring::npos) {
-                correctSection = (line.substr(1, closingBracketPos - 1) == section);
+                currentSection = line.substr(1, closingBracketPos - 1);
+                currentSection = trim(currentSection);
             }
+            continue;
         }
-        else if (correctSection) {
-            size_t equalPos = line.find(L'=');
-            if (equalPos != std::wstring::npos) {
-                std::wstring foundKey = trim(line.substr(0, equalPos));
-                std::wstring value = line.substr(equalPos + 1);
 
-                if (foundKey == key) {
-                    size_t lastQuotePos = value.rfind(L'\"');
-                    size_t semicolonPos = value.find(L';', lastQuotePos);
-                    if (semicolonPos != std::wstring::npos) {
-                        value = value.substr(0, semicolonPos);
-                    }
-                    value = trim(value);
+        // Otherwise, look for key=value
+        size_t equalPos = line.find(L'=');
+        if (equalPos != std::wstring::npos) {
+            std::wstring key = trim(line.substr(0, equalPos));
+            std::wstring value = trim(line.substr(equalPos + 1));
 
-                    return unescapeCsvValue(value);
-                }
+            // If there's a semicolon after the value, treat it as comment
+            size_t semicolonPos = value.find(L';');
+            if (semicolonPos != std::wstring::npos) {
+                value = value.substr(0, semicolonPos);
             }
+            value = trim(value);
+
+            // Unescape if needed
+            std::wstring unescapedVal = unescapeCsvValue(value);
+
+            // Save to the iniCache
+            iniCache[currentSection][key] = unescapedVal;
         }
     }
 
-    return defaultValue; // Return default value if key is not found
+    return true;
 }
 
-bool MultiReplace::readBoolFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, bool defaultValue) {
-    std::wstring defaultValueStr = defaultValue ? L"1" : L"0";
-    std::wstring value = readStringFromIniFile(iniFilePath, section, key, defaultValueStr);
-    return value == L"1";
-}
-
-int MultiReplace::readIntFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, int defaultValue) {
-    return ::GetPrivateProfileIntW(section.c_str(), key.c_str(), defaultValue, iniFilePath.c_str());
-}
-
-std::size_t MultiReplace::readSizeTFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, std::size_t defaultValue) {
-    WCHAR buffer[256] = { 0 };
-    GetPrivateProfileStringW(section.c_str(), key.c_str(), std::to_wstring(defaultValue).c_str(), buffer, sizeof(buffer) / sizeof(WCHAR), iniFilePath.c_str());
-
-    try {
-        return static_cast<std::size_t>(std::stoull(buffer));  // Convert and cast directly to size_t
+std::wstring MultiReplace::readStringFromIniCache(const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue)
+{
+    auto sectIt = iniCache.find(section);
+    if (sectIt == iniCache.end()) {
+        return defaultValue;
     }
-    catch (...) {
-        return defaultValue;  // If conversion fails, return the default value
+    const auto& keyMap = sectIt->second;
+    auto keyIt = keyMap.find(key);
+    if (keyIt == keyMap.end()) {
+        return defaultValue;
     }
+    return keyIt->second;
 }
 
-BYTE MultiReplace::readByteFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, BYTE defaultValue) {
-    int intValue = ::GetPrivateProfileIntW(section.c_str(), key.c_str(), defaultValue, iniFilePath.c_str());
-    return static_cast<BYTE>(intValue);
+bool MultiReplace::readBoolFromIniCache(const std::wstring& section, const std::wstring& key, bool defaultValue)
+{
+    std::wstring def = defaultValue ? L"1" : L"0";
+    std::wstring val = readStringFromIniCache(section, key, def);
+    // You can interpret "true"/"false" or "1"/"0" etc.
+    if (val == L"1" || _wcsicmp(val.c_str(), L"true") == 0) {
+        return true;
+    }
+    else if (val == L"0" || _wcsicmp(val.c_str(), L"false") == 0) {
+        return false;
+    }
+    return defaultValue;
 }
 
-float MultiReplace::readFloatFromIniFile(const std::wstring& iniFilePath, const std::wstring& section, const std::wstring& key, float defaultValue) {
-    WCHAR buffer[256] = { 0 };
-    std::wstring defaultStr = std::to_wstring(defaultValue);
-
-    GetPrivateProfileStringW(section.c_str(), key.c_str(), defaultStr.c_str(), buffer, sizeof(buffer) / sizeof(WCHAR), iniFilePath.c_str());
-
+int MultiReplace::readIntFromIniCache(const std::wstring& section, const std::wstring& key, int defaultValue)
+{
+    std::wstring val = readStringFromIniCache(section, key, std::to_wstring(defaultValue));
     try {
-        return std::stof(buffer);
+        return std::stoi(val);
     }
     catch (...) {
         return defaultValue;
     }
 }
 
-void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {
-    ::SetDlgItemTextW(hDlg, itemID, text.c_str());
+std::size_t MultiReplace::readSizeTFromIniCache(const std::wstring& section, const std::wstring& key, std::size_t defaultValue)
+{
+    std::wstring val = readStringFromIniCache(section, key, std::to_wstring(defaultValue));
+    try {
+        return std::stoull(val);
+    }
+    catch (...) {
+        return defaultValue;
+    }
+}
+
+BYTE MultiReplace::readByteFromIniCache(const std::wstring& section, const std::wstring& key, BYTE defaultValue)
+{
+    // Convert the defaultValue to string
+    std::wstring defaultStr = std::to_wstring(defaultValue);
+
+    // Get the string from the cache
+    std::wstring val = readStringFromIniCache(section, key, defaultStr);
+
+    try {
+        int parsedValue = std::stoi(val);
+        // Clamp to 0..255 if necessary
+        if (parsedValue < 0) parsedValue = 0;
+        if (parsedValue > 255) parsedValue = 255;
+
+        return static_cast<BYTE>(parsedValue);
+    }
+    catch (...) {
+        return defaultValue;
+    }
+}
+
+float MultiReplace::readFloatFromIniCache(const std::wstring& section, const std::wstring& key, float defaultValue)
+{
+    // Convert defaultValue to string for fallback
+    std::wstring defaultStr = std::to_wstring(defaultValue);
+
+    // Get the string from the cache
+    std::wstring val = readStringFromIniCache(section, key, defaultStr);
+
+    try {
+        return std::stof(val);
+    }
+    catch (...) {
+        return defaultValue;
+    }
 }
 
 #pragma endregion
@@ -9105,14 +9217,19 @@ void MultiReplace::loadLanguage() {
     }
 }
 
-void MultiReplace::loadLanguageFromIni(const std::wstring& iniFilePath, const std::wstring& languageCode) {
-    std::wstring section = languageCode;
-
-    for (auto& entry : languageMap) {
-        std::wstring translatedString = readStringFromIniFile(iniFilePath, section, entry.first, entry.second);
-        entry.second = translatedString;
+void MultiReplace::loadLanguageFromIni(const std::wstring& iniFilePath, const std::wstring& languageCode)
+{
+    // Parse the entire file once
+    if (!parseIniFile(iniFilePath)) {
+        // If file not found or can't open, handle if needed
+        return;
     }
 
+    // Lookup in iniCache for each key
+    for (auto& entry : languageMap) {
+        std::wstring translated = readStringFromIniCache(languageCode, entry.first, entry.second);
+        entry.second = translated;
+    }
 }
 
 std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements) {
