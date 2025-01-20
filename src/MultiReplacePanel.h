@@ -146,10 +146,15 @@ struct DelimiterPosition {
     LRESULT position;
 };
 
-struct CombinedColumns {
-    std::vector<std::string> columns;
+struct ColumnValue {
+    bool        isNumeric;
+    double      numericValue;
+    std::string text;
 };
 
+struct CombinedColumns {
+    std::vector<ColumnValue> columns;
+};
 struct LineInfo {
     std::vector<DelimiterPosition> positions;
     LRESULT startPosition = 0;
@@ -701,6 +706,8 @@ private:
     void UpdateSortButtonSymbols();
     void handleSortStateAndSort(SortDirection direction);
     void updateUnsortedDocument(SIZE_T lineNumber, ChangeType changeType);
+    void detectNumericColumns(std::vector<CombinedColumns>& data);
+    int compareColumnValue(const ColumnValue& left, const ColumnValue& right);
 
     //Scope
     bool parseColumnAndDelimiterData();

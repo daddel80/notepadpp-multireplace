@@ -6339,10 +6339,10 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
             if (localStart < localEnd && localEnd <= lineLength) {
                 // Extract column text using local offsets
                 const size_t colSize = localEnd - localStart;
-                rowData.columns[columnIndex] = std::string(lineBuffer.data() + localStart, colSize);
+                rowData.columns[columnIndex].text = std::string(lineBuffer.data() + localStart, colSize);
             }
             else {
-                rowData.columns[columnIndex].clear(); // Empty column if invalid range
+                rowData.columns[columnIndex].text.clear(); // Empty column if invalid range
             }
 
             ++columnIndex;
@@ -6351,53 +6351,63 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
         combinedData.push_back(std::move(rowData)); // Add parsed row to the result
     }
 
+    // Optional step: detectNumericColumns if you want to parse columns as numeric
+    detectNumericColumns(combinedData);
+
     return combinedData;
 }
 
-void MultiReplace::sortRowsByColumn(SortDirection sortDirection) {
-    // Validate column delimiter data
+void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
+{
+    // Validate delimiters before sorting
     if (!columnDelimiterData.isValid()) {
         showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), COLOR_ERROR);
         return;
     }
+
     SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
 
     size_t lineCount = lineDelimiterPositions.size();
-
-    // Check if there's nothing to sort or if the document has fewer lines than header lines
     if (lineCount <= CSVheaderLinesCount) {
-        // Either nothing to sort or document consists only of header lines
         SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
         return;
     }
 
-    std::vector<CombinedColumns> combinedData;
-    combinedData.reserve(lineCount); // Reserve space for all lines, including headers
-
-    // Initialize tempOrder with indices for all lines, including header lines
+    // Create an index array for all lines
     std::vector<size_t> tempOrder(lineCount);
     for (size_t i = 0; i < lineCount; ++i) {
-        tempOrder[i] = i; // Manually filling tempOrder with 0, 1, ..., lineCount-1
+        tempOrder[i] = i;
     }
 
-    // Extract content of specified columns, starting after header lines
-    combinedData = extractColumnData(CSVheaderLinesCount, lineDelimiterPositions.size());
+    // Extract the columns after any header lines
+    std::vector<CombinedColumns> combinedData = extractColumnData(CSVheaderLinesCount, lineCount);
 
-    // Sort the tempOrder based on combinedData, excluding header lines during comparison
-    std::sort(tempOrder.begin() + CSVheaderLinesCount, tempOrder.end(), [&](const size_t a, const size_t b) {
-        size_t adjustedA = a - CSVheaderLinesCount;
-        size_t adjustedB = b - CSVheaderLinesCount;
-        // Implement the sorting logic here, only for lines beyond the header lines
-        return sortDirection == SortDirection::Ascending ? combinedData[adjustedA].columns[0] < combinedData[adjustedB].columns[0] : combinedData[adjustedA].columns[0] > combinedData[adjustedB].columns[0];
-        });
+    // Single-pass sort using multi-column comparison
+    std::sort(tempOrder.begin() + CSVheaderLinesCount, tempOrder.end(),
+        [&](size_t a, size_t b) {
+            size_t indexA = a - CSVheaderLinesCount;
+            size_t indexB = b - CSVheaderLinesCount;
+            const auto& rowA = combinedData[indexA];
+            const auto& rowB = combinedData[indexB];
 
-    // Adjust originalLineOrder based on the opposite sorting results
+            // Compare each column in priority order
+            for (size_t colIndex = 0; colIndex < columnDelimiterData.inputColumns.size(); ++colIndex) {
+                // If needed, map to actual column (e.g., size_t realIndex = columnDelimiterData.inputColumns[colIndex] - 1;)
+                int cmp = compareColumnValue(rowA.columns[colIndex], rowB.columns[colIndex]);
+                if (cmp != 0) {
+                    return (sortDirection == SortDirection::Ascending) ? (cmp < 0) : (cmp > 0);
+                }
+            }
+            // If all columns match, keep original order
+            return false;
+        }
+    );
+
+    // Update originalLineOrder if tracking is used
     if (!originalLineOrder.empty()) {
         std::vector<size_t> newOrder(originalLineOrder.size());
         for (size_t i = 0; i < tempOrder.size(); ++i) {
-            size_t positionInOriginal = tempOrder[i];
-            size_t valueForNewOrder = originalLineOrder[positionInOriginal];
-            newOrder[i] = valueForNewOrder;
+            newOrder[i] = originalLineOrder[tempOrder[i]];
         }
         originalLineOrder = std::move(newOrder);
     }
@@ -6405,7 +6415,7 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection) {
         originalLineOrder = tempOrder;
     }
 
-    // Use tempOrder to reorder lines in Scintilla, adjusting for header lines
+    // Reorder lines in the editor based on sorted indices
     reorderLinesInScintilla(tempOrder);
 
     SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
@@ -6564,6 +6574,49 @@ void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, ChangeType changeTy
         break;
     }
     }
+}
+
+void MultiReplace::detectNumericColumns(std::vector<CombinedColumns>& data)
+{
+    if (data.empty()) return;
+    size_t colCount = data[0].columns.size();
+
+    for (size_t col = 0; col < colCount; ++col) {
+        bool allNumeric = true;
+
+        // Check every row if it can be numeric
+        for (auto& row : data) {
+            std::string tmp = row.columns[col].text;
+            if (!normalizeAndValidateNumber(tmp)) {
+                allNumeric = false;
+                break;
+            }
+        }
+
+        // If all are numeric, do another pass to set numericValue
+        if (allNumeric) {
+            for (auto& row : data) {
+                std::string tmp = row.columns[col].text;
+                normalizeAndValidateNumber(tmp); // modifies tmp if needed
+                double val = std::stod(tmp);
+                row.columns[col].isNumeric = true;
+                row.columns[col].numericValue = val;
+                row.columns[col].text = tmp; // keep '.' version if you like
+            }
+        }
+    }
+}
+
+int MultiReplace::compareColumnValue(const ColumnValue& left, const ColumnValue& right)
+{ // Compare function for numeric vs. string
+    if (left.isNumeric && right.isNumeric) {
+        if (left.numericValue < right.numericValue) return -1;
+        if (left.numericValue > right.numericValue) return  1;
+        return 0;
+    }
+    if (left.isNumeric && !right.isNumeric) return -1;
+    if (!left.isNumeric && right.isNumeric) return  1;
+    return left.text.compare(right.text);
 }
 
 #pragma endregion
@@ -9037,15 +9090,21 @@ bool MultiReplace::parseIniFile(const std::wstring& iniFilePath)
     std::wstring currentSection;
 
     while (std::getline(contentStream, line)) {
-        line = trim(line);
+        line = trim(line); // remove leading/trailing whitespace
+        if (line.empty()) {
+            // Skip empty lines
+            continue;
+        }
 
-        // Skip empty lines or lines starting with ';' or '#'
-        if (line.empty() || line[0] == L';' || line[0] == L'#') {
+        // If the first character is ';' or '#', treat the entire line as a comment
+        wchar_t firstChar = line[0];
+        if (firstChar == L';' || firstChar == L'#') {
+            // Skip commented line
             continue;
         }
 
         // Check if this is a [Section]
-        if (!line.empty() && line[0] == L'[') {
+        if (firstChar == L'[') {
             size_t closingBracketPos = line.find(L']');
             if (closingBracketPos != std::wstring::npos) {
                 currentSection = line.substr(1, closingBracketPos - 1);
@@ -9059,13 +9118,6 @@ bool MultiReplace::parseIniFile(const std::wstring& iniFilePath)
         if (equalPos != std::wstring::npos) {
             std::wstring key = trim(line.substr(0, equalPos));
             std::wstring value = trim(line.substr(equalPos + 1));
-
-            // If there's a semicolon after the value, treat it as comment
-            size_t semicolonPos = value.find(L';');
-            if (semicolonPos != std::wstring::npos) {
-                value = value.substr(0, semicolonPos);
-            }
-            value = trim(value);
 
             // Unescape if needed
             std::wstring unescapedVal = unescapeCsvValue(value);
@@ -9120,8 +9172,15 @@ int MultiReplace::readIntFromIniCache(const std::wstring& section, const std::ws
 std::size_t MultiReplace::readSizeTFromIniCache(const std::wstring& section, const std::wstring& key, std::size_t defaultValue)
 {
     std::wstring val = readStringFromIniCache(section, key, std::to_wstring(defaultValue));
+
     try {
-        return std::stoull(val);
+        unsigned long long result = std::stoull(val);
+
+        if (result > static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) {
+            return defaultValue;
+        }
+
+        return static_cast<std::size_t>(result);
     }
     catch (...) {
         return defaultValue;
