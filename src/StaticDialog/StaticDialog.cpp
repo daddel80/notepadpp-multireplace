@@ -1,5 +1,5 @@
 //this file is part of notepad++
-//Copyright (C)2023 Thomas Knoefel
+//Copyright (C)2023 Thomas Knoefel 
 //
 //This program is free software; you can redistribute it and/or
 //modify it under the terms of the GNU General Public License
