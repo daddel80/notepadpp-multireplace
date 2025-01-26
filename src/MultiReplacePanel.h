@@ -21,6 +21,7 @@
 #include "PluginInterface.h"
 #include "DropTarget.h"
 #include "DPIManager.h"
+#include "FenwickTree.h"
 
 #include <string>
 #include <vector>
@@ -142,23 +143,25 @@ struct ColumnDelimiterData {
     }
 };
 
-struct DelimiterPosition {
-    LRESULT position;
-};
 
 struct ColumnValue {
-    bool        isNumeric;
-    double      numericValue;
-    std::string text;
+    bool        isNumeric = false;
+    double      numericValue = 0;
+    std::string text = "";
 };
 
 struct CombinedColumns {
     std::vector<ColumnValue> columns;
 };
+
+struct DelimiterPosition {
+    LRESULT offsetInLine = 0;  // where the delimiter is within this line
+};
+
 struct LineInfo {
     std::vector<DelimiterPosition> positions;
-    LRESULT startPosition = 0;
-    LRESULT endPosition = 0;
+    LRESULT lineLength = 0; // how many chars total in this line
+    size_t lineIndex = 0;   // which line it is (for Fenwicksum queries)
 };
 
 struct ColumnInfo {
@@ -592,11 +595,7 @@ private:
     void removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove);
     void modifyItemInReplaceList(size_t index, const ReplaceItemData& newData);
     bool moveItemsInReplaceList(std::vector<size_t>& indices, Direction direction);
-    void sortItemsInReplaceList(const std::vector<size_t>& originalOrder,
-        const std::vector<size_t>& newOrder,
-        const std::map<int, SortDirection>& previousColumnSortOrder,
-        int columnID,
-        SortDirection direction);
+    void sortItemsInReplaceList(const std::vector<size_t>& originalOrder, const std::vector<size_t>& newOrder, const std::map<int, SortDirection>& previousColumnSortOrder, int columnID, SortDirection direction);
     void scrollToIndices(size_t firstIndex, size_t lastIndex);
 
     //ListView
@@ -716,7 +715,7 @@ private:
     ColumnInfo getColumnInfo(LRESULT startPosition);
     void initializeColumnStyles();
     void handleHighlightColumnsInDocument();
-    void highlightColumnsInLine(LRESULT line);
+    void highlightColumnsInLine(LRESULT line, LRESULT totalLines);
     void handleClearColumnMarks();
     std::wstring addLineAndColumnMessage(LRESULT pos);
     void updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType);

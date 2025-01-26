@@ -5717,36 +5717,46 @@ SearchResult MultiReplace::performSearchColumn(const std::string& findTextUtf8, 
     // Set line iteration based on search direction
     LRESULT line = startLine;
     while (isBackward ? (line >= 0) : (line < totalLines)) {
+        // Avoid out-of-bounds access in lineDelimiterPositions
         if (line >= static_cast<LRESULT>(lineDelimiterPositions.size())) {
-            break; // Avoid out-of-bounds access
+            break;
         }
 
-        const auto& linePositions = lineDelimiterPositions[line].positions;
+        // Retrieve local info for the line
+        const auto& lineInfo = lineDelimiterPositions[line];
+        const auto& linePositions = lineInfo.positions;
         SIZE_T totalColumns = linePositions.size() + 1;
+
+        // Calculate absolute line start and end
+        LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, line, 0);
+        LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
 
         // Set column iteration range and step based on direction
         SIZE_T column = isBackward ? (line == startLine ? startColumnIndex : totalColumns) : startColumnIndex;
-        SIZE_T endColumnIndex = isBackward ? 1 : totalColumns;
+        SIZE_T endColumnIdx = isBackward ? 1 : totalColumns;
         int columnStep = isBackward ? -1 : 1;
 
         // Iterate over columns in the specified direction
-        for (; (isBackward ? (column >= endColumnIndex) : (column <= endColumnIndex)); column += columnStep) {
+        for (; (isBackward ? (column >= endColumnIdx) : (column <= endColumnIdx)); column += columnStep) {
             LRESULT startColumn = 0;
             LRESULT endColumn = 0;
 
-            // Define start and end positions for the current column
+            // Define absolute start of this column
             if (column == 1) {
-                startColumn = lineDelimiterPositions[line].startPosition;
+                startColumn = lineStartPos;
             }
             else {
-                startColumn = linePositions[column - 2].position + columnDelimiterData.delimiterLength;
+                startColumn = lineStartPos
+                    + lineInfo.positions[column - 2].offsetInLine
+                    + columnDelimiterData.delimiterLength;
             }
 
+            // Define absolute end of this column
             if (column == totalColumns) {
-                endColumn = lineDelimiterPositions[line].endPosition;
+                endColumn = lineEndPos;
             }
             else {
-                endColumn = linePositions[column - 1].position;
+                endColumn = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
             }
 
             // Skip columns not specified in columnDelimiterData
@@ -5774,7 +5784,7 @@ SearchResult MultiReplace::performSearchColumn(const std::string& findTextUtf8, 
                 targetRange
             );
 
-            // Return if a match is found
+            // Return immediately if a match is found
             if (result.pos >= 0) {
                 return result;
             }
@@ -5782,6 +5792,7 @@ SearchResult MultiReplace::performSearchColumn(const std::string& findTextUtf8, 
 
         // Move to the next line based on search direction
         line += (isBackward ? -1 : 1);
+
         // Reset column index for subsequent lines
         startColumnIndex = isBackward ? totalColumns : 1;
     }
@@ -6160,44 +6171,53 @@ void MultiReplace::handleDeleteColumns()
     for (SIZE_T i = lineCount; i-- > 0; ) {
         const auto& lineInfo = lineDelimiterPositions[i];
 
+        // Calculate absolute start/end for this line
+        LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
+        LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
+
         // Process each column in reverse
         for (auto it = columnDelimiterData.columns.rbegin(); it != columnDelimiterData.columns.rend(); ++it) {
             SIZE_T column = *it;
 
             // Only process columns within the valid range
             if (column <= lineInfo.positions.size() + 1) {
+                LRESULT startPos = 0;
+                LRESULT endPos = 0;
 
-                LRESULT startPos, endPos;
-
+                // Calculate absolute start for this column
                 if (column == 1) {
-                    startPos = lineInfo.startPosition;
+                    startPos = lineStartPos;
                 }
                 else if (column - 2 < lineInfo.positions.size()) {
-                    startPos = lineInfo.positions[column - 2].position;
+                    startPos = lineStartPos + lineInfo.positions[column - 2].offsetInLine;
                 }
                 else {
                     continue;
                 }
 
+                // Calculate absolute end for this column
                 if (column - 1 < lineInfo.positions.size()) {
-                    // Delete leading Delimiter if first column will be droped
+                    // Delete leading delimiter if the first column is to be dropped
                     if (column == 1) {
-                        endPos = lineInfo.positions[column - 1].position + columnDelimiterData.delimiterLength;
+                        endPos = lineStartPos
+                            + lineInfo.positions[column - 1].offsetInLine
+                            + columnDelimiterData.delimiterLength;
                     }
                     else {
-                        endPos = lineInfo.positions[column - 1].position;
+                        endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
                     }
                 }
                 else {
-                    endPos = lineInfo.endPosition;
+                    // Last column goes to the line end
+                    endPos = lineEndPos;
                 }
 
+                // Perform deletion using Scintilla
                 send(SCI_DELETERANGE, startPos, endPos - startPos, false);
 
                 deletedFieldsCount++;
             }
         }
-
     }
     ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
 
@@ -6220,39 +6240,46 @@ void MultiReplace::handleCopyColumnsToClipboard()
     for (size_t i = 0; i < lineCount; ++i) {
         const auto& lineInfo = lineDelimiterPositions[i];
 
+        // Calculate absolute start/end for this line
+        LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
+        LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
+
         bool isFirstCopiedColumn = true;
         std::string lineText;
 
         // Process each column
         for (SIZE_T column : columnDelimiterData.columns) {
             if (column <= lineInfo.positions.size() + 1) {
-                LRESULT startPos, endPos;
+                LRESULT startPos = 0;
+                LRESULT endPos = 0;
 
+                // Determine absolute start for this column
                 if (column == 1) {
-                    startPos = lineInfo.startPosition;
+                    startPos = lineStartPos;
                     isFirstCopiedColumn = false;
                 }
                 else if (column - 2 < lineInfo.positions.size()) {
-                    startPos = lineInfo.positions[column - 2].position;
-                    // Drop first Delimiter if copied as first column
+                    startPos = lineStartPos + lineInfo.positions[column - 2].offsetInLine;
+                    // Drop the first delimiter if copied as first column
                     if (isFirstCopiedColumn) {
                         startPos += columnDelimiterData.delimiterLength;
                         isFirstCopiedColumn = false;
                     }
                 }
                 else {
-                    break;
+                    break; // No more valid columns
                 }
 
+                // Determine absolute end for this column
                 if (column - 1 < lineInfo.positions.size()) {
-                    endPos = lineInfo.positions[column - 1].position;
+                    endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
                 }
                 else {
-                    endPos = lineInfo.endPosition;
+                    endPos = lineEndPos; // Last column goes to the line end
                 }
 
                 // Buffer to hold the text
-                std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1);
+                std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1, '\0');
 
                 // Prepare TextRange structure for Scintilla
                 Sci_TextRangeFull tr;
@@ -6275,7 +6302,7 @@ void MultiReplace::handleCopyColumnsToClipboard()
         }
     }
 
-    // Convert to Wide String and Copy to Clipboard (Ensure this line only occurs once and wstr is not redefined)
+    // Convert to Wide String and copy to clipboard
     std::wstring wstr = stringToWString(combinedText);
     copyTextToClipboard(wstr, copiedFieldsCount);
 }
@@ -6291,19 +6318,24 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
     combinedData.reserve(endLine - startLine); // Preallocate space to avoid reallocations
 
     for (SIZE_T i = startLine; i < endLine; ++i) {
+        // Retrieve the LineInfo object
         const auto& lineInfo = lineDelimiterPositions[i];
 
-        // Read the entire line content in one call to minimize SendMessage overhead
-        LRESULT lineStart = lineInfo.startPosition;
-        LRESULT lineEnd = lineInfo.endPosition;
-        const size_t lineLength = static_cast<size_t>(lineEnd - lineStart);
+        // Calculate absolute start position for this line in the Scintilla document
+        LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
+
+        // Calculate absolute end position (excluding EOL)
+        LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
 
         // Use the reusable lineBuffer from the class
-        lineBuffer.resize(lineLength + 1, '\0'); // Adjust size for the current line
+        // Read the entire line content in one call to minimize SendMessage overhead
+        size_t currentLineLength = static_cast<size_t>(lineInfo.lineLength);
+        lineBuffer.resize(currentLineLength + 1, '\0'); // Adjust size for the current line
+
         {
             Sci_TextRangeFull tr;
-            tr.chrg.cpMin = lineStart;
-            tr.chrg.cpMax = lineEnd;
+            tr.chrg.cpMin = lineStartPos;
+            tr.chrg.cpMax = lineEndPos;
             tr.lpstrText = lineBuffer.data();
             SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
         }
@@ -6313,42 +6345,53 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
 
         size_t columnIndex = 0;
         for (SIZE_T columnNumber : columnDelimiterData.inputColumns) {
-            // Calculate column start and end positions relative to the line
-            LRESULT startPos, endPos;
+            // Determine the absolute start and end positions of this column in the document
+            LRESULT startPos = 0;
+            LRESULT endPos = 0;
+
             if (columnNumber == 1) {
-                startPos = lineInfo.startPosition;
+                // First column starts at the beginning of the line
+                startPos = lineStartPos;
             }
             else if (columnNumber - 2 < lineInfo.positions.size()) {
-                startPos = lineInfo.positions[columnNumber - 2].position + columnDelimiterData.delimiterLength;
+                // Column after the first
+                startPos = lineStartPos + lineInfo.positions[columnNumber - 2].offsetInLine
+                    + columnDelimiterData.delimiterLength;
             }
             else {
-                continue; // Skip invalid columns
+                // Skip invalid columns if the delimiter doesn't exist
+                continue;
             }
 
             if (columnNumber - 1 < lineInfo.positions.size()) {
-                endPos = lineInfo.positions[columnNumber - 1].position;
+                // End of the current column = next delimiter offset
+                endPos = lineStartPos + lineInfo.positions[columnNumber - 1].offsetInLine;
             }
             else {
-                endPos = lineInfo.endPosition; // Last column goes to the line's end
+                // Last column goes to the line's end
+                endPos = lineEndPos;
             }
 
-            // Map absolute positions to local offsets in the line buffer
-            const size_t localStart = static_cast<size_t>(startPos - lineStart);
-            const size_t localEnd = static_cast<size_t>(endPos - lineStart);
+            // Map absolute positions back to local offsets in the line buffer
+            const size_t localStart = static_cast<size_t>(startPos - lineStartPos);
+            const size_t localEnd = static_cast<size_t>(endPos - lineStartPos);
 
-            if (localStart < localEnd && localEnd <= lineLength) {
-                // Extract column text using local offsets
+            // Extract column text using local offsets
+            if (localStart < localEnd && localEnd <= currentLineLength) {
                 const size_t colSize = localEnd - localStart;
-                rowData.columns[columnIndex].text = std::string(lineBuffer.data() + localStart, colSize);
+                rowData.columns[columnIndex].text =
+                    std::string(lineBuffer.data() + localStart, colSize);
             }
             else {
-                rowData.columns[columnIndex].text.clear(); // Empty column if invalid range
+                // Empty column if the range is invalid
+                rowData.columns[columnIndex].text.clear();
             }
 
             ++columnIndex;
         }
 
-        combinedData.push_back(std::move(rowData)); // Add parsed row to the result
+        // Add parsed row to the result
+        combinedData.push_back(std::move(rowData));
     }
 
     // Optional step: detectNumericColumns if you want to parse columns as numeric
@@ -6829,22 +6872,20 @@ void MultiReplace::findAllDelimitersInDocument() {
 void MultiReplace::findDelimitersInLine(LRESULT line) {
     // Initialize LineInfo for this line
     LineInfo lineInfo;
+    lineInfo.lineIndex = static_cast<size_t>(line); // Store which line it is
 
-    // Get start and end positions of the line
-    lineInfo.startPosition = send(SCI_POSITIONFROMLINE, line, 0);
-    lineInfo.endPosition = send(SCI_GETLINEENDPOSITION, line, 0);
-
-    // Get line length and allocate buffer
+    // Get line length (this does NOT include EOL characters)
     LRESULT lineLength = send(SCI_LINELENGTH, line, 0);
+    lineInfo.lineLength = lineLength;
 
     // Resize the lineBuffer only if needed
     if (lineBuffer.size() < static_cast<size_t>(lineLength + 1)) {
         lineBuffer.resize(lineLength + 1);  // Increase the buffer size if necessary
     }
 
-    // Get line content
+    // Get line content (excluding EOL)
     send(SCI_GETLINE, line, reinterpret_cast<sptr_t>(lineBuffer.data()));
-    std::string lineContent(lineBuffer.data(), lineLength);
+    std::string lineContent(lineBuffer.data(), static_cast<size_t>(lineLength));
 
     // Define structure to store delimiter position
     DelimiterPosition delimiterPos = { 0 };
@@ -6855,6 +6896,7 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
     bool hasQuoteChar = !columnDelimiterData.quoteChar.empty();
     char currentQuoteChar = hasQuoteChar ? columnDelimiterData.quoteChar[0] : 0;
 
+    // Search for delimiters within the line
     while (pos < lineContent.size()) {
         // If there's a defined quote character and it matches, toggle inQuotes
         if (hasQuoteChar && lineContent[pos] == currentQuoteChar) {
@@ -6863,20 +6905,23 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
             continue;
         }
 
-        if (!inQuotes && lineContent.compare(pos, columnDelimiterData.delimiterLength, columnDelimiterData.extendedDelimiter) == 0) {
-            delimiterPos.position = pos + lineInfo.startPosition;
+        // Check if we're on a delimiter (and not inside quotes)
+        if (!inQuotes &&
+            lineContent.compare(pos, columnDelimiterData.delimiterLength, columnDelimiterData.extendedDelimiter) == 0)
+        {
+            // Store the relative offset in this line
+            delimiterPos.offsetInLine = static_cast<LRESULT>(pos);
             lineInfo.positions.push_back(delimiterPos);
-            pos += columnDelimiterData.delimiterLength;  // Skip delimiter for next iteration
+
+            // Skip delimiter for next iteration
+            pos += columnDelimiterData.delimiterLength;
             continue;
         }
         ++pos;
     }
 
-    // Convert size of lineDelimiterPositions to signed integer
-    LRESULT listSize = static_cast<LRESULT>(lineDelimiterPositions.size());
-
     // Update lineDelimiterPositions with the LineInfo for this line
-    if (line < listSize) {
+    if (line < static_cast<LRESULT>(lineDelimiterPositions.size())) {
         lineDelimiterPositions[line] = lineInfo;
     }
     else {
@@ -6889,34 +6934,47 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
 
 ColumnInfo MultiReplace::getColumnInfo(LRESULT startPosition) {
     if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) != BST_CHECKED ||
-        columnDelimiterData.columns.empty() || columnDelimiterData.extendedDelimiter.empty() ||
-        lineDelimiterPositions.empty()) {
+        columnDelimiterData.columns.empty() ||
+        columnDelimiterData.extendedDelimiter.empty() ||
+        lineDelimiterPositions.empty())
+    {
         return { 0, 0, 0 };
     }
 
+    // Determine how many lines are in Scintilla
     LRESULT totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
-    LRESULT startLine = ::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, startPosition, 0);
-    SIZE_T startColumnIndex = 1;
 
-    // Check if the line exists in lineDelimiterPositions
+    // Determine which line in Scintilla corresponds to startPosition
+    LRESULT startLine = ::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, startPosition, 0);
+    SIZE_T  startColumnIndex = 1;
+
+    // Check if the line index is valid in lineDelimiterPositions
     LRESULT listSize = static_cast<LRESULT>(lineDelimiterPositions.size());
     if (startLine < totalLines && startLine < listSize) {
-        const auto& linePositions = lineDelimiterPositions[startLine].positions;
+        const auto& lineInfo = lineDelimiterPositions[startLine];
+        const auto& linePositions = lineInfo.positions;
+
+        // Calculate absolute start of this line
+        LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, startLine, 0);
 
         SIZE_T i = 0;
         for (; i < linePositions.size(); ++i) {
-            if (startPosition <= linePositions[i].position) {
-                startColumnIndex = i + 1;
+            // Absolute position of the i-th delimiter
+            LRESULT delimAbsPos = lineStartPos + linePositions[i].offsetInLine;
+
+            // If the caret is before or exactly on this delimiter, we've found our column
+            if (startPosition <= delimAbsPos) {
+                startColumnIndex = i + 1; // 1-based column
                 break;
             }
         }
 
-        // Check if startPosition is in the last column only if the loop ran to completion
+        // If we did not break, the caret is beyond the last delimiter => last column
         if (i == linePositions.size()) {
-            startColumnIndex = linePositions.size() + 1;  // We're in the last column
+            startColumnIndex = linePositions.size() + 1;
         }
-
     }
+
     return { totalLines, startLine, startColumnIndex };
 }
 
@@ -6954,7 +7012,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
 
     // Iterate over each line's delimiter positions
     for (LRESULT line = 0; line < totalLines; ++line) {
-        highlightColumnsInLine(line);
+        highlightColumnsInLine(line, totalLines);
     }
 
     // Show Row and Column Position
@@ -6968,20 +7026,29 @@ void MultiReplace::handleHighlightColumnsInDocument() {
 
 }
 
-void MultiReplace::highlightColumnsInLine(LRESULT line) {
+void MultiReplace::highlightColumnsInLine(LRESULT line, LRESULT totalLines) {
     const auto& lineInfo = lineDelimiterPositions[line];
 
-    // Check for empty line
-    if (lineInfo.endPosition - lineInfo.startPosition == 0) {
+    // If the line length is zero, there's nothing to highlight
+    if (lineInfo.lineLength == 0) {
         return; // It's an empty line, so exit early
     }
 
+    // Determine if this is the last line in the document
+    bool isLastLine = (line == static_cast<LRESULT>(totalLines) - 1);
+
     // Prepare a vector for styles
-    std::vector<char> styles((lineInfo.endPosition) - lineInfo.startPosition, 0);
+    // If not the last line, exclude EOL from styling by subtracting eolLength
+    size_t styleLength = static_cast<size_t>(lineInfo.lineLength);
+    if (!isLastLine && eolLength > 0 && styleLength >= static_cast<size_t>(eolLength)) {
+        styleLength -= static_cast<size_t>(eolLength); // Exclude EOL from styling
+    }
+    std::vector<char> styles(styleLength, 0);
 
     // If no delimiter present, highlight whole line as first column
     if (lineInfo.positions.empty() &&
-        std::find(columnDelimiterData.columns.begin(), columnDelimiterData.columns.end(), 1) != columnDelimiterData.columns.end())
+        std::find(columnDelimiterData.columns.begin(),
+            columnDelimiterData.columns.end(), 1) != columnDelimiterData.columns.end())
     {
         char style = static_cast<char>(hColumnStyles[0 % hColumnStyles.size()]);
         std::fill(styles.begin(), styles.end(), style);
@@ -6990,34 +7057,40 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
         // Highlight specific columns from columnDelimiterData
         for (SIZE_T column : columnDelimiterData.columns) {
             if (column <= lineInfo.positions.size() + 1) {
+                // Calculate the start and end offsets in this line (relative)
                 LRESULT start = 0;
                 LRESULT end = 0;
 
-                // Set start and end positions based on column index
                 if (column == 1) {
                     start = 0;
                 }
                 else {
-                    start = lineInfo.positions[column - 2].position + columnDelimiterData.delimiterLength - lineInfo.startPosition;
+                    start = lineInfo.positions[column - 2].offsetInLine
+                        + columnDelimiterData.delimiterLength;
                 }
 
                 if (column == lineInfo.positions.size() + 1) {
-                    end = (lineInfo.endPosition) - lineInfo.startPosition;
+                    end = lineInfo.lineLength - (isLastLine ? 0 : eolLength); // Exclude EOL if not last line
                 }
                 else {
-                    end = lineInfo.positions[column - 1].position - lineInfo.startPosition;
+                    end = lineInfo.positions[column - 1].offsetInLine;
                 }
 
                 // Apply style to the specific range within the styles vector
-                char style = static_cast<char>(hColumnStyles[(column - 1) % hColumnStyles.size()]);
-                std::fill(styles.begin() + start, styles.begin() + end, style);
+                if (start < end && end <= static_cast<LRESULT>(styles.size())) {
+                    char style = static_cast<char>(hColumnStyles[(column - 1) % hColumnStyles.size()]);
+                    std::fill(styles.begin() + start, styles.begin() + end, style);
+                }
             }
-
         }
     }
 
-    send(SCI_STARTSTYLING, lineInfo.startPosition, 0);
-    send(SCI_SETSTYLINGEX, styles.size(), reinterpret_cast<sptr_t>(&styles[0]));
+    // We need the absolute start position in the document to apply the styles
+    LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, line, 0);
+
+    // Apply the styles to Scintilla
+    send(SCI_STARTSTYLING, lineStartPos, 0);
+    send(SCI_SETSTYLINGEX, static_cast<int>(styles.size()), reinterpret_cast<sptr_t>(styles.data()));
 }
 
 void MultiReplace::handleClearColumnMarks() {
@@ -7059,6 +7132,9 @@ void MultiReplace::processLogForDelimiters()
     }
 
     std::vector<LogEntry> modifyLogEntries;
+
+    // Retrieve total number of lines once
+    LRESULT totalLines = send(SCI_GETLINECOUNT, 0, 0);
 
     // Loop through the log entries in chronological order
     for (auto& logEntry : logChanges) {
@@ -7109,7 +7185,7 @@ void MultiReplace::processLogForDelimiters()
             updateDelimitersInDocument(static_cast<int>(modifyLogEntry.lineNumber), ChangeType::Modify);
             if (isColumnHighlighted) {
                 //clearMarksInLine(modifyLogEntry.lineNumber);
-                highlightColumnsInLine(modifyLogEntry.lineNumber);
+                highlightColumnsInLine(modifyLogEntry.lineNumber, totalLines);
             }
             //this->messageBoxContent += "Line " + std::to_string(static_cast<int>(modifyLogEntry.lineNumber)) + " modified.\n";
         }
@@ -7119,7 +7195,7 @@ void MultiReplace::processLogForDelimiters()
     if (isColumnHighlighted) {
         LRESULT lastLine = send(SCI_GETLINECOUNT, 0, 0) - 1;
         if (lastLine >= 0) {
-            highlightColumnsInLine(lastLine);
+            highlightColumnsInLine(lastLine, totalLines);
         }
     }
 
@@ -7130,82 +7206,56 @@ void MultiReplace::processLogForDelimiters()
 
 void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType) {
 
+    // Return early if the line number is invalid
     if (lineNumber > lineDelimiterPositions.size()) {
-        return; // invalid line number
+        return;
     }
 
-    LineInfo lineInfo;
     switch (changeType) {
     case ChangeType::Insert:
-        // Insert an empty line at the specified index
-        if (lineNumber > 0) { // not the first line
-            lineInfo.startPosition = lineDelimiterPositions[lineNumber - 1].endPosition + eolLength;
-            lineInfo.endPosition = lineInfo.startPosition;
+    {
+        // Insert an empty line with no delimiters
+        LineInfo newLine;
+        newLine.lineIndex = lineNumber;
+        newLine.lineLength = 0; // New line has no content initially
+        newLine.positions.clear();
+
+        // Add the new line at the specified position
+        lineDelimiterPositions.insert(lineDelimiterPositions.begin() + lineNumber, newLine);
+
+        // Update the indices of all subsequent lines
+        for (SIZE_T i = lineNumber + 1; i < lineDelimiterPositions.size(); ++i) {
+            lineDelimiterPositions[i].lineIndex = i;
         }
-        else {
-            lineInfo.startPosition = 0;
-            lineInfo.endPosition = 0;
-        }
-        lineDelimiterPositions.insert(lineDelimiterPositions.begin() + lineNumber, lineInfo);
-        break;
+    }
+    break;
 
     case ChangeType::Delete:
-        // Delete the specified line
+    {
+        // Remove the specified line if it exists
         if (lineNumber < lineDelimiterPositions.size()) {
-            // Calculate the length of the deleted line (including EOL)
-            LRESULT deletedLineLength = lineDelimiterPositions[lineNumber].endPosition
-                - lineDelimiterPositions[lineNumber].startPosition
-                + eolLength;
-
             lineDelimiterPositions.erase(lineDelimiterPositions.begin() + lineNumber);
 
-            // Update positions for subsequent lines
+            // Update the indices of all subsequent lines
             for (SIZE_T i = lineNumber; i < lineDelimiterPositions.size(); ++i) {
-                lineDelimiterPositions[i].startPosition -= deletedLineLength;
-                lineDelimiterPositions[i].endPosition -= deletedLineLength;
-                for (auto& delim : lineDelimiterPositions[i].positions) {
-                    delim.position -= deletedLineLength;
-                }
+                lineDelimiterPositions[i].lineIndex = i;
             }
         }
-        break;
+    }
+    break;
 
     case ChangeType::Modify:
-        // Modify the content of the specified line
+    {
+        // Reanalyze the line to update delimiters if it exists
         if (lineNumber < lineDelimiterPositions.size()) {
-            // Re-analyze the line to find delimiters
             findDelimitersInLine(lineNumber);
-
-            // Only adjust following lines if not at the last line
-            if (lineNumber < lineDelimiterPositions.size() - 1) {
-                // Calculate the difference to the next line start position (considering EOL)
-                LRESULT positionDifference = lineDelimiterPositions[lineNumber + 1].startPosition - lineDelimiterPositions[lineNumber].endPosition - eolLength;
-
-                // Update positions for subsequent lines
-                for (SIZE_T i = lineNumber + 1; i < lineDelimiterPositions.size(); ++i) {
-                    if (positionDifference > 0) { // The distance is too large, need to reduce
-                        lineDelimiterPositions[i].startPosition -= positionDifference;
-                        lineDelimiterPositions[i].endPosition -= positionDifference;
-                        for (auto& delim : lineDelimiterPositions[i].positions) {
-                            delim.position -= positionDifference;
-                        }
-                    }
-                    else if (positionDifference < 0) { // The distance is too small, need to increase
-                        lineDelimiterPositions[i].startPosition += abs(positionDifference);
-                        lineDelimiterPositions[i].endPosition += abs(positionDifference);
-                        for (auto& delim : lineDelimiterPositions[i].positions) {
-                            delim.position += abs(positionDifference);
-                        }
-                    }
-                }
-            }
         }
-        break;
+    }
+    break;
 
     default:
         break;
     }
-
 }
 
 void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
@@ -9047,8 +9097,8 @@ void MultiReplace::loadUIConfigFromIni() {
     commentsColumnLockedEnabled = readBoolFromIniCache(L"ListColumns", L"CommentsColumnLocked", true);
 
     // Load transparency settings (readByteFromIniCache)
-    foregroundTransparency = std::clamp(readByteFromIniCache(L"Window", L"ForegroundTransparency", DEFAULT_FOREGROUND_TRANSPARENCY),MIN_TRANSPARENCY, MAX_TRANSPARENCY);
-    backgroundTransparency = std::clamp(readByteFromIniCache(L"Window", L"BackgroundTransparency", DEFAULT_BACKGROUND_TRANSPARENCY),MIN_TRANSPARENCY, MAX_TRANSPARENCY);
+    foregroundTransparency = std::clamp(readByteFromIniCache(L"Window", L"ForegroundTransparency", DEFAULT_FOREGROUND_TRANSPARENCY), MIN_TRANSPARENCY, MAX_TRANSPARENCY);
+    backgroundTransparency = std::clamp(readByteFromIniCache(L"Window", L"BackgroundTransparency", DEFAULT_BACKGROUND_TRANSPARENCY), MIN_TRANSPARENCY, MAX_TRANSPARENCY);
 
     // Load Tooltip setting
     tooltipsEnabled = readBoolFromIniCache(L"Options", L"Tooltips", true);
