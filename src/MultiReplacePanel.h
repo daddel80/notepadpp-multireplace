@@ -715,7 +715,7 @@ private:
     ColumnInfo getColumnInfo(LRESULT startPosition);
     void initializeColumnStyles();
     void handleHighlightColumnsInDocument();
-    void highlightColumnsInLine(LRESULT line, LRESULT totalLines);
+    void highlightColumnsInLine(LRESULT line);
     void handleClearColumnMarks();
     std::wstring addLineAndColumnMessage(LRESULT pos);
     void updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType);

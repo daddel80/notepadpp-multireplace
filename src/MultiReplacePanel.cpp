@@ -7012,7 +7012,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
 
     // Iterate over each line's delimiter positions
     for (LRESULT line = 0; line < totalLines; ++line) {
-        highlightColumnsInLine(line, totalLines);
+        highlightColumnsInLine(line);
     }
 
     // Show Row and Column Position
@@ -7026,7 +7026,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
 
 }
 
-void MultiReplace::highlightColumnsInLine(LRESULT line, LRESULT totalLines) {
+void MultiReplace::highlightColumnsInLine(LRESULT line) {
     const auto& lineInfo = lineDelimiterPositions[line];
 
     // If the line length is zero, there's nothing to highlight
@@ -7034,16 +7034,8 @@ void MultiReplace::highlightColumnsInLine(LRESULT line, LRESULT totalLines) {
         return; // It's an empty line, so exit early
     }
 
-    // Determine if this is the last line in the document
-    bool isLastLine = (line == static_cast<LRESULT>(totalLines) - 1);
-
-    // Prepare a vector for styles
-    // If not the last line, exclude EOL from styling by subtracting eolLength
-    size_t styleLength = static_cast<size_t>(lineInfo.lineLength);
-    if (!isLastLine && eolLength > 0 && styleLength >= static_cast<size_t>(eolLength)) {
-        styleLength -= static_cast<size_t>(eolLength); // Exclude EOL from styling
-    }
-    std::vector<char> styles(styleLength, 0);
+    // Prepare a vector for styles (size = entire line length, including EOL)
+    std::vector<char> styles(static_cast<size_t>(lineInfo.lineLength), 0);
 
     // If no delimiter present, highlight whole line as first column
     if (lineInfo.positions.empty() &&
@@ -7070,7 +7062,7 @@ void MultiReplace::highlightColumnsInLine(LRESULT line, LRESULT totalLines) {
                 }
 
                 if (column == lineInfo.positions.size() + 1) {
-                    end = lineInfo.lineLength - (isLastLine ? 0 : eolLength); // Exclude EOL if not last line
+                    end = lineInfo.lineLength;
                 }
                 else {
                     end = lineInfo.positions[column - 1].offsetInLine;
@@ -7090,7 +7082,7 @@ void MultiReplace::highlightColumnsInLine(LRESULT line, LRESULT totalLines) {
 
     // Apply the styles to Scintilla
     send(SCI_STARTSTYLING, lineStartPos, 0);
-    send(SCI_SETSTYLINGEX, static_cast<int>(styles.size()), reinterpret_cast<sptr_t>(styles.data()));
+    send(SCI_SETSTYLINGEX, styles.size(), reinterpret_cast<sptr_t>(styles.data()));
 }
 
 void MultiReplace::handleClearColumnMarks() {
@@ -7132,9 +7124,6 @@ void MultiReplace::processLogForDelimiters()
     }
 
     std::vector<LogEntry> modifyLogEntries;
-
-    // Retrieve total number of lines once
-    LRESULT totalLines = send(SCI_GETLINECOUNT, 0, 0);
 
     // Loop through the log entries in chronological order
     for (auto& logEntry : logChanges) {
@@ -7185,17 +7174,18 @@ void MultiReplace::processLogForDelimiters()
             updateDelimitersInDocument(static_cast<int>(modifyLogEntry.lineNumber), ChangeType::Modify);
             if (isColumnHighlighted) {
                 //clearMarksInLine(modifyLogEntry.lineNumber);
-                highlightColumnsInLine(modifyLogEntry.lineNumber, totalLines);
+                highlightColumnsInLine(modifyLogEntry.lineNumber);
             }
             //this->messageBoxContent += "Line " + std::to_string(static_cast<int>(modifyLogEntry.lineNumber)) + " modified.\n";
         }
     }
 
-    // Workaround: Highlight last line to fix N++ bug causing loss of styling on last character whwn modification in any other line
+    // Workaround: Highlight last lines to fix N++ bug causing loss of styling on last character when modification in any other line
     if (isColumnHighlighted) {
-        LRESULT lastLine = send(SCI_GETLINECOUNT, 0, 0) - 1;
-        if (lastLine >= 0) {
-            highlightColumnsInLine(lastLine, totalLines);
+        size_t lastLine = lineDelimiterPositions.size();
+        if (lastLine >= 2) {
+            highlightColumnsInLine(lastLine-2);
+            highlightColumnsInLine(lastLine-1);
         }
     }
 
