@@ -4101,9 +4101,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
     if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
         bool skipReplace = false;
-        std::string replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
         std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
-        //std::string localReplaceTextUtf8 = replaceTextUtf8;   /// This is convertig string into Extended before passing to resolveLuaSyntax()
 
         if (itemIndex != SIZE_MAX) {
             updateCountColumns(itemIndex, 1); // no refreshUIListView() necessary as implemented in Debug Window
@@ -4137,7 +4135,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
         }
 
         if (!skipReplace) {
-            replaceTextUtf8 = convertAndExtend(localReplaceTextUtf8, itemData.extended);
+            std::string replaceTextUtf8 = convertAndExtend(localReplaceTextUtf8, itemData.extended);
             if (itemData.regex) {
                 newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
             }
@@ -4176,7 +4174,6 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     bool isReplaceFirstEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED);
     int previousLineIndex = -1;
     int lineFindCount = 0;
-    std::string replaceTextUtf8;
 
     while (searchResult.pos >= 0)
     {
@@ -4229,7 +4226,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
         Sci_Position newPos;
         if (!skipReplace) {
-            replaceTextUtf8 = convertAndExtend(localReplaceTextUtf8, itemData.extended);
+            std::string replaceTextUtf8 = convertAndExtend(localReplaceTextUtf8, itemData.extended);
             if (itemData.regex) {
                 newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
             }
@@ -5554,46 +5551,47 @@ void MultiReplace::handleFindPrevButton() {
     }
 }
 
-SearchResult MultiReplace::performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range) {
-
-    // Check if the search string is empty
+SearchResult MultiReplace::performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range)
+{
+    // Early exit if the search string is empty
     if (findTextUtf8.empty()) {
-        return SearchResult();  // Returns the default-initialized SearchResult
+        return {};  // Return default-initialized SearchResult
     }
 
-    send(SCI_SETTARGETSTART, range.start, 0);
-    send(SCI_SETTARGETEND, range.end, 0);
-    send(SCI_SETSEARCHFLAGS, searchFlags, 0);
+    // Configure search range and flags
+    send(SCI_SETTARGETRANGE, range.start, range.end);
+    send(SCI_SETSEARCHFLAGS, searchFlags);
 
-    LRESULT pos = send(SCI_SEARCHINTARGET, findTextUtf8.length(), reinterpret_cast<sptr_t>(findTextUtf8.c_str()));
+    // Perform search
+    Sci_Position pos = send(SCI_SEARCHINTARGET, findTextUtf8.size(), reinterpret_cast<sptr_t>(findTextUtf8.c_str()));
+    Sci_Position matchEnd = send(SCI_GETTARGETEND);
 
+    // Validate search result
+    if (pos < 0 || matchEnd <= pos || matchEnd > send(SCI_GETLENGTH)) {
+        return {};  // Return an empty SearchResult if no match is found
+    }
+
+    // Use a fixed-size buffer for performance (avoids heap allocation)
+    constexpr size_t BUFFER_SIZE = MAX_TEXT_LENGTH * 4 + 1;  // UTF-8 worst case: 4 bytes per character
+    char buffer[BUFFER_SIZE] = { 0 };
+
+    // Retrieve the matched text using SCI_GETTARGETTEXT
+    LRESULT textLength = send(SCI_GETTARGETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+
+    // Ensure null-termination in case of overflow
+    if (textLength >= BUFFER_SIZE) {
+        buffer[BUFFER_SIZE - 1] = '\0';
+    }
+
+    // Construct and return the search result
     SearchResult result;
     result.pos = pos;
+    result.length = matchEnd - pos;
+    result.foundText.assign(buffer);
 
-    if (pos >= 0) {
-        // If a match is found, set additional result data
-        result.length = send(SCI_GETTARGETEND, 0, 0) - pos;
-
-        // Consider the worst case for UTF-8, where one character could be up to 4 bytes.
-        char buffer[MAX_TEXT_LENGTH * 4 + 1] = { 0 };  // Assuming UTF-8 encoding in Scintilla
-        Sci_TextRangeFull tr;
-        tr.chrg.cpMin = static_cast<int>(result.pos);
-        tr.chrg.cpMax = static_cast<int>(result.pos + result.length);
-
-        if (tr.chrg.cpMax - tr.chrg.cpMin > sizeof(buffer) - 1) {
-            // Safety check to avoid overflow.
-            tr.chrg.cpMax = tr.chrg.cpMin + sizeof(buffer) - 1;
-        }
-
-        tr.lpstrText = buffer;
-        send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
-
-        result.foundText = std::string(buffer);
-
-        // If selectMatch is true, highlight the found text
-        if (selectMatch) {
-            displayResultCentered(result.pos, result.pos + result.length, true);
-        }
+    // Highlight the match if selectMatch is enabled
+    if (selectMatch) {
+        displayResultCentered(pos, matchEnd, true);
     }
 
     return result;
@@ -6854,7 +6852,7 @@ void MultiReplace::findAllDelimitersInDocument() {
     LRESULT totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
 
     // Resize the list to fit total lines
-    lineDelimiterPositions.resize(totalLines);
+    lineDelimiterPositions.reserve(totalLines);
 
     // Find and store delimiter positions for each line
     for (LRESULT line = 0; line < totalLines; ++line) {
