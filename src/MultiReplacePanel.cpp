@@ -385,10 +385,10 @@ void MultiReplace::initializeMarkerStyle() {
     int standardMarkerStyle = textStyles[0];
     colorToStyleMap[standardMarkerColor] = standardMarkerStyle;
 
-    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, standardMarkerStyle, 0);
-    ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, standardMarkerStyle, INDIC_STRAIGHTBOX);
-    ::SendMessage(_hScintilla, SCI_INDICSETFORE, standardMarkerStyle, standardMarkerColor);
-    ::SendMessage(_hScintilla, SCI_INDICSETALPHA, standardMarkerStyle, 100);
+    send(SCI_SETINDICATORCURRENT, standardMarkerStyle, 0);
+    send(SCI_INDICSETSTYLE, standardMarkerStyle, INDIC_STRAIGHTBOX);
+    send(SCI_INDICSETFORE, standardMarkerStyle, standardMarkerColor);
+    send(SCI_INDICSETALPHA, standardMarkerStyle, 100);
 }
 
 void MultiReplace::initializeListView() {
@@ -3875,7 +3875,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 void MultiReplace::handleReplaceAllButton() {
 
     // First check if the document is read-only
-    LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
+    LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
         showStatusMessage(getLangStr(L"status_cannot_replace_read_only"), COLOR_ERROR);
         return;
@@ -3902,7 +3902,7 @@ void MultiReplace::handleReplaceAllButton() {
             return;
         }
 
-        ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
+        send(SCI_BEGINUNDOACTION, 0, 0);
         for (size_t i = 0; i < replaceListData.size(); ++i)
         {
             if (replaceListData[i].isEnabled)
@@ -3924,7 +3924,7 @@ void MultiReplace::handleReplaceAllButton() {
                 }
             }
         }
-        ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
+        send(SCI_ENDUNDOACTION, 0, 0);
     }
     else
     {
@@ -3937,10 +3937,10 @@ void MultiReplace::handleReplaceAllButton() {
         itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
         itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
-        ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
+        send(SCI_BEGINUNDOACTION, 0, 0);
         int findCount = 0;
         replaceAll(itemData, findCount, totalReplaceCount);
-        ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
+        send(SCI_ENDUNDOACTION, 0, 0);
 
         // Add the entered text to the combo box history
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
@@ -3963,7 +3963,7 @@ void MultiReplace::handleReplaceAllButton() {
 void MultiReplace::handleReplaceButton() {
 
     // First check if the document is read-only
-    LRESULT isReadOnly = ::SendMessage(_hScintilla, SCI_GETREADONLY, 0, 0);
+    LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
         showStatusMessage(getLangStrLPWSTR(L"status_cannot_replace_read_only"), COLOR_ERROR);
         return;
@@ -3985,7 +3985,7 @@ void MultiReplace::handleReplaceButton() {
     SelectionInfo selection = getSelectionInfo(false);
 
     // If there is a selection, set newPos to the start of the selection; otherwise, use the current cursor position
-    Sci_Position newPos = (selection.length > 0) ? selection.startPos : ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+    Sci_Position newPos = (selection.length > 0) ? selection.startPos : send(SCI_GETCURRENTPOS, 0, 0);
 
     size_t matchIndex = std::numeric_limits<size_t>::max();
 
@@ -4334,7 +4334,7 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
 
 SelectionInfo MultiReplace::getSelectionInfo(bool isBackward) {
     // Get the number of selections
-    LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
+    LRESULT selectionCount = send(SCI_GETSELECTIONS, 0, 0);
     Sci_Position selectedStart = 0;
     Sci_Position correspondingEnd = 0;
     std::vector<SelectionRange> selections; // Store all selections for sorting
@@ -4344,8 +4344,8 @@ SelectionInfo MultiReplace::getSelectionInfo(bool isBackward) {
 
         // Retrieve all selections
         for (LRESULT i = 0; i < selectionCount; ++i) {
-            selections[i].start = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
-            selections[i].end = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
+            selections[i].start = send(SCI_GETSELECTIONNSTART, i, 0);
+            selections[i].end = send(SCI_GETSELECTIONNEND, i, 0);
         }
 
         // Sort selections based on direction
@@ -4366,7 +4366,7 @@ SelectionInfo MultiReplace::getSelectionInfo(bool isBackward) {
     }
     else {
         // No selection case: use current cursor position
-        selectedStart = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+        selectedStart = send(SCI_GETCURRENTPOS, 0, 0);
         correspondingEnd = selectedStart;
     }
 
@@ -5351,7 +5351,7 @@ void MultiReplace::handleFindNextButton() {
     }
     else {
         // Otherwise, use the current cursor position
-        searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+        searchPos = send(SCI_GETCURRENTPOS, 0, 0);
     }
 
     if (useListEnabled) {
@@ -5439,11 +5439,11 @@ void MultiReplace::handleFindPrevButton() {
     }
     else {
         // Default to current cursor position if no selection
-        searchPos = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+        searchPos = send(SCI_GETCURRENTPOS, 0, 0);
     }
 
     // Move back one position if possible
-    searchPos = (searchPos > 0) ? ::SendMessage(_hScintilla, SCI_POSITIONBEFORE, searchPos, 0) : searchPos;
+    searchPos = (searchPos > 0) ? send(SCI_POSITIONBEFORE, searchPos, 0) : searchPos;
 
     if (useListEnabled) {
         size_t matchIndex = std::numeric_limits<size_t>::max();
@@ -5456,7 +5456,7 @@ void MultiReplace::handleFindPrevButton() {
         SearchResult result = performListSearchBackward(replaceListData, searchPos, matchIndex);
 
         if (result.pos < 0 && wrapAroundEnabled) {
-            searchPos = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+            searchPos = send(SCI_GETLENGTH, 0, 0);
 
             result = performListSearchBackward(replaceListData, searchPos, matchIndex);
 
@@ -5515,7 +5515,7 @@ void MultiReplace::handleFindPrevButton() {
             }
             else {
                 // Wrap around to the end of the document
-                searchPos = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+                searchPos = send(SCI_GETLENGTH, 0, 0);
             }
 
             result = performSearchBackward(findTextUtf8, searchFlags, true, searchPos);
@@ -5657,7 +5657,7 @@ SearchResult MultiReplace::performSearchSelection(const std::string& findTextUtf
     SelectionRange targetRange;
     std::vector<SelectionRange> selections;
 
-    LRESULT selectionCount = ::SendMessage(_hScintilla, SCI_GETSELECTIONS, 0, 0);
+    LRESULT selectionCount = send(SCI_GETSELECTIONS, 0, 0);
     if (selectionCount == 0) {
         return SearchResult(); // No selections to search
     }
@@ -5665,8 +5665,8 @@ SearchResult MultiReplace::performSearchSelection(const std::string& findTextUtf
     // Gather all selection positions
     selections.resize(selectionCount);
     for (int i = 0; i < selectionCount; i++) {
-        selections[i].start = ::SendMessage(_hScintilla, SCI_GETSELECTIONNSTART, i, 0);
-        selections[i].end = ::SendMessage(_hScintilla, SCI_GETSELECTIONNEND, i, 0);
+        selections[i].start = send(SCI_GETSELECTIONNSTART, i, 0);
+        selections[i].end = send(SCI_GETSELECTIONNEND, i, 0);
     }
 
     // Sort selections based on the search direction
@@ -5861,29 +5861,29 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
 void MultiReplace::displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards)
 {
     // Make sure target lines are unfolded
-    ::SendMessage(_hScintilla, SCI_ENSUREVISIBLE, ::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, posStart, 0), 0);
-    ::SendMessage(_hScintilla, SCI_ENSUREVISIBLE, ::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, posEnd, 0), 0);
+    send(SCI_ENSUREVISIBLE, send(SCI_LINEFROMPOSITION, posStart, 0), 0);
+    send(SCI_ENSUREVISIBLE, send(SCI_LINEFROMPOSITION, posEnd, 0), 0);
 
     // Jump-scroll to center, if current position is out of view
-    ::SendMessage(_hScintilla, SCI_SETVISIBLEPOLICY, CARET_JUMPS | CARET_EVEN, 0);
-    ::SendMessage(_hScintilla, SCI_ENSUREVISIBLEENFORCEPOLICY, ::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, isDownwards ? posEnd : posStart, 0), 0);
+    send(SCI_SETVISIBLEPOLICY, CARET_JUMPS | CARET_EVEN, 0);
+    send(SCI_ENSUREVISIBLEENFORCEPOLICY, send(SCI_LINEFROMPOSITION, isDownwards ? posEnd : posStart, 0), 0);
 
     // When searching up, the beginning of the (possible multiline) result is important, when scrolling down the end
-    ::SendMessage(_hScintilla, SCI_GOTOPOS, isDownwards ? posEnd : posStart, 0);
-    ::SendMessage(_hScintilla, SCI_SETVISIBLEPOLICY, CARET_EVEN, 0);
-    ::SendMessage(_hScintilla, SCI_ENSUREVISIBLEENFORCEPOLICY, ::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, isDownwards ? posEnd : posStart, 0), 0);
+    send(SCI_GOTOPOS, isDownwards ? posEnd : posStart, 0);
+    send(SCI_SETVISIBLEPOLICY, CARET_EVEN, 0);
+    send(SCI_ENSUREVISIBLEENFORCEPOLICY, send(SCI_LINEFROMPOSITION, isDownwards ? posEnd : posStart, 0), 0);
 
     // Adjust so that we see the entire match; primarily horizontally
-    ::SendMessage(_hScintilla, SCI_SCROLLRANGE, posStart, posEnd);
+    send(SCI_SCROLLRANGE, posStart, posEnd);
 
     // Move cursor to end of result and select result
-    ::SendMessage(_hScintilla, SCI_GOTOPOS, posEnd, 0);
-    ::SendMessage(_hScintilla, SCI_SETANCHOR, posStart, 0);
+    send(SCI_GOTOPOS, posEnd, 0);
+    send(SCI_SETANCHOR, posStart, 0);
 
     // Update Scintilla's knowledge about what column the caret is in, so that if user
     // does up/down arrow as first navigation after the search result is selected,
     // the caret doesn't jump to an unexpected column
-    ::SendMessage(_hScintilla, SCI_CHOOSECARETX, 0, 0);
+    send(SCI_CHOOSECARETX, 0, 0);
 
 }
 
@@ -5991,15 +5991,15 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::strin
     }
 
     // Set and apply highlighting style
-    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicatorStyle, 0);
-    ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
+    send(SCI_SETINDICATORCURRENT, indicatorStyle, 0);
+    send(SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
 
     if (colorToStyleMap.size() < textStyles.size()) {
-        ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicatorStyle, color);
+        send(SCI_INDICSETFORE, indicatorStyle, color);
     }
 
-    ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicatorStyle, 100);
-    ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, pos, len);
+    send(SCI_INDICSETALPHA, indicatorStyle, 100);
+    send(SCI_INDICATORFILLRANGE, pos, len);
 }
 
 int MultiReplace::generateColorValue(const std::string& str) {
@@ -6024,8 +6024,8 @@ void MultiReplace::handleClearTextMarksButton()
 {
     for (int style : textStyles)
     {
-        ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
-        ::SendMessage(_hScintilla, SCI_INDICATORCLEARRANGE, 0, ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+        send(SCI_SETINDICATORCURRENT, style, 0);
+        send(SCI_INDICATORCLEARRANGE, 0, send(SCI_GETLENGTH, 0, 0));
     }
 
     markedStringsCount = 0;
@@ -6043,13 +6043,13 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
 
     for (int style : textStyles)
     {
-        ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, style, 0);
+        send(SCI_SETINDICATORCURRENT, style, 0);
         LRESULT pos = 0;
-        LRESULT nextPos = ::SendMessage(_hScintilla, SCI_INDICATOREND, style, pos);
+        LRESULT nextPos = send(SCI_INDICATOREND, style, pos);
 
         while (nextPos > pos) // check if nextPos has advanced
         {
-            bool atEndOfIndic = ::SendMessage(_hScintilla, SCI_INDICATORVALUEAT, style, pos) != 0;
+            bool atEndOfIndic = send(SCI_INDICATORVALUEAT, style, pos) != 0;
 
             if (atEndOfIndic)
             {
@@ -6062,7 +6062,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
 
                 for (LRESULT i = pos; i < nextPos; ++i)
                 {
-                    char ch = static_cast<char>(::SendMessage(_hScintilla, SCI_GETCHARAT, i, 0));
+                    char ch = static_cast<char>(send(SCI_GETCHARAT, i, 0));
                     styleText += ch;
                 }
 
@@ -6075,7 +6075,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
             }
 
             pos = nextPos;
-            nextPos = ::SendMessage(_hScintilla, SCI_INDICATOREND, style, pos);
+            nextPos = send(SCI_INDICATOREND, style, pos);
         }
     }
 
@@ -6160,7 +6160,7 @@ void MultiReplace::handleDeleteColumns()
         return;
     }
 
-    ::SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
+    send(SCI_BEGINUNDOACTION, 0, 0);
 
     int deletedFieldsCount = 0;
     SIZE_T lineCount = lineDelimiterPositions.size();
@@ -6217,7 +6217,7 @@ void MultiReplace::handleDeleteColumns()
             }
         }
     }
-    ::SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
+    send(SCI_ENDUNDOACTION, 0, 0);
 
     // Show status message
     showStatusMessage(getLangStr(L"status_deleted_fields_count", { std::to_wstring(deletedFieldsCount) }), COLOR_SUCCESS);
@@ -6849,7 +6849,7 @@ void MultiReplace::findAllDelimitersInDocument() {
     isLoggingEnabled = true;
 
     // Get total line count in document
-    LRESULT totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
+    LRESULT totalLines = send(SCI_GETLINECOUNT, 0, 0);
 
     // Resize the list to fit total lines
     lineDelimiterPositions.reserve(totalLines);
@@ -6940,10 +6940,10 @@ ColumnInfo MultiReplace::getColumnInfo(LRESULT startPosition) {
     }
 
     // Determine how many lines are in Scintilla
-    LRESULT totalLines = ::SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
+    LRESULT totalLines = send(SCI_GETLINECOUNT, 0, 0);
 
     // Determine which line in Scintilla corresponds to startPosition
-    LRESULT startLine = ::SendMessage(_hScintilla, SCI_LINEFROMPOSITION, startPosition, 0);
+    LRESULT startLine = send(SCI_LINEFROMPOSITION, startPosition, 0);
     SIZE_T  startColumnIndex = 1;
 
     // Check if the line index is valid in lineDelimiterPositions
@@ -6987,10 +6987,10 @@ void MultiReplace::initializeColumnStyles() {
         long fgColor = 0x000000;  // set Foreground always on black
 
         // Set the style background color
-        ::SendMessage(_hScintilla, SCI_STYLESETBACK, style, color);
+        send(SCI_STYLESETBACK, style, color);
 
         // Set the style foreground color to black
-        ::SendMessage(_hScintilla, SCI_STYLESETFORE, style, fgColor);
+        send(SCI_STYLESETFORE, style, fgColor);
 
     }
 
@@ -7015,7 +7015,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
 
     // Show Row and Column Position
     if (!lineDelimiterPositions.empty()) {
-        LRESULT startPosition = ::SendMessage(_hScintilla, SCI_GETCURRENTPOS, 0, 0);
+        LRESULT startPosition = send(SCI_GETCURRENTPOS, 0, 0);
         showStatusMessage(getLangStr(L"status_actual_position", { addLineAndColumnMessage(startPosition) }), COLOR_SUCCESS);
     }
 
@@ -7084,7 +7084,7 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
 }
 
 void MultiReplace::handleClearColumnMarks() {
-    LRESULT textLength = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+    LRESULT textLength = send(SCI_GETLENGTH, 0, 0);
 
     send(SCI_STARTSTYLING, 0, 0);
     send(SCI_SETSTYLING, textLength, STYLE_DEFAULT);
@@ -7095,10 +7095,10 @@ void MultiReplace::handleClearColumnMarks() {
     isCaretPositionEnabled = false;
 
     // Force Scintilla to recalculate word wrapping as highlighting is affecting layout
-    int originalWrapMode = static_cast<int>(::SendMessage(_hScintilla, SCI_GETWRAPMODE, 0, 0));
+    int originalWrapMode = static_cast<int>(send(SCI_GETWRAPMODE, 0, 0));
     if (originalWrapMode != SC_WRAP_NONE) {
-        ::SendMessage(_hScintilla, SCI_SETWRAPMODE, SC_WRAP_NONE, 0);
-        ::SendMessage(_hScintilla, SCI_SETWRAPMODE, originalWrapMode, 0);
+        send(SCI_SETWRAPMODE, SC_WRAP_NONE, 0);
+        send(SCI_SETWRAPMODE, originalWrapMode, 0);
     }
 }
 
