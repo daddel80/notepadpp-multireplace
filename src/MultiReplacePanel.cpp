@@ -4256,29 +4256,17 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     return true;
 }
 
+
 Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
     // Set the target range for the replacement
     send(SCI_SETTARGETRANGE, pos, pos + length);
 
-    // Get the codepage of the document
-    int cp = static_cast<int>(send(SCI_GETCODEPAGE, 0, 0));
-
-    // Convert the string from UTF-8 to the codepage of the document
-    std::string replaceTextCp = utf8ToCodepage(replaceTextUtf8, cp);
-
-    // Perform the replacement
-    send(SCI_REPLACETARGET, replaceTextCp.size(), reinterpret_cast<sptr_t>(replaceTextCp.c_str()));
+    // Set UTF-8-Text direcltly
+    send(SCI_REPLACETARGET, replaceTextUtf8.size(), reinterpret_cast<sptr_t>(replaceTextUtf8.c_str()));
 
     // Get the end position after the replacement
     Sci_Position newTargetEnd = static_cast<Sci_Position>(send(SCI_GETTARGETEND, 0, 0));
-
-    // Set the cursor to the end of the replaced text
-    //send(SCI_SETCURRENTPOS, newTargetEnd, 0);
-
-    // Clear selection
-    //send(SCI_SETSELECTIONSTART, newTargetEnd, 0);
-    //send(SCI_SETSELECTIONEND, newTargetEnd, 0);
 
     return newTargetEnd;
 }
@@ -4288,24 +4276,11 @@ Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf
     // Set the target range for the replacement
     send(SCI_SETTARGETRANGE, pos, pos + length);
 
-    // Get the codepage of the document
-    int cp = static_cast<int>(send(SCI_GETCODEPAGE, 0, 0));
-
-    // Convert the string from UTF-8 to the codepage of the document
-    std::string replaceTextCp = utf8ToCodepage(replaceTextUtf8, cp);
-
-    // Perform the regex replacement
-    send(SCI_REPLACETARGETRE, static_cast<WPARAM>(-1), reinterpret_cast<sptr_t>(replaceTextCp.c_str()));
+    // Perform the regex replacement directly with UTF-8 text
+    send(SCI_REPLACETARGETRE, static_cast<WPARAM>(-1), reinterpret_cast<sptr_t>(replaceTextUtf8.c_str()));
 
     // Get the end position after the replacement
     Sci_Position newTargetEnd = static_cast<Sci_Position>(send(SCI_GETTARGETEND, 0, 0));
-
-    // Set the cursor to the end of the replaced text
-    //send(SCI_SETCURRENTPOS, newTargetEnd, 0);
-
-    // Clear selection
-    //send(SCI_SETSELECTIONSTART, newTargetEnd, 0);
-    //send(SCI_SETSELECTIONEND, newTargetEnd, 0);
 
     return newTargetEnd;
 }
@@ -8057,28 +8032,6 @@ std::wstring MultiReplace::utf8ToWString(const char* cstr) const {
     MultiByteToWideChar(CP_UTF8, 0, cstr, -1, &wideStringResult[0], requiredSize);
 
     return std::wstring(&wideStringResult[0]);
-}
-
-std::string MultiReplace::utf8ToCodepage(const std::string& utf8Str, int codepage) const {
-    // Convert the UTF-8 string to a wide string
-    int lenWc = MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(), -1, nullptr, 0);
-    if (lenWc == 0) {
-        // Handle error
-        return std::string();
-    }
-    std::vector<wchar_t> wideStr(lenWc);
-    MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(), -1, &wideStr[0], lenWc);
-
-    // Convert the wide string to the specific codepage
-    int lenMbcs = WideCharToMultiByte(codepage, 0, &wideStr[0], -1, nullptr, 0, nullptr, nullptr);
-    if (lenMbcs == 0) {
-        // Handle error
-        return std::string();
-    }
-    std::vector<char> cpStr(lenMbcs);
-    WideCharToMultiByte(codepage, 0, &wideStr[0], -1, &cpStr[0], lenMbcs, nullptr, nullptr);
-
-    return std::string(cpStr.data(), lenMbcs - 1);  // -1 to exclude the null character
 }
 
 std::wstring MultiReplace::trim(const std::wstring& str) {

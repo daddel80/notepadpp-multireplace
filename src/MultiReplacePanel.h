@@ -749,7 +749,6 @@ private:
     std::wstring stringToWString(const std::string& encodedInput) const;
     std::string wstringToString(const std::wstring& input) const;
     std::wstring utf8ToWString(const char* cstr) const;
-    std::string utf8ToCodepage(const std::string& utf8Str, int codepage) const;
     std::wstring trim(const std::wstring& str);
 
     //FileOperations
