@@ -304,7 +304,6 @@ inline std::vector<UndoRedoAction> redoStack;
 inline HWND hwndExpandBtn = nullptr;
 inline HFONT _hBoldFont2;
 inline lua_State* _luaState = nullptr;    // Reused Lua state
-inline bool       _luaInitialized = false;
 
 inline bool _editIsExpanded = false; // track expand state
 using IniData = std::map<std::wstring, std::map<std::wstring, std::wstring>>;
@@ -482,6 +481,7 @@ private:
     // Data-related variables 
     size_t markedStringsCount = 0;
     bool allSelected = true;
+    std::vector<char> stylesBuffer;
     std::unordered_map<int, int> colorToStyleMap;
     std::map<int, SortDirection> columnSortOrder;
     ColumnDelimiterData columnDelimiterData;
@@ -503,6 +503,8 @@ private:
     int _editingItemIndex;
     int _editingColumnIndex;
     int _editingColumnID;
+    std::string cachedFilePath;
+    std::string cachedFileName;
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
@@ -660,9 +662,9 @@ private:
     std::string escapeForRegex(const std::string& input);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
     void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
+    void updateFilePathCache();
     void setLuaFileVars(LuaVariables& vars);
     bool initLuaState();
-    void closeLuaState();
 
     //DebugWindow
     int ShowDebugWindow(const std::string& message);
