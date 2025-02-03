@@ -6139,7 +6139,6 @@ void MultiReplace::handleDeleteColumns()
         return;
     }
 
-    // Begin an undo action for batch deletion.
     send(SCI_BEGINUNDOACTION, 0, 0);
 
     int deletedFieldsCount = 0;
@@ -6153,13 +6152,10 @@ void MultiReplace::handleDeleteColumns()
         LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
         LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
 
-        // Determine if this is the very last line (for performance, check once per line)
-        bool isLastLine = (i == lineCount - 1);
-
         // Vector to collect deletion ranges for the current line.
         std::vector<std::pair<LRESULT, LRESULT>> deletionRanges;
 
-        // Process each column (in reverse order so that later deletions don't affect earlier ones).
+        // Iterate over columns using the set's reverse_iterator.
         for (auto it = columnDelimiterData.columns.rbegin(); it != columnDelimiterData.columns.rend(); ++it) {
             SIZE_T column = *it;
 
@@ -6191,10 +6187,12 @@ void MultiReplace::handleDeleteColumns()
                 }
             }
             else {
-                if (isLastLine)
-                    endPos = lineEndPos;
-                else
+                // Last column: delete until the end of the line.
+                // For non-last lines, subtract eolLength to preserve the line break.
+                if (i < lineCount - 1)
                     endPos = lineEndPos - eolLength;
+                else
+                    endPos = lineEndPos;
             }
 
             deletionRanges.push_back({ startPos, endPos });
@@ -6222,11 +6220,12 @@ void MultiReplace::handleDeleteColumns()
             }
             mergedRanges.push_back(currentRange);
 
-            // Execute the deletions for all merged ranges.
-            for (const auto& range : mergedRanges) {
-                LRESULT lengthToDelete = range.second - range.first;
+            // Execute the deletions for all merged ranges in reverse order.
+            // (Deleting from rightmost to leftmost prevents shifting of absolute positions.)
+            for (auto it = mergedRanges.rbegin(); it != mergedRanges.rend(); ++it) {
+                LRESULT lengthToDelete = it->second - it->first;
                 if (lengthToDelete > 0) {
-                    send(SCI_DELETERANGE, range.first, lengthToDelete, false);
+                    send(SCI_DELETERANGE, it->first, lengthToDelete, false);
                     deletedFieldsCount++;
                 }
             }
