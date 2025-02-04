@@ -4179,23 +4179,34 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     int previousLineIndex = -1;
     int lineFindCount = 0;
 
+    // Perform string conversion once outside the loop
+    std::string basicConvertedReplaceTextUtf8;
+    std::string extendedConvertedReplaceTextUtf8;
+
+    if (itemData.useVariables) {
+        // Convert wstring to string once for Lua variable processing
+        basicConvertedReplaceTextUtf8 = wstringToString(itemData.replaceText);
+    }
+    else {
+        // Convert and extend only once when no variables are used
+        extendedConvertedReplaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
+    }
+
     while (searchResult.pos >= 0)
     {
         bool skipReplace = false;
         findCount++;
-        std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
 
         if (itemIndex != SIZE_MAX) {  // check if used in List
             updateCountColumns(itemIndex, findCount);
         }
 
-        if (itemData.useVariables) {
-            LuaVariables vars;
+        std::string localReplaceTextUtf8;
 
-            if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
-                ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
-                vars.COL = static_cast<int>(columnInfo.startColumnIndex);
-            }
+        if (itemData.useVariables) {
+            localReplaceTextUtf8 = basicConvertedReplaceTextUtf8;
+
+            LuaVariables vars;
 
             int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
             int previousLineStartPosition = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
@@ -4226,6 +4237,10 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
                 return false;  // Exit the loop if error in syntax or process is stopped by debug
             }
+        }
+        else
+        {
+            localReplaceTextUtf8 = extendedConvertedReplaceTextUtf8;
         }
 
         Sci_Position newPos;
@@ -4262,30 +4277,31 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
 Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
-    // Set the target range for the replacement
     send(SCI_SETTARGETRANGE, pos, pos + length);
 
-    // Set UTF-8-Text direcltly
-    send(SCI_REPLACETARGET, replaceTextUtf8.size(), reinterpret_cast<sptr_t>(replaceTextUtf8.c_str()));
+    sptr_t replacedLen = send(
+        SCI_REPLACETARGET,
+        replaceTextUtf8.size(),
+        reinterpret_cast<sptr_t>(replaceTextUtf8.c_str())
+    );
 
-    // Get the end position after the replacement
-    Sci_Position newTargetEnd = static_cast<Sci_Position>(send(SCI_GETTARGETEND, 0, 0));
+    Sci_Position newPos = pos + static_cast<Sci_Position>(replacedLen);
 
-    return newTargetEnd;
+    return newPos;
 }
 
 Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
-    // Set the target range for the replacement
     send(SCI_SETTARGETRANGE, pos, pos + length);
 
-    // Perform the regex replacement directly with UTF-8 text
-    send(SCI_REPLACETARGETRE, static_cast<WPARAM>(-1), reinterpret_cast<sptr_t>(replaceTextUtf8.c_str()));
+    sptr_t replacedLen = send(
+        SCI_REPLACETARGETRE,
+        static_cast<WPARAM>(-1),
+        reinterpret_cast<sptr_t>(replaceTextUtf8.c_str())
+    );
 
-    // Get the end position after the replacement
-    Sci_Position newTargetEnd = static_cast<Sci_Position>(send(SCI_GETTARGETEND, 0, 0));
-
-    return newTargetEnd;
+    Sci_Position newPos = pos + static_cast<Sci_Position>(replacedLen);
+    return newPos;
 }
 
 bool MultiReplace::preProcessListForReplace(bool highlight) {
