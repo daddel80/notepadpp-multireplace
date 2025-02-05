@@ -4181,7 +4181,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     // Perform string conversion once outside the loop
     std::string basicConvertedReplaceTextUtf8;
-    std::string extendedConvertedReplaceTextUtf8;
+    std::string replaceTextUtf8;
 
     if (itemData.useVariables) {
         // Convert wstring to string once for Lua variable processing
@@ -4189,7 +4189,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     }
     else {
         // Convert and extend only once when no variables are used
-        extendedConvertedReplaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
+        replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
     }
 
     while (searchResult.pos >= 0)
@@ -4237,15 +4237,14 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
                 return false;  // Exit the loop if error in syntax or process is stopped by debug
             }
-        }
-        else
-        {
-            localReplaceTextUtf8 = extendedConvertedReplaceTextUtf8;
+
+            if (!skipReplace) {
+                replaceTextUtf8 = convertAndExtend(localReplaceTextUtf8, itemData.extended);
+            }
         }
 
         Sci_Position newPos;
         if (!skipReplace) {
-            std::string replaceTextUtf8 = convertAndExtend(localReplaceTextUtf8, itemData.extended);
             if (itemData.regex) {
                 newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
             }
@@ -5599,15 +5598,15 @@ SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8,
     SelectionRange targetRange;
     SearchResult result;
 
-    // Check if selection mode is active
-    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        // Perform search within selection
-        result = performSearchSelection(findTextUtf8, searchFlags, selectMatch, start, isBackward);
-    }
     // Check if IDC_COLUMN_MODE_RADIO is enabled, selectMatch is false, and column delimiter data is set
-    else if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED && columnDelimiterData.isValid()) {
+    if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED && columnDelimiterData.isValid()) {
         // Perform search within columns
         result = performSearchColumn(findTextUtf8, searchFlags, selectMatch, start, isBackward);
+    }
+    // Check if selection mode is active
+    else if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+        // Perform search within selection
+        result = performSearchSelection(findTextUtf8, searchFlags, selectMatch, start, isBackward);
     }
     else {
         // If neither IDC_SELECTION_RADIO nor IDC_COLUMN_MODE_RADIO, perform search within the whole document
@@ -7543,30 +7542,25 @@ int MultiReplace::convertExtendedToString(const std::string& query, std::string&
 
 std::string MultiReplace::convertAndExtend(const std::wstring& input, bool extended)
 {
+    // Directly return if extended is false
+    if (!extended)
+        return wstringToString(input);
+
     std::string output = wstringToString(input);
-
-    if (extended)
-    {
-        std::string outputExtended;
-        convertExtendedToString(output, outputExtended);
-        output = outputExtended;
-    }
-
-    return output;
+    std::string outputExtended;
+    convertExtendedToString(output, outputExtended);
+    return outputExtended;
 }
 
 std::string MultiReplace::convertAndExtend(const std::string& input, bool extended)
 {
-    std::string output = input;
+    // Directly return if extended is false
+    if (!extended)
+        return input;
 
-    if (extended)
-    {
-        std::string outputExtended;
-        convertExtendedToString(output, outputExtended);
-        output = outputExtended;
-    }
-
-    return output;
+    std::string outputExtended;
+    convertExtendedToString(input, outputExtended);
+    return outputExtended;
 }
 
 void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems)
