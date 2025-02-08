@@ -685,25 +685,17 @@ private:
     //Find
     void handleFindNextButton();
     void handleFindPrevButton();
-    // SearchResult performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range);
     SearchResult performSingleSearch(const SearchContext& context, SelectionRange range);
-    //SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
-    SearchResult MultiReplace::performSearchForward(const SearchContext& context, LRESULT start);
-    //SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
-    SearchResult MultiReplace::performSearchBackward(const SearchContext& context, LRESULT start);
-    //SearchResult performSearchSelection(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
-    SearchResult performSearchSelection(const SearchContext& context, LRESULT start, bool isBackward);
-    //SearchResult performSearchColumn(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
+    SearchResult performSearchForward(const SearchContext& context, LRESULT start);
+    SearchResult performSearchBackward(const SearchContext& context, LRESULT start);
     SearchResult performSearchColumn(const SearchContext& context, LRESULT start, bool isBackward);
-    //SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
-    SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
-    //SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
-    SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
-    void MultiReplace::selectListItem(size_t matchIndex);
+    SearchResult performSearchSelection(const SearchContext& context, LRESULT start, bool isBackward);
+    SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
+    SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
+    void selectListItem(size_t matchIndex);
 
     //Mark
     void handleMarkMatchesButton();
-    //int markString(const std::string& findTextUtf8, int searchFlags);
     int markString(const SearchContext& context);
     void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
     int generateColorValue(const std::string& str);
@@ -752,8 +744,8 @@ private:
     void setSelections(bool select, bool onlySelected = false);
     void updateHeaderSelection();
     void updateHeaderSortDirection();
-    void MultiReplace::showStatusMessage(const std::wstring& messageText, COLORREF color, bool isNotFound = false);
-    std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
+    void showStatusMessage(const std::wstring& messageText, COLORREF color, bool isNotFound = false);
+    std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
     void showListFilePath();
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();

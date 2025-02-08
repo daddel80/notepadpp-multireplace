@@ -5065,6 +5065,48 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         isClassRegistered = true;
     }
 
+    std::wstringstream formattedMessage;
+    std::wstringstream inputMessageStream(wMessage);
+    std::wstring line;
+
+    while (std::getline(inputMessageStream, line)) {
+        std::wistringstream iss(line);
+        std::wstring variable, type, value;
+
+        if (std::getline(iss, variable, L'\t') &&
+            std::getline(iss, type, L'\t') &&
+            std::getline(iss, value)) {
+
+            // Trim whitespace
+            type.erase(0, type.find_first_not_of(L" \t"));
+            type.erase(type.find_last_not_of(L" \t") + 1);
+            value.erase(0, value.find_first_not_of(L" \t"));
+            value.erase(value.find_last_not_of(L" \t") + 1);
+
+            if (type == L"Number") {
+                try {
+                    double num = std::stod(value);
+
+                    // If number is an integer, remove decimal places
+                    if (num == static_cast<int>(num)) {
+                        value = std::to_wstring(static_cast<int>(num));
+                    }
+                    else {
+                        std::wstringstream numStream;
+                        numStream << std::fixed << std::setprecision(6) << num;
+                        value = numStream.str();
+                    }
+                }
+                catch (...) {
+                    // If conversion fails, retain the original value
+                }
+            }
+            formattedMessage << variable << L"\t" << type << L"\t" << value << L"\n";
+        }
+    }
+
+    std::wstring finalMessage = formattedMessage.str();
+
     // Use the saved position and size if set, otherwise use default position and size
     int width = debugWindowSizeSet ? debugWindowSize.cx : sx(260); // Set initial width
     int height = debugWindowSizeSet ? debugWindowSize.cy : sy(400); // Set initial height
@@ -5077,7 +5119,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         L"Debug Information",
         WS_OVERLAPPEDWINDOW,
         x, y, width, height,
-        nppData._nppHandle, NULL, hInstance, (LPVOID)wMessage
+        nppData._nppHandle, NULL, hInstance, (LPVOID)finalMessage.c_str()
     );
 
     if (hwnd == NULL) {
