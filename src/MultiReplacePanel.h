@@ -107,6 +107,15 @@ struct ControlInfo
     LPCWSTR tooltipText;
 };
 
+struct SearchContext {
+    std::string findTextUtf8;  // Pre-converted search string (UTF-8)
+    int searchFlags;           // Search flags (e.g., SCFIND_MATCHCASE, SCFIND_WHOLEWORD, etc.)
+    LRESULT docLength;         // Cached document length
+    bool isColumnMode;         // Cached state: true if Column Mode is active
+    bool isSelectionMode;      // Cached state: true if Selection Mode is active
+    bool retrieveFoundText;    // If true, retrieve the found text from Scintilla
+    bool highlightMatch;       // If true, highlight the found match
+};
 
 struct SearchResult {
     LRESULT pos = -1;
@@ -653,7 +662,8 @@ private:
     void handleReplaceAllButton();
     void handleReplaceButton();
     bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX);
-    bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex = SIZE_MAX);
+    //bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex = SIZE_MAX);
+    bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     bool preProcessListForReplace(bool highlight);
@@ -675,18 +685,26 @@ private:
     //Find
     void handleFindNextButton();
     void handleFindPrevButton();
-    SearchResult performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range);
-    SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
-    SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
-    SearchResult performSearchSelection(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
-    SearchResult performSearchColumn(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
-    SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
-    SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
+    // SearchResult performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range);
+    SearchResult performSingleSearch(const SearchContext& context, SelectionRange range);
+    //SearchResult performSearchForward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
+    SearchResult MultiReplace::performSearchForward(const SearchContext& context, LRESULT start);
+    //SearchResult performSearchBackward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start);
+    SearchResult MultiReplace::performSearchBackward(const SearchContext& context, LRESULT start);
+    //SearchResult performSearchSelection(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
+    SearchResult performSearchSelection(const SearchContext& context, LRESULT start, bool isBackward);
+    //SearchResult performSearchColumn(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward);
+    SearchResult performSearchColumn(const SearchContext& context, LRESULT start, bool isBackward);
+    //SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
+    SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
+    //SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex);
+    SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
     void MultiReplace::selectListItem(size_t matchIndex);
 
     //Mark
     void handleMarkMatchesButton();
-    int markString(const std::string& findTextUtf8, int searchFlags);
+    //int markString(const std::string& findTextUtf8, int searchFlags);
+    int markString(const SearchContext& context);
     void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
     int generateColorValue(const std::string& str);
     void handleClearTextMarksButton();

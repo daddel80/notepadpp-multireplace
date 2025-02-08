@@ -74,7 +74,6 @@ SIZE MultiReplace::debugWindowSize = { 400, 250 };
 bool MultiReplace::debugWindowSizeSet = false;
 HWND MultiReplace::hDebugWnd = NULL;
 
-
 #pragma warning(disable: 6262)
 
 #pragma region Initialization
@@ -532,7 +531,7 @@ void MultiReplace::setUIElementVisibility() {
     }
 
     // Update the FIND_PREV_BUTTON state based on Regex and Selection mode
-    EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !regexChecked);
+    // EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !regexChecked);
 }
 
 void MultiReplace::drawGripper() {
@@ -1005,11 +1004,7 @@ bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Directio
     return true;
 }
 
-void MultiReplace::sortItemsInReplaceList(const std::vector<size_t>& originalOrder,
-    const std::vector<size_t>& newOrder,
-    const std::map<int, SortDirection>& previousColumnSortOrder,
-    int columnID,
-    SortDirection direction) {
+void MultiReplace::sortItemsInReplaceList(const std::vector<size_t>& originalOrder, const std::vector<size_t>& newOrder, const std::map<int, SortDirection>& previousColumnSortOrder, int columnID,  SortDirection direction) {
     UndoRedoAction action;
 
     // Undo action: Restore original order and sort state
@@ -1060,7 +1055,6 @@ void MultiReplace::sortItemsInReplaceList(const std::vector<size_t>& originalOrd
     // Push the action onto the undo stack
     undoStack.push_back(action);
 }
-
 
 void MultiReplace::scrollToIndices(size_t firstIndex, size_t lastIndex) {
     if (firstIndex > lastIndex) {
@@ -3963,7 +3957,6 @@ void MultiReplace::handleReplaceAllButton() {
 }
 
 void MultiReplace::handleReplaceButton() {
-
     // First check if the document is read-only
     LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
@@ -3988,11 +3981,16 @@ void MultiReplace::handleReplaceButton() {
     searchResult.foundText = "";
 
     SelectionInfo selection = getSelectionInfo(false);
-
-    // If there is a selection, set newPos to the start of the selection; otherwise, use the current cursor position
     Sci_Position newPos = (selection.length > 0) ? selection.startPos : send(SCI_GETCURRENTPOS, 0, 0);
 
     size_t matchIndex = std::numeric_limits<size_t>::max();
+
+    SearchContext context;
+    context.docLength = send(SCI_GETLENGTH, 0, 0);
+    context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+    context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    context.retrieveFoundText = true;
+    context.highlightMatch = true;
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
@@ -4007,24 +4005,34 @@ void MultiReplace::handleReplaceButton() {
 
         int replacements = 0;  // Counter for replacements
         for (size_t i = 0; i < replaceListData.size(); ++i) {
-            if (replaceListData[i].isEnabled && replaceOne(replaceListData[i], selection, searchResult, newPos, i)) {
-                replacements++;
-                refreshUIListView(); // Refresh the ListView to show updated statistic
+            if (replaceListData[i].isEnabled) {
+                context.findTextUtf8 = convertAndExtend(replaceListData[i].findText, replaceListData[i].extended);
+                context.searchFlags = (replaceListData[i].wholeWord * SCFIND_WHOLEWORD) |
+                    (replaceListData[i].matchCase * SCFIND_MATCHCASE) |
+                    (replaceListData[i].regex * SCFIND_REGEXP);
+
+                // Set search flags before calling replaceOne
+                send(SCI_SETSEARCHFLAGS, context.searchFlags);
+
+                if (replaceOne(replaceListData[i], selection, searchResult, newPos, i, context)) {
+                    replacements++;
+                    refreshUIListView(); // Refresh the ListView to show updated statistic
+                }
             }
         }
 
-        searchResult = performListSearchForward(replaceListData, newPos, matchIndex);
+        searchResult = performListSearchForward(replaceListData, newPos, matchIndex, context);
 
         if (searchResult.pos < 0 && wrapAroundEnabled) {
-            searchResult = performListSearchForward(replaceListData, 0, matchIndex);
+            searchResult = performListSearchForward(replaceListData, 0, matchIndex, context);
         }
 
         // Build and show message based on results
         if (replacements > 0) {
             if (searchResult.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
-                refreshUIListView(); // Refresh the ListView to show updated statistic
-                selectListItem(matchIndex); // Highlight the matched item in the list
+                refreshUIListView();
+                selectListItem(matchIndex);
                 showStatusMessage(getLangStr(L"status_replace_next_found", { std::to_wstring(replacements) }), COLOR_INFO);
             }
             else {
@@ -4037,8 +4045,8 @@ void MultiReplace::handleReplaceButton() {
             }
             else {
                 updateCountColumns(matchIndex, 1);
-                refreshUIListView(); // Refresh the ListView to show updated statistic
-                selectListItem(matchIndex); // Highlight the matched item in the list
+                refreshUIListView();
+                selectListItem(matchIndex);
                 showStatusMessage(getLangStr(L"status_found_text_not_replaced"), COLOR_INFO);
             }
         }
@@ -4053,20 +4061,26 @@ void MultiReplace::handleReplaceButton() {
         replaceItem.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
         replaceItem.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
-        std::string findTextUtf8 = convertAndExtend(replaceItem.findText, replaceItem.extended);
-        int searchFlags = (replaceItem.wholeWord * SCFIND_WHOLEWORD) | (replaceItem.matchCase * SCFIND_MATCHCASE) | (replaceItem.regex * SCFIND_REGEXP);
+        // Spezifische Werte für `SearchContext` setzen
+        context.findTextUtf8 = convertAndExtend(replaceItem.findText, replaceItem.extended);
+        context.searchFlags = (replaceItem.wholeWord * SCFIND_WHOLEWORD) |
+            (replaceItem.matchCase * SCFIND_MATCHCASE) |
+            (replaceItem.regex * SCFIND_REGEXP);
 
-        bool wasReplaced = replaceOne(replaceItem, selection, searchResult, newPos);
+        // Set search flags before calling `performSearchForward` and 'replaceOne' which contains 'performSearchForward'
+        send(SCI_SETSEARCHFLAGS, context.searchFlags);
+
+        bool wasReplaced = replaceOne(replaceItem, selection, searchResult, newPos, SIZE_MAX, context);
 
         // Add the entered text to the combo box history
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), replaceItem.findText);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceItem.replaceText);
 
         if (searchResult.pos < 0 && wrapAroundEnabled) {
-            searchResult = performSearchForward(findTextUtf8, searchFlags, true, 0);
+            searchResult = performSearchForward(context, 0);
         }
         else if (searchResult.pos >= 0) {
-            searchResult = performSearchForward(findTextUtf8, searchFlags, true, newPos);
+            searchResult = performSearchForward(context, newPos);
         }
 
         if (wasReplaced) {
@@ -4087,28 +4101,25 @@ void MultiReplace::handleReplaceButton() {
         }
     }
 
-    // Disable selection radio and switch to "All Text" if it was Replaced an none selection left or it will be trapped
+    // Disable selection radio and switch to "All Text" if it was Replaced and no selection left, or search will be trapped
     selection = getSelectionInfo(false);
     if (selection.length == 0 && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
         ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
         ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
     }
-
 }
 
-bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex)
+bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context)
 {
-    std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
-    int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
-    searchResult = performSearchForward(findTextUtf8, searchFlags, false, selection.startPos);
+    searchResult = performSearchForward(context, selection.startPos);
 
     if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
         bool skipReplace = false;
         std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
 
         if (itemIndex != SIZE_MAX) {
-            updateCountColumns(itemIndex, 1); // no refreshUIListView() necessary as implemented in Debug Window
+            updateCountColumns(itemIndex, 1); // No refreshUIListView() necessary as implemented in Debug Window
             selectListItem(itemIndex);
         }
 
@@ -4121,7 +4132,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             // Setting FNAME and FPATH
             setLuaFileVars(vars);
 
-            if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
+            if (context.isColumnMode) {
                 ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
                 vars.COL = static_cast<int>(columnInfo.startColumnIndex);
             }
@@ -4171,9 +4182,19 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         return true;
     }
 
-    std::string findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
-    int searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
-    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, false, 0);
+    // Initialize SearchContext
+    SearchContext context;
+    context.findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
+    context.searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
+    context.docLength = send(SCI_GETLENGTH, 0, 0);
+    context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+    context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    context.retrieveFoundText = itemData.useVariables;;
+    context.highlightMatch = false;
+
+    send(SCI_SETSEARCHFLAGS, context.searchFlags);
+
+    SearchResult searchResult = performSearchForward(context, 0);
 
     bool isReplaceFirstEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED);
     int previousLineIndex = -1;
@@ -4181,6 +4202,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     // Perform string conversion once outside the loop
     std::string basicConvertedReplaceTextUtf8;
+    std::string localReplaceTextUtf8;
     std::string replaceTextUtf8;
 
     if (itemData.useVariables) {
@@ -4201,7 +4223,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             updateCountColumns(itemIndex, findCount);
         }
 
-        std::string localReplaceTextUtf8;
+        context.docLength = send(SCI_GETLENGTH, 0, 0);
 
         if (itemData.useVariables) {
             localReplaceTextUtf8 = basicConvertedReplaceTextUtf8;
@@ -4220,7 +4242,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             // Setting FNAME and FPATH
             setLuaFileVars(vars);
 
-            if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
+            if (context.isColumnMode) {
                 ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
                 vars.COL = static_cast<int>(columnInfo.startColumnIndex);
             }
@@ -4268,7 +4290,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             break;  // Exit the loop after the first successful replacement
         }
 
-        searchResult = performSearchForward(findTextUtf8, searchFlags, false, newPos);
+        searchResult = performSearchForward(context, newPos);
     }
 
     return true;
@@ -5331,21 +5353,23 @@ void MultiReplace::CloseDebugWindow() {
 
 void MultiReplace::handleFindNextButton() {
     size_t matchIndex = std::numeric_limits<size_t>::max();
-
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
-
     SelectionInfo selection = getSelectionInfo(false);
 
-    // Check if there is a selection and if the selection radio button is checked
-    Sci_Position searchPos;
-    if (selection.length > 0 && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED)) {
-        // Jump to the start of the selection if the selection exists and the radio button is checked
-        searchPos = selection.startPos;
-    }
-    else {
-        // Otherwise, use the current cursor position
-        searchPos = send(SCI_GETCURRENTPOS, 0, 0);
-    }
+    // Determine the starting search position:
+    // If there is a selection and the selection radio is checked, start at the beginning of the selection.
+    // Otherwise, use the current cursor position.
+    Sci_Position searchPos = (selection.length > 0 && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED)
+        ? selection.startPos
+        : send(SCI_GETCURRENTPOS, 0, 0);
+
+    // Initialize SearchContext
+    SearchContext context;
+    context.docLength = send(SCI_GETLENGTH, 0, 0);
+    context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+    context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    context.retrieveFoundText = true;
+    context.highlightMatch = true;
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
@@ -5353,25 +5377,23 @@ void MultiReplace::handleFindNextButton() {
             return;
         }
 
-        SearchResult result = performListSearchForward(replaceListData, searchPos, matchIndex);
+        // Call performListSearchForward with the complete SearchContext
+        SearchResult result = performListSearchForward(replaceListData, searchPos, matchIndex, context);
         if (result.pos < 0 && wrapAroundEnabled) {
-            result = performListSearchForward(replaceListData, 0, matchIndex);
+            result = performListSearchForward(replaceListData, 0, matchIndex, context);
             if (result.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
-                refreshUIListView(); // Refresh the ListView to show updated statistic
-                selectListItem(matchIndex); // Highlight the matched item in the list
+                refreshUIListView();
+                selectListItem(matchIndex);
                 showStatusMessage(getLangStr(L"status_wrapped"), COLOR_INFO);
                 return;
             }
         }
-
         if (result.pos >= 0) {
             showStatusMessage(L"", COLOR_SUCCESS);
             updateCountColumns(matchIndex, 1);
-            refreshUIListView(); // Refresh the ListView to show updated statistic
-            selectListItem(matchIndex); // Highlight the matched item in the list
-
-            // Disable selection radio and switch to "All Text" if it was previously checked or Search will be trapped in new selection
+            refreshUIListView();
+            selectListItem(matchIndex);
             if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
                 ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
                 ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
@@ -5383,35 +5405,39 @@ void MultiReplace::handleFindNextButton() {
         }
     }
     else {
+        // Read search text and check search options
         std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
 
-        bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-        bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-        bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-        bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-        int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
+        // Determine if extended mode is active
+        bool isExtended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+        context.findTextUtf8 = convertAndExtend(findText, isExtended);
 
-        std::string findTextUtf8 = convertAndExtend(findText, extended);
-        SearchResult result = performSearchForward(findTextUtf8, searchFlags, true, searchPos);
+        // Set search flags
+        context.searchFlags =
+            (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) |
+            (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) |
+            (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+
+        // Set search flags before calling `performSearchForward`
+        send(SCI_SETSEARCHFLAGS, context.searchFlags);
+
+        // Perform forward search
+        SearchResult result = performSearchForward(context, searchPos);
         if (result.pos < 0 && wrapAroundEnabled) {
-            result = performSearchForward(findTextUtf8, searchFlags, true, 0);
+            result = performSearchForward(context, 0);
             if (result.pos >= 0) {
                 showStatusMessage(getLangStr(L"status_wrapped"), COLOR_INFO);
                 return;
             }
         }
-
         if (result.pos >= 0) {
             showStatusMessage(L"", COLOR_SUCCESS);
-
-            // Disable selection radio and switch to "All Text" if it was previously checked or Search will be trapped in new selection
             if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
                 ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
                 ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
                 ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
             }
-
         }
         else {
             showStatusMessage(getLangStr(L"status_no_matches_found_for", { findText }), COLOR_ERROR, true);
@@ -5425,59 +5451,60 @@ void MultiReplace::handleFindPrevButton() {
     SelectionInfo selection = getSelectionInfo(true);
     Sci_Position searchPos;
 
-    // Determine starting position based on selection
+    // Determine starting position for backward search:
+    // If there is a selection and the selection radio is checked, start from the end of the selection.
+    // Otherwise, use the current cursor position.
     if (selection.length > 0 && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED)) {
-        // Start from the end of the selection for backward search
         searchPos = selection.endPos;
     }
     else {
-        // Default to current cursor position if no selection
         searchPos = send(SCI_GETCURRENTPOS, 0, 0);
     }
-
-    // Move back one position if possible
+    // Move one position backward if possible
     searchPos = (searchPos > 0) ? send(SCI_POSITIONBEFORE, searchPos, 0) : searchPos;
+
+    // Create a fully initialized `SearchContext`
+    SearchContext context;
+    context.findTextUtf8 = convertAndExtend(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT),
+        IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+    context.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) |
+        (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) |
+        (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+    context.docLength = send(SCI_GETLENGTH, 0, 0);
+    context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+    context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    context.retrieveFoundText = true;
+    context.highlightMatch = true;
 
     if (useListEnabled) {
         size_t matchIndex = std::numeric_limits<size_t>::max();
-
         if (replaceListData.empty()) {
             showStatusMessage(getLangStr(L"status_add_values_or_find_directly"), COLOR_ERROR);
             return;
         }
-
-        SearchResult result = performListSearchBackward(replaceListData, searchPos, matchIndex);
-
+        SearchResult result = performListSearchBackward(replaceListData, searchPos, matchIndex, context);
         if (result.pos < 0 && wrapAroundEnabled) {
             searchPos = send(SCI_GETLENGTH, 0, 0);
-
-            result = performListSearchBackward(replaceListData, searchPos, matchIndex);
-
+            result = performListSearchBackward(replaceListData, searchPos, matchIndex, context);
             if (result.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
-                refreshUIListView(); // Refresh the ListView to show updated statistic
-                selectListItem(matchIndex); // Highlight the matched item in the list
+                refreshUIListView();
+                selectListItem(matchIndex);
                 showStatusMessage(getLangStr(L"status_wrapped"), COLOR_INFO);
-
-                // Disable selection radio and switch to "All Text" if it was previously checked or Search will be trapped in new selection
-                if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+                if (context.isSelectionMode) {
                     ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
                     ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
                     ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
                 }
-
                 return;
             }
         }
-
         if (result.pos >= 0) {
             showStatusMessage(L"", COLOR_SUCCESS);
             updateCountColumns(matchIndex, 1);
-            refreshUIListView(); // Refresh the ListView to show updated statistic
-            selectListItem(matchIndex); // Highlight the matched item in the list
-
-            // Disable selection radio and switch to "All Text" if it was previously checked or Search will be trapped in new selection
-            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+            refreshUIListView();
+            selectListItem(matchIndex);
+            if (context.isSelectionMode) {
                 ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
                 ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
                 ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
@@ -5488,164 +5515,122 @@ void MultiReplace::handleFindPrevButton() {
         }
     }
     else {
-        std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
-        bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-        bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-        bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-        bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-        int searchFlags = (wholeWord * SCFIND_WHOLEWORD) | (matchCase * SCFIND_MATCHCASE) | (regex * SCFIND_REGEXP);
 
-        std::string findTextUtf8 = convertAndExtend(findText, extended);
+        // Set search flags before calling 'performSearchBackward'
+        send(SCI_SETSEARCHFLAGS, context.searchFlags);
 
-        SearchResult result = performSearchBackward(findTextUtf8, searchFlags, true, searchPos);
-
+        SearchResult result = performSearchBackward(context, searchPos);
         if (result.pos < 0 && wrapAroundEnabled) {
-            // Wrap-around logic
-            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-                // Wrap around to the end of the last selection
-                searchPos = selection.endPos;
-            }
-            else {
-                // Wrap around to the end of the document
-                searchPos = send(SCI_GETLENGTH, 0, 0);
-            }
-
-            result = performSearchBackward(findTextUtf8, searchFlags, true, searchPos);
-
+            searchPos = context.isSelectionMode ? selection.endPos : send(SCI_GETLENGTH, 0, 0);
+            result = performSearchBackward(context, searchPos);
             if (result.pos >= 0) {
                 showStatusMessage(getLangStr(L"status_wrapped"), COLOR_INFO);
-
-                // Disable selection radio and switch to "All Text" if it was previously checked or Search will be trapped in new selection
-                if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+                if (context.isSelectionMode) {
                     ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
                     ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
                     ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
                 }
-
                 return;
             }
         }
-
         if (result.pos >= 0) {
             showStatusMessage(L"", COLOR_SUCCESS);
-
-            // Disable selection radio and switch to "All Text" if previously checked
-            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+            if (context.isSelectionMode) {
                 ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
                 ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
                 ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
             }
         }
         else {
-            showStatusMessage(getLangStr(L"status_no_matches_found_for", { findText }), COLOR_ERROR, true);
+            showStatusMessage(getLangStr(L"status_no_matches_found_for", { getTextFromDialogItem(_hSelf, IDC_FIND_EDIT) }),
+                COLOR_ERROR, true);
         }
-
     }
 }
 
-SearchResult MultiReplace::performSingleSearch(const std::string& findTextUtf8, int searchFlags, bool selectMatch, SelectionRange range)
+SearchResult MultiReplace::performSingleSearch(const SearchContext& context, SelectionRange range)
 {
     // Early exit if the search string is empty
-    if (findTextUtf8.empty()) {
+    if (context.findTextUtf8.empty()) {
         return {};  // Return default-initialized SearchResult
     }
 
-    // Configure search range and flags
+    // Set the target range and search flags via Scintilla
     send(SCI_SETTARGETRANGE, range.start, range.end);
-    send(SCI_SETSEARCHFLAGS, searchFlags);
 
-    // Perform search
-    Sci_Position pos = send(SCI_SEARCHINTARGET, findTextUtf8.size(), reinterpret_cast<sptr_t>(findTextUtf8.c_str()));
+    // Perform the search using SCI_SEARCHINTARGET
+    Sci_Position pos = send(SCI_SEARCHINTARGET, context.findTextUtf8.size(), reinterpret_cast<sptr_t>(context.findTextUtf8.c_str()));
     Sci_Position matchEnd = send(SCI_GETTARGETEND);
 
-    // Validate search result
-    if (pos < 0 || matchEnd <= pos || matchEnd > send(SCI_GETLENGTH)) {
-        return {};  // Return an empty SearchResult if no match is found
+    // Validate the search result using cached document length from context
+    if (pos < 0 || matchEnd <= pos || matchEnd > context.docLength) {
+        return {};  // Return empty result if no match is found
     }
 
-    // Use a fixed-size buffer for performance (avoids heap allocation)
-    constexpr size_t BUFFER_SIZE = MAX_TEXT_LENGTH * 4 + 1;  // UTF-8 worst case: 4 bytes per character
-    char buffer[BUFFER_SIZE] = { 0 };
-
-    // Retrieve the matched text using SCI_GETTARGETTEXT
-    LRESULT textLength = send(SCI_GETTARGETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
-
-    // Ensure null-termination in case of overflow
-    if (textLength >= BUFFER_SIZE) {
-        buffer[BUFFER_SIZE - 1] = '\0';
-    }
-
-    // Construct and return the search result
+    // Construct the search result
     SearchResult result;
     result.pos = pos;
     result.length = matchEnd - pos;
-    result.foundText.assign(buffer);
 
-    // Highlight the match if selectMatch is enabled
-    if (selectMatch) {
+    // Retrieve the found text only if needed (as per context)
+    if (context.retrieveFoundText) {
+        constexpr size_t BUFFER_SIZE = MAX_TEXT_LENGTH * 4 + 1;  // Worst-case for UTF-8: 4 bytes per character
+        char buffer[BUFFER_SIZE] = { 0 };
+        LRESULT textLength = send(SCI_GETTARGETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+        buffer[std::min(textLength, static_cast<LRESULT>(BUFFER_SIZE - 1))] = '\0';
+        result.foundText.assign(buffer);
+    }
+
+    // Highlight the match if required by context
+    if (context.highlightMatch) {
         displayResultCentered(pos, matchEnd, true);
     }
 
     return result;
 }
 
-SearchResult MultiReplace::performSearchForward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start)
+SearchResult MultiReplace::performSearchForward(const SearchContext& context, LRESULT start)
 {
-    // Set search direction to forward
     bool isBackward = false;
-
     SelectionRange targetRange;
     SearchResult result;
 
-    // Check if IDC_COLUMN_MODE_RADIO is enabled, selectMatch is false, and column delimiter data is set
-    if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED && columnDelimiterData.isValid()) {
-        // Perform search within columns
-        result = performSearchColumn(findTextUtf8, searchFlags, selectMatch, start, isBackward);
+    // Use cached mode states from the context to decide the search method
+    if (context.isColumnMode && columnDelimiterData.isValid()) {
+        result = performSearchColumn(context, start, isBackward);
     }
-    // Check if selection mode is active
-    else if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        // Perform search within selection
-        result = performSearchSelection(findTextUtf8, searchFlags, selectMatch, start, isBackward);
+    else if (context.isSelectionMode) {
+        result = performSearchSelection(context, start, isBackward);
     }
     else {
-        // If neither IDC_SELECTION_RADIO nor IDC_COLUMN_MODE_RADIO, perform search within the whole document
         targetRange.start = start;
-        targetRange.end = send(SCI_GETLENGTH, 0, 0); // End of the document
-        result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
+        targetRange.end = context.docLength;
+        result = performSingleSearch(context, targetRange);
     }
-
     return result;
 }
 
-SearchResult MultiReplace::performSearchBackward(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start) {
-
-    // Set search direction to backward
+SearchResult MultiReplace::performSearchBackward(const SearchContext& context, LRESULT start)
+{
     bool isBackward = true;
-
     SelectionRange targetRange;
     SearchResult result;
 
-    // Check if selection mode is active
-    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        // Perform search within selection
-        result = performSearchSelection(findTextUtf8, searchFlags, selectMatch, start, isBackward);
+    if (context.isSelectionMode) {
+        result = performSearchSelection(context, start, isBackward);
     }
-    else if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED && columnDelimiterData.isValid()) {
-        // Perform search within columns
-        result = performSearchColumn(findTextUtf8, searchFlags, selectMatch, start, isBackward);
+    else if (context.isColumnMode && columnDelimiterData.isValid()) {
+        result = performSearchColumn(context, start, isBackward);
     }
     else {
-        // Default backward search in the whole document
         targetRange.start = start;
-        targetRange.end = 0; // Beginning of the document
-        result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
+        targetRange.end = 0; // Beginning of the document for backward search
+        result = performSingleSearch(context, targetRange);
     }
-
     return result;
 }
 
-SearchResult MultiReplace::performSearchSelection(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward) {
+SearchResult MultiReplace::performSearchSelection(const SearchContext& context, LRESULT start, bool isBackward) {
     SearchResult result;
     SelectionRange targetRange;
     std::vector<SelectionRange> selections;
@@ -5684,7 +5669,7 @@ SearchResult MultiReplace::performSearchSelection(const std::string& findTextUtf
         if (targetRange.start == targetRange.end) continue;
 
         // Perform the search within the target range
-        result = performSingleSearch(findTextUtf8, searchFlags, selectMatch, targetRange);
+        result = performSingleSearch(context, targetRange);
         if (result.pos >= 0) return result;
 
         // Update the starting position for the next iteration
@@ -5694,7 +5679,7 @@ SearchResult MultiReplace::performSearchSelection(const std::string& findTextUtf
     return result; // No match found
 }
 
-SearchResult MultiReplace::performSearchColumn(const std::string& findTextUtf8, int searchFlags, bool selectMatch, LRESULT start, bool isBackward)
+SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRESULT start, bool isBackward)
 {
     SearchResult result;
     SelectionRange targetRange;
@@ -5768,12 +5753,7 @@ SearchResult MultiReplace::performSearchColumn(const std::string& findTextUtf8, 
             targetRange.end = isBackward ? startColumn : endColumn;
 
             // Perform search within the target range
-            result = performSingleSearch(
-                findTextUtf8,
-                searchFlags,
-                selectMatch,
-                targetRange
-            );
+            result = performSingleSearch(context, targetRange);
 
             // Return immediately if a match is found
             if (result.pos >= 0) {
@@ -5791,7 +5771,7 @@ SearchResult MultiReplace::performSearchColumn(const std::string& findTextUtf8, 
     return result; // No match found in column mode
 }
 
-SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex) {
+SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context) {
     SearchResult closestMatch;
     closestMatch.pos = -1;
     closestMatch.length = 0;
@@ -5800,18 +5780,27 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
     closestMatchIndex = std::numeric_limits<size_t>::max(); // Initialize with a value that represents "no index".
 
     for (size_t i = 0; i < list.size(); ++i) {
-        if (list[i].isEnabled) {
-            int searchFlags = (list[i].wholeWord * SCFIND_WHOLEWORD) |
-                (list[i].matchCase * SCFIND_MATCHCASE) |
-                (list[i].regex * SCFIND_REGEXP);
-            std::string findTextUtf8 = convertAndExtend(list[i].findText, list[i].extended);
-            SearchResult result = performSearchBackward(findTextUtf8, searchFlags, false, cursorPos);
+        if (!list[i].isEnabled) {
+            continue; // Skip disabled entries
+        }
 
-            // If a match was found and it's closer to the cursor than the current closest match, update the closest match
-            if (result.pos >= 0 && (closestMatch.pos < 0 || (result.pos + result.length) >(closestMatch.pos + closestMatch.length))) {
-                closestMatch = result;
-                closestMatchIndex = i; // Update the index of the closest match
-            }
+        // Use the existing search context and only override `findTextUtf8` and `searchFlags`
+        SearchContext localContext = context;
+        localContext.findTextUtf8 = convertAndExtend(list[i].findText, list[i].extended);
+        localContext.searchFlags = (list[i].wholeWord ? SCFIND_WHOLEWORD : 0) |
+            (list[i].matchCase ? SCFIND_MATCHCASE : 0) |
+            (list[i].regex ? SCFIND_REGEXP : 0);
+
+        // Set search flags before calling 'performSearchBackward'
+        send(SCI_SETSEARCHFLAGS, localContext.searchFlags);
+
+        // Perform backward search using the updated search context
+        SearchResult result = performSearchBackward(localContext, cursorPos);
+
+        // If a match was found and it's closer to the cursor than the current closest match, update the closest match
+        if (result.pos >= 0 && (closestMatch.pos < 0 || (result.pos + result.length) >(closestMatch.pos + closestMatch.length))) {
+            closestMatch = result;
+            closestMatchIndex = i; // Update the index of the closest match
         }
     }
 
@@ -5822,7 +5811,7 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
     return closestMatch;
 }
 
-SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex) {
+SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context) {
     SearchResult closestMatch;
     closestMatch.pos = -1;
     closestMatch.length = 0;
@@ -5831,16 +5820,27 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
     closestMatchIndex = std::numeric_limits<size_t>::max(); // Initialize with a value representing "no index".
 
     for (size_t i = 0; i < list.size(); i++) {
-        if (list[i].isEnabled) {
-            int searchFlags = (list[i].wholeWord * SCFIND_WHOLEWORD) | (list[i].matchCase * SCFIND_MATCHCASE) | (list[i].regex * SCFIND_REGEXP);
-            std::string findTextUtf8 = convertAndExtend(list[i].findText, list[i].extended);
-            SearchResult result = performSearchForward(findTextUtf8, searchFlags, false, cursorPos);
+        if (!list[i].isEnabled) {
+            continue; // Skip disabled entries
+        }
 
-            // If a match is found that is closer to the cursor than the current closest match, update the closest match
-            if (result.pos >= 0 && (closestMatch.pos < 0 || result.pos < closestMatch.pos)) {
-                closestMatch = result;
-                closestMatchIndex = i; // Update the index of the closest match
-            }
+        // Use the existing search context and only override `findTextUtf8` and `searchFlags`
+        SearchContext localContext = context;
+        localContext.findTextUtf8 = convertAndExtend(list[i].findText, list[i].extended);
+        localContext.searchFlags = (list[i].wholeWord ? SCFIND_WHOLEWORD : 0) |
+            (list[i].matchCase ? SCFIND_MATCHCASE : 0) |
+            (list[i].regex ? SCFIND_REGEXP : 0);
+
+        // Set search flags before calling `performSearchForward`
+        send(SCI_SETSEARCHFLAGS, localContext.searchFlags);
+
+        // Perform forward search using the updated search context
+        SearchResult result = performSearchForward(localContext, cursorPos);
+
+        // If a match is found that is closer to the cursor than the current closest match, update the closest match
+        if (result.pos >= 0 && (closestMatch.pos < 0 || result.pos < closestMatch.pos)) {
+            closestMatch = result;
+            closestMatchIndex = i; // Update the index of the closest match
         }
     }
 
@@ -5915,49 +5915,86 @@ void MultiReplace::handleMarkMatchesButton() {
 
         for (size_t i = 0; i < replaceListData.size(); ++i) {
             if (replaceListData[i].isEnabled) {
-                std::string findTextUtf8 = convertAndExtend(replaceListData[i].findText, replaceListData[i].extended);
-                int searchFlags = (replaceListData[i].wholeWord * SCFIND_WHOLEWORD)
-                    | (replaceListData[i].matchCase * SCFIND_MATCHCASE)
-                    | (replaceListData[i].regex * SCFIND_REGEXP);
-                int matchCount = markString(findTextUtf8, searchFlags);
-                totalMatchCount += matchCount;
+                const ReplaceItemData& item = replaceListData[i];
+
+                // Prepare SearchContext for list-based marking
+                SearchContext context;
+                context.findTextUtf8 = convertAndExtend(item.findText, item.extended);
+                context.searchFlags = (item.wholeWord * SCFIND_WHOLEWORD)
+                    | (item.matchCase * SCFIND_MATCHCASE)
+                    | (item.regex * SCFIND_REGEXP);
+                context.docLength = send(SCI_GETLENGTH, 0, 0);
+                context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+                context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+                context.retrieveFoundText = false;
+                context.highlightMatch = false;
+
+                int matchCount = markString(context);
 
                 if (matchCount > 0) {
+                    totalMatchCount += matchCount;
                     updateCountColumns(i, matchCount);
-                    refreshUIListView(); // Refresh the ListView to show updated statistic
+                    refreshUIListView();  // Refresh UI only when necessary
                 }
             }
         }
     }
     else {
+        // Retrieve search parameters from UI
         std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
         bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
         bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
         bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
-        std::string findTextUtf8 = convertAndExtend(findText, extended);
-        int searchFlags = (wholeWord * SCFIND_WHOLEWORD)
+        // Prepare SearchContext for direct marking
+        SearchContext context;
+        context.findTextUtf8 = convertAndExtend(findText, extended);
+        context.searchFlags = (wholeWord * SCFIND_WHOLEWORD)
             | (matchCase * SCFIND_MATCHCASE)
             | (regex * SCFIND_REGEXP);
-        totalMatchCount = markString(findTextUtf8, searchFlags);
+        context.docLength = send(SCI_GETLENGTH, 0, 0);
+        context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+        context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+        context.retrieveFoundText = false;
+        context.highlightMatch = false;
 
+        totalMatchCount = markString(context);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
+
+    // Display total number of marked occurrences
     showStatusMessage(getLangStr(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), COLOR_INFO);
 }
 
-int MultiReplace::markString(const std::string& findTextUtf8, int searchFlags) {
-    if (findTextUtf8.empty()) {
-        return 0;
+int MultiReplace::markString(const SearchContext& context) {
+    if (context.findTextUtf8.empty()) {
+        return 0; // Exit early if the search string is empty
     }
 
     int markCount = 0;  // Counter for marked matches
-    SearchResult searchResult = performSearchForward(findTextUtf8, searchFlags, false, 0);
+    LRESULT startPos = 0; // Start search from the beginning of the document
+
+    // Set search flags before calling `performSearchForward`
+    send(SCI_SETSEARCHFLAGS, context.searchFlags);
+
+    // Perform the first search
+    SearchResult searchResult = performSearchForward(context, startPos);
+
     while (searchResult.pos >= 0) {
-        highlightTextRange(searchResult.pos, searchResult.length, findTextUtf8);
-        markCount++;
-        searchResult = performSearchForward(findTextUtf8, searchFlags, false, searchResult.pos + searchResult.length);
+        if (searchResult.length > 0) {
+            highlightTextRange(searchResult.pos, searchResult.length, context.findTextUtf8);
+            markCount++;
+        }
+
+        // Move search position forward to prevent infinite loops
+        startPos = searchResult.pos + searchResult.length;
+        if (startPos >= context.docLength) {
+            break; // Avoid searching beyond document length
+        }
+
+        // Perform next search
+        searchResult = performSearchForward(context, startPos);
     }
 
     if (useListEnabled && markCount > 0) {
@@ -5970,27 +6007,20 @@ int MultiReplace::markString(const std::string& findTextUtf8, int searchFlags) {
 void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8)
 {
     int color = useListEnabled ? generateColorValue(findTextUtf8) : MARKER_COLOR;
-
-    // Check if the color already has an associated style
+    auto it = colorToStyleMap.find(color);
     int indicatorStyle;
-    if (colorToStyleMap.find(color) == colorToStyleMap.end()) {
-        // If not, assign a new style and store it in the map
+
+    if (it == colorToStyleMap.end()) {
         indicatorStyle = useListEnabled ? textStyles[(colorToStyleMap.size() % (textStyles.size() - 1)) + 1] : textStyles[0];
         colorToStyleMap[color] = indicatorStyle;
-    }
-    else {
-        // If yes, use the existing style
-        indicatorStyle = colorToStyleMap[color];
-    }
-
-    // Set and apply highlighting style
-    send(SCI_SETINDICATORCURRENT, indicatorStyle, 0);
-    send(SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
-
-    if (colorToStyleMap.size() < textStyles.size()) {
         send(SCI_INDICSETFORE, indicatorStyle, color);
     }
+    else {
+        indicatorStyle = it->second;
+    }
 
+    send(SCI_SETINDICATORCURRENT, indicatorStyle, 0);
+    send(SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
     send(SCI_INDICSETALPHA, indicatorStyle, 100);
     send(SCI_INDICATORFILLRANGE, pos, len);
 }
@@ -7318,7 +7348,7 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         }
 
         // If any conditions that warrant a refresh of delimiters are met, proceed
-        if (columnDelimiterData.isValid()) {
+        if (columnDelimiterData.isValid() && lineDelimiterPositions.empty()) {
             findAllDelimitersInDocument();
         }
     }
