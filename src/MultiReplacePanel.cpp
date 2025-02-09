@@ -2260,6 +2260,10 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         if (pnmhdr->hwndFrom == ListView_GetHeader(hwnd)) {
             int code = static_cast<int>(static_cast<short>(pnmhdr->code));
 
+            if (code == HDN_ITEMCHANGED) {
+                pThis->updateListViewTooltips(); //Updating Positions of Column Tooltips
+            }
+
             // Handle right-click (NM_RCLICK) on the header
             if (code == NM_RCLICK) {
                 // Get the current cursor position
@@ -4966,7 +4970,12 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
         if (lua_isnumber(_luaState, -1)) {
             double numVal = lua_tonumber(_luaState, -1);
-            capVariablesStr += capName + "\tNumber\t" + std::to_string(numVal) + "\n\n";
+            //capVariablesStr += capName + "\tNumber\t" + std::to_string(numVal) + "\n\n";
+
+            std::ostringstream numStream;
+            numStream << std::fixed << std::setprecision(8) << numVal;
+            capVariablesStr += capName + "\tNumber\t" + numStream.str() + "\n\n";
+
         }
         else if (lua_isboolean(_luaState, -1)) {
             bool boolVal = (lua_toboolean(_luaState, -1) != 0);
@@ -5002,7 +5011,11 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
                 luaGlobalsStr += var.name + "\tString\t" + var.stringValue + "\n\n";
             }
             else if (var.type == LuaVariableType::Number) {
-                luaGlobalsStr += var.name + "\tNumber\t" + std::to_string(var.numberValue) + "\n\n";
+                // luaGlobalsStr += var.name + "\tNumber\t" + std::to_string(var.numberValue) + "\n\n";
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(8) << var.numberValue;
+                luaGlobalsStr += var.name + "\tNumber\t" + oss.str() + "\n\n";
+
             }
             else if (var.type == LuaVariableType::Boolean) {
                 luaGlobalsStr += var.name + "\tBoolean\t" + (var.booleanValue ? "true" : "false") + "\n\n";
@@ -5095,7 +5108,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
                     else {
                         // Format the number with fixed precision (up to 6 decimals)
                         std::wstringstream numStream;
-                        numStream << std::fixed << std::setprecision(6) << num;
+                        numStream << std::fixed << std::setprecision(8) << num;
                         std::wstring formatted = numStream.str();
                         // Remove trailing zeros
                         size_t pos = formatted.find_last_not_of(L'0');
