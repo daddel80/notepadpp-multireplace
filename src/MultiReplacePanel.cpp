@@ -4963,10 +4963,8 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     for (const auto& capName : capNames)
     {
         lua_getglobal(_luaState, capName.c_str());
-        if (lua_isstring(_luaState, -1)) {
-            capVariablesStr += capName + "\tString\t" + lua_tostring(_luaState, -1) + "\n\n";
-        }
-        else if (lua_isnumber(_luaState, -1)) {
+
+        if (lua_isnumber(_luaState, -1)) {
             double numVal = lua_tonumber(_luaState, -1);
             capVariablesStr += capName + "\tNumber\t" + std::to_string(numVal) + "\n\n";
         }
@@ -4974,12 +4972,15 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             bool boolVal = (lua_toboolean(_luaState, -1) != 0);
             capVariablesStr += capName + "\tBoolean\t" + (boolVal ? "true" : "false") + "\n\n";
         }
+        else if (lua_isstring(_luaState, -1)) {
+            capVariablesStr += capName + "\tString\t" + lua_tostring(_luaState, -1) + "\n\n";
+        }
         else {
             capVariablesStr += capName + "\t<nil>\n\n";
         }
-        lua_pop(_luaState, 1);
 
-        // Remove CAP from Lua
+        lua_pop(_luaState, 1);
+        // Remove the global
         lua_pushnil(_luaState);
         lua_setglobal(_luaState, capName.c_str());
     }
@@ -5087,20 +5088,32 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
                 try {
                     double num = std::stod(value);
 
-                    // If number is an integer, remove decimal places
-                    if (num == static_cast<int>(num)) {
-                        value = std::to_wstring(static_cast<int>(num));
+                    // If the number is integral, output as an integer
+                    if (num == std::floor(num)) {
+                        value = std::to_wstring(static_cast<long long>(num));
                     }
                     else {
+                        // Format the number with fixed precision (up to 6 decimals)
                         std::wstringstream numStream;
                         numStream << std::fixed << std::setprecision(6) << num;
-                        value = numStream.str();
+                        std::wstring formatted = numStream.str();
+                        // Remove trailing zeros
+                        size_t pos = formatted.find_last_not_of(L'0');
+                        if (pos != std::wstring::npos) {
+                            formatted.erase(pos + 1);
+                        }
+                        // If the last character is a decimal point, remove it
+                        if (!formatted.empty() && formatted.back() == L'.') {
+                            formatted.pop_back();
+                        }
+                        value = formatted;
                     }
                 }
                 catch (...) {
                     // If conversion fails, retain the original value
                 }
             }
+
             formattedMessage << variable << L"\t" << type << L"\t" << value << L"\n";
         }
     }
