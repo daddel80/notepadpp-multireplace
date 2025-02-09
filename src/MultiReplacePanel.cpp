@@ -4227,8 +4227,6 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             updateCountColumns(itemIndex, findCount);
         }
 
-        context.docLength = send(SCI_GETLENGTH, 0, 0);
-
         if (itemData.useVariables) {
             localReplaceTextUtf8 = basicConvertedReplaceTextUtf8;
 
@@ -4282,6 +4280,8 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             if (itemIndex != SIZE_MAX) { // check if used in List
                 updateCountColumns(itemIndex, -1, replaceCount);
             }
+
+            context.docLength = send(SCI_GETLENGTH, 0, 0);
         }
         else {
             newPos = searchResult.pos + searchResult.length;
