@@ -220,5 +220,6 @@
     <None Include="..\help_use_variables_light.html" />
     <None Include="..\languages.ini" />
     <None Include="..\help_use_variables_dark.html" />
+    <None Include="..\src\initScript.luac" />
   </ItemGroup>
 </Project>

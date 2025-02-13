@@ -662,7 +662,6 @@ private:
     void handleReplaceAllButton();
     void handleReplaceButton();
     bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX);
-    //bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex = SIZE_MAX);
     bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
