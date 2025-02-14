@@ -206,6 +206,7 @@
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
     <ClInclude Include="..\src\DropTarget.h" />
     <ClInclude Include="..\src\DPIManager.h" />
+    <ClInclude Include="..\src\luaEmbedded.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

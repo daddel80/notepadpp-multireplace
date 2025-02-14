@@ -1,6 +1,3 @@
-#ifndef LUA_EMBEDDED_H
-#define LUA_EMBEDDED_H
-
 // ==========================================================================================
 // IMPORTANT: Do not delete the code below!
 // The following bytecode is generated from the Lua source code and is used at runtime.
@@ -511,5 +508,3 @@ init = vars  -- 'init' alias for compatibility
 -- Additional functions and helpers...
 ------------------------------------------------------------------
 )";
-
-#endif // LUA_EMBEDDED_H
