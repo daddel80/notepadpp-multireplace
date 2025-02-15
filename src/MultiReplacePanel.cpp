@@ -7074,14 +7074,6 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
              columnDelimiterData.columnChanged ||
              lineDelimiterPositions.empty()))
         {
-            std::wstring debugMsg = L"Conditions:\n";
-            debugMsg += L"columnDelimiterData.isValid(): " + std::to_wstring(columnDelimiterData.isValid()) + L"\n";
-            debugMsg += L"columnDelimiterData.delimiterChanged: " + std::to_wstring(columnDelimiterData.delimiterChanged) + L"\n";
-            debugMsg += L"columnDelimiterData.quoteCharChanged: " + std::to_wstring(columnDelimiterData.quoteCharChanged) + L"\n";
-            debugMsg += L"columnDelimiterData.columnChanged: " + std::to_wstring(columnDelimiterData.columnChanged) + L"\n";
-            debugMsg += L"lineDelimiterPositions.empty(): " + std::to_wstring(lineDelimiterPositions.empty()) + L"\n";
-            MessageBox(NULL, debugMsg.c_str(), L"Debug Conditions", MB_OK | MB_ICONINFORMATION);
-
             findAllDelimitersInDocument();
         }
     }
