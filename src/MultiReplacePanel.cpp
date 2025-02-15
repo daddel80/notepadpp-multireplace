@@ -6523,7 +6523,7 @@ int MultiReplace::compareColumnValue(const ColumnValue& left, const ColumnValue&
 #pragma region Scope
 
 bool MultiReplace::parseColumnAndDelimiterData() {
-
+    // Retrieve data from dialog items
     std::wstring columnDataString = getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT);
     std::wstring delimiterData = getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT);
     std::wstring quoteCharString = getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT);
@@ -6537,178 +6537,111 @@ bool MultiReplace::parseColumnAndDelimiterData() {
         }
     }
 
-    std::string tempExtendedDelimiter = convertAndExtend(delimiterData, true);
+    // Convert delimiter and quote character to standard strings
+    std::string extendedDelimiter = convertAndExtend(delimiterData, true);
+    std::string quoteCharConverted = wstringToString(quoteCharString);
 
-    columnDelimiterData.delimiterChanged = !(columnDelimiterData.extendedDelimiter == convertAndExtend(delimiterData, true));
-    columnDelimiterData.quoteCharChanged = !(columnDelimiterData.quoteChar == wstringToString(quoteCharString));
+    // **Check for changes BEFORE modifying existing values**
+    bool delimiterChanged = (columnDelimiterData.extendedDelimiter != extendedDelimiter);
+    bool quoteCharChanged = (columnDelimiterData.quoteChar != quoteCharConverted);
 
-    // Initilaize values in case it will return with an error
-    columnDelimiterData.extendedDelimiter = "";
-    columnDelimiterData.quoteChar = "";
-    columnDelimiterData.delimiterLength = 0;
+    // **Process column data before clearing old values**
+    std::set<int> parsedColumns;
+    std::vector<int> parsedInputColumns;
 
-    // Parse column data
+    // Trim leading and trailing commas from column data
     columnDataString.erase(0, columnDataString.find_first_not_of(L','));
     columnDataString.erase(columnDataString.find_last_not_of(L',') + 1);
 
     if (columnDataString.empty() || delimiterData.empty()) {
         showStatusMessage(getLangStr(L"status_missing_column_or_delimiter_data"), COLOR_ERROR);
-        columnDelimiterData.columns.clear();
-        columnDelimiterData.extendedDelimiter = "";
         return false;
     }
 
-    std::vector<int> inputColumns;
-    std::set<int> columns;
-    std::wstring::size_type start = 0;
-    std::wstring::size_type end = columnDataString.find(',', start);
-
-    while (end != std::wstring::npos) {
-        std::wstring block = columnDataString.substr(start, end - start);
-        size_t dashPos = block.find('-');
-
-        // Check if block has range of columns (e.g., 1-3)
-        if (dashPos != std::wstring::npos) {
-            try {
-                // Parse range and add each column to set
-                int startRange = std::stoi(block.substr(0, dashPos));
-                int endRange = std::stoi(block.substr(dashPos + 1));
-
+    // Lambda function to process a token (either a single column or a range like "1-3")
+    auto processToken = [&](const std::wstring& token) -> bool {
+        if (token.empty()) return true; // Ignore empty tokens
+        try {
+            size_t dashPos = token.find(L'-');
+            if (dashPos != std::wstring::npos) { // Token represents a range (e.g., "1-3")
+                int startRange = std::stoi(token.substr(0, dashPos));
+                int endRange = std::stoi(token.substr(dashPos + 1));
                 if (startRange < 1 || endRange < startRange) {
                     showStatusMessage(getLangStr(L"status_invalid_range_in_column_data"), COLOR_ERROR);
-                    columnDelimiterData.columns.clear();
                     return false;
                 }
-
                 for (int i = startRange; i <= endRange; ++i) {
-                    if (columns.insert(i).second) {
-                        inputColumns.push_back(i);
+                    if (parsedColumns.insert(i).second) {
+                        parsedInputColumns.push_back(i);
                     }
                 }
             }
-            catch (const std::exception&) {
-                showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), COLOR_ERROR);
-                columnDelimiterData.columns.clear();
-                return false;
-            }
-        }
-        else {
-            // Parse single column and add to set
-            try {
-                int column = std::stoi(block);
-
-                if (column < 1) {
+            else { // Token represents a single column (e.g., "5")
+                int col = std::stoi(token);
+                if (col < 1) {
                     showStatusMessage(getLangStr(L"status_invalid_column_number"), COLOR_ERROR);
-                    columnDelimiterData.columns.clear();
                     return false;
                 }
-
-                if (columns.insert(column).second) {
-                    inputColumns.push_back(column);
-                }
-            }
-            catch (const std::exception&) {
-                showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), COLOR_ERROR);
-                columnDelimiterData.columns.clear();
-                return false;
-            }
-        }
-
-        start = end + 1;
-        end = columnDataString.find(',', start);
-    }
-
-    // Handle last block of column data
-    std::wstring lastBlock = columnDataString.substr(start);
-    size_t dashPos = lastBlock.find('-');
-
-    // Similar processing to above, but for last block
-    if (dashPos != std::wstring::npos) {
-        try {
-            int startRange = std::stoi(lastBlock.substr(0, dashPos));
-            int endRange = std::stoi(lastBlock.substr(dashPos + 1));
-
-            if (startRange < 1 || endRange < startRange) {
-                showStatusMessage(getLangStr(L"status_invalid_range_in_column_data"), COLOR_ERROR);
-                columnDelimiterData.columns.clear();
-                return false;
-            }
-
-            for (int i = startRange; i <= endRange; ++i) {
-                if (columns.insert(i).second) {
-                    inputColumns.push_back(i);
+                if (parsedColumns.insert(col).second) {
+                    parsedInputColumns.push_back(col);
                 }
             }
         }
         catch (const std::exception&) {
             showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), COLOR_ERROR);
-            columnDelimiterData.columns.clear();
             return false;
         }
-    }
-    else {
-        try {
-            int column = std::stoi(lastBlock);
+        return true;
+        };
 
-            if (column < 1) {
-                showStatusMessage(getLangStr(L"status_invalid_column_number"), COLOR_ERROR);
-                columnDelimiterData.columns.clear();
-                return false;
-            }
-            auto insertResult = columns.insert(column);
-            if (insertResult.second) { // Check if the insertion was successful
-                inputColumns.push_back(column); // Add to the inputColumns vector
-            }
-        }
-        catch (const std::exception&) {
-            showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), COLOR_ERROR);
-            columnDelimiterData.columns.clear();
+    // Tokenize columnDataString using a stream and process each token
+    std::wistringstream iss(columnDataString);
+    std::wstring token;
+    while (std::getline(iss, token, L',')) {
+        if (!processToken(token))
             return false;
-        }
     }
 
-
-    // Check delimiter data
-    if (tempExtendedDelimiter.empty()) {
+    // Validate delimiter
+    if (extendedDelimiter.empty()) {
         showStatusMessage(getLangStr(L"status_extended_delimiter_empty"), COLOR_ERROR);
         return false;
     }
 
-    // Check Quote Character
-    if (!quoteCharString.empty() && (quoteCharString.length() != 1 || !(quoteCharString[0] == L'"' || quoteCharString[0] == L'\''))) {
+    // Validate quote character
+    if (!quoteCharString.empty() && (quoteCharString.length() != 1 ||
+        !(quoteCharString[0] == L'"' || quoteCharString[0] == L'\''))) {
         showStatusMessage(getLangStr(L"status_invalid_quote_character"), COLOR_ERROR);
         return false;
     }
 
-    // Set dataChanged flag
-    columnDelimiterData.columnChanged = !(columnDelimiterData.columns == columns);
+    // **Check if columns have changed BEFORE updating stored data**
+    bool columnChanged = (columnDelimiterData.columns != parsedColumns);
 
-    // Set columnDelimiterData values
-    columnDelimiterData.inputColumns = inputColumns;
-    columnDelimiterData.columns = columns;
-    columnDelimiterData.extendedDelimiter = tempExtendedDelimiter;
-    columnDelimiterData.delimiterLength = tempExtendedDelimiter.length();
-    columnDelimiterData.quoteChar = wstringToString(quoteCharString);
+    // Update columnDelimiterData values
+    columnDelimiterData.delimiterChanged = delimiterChanged;
+    columnDelimiterData.quoteCharChanged = quoteCharChanged;
+    columnDelimiterData.columnChanged = columnChanged;
+
+    columnDelimiterData.inputColumns = std::move(parsedInputColumns);
+    columnDelimiterData.columns = std::move(parsedColumns);
+    columnDelimiterData.extendedDelimiter = std::move(extendedDelimiter);
+    columnDelimiterData.delimiterLength = columnDelimiterData.extendedDelimiter.length();
+    columnDelimiterData.quoteChar = std::move(quoteCharConverted);
 
     return true;
 }
 
 void MultiReplace::findAllDelimitersInDocument() {
 
-    // Clear list for new data
     lineDelimiterPositions.clear();
 
-    // Reset TextModified Trigger
     textModified = false;
     logChanges.clear();
-
-    // Enable detailed logging for capturing delimiter positions
     isLoggingEnabled = true;
 
-    // Get total line count in document
     LRESULT totalLines = send(SCI_GETLINECOUNT, 0, 0);
 
-    // Resize the list to fit total lines
     lineDelimiterPositions.reserve(totalLines);
 
     // Find and store delimiter positions for each line
@@ -6716,10 +6649,7 @@ void MultiReplace::findAllDelimitersInDocument() {
         findDelimitersInLine(line);
     }
 
-    // Shrink the reusable buffer used to read each line to release unused memory
     lineBuffer.shrink_to_fit();
-
-    // Clear log queue
     logChanges.clear();
 
 }
@@ -7137,8 +7067,21 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
             return;
         }
 
-        // If any conditions that warrant a refresh of delimiters are met, proceed
-        if (columnDelimiterData.isValid() && lineDelimiterPositions.empty()) {
+        // Trigger scan only if necessary
+        if (columnDelimiterData.isValid() &&
+            (columnDelimiterData.delimiterChanged ||
+             columnDelimiterData.quoteCharChanged ||
+             columnDelimiterData.columnChanged ||
+             lineDelimiterPositions.empty()))
+        {
+            std::wstring debugMsg = L"Conditions:\n";
+            debugMsg += L"columnDelimiterData.isValid(): " + std::to_wstring(columnDelimiterData.isValid()) + L"\n";
+            debugMsg += L"columnDelimiterData.delimiterChanged: " + std::to_wstring(columnDelimiterData.delimiterChanged) + L"\n";
+            debugMsg += L"columnDelimiterData.quoteCharChanged: " + std::to_wstring(columnDelimiterData.quoteCharChanged) + L"\n";
+            debugMsg += L"columnDelimiterData.columnChanged: " + std::to_wstring(columnDelimiterData.columnChanged) + L"\n";
+            debugMsg += L"lineDelimiterPositions.empty(): " + std::to_wstring(lineDelimiterPositions.empty()) + L"\n";
+            MessageBox(NULL, debugMsg.c_str(), L"Debug Conditions", MB_OK | MB_ICONINFORMATION);
+
             findAllDelimitersInDocument();
         }
     }
@@ -7149,7 +7092,6 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         }
     }
 }
-
 void MultiReplace::handleClearDelimiterState() {
     lineDelimiterPositions.clear();
     isLoggingEnabled = false;

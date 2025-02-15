@@ -124,7 +124,6 @@ struct SearchResult {
 };
 
 struct SelectionInfo {
-
     Sci_Position startPos;
     Sci_Position endPos;
     Sci_Position length;
