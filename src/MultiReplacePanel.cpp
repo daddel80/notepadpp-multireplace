@@ -9230,7 +9230,7 @@ LPWSTR MultiReplace::getLangStrLPWSTR(const std::wstring& id) {
 #pragma region Event Handling -- triggered in beNotified() in MultiReplace.cpp
 
 void MultiReplace::processTextChange(SCNotification* notifyCode) {
-    if (!isWindowOpen || !isLoggingEnabled) {
+    if (!isLoggingEnabled) {
         return;
     }
 
@@ -9278,33 +9278,29 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
 }
 
 void MultiReplace::processLog() {
-    if (!isWindowOpen) {
-        return;
-    }
 
-    if (instance != nullptr) {
-        instance->handleDelimiterPositions(DelimiterOperation::Update);
-    }
+    instance->handleDelimiterPositions(DelimiterOperation::Update);
 }
 
 void MultiReplace::onDocumentSwitched() {
-    if (!isWindowOpen) {
-        return;
-    }
 
-    // for scanned delimiter
+    // Get the current buffer ID
     int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+
+    // Detect tab switch
     if (currentBufferID != scannedDelimiterBufferID) {
+        // Always clear column marks when switching tabs
+        instance->handleClearColumnMarks();
+
+        // Update state variables
         documentSwitched = true;
-        isCaretPositionEnabled = false;
         scannedDelimiterBufferID = currentBufferID;
-        if (instance != nullptr) {
-            instance->isColumnHighlighted = false;
-            instance->showStatusMessage(L"", RGB(0, 0, 0));
-        }
+
+        // Reset UI status message
+        instance->showStatusMessage(L"", RGB(0, 0, 0));
     }
 
-    // for sorted Columns
+    // Reset sorting state
     originalLineOrder.clear();
     currentSortState = SortDirection::Unsorted;
     isSortedColumn = false;
@@ -9312,6 +9308,7 @@ void MultiReplace::onDocumentSwitched() {
 }
 
 void MultiReplace::pointerToScintilla() {
+
     int which = -1;
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
     if (which != -1) {
@@ -9326,10 +9323,6 @@ void MultiReplace::pointerToScintilla() {
 }
 
 void MultiReplace::onSelectionChanged() {
-
-    if (!isWindowOpen) {
-        return;
-    }
 
     static bool wasTextSelected = false;  // This stores the previous state
 
@@ -9362,7 +9355,7 @@ void MultiReplace::onTextChanged() {
 
 void MultiReplace::onCaretPositionChanged()
 {
-    if (!isWindowOpen || !isCaretPositionEnabled) {
+    if (!isCaretPositionEnabled) {
         return;
     }
 
