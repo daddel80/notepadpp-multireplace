@@ -4121,7 +4121,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
     if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
         bool skipReplace = false;
-        std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
+        std::string localReplaceTextUtf8 = itemData.useVariables ? wstringToString(itemData.replaceText) : "";
 
         if (itemIndex != SIZE_MAX) {
             updateCountColumns(itemIndex, 1); // No refreshUIListView() necessary as implemented in Debug Window
@@ -4264,7 +4264,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             }
 
             if (!skipReplace) {
-                replaceTextUtf8 = convertAndExtend(localReplaceTextUtf8, itemData.extended);
+                replaceTextUtf8 = convertAndExtend(std::move(localReplaceTextUtf8), itemData.extended);
             }
         }
 
@@ -4305,15 +4305,11 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
 {
     send(SCI_SETTARGETRANGE, pos, pos + length);
 
-    sptr_t replacedLen = send(
+    return pos + send(
         SCI_REPLACETARGET,
         replaceTextUtf8.size(),
         reinterpret_cast<sptr_t>(replaceTextUtf8.c_str())
     );
-
-    Sci_Position newPos = pos + static_cast<Sci_Position>(replacedLen);
-
-    return newPos;
 }
 
 Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
@@ -5543,7 +5539,7 @@ SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRE
             targetRange.end = isBackward ? startColumn : endColumn;
 
             // Perform search within the target range
-            result = performSingleSearch(context, targetRange);
+            result = std::move(performSingleSearch(context, targetRange));
 
             // Return immediately if a match is found
             if (result.pos >= 0) {
