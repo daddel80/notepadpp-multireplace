@@ -726,6 +726,7 @@ private:
     void findAllDelimitersInDocument();
     void findDelimitersInLine(LRESULT line);
     ColumnInfo getColumnInfo(LRESULT startPosition);
+    LRESULT adjustForegroundForDarkMode(LRESULT textColor, LRESULT backgroundColor);
     void initializeColumnStyles();
     void handleHighlightColumnsInDocument();
     void highlightColumnsInLine(LRESULT line);

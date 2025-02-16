@@ -6772,6 +6772,33 @@ ColumnInfo MultiReplace::getColumnInfo(LRESULT startPosition) {
     return { totalLines, startLine, startColumnIndex };
 }
 
+LRESULT MultiReplace::adjustForegroundForDarkMode(LRESULT textColor, LRESULT backgroundColor) {
+    // Extract RGB components from text color
+    int redText = (textColor & 0xFF);
+    int greenText = ((textColor >> 8) & 0xFF);
+    int blueText = ((textColor >> 16) & 0xFF);
+
+    // Extract RGB components from background color
+    int redBg = (backgroundColor & 0xFF);
+    int greenBg = ((backgroundColor >> 8) & 0xFF);
+    int blueBg = ((backgroundColor >> 16) & 0xFF);
+
+    // Blend with background color to improve contrast
+    float blendFactor = 0.7f;  // Higher value = stronger tint from background
+    redText = static_cast<int>(redText * (1.0f - blendFactor) + redBg * blendFactor);
+    greenText = static_cast<int>(greenText * (1.0f - blendFactor) + greenBg * blendFactor);
+    blueText = static_cast<int>(blueText * (1.0f - blendFactor) + blueBg * blendFactor);
+
+    // Increase brightness for better readability
+    float brightnessBoost = 1.45f;  // Higher value = lighter text
+    redText = std::min(255, static_cast<int>(redText * brightnessBoost));
+    greenText = std::min(255, static_cast<int>(greenText * brightnessBoost));
+    blueText = std::min(255, static_cast<int>(blueText * brightnessBoost));
+
+    // Reconstruct adjusted color
+    return (blueText << 16) | (greenText << 8) | redText;
+}
+
 void MultiReplace::initializeColumnStyles() {
 
     int IDM_LANG_TEXT = 46016;  // Switch off Languages - > Normal Text
@@ -6786,12 +6813,13 @@ void MultiReplace::initializeColumnStyles() {
     // Select color scheme based on mode
     const auto& columnColors = isDarkMode ? darkModeColumnColors : lightModeColumnColors;
 
-    // Apply styles to all columns
     for (SIZE_T column = 0; column < hColumnStyles.size(); ++column) {
-        SendMessage(_hScintilla, SCI_STYLESETBACK, hColumnStyles[column], columnColors[column % columnColors.size()]);
-        SendMessage(_hScintilla, SCI_STYLESETFORE, hColumnStyles[column], fgColor);
-    }
+        long bgColor = columnColors[column % columnColors.size()];
+        LRESULT adjustedFgColor = isDarkMode ? adjustForegroundForDarkMode(fgColor, bgColor) : fgColor;
 
+        SendMessage(_hScintilla, SCI_STYLESETBACK, hColumnStyles[column], bgColor);
+        SendMessage(_hScintilla, SCI_STYLESETFORE, hColumnStyles[column], adjustedFgColor);
+    }
 }
 
 void MultiReplace::handleHighlightColumnsInDocument() {
