@@ -6777,17 +6777,19 @@ void MultiReplace::initializeColumnStyles() {
     int IDM_LANG_TEXT = 46016;  // Switch off Languages - > Normal Text
     ::SendMessage(nppData._nppHandle, NPPM_MENUCOMMAND, 0, IDM_LANG_TEXT);
 
-    for (SIZE_T column = 0; column < hColumnStyles.size(); column++) {
-        int style = hColumnStyles[column];
-        long color = columnColors[column];
-        long fgColor = 0x000000;  // set Foreground always on black
+    // Get default text color from Notepad++
+    LRESULT fgColor = SendMessage(_hScintilla, SCI_STYLEGETFORE, STYLE_DEFAULT, 0);
 
-        // Set the style background color
-        send(SCI_STYLESETBACK, style, color);
+    // Check if Notepad++ is in dark mode
+    bool isDarkMode = SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0);
 
-        // Set the style foreground color to black
-        send(SCI_STYLESETFORE, style, fgColor);
+    // Select color scheme based on mode
+    const auto& columnColors = isDarkMode ? darkModeColumnColors : lightModeColumnColors;
 
+    // Apply styles to all columns
+    for (SIZE_T column = 0; column < hColumnStyles.size(); ++column) {
+        SendMessage(_hScintilla, SCI_STYLESETBACK, hColumnStyles[column], columnColors[column % columnColors.size()]);
+        SendMessage(_hScintilla, SCI_STYLESETFORE, hColumnStyles[column], fgColor);
     }
 
 }
@@ -7080,6 +7082,7 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         }
     }
 }
+
 void MultiReplace::handleClearDelimiterState() {
     lineDelimiterPositions.clear();
     isLoggingEnabled = false;
@@ -9295,6 +9298,15 @@ void MultiReplace::onCaretPositionChanged()
     }
 
 }
+
+void MultiReplace::onThemeChanged()
+{
+    // Only update column styles if column highlighting is enabled
+    if (instance->isColumnHighlighted) {
+        instance->initializeColumnStyles();
+    }
+}
+
 
 #pragma endregion
 

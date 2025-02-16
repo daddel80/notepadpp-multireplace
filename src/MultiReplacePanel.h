@@ -389,6 +389,7 @@ public:
     static void processLog();
     static void processTextChange(SCNotification* notifyCode);
     static void onCaretPositionChanged();
+    static void MultiReplace::onThemeChanged();
 
     enum class ChangeType { Insert, Delete, Modify };
     enum class ReplaceMode { Normal, Extended, Regex };
@@ -484,7 +485,9 @@ private:
     */
     const std::vector<int> textStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
     const std::vector<int> hColumnStyles = { STYLE1, STYLE2, STYLE3, STYLE4, STYLE5, STYLE6, STYLE7, STYLE8, STYLE9, STYLE10 };
-    const std::vector<int> columnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
+    const std::vector<int> lightModeColumnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
+    const std::vector<int> darkModeColumnColors  = { 0x553333, 0x335577, 0x225522, 0x553355, 0x335555, 0x555522, 0x774444, 0x225555, 0x553366, 0x336633 };
+
 
     // Data-related variables 
     size_t markedStringsCount = 0;
