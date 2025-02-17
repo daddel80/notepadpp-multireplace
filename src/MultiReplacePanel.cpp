@@ -7097,7 +7097,6 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         if (columnDelimiterData.isValid() &&
             (columnDelimiterData.delimiterChanged ||
              columnDelimiterData.quoteCharChanged ||
-             columnDelimiterData.columnChanged ||
              lineDelimiterPositions.empty()))
         {
             findAllDelimitersInDocument();
