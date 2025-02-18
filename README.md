@@ -103,25 +103,22 @@ Enable the '**Use Variables**' option to enhance replacements with calculations 
 
 ### Quick Start: Use Variables
 
-1. **Enable "Use Variables":**  
-   Enable the checkbox labeled "**Use Variables**" in the Replace interface.
+1. **Enable "Use Variables"**  
+   Check the "**Use Variables**" option in the Replace interface.  
 
-2. **Pick a Command:**
+2. **Use a Command**  
 
-   **Option 1:** [`set(...)`](#setstrorcalc) – Outputs a value directly.  
-   - Example:  
-     - **Find**: `(\d+)`  
-     - **Replace**: `set(CAP1 * 2)`  
+   **Option 1:** [`set(...)`](#setstrorcalc) → Directly replaces with a value or calculation.  
+   - **Find**: `(\d+)`  
+   - **Replace**: `set(CAP1 * 2)`  
+   - **Result**: Doubles numbers (e.g., `50` → `100`).  
+   *(Enable "Regular Expression" in 'Search Mode' to use `(\d+)` as a capture group.)*  
 
-     *(Enable "Regular Expression" in 'Search Mode' to use `(\d+)` as a capture group.)*  
-   - Doubles any matched number (e.g., `50` → `100`).
-
-   **Option 2:** [`cond(...)`](#condcondition-trueval-falseval) – Replaces only if the condition is true; otherwise leaves the text unchanged.  
-   - Example:  
-     - **Find**: `word`  
-     - **Replace**: `cond(CNT==1, "FirstWord")`  
-   - Changes only the first occurrence of “word” to “FirstWord.”
-
+   **Option 2:** [`cond(...)`](#condcondition-trueval-falseval) → Conditional replacement.  
+   - **Find**: `word`  
+   - **Replace**: `cond(CNT==1, "FirstWord")`  
+   - **Result**: Changes only the **first** occurrence of "word" to "FirstWord".
+    
 3. **Use Basic Variables:**  
    - **`CNT`**: Inserts the current match number (e.g., "1" for the first match, "2" for the second).
    - **`CAP1`**, **`CAP2`**, etc.: Holds captured groups when Regex is enabled.  
@@ -276,8 +273,8 @@ In this example:
 Once `lkp()` loads the data file for **hpath**, the parsed table is cached in memory for the duration of the Replace-All operation.
 
 ##### inner Flag
-- **`false` ((default, can be omitted))**: If the key is not found, `lkp()` returns the original key.  
-- **`true`**: If the key is not found, `lkp()` yields a `nil` result, which can be used with `cond()` for conditional handling.
+- **`false` (default, can be omitted)**: If the key is not found, `lkp()` returns the **search term itself** (e.g., `MATCH`, `CAP1`), instead of a mapped value.
+- **`true`**: If the key is not found, `lkp()` returns `nil`, allowing conditional handling.
 
 ##### Examples
 
@@ -285,7 +282,7 @@ Once `lkp()` loads the data file for **hpath**, the parsed table is cached in me
 |------------|-----------------------------------------------------------------------------------------------------------|-----------|---------------|------------------------------------------------------------------------------------------------------|
 | `\b\w+\b`  | `lkp(MATCH, [[C:\tmp\hash.lkp]], true)`                                                                    | Yes       | No            | Uses **inner = true**: If a match is found in the lookup file, replaces it with the mapped value. If no match is found, the original word is removed. |
 | `(\d+)`    | `lkp(CAP1, "C:/path/to/myLookupFile.lkp")`                                                                | Yes       | No            | Uses **inner = false** (default): If a match is found in the lookup file, replaces it with the mapped value. If no match is found, the original text (`CAP1`) is returned. |
-| `\b\w+\b`  | `cond(lkp(MATCH, [[C:\tmp\hash.lkp]], true).result ~= nil, lkp(MATCH, [[C:\tmp\hash.lkp]], true).result, "NoKey")` | Yes       | No            | Uses **inner = true**: If the lookup result is non-`nil`, replaces with the mapped value. Otherwise, replaces with `"NoKey"`. |
+| `\b\w+\b`  | `output = lkp(MATCH, [[C:\tmp\hash.lkp]], true).result; set(output or "NoKey")`                           | Yes       | No            | Uses **inner = true**: If the lookup result is non-`nil`, replaces with the mapped value. Otherwise, replaces with `"NoKey"`. |
 | `\b\w+\b`  | `cond(COL==3, lkp(MATCH, [[C:/tmp/col3_hash.lkp]]))`                                               | No        | Yes           | Looks up values in the third column (`COL==3`) using a separate lookup file (`col3_hash.lkp`). If a match is found, replaces it; otherwise, leaves it unchanged. |
 
 <br>
