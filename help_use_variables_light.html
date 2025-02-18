@@ -365,29 +365,29 @@
                 Enable the checkbox labeled <strong>"Use Variables"</strong> in the Replace interface.
             </li>
             <li>
-                <strong>Pick a Command:</strong>
+                <strong>Use a Command:</strong>
                 <p>
-                    <strong>Option 1:</strong> <a href="#setstrorcalc"><code>set(...)</code></a> – Outputs a value directly.
+                    <strong>Option 1:</strong> <a href="#setstrorcalc"><code>set(...)</code></a> – Directly replaces with a value or calculation.
                 </p>
                 <ul>
                     <li><strong>Example:</strong></li>
                     <ul>
                         <li><strong>Find:</strong> <code>(\d+)</code></li>
                         <li><strong>Replace:</strong> <code>set(CAP1 * 2)</code></li>
+                        <li><strong>Result:</strong> Doubles numbers (e.g., <code>50</code> → <code>100</code>).</li>
                     </ul>
-                    <em>(Enable "Regular Expression" in 'Search Mode' to use <code>(\d+)</code> as a capture group.)</em><br>
-                    Doubles any matched number (e.g., <code>50</code> → <code>100</code>).
+                    <em>(Enable "Regular Expression" in 'Search Mode' to use <code>(\d+)</code> as a capture group.)</em>
                 </ul>
                 <p>
-                    <strong>Option 2:</strong> <a href="#condcondition-trueval-falseval"><code>cond(...)</code></a> – Replaces only if the condition is true; otherwise leaves the text unchanged.
+                    <strong>Option 2:</strong> <a href="#condcondition-trueval-falseval"><code>cond(...)</code></a> – Conditional replacement.
                 </p>
                 <ul>
                     <li><strong>Example:</strong></li>
                     <ul>
                         <li><strong>Find:</strong> <code>word</code></li>
                         <li><strong>Replace:</strong> <code>cond(CNT==1, "FirstWord")</code></li>
+                        <li><strong>Result:</strong> Changes only the <strong>first</strong> occurrence of "word" to "FirstWord".</li>
                     </ul>
-                    Changes only the first occurrence of “word” to “FirstWord.”
                 </ul>
             </li>
             <li>
@@ -700,8 +700,8 @@ return {
 
         <h4>inner Flag</h4>
         <ul>
-            <li><strong>false</strong> ((default, can be omitted)): If the key is not found, <code>lkp()</code> returns the original key.</li>
-            <li><strong>true</strong>: If the key is not found, <code>lkp()</code> yields a <code>nil</code> result, which can be used with <code>cond()</code> for conditional handling.</li>
+            <li><strong>false</strong> (default, can be omitted): If the key is not found, <code>lkp()</code> returns the <strong>search term itself</strong> (e.g., <code>MATCH</code>, <code>CAP1</code>), instead of a mapped value.</li>
+            <li><strong>true</strong>: If the key is not found, <code>lkp()</code> returns <code>nil</code>, allowing conditional handling.</li>
         </ul>
 
         <h4>Examples</h4>
@@ -729,7 +729,7 @@ return {
             </tr>
             <tr>
                 <td><code>\b\w+\b</code></td>
-                <td><code>cond(lkp(MATCH, [[C:\tmp\hash.lkp]], true).result ~= nil, lkp(MATCH, [[C:\tmp\hash.lkp]], true).result, "NoKey")</code></td>
+                <td><code>output = lkp(MATCH, [[C:\tmp\hash.lkp]], true).result; set(output or "NoKey")</code></td>
                 <td>Yes</td>
                 <td>No</td>
                 <td>Uses <strong>inner = true</strong>: If the lookup result is non-<code>nil</code>, replaces with the mapped value. Otherwise, replaces with <code>"NoKey"</code>.</td>
