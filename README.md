@@ -103,25 +103,22 @@ Enable the '**Use Variables**' option to enhance replacements with calculations 
 
 ### Quick Start: Use Variables
 
-1. **Enable "Use Variables":**  
-   Enable the checkbox labeled "**Use Variables**" in the Replace interface.
+1. **Enable "Use Variables"**  
+   Check the "**Use Variables**" option in the Replace interface.  
 
-2. **Pick a Command:**
+2. **Use a Command**  
 
-   **Option 1:** [`set(...)`](#setstrorcalc) – Outputs a value directly.  
-   - Example:  
-     - **Find**: `(\d+)`  
-     - **Replace**: `set(CAP1 * 2)`  
+   **Option 1:** [`set(...)`](#setstrorcalc) → Directly replaces with a value or calculation.  
+   - **Find**: `(\d+)`  
+   - **Replace**: `set(CAP1 * 2)`  
+   - **Result**: Doubles numbers (e.g., `50` → `100`).  
+   *(Enable "Regular Expression" in 'Search Mode' to use `(\d+)` as a capture group.)*  
 
-     *(Enable "Regular Expression" in 'Search Mode' to use `(\d+)` as a capture group.)*  
-   - Doubles any matched number (e.g., `50` → `100`).
-
-   **Option 2:** [`cond(...)`](#condcondition-trueval-falseval) – Replaces only if the condition is true; otherwise leaves the text unchanged.  
-   - Example:  
-     - **Find**: `word`  
-     - **Replace**: `cond(CNT==1, "FirstWord")`  
-   - Changes only the first occurrence of “word” to “FirstWord.”
-
+   **Option 2:** [`cond(...)`](#condcondition-trueval-falseval) → Conditional replacement.  
+   - **Find**: `word`  
+   - **Replace**: `cond(CNT==1, "FirstWord")`  
+   - **Result**: Changes only the **first** occurrence of "word" to "FirstWord".
+    
 3. **Use Basic Variables:**  
    - **`CNT`**: Inserts the current match number (e.g., "1" for the first match, "2" for the second).
    - **`CAP1`**, **`CAP2`**, etc.: Holds captured groups when Regex is enabled.  
