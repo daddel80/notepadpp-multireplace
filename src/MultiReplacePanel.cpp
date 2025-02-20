@@ -5985,6 +5985,9 @@ void MultiReplace::handleDeleteColumns()
         LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
         LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
 
+        // Get the actual EOL length for this line
+        LRESULT eolLength = getEOLLengthForLine(i);
+
         // Vector to collect deletion ranges for the current line.
         std::vector<std::pair<LRESULT, LRESULT>> deletionRanges;
 
@@ -6021,7 +6024,7 @@ void MultiReplace::handleDeleteColumns()
             }
             else {
                 // Last column: delete until the end of the line.
-                // For non-last lines, subtract eolLength to preserve the line break.
+                // For non-last lines, subtract actual EOL length to preserve the line break.
                 if (i < lineCount - 1)
                     endPos = lineEndPos - eolLength;
                 else
@@ -6082,8 +6085,13 @@ void MultiReplace::handleCopyColumnsToClipboard()
     int copiedFieldsCount = 0;
     size_t lineCount = lineDelimiterPositions.size();
 
-    // Use getEOLStyle() to obtain the file-specific EOL string.
-    std::string eolStr = getEOLStyle();
+    // Determine the last column index in the document
+    SIZE_T lastColumnIndex = (lineCount > 0 && !lineDelimiterPositions.empty())
+        ? lineDelimiterPositions[0].positions.size() + 1
+        : 1;
+
+    // Check if the last column is included in the selection
+    bool lastColumnCopied = (columnDelimiterData.columns.find(static_cast<int>(lastColumnIndex)) != columnDelimiterData.columns.end());
 
     // Iterate through each line
     for (size_t i = 0; i < lineCount; ++i) {
@@ -6096,20 +6104,20 @@ void MultiReplace::handleCopyColumnsToClipboard()
         bool isFirstCopiedColumn = true;
         std::string lineText;
 
-        // Process each column
+        // Process each selected column
         for (SIZE_T column : columnDelimiterData.columns) {
             if (column <= lineInfo.positions.size() + 1) {
                 LRESULT startPos = 0;
                 LRESULT endPos = 0;
 
-                // Determine absolute start for this column
+                // Determine the absolute start position for this column
                 if (column == 1) {
                     startPos = lineStartPos;
                     isFirstCopiedColumn = false;
                 }
                 else if (column - 2 < lineInfo.positions.size()) {
                     startPos = lineStartPos + lineInfo.positions[column - 2].offsetInLine;
-                    // Drop the first delimiter if copied as first column
+                    // Drop the first delimiter if copied as the first column
                     if (isFirstCopiedColumn) {
                         startPos += columnDelimiterData.delimiterLength;
                         isFirstCopiedColumn = false;
@@ -6119,19 +6127,15 @@ void MultiReplace::handleCopyColumnsToClipboard()
                     break; // No more valid columns
                 }
 
-                // Determine absolute end for this column
+                // Determine the absolute end position for this column
                 if (column - 1 < lineInfo.positions.size()) {
                     endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
                 }
                 else {
-                    // Last column goes to the line end.
-                    if (i < lineCount - 1)
-                        endPos = lineEndPos - eolLength;
-                    else
-                        endPos = lineEndPos;
+                    endPos = lineEndPos;
                 }
 
-                // Buffer to hold the text
+                // Buffer to hold the extracted text
                 std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1, '\0');
 
                 // Prepare TextRange structure for Scintilla
@@ -6149,9 +6153,10 @@ void MultiReplace::handleCopyColumnsToClipboard()
         }
 
         combinedText += lineText;
-        // Add file-specific EOL (obtained via getEOLStyle()) except after the last line
-        if (i < lineCount - 1) {
-            combinedText += eolStr;
+
+        // Append standard EOL only if the last column is not included
+        if (!lastColumnCopied && i < lineCount - 1) {
+            combinedText += getEOLStyle();
         }
     }
 
@@ -6657,7 +6662,7 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
     LineInfo lineInfo;
     lineInfo.lineIndex = static_cast<size_t>(line);
 
-    // Get line length (excluding EOL characters)
+    // Get line length
     LRESULT lineLength = send(SCI_LINELENGTH, line, 0);
     lineInfo.lineLength = lineLength;
 
@@ -7077,17 +7082,12 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
     if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) != BST_CHECKED) {
         return;
     }
-    //int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
-    LRESULT updatedEolLength = getEOLLength();
 
-    // If EOL length has changed or if there's been a change in the active window within Notepad++, reset all delimiter settings
-    if (updatedEolLength != eolLength || documentSwitched) {
+    // If there's been a change in the active window within Notepad++, reset all delimiter settings
+    if (documentSwitched) {
         handleClearDelimiterState();
         documentSwitched = false;
     }
-
-    eolLength = updatedEolLength;
-    //scannedDelimiterBufferID = currentBufferID;
 
     if (operation == DelimiterOperation::LoadAll) {
         // Parse column and delimiter data; exit if parsing fails or if delimiter is empty
@@ -7729,17 +7729,33 @@ std::wstring MultiReplace::getSelectedText() {
     return wstr;
 }
 
-LRESULT MultiReplace::getEOLLength() {
-    LRESULT eolMode = ::SendMessage(getScintillaHandle(), SCI_GETEOLMODE, 0, 0);
-    switch (eolMode) {
-    case SC_EOL_CRLF:
-        return 2;
-    case SC_EOL_CR:
-    case SC_EOL_LF:
-        return 1;
-    default:
-        return 2; // Default to CRLF
+LRESULT MultiReplace::getEOLLengthForLine(LRESULT line) {
+    LRESULT lineLen = send(SCI_LINELENGTH, line, 0);
+    if (lineLen == 0) {
+        return 0; // Empty line, no EOL
     }
+
+    // We'll check up to the last 2 chars only:
+    LRESULT lineStart = send(SCI_POSITIONFROMLINE, line, 0);
+    LRESULT checkCount = (lineLen >= 2) ? 2 : 1;
+
+    // Read those chars via SCI_GETCHARAT
+    char last[2] = { 0, 0 };
+    for (LRESULT i = 0; i < checkCount; i++) {
+        last[i] = static_cast<char>(
+            send(SCI_GETCHARAT, lineStart + lineLen - checkCount + i, 0)
+            );
+    }
+
+    // If we have 2 chars and they are '\r\n', that's EOL=2
+    if (checkCount == 2 && last[0] == '\r' && last[1] == '\n') {
+        return 2;
+    }
+    // Otherwise check if the last char is '\r' or '\n'
+    else if (last[checkCount - 1] == '\r' || last[checkCount - 1] == '\n') {
+        return 1;
+    }
+    return 0;
 }
 
 std::string MultiReplace::getEOLStyle() {

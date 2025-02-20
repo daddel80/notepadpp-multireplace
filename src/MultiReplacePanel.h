@@ -497,7 +497,6 @@ private:
     std::unordered_map<int, int> colorToStyleMap;
     std::map<int, SortDirection> columnSortOrder;
     ColumnDelimiterData columnDelimiterData;
-    LRESULT eolLength = -1; // Stores the length of the EOL character sequence
     std::vector<ReplaceItemData> replaceListData;
     std::vector<LineInfo> lineDelimiterPositions;
     std::vector<char> lineBuffer; // reusable Buffer for findDelimitersInLine()
@@ -752,7 +751,7 @@ private:
     void showListFilePath();
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
-    LRESULT getEOLLength();
+    LRESULT getEOLLengthForLine(LRESULT line);
     std::string getEOLStyle();
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
     bool normalizeAndValidateNumber(std::string& str);
