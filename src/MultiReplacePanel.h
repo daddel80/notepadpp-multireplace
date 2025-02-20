@@ -21,7 +21,6 @@
 #include "PluginInterface.h"
 #include "DropTarget.h"
 #include "DPIManager.h"
-#include "FenwickTree.h"
 
 #include <string>
 #include <vector>
@@ -31,7 +30,9 @@
 #include <algorithm>
 #include <unordered_map>
 #include <set>
+
 #include <commctrl.h>
+
 #include <lua.hpp>
 
 extern NppData nppData;

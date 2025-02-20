@@ -111,7 +111,6 @@
     <ClCompile Include="..\src\language_mapping.cpp" />
     <ClCompile Include="..\src\DropTarget.cpp" />
     <ClCompile Include="..\src\DPIManager.cpp" />
-    <ClCompile Include="..\src\FenwickTree.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -221,6 +220,5 @@
     <None Include="..\help_use_variables_light.html" />
     <None Include="..\languages.ini" />
     <None Include="..\help_use_variables_dark.html" />
-    <None Include="..\src\initScript.luac" />
   </ItemGroup>
 </Project>

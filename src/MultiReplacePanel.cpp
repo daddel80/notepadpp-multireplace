@@ -27,7 +27,6 @@
 #include <algorithm>
 #include <bitset>
 #include <codecvt>
-#include <Commctrl.h>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -38,11 +37,15 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include <vector>
-#include <windows.h>
-#include <filesystem> 
-#include <lua.hpp> 
 #include <unordered_set>
+#include <vector>
+
+#include <windows.h>
+#include <Commctrl.h>
+#include <filesystem>
+
+#include <lua.hpp>
+
 
 #ifdef UNICODE
 #define generic_strtoul wcstoul
@@ -3204,7 +3207,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
                 return TRUE;
             }
-
 
             case LVN_COLUMNCLICK:
             {
@@ -6784,7 +6786,7 @@ LRESULT MultiReplace::adjustForegroundForDarkMode(LRESULT textColor, LRESULT bac
     int blueBg = ((backgroundColor >> 16) & 0xFF);
 
     // Blend with background color to improve contrast
-    float blendFactor = 0.7f;  // Higher value = stronger tint from background
+    float blendFactor = 0.9f;  // Higher value = stronger tint from background
     redText = static_cast<int>(redText * (1.0f - blendFactor) + redBg * blendFactor);
     greenText = static_cast<int>(greenText * (1.0f - blendFactor) + greenBg * blendFactor);
     blueText = static_cast<int>(blueText * (1.0f - blendFactor) + blueBg * blendFactor);
