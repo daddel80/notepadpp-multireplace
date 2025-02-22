@@ -6112,13 +6112,6 @@ void MultiReplace::handleCopyColumnsToClipboard()
     int copiedFieldsCount = 0;
     size_t lineCount = lineDelimiterPositions.size();
 
-    // Determine the last column index in the document
-    SIZE_T lastColumnIndex = (lineCount > 0 && !lineDelimiterPositions.empty())
-        ? lineDelimiterPositions[0].positions.size() + 1
-        : 1;
-
-    // Check if the last column is included in the selection
-    bool lastColumnCopied = (columnDelimiterData.columns.find(static_cast<int>(lastColumnIndex)) != columnDelimiterData.columns.end());
 
     // Iterate through each line
     for (size_t i = 0; i < lineCount; ++i) {
@@ -6182,7 +6175,7 @@ void MultiReplace::handleCopyColumnsToClipboard()
         combinedText += lineText;
 
         // Append standard EOL only if the last column is not included
-        if (!lastColumnCopied && i < lineCount - 1) {
+        if (i < lineCount - 1 && (lineText.empty() || (combinedText.back() != '\n' && combinedText.back() != '\r'))) {
             combinedText += getEOLStyle();
         }
     }
