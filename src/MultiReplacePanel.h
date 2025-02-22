@@ -723,6 +723,7 @@ private:
 
     //Scope
     bool parseColumnAndDelimiterData();
+    bool validateDelimiterData();
     void findAllDelimitersInDocument();
     void findDelimitersInLine(LRESULT line);
     ColumnInfo getColumnInfo(LRESULT startPosition);

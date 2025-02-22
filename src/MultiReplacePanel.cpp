@@ -1009,7 +1009,7 @@ bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Directio
     return true;
 }
 
-void MultiReplace::sortItemsInReplaceList(const std::vector<size_t>& originalOrder, const std::vector<size_t>& newOrder, const std::map<int, SortDirection>& previousColumnSortOrder, int columnID,  SortDirection direction) {
+void MultiReplace::sortItemsInReplaceList(const std::vector<size_t>& originalOrder, const std::vector<size_t>& newOrder, const std::map<int, SortDirection>& previousColumnSortOrder, int columnID, SortDirection direction) {
     UndoRedoAction action;
 
     // Undo action: Restore original order and sort state
@@ -3876,6 +3876,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
 void MultiReplace::handleReplaceAllButton() {
 
+    if (!validateDelimiterData()) {
+        return;
+    }
+
     // First check if the document is read-only
     LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
@@ -3965,6 +3969,11 @@ void MultiReplace::handleReplaceAllButton() {
 }
 
 void MultiReplace::handleReplaceButton() {
+
+    if (!validateDelimiterData()) {
+        return;
+    }
+
     // First check if the document is read-only
     LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
@@ -5141,6 +5150,11 @@ void MultiReplace::CloseDebugWindow() {
 #pragma region Find
 
 void MultiReplace::handleFindNextButton() {
+
+    if (!validateDelimiterData()) {
+        return;
+    }
+
     size_t matchIndex = std::numeric_limits<size_t>::max();
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
     SelectionInfo selection = getSelectionInfo(false);
@@ -5235,6 +5249,11 @@ void MultiReplace::handleFindNextButton() {
 }
 
 void MultiReplace::handleFindPrevButton() {
+
+    if (!validateDelimiterData()) {
+        return;
+    }
+
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
     SelectionInfo selection = getSelectionInfo(true);
@@ -5693,6 +5712,11 @@ void MultiReplace::selectListItem(size_t matchIndex) {
 #pragma region Mark
 
 void MultiReplace::handleMarkMatchesButton() {
+
+    if (!validateDelimiterData()) {
+        return;
+    }
+
     int totalMatchCount = 0;
     markedStringsCount = 0;
 
@@ -5846,6 +5870,11 @@ void MultiReplace::handleClearTextMarksButton()
 
 void MultiReplace::handleCopyMarkedTextToClipboardButton()
 {
+
+    if (!validateDelimiterData()) {
+        return;
+    }
+
     bool wasLastCharMarked = false;
     size_t markedTextCount = 0;
 
@@ -5967,9 +5996,7 @@ bool MultiReplace::confirmColumnDeletion() {
 
 void MultiReplace::handleDeleteColumns()
 {
-    // Validate column/delimiter data.
-    if (!columnDelimiterData.isValid()) {
-        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), COLOR_ERROR);
+    if (!validateDelimiterData()) {
         return;
     }
 
@@ -6077,8 +6104,7 @@ void MultiReplace::handleDeleteColumns()
 
 void MultiReplace::handleCopyColumnsToClipboard()
 {
-    if (!columnDelimiterData.isValid()) {
-        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), COLOR_ERROR);
+    if (!validateDelimiterData()) {
         return;
     }
 
@@ -6204,7 +6230,7 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
 
         for (size_t columnIndex = 0; columnIndex < columnDelimiterData.inputColumns.size(); ++columnIndex) {
             SIZE_T columnNumber = columnDelimiterData.inputColumns[columnIndex];
-            
+
             // Determine the absolute start and end positions of this column in the document
             LRESULT startPos;
             if (columnNumber == 1) {
@@ -6436,6 +6462,10 @@ void MultiReplace::UpdateSortButtonSymbols() {
 
 void MultiReplace::handleSortStateAndSort(SortDirection direction) {
 
+    if (!validateDelimiterData()) {
+        return;
+    }
+
     if ((direction == SortDirection::Ascending && currentSortState == SortDirection::Ascending) ||
         (direction == SortDirection::Descending && currentSortState == SortDirection::Descending)) {
         isSortedColumn = false; //Disable logging of changes
@@ -6640,6 +6670,14 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     return true;
 }
 
+bool MultiReplace::validateDelimiterData() {
+    if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
+        return parseColumnAndDelimiterData();
+    }
+
+    return true;
+}
+
 void MultiReplace::findAllDelimitersInDocument() {
 
     lineDelimiterPositions.clear();
@@ -6835,8 +6873,8 @@ void MultiReplace::initializeColumnStyles() {
 }
 
 void MultiReplace::handleHighlightColumnsInDocument() {
-    // Return early if no column/delimiter data available
-    if (columnDelimiterData.columns.empty() || columnDelimiterData.extendedDelimiter.empty()) {
+
+    if (!validateDelimiterData()) {
         return;
     }
 
@@ -7103,8 +7141,8 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         // Trigger scan only if necessary
         if (columnDelimiterData.isValid() &&
             (columnDelimiterData.delimiterChanged ||
-             columnDelimiterData.quoteCharChanged ||
-             lineDelimiterPositions.empty()))
+                columnDelimiterData.quoteCharChanged ||
+                lineDelimiterPositions.empty()))
         {
             findAllDelimitersInDocument();
         }
