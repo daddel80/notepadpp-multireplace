@@ -32,6 +32,7 @@
 #include <iostream>
 #include <locale>
 #include <map>
+#include <numeric>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -6201,12 +6202,11 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
         CombinedColumns rowData;
         rowData.columns.resize(columnDelimiterData.inputColumns.size());
 
-        size_t columnIndex = 0;
-        for (SIZE_T columnNumber : columnDelimiterData.inputColumns) {
+        for (size_t columnIndex = 0; columnIndex < columnDelimiterData.inputColumns.size(); ++columnIndex) {
+            SIZE_T columnNumber = columnDelimiterData.inputColumns[columnIndex];
+            
             // Determine the absolute start and end positions of this column in the document
-            LRESULT startPos = 0;
-            LRESULT endPos = 0;
-
+            LRESULT startPos;
             if (columnNumber == 1) {
                 // First column starts at the beginning of the line
                 startPos = lineStartPos;
@@ -6221,6 +6221,8 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
                 continue;
             }
 
+            // Determine the absolute end position
+            LRESULT endPos;
             if (columnNumber - 1 < lineInfo.positions.size()) {
                 // End of the current column = next delimiter offset
                 endPos = lineStartPos + lineInfo.positions[columnNumber - 1].offsetInLine;
@@ -6237,15 +6239,20 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
             // Extract column text using local offsets
             if (localStart < localEnd && localEnd <= currentLineLength) {
                 const size_t colSize = localEnd - localStart;
-                rowData.columns[columnIndex].text =
-                    std::string(lineBuffer.data() + localStart, colSize);
+                std::string columnText(lineBuffer.data() + localStart, colSize);
+
+                // Delete \n and \r at the end of the row
+                while (!columnText.empty() && (columnText.back() == '\n' || columnText.back() == '\r')) {
+                    columnText.pop_back();
+                }
+
+                rowData.columns[columnIndex].text = columnText;
             }
             else {
                 // Empty column if the range is invalid
                 rowData.columns[columnIndex].text.clear();
             }
 
-            ++columnIndex;
         }
 
         // Add parsed row to the result
@@ -6276,9 +6283,9 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
 
     // Create an index array for all lines
     std::vector<size_t> tempOrder(lineCount);
-    for (size_t i = 0; i < lineCount; ++i) {
-        tempOrder[i] = i;
-    }
+
+    // Initialize vector with numeric sorted values
+    std::iota(tempOrder.begin(), tempOrder.end(), 0);
 
     // Extract the columns after any header lines
     std::vector<CombinedColumns> combinedData = extractColumnData(CSVheaderLinesCount, lineCount);
@@ -6483,25 +6490,16 @@ void MultiReplace::detectNumericColumns(std::vector<CombinedColumns>& data)
     size_t colCount = data[0].columns.size();
 
     for (size_t col = 0; col < colCount; ++col) {
-        bool allNumeric = true;
-
-        // Check every row if it can be numeric
         for (auto& row : data) {
             std::string tmp = row.columns[col].text;
-            if (!normalizeAndValidateNumber(tmp)) {
-                allNumeric = false;
-                break;
-            }
-        }
 
-        // If all are numeric, do another pass to set numericValue
-        if (allNumeric) {
-            for (auto& row : data) {
-                std::string tmp = row.columns[col].text;
-                normalizeAndValidateNumber(tmp); // modifies tmp if needed
-                double val = std::stod(tmp);
+            // Skip empty fields to prevent false string classification
+            if (tmp.empty()) continue;
+
+            // If column is still numeric, set numeric values
+            if (normalizeAndValidateNumber(tmp)) {
                 row.columns[col].isNumeric = true;
-                row.columns[col].numericValue = val;
+                row.columns[col].numericValue = std::stod(tmp);
                 row.columns[col].text = tmp; // keep '.' version if you like
             }
         }
@@ -6509,16 +6507,23 @@ void MultiReplace::detectNumericColumns(std::vector<CombinedColumns>& data)
 }
 
 int MultiReplace::compareColumnValue(const ColumnValue& left, const ColumnValue& right)
-{ // Compare function for numeric vs. string
-    if (left.isNumeric && right.isNumeric) {
-        if (left.numericValue < right.numericValue) return -1;
-        if (left.numericValue > right.numericValue) return  1;
-        return 0;
+{
+    // If one is numeric and the other is not, numeric values come first
+    if (left.isNumeric != right.isNumeric) {
+        return left.isNumeric ? -1 : 1;
     }
-    if (left.isNumeric && !right.isNumeric) return -1;
-    if (!left.isNumeric && right.isNumeric) return  1;
+
+    // If both are numeric, compare numerical values
+    if (left.isNumeric) {
+        if (left.numericValue < right.numericValue) return -1;
+        if (left.numericValue > right.numericValue) return 1;
+        return 0; // Values are equal
+    }
+
+    // If both are strings, compare text values
     return left.text.compare(right.text);
 }
+
 
 #pragma endregion
 
