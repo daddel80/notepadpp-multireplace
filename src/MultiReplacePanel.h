@@ -754,7 +754,7 @@ private:
     std::wstring getSelectedText();
     LRESULT getEOLLengthForLine(LRESULT line);
     std::string getEOLStyle();
-    sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true);
+    sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true) const;
     bool normalizeAndValidateNumber(std::string& str);
     std::vector<WCHAR> createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
     int getCharacterWidth(int elementID, const wchar_t* character);

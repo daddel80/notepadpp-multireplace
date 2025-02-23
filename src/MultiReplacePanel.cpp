@@ -7808,7 +7808,7 @@ std::string MultiReplace::getEOLStyle() {
     }
 }
 
-sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, bool useDirect) {
+sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, bool useDirect) const {
     if (useDirect && pSciMsg) {
         return pSciMsg(pSciWndData, iMessage, wParam, lParam);
     }
