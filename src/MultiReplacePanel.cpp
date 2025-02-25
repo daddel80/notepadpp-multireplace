@@ -6952,16 +6952,56 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
 
 void MultiReplace::handleClearColumnMarks() {
     LRESULT textLength = send(SCI_GETLENGTH, 0, 0);
-
     send(SCI_STARTSTYLING, 0, 0);
-    send(SCI_SETSTYLING, textLength, STYLE_DEFAULT);
+
+    // Iterate through the entire document and reset only our custom column styles
+    LRESULT pos = 0;
+    while (pos < textLength) {
+        // Get the current style at the given position
+        int currentStyle = static_cast<int>(send(SCI_GETSTYLEAT, pos, 0));
+
+        // Check if the current style is one of our column highlight styles
+        bool isColumnStyle = false;
+        for (int style : hColumnStyles) {
+            if (currentStyle == style) {
+                isColumnStyle = true;
+                break;
+            }
+        }
+
+        if (isColumnStyle) {
+            // Identify the range of consecutive characters that have column styles
+            LRESULT start = pos;
+            while (pos < textLength) {
+                int s = static_cast<int>(send(SCI_GETSTYLEAT, pos, 0));
+                bool stillColumnStyle = false;
+                for (int style : hColumnStyles) {
+                    if (s == style) {
+                        stillColumnStyle = true;
+                        break;
+                    }
+                }
+                if (!stillColumnStyle) {
+                    break;
+                }
+                ++pos;
+            }
+            LRESULT count = pos - start;
+
+            // Reset the style for the identified range to default (STYLE_DEFAULT)
+            send(SCI_STARTSTYLING, start, 0);
+            send(SCI_SETSTYLING, count, STYLE_DEFAULT);
+        }
+        else {
+            // Move to the next character if the current one is not a column highlight
+            ++pos;
+        }
+    }
 
     isColumnHighlighted = false;
-
-    // Disable Position detection
     isCaretPositionEnabled = false;
 
-    // Force Scintilla to recalculate word wrapping as highlighting is affecting layout
+    // Recalculate word wrapping as styling might have affected the layout
     int originalWrapMode = static_cast<int>(send(SCI_GETWRAPMODE, 0, 0));
     if (originalWrapMode != SC_WRAP_NONE) {
         send(SCI_SETWRAPMODE, SC_WRAP_NONE, 0);
@@ -9301,24 +9341,28 @@ void MultiReplace::onDocumentSwitched() {
         return;
     }
 
-    // for scanned delimiter
+    // Get the current buffer ID of the newly opened document
     int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+
+    // Check if the document has changed
     if (currentBufferID != scannedDelimiterBufferID) {
         documentSwitched = true;
         isCaretPositionEnabled = false;
         scannedDelimiterBufferID = currentBufferID;
+
         if (instance != nullptr) {
-            instance->isColumnHighlighted = false;
+            instance->handleClearColumnMarks();
             instance->showStatusMessage(L"", RGB(0, 0, 0));
         }
     }
 
-    // for sorted Columns
+    // Reset sorting state when switching documents
     originalLineOrder.clear();
     currentSortState = SortDirection::Unsorted;
     isSortedColumn = false;
     instance->UpdateSortButtonSymbols();
 }
+
 
 void MultiReplace::pointerToScintilla() {
 
