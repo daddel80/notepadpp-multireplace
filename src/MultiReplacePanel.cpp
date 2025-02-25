@@ -9297,24 +9297,23 @@ void MultiReplace::processLog() {
 }
 
 void MultiReplace::onDocumentSwitched() {
-
-    // Get the current buffer ID
-    int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
-
-    // Detect tab switch
-    if (currentBufferID != scannedDelimiterBufferID) {
-        // Always clear column marks when switching tabs
-        instance->handleClearColumnMarks();
-
-        // Update state variables
-        documentSwitched = true;
-        scannedDelimiterBufferID = currentBufferID;
-
-        // Reset UI status message
-        instance->showStatusMessage(L"", RGB(0, 0, 0));
+    if (!isWindowOpen) {
+        return;
     }
 
-    // Reset sorting state
+    // for scanned delimiter
+    int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+    if (currentBufferID != scannedDelimiterBufferID) {
+        documentSwitched = true;
+        isCaretPositionEnabled = false;
+        scannedDelimiterBufferID = currentBufferID;
+        if (instance != nullptr) {
+            instance->isColumnHighlighted = false;
+            instance->showStatusMessage(L"", RGB(0, 0, 0));
+        }
+    }
+
+    // for sorted Columns
     originalLineOrder.clear();
     currentSortState = SortDirection::Unsorted;
     isSortedColumn = false;
