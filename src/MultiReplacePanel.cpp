@@ -6827,13 +6827,13 @@ LRESULT MultiReplace::adjustForegroundForDarkMode(LRESULT textColor, LRESULT bac
     int blueBg = ((backgroundColor >> 16) & 0xFF);
 
     // Blend with background color to improve contrast
-    float blendFactor = 0.9f;  // Higher value = stronger tint from background
+    float blendFactor = 0.8f;  // Higher value = stronger tint from background
     redText = static_cast<int>(redText * (1.0f - blendFactor) + redBg * blendFactor);
     greenText = static_cast<int>(greenText * (1.0f - blendFactor) + greenBg * blendFactor);
     blueText = static_cast<int>(blueText * (1.0f - blendFactor) + blueBg * blendFactor);
 
     // Increase brightness for better readability
-    float brightnessBoost = 1.75f;  // Higher value = lighter text
+    float brightnessBoost = 1.9f;  // Higher value = lighter text
     redText = std::min(255, static_cast<int>(redText * brightnessBoost));
     greenText = std::min(255, static_cast<int>(greenText * brightnessBoost));
     blueText = std::min(255, static_cast<int>(blueText * brightnessBoost));
