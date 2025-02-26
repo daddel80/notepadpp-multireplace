@@ -29,6 +29,7 @@
 #include <regex>
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
 #include <set>
 
 #include <commctrl.h>
@@ -182,6 +183,22 @@ struct ColumnInfo {
 struct ContextMenuInfo {
     int hitItem = -1;
     int clickedColumn = -1;
+};
+
+struct HighlightedTabs {
+    std::unordered_set<int> bufferIDs;  // Stores buffer IDs with active highlighting
+
+    bool isHighlighted(int bufferID) const {
+        return bufferIDs.find(bufferID) != bufferIDs.end();
+    }
+
+    void mark(int bufferID) {
+        bufferIDs.insert(bufferID);
+    }
+
+    void clear(int bufferID) {
+        bufferIDs.erase(bufferID);
+    }
 };
 
 struct MenuState {
@@ -489,7 +506,6 @@ private:
     const std::vector<int> lightModeColumnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
     const std::vector<int> darkModeColumnColors  = { 0x553333, 0x335577, 0x225522, 0x553355, 0x335555, 0x555522, 0x774444, 0x225555, 0x553366, 0x336633 };
 
-
     // Data-related variables 
     size_t markedStringsCount = 0;
     bool allSelected = true;
@@ -524,6 +540,7 @@ private:
     // Scintilla related 
     SciFnDirect pSciMsg = nullptr;
     sptr_t pSciWndData = 0;
+    HighlightedTabs highlightedTabs;
 
     // List related
     bool useListEnabled; // status for List enabled

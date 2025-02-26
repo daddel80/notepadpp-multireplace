@@ -3495,7 +3495,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_HIGHLIGHT_BUTTON:
         {
-            if (!isColumnHighlighted) {
+            int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+
+            if (!highlightedTabs.isHighlighted(currentBufferID)) {
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
                 if (columnDelimiterData.isValid()) {
                     handleHighlightColumnsInDocument();
@@ -6866,23 +6868,19 @@ void MultiReplace::initializeColumnStyles() {
 }
 
 void MultiReplace::handleHighlightColumnsInDocument() {
-
     if (!validateDelimiterData()) {
         return;
     }
 
-    // Initialize column styles (if necessary)
+    int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+    highlightedTabs.mark(currentBufferID);
     initializeColumnStyles();
-
-    // Get total number of lines (from our parsed delimiter data)
     LRESULT totalLines = static_cast<LRESULT>(lineDelimiterPositions.size());
 
-    // Iterate over each line to apply highlighting
     for (LRESULT line = 0; line < totalLines; ++line) {
         highlightColumnsInLine(line);
     }
 
-    // Optionally update status with current caret position
     if (!lineDelimiterPositions.empty()) {
         LRESULT startPosition = send(SCI_GETCURRENTPOS, 0, 0);
         showStatusMessage(getLangStr(L"status_actual_position", { addLineAndColumnMessage(startPosition) }), COLOR_SUCCESS);
@@ -6951,62 +6949,33 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
 }
 
 void MultiReplace::handleClearColumnMarks() {
-    LRESULT textLength = send(SCI_GETLENGTH, 0, 0);
-    send(SCI_STARTSTYLING, 0, 0);
+    // Get the current buffer ID
+    int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
 
-    // Iterate through the entire document and reset only our custom column styles
-    LRESULT pos = 0;
-    while (pos < textLength) {
-        // Get the current style at the given position
-        int currentStyle = static_cast<int>(send(SCI_GETSTYLEAT, pos, 0));
-
-        // Check if the current style is one of our column highlight styles
-        bool isColumnStyle = false;
-        for (int style : hColumnStyles) {
-            if (currentStyle == style) {
-                isColumnStyle = true;
-                break;
-            }
-        }
-
-        if (isColumnStyle) {
-            // Identify the range of consecutive characters that have column styles
-            LRESULT start = pos;
-            while (pos < textLength) {
-                int s = static_cast<int>(send(SCI_GETSTYLEAT, pos, 0));
-                bool stillColumnStyle = false;
-                for (int style : hColumnStyles) {
-                    if (s == style) {
-                        stillColumnStyle = true;
-                        break;
-                    }
-                }
-                if (!stillColumnStyle) {
-                    break;
-                }
-                ++pos;
-            }
-            LRESULT count = pos - start;
-
-            // Reset the style for the identified range to default (STYLE_DEFAULT)
-            send(SCI_STARTSTYLING, start, 0);
-            send(SCI_SETSTYLING, count, STYLE_DEFAULT);
-        }
-        else {
-            // Move to the next character if the current one is not a column highlight
-            ++pos;
-        }
+    // If the tab was not highlighted, exit early
+    if (!highlightedTabs.isHighlighted(currentBufferID)) {
+        return;
     }
+
+    // Get total document length
+    LRESULT textLength = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+
+    // Reset all styling to default
+    ::SendMessage(_hScintilla, SCI_STARTSTYLING, 0, 0);
+    ::SendMessage(_hScintilla, SCI_SETSTYLING, textLength, STYLE_DEFAULT);
 
     isColumnHighlighted = false;
     isCaretPositionEnabled = false;
 
-    // Recalculate word wrapping as styling might have affected the layout
-    int originalWrapMode = static_cast<int>(send(SCI_GETWRAPMODE, 0, 0));
+    // Force Scintilla to recalculate word wrapping if highlighting affected layout
+    int originalWrapMode = static_cast<int>(::SendMessage(_hScintilla, SCI_GETWRAPMODE, 0, 0));
     if (originalWrapMode != SC_WRAP_NONE) {
-        send(SCI_SETWRAPMODE, SC_WRAP_NONE, 0);
-        send(SCI_SETWRAPMODE, originalWrapMode, 0);
+        ::SendMessage(_hScintilla, SCI_SETWRAPMODE, SC_WRAP_NONE, 0);
+        ::SendMessage(_hScintilla, SCI_SETWRAPMODE, originalWrapMode, 0);
     }
+
+    // Remove tab from tracked highlighted tabs
+    highlightedTabs.clear(currentBufferID);
 }
 
 std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
@@ -9351,6 +9320,7 @@ void MultiReplace::onDocumentSwitched() {
         scannedDelimiterBufferID = currentBufferID;
 
         if (instance != nullptr) {
+            // Clear highlighting only if the tab was previously highlighted
             instance->handleClearColumnMarks();
             instance->showStatusMessage(L"", RGB(0, 0, 0));
         }
@@ -9362,7 +9332,6 @@ void MultiReplace::onDocumentSwitched() {
     isSortedColumn = false;
     instance->UpdateSortButtonSymbols();
 }
-
 
 void MultiReplace::pointerToScintilla() {
 
