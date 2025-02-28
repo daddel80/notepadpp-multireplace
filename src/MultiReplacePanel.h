@@ -166,6 +166,7 @@ struct CombinedColumns {
 
 struct DelimiterPosition {
     LRESULT offsetInLine = 0;  // where the delimiter is within this line
+    DelimiterPosition(LRESULT offset) : offsetInLine(offset) {}
 };
 
 struct LineInfo {

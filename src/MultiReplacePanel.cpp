@@ -6695,7 +6695,18 @@ void MultiReplace::findAllDelimitersInDocument() {
 
 }
 
+/*
 void MultiReplace::findDelimitersInLine(LRESULT line) {
+    // Ensure the line index is valid before accessing the vector
+    if (line < 0) {
+        return; // Avoid negative index issues
+    }
+
+    // Ensure the vector can hold the required index
+    if (static_cast<size_t>(line) >= lineDelimiterPositions.size()) {
+        lineDelimiterPositions.resize(static_cast<size_t>(line) + 1);
+    }
+
     // Initialize line information
     LineInfo lineInfo;
     lineInfo.lineIndex = static_cast<size_t>(line);
@@ -6704,26 +6715,37 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
     LRESULT lineLength = send(SCI_LINELENGTH, line, 0);
     lineInfo.lineLength = lineLength;
 
-    // Ensure buffer is large enough
-    if (lineBuffer.size() < static_cast<size_t>(lineLength + 1))
-        lineBuffer.resize(lineLength + 1);
+    // Persistent buffer: grow only when needed
+    static size_t maxLineLength = 0;
+    if (static_cast<size_t>(lineLength) > maxLineLength) {
+        maxLineLength = static_cast<size_t>(lineLength);
+        lineBuffer.reserve(maxLineLength + 1);
+    }
+    lineBuffer.resize(lineLength + 1);
 
-    // Read line into buffer and create a string view
+    // Read line into buffer
     send(SCI_GETLINE, line, reinterpret_cast<sptr_t>(lineBuffer.data()));
-    std::string_view lineContent(lineBuffer.data(), static_cast<size_t>(lineLength));
+    const char* data = lineBuffer.data();
+    const char* end = data + lineLength;
 
     // Cache delimiter and quote character
     size_t delimLen = columnDelimiterData.delimiterLength;
-    std::string_view delimiter(columnDelimiterData.extendedDelimiter);
+    const char* delimiter = columnDelimiterData.extendedDelimiter.data();
     bool hasQuoteChar = !columnDelimiterData.quoteChar.empty();
     char currentQuoteChar = hasQuoteChar ? columnDelimiterData.quoteChar[0] : '\0';
 
-    size_t pos = 0;
-    bool inQuotes = false;
+    // Efficient reserve strategy for delimiter positions
+    size_t reserveSize = std::max<size_t>(100, lineLength / 3);
+    if (lineInfo.positions.capacity() < reserveSize) {
+        lineInfo.positions.reserve(reserveSize);
+    }
 
-    while (pos < lineContent.size()) {
+    bool inQuotes = false;
+    const char* pos = data;
+
+    while (pos < end) {
         // Toggle quote status if a quote character is found
-        if (hasQuoteChar && lineContent[pos] == currentQuoteChar) {
+        if (hasQuoteChar && *pos == currentQuoteChar) {
             inQuotes = !inQuotes;
             ++pos;
             continue;
@@ -6733,43 +6755,149 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
         if (!inQuotes) {
             if (delimLen == 1) {
                 // Single-character delimiter check
-                if (lineContent[pos] == delimiter[0]) {
-                    lineInfo.positions.push_back({ static_cast<LRESULT>(pos) });
+                if (*pos == *delimiter) {
+                    lineInfo.positions.emplace_back(static_cast<LRESULT>(pos - data));
                     ++pos;
                     continue;
                 }
             }
             else {
-                // Multi-character delimiter search
-                size_t foundPos = lineContent.find(delimiter, pos);
-                if (foundPos != std::string_view::npos) {
-                    if (hasQuoteChar) {
-                        size_t nextQuote = lineContent.find(currentQuoteChar, pos);
-                        if (nextQuote != std::string_view::npos && nextQuote < foundPos) {
-                            pos = nextQuote;
-                            continue;
+                // Multi-character delimiter search using memcmp
+                while (pos + delimLen <= end) {
+                    if (memcmp(pos, delimiter, delimLen) == 0) {
+                        if (hasQuoteChar) {
+                            const char* nextQuote = std::find(pos, pos + delimLen, currentQuoteChar);
+                            if (nextQuote != pos + delimLen) {
+                                pos = nextQuote;
+                                break;
+                            }
                         }
+                        lineInfo.positions.emplace_back(static_cast<LRESULT>(pos - data));
+                        pos += delimLen;
+                        break;
                     }
-                    lineInfo.positions.push_back({ static_cast<LRESULT>(foundPos) });
-                    pos = foundPos + delimLen;
-                    continue;
+                    ++pos;
                 }
-                else {
+
+                if (pos + delimLen > end) {
                     break; // No more delimiters found
                 }
+                continue;
             }
         }
         ++pos;
     }
 
-    // Store line info in vector
-    if (line < static_cast<LRESULT>(lineDelimiterPositions.size()))
-        lineDelimiterPositions[line] = std::move(lineInfo);
-    else {
-        lineDelimiterPositions.resize(line + 1);
-        lineDelimiterPositions[line] = std::move(lineInfo);
+    // Ensure `lineDelimiterPositions` is large enough
+    if (static_cast<size_t>(line) >= lineDelimiterPositions.size()) {
+        lineDelimiterPositions.resize(static_cast<size_t>(line) + 1);
     }
+
+    lineDelimiterPositions[line] = std::move(lineInfo);
 }
+*/
+
+void MultiReplace::findDelimitersInLine(LRESULT line) {
+    // Ensure the line index is valid before accessing the vector
+    if (line < 0) {
+        return; // Avoid negative index issues
+    }
+
+    // Ensure the vector can hold the required index
+    if (static_cast<size_t>(line) >= lineDelimiterPositions.size()) {
+        lineDelimiterPositions.resize(static_cast<size_t>(line) + 1);
+    }
+
+    // Initialize line information
+    LineInfo lineInfo;
+    lineInfo.lineIndex = static_cast<size_t>(line);
+
+    // Get line length
+    LRESULT lineLength = send(SCI_LINELENGTH, line, 0);
+    lineInfo.lineLength = lineLength;
+
+    // Persistent buffer: grow only when needed
+    static size_t maxLineLength = 0;
+    if (static_cast<size_t>(lineLength) > maxLineLength) {
+        maxLineLength = static_cast<size_t>(lineLength);
+        lineBuffer.reserve(maxLineLength + 1);
+    }
+    lineBuffer.resize(lineLength + 1);
+
+    // Read line into buffer
+    send(SCI_GETLINE, line, reinterpret_cast<sptr_t>(lineBuffer.data()));
+    const char* data = lineBuffer.data();
+    const char* end = data + lineLength;
+
+    // Cache delimiter and quote character
+    size_t delimLen = columnDelimiterData.delimiterLength;
+    const char* delimiter = columnDelimiterData.extendedDelimiter.data();
+    bool hasQuoteChar = !columnDelimiterData.quoteChar.empty();
+    char currentQuoteChar = hasQuoteChar ? columnDelimiterData.quoteChar[0] : '\0';
+
+    // Efficient reserve strategy for delimiter positions
+    size_t reserveSize = std::max<size_t>(100, lineLength / 3);
+    if (lineInfo.positions.capacity() < reserveSize) {
+        lineInfo.positions.reserve(reserveSize);
+    }
+
+    bool inQuotes = false;
+    const char* pos = data;
+
+    while (pos < end) {
+        // Toggle quote status if a quote character is found
+        if (hasQuoteChar && *pos == currentQuoteChar) {
+            // Check if this is an escaped quote ("")
+            if (pos + 1 < end && *(pos + 1) == currentQuoteChar) {
+                // Skip the escaped quote
+                pos += 2;
+                continue;
+            }
+
+            // Toggle inQuotes state
+            inQuotes = !inQuotes;
+            ++pos;
+            continue;
+        }
+
+        // Process delimiter if outside quotes
+        if (!inQuotes) {
+            if (delimLen == 1) {
+                // Single-character delimiter check
+                if (*pos == *delimiter) {
+                    lineInfo.positions.emplace_back(static_cast<LRESULT>(pos - data));
+                    ++pos;
+                    continue;
+                }
+            }
+            else {
+                // Multi-character delimiter search using memcmp
+                while (pos + delimLen <= end) {
+                    if (memcmp(pos, delimiter, delimLen) == 0) {
+                        lineInfo.positions.emplace_back(static_cast<LRESULT>(pos - data));
+                        pos += delimLen;
+                        break;
+                    }
+                    ++pos;
+                }
+
+                if (pos + delimLen > end) {
+                    break; // No more delimiters found
+                }
+                continue;
+            }
+        }
+        ++pos;
+    }
+
+    // Ensure `lineDelimiterPositions` is large enough
+    if (static_cast<size_t>(line) >= lineDelimiterPositions.size()) {
+        lineDelimiterPositions.resize(static_cast<size_t>(line) + 1);
+    }
+
+    lineDelimiterPositions[line] = std::move(lineInfo);
+}
+
 
 ColumnInfo MultiReplace::getColumnInfo(LRESULT startPosition) {
     if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) != BST_CHECKED ||
@@ -6880,7 +7008,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     for (LRESULT line = 0; line < totalLines; ++line) {
         highlightColumnsInLine(line);
     }
-
+ 
     if (!lineDelimiterPositions.empty()) {
         LRESULT startPosition = send(SCI_GETCURRENTPOS, 0, 0);
         showStatusMessage(getLangStr(L"status_actual_position", { addLineAndColumnMessage(startPosition) }), COLOR_SUCCESS);
@@ -6899,19 +7027,26 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
         return;
     }
 
-    // Create a styles vector with a size equal to the line length
-    std::vector<char> styles(static_cast<size_t>(lineInfo.lineLength), 0);
+    // Ensure the persistent buffer is large enough and reuse it
+    if (stylesBuffer.size() < static_cast<size_t>(lineInfo.lineLength)) {
+        stylesBuffer.resize(static_cast<size_t>(lineInfo.lineLength));
+    }
+
+    // Pointer to the reusable buffer
+    char* stylesPtr = stylesBuffer.data();
+
+    // Reset buffer to clear previous colors
+    std::memset(stylesPtr, 0, lineInfo.lineLength);
 
     // If no delimiters are found and column 1 is defined, fill the entire line with column 1's style
     if (lineInfo.positions.empty() &&
         std::find(columnDelimiterData.columns.begin(), columnDelimiterData.columns.end(), 1) != columnDelimiterData.columns.end())
     {
-        // Mask the style value to fit into 8 bits
         char style = static_cast<char>(hColumnStyles[0 % hColumnStyles.size()] & 0xFF);
-        std::fill(styles.begin(), styles.end(), style);
+        std::fill_n(stylesPtr, lineInfo.lineLength, style);
     }
     else {
-        // For each defined column, calculate the start and end offsets within the line
+        // Iterate over each defined column to apply styles
         for (SIZE_T column : columnDelimiterData.columns) {
             if (column <= lineInfo.positions.size() + 1) {
                 LRESULT start = 0;
@@ -6932,9 +7067,9 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
                 }
 
                 // Apply the style if the range is valid
-                if (start < end && end <= static_cast<LRESULT>(styles.size())) {
+                if (start < end && end <= static_cast<LRESULT>(stylesBuffer.size())) {
                     char style = static_cast<char>(hColumnStyles[(column - 1) % hColumnStyles.size()] & 0xFF);
-                    std::fill(styles.begin() + start, styles.begin() + end, style);
+                    std::fill_n(stylesPtr + start, end - start, style);
                 }
             }
         }
@@ -6945,7 +7080,7 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
 
     // Apply the computed styles to the document via Scintilla's API
     send(SCI_STARTSTYLING, lineStartPos, 0);
-    send(SCI_SETSTYLINGEX, styles.size(), reinterpret_cast<sptr_t>(styles.data()));
+    send(SCI_SETSTYLINGEX, lineInfo.lineLength, reinterpret_cast<sptr_t>(stylesPtr));
 }
 
 void MultiReplace::handleClearColumnMarks() {

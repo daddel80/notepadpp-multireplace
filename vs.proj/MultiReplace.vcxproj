@@ -297,6 +297,7 @@ copy ..\languages.ini $(OutDir)languages.ini</Command>
       </StackCommitSize>
       <HeapReserveSize>
       </HeapReserveSize>
+      <Profile>true</Profile>
     </Link>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
@@ -308,6 +309,11 @@ copy ..\languages.ini $(OutDir)languages.ini</Command>
       <Command>
       </Command>
     </PreBuildEvent>
+    <CustomBuildStep>
+      <Outputs>
+      </Outputs>
+      <Command>echo $(ProjectDir)</Command>
+    </CustomBuildStep>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <ClCompile>
