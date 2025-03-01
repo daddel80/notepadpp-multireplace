@@ -4319,11 +4319,8 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
 {
     send(SCI_SETTARGETRANGE, pos, pos + length);
 
-    return pos + send(
-        SCI_REPLACETARGET,
-        replaceTextUtf8.size(),
-        reinterpret_cast<sptr_t>(replaceTextUtf8.c_str())
-    );
+    // Directly passing string reference instead of calling c_str()
+    return pos + send(SCI_REPLACETARGET, replaceTextUtf8.length(), reinterpret_cast<sptr_t>(replaceTextUtf8.data()));
 }
 
 Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
@@ -5360,38 +5357,26 @@ void MultiReplace::handleFindPrevButton() {
 
 SearchResult MultiReplace::performSingleSearch(const SearchContext& context, SelectionRange range)
 {
-    // Early exit if the search string is empty
     if (context.findTextUtf8.empty()) {
-        return {};  // Return default-initialized SearchResult
+        return {};
     }
 
-    // Set the target range and search flags via Scintilla
     send(SCI_SETTARGETRANGE, range.start, range.end);
-
-    // Perform the search using SCI_SEARCHINTARGET
-    Sci_Position pos = send(SCI_SEARCHINTARGET, context.findTextUtf8.size(), reinterpret_cast<sptr_t>(context.findTextUtf8.c_str()));
+    Sci_Position pos = send(SCI_SEARCHINTARGET, context.findTextUtf8.length(), reinterpret_cast<sptr_t>(context.findTextUtf8.data()));
     Sci_Position matchEnd = send(SCI_GETTARGETEND);
 
-    // Validate the search result using cached document length from context
     if (pos < 0 || matchEnd <= pos || matchEnd > context.docLength) {
-        return {};  // Return empty result if no match is found
+        return {};
     }
 
-    // Construct the search result
-    SearchResult result;
-    result.pos = pos;
-    result.length = matchEnd - pos;
+    SearchResult result{ pos, matchEnd - pos };
 
-    // Retrieve the found text only if needed (as per context)
     if (context.retrieveFoundText) {
-        constexpr size_t BUFFER_SIZE = MAX_TEXT_LENGTH * 4 + 1;  // Worst-case for UTF-8: 4 bytes per character
-        char buffer[BUFFER_SIZE] = { 0 };
-        LRESULT textLength = send(SCI_GETTARGETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
-        buffer[std::min(textLength, static_cast<LRESULT>(BUFFER_SIZE - 1))] = '\0';
-        result.foundText.assign(buffer);
+        char buffer[MAX_TEXT_LENGTH * 4 + 1] = { 0 };
+        send(SCI_GETTARGETTEXT, 0, reinterpret_cast<LPARAM>(buffer));
+        result.foundText = std::string(buffer);
     }
 
-    // Highlight the match if required by context
     if (context.highlightMatch) {
         displayResultCentered(pos, matchEnd, true);
     }
@@ -5489,68 +5474,33 @@ SearchResult MultiReplace::performSearchSelection(const SearchContext& context, 
     return result; // No match found
 }
 
-SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRESULT start, bool isBackward)
-{
+SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRESULT start, bool isBackward) {
     SearchResult result;
-    SelectionRange targetRange;
-
-    // Identify column start information based on the starting position
     ColumnInfo columnInfo = getColumnInfo(start);
-    LRESULT startLine = columnInfo.startLine;
+    LRESULT line = columnInfo.startLine;
     SIZE_T startColumnIndex = columnInfo.startColumnIndex;
-    LRESULT totalLines = columnInfo.totalLines;
+    LRESULT totalLines = static_cast<LRESULT>(lineDelimiterPositions.size());
 
-    // Set line iteration based on search direction
-    LRESULT line = startLine;
     while (isBackward ? (line >= 0) : (line < totalLines)) {
-        // Avoid out-of-bounds access in lineDelimiterPositions
-        if (line >= static_cast<LRESULT>(lineDelimiterPositions.size())) {
-            break;
-        }
-
-        // Retrieve local info for the line
         const auto& lineInfo = lineDelimiterPositions[line];
         const auto& linePositions = lineInfo.positions;
         SIZE_T totalColumns = linePositions.size() + 1;
 
-        // Calculate absolute line start and end
         LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, line, 0);
         LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
 
-        // Set column iteration range and step based on direction
-        SIZE_T column = isBackward ? (line == startLine ? startColumnIndex : totalColumns) : startColumnIndex;
+        SIZE_T column = isBackward ? (line == columnInfo.startLine ? startColumnIndex : totalColumns) : startColumnIndex;
         SIZE_T endColumnIdx = isBackward ? 1 : totalColumns;
         int columnStep = isBackward ? -1 : 1;
 
-        // Iterate over columns in the specified direction
         for (; (isBackward ? (column >= endColumnIdx) : (column <= endColumnIdx)); column += columnStep) {
-            LRESULT startColumn = 0;
-            LRESULT endColumn = 0;
+            LRESULT startColumn = (column == 1) ? lineStartPos : lineStartPos + lineInfo.positions[column - 2].offsetInLine + columnDelimiterData.delimiterLength;
+            LRESULT endColumn = (column == totalColumns) ? lineEndPos : lineStartPos + lineInfo.positions[column - 1].offsetInLine;
 
-            // Define absolute start of this column
-            if (column == 1) {
-                startColumn = lineStartPos;
-            }
-            else {
-                startColumn = lineStartPos
-                    + lineInfo.positions[column - 2].offsetInLine
-                    + columnDelimiterData.delimiterLength;
-            }
-
-            // Define absolute end of this column
-            if (column == totalColumns) {
-                endColumn = lineEndPos;
-            }
-            else {
-                endColumn = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
-            }
-
-            // Skip columns not specified in columnDelimiterData
             if (columnDelimiterData.columns.find(static_cast<int>(column)) == columnDelimiterData.columns.end()) {
                 continue;
             }
 
-            // Adjust the target range based on start position and search direction
             if (isBackward && start >= startColumn && start <= endColumn) {
                 endColumn = start;
             }
@@ -5558,27 +5508,19 @@ SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRE
                 startColumn = start;
             }
 
-            // Define target range for the search
-            targetRange.start = isBackward ? endColumn : startColumn;
-            targetRange.end = isBackward ? startColumn : endColumn;
+            SelectionRange targetRange{ isBackward ? endColumn : startColumn, isBackward ? startColumn : endColumn };
+            result = performSingleSearch(context, targetRange);
 
-            // Perform search within the target range
-            result = std::move(performSingleSearch(context, targetRange));
-
-            // Return immediately if a match is found
             if (result.pos >= 0) {
-                return result;
+                return result;  // Treffer gefunden
             }
         }
 
-        // Move to the next line based on search direction
         line += (isBackward ? -1 : 1);
-
-        // Reset column index for subsequent lines
         startColumnIndex = isBackward ? totalColumns : 1;
     }
 
-    return result; // No match found in column mode
+    return result;
 }
 
 SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context) {
