@@ -30,6 +30,7 @@
     <ClInclude Include="..\src\AboutDialog.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
+    <ClInclude Include="..\src\image_data.h" />
     <ClInclude Include="..\src\luaEmbedded.h" />
     <ClInclude Include="..\src\lua\lapi.h" />
     <ClInclude Include="..\src\lua\lauxlib.h" />

@@ -110,13 +110,13 @@ struct ControlInfo
 };
 
 struct SearchContext {
-    std::string findTextUtf8;  // Pre-converted search string (UTF-8)
-    int searchFlags;           // Search flags (e.g., SCFIND_MATCHCASE, SCFIND_WHOLEWORD, etc.)
-    LRESULT docLength;         // Cached document length
-    bool isColumnMode;         // Cached state: true if Column Mode is active
-    bool isSelectionMode;      // Cached state: true if Selection Mode is active
-    bool retrieveFoundText;    // If true, retrieve the found text from Scintilla
-    bool highlightMatch;       // If true, highlight the found match
+    std::string findTextUtf8 = "";  // Pre-converted search string (UTF-8)
+    int searchFlags = 0;            // Search flags (e.g., SCFIND_MATCHCASE, SCFIND_WHOLEWORD, etc.)
+    LRESULT docLength = 0;          // Cached document length
+    bool isColumnMode = false;      // Cached state: true if Column Mode is active
+    bool isSelectionMode = false;   // Cached state: true if Selection Mode is active
+    bool retrieveFoundText = false; // If true, retrieve the found text from Scintilla
+    bool highlightMatch = false;    // If true, highlight the found match
 };
 
 struct SearchResult {
