@@ -85,10 +85,48 @@ HWND MultiReplace::hDebugWnd = NULL;
 
 void MultiReplace::initializeWindowSize()
 {
-    // Loads the UI configuration, including window size and position
     loadUIConfigFromIni();
 
-    // Set the window position and size based on the loaded settings
+    HMONITOR hMonitor = MonitorFromRect(&windowRect, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO monitorInfo = { sizeof(monitorInfo) };
+
+    if (GetMonitorInfo(hMonitor, &monitorInfo))
+    {
+        int monitorLeft = monitorInfo.rcWork.left;
+        int monitorTop = monitorInfo.rcWork.top;
+        int monitorRight = monitorInfo.rcWork.right;
+        int monitorBottom = monitorInfo.rcWork.bottom;
+
+        int windowWidth = windowRect.right - windowRect.left;
+        int windowHeight = windowRect.bottom - windowRect.top;
+
+        const int visibilityMargin = 10;
+
+        bool isCompletelyOffScreen =
+            (windowRect.right <= monitorLeft || windowRect.left >= monitorRight ||
+                windowRect.bottom <= monitorTop || windowRect.top >= monitorBottom);
+
+        if (isCompletelyOffScreen)
+        {
+            windowRect.left = monitorLeft + visibilityMargin;
+            windowRect.top = monitorTop + visibilityMargin;
+        }
+        else
+        {
+            if (windowRect.left < monitorLeft + visibilityMargin)
+                windowRect.left = monitorLeft + visibilityMargin;
+            if (windowRect.top < monitorTop + visibilityMargin)
+                windowRect.top = monitorTop + visibilityMargin;
+            if (windowRect.left + windowWidth > monitorRight - visibilityMargin)
+                windowRect.left = monitorRight - windowWidth - visibilityMargin;
+            if (windowRect.top + windowHeight > monitorBottom - visibilityMargin)
+                windowRect.top = monitorBottom - windowHeight - visibilityMargin;
+        }
+
+        windowRect.right = windowRect.left + windowWidth;
+        windowRect.bottom = windowRect.top + windowHeight;
+    }
+
     SetWindowPos(
         _hSelf,
         NULL,
@@ -1493,20 +1531,6 @@ void MultiReplace::updateListViewAndColumns() {
 
 
     // Prepare the ResizableColWidths struct for dynamic width calculations
-    /*
-    ResizableColWidths widths = {
-        listView,
-        listCtrlInfo.cx,  // Width of the ListView control
-        findCountColumnWidth,
-        replaceCountColumnWidth,
-        findColumnWidth,
-        replaceColumnWidth,
-        commentsColumnWidth,
-        deleteButtonColumnWidth,
-        GetSystemMetrics(SM_CXVSCROLL)  // Width of the vertical scrollbar
-    };
-    */
-
     ResizableColWidths widths = {
         listView,
         listCtrlInfo.cx,
