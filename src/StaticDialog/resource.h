@@ -100,6 +100,9 @@
 #define IDC_VERSION_STATIC              5603
 #define IDC_LICENSE_STATIC              5604
 #define IDC_AUTHOR_STATIC               5605
+#define IDC_VERSION_LABEL               5606
+#define IDC_AUTHOR_LABEL                5607
+#define IDC_LICENSE_LABEL               5608
 
 #define IDM_UNDO                        5701
 #define IDM_REDO                        5702
