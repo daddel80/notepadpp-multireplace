@@ -64,7 +64,7 @@ LRESULT CALLBACK WebsiteLinkProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
         POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
         if (PtInRect(&rect, pt))
         {
-            ShellExecute(NULL, TEXT("open"), reinterpret_cast<const TCHAR*>(dwRefData), NULL, NULL, SW_SHOWNORMAL);
+            ShellExecute(NULL, TEXT("open"), TEXT("https://github.com/daddel80/notepadpp-multireplace/issues"), NULL, NULL, SW_SHOWNORMAL);
         }
         return TRUE;
     }
