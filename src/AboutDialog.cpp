@@ -82,7 +82,7 @@ LRESULT CALLBACK NameStaticProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
     static TCHAR oT[MAX_PATH] = { 0 };
     switch (uMsg)
     {
-    case WM_LBUTTONDBLCLK: 
+    case WM_LBUTTONDBLCLK:
     {
         if (GetKeyState(VK_CONTROL) & 0x8000)
         {

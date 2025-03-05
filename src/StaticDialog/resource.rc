@@ -33,12 +33,12 @@ BEGIN
 	DEFPUSHBUTTON   "OK", IDOK, 70, 110, 60, 20
 	LTEXT           "Version: 4.2.2.25", IDC_VERSION_STATIC, 20, 20, 200, 11
 	CONTROL         "Author:", IDC_AUTHOR_STATIC, "Static", SS_LEFT | WS_VISIBLE, 20, 40, 60, 11
-	CONTROL         "Thomas Knoefel", IDC_NAME_STATIC, "Static", SS_NOTIFY | WS_VISIBLE, 60, 40, 100, 11
+	CONTROL         "Thomas Knoefel", IDC_NAME_STATIC, "Static", SS_NOTIFY | WS_VISIBLE, 60, 40, 140, 11
 	LTEXT           "License: GPLv3", IDC_LICENSE_STATIC, 20, 60, 200, 11
 	CONTROL         "Help and Support", IDC_WEBSITE_LINK, "Static", SS_NOTIFY | WS_VISIBLE, 60, 85, 150, 11
 END
 
-IDR_MR_BMP BITMAP "resources\multireplace_light.bmp"
+//IDR_MR_BMP BITMAP "resources\multireplace_light.bmp"
 IDI_MR_ICON ICON "resources\multireplace_ico_black.ico"
 IDI_MR_DM_ICON ICON "resources\multireplace_ico_white.ico"
 
