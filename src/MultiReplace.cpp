@@ -17,10 +17,10 @@
 
 #include "PluginDefinition.h"
 #include "MultiReplacePanel.h"
+#include "image_data.h"
 #include <algorithm>
 #include <vector>
 #include <windows.h>
-#include "image_data.h"
 
 extern FuncItem funcItem[nbFunc];
 extern NppData nppData;
@@ -30,15 +30,9 @@ HINSTANCE g_inst;
 void CalculateIconSize(UINT dpi, int& iconWidth, int& iconHeight) {
     constexpr int refDpi = 96;  // Standard DPI
     constexpr int refSize = 16; // Icon size at 96 DPI
-
-    // Compute scale factor relative to 96 DPI
     float scaleFactor = static_cast<float>(dpi) / refDpi;
-
-    // Calculate scaled width and height with explicit casting
     iconWidth = static_cast<int>(std::round(refSize * scaleFactor));
     iconHeight = static_cast<int>(std::round(refSize * scaleFactor));
-
-    // Ensure a minimum icon size of 16x16
     iconWidth = (std::max)(16, iconWidth);
     iconHeight = (std::max)(16, iconHeight);
 }
@@ -47,17 +41,11 @@ void ScaleBitmapData(const uint8_t* src, int srcWidth, int srcHeight,
     std::vector<uint8_t>& dst, int dstWidth, int dstHeight) {
     for (int y = 0; y < dstHeight; ++y) {
         for (int x = 0; x < dstWidth; ++x) {
-            // Compute source coordinates (nearest-neighbor scaling)
             int srcX = static_cast<int>(std::round(static_cast<float>(x) / dstWidth * (srcWidth - 1)));
             int srcY = static_cast<int>(std::round(static_cast<float>(y) / dstHeight * (srcHeight - 1)));
-
-            // Ensure bounds
             srcX = (std::min)(srcX, srcWidth - 1);
             srcY = (std::min)(srcY, srcHeight - 1);
-
-            // Get pixel pointer (RGBA format)
             const uint8_t* pixel = &src[(srcY * srcWidth + srcX) * 4];
-
             int dstIndex = (y * dstWidth + x) * 4;
 
             // Swap Red & Blue channels
@@ -70,41 +58,27 @@ void ScaleBitmapData(const uint8_t* src, int srcWidth, int srcHeight,
 }
 
 HBITMAP CreateBitmapFromArray(UINT dpi) {
-    // Retrieve GIMP image data
     const uint8_t* imageData = gimp_image.pixel_data;
     int srcWidth = gimp_image.width;
     int srcHeight = gimp_image.height;
-
-    // Compute the scaled icon size
     int width, height;
     CalculateIconSize(dpi, width, height);
-
     size_t pixelCount = width * height;
     size_t expectedSize = pixelCount * 4;
-
-    // Create buffer for the scaled pixel data
     std::vector<uint8_t> resizedPixelData(expectedSize);
-
-    // Perform scaling using the extracted RGBA data
     ScaleBitmapData(imageData, srcWidth, srcHeight, resizedPixelData, width, height);
-
-    // Initialize bitmap structure
     BITMAPINFO bmi = {};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = width;
-    bmi.bmiHeader.biHeight = -height; // Negative height to avoid flipping
+    bmi.bmiHeader.biHeight = -height;
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
-
     void* pBits = nullptr;
     HDC hdc = GetDC(NULL);
     HBITMAP hBitmap = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
     ReleaseDC(NULL, hdc);
-
-    // Copy bitmap data
     memcpy(pBits, resizedPixelData.data(), expectedSize);
-
     return hBitmap;
 }
 
