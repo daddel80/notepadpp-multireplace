@@ -306,7 +306,8 @@ copy ..\help_use_variables.html $(OutDir)help_use_variables.html
 copy ..\languages.ini $(OutDir)languages.ini</Command>
     </PostBuildEvent>
     <PreBuildEvent>
-      <Command>echo $(TargetPath) &gt; C:\tmp\pfad.txt</Command>
+      <Command>
+      </Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">

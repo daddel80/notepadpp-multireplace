@@ -136,7 +136,7 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM /*l
         int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
         ReleaseDC(hwnd, hdc);
 
-        int baseSize = 15;
+        int baseSize = 13;
         int fontSize = -MulDiv(baseSize, dpi, 96);
 
         static HFONT hFont = CreateFont(fontSize, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,

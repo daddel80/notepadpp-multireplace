@@ -138,7 +138,6 @@
 
 #define IDI_MR_ICON 5801
 #define IDI_MR_DM_ICON 5802
-#define IDR_MR_BMP 5803
 
 // Default window position and dimensions
 #define POS_X 92
