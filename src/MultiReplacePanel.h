@@ -776,6 +776,7 @@ private:
     std::vector<WCHAR> createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
     int getCharacterWidth(int elementID, const wchar_t* character);
     int getFontHeight(HWND hwnd, HFONT hFont);
+    std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput) const;

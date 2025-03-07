@@ -269,7 +269,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_FIRST_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_first_match_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_FIRST_CHECKBOX] = { sx(16), sy(151), sx(112), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_first_match_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(151), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, NULL };
     ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(176), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(173), sy(104), WC_BUTTON, getLangStrLPCWSTR(L"panel_search_mode"), BS_GROUPBOX, NULL };
@@ -4232,7 +4233,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     context.docLength = send(SCI_GETLENGTH, 0, 0);
     context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
     context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
-    context.retrieveFoundText = itemData.useVariables;;
+    context.retrieveFoundText = itemData.useVariables;
     context.highlightMatch = false;
 
     send(SCI_SETSEARCHFLAGS, context.searchFlags);
@@ -4240,6 +4241,22 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     SearchResult searchResult = performSearchForward(context, 0);
 
     bool isReplaceFirstEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED);
+
+    std::vector<int> selectedMatches;
+
+    // Only process the match selection if the option is enabled
+    if (isReplaceFirstEnabled) {
+        selectedMatches = parseNumberRanges(
+            getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT),
+            getLangStr(L"status_invalid_match_selection")
+        );
+
+        // If the Edit field is empty, default to replacing only the first match
+        if (selectedMatches.empty()) {
+            selectedMatches.push_back(1);
+        }
+    }
+
     int previousLineIndex = -1;
     int lineFindCount = 0;
 
@@ -4307,30 +4324,34 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         }
 
         Sci_Position newPos;
-        if (!skipReplace) {
-            if (itemData.regex) {
-                newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+
+        // ** Check if the current match should be replaced **
+        if (!isReplaceFirstEnabled || std::find(selectedMatches.begin(), selectedMatches.end(), findCount) != selectedMatches.end())
+        {
+            if (!skipReplace) {
+                if (itemData.regex) {
+                    newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+                }
+                else {
+                    newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+                }
+                replaceCount++;
+
+                if (itemIndex != SIZE_MAX) { // check if used in List
+                    updateCountColumns(itemIndex, -1, replaceCount);
+                }
+
+                context.docLength = send(SCI_GETLENGTH, 0, 0);
             }
             else {
-                newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+                newPos = searchResult.pos + searchResult.length;
+                // Clear selection
+                send(SCI_SETSELECTIONSTART, newPos, 0);
+                send(SCI_SETSELECTIONEND, newPos, 0);
             }
-            replaceCount++;
-
-            if (itemIndex != SIZE_MAX) { // check if used in List
-                updateCountColumns(itemIndex, -1, replaceCount);
-            }
-
-            context.docLength = send(SCI_GETLENGTH, 0, 0);
         }
         else {
-            newPos = searchResult.pos + searchResult.length;
-            // Clear selection
-            send(SCI_SETSELECTIONSTART, newPos, 0);
-            send(SCI_SETSELECTIONEND, newPos, 0);
-        }
-
-        if (isReplaceFirstEnabled) {
-            break;  // Exit the loop after the first successful replacement
+            newPos = searchResult.pos + searchResult.length; // Move to next match without replacing
         }
 
         searchResult = performSearchForward(context, newPos);
@@ -6598,66 +6619,26 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     std::string extendedDelimiter = convertAndExtend(delimiterData, true);
     std::string quoteCharConverted = wstringToString(quoteCharString);
 
-    // **Check for changes BEFORE modifying existing values**
+    // Check for changes BEFORE modifying existing values
     bool delimiterChanged = (columnDelimiterData.extendedDelimiter != extendedDelimiter);
     bool quoteCharChanged = (columnDelimiterData.quoteChar != quoteCharConverted);
-
-    // **Process column data before clearing old values**
-    std::set<int> parsedColumns;
-    std::vector<int> parsedInputColumns;
 
     // Trim leading and trailing commas from column data
     columnDataString.erase(0, columnDataString.find_first_not_of(L','));
     columnDataString.erase(columnDataString.find_last_not_of(L',') + 1);
 
+    // Ensure that columnDataString and delimiter are not empty
     if (columnDataString.empty() || delimiterData.empty()) {
         showStatusMessage(getLangStr(L"status_missing_column_or_delimiter_data"), COLOR_ERROR);
         return false;
     }
 
-    // Lambda function to process a token (either a single column or a range like "1-3")
-    auto processToken = [&](const std::wstring& token) -> bool {
-        if (token.empty()) return true; // Ignore empty tokens
-        try {
-            size_t dashPos = token.find(L'-');
-            if (dashPos != std::wstring::npos) { // Token represents a range (e.g., "1-3")
-                int startRange = std::stoi(token.substr(0, dashPos));
-                int endRange = std::stoi(token.substr(dashPos + 1));
-                if (startRange < 1 || endRange < startRange) {
-                    showStatusMessage(getLangStr(L"status_invalid_range_in_column_data"), COLOR_ERROR);
-                    return false;
-                }
-                for (int i = startRange; i <= endRange; ++i) {
-                    if (parsedColumns.insert(i).second) {
-                        parsedInputColumns.push_back(i);
-                    }
-                }
-            }
-            else { // Token represents a single column (e.g., "5")
-                int col = std::stoi(token);
-                if (col < 1) {
-                    showStatusMessage(getLangStr(L"status_invalid_column_number"), COLOR_ERROR);
-                    return false;
-                }
-                if (parsedColumns.insert(col).second) {
-                    parsedInputColumns.push_back(col);
-                }
-            }
-        }
-        catch (const std::exception&) {
-            showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), COLOR_ERROR);
-            return false;
-        }
-        return true;
-        };
+    // Use parseNumberRanges() to process column data
+    std::vector<int> parsedColumns = parseNumberRanges(columnDataString, getLangStr(L"status_invalid_range_in_column_data"));
+    if (parsedColumns.empty()) return false; // Abort if parsing failed
 
-    // Tokenize columnDataString using a stream and process each token
-    std::wistringstream iss(columnDataString);
-    std::wstring token;
-    while (std::getline(iss, token, L',')) {
-        if (!processToken(token))
-            return false;
-    }
+    // Convert parsedColumns to set for uniqueness
+    std::set<int> uniqueColumns(parsedColumns.begin(), parsedColumns.end());
 
     // Validate delimiter
     if (extendedDelimiter.empty()) {
@@ -6672,16 +6653,16 @@ bool MultiReplace::parseColumnAndDelimiterData() {
         return false;
     }
 
-    // **Check if columns have changed BEFORE updating stored data**
-    bool columnChanged = (columnDelimiterData.columns != parsedColumns);
+    // Check if columns have changed BEFORE updating stored data
+    bool columnChanged = (columnDelimiterData.columns != uniqueColumns);
 
     // Update columnDelimiterData values
     columnDelimiterData.delimiterChanged = delimiterChanged;
     columnDelimiterData.quoteCharChanged = quoteCharChanged;
     columnDelimiterData.columnChanged = columnChanged;
 
-    columnDelimiterData.inputColumns = std::move(parsedInputColumns);
-    columnDelimiterData.columns = std::move(parsedColumns);
+    columnDelimiterData.inputColumns = std::move(parsedColumns);
+    columnDelimiterData.columns = std::move(uniqueColumns);
     columnDelimiterData.extendedDelimiter = std::move(extendedDelimiter);
     columnDelimiterData.delimiterLength = columnDelimiterData.extendedDelimiter.length();
     columnDelimiterData.quoteChar = std::move(quoteCharConverted);
@@ -7919,6 +7900,70 @@ int MultiReplace::getFontHeight(HWND hwnd, HFONT hFont) {
     ReleaseDC(hwnd, hdc);  // Release the device context
     return fontHeight;  // Return the font height
 }
+
+std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage)
+{
+    std::vector<int> result;
+    if (input.empty()) return result; // Return empty vector if input is empty
+
+    std::set<int> uniqueNumbers;
+    std::wistringstream stream(input);
+    std::wstring token;
+
+    // Lambda function to process each token (either a single number or a range "1-5")
+    auto processToken = [&](const std::wstring& token) -> bool
+        {
+            if (token.empty()) return true; // Ignore empty tokens
+
+            try
+            {
+                size_t dashPos = token.find(L'-');
+                if (dashPos != std::wstring::npos)
+                {
+                    // Extract range start and end
+                    int startRange = std::stoi(token.substr(0, dashPos));
+                    int endRange = std::stoi(token.substr(dashPos + 1));
+
+                    // Validate range
+                    if (startRange < 1 || endRange < startRange)
+                        return false;
+
+                    // Insert numbers in the range
+                    for (int i = startRange; i <= endRange; ++i)
+                        uniqueNumbers.insert(i);
+                }
+                else
+                {
+                    // Single number
+                    int number = std::stoi(token);
+                    if (number < 1)
+                        return false; // Invalid input
+
+                    uniqueNumbers.insert(number);
+                }
+            }
+            catch (const std::exception&)
+            {
+                return false; // Invalid input format
+            }
+
+            return true;
+        };
+
+    // Split input by comma and process each token
+    while (std::getline(stream, token, L','))
+    {
+        if (!processToken(token))
+        {
+            showStatusMessage(errorMessage, COLOR_ERROR);
+            return {}; // Invalid input -> return empty vector
+        }
+    }
+
+    result.assign(uniqueNumbers.begin(), uniqueNumbers.end());
+    return result;
+}
+
 
 #pragma endregion
 

@@ -68,7 +68,8 @@
 #define IDC_USE_VARIABLES_CHECKBOX      5202
 #define IDC_USE_VARIABLES_HELP          5203
 #define IDC_REPLACE_FIRST_CHECKBOX      5204
-#define IDC_WRAP_AROUND_CHECKBOX        5205
+#define IDC_REPLACE_HIT_EDIT            5205
+#define IDC_WRAP_AROUND_CHECKBOX        5206
 
 #define IDC_SEARCH_MODE_GROUP           5300
 #define IDC_NORMAL_RADIO                5301
