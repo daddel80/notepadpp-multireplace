@@ -59,7 +59,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 
 **Use Variables:** This feature allows the use of variables within the replacement string for dynamic and conditional replacements. For more detailed information, refer to the [Option 'Use Variables' chapter](#option-use-variables).
 
-**Replace First Match Only:** For Replace-All operations, this option replaces only the first occurrence of a match for each entry in a Search and Replace list, instead of all matches in the text. This is useful when using different replace strings with the same find pattern. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
+**Replace at Match(s):** For Replace-All operations, this option allows specifying which occurrences of a match should be replaced in a Search and Replace list, enabling precise control over targeted changes. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
 
 **Wrap Around:** When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
 
@@ -74,6 +74,7 @@ Scope functions define the range for searching and replacing strings:
     -   `Quote`: Delineate areas where characters are not recognized as delimiters.
 
 ### CSV Column Operations
+CSV-related operations extend the functionality of scope-based processing, providing additional features for structured data handling:
 - **Sorting Lines by Columns**: Ascend or descend, combining columns in any prioritized order.  
 - **Sorting Behavior**: CSV column sorting treats numeric and text values equally, ensuring correct order in mixed data.
 - **Toggle Sort**: Allows users to return columns to their initial unsorted state with just an extra click on the sorting button. This feature is effective even after rows are modified, deleted, or added.
