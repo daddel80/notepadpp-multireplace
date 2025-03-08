@@ -269,9 +269,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_FIRST_CHECKBOX] = { sx(16), sy(151), sx(112), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_first_match_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(151), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, NULL };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(176), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(112), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(176), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,  getLangStrLPCWSTR(L"tooltip_replace_at_matches") };
 
     ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(173), sy(104), WC_BUTTON, getLangStrLPCWSTR(L"panel_search_mode"), BS_GROUPBOX, NULL };
     ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(162), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
@@ -3924,6 +3924,7 @@ void MultiReplace::handleReplaceAllButton() {
     updateFilePathCache();
 
     int totalReplaceCount = 0;
+    bool replaceSuccess = true;
 
     if (useListEnabled)
     {
@@ -3947,7 +3948,7 @@ void MultiReplace::handleReplaceAllButton() {
                 int replaceCount = 0;
 
                 // Call replaceAll and break out if there is an error or a Debug Stop
-                bool success = replaceAll(replaceListData[i], findCount, replaceCount, i);
+                replaceSuccess = replaceAll(replaceListData[i], findCount, replaceCount, i);
 
                 // Refresh ListView to show updated statistics
                 refreshUIListView();
@@ -3955,7 +3956,7 @@ void MultiReplace::handleReplaceAllButton() {
                 // Accumulate total replacements
                 totalReplaceCount += replaceCount;
 
-                if (!success) {
+                if (!replaceSuccess) {
                     break;  // Exit loop on error or Debug Stop
                 }
             }
@@ -3975,7 +3976,7 @@ void MultiReplace::handleReplaceAllButton() {
 
         send(SCI_BEGINUNDOACTION, 0, 0);
         int findCount = 0;
-        replaceAll(itemData, findCount, totalReplaceCount);
+        replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount);
         send(SCI_ENDUNDOACTION, 0, 0);
 
         // Add the entered text to the combo box history
@@ -3983,7 +3984,9 @@ void MultiReplace::handleReplaceAllButton() {
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
     }
     // Display status message
-    showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), COLOR_SUCCESS);
+    if (replaceSuccess) {
+        showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), COLOR_SUCCESS);
+    }
 
     // Disable selection radio and switch to "All Text" if it was Replaced an none selection left or it will be trapped
     SelectionInfo selection = getSelectionInfo(false);
@@ -4240,22 +4243,24 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     SearchResult searchResult = performSearchForward(context, 0);
 
-    bool isReplaceFirstEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED);
+    bool isReplaceAtMatchesEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED);
 
     std::vector<int> selectedMatches;
 
     // Only process the match selection if the option is enabled
-    if (isReplaceFirstEnabled) {
-        selectedMatches = parseNumberRanges(
-            getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT),
-            getLangStr(L"status_invalid_match_selection")
-        );
+    if (isReplaceAtMatchesEnabled) {
+        std::wstring matchSelection = getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT);
 
-        // If the Edit field is empty, default to replacing only the first match
-        if (selectedMatches.empty()) {
-            selectedMatches.push_back(1);
+        if (matchSelection.empty()) {
+            showStatusMessage(getLangStr(L"status_missing_match_selection"), COLOR_ERROR);
+            return false;
         }
+
+        selectedMatches = parseNumberRanges(matchSelection, getLangStr(L"status_invalid_range_in_match_data"));
+
+        if (selectedMatches.empty()) return false;
     }
+
 
     int previousLineIndex = -1;
     int lineFindCount = 0;
@@ -4325,8 +4330,8 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
         Sci_Position newPos;
 
-        // ** Check if the current match should be replaced **
-        if (!isReplaceFirstEnabled || std::find(selectedMatches.begin(), selectedMatches.end(), findCount) != selectedMatches.end())
+        // Check if the current match should be replaced
+        if (!isReplaceAtMatchesEnabled || std::find(selectedMatches.begin(), selectedMatches.end(), findCount) != selectedMatches.end())
         {
             if (!skipReplace) {
                 if (itemData.regex) {
@@ -8737,7 +8742,8 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int matchCase = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int extended = IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED ? 1 : 0;
     int regex = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0;
-    int replaceFirst = IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED ? 1 : 0;
+    int replaceAtMatches = IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED ? 1 : 0;
+    std::wstring editAtMatchesText = L"\"" + getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT) + L"\"";
     int wrapAround = IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int useVariables = IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int ButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
@@ -8748,7 +8754,8 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"MatchCase=" + std::to_wstring(matchCase) + L"\n");
     outFile << wstringToString(L"Extended=" + std::to_wstring(extended) + L"\n");
     outFile << wstringToString(L"Regex=" + std::to_wstring(regex) + L"\n");
-    outFile << wstringToString(L"ReplaceFirst=" + std::to_wstring(replaceFirst) + L"\n");
+    outFile << wstringToString(L"ReplaceAtMatches=" + std::to_wstring(replaceAtMatches) + L"\n");
+    outFile << wstringToString(L"EditAtMatches=" + editAtMatchesText + L"\n");
     outFile << wstringToString(L"WrapAround=" + std::to_wstring(wrapAround) + L"\n");
     outFile << wstringToString(L"UseVariables=" + std::to_wstring(useVariables) + L"\n");
     outFile << wstringToString(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
@@ -8884,8 +8891,11 @@ void MultiReplace::loadSettingsFromIni() {
     bool wrapAround = readBoolFromIniCache(L"Options", L"WrapAround", false);
     SendMessage(GetDlgItem(_hSelf, IDC_WRAP_AROUND_CHECKBOX), BM_SETCHECK, wrapAround ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    bool replaceFirst = readBoolFromIniCache(L"Options", L"ReplaceFirst", false);
-    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_FIRST_CHECKBOX), BM_SETCHECK, replaceFirst ? BST_CHECKED : BST_UNCHECKED, 0);
+    bool replaceAtMatches = readBoolFromIniCache(L"Options", L"ReplaceAtMatches", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX), BM_SETCHECK, replaceAtMatches ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    std::wstring editAtMatchesText = readStringFromIniCache(L"Options", L"EditAtMatches", L"1");
+    setTextInDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT, editAtMatchesText);
 
     bool replaceButtonsMode = readBoolFromIniCache(L"Options", L"ButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
