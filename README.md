@@ -73,6 +73,8 @@ Scope functions define the range for searching and replacing strings:
     -   `Delim`: Define the delimiter character.
     -   `Quote`: Delineate areas where characters are not recognized as delimiters.
 
+<br>
+
 ### CSV Column Operations
 CSV-related operations extend the functionality of scope-based processing, providing additional features for structured data handling:
 - **Sorting Lines by Columns**: Ascend or descend, combining columns in any prioritized order.  
