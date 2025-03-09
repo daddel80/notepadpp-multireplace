@@ -11,9 +11,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 - [Key Features](#key-features)
 - [Match and Replace Options](#match-and-replace-options)
 - [Scope Functions](#scope-functions)
-- [CSV Processing Functions](#csv-processing-functions)
-  - [Sorting, Deleting, and Copying](#sorting-deleting-and-copying)
-  - [Numeric Sorting in CSV](#numeric-sorting-in-csv)
+- [CSV Column Operations](#csv-column-operations)
 - [Option 'Use Variables'](#option-use-variables)
   - [Quick Start: Use Variables](#quick-start-use-variables)  
   - [Variables Overview](#variables-overview)
@@ -61,7 +59,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 
 **Use Variables:** This feature allows the use of variables within the replacement string for dynamic and conditional replacements. For more detailed information, refer to the [Option 'Use Variables' chapter](#option-use-variables).
 
-**Replace First Match Only:** For Replace-All operations, this option replaces only the first occurrence of a match for each entry in a Search and Replace list, instead of all matches in the text. This is useful when using different replace strings with the same find pattern. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
+**Replace at Match(s):** For Replace-All operations, this option allows specifying which occurrences of a match should be replaced in a Search and Replace list, enabling precise control over targeted changes. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
 
 **Wrap Around:** When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
 
@@ -75,24 +73,16 @@ Scope functions define the range for searching and replacing strings:
     -   `Delim`: Define the delimiter character.
     -   `Quote`: Delineate areas where characters are not recognized as delimiters.
 
-### CSV Processing Functions
+<br>
 
-#### Sorting, Deleting, and Copying
-- **Sorting Lines in CSV by Columns**: Ascend or descend, combining columns in any prioritized order.
+### CSV Column Operations
+CSV-related operations extend the functionality of scope-based processing, providing additional features for structured data handling:
+- **Sorting Lines by Columns**: Ascend or descend, combining columns in any prioritized order.  
+- **Sorting Behavior**: CSV column sorting treats numeric and text values equally, ensuring correct order in mixed data.
 - **Toggle Sort**: Allows users to return columns to their initial unsorted state with just an extra click on the sorting button. This feature is effective even after rows are modified, deleted, or added.
 - **Exclude Header Lines from Sorting**: When sorting CSV files with the CSV scope selected, you can exclude a specified number of top lines (usually header rows) from sorting. Configure this behavior using the `HeaderLines` parameter in the INI file. For details, see the [`INI File Settings`](#configuration-settings).
 - **Deleting Multiple Columns**: Remove multiple columns at once, cleaning obsolete delimiters.
 - **Clipboard Column Copying**: Copy columns with original delimiters to clipboard.
-
-#### Numeric Sorting in CSV
-For accurate numeric sorting in CSV files, the following settings and regex patterns can be used:
-
-| Purpose                                   | Find Pattern        | Replace With   | Regex | Use Variables |
-|-------------------------------------------|---------------------|----------------|-------|---------------|
-| Align Numbers with Leading Zeros (Decimal)     | `\b(\d*)\.(\d{2})`  | `set(string.rep("0",9-string.len(string.format("%.2f", CAP1)))..string.format("%.2f", CAP1))` | Yes   | Yes           |
-| Align Numbers with Leading Zeros (Non-decimal) | `\b(\d+)`           | `set(string.rep("0",9-string.len(CAP1))..CAP1)` | Yes   | Yes           |
-| Remove Leading Zeros (Decimal)                 | `\b0+(\d*\.\d+)`    | `$1`           | Yes   | No            |
-| Remove Leading Zeros (Non-decimal)             | `\b0+(\d*)`         | `$1`           | Yes   | No            |
 
 <br>
 
