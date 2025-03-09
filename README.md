@@ -287,8 +287,7 @@ Formats numbers based on precision (maxDecimals) and whether the number of decim
 <br>
 
 ### **Preloading Variables**
-MultiReplace allows **preloading variables from external files** before any replacements occur.  
-To achieve this, an **empty "Find" field** can be used to trigger initialization **once**, before the replacement process starts.
+MultiReplace supports **predefining or loading variables** before any replacements occur. By separating initialization from the actual replacements, operations stay clean and maintainable.
 
 #### 🔹 **How it works:**
 - **Place `vars()` or `lvars()` next to an empty Find field.**
@@ -302,8 +301,6 @@ To achieve this, an **empty "Find" field** can be used to trigger initialization
 | *(empty)*   | `vars({prefix = "ID_"})`                                    | Sets `prefix = "ID_"` before replacements. |
 | *(empty)*   | `lvars([[C:\path\to\myVars.vars]])`                         | Loads external variables from a file. |
 | `(\d+)`     | `set(prefix .. CAP1)`                                       | Uses `prefix` from initialization (e.g., `123` → `ID_123`). |
-
-✅ **Advantage:** Keeps initialization separate from replacements and ensures clean variable handling.
 
 
 ### Operators 
