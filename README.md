@@ -193,10 +193,10 @@ The parameter **filePath** must specify a valid path to a file. Supported path f
 - Forward Slashes: `"C:/path/to/file.vars"`
 - Long Bracket String: `[[C:\path\to\file.vars]]`
 
-**Example File:**
+** File:**
 ```lua
 -- Local variables remain private
-local PATH = [[C:\Data\Projects\Example\]]
+local PATH = [[C:\Data\Projects\\]]
 
 -- Only the returned variables are accessible in Replace operations
 return {
@@ -294,7 +294,7 @@ MultiReplace supports **predefining or loading variables** before any replacemen
 - This entry does **not** search for matches but runs before replacements begin.
 - It ensures that **variables are loaded once**, regardless of their position in the list.
 
-#### 🔹 **Example: Loading Variables from a File**  
+**Examples**  
 
 | **Find**    | **Replace**                                                 | **Description** |
 |--------------|------------------------------------------------------------|----------------|
