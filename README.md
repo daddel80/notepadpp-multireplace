@@ -302,6 +302,7 @@ MultiReplace supports **predefining or loading variables** before any replacemen
 | *(empty)*   | `lvars([[C:\path\to\myVars.vars]])`                         | Loads external variables from a file. |
 | `(\d+)`     | `set(prefix .. CAP1)`                                       | Uses `prefix` from initialization (e.g., `123` → `ID_123`). |
 
+<br>
 
 ### Operators 
 | Type        | Operators                     |
