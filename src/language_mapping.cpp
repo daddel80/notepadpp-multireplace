@@ -65,13 +65,13 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"header_replace_count", L"Replace Count" },
 { L"header_find", L"Find" },
 { L"header_replace", L"Replace" },
+{ L"header_comments", L"Comments" },
+{ L"header_delete_button", L"Delete Entry" },
 { L"header_whole_word", L"W" },
 { L"header_match_case", L"C" },
 { L"header_use_variables", L"V" },
 { L"header_extended", L"E" },
 { L"header_regex", L"R" },
-{ L"header_comments", L"Comments" },
-{ L"header_delete_button", L"Delete Entry" },
 
 // tooltip entries
 { L"tooltip_header_whole_word", L"Whole Word" },
