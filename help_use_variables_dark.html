@@ -340,6 +340,7 @@
     <a href="#lvarsfilepath" class="sub-item">lvars()</a>
     <a href="#lkpkey-hpath-inner" class="sub-item">lkp()</a>
     <a href="#fmtnnum-maxdecimals-fixeddecimals" class="sub-item">fmtN()</a>
+    <a href="#preloading-variables">Preloading Variables</a>
     <a href="#Operators">Operators</a>
     <a href="#IfThenLogic">If-Then Logic</a>
     <a href="#DebugOption">Debug Option</a>
@@ -370,24 +371,26 @@
                     <strong>Option 1:</strong> <a href="#setstrorcalc"><code>set(...)</code></a> – Directly replaces with a value or calculation.
                 </p>
                 <ul>
-                    <li><strong>Example:</strong></li>
-                    <ul>
-                        <li><strong>Find:</strong> <code>(\d+)</code></li>
-                        <li><strong>Replace:</strong> <code>set(CAP1 * 2)</code></li>
-                        <li><strong>Result:</strong> Doubles numbers (e.g., <code>50</code> → <code>100</code>).</li>
-                    </ul>
-                    <em>(Enable "Regular Expression" in 'Search Mode' to use <code>(\d+)</code> as a capture group.)</em>
+                    <li><strong>Example:</strong>
+                         <ul>
+                             <li><strong>Find:</strong> <code>(\d+)</code></li>
+                             <li><strong>Replace:</strong> <code>set(CAP1 * 2)</code></li>
+                             <li><strong>Result:</strong> Doubles numbers (e.g., <code>50</code> → <code>100</code>).</li>
+                         </ul>
+                         <em>(Enable "Regular Expression" in 'Search Mode' to use <code>(\d+)</code> as a capture group.)</em>
+                    </li>
                 </ul>
                 <p>
                     <strong>Option 2:</strong> <a href="#condcondition-trueval-falseval"><code>cond(...)</code></a> – Conditional replacement.
                 </p>
                 <ul>
-                    <li><strong>Example:</strong></li>
-                    <ul>
-                        <li><strong>Find:</strong> <code>word</code></li>
-                        <li><strong>Replace:</strong> <code>cond(CNT==1, "FirstWord")</code></li>
-                        <li><strong>Result:</strong> Changes only the <strong>first</strong> occurrence of "word" to "FirstWord".</li>
-                    </ul>
+                    <li><strong>Example:</strong>
+                         <ul>
+                             <li><strong>Find:</strong> <code>word</code></li>
+                             <li><strong>Replace:</strong> <code>cond(CNT==1, "FirstWord")</code></li>
+                             <li><strong>Result:</strong> Changes only the <strong>first</strong> occurrence of "word" to "FirstWord".</li>
+                         </ul>
+                    </li>
                 </ul>
             </li>
             <li>
@@ -508,104 +511,61 @@
             </tr>
             <tr>
                 <td><code>anymatch</code></td>
-                <td><code>cond(APOS<50, "Early in document", "Later in document")</code></td>
+                <td><code>cond(APOS&lt;50, "Early in document", "Later in document")</code></td>
                 <td>No</td>
                 <td>If the absolute position <code>APOS</code> is under 50 → <code>"Early in document"</code>, otherwise → <code>"Later in document"</code>.</td>
             </tr>
         </table>
 
 
-        <!-- vars({Variable1=Value1, Variable2=Value2, ...}) -->
-        <h3 id="varsvariable1value1-variable2value2-">vars({Variable1=Value1, Variable2=Value2, ...})</h3>
-        <p><strong>Note:</strong> This command was previously named <code>init(...)</code> and has been renamed to <code>vars(...)</code>. For compatibility, <code>init(...)</code> still works.</p>
-        <p>
-        Initializes custom variables for use in various commands, extending beyond standard variables like <code>CNT</code>, <code>MATCH</code>, <code>CAP1</code>. These variables can carry the status of previous find-and-replace operations to subsequent ones.
-        </p>
-        <p>
-        Custom variables maintain their values throughout a single Replace-All or within a list of multiple Replace operations, allowing them to transfer values from one list entry to the next. They reset at the start of each new document in <em>'Replace All in All Open Documents'</em>.
-        </p>
-        <table class="optionsTable">
-            <tr>
-                <th>Find</th>
-                <th>Replace</th>
-                <th>Before</th>
-                <th>After</th>
-                <th>Regex</th>
-                <th>Scope CSV</th>
-                <th>Description</th>
-            </tr>
-            <tr>
-                <td><code>(\d+)</code></td>
-                <td>
-                    <code>vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);<br>
-                    if COL==2 then COL2=CAP1 end;<br>
-                    if COL==4 then COL4=CAP1 end;</code>
-                </td>
-                <td>1,20,text,2,0<br>2,30,text,3,0<br>3,40,text,4,0</td>
-                <td>1,20,text,2,22.0<br>2,30,text,3,33.0<br>3,40,text,4,44.0</td>
-                <td>Yes</td>
-                <td>Yes</td>
-                <td>Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line.</td>
-            </tr>
-            <tr>
-                <td><code>\d{2}-[A-Z]{3}</code></td>
-                <td>
-                    <code>vars({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;</code>
-                </td>
-                <td>12-POV,00-PLC<br>65-SUB,00-PLC<br>43-VOL,00-PLC</td>
-                <td>Moved,12-POV<br>Moved,65-SUB<br>Moved,43-VOL</td>
-                <td>Yes</td>
-                <td>No</td>
-                <td>Uses MATCH_PREV to track the value of the first match in the line and shift it to the 2nd (LCNT) match.</td>
-            </tr>
-        </table>
-        
-        <p>
-        An empty Find string (<code>*(empty)*</code>) can be used to set variables for the entire Find and Replace list without tying it to a specific Find action. This entry does not match any text but is executed once at the beginning of the 'Replace' or 'Replace All' process when "Use List" is enabled, allowing the Replace field to run initialization commands like <code>vars()</code> for the entire operation. The position of this entry in the list does not affect its behavior.
-        </p>
-        
-        <table class="optionsTable">
-            <tr>
-                <th>Find</th>
-                <th>Replace</th>
-                <th>Description/Expected Output</th>
-            </tr>
-            <tr>
-                <td>*(empty)*</td>
-                <td>
-        <code>vars({<br>
-            VpersonName = FNAME:sub(1, (FNAME:find(" - ", 1, true) or 0) - 1),<br>
-            Vdepartment = FNAME:sub((FNAME:find(" - ", 1, true) or #FNAME + 1) + 3, (FNAME:find(".", 1, true) or 0) - 1)
-        })</code>
-                </td>
-                <td>Extracts <code>VpersonName</code> and <code>Vdepartment</code> from the filename of the active document in the format <code>&lt;Name&gt; - &lt;Department&gt;.xml</code> using the <code>vars</code> action. Triggered only once at the start of the replace process when <code>Find</code> is empty.</td>
-            </tr>
-            <tr>
-                <td><code>personname</code></td>
-                <td><code>set(VpersonName)</code></td>
-                <td>Replaces <code>personname</code> with the content of the variable <code>VpersonName</code>, previously initialized by the <code>vars</code> action.</td>
-            </tr>
-            <tr>
-                <td><code>department</code></td>
-                <td><code>set(Vdepartment)</code></td>
-                <td>Replaces <code>department</code> with the content of the variable <code>Vdepartment</code>, previously initialized by the <code>vars</code> action.</td>
-            </tr>
-        </table>
-
-
-        <!-- lvars(filePath) -->
-        <h3 id="lvarsfilepath">lvars(filePath)</h3>
-        <p>
-        Loads custom variables from an external file. The file specifies variable names and their corresponding values. The loaded variables can then be used throughout the Replace process, similar to how variables defined with <a href="#varsvariable1value1-variable2value2-"><code>vars</code></a> work.
-        </p>
-        <p>The parameter <strong>filePath</strong> must specify a valid path to a file. Supported path formats include:</p>
-        <ul>
-            <li>Long Bracket String: <code>[[C:\path\to\file.vars]]</code></li>
-            <li>Forward Slashes: <code>"C:/path/to/file.vars"</code></li>
-            <li>Escaped Backslashes: <code>"C:\\path\\to\\file.vars"</code></li>
-        </ul>
-
-        <p><strong>Example File:</strong></p>
+         <!-- vars({Variable1=Value1, Variable2=Value2, ...}) -->
+         <h3 id="varsvariable1value1-variable2value2-">vars({Variable1=Value1, Variable2=Value2, ...})</h3>
+         <p><strong>Note:</strong> This command was previously named <code>init(...)</code> and has been renamed to <code>vars(...)</code>. For compatibility, <code>init(...)</code> still works.</p>
+         <p>
+         Initializes custom variables for use in various commands, extending beyond standard variables like <code>CNT</code>, <code>MATCH</code>, <code>CAP1</code>. These variables can carry the status of previous find-and-replace operations to subsequent ones.
+         </p>
+         <p>
+         Custom variables maintain their values throughout a single Replace-All or within a list of multiple Replace operations, allowing them to transfer values from one list entry to the next. They reset at the start of each new document in <em>'Replace All in All Open Documents'</em>.
+         </p>
+         <p><strong>Tip:</strong> To learn how to preload variables using an empty Find field before the main replacement process starts, see <a href="#preloading-variables">Preloading Variables</a>.</p>
+         
+         <table class="optionsTable">
+             <tr>
+                 <th>Find</th>
+                 <th>Replace</th>
+                 <th>Before</th>
+                 <th>After</th>
+                 <th>Regex</th>
+                 <th>Scope CSV</th>
+                 <th>Description</th>
+             </tr>
+             <tr>
+                 <td><code>(\d+)</code></td>
+                 <td>
+                     <code>vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);<br>
+                     if COL==2 then COL2=CAP1 end;<br>
+                     if COL==4 then COL4=CAP1 end;</code>
+                 </td>
+                 <td>1,20,text,2,0<br>2,30,text,3,0<br>3,40,text,4,0</td>
+                 <td>1,20,text,2,22.0<br>2,30,text,3,33.0<br>3,40,text,4,44.0</td>
+                 <td>Yes</td>
+                 <td>Yes</td>
+                 <td>Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line.</td>
+             </tr>
+         </table>
+         
+         <!-- lvars(filePath) -->
+         <h3 id="lvarsfilepath">lvars(filePath)</h3>
+         <p>
+         Loads custom variables from an external file. The file specifies variable names and their corresponding values. The loaded variables can then be used throughout the Replace process, similar to how variables defined with <a href="#varsvariable1value1-variable2value2-"><code>vars</code></a> work.
+         </p>
+         <p>The parameter <strong>filePath</strong> must specify a valid path to a file. Supported path formats include:</p>
+         <ul>
+             <li>Long Bracket String: &nbsp;&nbsp;&nbsp;<code>[[C:\path\to\file.vars]]</code></li>
+             <li>Forward Slashes: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code>"C:/path/to/file.vars"</code></li>
+             <li>Escaped Backslashes: &nbsp;<code>"C:\\path\\to\\file.vars"</code></li>
+         </ul>
+         <p><strong>Example File:</strong></p>
 <pre><code>-- Local variables remain private
 local PATH = [[C:\Data\Projects\Example\]]
 
@@ -617,60 +577,64 @@ return {
     fullPath = PATH .. "dataFile.lkp" -- Combine a local variable with a string
 }
 </code></pre>
-
-        <table class="optionsTable">
-            <tr>
-                <th>Find</th>
-                <th>Replace</th>
-                <th>Regex</th>
-                <th>Scope CSV</th>
-                <th>Description</th>
-            </tr>
-            <tr>
-                <td>*(empty)*</td>
-                <td><code>lvars([[C:/tmp/myVars.vars]])</code></td>
-                <td>No</td>
-                <td>No</td>
-                <td>Loads variables such as <code>userName = "Alice"</code> and <code>threshold = 10</code> from <code>myVars.vars</code>.</td>
-            </tr>
-            <tr>
-                <td><code>Hello</code></td>
-                <td><code>set(userName)</code></td>
-                <td>No</td>
-                <td>No</td>
-                <td>Replaces <code>Hello</code> with the value of the variable <code>userName</code>, e.g., "Alice".</td>
-            </tr>
-            <tr>
-                <td><code>(\d+)</code></td>
-                <td><code>cond(threshold &gt; 5, "Above", "Below")</code></td>
-                <td>Yes</td>
-                <td>No</td>
-                <td>Replaces the match based on the condition evaluated using the variable <code>threshold</code>.</td>
-            </tr>
-        </table>
-
-        <p>
-        An empty Find string (<code>*(empty)*</code>) initializes variables globally at the start of the 'Replace' or 'Replace All' process when "Use List" is enabled. This initialization runs only once and is independent of specific matches or its position in the list. Alternatively, variables can be loaded conditionally by combining <code>lvars</code> or <code>vars</code> with a Find string, triggering the variable assignment only when the specified string is matched.
-        </p>
-
-        <!-- lkp(key, hpath, inner) -->
-        <h3 id="lkpkey-hpath-inner">lkp(key, hpath, inner)</h3>
-        <p>
-        Performs an external lookup of <strong>key</strong> against an indexed data file located at <strong>hpath</strong> and returns the corresponding value. By default, if the <strong>key</strong> is not found, <code>lkp()</code> reverts to the key itself. Setting <strong>inner</strong> to <code>true</code> instead yields a <code>nil</code> result when the key is missing, allowing for conditional checks or deeper nested logic.
-        </p>
-        <h4>Key and File Path</h4>
-        <ul>
-            <li><strong>Key</strong>: The key can be either a string or a number. Numbers are automatically converted to strings for compatibility.</li>
-            <li><strong>File Path (hpath)</strong>: The hpath must point to a valid <code>.lkp</code> file that returns a table of data.
-              <br><em>Supported Path Formats</em>:
-                <ul>
-                    <li>Long Bracket String: <code>[[C:\path\to\file.lkp]]</code></li>
-                    <li>Forward Slashes: <code>"C:/path/to/file.lkp"</code></li>
-                    <li>Escaped Backslashes: <code>"C:\\path\\to\\file.lkp"</code></li>
-                </ul>
-            </li>
-        </ul>
-
+         <p><strong>Tip:</strong> To learn how to preload variables using an empty Find field before the main replacement process starts, see <a href="#preloading-variables">Preloading Variables</a>.</p>
+         
+         <table class="optionsTable">
+             <tr>
+                 <th>Find</th>
+                 <th>Replace</th>
+                 <th>Regex</th>
+                 <th>Scope CSV</th>
+                 <th>Description</th>
+             </tr>
+             <tr>
+                 <td>(empty)</td>
+                 <td><code>lvars([[C:/tmp/myVars.vars]])</code></td>
+                 <td>No</td>
+                 <td>No</td>
+                 <td>Loads variables such as <code>userName = "Alice"</code> and <code>threshold = 10</code> from <code>myVars.vars</code>.</td>
+             </tr>
+             <tr>
+                 <td><code>Hello</code></td>
+                 <td><code>set(userName)</code></td>
+                 <td>No</td>
+                 <td>No</td>
+                 <td>Replaces <code>Hello</code> with the value of the variable <code>userName</code>, e.g., "Alice".</td>
+             </tr>
+             <tr>
+                 <td><code>(\d+)</code></td>
+                 <td><code>cond(threshold &gt; 5, "Above", "Below")</code></td>
+                 <td>Yes</td>
+                 <td>No</td>
+                 <td>Replaces the match based on the condition evaluated using the variable <code>threshold</code>.</td>
+             </tr>
+         </table>
+         <p>
+         <strong>Key Points:</strong>
+         <ul>
+             <li><strong>Conditional Loading:</strong> Variables can be loaded conditionally by placing <code>lvars(filePath)</code> alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.</li>
+             <li><strong>Local vs. Returned Variables:</strong> Only variables explicitly included in the return table of the <code>.vars</code> file are available for use. Any local variables remain private to the file.</li>
+         </ul>
+         </p>
+         
+         <!-- lkp(key, hpath, inner) -->
+         <h3 id="lkpkey-hpath-inner">lkp(key, hpath, inner)</h3>
+         <p>
+         Performs an external lookup of <strong>key</strong> against an indexed data file located at <strong>hpath</strong> and returns the corresponding value. By default, if the <strong>key</strong> is not found, <code>lkp()</code> reverts to the key itself. Setting <strong>inner</strong> to <code>true</code> instead yields a <code>nil</code> result when the key is missing, allowing for conditional checks or deeper nested logic.
+         </p>
+         <h4>Key and File Path</h4>
+         <ul>
+             <li><strong>Key</strong>: The key can be either a string or a number. Numbers are automatically converted to strings for compatibility.</li>
+             <li><strong>File Path (hpath)</strong>: The hpath must point to a valid <code>.lkp</code> file that returns a table of data.
+               <br><em>Supported Path Formats</em>:
+                 <ul>
+                     <li>Long Bracket String: &nbsp;&nbsp;&nbsp;<code>[[C:\path\to\file.vars]]</code></li>
+                     <li>Forward Slashes: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code>"C:/path/to/file.vars"</code></li>
+                     <li>Escaped Backslashes: &nbsp;<code>"C:\\path\\to\\file.vars"</code></li>
+                 </ul>
+             </li>
+         </ul>
+        
         <h4>Data File Format</h4>
         <p>Each lkp file must be defined as a table of entries in the form <code>{ [keys], value }</code>, where <code>[keys]</code> can be:</p>
         <ul>
@@ -691,18 +655,18 @@ return {
             <li><code>'003'</code> directly maps to <code>"Three"</code>.</li>
         </ul>
         </p>
-
+        
         <h4>Caching Mechanism</h4>
         <p>
         Once <code>lkp()</code> loads the data file for <em>hpath</em>, the parsed table is cached in memory for the duration of the Replace-All operation.
         </p>
-
+        
         <h4>inner Flag</h4>
         <ul>
             <li><strong>false</strong> (default, can be omitted): If the key is not found, <code>lkp()</code> returns the <strong>search term itself</strong> (e.g., <code>MATCH</code>, <code>CAP1</code>), instead of a mapped value.</li>
             <li><strong>true</strong>: If the key is not found, <code>lkp()</code> returns <code>nil</code>, allowing conditional handling.</li>
         </ul>
-
+        
         <h4>Examples</h4>
         <table class="optionsTable">
             <tr>
@@ -741,7 +705,7 @@ return {
                 <td>Looks up values in the third column (<code>COL==3</code>) using a separate lookup file (<code>col3_hash.lkp</code>) if a match is found.</td>
             </tr>
         </table>
-
+        
         <h3 id="fmtnnum-maxdecimals-fixeddecimals">fmtN(num, maxDecimals, fixedDecimals)</h3>
         <p>
         Formats numbers based on precision (<em>maxDecimals</em>) and whether the number of decimals is fixed (<em>fixedDecimals</em> being <code>true</code> or <code>false</code>).
@@ -767,6 +731,42 @@ return {
             <tr>
                 <td><code>set(fmtN(5.0, 4, false))</code></td>
                 <td>"5"</td>
+            </tr>
+        </table>
+    </section>
+
+    <section id="preloading-variables">
+        <h2>Preloading Variables</h2>
+        <p>MultiReplace supports <strong>predefining or loading variables</strong> before any replacements occur. By separating initialization from the actual replacements, operations stay clean and maintainable.</p>
+        
+        <h3>🔹 How it works:</h3>
+        <ul>
+            <li>Place <code>vars()</code> or <code>lvars()</code> next to an empty Find field.</li>
+            <li>This entry does <strong>not</strong> search for matches but runs before replacements begin.</li>
+            <li>It ensures that <strong>variables are loaded once</strong>, regardless of their position in the list.</li>
+        </ul>
+        
+        <h3>Examples</h3>
+        <table class="optionsTable">
+            <tr>
+                <th>Find</th>
+                <th>Replace</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>(empty)</td>
+                <td><code>vars({prefix = "ID_"})</code></td>
+                <td>Sets <code>prefix = "ID_"</code> before replacements.</td>
+            </tr>
+            <tr>
+                <td>(empty)</td>
+                <td><code>lvars([[C:/path/to/myVars.vars]])</code></td>
+                <td>Loads external variables from a file.</td>
+            </tr>
+            <tr>
+                <td><code>(\d+)</code></td>
+                <td><code>set(prefix .. CAP1)</code></td>
+                <td>Uses <code>prefix</code> from initialization (e.g., <code>123</code> → <code>ID_123</code>).</td>
             </tr>
         </table>
     </section>
