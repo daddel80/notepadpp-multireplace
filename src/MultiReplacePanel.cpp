@@ -1917,9 +1917,6 @@ void MultiReplace::clearList() {
     // Reset listFilePath to an empty string
     listFilePath.clear();
 
-    // Show a status message to indicate the list was cleared
-    showStatusMessage(getLangStr(L"status_list_cleared"), COLOR_SUCCESS);
-
     // Call showListFilePath to update the UI with the cleared file path
     showListFilePath();
 
@@ -3744,6 +3741,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_NEW_LIST_BUTTON:
         {
             clearList();
+            showStatusMessage(getLangStr(L"status_new_list_created"), COLOR_SUCCESS);
             return TRUE;
         }
 
@@ -8105,7 +8103,6 @@ std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, cons
     result.assign(uniqueNumbers.begin(), uniqueNumbers.end());
     return result;
 }
-
 
 #pragma endregion
 

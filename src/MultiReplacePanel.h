@@ -413,8 +413,8 @@ public:
     enum class ReplaceMode { Normal, Extended, Regex };
 
     struct LogEntry {
-        ChangeType changeType;
-        Sci_Position lineNumber;
+        ChangeType changeType = ChangeType::Modify;
+        Sci_Position lineNumber = 0;
         Sci_Position blockSize = 1;
     };
 
