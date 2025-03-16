@@ -6526,7 +6526,7 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
     }
 }
 
-void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, ChangeType changeType) {
+void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType) {
     if (!isSortedColumn || lineNumber > originalLineOrder.size()) {
         return; // Invalid line number, return early
     }
@@ -6535,27 +6535,60 @@ void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, ChangeType changeTy
     case ChangeType::Insert: {
         // Find the current maximum value in originalLineOrder and add one for the new line placeholder
         size_t maxIndex = originalLineOrder.empty() ? 0 : (*std::max_element(originalLineOrder.begin(), originalLineOrder.end())) + 1;
-        // Insert maxIndex for the new line at the specified position in originalLineOrder
-        originalLineOrder.insert(originalLineOrder.begin() + lineNumber, maxIndex);
+
+        //Insert multiple placeholders instead of just one
+        std::vector<size_t> newIndices;
+        newIndices.reserve(blockCount);
+
+        for (SIZE_T i = 0; i < blockCount; ++i) {
+            newIndices.push_back(maxIndex + i); 
+        }
+
+        // Insert them at the specified position
+        originalLineOrder.insert(
+            originalLineOrder.begin() + lineNumber,
+            newIndices.begin(),
+            newIndices.end()
+        );
         break;
     }
 
     case ChangeType::Delete: {
         // Ensure lineNumber is within the range before attempting to delete
+        SIZE_T endPos = lineNumber + blockCount;
+        if (endPos > originalLineOrder.size()) {
+            endPos = originalLineOrder.size();
+        }
+
         if (lineNumber < originalLineOrder.size()) { // Safety check
-            // Element at lineNumber represents the actual index to be deleted
-            size_t actualIndexToDelete = originalLineOrder[lineNumber];
-            // Directly remove the index at lineNumber
-            originalLineOrder.erase(originalLineOrder.begin() + lineNumber);
+            // Collect the removed indices 
+            std::vector<size_t> removed(
+                originalLineOrder.begin() + lineNumber,
+                originalLineOrder.begin() + endPos
+            );
+
+            // Directly remove that range
+            originalLineOrder.erase(
+                originalLineOrder.begin() + lineNumber,
+                originalLineOrder.begin() + endPos
+            );
+
             // Adjust subsequent indices to reflect the deletion
-            for (size_t i = 0; i < originalLineOrder.size(); ++i) {
-                if (originalLineOrder[i] > actualIndexToDelete) {
-                    --originalLineOrder[i];
+            if (!removed.empty()) {
+                size_t maxRemoved = *std::max_element(removed.begin(), removed.end());
+                for (size_t i = 0; i < originalLineOrder.size(); ++i) {
+                    if (originalLineOrder[i] > maxRemoved) {
+                        originalLineOrder[i] -= (maxRemoved - lineNumber + 1);
+                    }
                 }
             }
         }
         break;
     }
+    case ChangeType::Modify:
+    default:
+        // Do nothing for Modify
+        break;
     }
 }
 
@@ -6598,7 +6631,6 @@ int MultiReplace::compareColumnValue(const ColumnValue& left, const ColumnValue&
     // If both are strings, compare text values
     return left.text.compare(right.text);
 }
-
 
 #pragma endregion
 
@@ -7000,8 +7032,7 @@ std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
     return lineAndColumnMessage;
 }
 
-void MultiReplace::processLogForDelimiters()
-{
+void MultiReplace::processLogForDelimiters() {
     // Check if logChanges is accessible
     if (!textModified || logChanges.empty()) {
         return;
@@ -7013,63 +7044,147 @@ void MultiReplace::processLogForDelimiters()
     for (auto& logEntry : logChanges) {
         switch (logEntry.changeType) {
         case ChangeType::Insert:
-            for (auto& modifyLogEntry : modifyLogEntries) {
-                // Check if the last entry in modifyLogEntries is one less than logEntry.lineNumber
-                if (&modifyLogEntry == &modifyLogEntries.back() && modifyLogEntry.lineNumber == logEntry.lineNumber - 1) {
-                    // Do nothing for the last entry if it is one less than logEntry.lineNumber as it has been produced by the Insert itself and should stay
-                    continue;
-                }
-                if (modifyLogEntry.lineNumber >= logEntry.lineNumber - 1) {
-                    ++modifyLogEntry.lineNumber;
-                }
-            }
-            updateDelimitersInDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Insert);
-            updateUnsortedDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Insert);
-            // this->messageBoxContent += "Line " + std::to_string(static_cast<int>(logEntry.lineNumber)) + " inserted.\n";
-            // Add Insert entry as a Modify entry in modifyLogEntries
-            logEntry.changeType = ChangeType::Modify;  // Convert Insert to Modify
-            modifyLogEntries.push_back(logEntry);
-            break;
-        case ChangeType::Delete:
-            for (auto& modifyLogEntry : modifyLogEntries) {
-                if (modifyLogEntry.lineNumber > logEntry.lineNumber) {
-                    --modifyLogEntry.lineNumber;
-                }
-                else if (modifyLogEntry.lineNumber == logEntry.lineNumber) {
-                    modifyLogEntry.lineNumber = -1;  // Mark for deletion
+        {
+            Sci_Position insertPos = logEntry.lineNumber;
+            Sci_Position blockCount = logEntry.blockSize;
+
+            // Shift existing modifies if needed
+            for (auto& m : modifyLogEntries) {
+                if (m.lineNumber >= insertPos) {
+                    m.lineNumber += blockCount;
                 }
             }
-            updateDelimitersInDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Delete);
-            updateUnsortedDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Delete);
-            // this->messageBoxContent += "Line " + std::to_string(static_cast<int>(logEntry.lineNumber)) + " deleted.\n";
-            break;
-        case ChangeType::Modify:
+
+            // Insert new lines
+            updateDelimitersInDocument(
+                static_cast<SIZE_T>(insertPos),
+                static_cast<SIZE_T>(blockCount),
+                ChangeType::Insert
+            );
+
+            // Immediately parse them so they're recognized
+            updateDelimitersInDocument(
+                static_cast<SIZE_T>(insertPos),
+                static_cast<SIZE_T>(blockCount),
+                ChangeType::Modify
+            );
+
+            updateUnsortedDocument(
+                static_cast<SIZE_T>(insertPos),
+                static_cast<SIZE_T>(blockCount),
+                ChangeType::Insert
+            );
+
+            // Optionally highlight all new lines
+            if (isColumnHighlighted) {
+                LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
+                for (Sci_Position offset = 0; offset < blockCount; ++offset) {
+                    Sci_Position lineToHighlight = insertPos + offset;
+                    if (lineToHighlight >= 0
+                        && static_cast<size_t>(lineToHighlight) < lineDelimiterPositions.size()
+                        && lineToHighlight < docLineCount)
+                    {
+                        highlightColumnsInLine(lineToHighlight);
+                    }
+                }
+            }
+
+            // Convert Insert to Modify for the final pass
+            logEntry.changeType = ChangeType::Modify;
             modifyLogEntries.push_back(logEntry);
             break;
+        }
+
+        case ChangeType::Delete: 
+        {
+            Sci_Position deletePos = logEntry.lineNumber;
+            Sci_Position blockCount = logEntry.blockSize;
+
+            // remove modifies in [deletePos..deletePos+blockCount)
+            for (auto& m : modifyLogEntries) {
+                if (m.lineNumber >= deletePos && m.lineNumber < (deletePos + blockCount)) {
+                    m.lineNumber = -1; // Mark for removal
+                }
+                else if (m.lineNumber >= (deletePos + blockCount)) {
+                    m.lineNumber -= blockCount;
+                }
+            }
+
+            updateDelimitersInDocument(
+                static_cast<SIZE_T>(deletePos),
+                static_cast<SIZE_T>(blockCount),
+                ChangeType::Delete
+            );
+
+            updateUnsortedDocument(
+                static_cast<SIZE_T>(deletePos),
+                static_cast<SIZE_T>(blockCount),
+                ChangeType::Delete
+            );
+
+            // Re-parse lines after deletePos to keep everything in sync
+            if (deletePos < (Sci_Position)lineDelimiterPositions.size()) {
+                Sci_Position linesToReparse = (Sci_Position)lineDelimiterPositions.size() - deletePos;
+                updateDelimitersInDocument(
+                    static_cast<SIZE_T>(deletePos),
+                    static_cast<SIZE_T>(linesToReparse),
+                    ChangeType::Modify
+                );
+            }
+            break;
+        }
+
+        case ChangeType::Modify: 
+        {
+            modifyLogEntries.push_back(logEntry);
+            break;
+        }
+
         default:
             break;
         }
     }
 
+    // Apply the saved "Modify" entries
+    for (const auto& m : modifyLogEntries)
+    {
+        if (m.lineNumber == -1) {
+            continue; // skip removed lines
+        }
 
-    // Apply the saved "Modify" entries to the original delimiter list
-    for (const auto& modifyLogEntry : modifyLogEntries) {
-        if (modifyLogEntry.lineNumber != -1) {
-            updateDelimitersInDocument(static_cast<int>(modifyLogEntry.lineNumber), ChangeType::Modify);
+        if (static_cast<size_t>(m.lineNumber) < lineDelimiterPositions.size()) {
+            updateDelimitersInDocument(
+                static_cast<size_t>(m.lineNumber),
+                1,
+                ChangeType::Modify
+            );
+
             if (isColumnHighlighted) {
-                //clearMarksInLine(modifyLogEntry.lineNumber);
-                highlightColumnsInLine(modifyLogEntry.lineNumber);
+                LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
+                if (m.lineNumber >= 0
+                    && m.lineNumber < docLineCount
+                    && static_cast<size_t>(m.lineNumber) < lineDelimiterPositions.size())
+                {
+                    highlightColumnsInLine(m.lineNumber);
+                }
             }
-            //this->messageBoxContent += "Line " + std::to_string(static_cast<int>(modifyLogEntry.lineNumber)) + " modified.\n";
         }
     }
 
-    // Workaround: Highlight last lines to fix N++ bug causing loss of styling on last character when modification in any other line
+    // Workaround: Highlight last lines to fix N++ bug causing loss of styling 
     if (isColumnHighlighted) {
         size_t lastLine = lineDelimiterPositions.size();
+        LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
+
         if (lastLine >= 2) {
-            highlightColumnsInLine(lastLine - 2);
-            highlightColumnsInLine(lastLine - 1);
+            size_t highlightLine1 = lastLine - 2;
+            if (highlightLine1 < (size_t)docLineCount) {
+                highlightColumnsInLine((LRESULT)highlightLine1);
+            }
+            size_t highlightLine2 = lastLine - 1;
+            if (highlightLine2 < (size_t)docLineCount) {
+                highlightColumnsInLine((LRESULT)highlightLine2);
+            }
         }
     }
 
@@ -7078,8 +7193,7 @@ void MultiReplace::processLogForDelimiters()
     textModified = false;
 }
 
-void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType) {
-
+void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType) {
     // Return early if the line number is invalid
     if (lineNumber > lineDelimiterPositions.size()) {
         return;
@@ -7088,17 +7202,27 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
     switch (changeType) {
     case ChangeType::Insert:
     {
-        // Insert an empty line with no delimiters
-        LineInfo newLine;
-        newLine.lineIndex = lineNumber;
-        newLine.lineLength = 0; // New line has no content initially
-        newLine.positions.clear();
+        // Insert multiple empty lines instead of just one
+        std::vector<LineInfo> newLines;
+        newLines.reserve(blockCount);
 
-        // Add the new line at the specified position
-        lineDelimiterPositions.insert(lineDelimiterPositions.begin() + lineNumber, newLine);
+        for (SIZE_T i = 0; i < blockCount; ++i) {
+            LineInfo newLine;
+            newLine.lineIndex = lineNumber;
+            newLine.lineLength = 0; // New line has no content initially
+            newLine.positions.clear();
+            newLines.push_back(newLine);
+        }
+
+        // Add them all at the specified position
+        lineDelimiterPositions.insert(
+            lineDelimiterPositions.begin() + lineNumber,
+            newLines.begin(),
+            newLines.end()
+        );
 
         // Update the indices of all subsequent lines
-        for (SIZE_T i = lineNumber + 1; i < lineDelimiterPositions.size(); ++i) {
+        for (SIZE_T i = lineNumber; i < lineDelimiterPositions.size(); ++i) {
             lineDelimiterPositions[i].lineIndex = i;
         }
     }
@@ -7106,9 +7230,17 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
 
     case ChangeType::Delete:
     {
-        // Remove the specified line if it exists
+        // Remove the specified number of lines if they exist
+        SIZE_T endPos = lineNumber + blockCount;
+        if (endPos > lineDelimiterPositions.size()) {
+            endPos = lineDelimiterPositions.size();
+        }
+
         if (lineNumber < lineDelimiterPositions.size()) {
-            lineDelimiterPositions.erase(lineDelimiterPositions.begin() + lineNumber);
+            lineDelimiterPositions.erase(
+                lineDelimiterPositions.begin() + lineNumber,
+                lineDelimiterPositions.begin() + endPos
+            );
 
             // Update the indices of all subsequent lines
             for (SIZE_T i = lineNumber; i < lineDelimiterPositions.size(); ++i) {
@@ -7120,9 +7252,14 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
 
     case ChangeType::Modify:
     {
-        // Reanalyze the line to update delimiters if it exists
-        if (lineNumber < lineDelimiterPositions.size()) {
-            findDelimitersInLine(lineNumber);
+        // Reanalyze multiple lines if they exist
+        SIZE_T endPos = lineNumber + blockCount;
+        if (endPos > lineDelimiterPositions.size()) {
+            endPos = lineDelimiterPositions.size();
+        }
+
+        for (SIZE_T i = lineNumber; i < endPos; ++i) {
+            findDelimitersInLine(i);
         }
     }
     break;
@@ -9345,9 +9482,13 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
         if (addedLines != 0) {
             // Set the first entry as Modify
             logChanges.push_back({ ChangeType::Modify, lineNumber });
-            for (Sci_Position i = 1; i <= abs(addedLines); i++) {
-                logChanges.push_back({ ChangeType::Insert, lineNumber + i });
-            }
+
+            // Instead of pushing multiple Insert entries in a loop, just push one block
+            LogEntry insertEntry;
+            insertEntry.changeType = ChangeType::Insert;
+            insertEntry.lineNumber = lineNumber;
+            insertEntry.blockSize  = static_cast<Sci_Position>(std::abs(addedLines));
+            logChanges.push_back(insertEntry);
         }
         else {
             // Check if the last entry is a Modify on the same line
@@ -9363,12 +9504,15 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
                 logChanges.push_back({ ChangeType::Delete, 0 });
                 return;
             }
-            // Then, log the deletes in descending order
-            for (Sci_Position i = abs(addedLines); i > 0; i--) {
-                logChanges.push_back({ ChangeType::Delete, lineNumber + i });
-            }
+            // Then, log the deletes in one block
+            LogEntry deleteEntry;
             // Set the first entry as Modify for the smallest lineNumber
             logChanges.push_back({ ChangeType::Modify, lineNumber });
+
+            deleteEntry.changeType = ChangeType::Delete;
+            deleteEntry.lineNumber = lineNumber;
+            deleteEntry.blockSize  = static_cast<Sci_Position>(std::abs(addedLines));
+            logChanges.push_back(deleteEntry);
         }
         else {
             // Check if the last entry is a Modify on the same line
@@ -9478,7 +9622,6 @@ void MultiReplace::onThemeChanged()
         instance->initializeColumnStyles();
     }
 }
-
 
 #pragma endregion
 

@@ -415,6 +415,7 @@ public:
     struct LogEntry {
         ChangeType changeType;
         Sci_Position lineNumber;
+        Sci_Position blockSize = 1;
     };
 
     static std::vector<LogEntry> logChanges;
@@ -734,7 +735,7 @@ private:
     void extractLineContent(size_t idx, std::string& content, const std::string& lineBreak);
     void UpdateSortButtonSymbols();
     void handleSortStateAndSort(SortDirection direction);
-    void updateUnsortedDocument(SIZE_T lineNumber, ChangeType changeType);
+    void updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType);
     void detectNumericColumns(std::vector<CombinedColumns>& data);
     int compareColumnValue(const ColumnValue& left, const ColumnValue& right);
 
@@ -750,7 +751,7 @@ private:
     void highlightColumnsInLine(LRESULT line);
     void handleClearColumnMarks();
     std::wstring addLineAndColumnMessage(LRESULT pos);
-    void updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType);
+    void updateDelimitersInDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType);
     void processLogForDelimiters();
     void handleDelimiterPositions(DelimiterOperation operation);
     void handleClearDelimiterState();
