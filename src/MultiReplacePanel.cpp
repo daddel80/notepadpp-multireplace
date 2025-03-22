@@ -16,6 +16,7 @@
 
 #define NOMINMAX
 #define USE_LUA_BYTECODE
+#define WM_UPDATE_FOCUS (WM_APP + 2)
 
 #include "MultiReplacePanel.h"
 #include "Notepad_plus_msgs.h"
@@ -176,7 +177,7 @@ void MultiReplace::initializeFontStyles() {
     }
 
     // Specific controls using normal fonts
-    for (int controlId : { IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_STATUS_MESSAGE, IDC_PATH_DISPLAY }) {
+    for (int controlId : { IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_STATUS_MESSAGE, IDC_PATH_DISPLAY, IDC_STATS_DISPLAY }) {
         SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hNormalFont1, TRUE);
     }
     for (int controlId : { IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON }) {
@@ -330,6 +331,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16), sx(96), sy(16), WC_STATIC, getLangStrLPCWSTR(L"panel_move_lines"), SS_LEFT, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227), listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
     ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5), listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
+    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, sy(225) + listHeight + sy(5), 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
     ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY, sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 }
 
@@ -475,7 +477,8 @@ void MultiReplace::moveAndResizeControls() {
         IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON,
         IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
         IDC_USE_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-        IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, IDC_PATH_DISPLAY
+        IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, 
+        IDC_PATH_DISPLAY, IDC_STATS_DISPLAY
     };
 
     std::unordered_map<int, HWND> hwndMap;  // Store HWNDs to avoid multiple calls to GetDlgItem
@@ -1675,6 +1678,9 @@ void MultiReplace::shiftListItem(const Direction& direction) {
 
     // Show status message when rows are successfully shifted
     showStatusMessage(getLangStr(L"status_rows_shifted", { std::to_wstring(selectedIndices.size()) }), COLOR_SUCCESS);
+
+    // Show Statistics
+    showListFilePath();
 }
 
 void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
@@ -2284,6 +2290,7 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
 
     case WM_NOTIFY: {
         NMHDR* pnmhdr = reinterpret_cast<NMHDR*>(lParam);
+        // Check notifications from header
         if (pnmhdr->hwndFrom == ListView_GetHeader(hwnd)) {
             int code = static_cast<int>(static_cast<short>(pnmhdr->code));
 
@@ -2406,6 +2413,12 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
             return 0;
         }
         break;
+    }
+
+    case WM_UPDATE_FOCUS:
+    {
+        pThis->showListFilePath();
+        return 0;
     }
 
     default:
@@ -2588,9 +2601,11 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
     switch (action) {
     case ItemAction::Undo:
         undo();
+        showListFilePath();
         break;
     case ItemAction::Redo:
         redo();
+        showListFilePath();
         break;
     case ItemAction::Search:
         performSearchInList();
@@ -2598,12 +2613,14 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
     case ItemAction::Cut:
         copySelectedItemsToClipboard();
         deleteSelectedLines();
+        showListFilePath();
         break;
     case ItemAction::Copy:
         copySelectedItemsToClipboard();
         break;
     case ItemAction::Paste:
         pasteItemsIntoList();
+        showListFilePath();
         break;
     case ItemAction::Edit:
         if (columnID == ColumnID::FIND_TEXT ||
@@ -2618,6 +2635,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
             columnID == ColumnID::EXTENDED ||
             columnID == ColumnID::REGEX) {
             toggleBooleanAt(hitTestResult, columnID);
+            showListFilePath();
         }
         break;
     case ItemAction::Delete: {
@@ -2634,6 +2652,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         int msgBoxID = MessageBox(nppData._nppHandle, confirmationMessage.c_str(), getLangStr(L"msgbox_title_confirm").c_str(), MB_ICONWARNING | MB_YESNO);
         if (msgBoxID == IDYES) {
             deleteSelectedLines();
+            showListFilePath();
         }
         break;
     }
@@ -2652,7 +2671,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
         ListView_SetItemState(_replaceListView, insertPosition, LVIS_SELECTED, LVIS_SELECTED);
         ListView_EnsureVisible(_replaceListView, insertPosition, FALSE);
-
+        showListFilePath();
         break;
     }
     }
@@ -3158,6 +3177,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     default:
                         break;
                     }
+
+                    showListFilePath();
                 }
                 return TRUE;
             }
@@ -3259,7 +3280,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 LPNMLVKEYDOWN pnkd = reinterpret_cast<LPNMLVKEYDOWN>(pnmh);
                 int iItem = -1;
 
+                // For arrow keys and Page Up/Page Down, post a custom message to update the focus
+                if (pnkd->wVKey == VK_UP || pnkd->wVKey == VK_DOWN ||
+                    pnkd->wVKey == VK_PRIOR || pnkd->wVKey == VK_NEXT)
+                {
+                    PostMessage(_replaceListView, WM_UPDATE_FOCUS, 0, 0);
+                    return TRUE;
+                }
+
+                // For non-arrow keys, proceed with existing focus update.
                 PostMessage(_replaceListView, WM_SETFOCUS, 0, 0);
+
                 // Handling keyboard shortcuts for menu actions
                 if (GetKeyState(VK_CONTROL) & 0x8000) { // If Ctrl is pressed
                     switch (pnkd->wVKey) {
@@ -3283,6 +3314,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         break;
                     case 'A': // Ctrl+A for Select All
                         ListView_SetItemState(_replaceListView, -1, LVIS_SELECTED, LVIS_SELECTED);
+                        showListFilePath();
                         break;
                     case 'I': // Ctrl+I for Adding new Line
                         performItemAction(_contextMenuClickPoint, ItemAction::Add);
@@ -7632,6 +7664,9 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
 
     // Push the action onto the undoStack
     undoStack.push_back(action);
+
+    // Show Select Statisics
+    showListFilePath();
 }
 
 void MultiReplace::updateHeaderSelection() {
@@ -7872,32 +7907,90 @@ std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int ma
     return displayPath;
 }
 
-void MultiReplace::showListFilePath() {
-    std::wstring path = listFilePath;
-
-    // Obtain handle and device context for the path display control
+void MultiReplace::showListFilePath()
+{
     HWND hPathDisplay = GetDlgItem(_hSelf, IDC_PATH_DISPLAY);
+    HWND hStatsDisplay = GetDlgItem(_hSelf, IDC_STATS_DISPLAY);
+    HWND hListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+
+    if (!hPathDisplay || !hListView)
+        return;
+
     HDC hDC = GetDC(hPathDisplay);
     HFONT hFont = (HFONT)SendMessage(hPathDisplay, WM_GETFONT, 0, 0);
     SelectObject(hDC, hFont);
 
-    // Get display width for IDC_PATH_DISPLAY
+    // Get ListView dimensions
+    RECT rcListView;
+    GetWindowRect(hListView, &rcListView);
+    MapWindowPoints(NULL, _hSelf, reinterpret_cast<LPPOINT>(&rcListView), 2);
+    int listWidth = rcListView.right - rcListView.left;
+
+    const int spacing = sx(10);
+    const int verticalOffset = sy(2);
+
+    // Calculate Y positions (keeping original heights)
     RECT rcPathDisplay;
     GetClientRect(hPathDisplay, &rcPathDisplay);
-    int pathDisplayWidth = rcPathDisplay.right - rcPathDisplay.left;
+    int fieldHeight = rcPathDisplay.bottom - rcPathDisplay.top;
+    int fieldY = rcListView.bottom + verticalOffset;
 
-    // Call the new function to get the shortened file path
-    std::wstring shortenedPath = getShortenedFilePath(path, pathDisplayWidth, hDC);
+    int statsWidth = 0;
 
-    // Display the shortened path
+    if (listStatisticsEnabled && hStatsDisplay)
+    {
+        // Gather statistics
+        int totalItems = static_cast<int>(replaceListData.size());
+        int selectedItems = ListView_GetSelectedCount(_replaceListView);
+        int activatedCount = static_cast<int>(std::count_if(replaceListData.begin(), replaceListData.end(),
+            [](const ReplaceItemData& item) { return item.isEnabled; }));
+        int focusedRow = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
+        int displayRow = (selectedItems > 0 && focusedRow != -1) ? (focusedRow + 1) : 0;
+
+        // Compose stats string
+        std::wstring statsString = L"A:" + std::to_wstring(activatedCount)
+            + L"  L:" + std::to_wstring(totalItems)
+            + L"  |  R:" + std::to_wstring(displayRow)
+            + L"  S:" + std::to_wstring(selectedItems);
+
+        // Measure stats string width
+        SIZE sz;
+        GetTextExtentPoint32(hDC, statsString.c_str(), static_cast<int>(statsString.size()), &sz);
+        statsWidth = sz.cx + sx(5); // padding
+
+        // Position stats field
+        int statsX = rcListView.left + listWidth - statsWidth;
+        MoveWindow(hStatsDisplay, statsX, fieldY, statsWidth, fieldHeight, TRUE);
+        SetWindowTextW(hStatsDisplay, statsString.c_str());
+        ShowWindow(hStatsDisplay, SW_SHOW);
+    }
+    else if (hStatsDisplay)
+    {
+        // Pragmatic solution: Set width to zero instead of hiding
+        statsWidth = 0;
+        MoveWindow(hStatsDisplay, rcListView.right, fieldY, 0, fieldHeight, TRUE);
+        SetWindowTextW(hStatsDisplay, L"");
+        ShowWindow(hStatsDisplay, SW_HIDE);
+    }
+
+    // Adjust path field to use remaining space
+    int pathWidth = listWidth - statsWidth - (listStatisticsEnabled ? spacing : 0);
+    pathWidth = std::max(pathWidth, 0);
+    MoveWindow(hPathDisplay, rcListView.left, fieldY, pathWidth, fieldHeight, TRUE);
+
+    // Update path display text
+    std::wstring shortenedPath = getShortenedFilePath(listFilePath, pathWidth, hDC);
     SetWindowTextW(hPathDisplay, shortenedPath.c_str());
 
-    // Update the parent window area where the control resides
-    RECT rect;
-    GetWindowRect(hPathDisplay, &rect);
-    MapWindowPoints(HWND_DESKTOP, GetParent(hPathDisplay), (LPPOINT)&rect, 2);
-    InvalidateRect(GetParent(hPathDisplay), &rect, TRUE);
-    UpdateWindow(GetParent(hPathDisplay));
+    ReleaseDC(hPathDisplay, hDC);
+
+    // Immediate redraw
+    InvalidateRect(hPathDisplay, NULL, TRUE);
+    UpdateWindow(hPathDisplay);
+    if (hStatsDisplay) {
+        InvalidateRect(hStatsDisplay, NULL, TRUE);
+        UpdateWindow(hStatsDisplay);
+    }
 }
 
 std::wstring MultiReplace::getSelectedText() {
@@ -8900,6 +8993,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"DoubleClickEdits=" + std::to_wstring(doubleClickEditsEnabled ? 1 : 0) + L"\n");
     outFile << wstringToString(L"HoverText=" + std::to_wstring(isHoverTextEnabled ? 1 : 0) + L"\n");
     outFile << wstringToString(L"EditFieldSize=" + std::to_wstring(editFieldSize) + L"\n");
+    outFile << wstringToString(L"ListStatistics=" + std::to_wstring(listStatisticsEnabled ? 1 : 0) + L"\n");;
 
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
@@ -9046,6 +9140,8 @@ void MultiReplace::loadSettingsFromIni() {
     editFieldSize = readIntFromIniCache(L"Options", L"EditFieldSize", 5);
     editFieldSize = std::clamp(editFieldSize, MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
 
+    listStatisticsEnabled = readBoolFromIniCache(L"Options", L"ListStatistics", false);
+
     // Loading and setting the scope
     int selection = readIntFromIniCache(L"Scope", L"Selection", 0);
     int columnMode = readIntFromIniCache(L"Scope", L"ColumnMode", 0);
@@ -9065,8 +9161,6 @@ void MultiReplace::loadSettingsFromIni() {
     // Load file path and original hash
     listFilePath = readStringFromIniCache(L"File", L"ListFilePath", L"");
     originalListHash = readSizeTFromIniCache(L"File", L"OriginalListHash", 0);
-
-    showListFilePath();
 
     if (selection) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_SELECTION_RADIO);
@@ -9102,6 +9196,8 @@ void MultiReplace::loadSettings() {
     updateHeaderSelection();
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
+
+    showListFilePath();
 }
 
 void MultiReplace::loadUIConfigFromIni() {

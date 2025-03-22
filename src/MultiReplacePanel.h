@@ -423,6 +423,7 @@ public:
     // Drag-and-Drop functionality
     DropTarget* dropTarget;  // Pointer to DropTarget instance
     void loadListFromCsv(const std::wstring& filePath); // used in DropTarget.cpp
+    void showListFilePath();
     void initializeDragAndDrop();
 
 protected:
@@ -562,6 +563,7 @@ private:
     bool isHoverTextEnabled = false; // Important to set on false as TIMER will be triggered at startup.
     bool isHoverTextSuppressed = false; // Temporarily supress HoverText to avoid flickering wehn Edit in list is open
     int editFieldSize;
+    bool listStatisticsEnabled;
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
@@ -767,7 +769,6 @@ private:
     void updateHeaderSortDirection();
     void showStatusMessage(const std::wstring& messageText, COLORREF color, bool isNotFound = false);
     std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
-    void showListFilePath();
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
     LRESULT getEOLLengthForLine(LRESULT line);

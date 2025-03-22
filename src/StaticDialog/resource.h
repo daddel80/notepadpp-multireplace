@@ -62,6 +62,7 @@
 #define IDC_STATIC_REPLACE              5101
 #define IDC_STATUS_MESSAGE				5102
 #define IDC_PATH_DISPLAY                5103
+#define IDC_STATS_DISPLAY               5104
 
 #define IDC_WHOLE_WORD_CHECKBOX         5200
 #define IDC_MATCH_CASE_CHECKBOX         5201
