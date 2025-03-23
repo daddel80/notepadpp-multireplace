@@ -482,6 +482,14 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Range**: 2 to 20.
   - **Description**: Sets the factor by which the edit field in the list expands or collapses when toggling its size.
 
+- **ListStatistics**: Controls whether list statistics are displayed below the list.
+  - **Default**: `ListStatistics=0` (disabled).
+  - **Description**: When enabled (`1`), a compact statistics field appears below the list, showing:
+    - **A**: Number of activated entries
+    - **L**: Total number of list items
+    - **R**: Index of the currently focused row
+    - **S**: Number of selected items
+
 ### Multilingual UI Support
 
 The UI language settings for the MultiReplace plugin can be customized by adjusting the `languages.ini` file located in `C:\Program Files\Notepad++\plugins\MultiReplace\`. These adjustments will ensure that the selected language in Notepad++ is applied within the plugin. 
