@@ -4201,6 +4201,12 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
         }
 
         if (itemData.useVariables) {
+
+            // Compile Lua code (once, cached internally)
+            if (!compileLuaReplaceCode(localReplaceTextUtf8)) {
+                return false;
+            }
+
             LuaVariables vars;
 
             int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
@@ -4303,6 +4309,11 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     if (itemData.useVariables) {
         // Convert wstring to string once for Lua variable processing
         basicConvertedReplaceTextUtf8 = wstringToString(itemData.replaceText);
+
+        // Compile Lua code once before the loop
+        if (!compileLuaReplaceCode(basicConvertedReplaceTextUtf8)) {
+            return false;
+        }
     }
     else {
         // Convert and extend only once when no variables are used
@@ -4429,6 +4440,12 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                         selectListItem(i);  // Highlight the list entry
                     }
                     std::string localReplaceTextUtf8 = wstringToString(replaceListData[i].replaceText);
+
+                    // Compile the Lua code once and cache it
+                    if (!compileLuaReplaceCode(localReplaceTextUtf8)) {
+                        return false;
+                    }
+
                     bool skipReplace = false;
                     LuaVariables vars;
                     setLuaFileVars(vars);   // Setting FNAME and FPATH
@@ -4591,6 +4608,10 @@ bool MultiReplace::initLuaState()
         _luaState = nullptr;
     }
 
+    // Invalidate Lua code cache
+    _lastCompiledLuaCode.clear();
+    _luaCompiledReplaceRef = LUA_NOREF;
+
     // Create a new Lua state.
     _luaState = luaL_newstate();
     if (!_luaState) {
@@ -4640,6 +4661,45 @@ bool MultiReplace::initLuaState()
         return false;
     }
 
+    return true;
+}
+
+bool MultiReplace::compileLuaReplaceCode(const std::string& luaCode)
+{
+    // Compile only if changed or not compiled yet
+    if (luaCode == _lastCompiledLuaCode && _luaCompiledReplaceRef != LUA_NOREF) {
+        return true; // already compiled, reuse
+    }
+
+    // Remove old reference if exists
+    if (_luaCompiledReplaceRef != LUA_NOREF) {
+        luaL_unref(_luaState, LUA_REGISTRYINDEX, _luaCompiledReplaceRef);
+        _luaCompiledReplaceRef = LUA_NOREF;
+    }
+
+    // Compile Lua code
+    if (luaL_loadstring(_luaState, luaCode.c_str()) != LUA_OK) {
+        const char* errMsg = lua_tostring(_luaState, -1);
+        if (errMsg)
+        {
+            std::cerr << "[Lua Compilation Error] " << errMsg << std::endl;
+
+            if (isLuaErrorDialogEnabled)
+            {
+                std::wstring error_message = utf8ToWString(errMsg);
+                MessageBox(nppData._nppHandle,
+                    error_message.c_str(),
+                    getLangStr(L"msgbox_title_use_variables_syntax_error").c_str(),
+                    MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+            }
+        }
+        lua_pop(_luaState, 1); // pop error message
+        return false;
+    }
+
+    // Store compiled Lua chunk
+    _luaCompiledReplaceRef = luaL_ref(_luaState, LUA_REGISTRYINDEX);
+    _lastCompiledLuaCode = luaCode; // Cache the compiled Lua code
     return true;
 }
 
@@ -4706,8 +4766,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         }
     }
 
-    // 6) Execute the Lua code in 'inputString'
-    if (luaL_dostring(_luaState, inputString.c_str()) != LUA_OK)
+    // 6) Execute pre-compiled Lua chunk
+    lua_rawgeti(_luaState, LUA_REGISTRYINDEX, _luaCompiledReplaceRef);
+    if (lua_pcall(_luaState, 0, LUA_MULTRET, 0) != LUA_OK)
     {
         const char* errMsg = lua_tostring(_luaState, -1);
         if (errMsg)

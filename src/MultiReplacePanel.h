@@ -534,6 +534,8 @@ private:
     int _editingColumnID;
     std::string cachedFilePath;
     std::string cachedFileName;
+    int _luaCompiledReplaceRef = LUA_NOREF;       // Reference to compiled Lua code
+    std::string _lastCompiledLuaCode;             // Cached Lua code for reuse
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
@@ -696,6 +698,7 @@ private:
     void updateFilePathCache();
     void setLuaFileVars(LuaVariables& vars);
     bool initLuaState();
+    bool compileLuaReplaceCode(const std::string& luaCode);
 
     //DebugWindow
     int ShowDebugWindow(const std::string& message);
