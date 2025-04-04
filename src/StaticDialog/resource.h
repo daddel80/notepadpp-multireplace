@@ -62,13 +62,15 @@
 #define IDC_STATIC_REPLACE              5101
 #define IDC_STATUS_MESSAGE				5102
 #define IDC_PATH_DISPLAY                5103
+#define IDC_STATS_DISPLAY               5104
 
 #define IDC_WHOLE_WORD_CHECKBOX         5200
 #define IDC_MATCH_CASE_CHECKBOX         5201
 #define IDC_USE_VARIABLES_CHECKBOX      5202
 #define IDC_USE_VARIABLES_HELP          5203
-#define IDC_REPLACE_FIRST_CHECKBOX      5204
-#define IDC_WRAP_AROUND_CHECKBOX        5205
+#define IDC_WRAP_AROUND_CHECKBOX        5204
+#define IDC_REPLACE_AT_MATCHES_CHECKBOX 5205
+#define IDC_REPLACE_HIT_EDIT            5206
 
 #define IDC_SEARCH_MODE_GROUP           5300
 #define IDC_NORMAL_RADIO                5301
@@ -100,6 +102,9 @@
 #define IDC_VERSION_STATIC              5603
 #define IDC_LICENSE_STATIC              5604
 #define IDC_AUTHOR_STATIC               5605
+#define IDC_VERSION_LABEL               5606
+#define IDC_AUTHOR_LABEL                5607
+#define IDC_LICENSE_LABEL               5608
 
 #define IDM_UNDO                        5701
 #define IDM_REDO                        5702
@@ -135,7 +140,6 @@
 
 #define IDI_MR_ICON 5801
 #define IDI_MR_DM_ICON 5802
-#define IDR_MR_BMP 5803
 
 // Default window position and dimensions
 #define POS_X 92

@@ -30,6 +30,7 @@
     <ClInclude Include="..\src\AboutDialog.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
+    <ClInclude Include="..\src\image_data.h" />
     <ClInclude Include="..\src\luaEmbedded.h" />
     <ClInclude Include="..\src\lua\lapi.h" />
     <ClInclude Include="..\src\lua\lauxlib.h" />
@@ -297,6 +298,7 @@ copy ..\languages.ini $(OutDir)languages.ini</Command>
       </StackCommitSize>
       <HeapReserveSize>
       </HeapReserveSize>
+      <Profile>true</Profile>
     </Link>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt

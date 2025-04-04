@@ -110,13 +110,13 @@ struct ControlInfo
 };
 
 struct SearchContext {
-    std::string findTextUtf8;  // Pre-converted search string (UTF-8)
-    int searchFlags;           // Search flags (e.g., SCFIND_MATCHCASE, SCFIND_WHOLEWORD, etc.)
-    LRESULT docLength;         // Cached document length
-    bool isColumnMode;         // Cached state: true if Column Mode is active
-    bool isSelectionMode;      // Cached state: true if Selection Mode is active
-    bool retrieveFoundText;    // If true, retrieve the found text from Scintilla
-    bool highlightMatch;       // If true, highlight the found match
+    std::string findTextUtf8 = "";  // Pre-converted search string (UTF-8)
+    int searchFlags = 0;            // Search flags (e.g., SCFIND_MATCHCASE, SCFIND_WHOLEWORD, etc.)
+    LRESULT docLength = 0;          // Cached document length
+    bool isColumnMode = false;      // Cached state: true if Column Mode is active
+    bool isSelectionMode = false;   // Cached state: true if Selection Mode is active
+    bool retrieveFoundText = false; // If true, retrieve the found text from Scintilla
+    bool highlightMatch = false;    // If true, highlight the found match
 };
 
 struct SearchResult {
@@ -413,8 +413,9 @@ public:
     enum class ReplaceMode { Normal, Extended, Regex };
 
     struct LogEntry {
-        ChangeType changeType;
-        Sci_Position lineNumber;
+        ChangeType changeType = ChangeType::Modify;
+        Sci_Position lineNumber = 0;
+        Sci_Position blockSize = 1;
     };
 
     static std::vector<LogEntry> logChanges;
@@ -422,6 +423,7 @@ public:
     // Drag-and-Drop functionality
     DropTarget* dropTarget;  // Pointer to DropTarget instance
     void loadListFromCsv(const std::wstring& filePath); // used in DropTarget.cpp
+    void showListFilePath();
     void initializeDragAndDrop();
 
 protected:
@@ -532,6 +534,8 @@ private:
     int _editingColumnID;
     std::string cachedFilePath;
     std::string cachedFileName;
+    int _luaCompiledReplaceRef = LUA_NOREF;       // Reference to compiled Lua code
+    std::string _lastCompiledLuaCode;             // Cached Lua code for reuse
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
@@ -561,6 +565,7 @@ private:
     bool isHoverTextEnabled = false; // Important to set on false as TIMER will be triggered at startup.
     bool isHoverTextSuppressed = false; // Temporarily supress HoverText to avoid flickering wehn Edit in list is open
     int editFieldSize;
+    bool listStatisticsEnabled;
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
@@ -693,6 +698,7 @@ private:
     void updateFilePathCache();
     void setLuaFileVars(LuaVariables& vars);
     bool initLuaState();
+    bool compileLuaReplaceCode(const std::string& luaCode);
 
     //DebugWindow
     int ShowDebugWindow(const std::string& message);
@@ -734,7 +740,7 @@ private:
     void extractLineContent(size_t idx, std::string& content, const std::string& lineBreak);
     void UpdateSortButtonSymbols();
     void handleSortStateAndSort(SortDirection direction);
-    void updateUnsortedDocument(SIZE_T lineNumber, ChangeType changeType);
+    void updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType);
     void detectNumericColumns(std::vector<CombinedColumns>& data);
     int compareColumnValue(const ColumnValue& left, const ColumnValue& right);
 
@@ -750,7 +756,7 @@ private:
     void highlightColumnsInLine(LRESULT line);
     void handleClearColumnMarks();
     std::wstring addLineAndColumnMessage(LRESULT pos);
-    void updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType);
+    void updateDelimitersInDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType);
     void processLogForDelimiters();
     void handleDelimiterPositions(DelimiterOperation operation);
     void handleClearDelimiterState();
@@ -766,7 +772,6 @@ private:
     void updateHeaderSortDirection();
     void showStatusMessage(const std::wstring& messageText, COLORREF color, bool isNotFound = false);
     std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
-    void showListFilePath();
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
     LRESULT getEOLLengthForLine(LRESULT line);
@@ -776,6 +781,7 @@ private:
     std::vector<WCHAR> createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
     int getCharacterWidth(int elementID, const wchar_t* character);
     int getFontHeight(HWND hwnd, HFONT hFont);
+    std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
 
     //StringHandling
     std::wstring stringToWString(const std::string& encodedInput) const;

@@ -43,6 +43,7 @@ HRESULT DropTarget::Drop(IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DW
                     wchar_t filePath[MAX_PATH];
                     DragQueryFile(hDrop, 0, filePath, MAX_PATH);
                     _parent->loadListFromCsv(filePath);  // Load CSV file
+                    _parent->showListFilePath(); // Update List statistics
                 }
                 GlobalUnlock(stgMedium.hGlobal); // Unlock the global memory object
             }

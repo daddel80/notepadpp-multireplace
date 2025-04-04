@@ -16,6 +16,7 @@
 
 #define NOMINMAX
 #define USE_LUA_BYTECODE
+#define WM_UPDATE_FOCUS (WM_APP + 2)
 
 #include "MultiReplacePanel.h"
 #include "Notepad_plus_msgs.h"
@@ -85,10 +86,48 @@ HWND MultiReplace::hDebugWnd = NULL;
 
 void MultiReplace::initializeWindowSize()
 {
-    // Loads the UI configuration, including window size and position
     loadUIConfigFromIni();
 
-    // Set the window position and size based on the loaded settings
+    HMONITOR hMonitor = MonitorFromRect(&windowRect, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO monitorInfo = { sizeof(monitorInfo) };
+
+    if (GetMonitorInfo(hMonitor, &monitorInfo))
+    {
+        int monitorLeft = monitorInfo.rcWork.left;
+        int monitorTop = monitorInfo.rcWork.top;
+        int monitorRight = monitorInfo.rcWork.right;
+        int monitorBottom = monitorInfo.rcWork.bottom;
+
+        int windowWidth = windowRect.right - windowRect.left;
+        int windowHeight = windowRect.bottom - windowRect.top;
+
+        const int visibilityMargin = 10;
+
+        bool isCompletelyOffScreen =
+            (windowRect.right <= monitorLeft || windowRect.left >= monitorRight ||
+                windowRect.bottom <= monitorTop || windowRect.top >= monitorBottom);
+
+        if (isCompletelyOffScreen)
+        {
+            windowRect.left = monitorLeft + visibilityMargin;
+            windowRect.top = monitorTop + visibilityMargin;
+        }
+        else
+        {
+            if (windowRect.left < monitorLeft + visibilityMargin)
+                windowRect.left = monitorLeft + visibilityMargin;
+            if (windowRect.top < monitorTop + visibilityMargin)
+                windowRect.top = monitorTop + visibilityMargin;
+            if (windowRect.left + windowWidth > monitorRight - visibilityMargin)
+                windowRect.left = monitorRight - windowWidth - visibilityMargin;
+            if (windowRect.top + windowHeight > monitorBottom - visibilityMargin)
+                windowRect.top = monitorBottom - windowHeight - visibilityMargin;
+        }
+
+        windowRect.right = windowRect.left + windowWidth;
+        windowRect.bottom = windowRect.top + windowHeight;
+    }
+
     SetWindowPos(
         _hSelf,
         NULL,
@@ -138,7 +177,7 @@ void MultiReplace::initializeFontStyles() {
     }
 
     // Specific controls using normal fonts
-    for (int controlId : { IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_STATUS_MESSAGE, IDC_PATH_DISPLAY }) {
+    for (int controlId : { IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_STATUS_MESSAGE, IDC_PATH_DISPLAY, IDC_STATS_DISPLAY }) {
         SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hNormalFont1, TRUE);
     }
     for (int controlId : { IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON }) {
@@ -231,8 +270,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
     ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_FIRST_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_first_match_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(176), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(112), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(176), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,  getLangStrLPCWSTR(L"tooltip_replace_at_matches") };
 
     ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(173), sy(104), WC_BUTTON, getLangStrLPCWSTR(L"panel_search_mode"), BS_GROUPBOX, NULL };
     ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(162), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
@@ -291,6 +331,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16), sx(96), sy(16), WC_STATIC, getLangStrLPCWSTR(L"panel_move_lines"), SS_LEFT, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227), listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
     ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5), listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
+    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, sy(225) + listHeight + sy(5), 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
     ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY, sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 }
 
@@ -436,7 +477,8 @@ void MultiReplace::moveAndResizeControls() {
         IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON,
         IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
         IDC_USE_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-        IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, IDC_PATH_DISPLAY
+        IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, 
+        IDC_PATH_DISPLAY, IDC_STATS_DISPLAY
     };
 
     std::unordered_map<int, HWND> hwndMap;  // Store HWNDs to avoid multiple calls to GetDlgItem
@@ -1493,20 +1535,6 @@ void MultiReplace::updateListViewAndColumns() {
 
 
     // Prepare the ResizableColWidths struct for dynamic width calculations
-    /*
-    ResizableColWidths widths = {
-        listView,
-        listCtrlInfo.cx,  // Width of the ListView control
-        findCountColumnWidth,
-        replaceCountColumnWidth,
-        findColumnWidth,
-        replaceColumnWidth,
-        commentsColumnWidth,
-        deleteButtonColumnWidth,
-        GetSystemMetrics(SM_CXVSCROLL)  // Width of the vertical scrollbar
-    };
-    */
-
     ResizableColWidths widths = {
         listView,
         listCtrlInfo.cx,
@@ -1650,6 +1678,9 @@ void MultiReplace::shiftListItem(const Direction& direction) {
 
     // Show status message when rows are successfully shifted
     showStatusMessage(getLangStr(L"status_rows_shifted", { std::to_wstring(selectedIndices.size()) }), COLOR_SUCCESS);
+
+    // Show Statistics
+    showListFilePath();
 }
 
 void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
@@ -1891,9 +1922,6 @@ void MultiReplace::clearList() {
 
     // Reset listFilePath to an empty string
     listFilePath.clear();
-
-    // Show a status message to indicate the list was cleared
-    showStatusMessage(getLangStr(L"status_list_cleared"), COLOR_SUCCESS);
 
     // Call showListFilePath to update the UI with the cleared file path
     showListFilePath();
@@ -2262,6 +2290,7 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
 
     case WM_NOTIFY: {
         NMHDR* pnmhdr = reinterpret_cast<NMHDR*>(lParam);
+        // Check notifications from header
         if (pnmhdr->hwndFrom == ListView_GetHeader(hwnd)) {
             int code = static_cast<int>(static_cast<short>(pnmhdr->code));
 
@@ -2384,6 +2413,12 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
             return 0;
         }
         break;
+    }
+
+    case WM_UPDATE_FOCUS:
+    {
+        pThis->showListFilePath();
+        return 0;
     }
 
     default:
@@ -2566,9 +2601,11 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
     switch (action) {
     case ItemAction::Undo:
         undo();
+        showListFilePath();
         break;
     case ItemAction::Redo:
         redo();
+        showListFilePath();
         break;
     case ItemAction::Search:
         performSearchInList();
@@ -2576,12 +2613,14 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
     case ItemAction::Cut:
         copySelectedItemsToClipboard();
         deleteSelectedLines();
+        showListFilePath();
         break;
     case ItemAction::Copy:
         copySelectedItemsToClipboard();
         break;
     case ItemAction::Paste:
         pasteItemsIntoList();
+        showListFilePath();
         break;
     case ItemAction::Edit:
         if (columnID == ColumnID::FIND_TEXT ||
@@ -2596,6 +2635,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
             columnID == ColumnID::EXTENDED ||
             columnID == ColumnID::REGEX) {
             toggleBooleanAt(hitTestResult, columnID);
+            showListFilePath();
         }
         break;
     case ItemAction::Delete: {
@@ -2612,6 +2652,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         int msgBoxID = MessageBox(nppData._nppHandle, confirmationMessage.c_str(), getLangStr(L"msgbox_title_confirm").c_str(), MB_ICONWARNING | MB_YESNO);
         if (msgBoxID == IDYES) {
             deleteSelectedLines();
+            showListFilePath();
         }
         break;
     }
@@ -2630,7 +2671,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
         ListView_SetItemState(_replaceListView, insertPosition, LVIS_SELECTED, LVIS_SELECTED);
         ListView_EnsureVisible(_replaceListView, insertPosition, FALSE);
-
+        showListFilePath();
         break;
     }
     }
@@ -3136,6 +3177,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     default:
                         break;
                     }
+
+                    showListFilePath();
                 }
                 return TRUE;
             }
@@ -3237,7 +3280,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 LPNMLVKEYDOWN pnkd = reinterpret_cast<LPNMLVKEYDOWN>(pnmh);
                 int iItem = -1;
 
+                // For arrow keys and Page Up/Page Down, post a custom message to update the focus
+                if (pnkd->wVKey == VK_UP || pnkd->wVKey == VK_DOWN ||
+                    pnkd->wVKey == VK_PRIOR || pnkd->wVKey == VK_NEXT)
+                {
+                    PostMessage(_replaceListView, WM_UPDATE_FOCUS, 0, 0);
+                    return TRUE;
+                }
+
+                // For non-arrow keys, proceed with existing focus update.
                 PostMessage(_replaceListView, WM_SETFOCUS, 0, 0);
+
                 // Handling keyboard shortcuts for menu actions
                 if (GetKeyState(VK_CONTROL) & 0x8000) { // If Ctrl is pressed
                     switch (pnkd->wVKey) {
@@ -3261,6 +3314,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         break;
                     case 'A': // Ctrl+A for Select All
                         ListView_SetItemState(_replaceListView, -1, LVIS_SELECTED, LVIS_SELECTED);
+                        showListFilePath();
                         break;
                     case 'I': // Ctrl+I for Adding new Line
                         performItemAction(_contextMenuClickPoint, ItemAction::Add);
@@ -3719,6 +3773,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_NEW_LIST_BUTTON:
         {
             clearList();
+            showStatusMessage(getLangStr(L"status_new_list_created"), COLOR_SUCCESS);
             return TRUE;
         }
 
@@ -3899,6 +3954,7 @@ void MultiReplace::handleReplaceAllButton() {
     updateFilePathCache();
 
     int totalReplaceCount = 0;
+    bool replaceSuccess = true;
 
     if (useListEnabled)
     {
@@ -3922,7 +3978,7 @@ void MultiReplace::handleReplaceAllButton() {
                 int replaceCount = 0;
 
                 // Call replaceAll and break out if there is an error or a Debug Stop
-                bool success = replaceAll(replaceListData[i], findCount, replaceCount, i);
+                replaceSuccess = replaceAll(replaceListData[i], findCount, replaceCount, i);
 
                 // Refresh ListView to show updated statistics
                 refreshUIListView();
@@ -3930,7 +3986,7 @@ void MultiReplace::handleReplaceAllButton() {
                 // Accumulate total replacements
                 totalReplaceCount += replaceCount;
 
-                if (!success) {
+                if (!replaceSuccess) {
                     break;  // Exit loop on error or Debug Stop
                 }
             }
@@ -3950,7 +4006,7 @@ void MultiReplace::handleReplaceAllButton() {
 
         send(SCI_BEGINUNDOACTION, 0, 0);
         int findCount = 0;
-        replaceAll(itemData, findCount, totalReplaceCount);
+        replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount);
         send(SCI_ENDUNDOACTION, 0, 0);
 
         // Add the entered text to the combo box history
@@ -3958,7 +4014,9 @@ void MultiReplace::handleReplaceAllButton() {
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
     }
     // Display status message
-    showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), COLOR_SUCCESS);
+    if (replaceSuccess) {
+        showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), COLOR_SUCCESS);
+    }
 
     // Disable selection radio and switch to "All Text" if it was Replaced an none selection left or it will be trapped
     SelectionInfo selection = getSelectionInfo(false);
@@ -4143,6 +4201,12 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
         }
 
         if (itemData.useVariables) {
+
+            // Compile Lua code (once, cached internally)
+            if (!compileLuaReplaceCode(localReplaceTextUtf8)) {
+                return false;
+            }
+
             LuaVariables vars;
 
             int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
@@ -4208,14 +4272,32 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     context.docLength = send(SCI_GETLENGTH, 0, 0);
     context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
     context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
-    context.retrieveFoundText = itemData.useVariables;;
+    context.retrieveFoundText = itemData.useVariables;
     context.highlightMatch = false;
 
     send(SCI_SETSEARCHFLAGS, context.searchFlags);
 
     SearchResult searchResult = performSearchForward(context, 0);
 
-    bool isReplaceFirstEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED);
+    bool isReplaceAtMatchesEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED);
+
+    std::vector<int> selectedMatches;
+
+    // Only process the match selection if the option is enabled
+    if (isReplaceAtMatchesEnabled) {
+        std::wstring matchSelection = getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT);
+
+        if (matchSelection.empty()) {
+            showStatusMessage(getLangStr(L"status_missing_match_selection"), COLOR_ERROR);
+            return false;
+        }
+
+        selectedMatches = parseNumberRanges(matchSelection, getLangStr(L"status_invalid_range_in_match_data"));
+
+        if (selectedMatches.empty()) return false;
+    }
+
+
     int previousLineIndex = -1;
     int lineFindCount = 0;
 
@@ -4227,6 +4309,11 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     if (itemData.useVariables) {
         // Convert wstring to string once for Lua variable processing
         basicConvertedReplaceTextUtf8 = wstringToString(itemData.replaceText);
+
+        // Compile Lua code once before the loop
+        if (!compileLuaReplaceCode(basicConvertedReplaceTextUtf8)) {
+            return false;
+        }
     }
     else {
         // Convert and extend only once when no variables are used
@@ -4283,30 +4370,34 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         }
 
         Sci_Position newPos;
-        if (!skipReplace) {
-            if (itemData.regex) {
-                newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+
+        // Check if the current match should be replaced
+        if (!isReplaceAtMatchesEnabled || std::find(selectedMatches.begin(), selectedMatches.end(), findCount) != selectedMatches.end())
+        {
+            if (!skipReplace) {
+                if (itemData.regex) {
+                    newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+                }
+                else {
+                    newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+                }
+                replaceCount++;
+
+                if (itemIndex != SIZE_MAX) { // check if used in List
+                    updateCountColumns(itemIndex, -1, replaceCount);
+                }
+
+                context.docLength = send(SCI_GETLENGTH, 0, 0);
             }
             else {
-                newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+                newPos = searchResult.pos + searchResult.length;
+                // Clear selection
+                send(SCI_SETSELECTIONSTART, newPos, 0);
+                send(SCI_SETSELECTIONEND, newPos, 0);
             }
-            replaceCount++;
-
-            if (itemIndex != SIZE_MAX) { // check if used in List
-                updateCountColumns(itemIndex, -1, replaceCount);
-            }
-
-            context.docLength = send(SCI_GETLENGTH, 0, 0);
         }
         else {
-            newPos = searchResult.pos + searchResult.length;
-            // Clear selection
-            send(SCI_SETSELECTIONSTART, newPos, 0);
-            send(SCI_SETSELECTIONEND, newPos, 0);
-        }
-
-        if (isReplaceFirstEnabled) {
-            break;  // Exit the loop after the first successful replacement
+            newPos = searchResult.pos + searchResult.length; // Move to next match without replacing
         }
 
         searchResult = performSearchForward(context, newPos);
@@ -4349,6 +4440,12 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                         selectListItem(i);  // Highlight the list entry
                     }
                     std::string localReplaceTextUtf8 = wstringToString(replaceListData[i].replaceText);
+
+                    // Compile the Lua code once and cache it
+                    if (!compileLuaReplaceCode(localReplaceTextUtf8)) {
+                        return false;
+                    }
+
                     bool skipReplace = false;
                     LuaVariables vars;
                     setLuaFileVars(vars);   // Setting FNAME and FPATH
@@ -4511,6 +4608,10 @@ bool MultiReplace::initLuaState()
         _luaState = nullptr;
     }
 
+    // Invalidate Lua code cache
+    _lastCompiledLuaCode.clear();
+    _luaCompiledReplaceRef = LUA_NOREF;
+
     // Create a new Lua state.
     _luaState = luaL_newstate();
     if (!_luaState) {
@@ -4560,6 +4661,45 @@ bool MultiReplace::initLuaState()
         return false;
     }
 
+    return true;
+}
+
+bool MultiReplace::compileLuaReplaceCode(const std::string& luaCode)
+{
+    // Compile only if changed or not compiled yet
+    if (luaCode == _lastCompiledLuaCode && _luaCompiledReplaceRef != LUA_NOREF) {
+        return true; // already compiled, reuse
+    }
+
+    // Remove old reference if exists
+    if (_luaCompiledReplaceRef != LUA_NOREF) {
+        luaL_unref(_luaState, LUA_REGISTRYINDEX, _luaCompiledReplaceRef);
+        _luaCompiledReplaceRef = LUA_NOREF;
+    }
+
+    // Compile Lua code
+    if (luaL_loadstring(_luaState, luaCode.c_str()) != LUA_OK) {
+        const char* errMsg = lua_tostring(_luaState, -1);
+        if (errMsg)
+        {
+            std::cerr << "[Lua Compilation Error] " << errMsg << std::endl;
+
+            if (isLuaErrorDialogEnabled)
+            {
+                std::wstring error_message = utf8ToWString(errMsg);
+                MessageBox(nppData._nppHandle,
+                    error_message.c_str(),
+                    getLangStr(L"msgbox_title_use_variables_syntax_error").c_str(),
+                    MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+            }
+        }
+        lua_pop(_luaState, 1); // pop error message
+        return false;
+    }
+
+    // Store compiled Lua chunk
+    _luaCompiledReplaceRef = luaL_ref(_luaState, LUA_REGISTRYINDEX);
+    _lastCompiledLuaCode = luaCode; // Cache the compiled Lua code
     return true;
 }
 
@@ -4626,8 +4766,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         }
     }
 
-    // 6) Execute the Lua code in 'inputString'
-    if (luaL_dostring(_luaState, inputString.c_str()) != LUA_OK)
+    // 6) Execute pre-compiled Lua chunk
+    lua_rawgeti(_luaState, LUA_REGISTRYINDEX, _luaCompiledReplaceRef);
+    if (lua_pcall(_luaState, 0, LUA_MULTRET, 0) != LUA_OK)
     {
         const char* errMsg = lua_tostring(_luaState, -1);
         if (errMsg)
@@ -6476,7 +6617,7 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
     }
 }
 
-void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, ChangeType changeType) {
+void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType) {
     if (!isSortedColumn || lineNumber > originalLineOrder.size()) {
         return; // Invalid line number, return early
     }
@@ -6485,27 +6626,60 @@ void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, ChangeType changeTy
     case ChangeType::Insert: {
         // Find the current maximum value in originalLineOrder and add one for the new line placeholder
         size_t maxIndex = originalLineOrder.empty() ? 0 : (*std::max_element(originalLineOrder.begin(), originalLineOrder.end())) + 1;
-        // Insert maxIndex for the new line at the specified position in originalLineOrder
-        originalLineOrder.insert(originalLineOrder.begin() + lineNumber, maxIndex);
+
+        //Insert multiple placeholders instead of just one
+        std::vector<size_t> newIndices;
+        newIndices.reserve(blockCount);
+
+        for (SIZE_T i = 0; i < blockCount; ++i) {
+            newIndices.push_back(maxIndex + i); 
+        }
+
+        // Insert them at the specified position
+        originalLineOrder.insert(
+            originalLineOrder.begin() + lineNumber,
+            newIndices.begin(),
+            newIndices.end()
+        );
         break;
     }
 
     case ChangeType::Delete: {
         // Ensure lineNumber is within the range before attempting to delete
+        SIZE_T endPos = lineNumber + blockCount;
+        if (endPos > originalLineOrder.size()) {
+            endPos = originalLineOrder.size();
+        }
+
         if (lineNumber < originalLineOrder.size()) { // Safety check
-            // Element at lineNumber represents the actual index to be deleted
-            size_t actualIndexToDelete = originalLineOrder[lineNumber];
-            // Directly remove the index at lineNumber
-            originalLineOrder.erase(originalLineOrder.begin() + lineNumber);
+            // Collect the removed indices 
+            std::vector<size_t> removed(
+                originalLineOrder.begin() + lineNumber,
+                originalLineOrder.begin() + endPos
+            );
+
+            // Directly remove that range
+            originalLineOrder.erase(
+                originalLineOrder.begin() + lineNumber,
+                originalLineOrder.begin() + endPos
+            );
+
             // Adjust subsequent indices to reflect the deletion
-            for (size_t i = 0; i < originalLineOrder.size(); ++i) {
-                if (originalLineOrder[i] > actualIndexToDelete) {
-                    --originalLineOrder[i];
+            if (!removed.empty()) {
+                size_t maxRemoved = *std::max_element(removed.begin(), removed.end());
+                for (size_t i = 0; i < originalLineOrder.size(); ++i) {
+                    if (originalLineOrder[i] > maxRemoved) {
+                        originalLineOrder[i] -= (maxRemoved - lineNumber + 1);
+                    }
                 }
             }
         }
         break;
     }
+    case ChangeType::Modify:
+    default:
+        // Do nothing for Modify
+        break;
     }
 }
 
@@ -6549,7 +6723,6 @@ int MultiReplace::compareColumnValue(const ColumnValue& left, const ColumnValue&
     return left.text.compare(right.text);
 }
 
-
 #pragma endregion
 
 
@@ -6574,66 +6747,26 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     std::string extendedDelimiter = convertAndExtend(delimiterData, true);
     std::string quoteCharConverted = wstringToString(quoteCharString);
 
-    // **Check for changes BEFORE modifying existing values**
+    // Check for changes BEFORE modifying existing values
     bool delimiterChanged = (columnDelimiterData.extendedDelimiter != extendedDelimiter);
     bool quoteCharChanged = (columnDelimiterData.quoteChar != quoteCharConverted);
-
-    // **Process column data before clearing old values**
-    std::set<int> parsedColumns;
-    std::vector<int> parsedInputColumns;
 
     // Trim leading and trailing commas from column data
     columnDataString.erase(0, columnDataString.find_first_not_of(L','));
     columnDataString.erase(columnDataString.find_last_not_of(L',') + 1);
 
+    // Ensure that columnDataString and delimiter are not empty
     if (columnDataString.empty() || delimiterData.empty()) {
         showStatusMessage(getLangStr(L"status_missing_column_or_delimiter_data"), COLOR_ERROR);
         return false;
     }
 
-    // Lambda function to process a token (either a single column or a range like "1-3")
-    auto processToken = [&](const std::wstring& token) -> bool {
-        if (token.empty()) return true; // Ignore empty tokens
-        try {
-            size_t dashPos = token.find(L'-');
-            if (dashPos != std::wstring::npos) { // Token represents a range (e.g., "1-3")
-                int startRange = std::stoi(token.substr(0, dashPos));
-                int endRange = std::stoi(token.substr(dashPos + 1));
-                if (startRange < 1 || endRange < startRange) {
-                    showStatusMessage(getLangStr(L"status_invalid_range_in_column_data"), COLOR_ERROR);
-                    return false;
-                }
-                for (int i = startRange; i <= endRange; ++i) {
-                    if (parsedColumns.insert(i).second) {
-                        parsedInputColumns.push_back(i);
-                    }
-                }
-            }
-            else { // Token represents a single column (e.g., "5")
-                int col = std::stoi(token);
-                if (col < 1) {
-                    showStatusMessage(getLangStr(L"status_invalid_column_number"), COLOR_ERROR);
-                    return false;
-                }
-                if (parsedColumns.insert(col).second) {
-                    parsedInputColumns.push_back(col);
-                }
-            }
-        }
-        catch (const std::exception&) {
-            showStatusMessage(getLangStr(L"status_syntax_error_in_column_data"), COLOR_ERROR);
-            return false;
-        }
-        return true;
-        };
+    // Use parseNumberRanges() to process column data
+    std::vector<int> parsedColumns = parseNumberRanges(columnDataString, getLangStr(L"status_invalid_range_in_column_data"));
+    if (parsedColumns.empty()) return false; // Abort if parsing failed
 
-    // Tokenize columnDataString using a stream and process each token
-    std::wistringstream iss(columnDataString);
-    std::wstring token;
-    while (std::getline(iss, token, L',')) {
-        if (!processToken(token))
-            return false;
-    }
+    // Convert parsedColumns to set for uniqueness
+    std::set<int> uniqueColumns(parsedColumns.begin(), parsedColumns.end());
 
     // Validate delimiter
     if (extendedDelimiter.empty()) {
@@ -6648,16 +6781,16 @@ bool MultiReplace::parseColumnAndDelimiterData() {
         return false;
     }
 
-    // **Check if columns have changed BEFORE updating stored data**
-    bool columnChanged = (columnDelimiterData.columns != parsedColumns);
+    // Check if columns have changed BEFORE updating stored data
+    bool columnChanged = (columnDelimiterData.columns != uniqueColumns);
 
     // Update columnDelimiterData values
     columnDelimiterData.delimiterChanged = delimiterChanged;
     columnDelimiterData.quoteCharChanged = quoteCharChanged;
     columnDelimiterData.columnChanged = columnChanged;
 
-    columnDelimiterData.inputColumns = std::move(parsedInputColumns);
-    columnDelimiterData.columns = std::move(parsedColumns);
+    columnDelimiterData.inputColumns = std::move(parsedColumns);
+    columnDelimiterData.columns = std::move(uniqueColumns);
     columnDelimiterData.extendedDelimiter = std::move(extendedDelimiter);
     columnDelimiterData.delimiterLength = columnDelimiterData.extendedDelimiter.length();
     columnDelimiterData.quoteChar = std::move(quoteCharConverted);
@@ -6990,8 +7123,7 @@ std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
     return lineAndColumnMessage;
 }
 
-void MultiReplace::processLogForDelimiters()
-{
+void MultiReplace::processLogForDelimiters() {
     // Check if logChanges is accessible
     if (!textModified || logChanges.empty()) {
         return;
@@ -7003,63 +7135,147 @@ void MultiReplace::processLogForDelimiters()
     for (auto& logEntry : logChanges) {
         switch (logEntry.changeType) {
         case ChangeType::Insert:
-            for (auto& modifyLogEntry : modifyLogEntries) {
-                // Check if the last entry in modifyLogEntries is one less than logEntry.lineNumber
-                if (&modifyLogEntry == &modifyLogEntries.back() && modifyLogEntry.lineNumber == logEntry.lineNumber - 1) {
-                    // Do nothing for the last entry if it is one less than logEntry.lineNumber as it has been produced by the Insert itself and should stay
-                    continue;
-                }
-                if (modifyLogEntry.lineNumber >= logEntry.lineNumber - 1) {
-                    ++modifyLogEntry.lineNumber;
-                }
-            }
-            updateDelimitersInDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Insert);
-            updateUnsortedDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Insert);
-            // this->messageBoxContent += "Line " + std::to_string(static_cast<int>(logEntry.lineNumber)) + " inserted.\n";
-            // Add Insert entry as a Modify entry in modifyLogEntries
-            logEntry.changeType = ChangeType::Modify;  // Convert Insert to Modify
-            modifyLogEntries.push_back(logEntry);
-            break;
-        case ChangeType::Delete:
-            for (auto& modifyLogEntry : modifyLogEntries) {
-                if (modifyLogEntry.lineNumber > logEntry.lineNumber) {
-                    --modifyLogEntry.lineNumber;
-                }
-                else if (modifyLogEntry.lineNumber == logEntry.lineNumber) {
-                    modifyLogEntry.lineNumber = -1;  // Mark for deletion
+        {
+            Sci_Position insertPos = logEntry.lineNumber;
+            Sci_Position blockCount = logEntry.blockSize;
+
+            // Shift existing modifies if needed
+            for (auto& m : modifyLogEntries) {
+                if (m.lineNumber >= insertPos) {
+                    m.lineNumber += blockCount;
                 }
             }
-            updateDelimitersInDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Delete);
-            updateUnsortedDocument(static_cast<int>(logEntry.lineNumber), ChangeType::Delete);
-            // this->messageBoxContent += "Line " + std::to_string(static_cast<int>(logEntry.lineNumber)) + " deleted.\n";
-            break;
-        case ChangeType::Modify:
+
+            // Insert new lines
+            updateDelimitersInDocument(
+                static_cast<SIZE_T>(insertPos),
+                static_cast<SIZE_T>(blockCount),
+                ChangeType::Insert
+            );
+
+            // Immediately parse them so they're recognized
+            updateDelimitersInDocument(
+                static_cast<SIZE_T>(insertPos),
+                static_cast<SIZE_T>(blockCount),
+                ChangeType::Modify
+            );
+
+            updateUnsortedDocument(
+                static_cast<SIZE_T>(insertPos),
+                static_cast<SIZE_T>(blockCount),
+                ChangeType::Insert
+            );
+
+            // Optionally highlight all new lines
+            if (isColumnHighlighted) {
+                LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
+                for (Sci_Position offset = 0; offset < blockCount; ++offset) {
+                    Sci_Position lineToHighlight = insertPos + offset;
+                    if (lineToHighlight >= 0
+                        && static_cast<size_t>(lineToHighlight) < lineDelimiterPositions.size()
+                        && lineToHighlight < docLineCount)
+                    {
+                        highlightColumnsInLine(lineToHighlight);
+                    }
+                }
+            }
+
+            // Convert Insert to Modify for the final pass
+            logEntry.changeType = ChangeType::Modify;
             modifyLogEntries.push_back(logEntry);
             break;
+        }
+
+        case ChangeType::Delete: 
+        {
+            Sci_Position deletePos = logEntry.lineNumber;
+            Sci_Position blockCount = logEntry.blockSize;
+
+            // remove modifies in [deletePos..deletePos+blockCount)
+            for (auto& m : modifyLogEntries) {
+                if (m.lineNumber >= deletePos && m.lineNumber < (deletePos + blockCount)) {
+                    m.lineNumber = -1; // Mark for removal
+                }
+                else if (m.lineNumber >= (deletePos + blockCount)) {
+                    m.lineNumber -= blockCount;
+                }
+            }
+
+            updateDelimitersInDocument(
+                static_cast<SIZE_T>(deletePos),
+                static_cast<SIZE_T>(blockCount),
+                ChangeType::Delete
+            );
+
+            updateUnsortedDocument(
+                static_cast<SIZE_T>(deletePos),
+                static_cast<SIZE_T>(blockCount),
+                ChangeType::Delete
+            );
+
+            // Re-parse lines after deletePos to keep everything in sync
+            if (deletePos < (Sci_Position)lineDelimiterPositions.size()) {
+                Sci_Position linesToReparse = (Sci_Position)lineDelimiterPositions.size() - deletePos;
+                updateDelimitersInDocument(
+                    static_cast<SIZE_T>(deletePos),
+                    static_cast<SIZE_T>(linesToReparse),
+                    ChangeType::Modify
+                );
+            }
+            break;
+        }
+
+        case ChangeType::Modify: 
+        {
+            modifyLogEntries.push_back(logEntry);
+            break;
+        }
+
         default:
             break;
         }
     }
 
+    // Apply the saved "Modify" entries
+    for (const auto& m : modifyLogEntries)
+    {
+        if (m.lineNumber == -1) {
+            continue; // skip removed lines
+        }
 
-    // Apply the saved "Modify" entries to the original delimiter list
-    for (const auto& modifyLogEntry : modifyLogEntries) {
-        if (modifyLogEntry.lineNumber != -1) {
-            updateDelimitersInDocument(static_cast<int>(modifyLogEntry.lineNumber), ChangeType::Modify);
+        if (static_cast<size_t>(m.lineNumber) < lineDelimiterPositions.size()) {
+            updateDelimitersInDocument(
+                static_cast<size_t>(m.lineNumber),
+                1,
+                ChangeType::Modify
+            );
+
             if (isColumnHighlighted) {
-                //clearMarksInLine(modifyLogEntry.lineNumber);
-                highlightColumnsInLine(modifyLogEntry.lineNumber);
+                LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
+                if (m.lineNumber >= 0
+                    && m.lineNumber < docLineCount
+                    && static_cast<size_t>(m.lineNumber) < lineDelimiterPositions.size())
+                {
+                    highlightColumnsInLine(m.lineNumber);
+                }
             }
-            //this->messageBoxContent += "Line " + std::to_string(static_cast<int>(modifyLogEntry.lineNumber)) + " modified.\n";
         }
     }
 
-    // Workaround: Highlight last lines to fix N++ bug causing loss of styling on last character when modification in any other line
+    // Workaround: Highlight last lines to fix N++ bug causing loss of styling 
     if (isColumnHighlighted) {
         size_t lastLine = lineDelimiterPositions.size();
+        LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
+
         if (lastLine >= 2) {
-            highlightColumnsInLine(lastLine - 2);
-            highlightColumnsInLine(lastLine - 1);
+            size_t highlightLine1 = lastLine - 2;
+            if (highlightLine1 < (size_t)docLineCount) {
+                highlightColumnsInLine((LRESULT)highlightLine1);
+            }
+            size_t highlightLine2 = lastLine - 1;
+            if (highlightLine2 < (size_t)docLineCount) {
+                highlightColumnsInLine((LRESULT)highlightLine2);
+            }
         }
     }
 
@@ -7068,8 +7284,7 @@ void MultiReplace::processLogForDelimiters()
     textModified = false;
 }
 
-void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType changeType) {
-
+void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType) {
     // Return early if the line number is invalid
     if (lineNumber > lineDelimiterPositions.size()) {
         return;
@@ -7078,17 +7293,27 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
     switch (changeType) {
     case ChangeType::Insert:
     {
-        // Insert an empty line with no delimiters
-        LineInfo newLine;
-        newLine.lineIndex = lineNumber;
-        newLine.lineLength = 0; // New line has no content initially
-        newLine.positions.clear();
+        // Insert multiple empty lines instead of just one
+        std::vector<LineInfo> newLines;
+        newLines.reserve(blockCount);
 
-        // Add the new line at the specified position
-        lineDelimiterPositions.insert(lineDelimiterPositions.begin() + lineNumber, newLine);
+        for (SIZE_T i = 0; i < blockCount; ++i) {
+            LineInfo newLine;
+            newLine.lineIndex = lineNumber;
+            newLine.lineLength = 0; // New line has no content initially
+            newLine.positions.clear();
+            newLines.push_back(newLine);
+        }
+
+        // Add them all at the specified position
+        lineDelimiterPositions.insert(
+            lineDelimiterPositions.begin() + lineNumber,
+            newLines.begin(),
+            newLines.end()
+        );
 
         // Update the indices of all subsequent lines
-        for (SIZE_T i = lineNumber + 1; i < lineDelimiterPositions.size(); ++i) {
+        for (SIZE_T i = lineNumber; i < lineDelimiterPositions.size(); ++i) {
             lineDelimiterPositions[i].lineIndex = i;
         }
     }
@@ -7096,9 +7321,17 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
 
     case ChangeType::Delete:
     {
-        // Remove the specified line if it exists
+        // Remove the specified number of lines if they exist
+        SIZE_T endPos = lineNumber + blockCount;
+        if (endPos > lineDelimiterPositions.size()) {
+            endPos = lineDelimiterPositions.size();
+        }
+
         if (lineNumber < lineDelimiterPositions.size()) {
-            lineDelimiterPositions.erase(lineDelimiterPositions.begin() + lineNumber);
+            lineDelimiterPositions.erase(
+                lineDelimiterPositions.begin() + lineNumber,
+                lineDelimiterPositions.begin() + endPos
+            );
 
             // Update the indices of all subsequent lines
             for (SIZE_T i = lineNumber; i < lineDelimiterPositions.size(); ++i) {
@@ -7110,9 +7343,14 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, ChangeType chan
 
     case ChangeType::Modify:
     {
-        // Reanalyze the line to update delimiters if it exists
-        if (lineNumber < lineDelimiterPositions.size()) {
-            findDelimitersInLine(lineNumber);
+        // Reanalyze multiple lines if they exist
+        SIZE_T endPos = lineNumber + blockCount;
+        if (endPos > lineDelimiterPositions.size()) {
+            endPos = lineDelimiterPositions.size();
+        }
+
+        for (SIZE_T i = lineNumber; i < endPos; ++i) {
+            findDelimitersInLine(i);
         }
     }
     break;
@@ -7487,6 +7725,9 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
 
     // Push the action onto the undoStack
     undoStack.push_back(action);
+
+    // Show Select Statisics
+    showListFilePath();
 }
 
 void MultiReplace::updateHeaderSelection() {
@@ -7727,32 +7968,90 @@ std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int ma
     return displayPath;
 }
 
-void MultiReplace::showListFilePath() {
-    std::wstring path = listFilePath;
-
-    // Obtain handle and device context for the path display control
+void MultiReplace::showListFilePath()
+{
     HWND hPathDisplay = GetDlgItem(_hSelf, IDC_PATH_DISPLAY);
+    HWND hStatsDisplay = GetDlgItem(_hSelf, IDC_STATS_DISPLAY);
+    HWND hListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+
+    if (!hPathDisplay || !hListView)
+        return;
+
     HDC hDC = GetDC(hPathDisplay);
     HFONT hFont = (HFONT)SendMessage(hPathDisplay, WM_GETFONT, 0, 0);
     SelectObject(hDC, hFont);
 
-    // Get display width for IDC_PATH_DISPLAY
+    // Get ListView dimensions
+    RECT rcListView;
+    GetWindowRect(hListView, &rcListView);
+    MapWindowPoints(NULL, _hSelf, reinterpret_cast<LPPOINT>(&rcListView), 2);
+    int listWidth = rcListView.right - rcListView.left;
+
+    const int spacing = sx(10);
+    const int verticalOffset = sy(2);
+
+    // Calculate Y positions (keeping original heights)
     RECT rcPathDisplay;
     GetClientRect(hPathDisplay, &rcPathDisplay);
-    int pathDisplayWidth = rcPathDisplay.right - rcPathDisplay.left;
+    int fieldHeight = rcPathDisplay.bottom - rcPathDisplay.top;
+    int fieldY = rcListView.bottom + verticalOffset;
 
-    // Call the new function to get the shortened file path
-    std::wstring shortenedPath = getShortenedFilePath(path, pathDisplayWidth, hDC);
+    int statsWidth = 0;
 
-    // Display the shortened path
+    if (listStatisticsEnabled && hStatsDisplay)
+    {
+        // Gather statistics
+        int totalItems = static_cast<int>(replaceListData.size());
+        int selectedItems = ListView_GetSelectedCount(_replaceListView);
+        int activatedCount = static_cast<int>(std::count_if(replaceListData.begin(), replaceListData.end(),
+            [](const ReplaceItemData& item) { return item.isEnabled; }));
+        int focusedRow = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
+        int displayRow = (selectedItems > 0 && focusedRow != -1) ? (focusedRow + 1) : 0;
+
+        // Compose stats string
+        std::wstring statsString = L"A:" + std::to_wstring(activatedCount)
+            + L"  L:" + std::to_wstring(totalItems)
+            + L"  |  R:" + std::to_wstring(displayRow)
+            + L"  S:" + std::to_wstring(selectedItems);
+
+        // Measure stats string width
+        SIZE sz;
+        GetTextExtentPoint32(hDC, statsString.c_str(), static_cast<int>(statsString.size()), &sz);
+        statsWidth = sz.cx + sx(5); // padding
+
+        // Position stats field
+        int statsX = rcListView.left + listWidth - statsWidth;
+        MoveWindow(hStatsDisplay, statsX, fieldY, statsWidth, fieldHeight, TRUE);
+        SetWindowTextW(hStatsDisplay, statsString.c_str());
+        ShowWindow(hStatsDisplay, SW_SHOW);
+    }
+    else if (hStatsDisplay)
+    {
+        // Pragmatic solution: Set width to zero instead of hiding
+        statsWidth = 0;
+        MoveWindow(hStatsDisplay, rcListView.right, fieldY, 0, fieldHeight, TRUE);
+        SetWindowTextW(hStatsDisplay, L"");
+        ShowWindow(hStatsDisplay, SW_HIDE);
+    }
+
+    // Adjust path field to use remaining space
+    int pathWidth = listWidth - statsWidth - (listStatisticsEnabled ? spacing : 0);
+    pathWidth = std::max(pathWidth, 0);
+    MoveWindow(hPathDisplay, rcListView.left, fieldY, pathWidth, fieldHeight, TRUE);
+
+    // Update path display text
+    std::wstring shortenedPath = getShortenedFilePath(listFilePath, pathWidth, hDC);
     SetWindowTextW(hPathDisplay, shortenedPath.c_str());
 
-    // Update the parent window area where the control resides
-    RECT rect;
-    GetWindowRect(hPathDisplay, &rect);
-    MapWindowPoints(HWND_DESKTOP, GetParent(hPathDisplay), (LPPOINT)&rect, 2);
-    InvalidateRect(GetParent(hPathDisplay), &rect, TRUE);
-    UpdateWindow(GetParent(hPathDisplay));
+    ReleaseDC(hPathDisplay, hDC);
+
+    // Immediate redraw
+    InvalidateRect(hPathDisplay, NULL, TRUE);
+    UpdateWindow(hPathDisplay);
+    if (hStatsDisplay) {
+        InvalidateRect(hStatsDisplay, NULL, TRUE);
+        UpdateWindow(hStatsDisplay);
+    }
 }
 
 std::wstring MultiReplace::getSelectedText() {
@@ -7894,6 +8193,69 @@ int MultiReplace::getFontHeight(HWND hwnd, HFONT hFont) {
     int fontHeight = tm.tmHeight;  // Extract the font height
     ReleaseDC(hwnd, hdc);  // Release the device context
     return fontHeight;  // Return the font height
+}
+
+std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage)
+{
+    std::vector<int> result;
+    if (input.empty()) return result; // Return empty vector if input is empty
+
+    std::set<int> uniqueNumbers;
+    std::wistringstream stream(input);
+    std::wstring token;
+
+    // Lambda function to process each token (either a single number or a range "1-5")
+    auto processToken = [&](const std::wstring& token) -> bool
+        {
+            if (token.empty()) return true; // Ignore empty tokens
+
+            try
+            {
+                size_t dashPos = token.find(L'-');
+                if (dashPos != std::wstring::npos)
+                {
+                    // Extract range start and end
+                    int startRange = std::stoi(token.substr(0, dashPos));
+                    int endRange = std::stoi(token.substr(dashPos + 1));
+
+                    // Validate range
+                    if (startRange < 1 || endRange < startRange)
+                        return false;
+
+                    // Insert numbers in the range
+                    for (int i = startRange; i <= endRange; ++i)
+                        uniqueNumbers.insert(i);
+                }
+                else
+                {
+                    // Single number
+                    int number = std::stoi(token);
+                    if (number < 1)
+                        return false; // Invalid input
+
+                    uniqueNumbers.insert(number);
+                }
+            }
+            catch (const std::exception&)
+            {
+                return false; // Invalid input format
+            }
+
+            return true;
+        };
+
+    // Split input by comma and process each token
+    while (std::getline(stream, token, L','))
+    {
+        if (!processToken(token))
+        {
+            showStatusMessage(errorMessage, COLOR_ERROR);
+            return {}; // Invalid input -> return empty vector
+        }
+    }
+
+    result.assign(uniqueNumbers.begin(), uniqueNumbers.end());
+    return result;
 }
 
 #pragma endregion
@@ -8668,7 +9030,8 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int matchCase = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int extended = IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED ? 1 : 0;
     int regex = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0;
-    int replaceFirst = IsDlgButtonChecked(_hSelf, IDC_REPLACE_FIRST_CHECKBOX) == BST_CHECKED ? 1 : 0;
+    int replaceAtMatches = IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED ? 1 : 0;
+    std::wstring editAtMatchesText = L"\"" + getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT) + L"\"";
     int wrapAround = IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int useVariables = IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int ButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
@@ -8679,7 +9042,8 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"MatchCase=" + std::to_wstring(matchCase) + L"\n");
     outFile << wstringToString(L"Extended=" + std::to_wstring(extended) + L"\n");
     outFile << wstringToString(L"Regex=" + std::to_wstring(regex) + L"\n");
-    outFile << wstringToString(L"ReplaceFirst=" + std::to_wstring(replaceFirst) + L"\n");
+    outFile << wstringToString(L"ReplaceAtMatches=" + std::to_wstring(replaceAtMatches) + L"\n");
+    outFile << wstringToString(L"EditAtMatches=" + editAtMatchesText + L"\n");
     outFile << wstringToString(L"WrapAround=" + std::to_wstring(wrapAround) + L"\n");
     outFile << wstringToString(L"UseVariables=" + std::to_wstring(useVariables) + L"\n");
     outFile << wstringToString(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
@@ -8690,6 +9054,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"DoubleClickEdits=" + std::to_wstring(doubleClickEditsEnabled ? 1 : 0) + L"\n");
     outFile << wstringToString(L"HoverText=" + std::to_wstring(isHoverTextEnabled ? 1 : 0) + L"\n");
     outFile << wstringToString(L"EditFieldSize=" + std::to_wstring(editFieldSize) + L"\n");
+    outFile << wstringToString(L"ListStatistics=" + std::to_wstring(listStatisticsEnabled ? 1 : 0) + L"\n");;
 
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
@@ -8815,8 +9180,11 @@ void MultiReplace::loadSettingsFromIni() {
     bool wrapAround = readBoolFromIniCache(L"Options", L"WrapAround", false);
     SendMessage(GetDlgItem(_hSelf, IDC_WRAP_AROUND_CHECKBOX), BM_SETCHECK, wrapAround ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    bool replaceFirst = readBoolFromIniCache(L"Options", L"ReplaceFirst", false);
-    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_FIRST_CHECKBOX), BM_SETCHECK, replaceFirst ? BST_CHECKED : BST_UNCHECKED, 0);
+    bool replaceAtMatches = readBoolFromIniCache(L"Options", L"ReplaceAtMatches", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX), BM_SETCHECK, replaceAtMatches ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    std::wstring editAtMatchesText = readStringFromIniCache(L"Options", L"EditAtMatches", L"1");
+    setTextInDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT, editAtMatchesText);
 
     bool replaceButtonsMode = readBoolFromIniCache(L"Options", L"ButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -8832,6 +9200,8 @@ void MultiReplace::loadSettingsFromIni() {
     // readIntFromIniCache for editFieldSize
     editFieldSize = readIntFromIniCache(L"Options", L"EditFieldSize", 5);
     editFieldSize = std::clamp(editFieldSize, MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
+
+    listStatisticsEnabled = readBoolFromIniCache(L"Options", L"ListStatistics", false);
 
     // Loading and setting the scope
     int selection = readIntFromIniCache(L"Scope", L"Selection", 0);
@@ -8852,8 +9222,6 @@ void MultiReplace::loadSettingsFromIni() {
     // Load file path and original hash
     listFilePath = readStringFromIniCache(L"File", L"ListFilePath", L"");
     originalListHash = readSizeTFromIniCache(L"File", L"OriginalListHash", 0);
-
-    showListFilePath();
 
     if (selection) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_SELECTION_RADIO);
@@ -8889,6 +9257,8 @@ void MultiReplace::loadSettings() {
     updateHeaderSelection();
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
+
+    showListFilePath();
 }
 
 void MultiReplace::loadUIConfigFromIni() {
@@ -9266,9 +9636,13 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
         if (addedLines != 0) {
             // Set the first entry as Modify
             logChanges.push_back({ ChangeType::Modify, lineNumber });
-            for (Sci_Position i = 1; i <= abs(addedLines); i++) {
-                logChanges.push_back({ ChangeType::Insert, lineNumber + i });
-            }
+
+            // Instead of pushing multiple Insert entries in a loop, just push one block
+            LogEntry insertEntry;
+            insertEntry.changeType = ChangeType::Insert;
+            insertEntry.lineNumber = lineNumber;
+            insertEntry.blockSize  = static_cast<Sci_Position>(std::abs(addedLines));
+            logChanges.push_back(insertEntry);
         }
         else {
             // Check if the last entry is a Modify on the same line
@@ -9284,12 +9658,15 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
                 logChanges.push_back({ ChangeType::Delete, 0 });
                 return;
             }
-            // Then, log the deletes in descending order
-            for (Sci_Position i = abs(addedLines); i > 0; i--) {
-                logChanges.push_back({ ChangeType::Delete, lineNumber + i });
-            }
+            // Then, log the deletes in one block
+            LogEntry deleteEntry;
             // Set the first entry as Modify for the smallest lineNumber
             logChanges.push_back({ ChangeType::Modify, lineNumber });
+
+            deleteEntry.changeType = ChangeType::Delete;
+            deleteEntry.lineNumber = lineNumber;
+            deleteEntry.blockSize  = static_cast<Sci_Position>(std::abs(addedLines));
+            logChanges.push_back(deleteEntry);
         }
         else {
             // Check if the last entry is a Modify on the same line
@@ -9399,7 +9776,6 @@ void MultiReplace::onThemeChanged()
         instance->initializeColumnStyles();
     }
 }
-
 
 #pragma endregion
 

@@ -206,6 +206,7 @@
     <ClInclude Include="..\src\DropTarget.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\luaEmbedded.h" />
+    <ClInclude Include="..\src\image_data.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />
