@@ -1,6 +1,6 @@
 # MultiReplace for Notepad++
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-4.2.2.25-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.2.2.25)
+[![Latest Stable Version](https://img.shields.io/badge/version-4.3.0.26-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.3.0.26)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, perfect for use across different sessions or projects. It increases efficiency by enabling multiple replacements at once, supports sorting and applying operations to specific columns in CSV files, and offers flexible options for replacing text, including conditional and mathematical operations, as well as the use of external hash tables for dynamic data lookups.
@@ -481,6 +481,14 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Default**: `editFieldSize=5` (normal size).
   - **Range**: 2 to 20.
   - **Description**: Sets the factor by which the edit field in the list expands or collapses when toggling its size.
+ 
+- **ListStatistics**: Controls whether list statistics are displayed below the list.
+  - **Default**: `ListStatistics=0` (disabled).
+  - **Description**: When enabled (`1`), a compact statistics field appears below the list, showing:
+    - **A**: Number of activated entries
+    - **L**: Total number of list items
+    - **R**: Index of the currently focused row
+    - **S**: Number of selected items
 
 ### Multilingual UI Support
 
