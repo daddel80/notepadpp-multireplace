@@ -2065,6 +2065,9 @@ void MultiReplace::toggleBooleanAt(int itemIndex, ColumnID columnID) {
 
     // Use modifyItemInReplaceList to handle the change and Undo/Redo
     modifyItemInReplaceList(static_cast<size_t>(itemIndex), newData);
+
+    if (columnID == ColumnID::SELECTION)
+        updateHeaderSelection();   // Re-evaluate all/none/some enabled for the header
 }
 
 void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
