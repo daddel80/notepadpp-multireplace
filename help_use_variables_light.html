@@ -412,47 +412,47 @@
     <section id="Variables">
         <h2>Variables</h2>
         <table class="optionsTable">
-            <tr>
-                <th>Variable</th>
-                <th>Description</th>
-            </tr>
-            <tr>
-                <td><strong>CNT</strong></td>
-                <td>Count of the detected string.</td>
-            </tr>
-            <tr>
-                <td><strong>LINE</strong></td>
-                <td>Line number where the string is found.</td>
-            </tr>
-            <tr>
-                <td><strong>APOS</strong></td>
-                <td>Absolute character position in the document.</td>
-            </tr>
-            <tr>
-                <td><strong>LPOS</strong></td>
-                <td>Relative line position.</td>
-            </tr>
-            <tr>
-                <td><strong>LCNT</strong></td>
-                <td>Count of the detected string within the line.</td>
-            </tr>
-            <tr>
-                <td><strong>COL</strong></td>
-                <td>Column number where the string was found (CSV-Scope option selected).</td>
-            </tr>
-            <tr>
-                <td><strong>MATCH</strong></td>
-                <td>Contains the text of the detected string, in contrast to <code>CAP</code> variables which correspond to capture groups in regex patterns.</td>
-            </tr>
-            <tr>
-                <td><strong>CAP1</strong>, <strong>CAP2</strong>,...</td>
-                <td>These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.</td>
-            </tr>
-            <tr>
-                <td colspan="2">
-                <strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.
-                </td>
-            </tr>
+           <tr>
+               <th>Variable</th>
+               <th>Description</th>
+           </tr>
+           <tr>
+               <td><strong>CNT</strong></td>
+               <td>Count of the detected string.</td>
+           </tr>
+           <tr>
+               <td><strong>LCNT</strong></td>
+               <td>Count of the detected string within the line.</td>
+           </tr>
+           <tr>
+               <td><strong>LINE</strong></td>
+               <td>Line number where the string is found.</td>
+           </tr>
+           <tr>
+               <td><strong>LPOS</strong></td>
+               <td>Relative character position within the line.</td>
+           </tr>
+           <tr>
+               <td><strong>APOS</strong></td>
+               <td>Absolute character position in the document.</td>
+           </tr>
+           <tr>
+               <td><strong>COL</strong></td>
+               <td>Column number where the string was found (CSV-Scope option selected).</td>
+           </tr>
+           <tr>
+               <td><strong>MATCH</strong></td>
+               <td>Contains the text of the detected string, in contrast to <code>CAP</code> variables which correspond to capture groups in regex patterns.</td>
+           </tr>
+           <tr>
+               <td><strong>CAP1</strong>, <strong>CAP2</strong>,...</td>
+               <td>These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.</td>
+           </tr>
+           <tr>
+               <td colspan="2">
+               <strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.
+               </td>
+           </tr>
         </table>
     </section>
 
