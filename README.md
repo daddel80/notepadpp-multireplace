@@ -60,7 +60,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 
 **Use Variables:** This feature allows the use of variables within the replacement string for dynamic and conditional replacements. For more detailed information, refer to the [Option 'Use Variables' chapter](#option-use-variables).
 
-**Replace at Match(s):** For Replace-All operations, this option allows specifying which occurrences of a match should be replaced in a Search and Replace list, enabling precise control over targeted changes. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
+**Replace matches:** For Replace-All operations, this option allows specifying which occurrences of a match should be replaced in a Search and Replace list, enabling precise control over targeted changes. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
 
 **Wrap Around:** When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
 
