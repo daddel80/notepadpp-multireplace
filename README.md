@@ -41,14 +41,14 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
   
 ## Key Features
 
--   **Multiple Replacements**: Perform multiple replacements in a single operation, in one document or across all open documents
--   **Save and Load Lists**: Store and load search/replace lists for reuse across different sessions or projects, including all relevant settings.
--   **Selection Support**: Supports rectangular and multiple selections for targeted replacements.
--   **CSV Column Operations**: Search, replace, sort, or highlight specific columns in CSV or other delimited files by selecting column numbers.
--   **Conditional Replacements**: Use variables, conditions, and mathematical operations for complex replacements, fully integrated into the replacement list like regular entries.
--   **Highlight Matches**: Mark multiple search terms in the text, each with a distinct color for easy differentiation.
--   **External Lookups**: Replace matches with values from external hash or lookup files for externalizing large or frequently updated mapping tables.
--   **Bash Script Export**: Export replacement operations as a bash script for use outside of Notepad++.
+- **Batch Replacement Lists** – Run any number of search-and-replace pairs in a single pass, either in the current document or across all open documents.
+- **Rule-Driven & Variable Replacements** – Lua-powered variables, conditions, and calculations enable dynamic, context-aware substitutions.
+- **CSV Column Toolkit** – Search, replace, sort, or delete specific columns; numeric-aware sorting and header exclusion included.
+- **External Lookup Tables** – Swap matches with values from external hash/lookup files—ideal for large or frequently updated mapping tables.
+- **Precision Scopes & Selections** – Rectangle and multi-selection support, column scopes, and “replace at specific match” for pinpoint operations.
+- **Reusable Replacement Lists** – Save, load, and drag-and-drop lists with all options intact—perfect for recurring workflows.
+- **Multi-Colour Highlighting** – Highlight search hits in up to 20 distinct colours for rapid visual confirmation.
+- **Script Export** – Generate standalone bash scripts that reproduce the replacement logic outside of Notepad++.
 
 <br>
 
@@ -60,7 +60,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 
 **Use Variables:** This feature allows the use of variables within the replacement string for dynamic and conditional replacements. For more detailed information, refer to the [Option 'Use Variables' chapter](#option-use-variables).
 
-**Replace at Match(s):** For Replace-All operations, this option allows specifying which occurrences of a match should be replaced in a Search and Replace list, enabling precise control over targeted changes. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
+**Replace matches:** For Replace-All operations, this option allows specifying which occurrences of a match should be replaced in a Search and Replace list, enabling precise control over targeted changes. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
 
 **Wrap Around:** When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
 
@@ -124,10 +124,10 @@ Enable the '**Use Variables**' option to enhance replacements with calculations 
 | Variable | Description |
 |----------|-------------|
 | **CNT**  | Count of the detected string. |
-| **LINE** | Line number where the string is found. |
-| **APOS** | Absolute character position in the document. |
-| **LPOS** | Relative line position. |
 | **LCNT** | Count of the detected string within the line. |
+| **LINE** | Line number where the string is found. |
+| **LPOS** | Relative character position within the line. |
+| **APOS** | Absolute character position in the document. |
 | **COL**  | Column number where the string was found (CSV-Scope option selected).|
 | **MATCH**| Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
 | **FNAME**| Filename or window title for new, unsaved files. |
@@ -193,7 +193,7 @@ The parameter **filePath** must specify a valid path to a file. Supported path f
 - Forward Slashes: `"C:/path/to/file.vars"`
 - Long Bracket String: `[[C:\path\to\file.vars]]`
 
-** File:**
+**File:**
 ```lua
 -- Local variables remain private
 local PATH = [[C:\Data\Projects\\]]
@@ -253,7 +253,7 @@ return {
 In this example:
 - `'001'`, `'1'`, and `1` all correspond to `"One"`.  
 - `2` corresponds to `"Two"`.  
-- `'003'` directly maps to `"Three"`.   
+- `'003'` directly maps to `"Three"`.
 
 ##### Caching Mechanism
 Once `lkp()` loads the data file for **hpath**, the parsed table is cached in memory for the duration of the Replace-All operation.
@@ -279,10 +279,10 @@ Formats numbers based on precision (maxDecimals) and whether the number of decim
 **Note**: The `fmtN` command can exclusively be used within the `set` and `cond` commands.
 | Example                             | Result  |
 |-------------------------------------|---------|
-| `set(fmtN(5.73652, 2, true))`       | "5.74"  |
-| `set(fmtN(5.0, 2, true))`           | "5.00"  |
-| `set(fmtN(5.73652, 4, false))`      | "5.7365"|
-| `set(fmtN(5.0, 4, false))`          | "5"     |
+| `set(fmtN(5.73652, 2, true))`       | 5.74  |
+| `set(fmtN(5.0, 2, true))`           | 5.00  |
+| `set(fmtN(5.73652, 4, false))`      | 5.7365|
+| `set(fmtN(5.0, 4, false))`          | 5     |
 
 <br>
 
@@ -395,7 +395,6 @@ Additional Interactions:
   - **W**: Match whole word only.
   - **C**: Match case.
   - **V**: Use Variables.
-  - **N**: Normal search mode.
   - **E**: Extended search mode.
   - **R**: Regular expression mode.
 - **Additional Columns**:
@@ -425,7 +424,7 @@ You can manage the visibility of the additional columns via the **Header Column 
 -   Enables reuse of search and replace operations across sessions and projects.
 
 ### Bash Script Export
-- Exports Find and Replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
+- Exports find-and-replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
 - Entries flagged with "Use Variables" are skipped as they are not supported in the exported script.
 - This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
 
@@ -452,7 +451,7 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Description**: Set this value to exclude a specific number of lines at the top of the file from being sorted during CSV operations. Useful for preserving header rows in CSV files.
   - **Note**: If set to `0`, no lines are excluded from sorting.
 
-- **Transparency Settings**:
+- **Transparency Settings**: Controls the transparency of the plugin window depending on focus.
   - `ForegroundTransparency`: Transparency level when in focus (0-255, default 255).
   - `BackgroundTransparency`: Transparency level when not in focus (0-255, default 190).
 
@@ -478,7 +477,7 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Description**: To disable the bell sound for unsuccessful searches, set `AlertNotFound=0` in the INI file.
  
 - **EditFieldSize**: Configures the size adjustment of the edit field in the list during toggling.
-  - **Default**: `editFieldSize=5` (normal size).
+  - **Default**: `EditFieldSiz=5` (normal size).
   - **Range**: 2 to 20.
   - **Description**: Sets the factor by which the edit field in the list expands or collapses when toggling its size.
  
