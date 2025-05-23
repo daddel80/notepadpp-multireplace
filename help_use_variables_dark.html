@@ -445,6 +445,14 @@
                 <td>Contains the text of the detected string, in contrast to <code>CAP</code> variables which correspond to capture groups in regex patterns.</td>
             </tr>
             <tr>
+                <td><strong>FNAME</strong></td>
+                <td>Filename or window title for new, unsaved files.</td>
+            </tr>
+            <tr>
+                <td><strong>FPATH</strong></td>
+                <td>Full path including the filename, or empty for new, unsaved files.</td>
+            </tr>
+            <tr>
                 <td><strong>CAP1</strong>, <strong>CAP2</strong>,...</td>
                 <td>These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.</td>
             </tr>
@@ -718,19 +726,19 @@ return {
             </tr>
             <tr>
                 <td><code>set(fmtN(5.73652, 2, true))</code></td>
-                <td>"5.74"</td>
+                <td>5.74</td>
             </tr>
             <tr>
                 <td><code>set(fmtN(5.0, 2, true))</code></td>
-                <td>"5.00"</td>
+                <td>5.00</td>
             </tr>
             <tr>
                 <td><code>set(fmtN(5.73652, 4, false))</code></td>
-                <td>"5.7365"</td>
+                <td>5.7365</td>
             </tr>
             <tr>
                 <td><code>set(fmtN(5.0, 4, false))</code></td>
-                <td>"5"</td>
+                <td>5</td>
             </tr>
         </table>
     </section>
