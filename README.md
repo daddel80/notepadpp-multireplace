@@ -446,23 +446,24 @@ The MultiReplace plugin provides several configuration options, including transp
 
 #### INI File Settings:
 
-- **HeaderLines**: Specifies the number of top lines to exclude from sorting as headers.
-  - **Default**: `HeaderLines=1` (first line is excluded from sorting).
-  - **Description**: Set this value to exclude a specific number of lines at the top of the file from being sorted during CSV operations. Useful for preserving header rows in CSV files.
-  - **Note**: If set to `0`, no lines are excluded from sorting.
-
-- **Transparency Settings**: Controls the transparency of the plugin window depending on focus.
-  - `ForegroundTransparency`: Transparency level when in focus (0-255, default 255).
-  - `BackgroundTransparency`: Transparency level when not in focus (0-255, default 190).
-
 - **ScaleFactor**: Controls the scaling of the plugin window and UI elements.
   - **Default**: `ScaleFactor=1.0` (normal size).
   - **Range**: 0.5 to 2.0.
   - **Description**: Adjust this value to resize the plugin window and UI elements. A lower value shrinks the interface, while a higher value enlarges it.
 
-- **DoubleClickEdits**: Controls the behavior of double-clicking on list entries.
-  - **Default**: `DoubleClickEdits=1` (enabled).
-  - **Description**: When enabled (`1`), double-clicking on a list entry allows direct in-place editing. When disabled (`0`), double-clicking transfers the entry to the input fields for editing.
+- **Transparency Settings**: Controls the transparency of the plugin window depending on focus.
+  - `ForegroundTransparency`: Transparency level when in focus (0-255, default 255).
+  - `BackgroundTransparency`: Transparency level when not in focus (0-255, default 190).
+
+- **EditFieldSize**: Configures the size adjustment of the edit field in the list during toggling.
+  - **Default**: `EditFieldSiz=5` (normal size).
+  - **Range**: 2 to 20.
+  - **Description**: Sets the factor by which the edit field in the list expands or collapses when toggling its size.
+
+- **HeaderLines**: Specifies the number of top lines to exclude from sorting as headers.
+  - **Default**: `HeaderLines=1` (first line is excluded from sorting).
+  - **Description**: Set this value to exclude a specific number of lines at the top of the file from being sorted during CSV operations. Useful for preserving header rows in CSV files.
+  - **Note**: If set to `0`, no lines are excluded from sorting.
 
 - **HoverText**: Enables or disables the display of full text for truncated list entries when hovering over them.
   - **Default**: `HoverText=1` (enabled).
@@ -472,14 +473,13 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Default**: `Tooltips=1` (enabled).
   - **Description**: To disable tooltips, set `Tooltips=0` in the INI file.
 
+- **DoubleClickEdits**: Controls the behavior of double-clicking on list entries.
+  - **Default**: `DoubleClickEdits=1` (enabled).
+  - **Description**: When enabled (`1`), double-clicking on a list entry allows direct in-place editing. When disabled (`0`), double-clicking transfers the entry to the input fields for editing.
+
 - **AlertNotFound**: Controls notifications for unsuccessful searches.
   - **Default**: `AlertNotFound=1` (enabled).
   - **Description**: To disable the bell sound for unsuccessful searches, set `AlertNotFound=0` in the INI file.
- 
-- **EditFieldSize**: Configures the size adjustment of the edit field in the list during toggling.
-  - **Default**: `EditFieldSiz=5` (normal size).
-  - **Range**: 2 to 20.
-  - **Description**: Sets the factor by which the edit field in the list expands or collapses when toggling its size.
  
 - **ListStatistics**: Controls whether list statistics are displayed below the list.
   - **Default**: `ListStatistics=0` (disabled).
