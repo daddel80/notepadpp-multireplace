@@ -1785,18 +1785,27 @@ void MultiReplace::sortReplaceListData(int columnID) {
     columnSortOrder.clear();
     columnSortOrder[columnID] = direction;
 
+    // return -1 for empty or non-numeric strings
+    auto safeToInt = [](const std::wstring& s) -> int {
+        try { return s.empty() ? -1 : std::stoi(s); }
+        catch (...) { return -1; }
+    };
+
     // Perform the sorting
     std::sort(replaceListData.begin(), replaceListData.end(),
-        [this, columnID, direction](const ReplaceItemData& a, const ReplaceItemData& b) -> bool {
-            switch (columnID) {
+        [this, columnID, direction, safeToInt]
+    (const ReplaceItemData& a, const ReplaceItemData& b) -> bool
+        {
+            switch (columnID)
+            {
             case ColumnID::FIND_COUNT: {
-                int numA = a.findCount.empty() ? -1 : std::stoi(a.findCount);
-                int numB = b.findCount.empty() ? -1 : std::stoi(b.findCount);
+                int numA = safeToInt(a.findCount);
+                int numB = safeToInt(b.findCount);
                 return direction == SortDirection::Ascending ? numA < numB : numA > numB;
             }
             case ColumnID::REPLACE_COUNT: {
-                int numA = a.replaceCount.empty() ? -1 : std::stoi(a.replaceCount);
-                int numB = b.replaceCount.empty() ? -1 : std::stoi(b.replaceCount);
+                int numA = safeToInt(a.replaceCount);
+                int numB = safeToInt(b.replaceCount);
                 return direction == SortDirection::Ascending ? numA < numB : numA > numB;
             }
             case ColumnID::FIND_TEXT:
@@ -2704,23 +2713,31 @@ void MultiReplace::copySelectedItemsToClipboard() {
         }
     }
 
-    if (!csvData.empty()) {
-        if (OpenClipboard(NULL)) {
-            EmptyClipboard();
-            HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, (csvData.size() + 1) * sizeof(wchar_t));
-            if (hClipboardData) {
-                wchar_t* pClipboardData = static_cast<wchar_t*>(GlobalLock(hClipboardData));
-                if (pClipboardData != NULL) {
-                    memcpy(pClipboardData, csvData.c_str(), (csvData.size() + 1) * sizeof(wchar_t));
-                    GlobalUnlock(hClipboardData);
-                    SetClipboardData(CF_UNICODETEXT, hClipboardData);
-                }
-                else {
-                    GlobalFree(hClipboardData);
-                }
-                CloseClipboard();
+    if (csvData.empty())
+        return;
+
+    if (OpenClipboard(nullptr))
+    {
+        EmptyClipboard();
+
+        SIZE_T memSize = (csvData.size() + 1) * sizeof(wchar_t);
+        HGLOBAL hClip = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, memSize);
+
+        if (hClip)
+        {
+            wchar_t* pData = static_cast<wchar_t*>(GlobalLock(hClip));
+            if (pData)
+            {
+                memcpy(pData, csvData.c_str(), memSize);
+                GlobalUnlock(hClip);
+                SetClipboardData(CF_UNICODETEXT, hClip);
+            }
+            else
+            {
+                GlobalFree(hClip);
             }
         }
+        CloseClipboard();
     }
 }
 

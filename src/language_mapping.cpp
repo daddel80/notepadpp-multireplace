@@ -7,7 +7,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_match_whole_word_only", L"Match whole word only" },
 { L"panel_match_case", L"Match case" },
 { L"panel_use_variables", L"Use Variables" },
-{ L"panel_replace_at_matches", L"Replace at match(s):" },
+{ L"panel_replace_at_matches", L"Replace matches:" },
 { L"panel_wrap_around", L"Wrap around" },
 { L"panel_search_mode", L"Search Mode" },
 { L"panel_normal", L"Normal" },
@@ -45,7 +45,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"tooltip_2_buttons_mode", L"2 buttons mode" },
 { L"tooltip_columns", L"Columns: '1,3,5-12' (individuals, ranges)" },
 { L"tooltip_delimiter", L"Delimiter: Single/combined chars, \\t for Tab" },
-{ L"tooltip_quote", L"Quote: ', \", or empty" },
+{ L"tooltip_quote", L"Quote: ', \" or empty" },
 { L"tooltip_replace_at_matches", L"Replace at matches: '1,3,5-12' (individuals, ranges)" },
 { L"tooltip_sort_descending", L"Sort Descending" },
 { L"tooltip_sort_ascending", L"Sort Ascending" },
@@ -78,6 +78,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"tooltip_header_use_variables", L"Use Variables" },
 { L"tooltip_header_extended", L"Extended" },
 { L"tooltip_header_regex", L"Regex" },
+{ L"tooltip_header_delete", L"Delete" },
 
 // SplitButton entries
 { L"split_menu_replace_all", L"Replace All" },
@@ -112,7 +113,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_invalid_column_or_delimiter", L"Invalid column or delimiter data." },
 { L"status_missing_column_or_delimiter_data", L"Column data or delimiter data is missing" },
 { L"status_invalid_range_in_column_data", L"Invalid range in column data" },
-{ L"status_missing_match_selection", L"Match selection cannot be empty" },
+{ L"status_missing_match_selection", L"Match selection data is missing" },
 { L"status_invalid_range_in_match_data", L"Invalid range in match selection" },
 { L"status_extended_delimiter_empty", L"Extended delimiter is empty" },
 { L"status_invalid_quote_character", L"Invalid quote character. Use \" or ' or leave it empty." },
@@ -128,11 +129,12 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_enable_list", L"List mode enabled. Actions will use list entries." },
 { L"status_disable_list", L"List mode disabled. Actions will use 'Find what' and 'Replace with' fields." },
 { L"status_new_list_created", L"New list created." },
+{ L"status_no_rows_selected_to_delete", L"No rows selected to delete." },
+{ L"status_invalid_indices", L"Invalid indices supplied." },
 
 // Dynamic Status message entries
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },
 { L"status_lines_deleted", L"$REPLACE_STRING lines deleted." },
-{ L"status_column_sorted", L"Column sorted in $REPLACE_STRING order." },
 { L"status_occurrences_replaced", L"$REPLACE_STRING occurrences were replaced." },
 { L"status_replace_next_found", L"$REPLACE_STRING occurrence(s) replaced. Next occurrence found." },
 { L"status_replace_none_left", L"$REPLACE_STRING occurrence(s) replaced. No occurrences left." },
@@ -140,11 +142,11 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_actual_position", L"Actual Position $REPLACE_STRING" },
 { L"status_items_loaded_from_csv", L"$REPLACE_STRING items loaded from CSV." },
 { L"status_occurrences_marked", L"$REPLACE_STRING occurrences were marked." },
-{ L"status_items_copied_to_clipboard", L"$REPLACE_STRING items copied into Clipboard." },
+{ L"status_items_copied_to_clipboard", L"$REPLACE_STRING items copied to Clipboard." },
 { L"status_no_matches_after_wrap_for", L"No matches found for '$REPLACE_STRING' after wrap." },
 { L"status_deleted_fields_count", L"Deleted $REPLACE_STRING fields." },
-{ L"status_line_and_column_position", L" (Line: $REPLACE_STRING, Column: $REPLACE_STRING1)" },
-{ L"status_unable_to_open_file", L"Failed to open the file: $REPLACE_STRING1" },
+{ L"status_line_and_column_position", L" (Line: $REPLACE_STRING1, Column: $REPLACE_STRING2)" },
+{ L"status_unable_to_open_file", L"Failed to open the file: $REPLACE_STRING" },
 
 // MessageBox Titles
 { L"msgbox_title_error", L"Error" },
