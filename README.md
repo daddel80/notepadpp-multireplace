@@ -456,7 +456,7 @@ The MultiReplace plugin provides several configuration options, including transp
   - `BackgroundTransparency`: Transparency level when not in focus (0-255, default 190).
 
 - **EditFieldSize**: Configures the size adjustment of the edit field in the list during toggling.
-  - **Default**: `EditFieldSiz=5` (normal size).
+  - **Default**: `EditFieldSize=5` (normal size).
   - **Range**: 2 to 20.
   - **Description**: Sets the factor by which the edit field in the list expands or collapses when toggling its size.
 
