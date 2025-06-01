@@ -4213,7 +4213,9 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
     if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
         bool skipReplace = false;
-        std::string localReplaceTextUtf8 = itemData.useVariables ? wstringToString(itemData.replaceText) : "";
+        //std::string localReplaceTextUtf8 = itemData.useVariables ? wstringToString(itemData.replaceText) : "";
+
+        std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
 
         if (itemIndex != SIZE_MAX) {
             updateCountColumns(itemIndex, 1); // No refreshUIListView() necessary as implemented in Debug Window
