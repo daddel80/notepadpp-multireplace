@@ -607,9 +607,9 @@ void MultiReplace::drawGripper() {
         {1, 1, 1}
     };
 
-    for (int row = 0; row < 3; row++)
+    for (int row = 0; row < 3; ++row)
     {
-        for (int col = 0; col < 3; col++)
+        for (int col = 0; col < 3; ++col)
         {
             // Skip drawing for omitted positions
             if (positions[row][col] == 0) continue;
@@ -1211,7 +1211,7 @@ void MultiReplace::createListViewColumns() {
 
     // Delete all existing columns
     int columnCount = Header_GetItemCount(ListView_GetHeader(_replaceListView));
-    for (int i = columnCount - 1; i >= 0; i--) {
+    for (int i = columnCount - 1; i >= 0; --i) {
         ListView_DeleteColumn(_replaceListView, i);
     }
     columnIndices.clear();  // Clear previous indices after deleting
@@ -2525,7 +2525,7 @@ MenuState MultiReplace::checkMenuConditions(POINT ptScreen) {
     int columnCount = Header_GetItemCount(header);
 
     // Iterate through the columns and calculate the total width
-    for (int i = 0; i < columnCount; i++) {
+    for (int i = 0; i < columnCount; ++i) {
         totalWidth += ListView_GetColumnWidth(_replaceListView, i);
         if (ptClient.x < totalWidth) {
             clickedColumn = i;
@@ -2598,7 +2598,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
     HWND header = ListView_GetHeader(_replaceListView);
     int columnCount = Header_GetItemCount(header);
 
-    for (int i = 0; i < columnCount; i++) {
+    for (int i = 0; i < columnCount; ++i) {
         totalWidth += ListView_GetColumnWidth(_replaceListView, i);
         if (ptAdjusted.x < totalWidth) {
             clickedColumn = i;
@@ -2670,7 +2670,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
     case ItemAction::Add: {
         int insertPosition = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
         if (insertPosition != -1) {
-            insertPosition++;
+            ++insertPosition;
         }
         else {
             insertPosition = ListView_GetItemCount(_replaceListView);
@@ -2689,51 +2689,43 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
 }
 
 void MultiReplace::copySelectedItemsToClipboard() {
+    const int itemCount = ListView_GetItemCount(_replaceListView);
+    const int columnCount = Header_GetItemCount(ListView_GetHeader(_replaceListView));
     std::wstring csvData;
-    int itemCount = ListView_GetItemCount(_replaceListView);
-    int selectedCount = ListView_GetSelectedCount(_replaceListView);
+    csvData.reserve(itemCount * columnCount * 16);
 
-    if (selectedCount > 0) {
-        for (int i = 0; i < itemCount; ++i) {
-            if (ListView_GetItemState(_replaceListView, i, LVIS_SELECTED) & LVIS_SELECTED) {
-                // Assuming the index in the ListView corresponds to the index in replaceListData
-                const ReplaceItemData& item = replaceListData[i];
-                std::wstring line = std::to_wstring(item.isEnabled) + L"," +
-                    escapeCsvValue(item.findText) + L"," +
-                    escapeCsvValue(item.replaceText) + L"," +
-                    std::to_wstring(item.wholeWord) + L"," +
-                    std::to_wstring(item.matchCase) + L"," +
-                    std::to_wstring(item.useVariables) + L"," +
-                    std::to_wstring(item.extended) + L"," +
-                    std::to_wstring(item.regex) + L"," +
-                    escapeCsvValue(item.comments) + L"\n";  // Include Comments column
-                csvData += line;
-            }
+    for (int i = 0; i < itemCount; ++i) {
+        if (ListView_GetItemState(_replaceListView, i, LVIS_SELECTED) & LVIS_SELECTED) {
+            const ReplaceItemData& item = replaceListData[i];
+            csvData += std::to_wstring(item.isEnabled) + L",";
+            csvData += escapeCsvValue(item.findText) + L",";
+            csvData += escapeCsvValue(item.replaceText) + L",";
+            csvData += std::to_wstring(item.wholeWord) + L",";
+            csvData += std::to_wstring(item.matchCase) + L",";
+            csvData += std::to_wstring(item.useVariables) + L",";
+            csvData += std::to_wstring(item.extended) + L",";
+            csvData += std::to_wstring(item.regex) + L",";
+            csvData += escapeCsvValue(item.comments);
+            csvData += L'\n';
         }
     }
 
-    if (csvData.empty())
-        return;
+    if (csvData.empty()) return;
 
-    if (OpenClipboard(nullptr))
-    {
+    if (OpenClipboard(nullptr)) {
         EmptyClipboard();
-
-        SIZE_T memSize = (csvData.size() + 1) * sizeof(wchar_t);
-        HGLOBAL hClip = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, memSize);
-
-        if (hClip)
-        {
-            wchar_t* pData = static_cast<wchar_t*>(GlobalLock(hClip));
-            if (pData)
-            {
-                memcpy(pData, csvData.c_str(), memSize);
-                GlobalUnlock(hClip);
-                SetClipboardData(CF_UNICODETEXT, hClip);
+        const SIZE_T size = (csvData.size() + 1) * sizeof(wchar_t);
+        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, size);
+        if (hMem) {
+            if (void* p = GlobalLock(hMem)) {
+                memcpy(p, csvData.c_str(), size);
+                GlobalUnlock(hMem);
+                if (!SetClipboardData(CF_UNICODETEXT, hMem)) {
+                    GlobalFree(hMem);
+                }
             }
-            else
-            {
-                GlobalFree(hClip);
+            else {
+                GlobalFree(hMem);
             }
         }
         CloseClipboard();
@@ -2741,62 +2733,49 @@ void MultiReplace::copySelectedItemsToClipboard() {
 }
 
 bool MultiReplace::canPasteFromClipboard() {
-    if (!IsClipboardFormatAvailable(CF_UNICODETEXT)) {
-        return false; // Clipboard does not contain text in a format that we can paste
+    if (!IsClipboardFormatAvailable(CF_UNICODETEXT) || !OpenClipboard(nullptr)) {
+        return false;
     }
+    struct ClipboardGuard { ~ClipboardGuard() { CloseClipboard(); } } guard;
 
-    if (!OpenClipboard(nullptr)) {
-        return false; // Cannot open the clipboard
+    HGLOBAL hData = GetClipboardData(CF_UNICODETEXT);
+    if (!hData) {
+        return false;
     }
+    wchar_t* raw = static_cast<wchar_t*>(GlobalLock(hData));
+    if (!raw) {
+        return false;
+    }
+    std::wstring content{ raw };
+    GlobalUnlock(hData);
 
-    bool canPaste = false; // Assume we cannot paste until proven otherwise
-    HANDLE hData = GetClipboardData(CF_UNICODETEXT);
-    if (hData) {
-        wchar_t* pClipboardData = static_cast<wchar_t*>(GlobalLock(hData));
-        if (pClipboardData) {
-            std::wstring content = pClipboardData;
-            std::wistringstream contentStream(content);
-            std::wstring line;
-
-            while (std::getline(contentStream, line) && !canPaste) {
-                if (line.empty()) continue; // Skip empty lines
-
-                std::vector<std::wstring> columns = parseCsvLine(line);
-
-                // For the format to be considered valid, ensure each line has the correct number of columns
-                if ((columns.size() == 8 || columns.size() == 9)) {
-                    canPaste = true; // Found at least one valid line, no need to check further
-                }
-            }
-
-            GlobalUnlock(hData);
+    std::wistringstream stream(content);
+    std::wstring line;
+    while (std::getline(stream, line)) {
+        if (line.empty()) {
+            continue;
+        }
+        auto columns = parseCsvLine(line);
+        if (columns.size() == 8 || columns.size() == 9) {
+            return true;
         }
     }
-
-    CloseClipboard();
-    return canPaste;
+    return false;
 }
 
 void MultiReplace::pasteItemsIntoList() {
-    if (!OpenClipboard(NULL)) {
-        return; // Abort if the clipboard cannot be opened
-    }
+    if (!OpenClipboard(nullptr)) return;
+
+    struct ClipboardGuard { ~ClipboardGuard() { CloseClipboard(); } } guard;
 
     HANDLE hData = GetClipboardData(CF_UNICODETEXT);
-    if (!hData) {
-        CloseClipboard(); // Close the clipboard if no data is present
-        return;
-    }
+    if (!hData) return;
 
-    wchar_t* pClipboardData = static_cast<wchar_t*>(GlobalLock(hData));
-    if (!pClipboardData) {
-        CloseClipboard(); // Close the clipboard if the data cannot be locked
-        return;
-    }
+    auto pData = static_cast<const wchar_t*>(GlobalLock(hData));
+    if (!pData) return;
 
-    std::wstring content = pClipboardData;
+    std::wstring content(pData);
     GlobalUnlock(hData);
-    CloseClipboard();
 
     std::wstringstream contentStream(content);
     std::wstring line;
@@ -2806,7 +2785,7 @@ void MultiReplace::pasteItemsIntoList() {
     int insertPosition = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
     if (insertPosition != -1) {
         // Increase by one to insert after the focused item
-        insertPosition++;
+        ++insertPosition;
     }
     else {
         // If no item is focused, consider the paste position as the end of the list
@@ -2823,21 +2802,15 @@ void MultiReplace::pasteItemsIntoList() {
 
         ReplaceItemData item;
         try {
-            item.isEnabled = std::stoi(columns[0]) != 0;
-            item.findText = columns[1];
-            item.replaceText = columns[2];
-            item.wholeWord = std::stoi(columns[3]) != 0;
-            item.matchCase = std::stoi(columns[4]) != 0;
+            item.isEnabled    = std::stoi(columns[0]) != 0;
+            item.findText     = columns[1];
+            item.replaceText  = columns[2];
+            item.wholeWord    = std::stoi(columns[3]) != 0;
+            item.matchCase    = std::stoi(columns[4]) != 0;
             item.useVariables = std::stoi(columns[5]) != 0;
-            item.extended = std::stoi(columns[6]) != 0;
-            item.regex = std::stoi(columns[7]) != 0;
-            // Handle Comments column if present
-            if (columns.size() == 9) {
-                item.comments = columns[8];
-            }
-            else {
-                item.comments = L"";
-            }
+            item.extended     = std::stoi(columns[6]) != 0;
+            item.regex        = std::stoi(columns[7]) != 0;
+            item.comments     = (columns.size() == 9 ? columns[8] : L"");
         }
         catch (const std::exception&) {
             continue; // Silently ignore lines with conversion errors
@@ -2846,10 +2819,8 @@ void MultiReplace::pasteItemsIntoList() {
         itemsToInsert.push_back(item);
     }
 
-    if (itemsToInsert.empty()) {
-        // No items were collected, so nothing to insert
-        return;
-    }
+    // No items were collected, so nothing to insert
+    if (itemsToInsert.empty()) return;
 
     // Use addItemsToReplaceList to insert items at the specified position
     addItemsToReplaceList(itemsToInsert, static_cast<size_t>(insertPosition));
@@ -2929,7 +2900,7 @@ int MultiReplace::searchInListData(int startIdx, const std::wstring& findText, c
             return i;
         }
 
-        i++;
+        ++i;
     }
 
     // No match found
@@ -3822,7 +3793,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             // Set a default filename if none is provided
             static int scriptCounter = 1;
-            std::wstring defaultFileName = L"Replace_Script_" + std::to_wstring(scriptCounter++) + L".sh";
+            std::wstring defaultFileName = L"Replace_Script_" + std::to_wstring(++scriptCounter) + L".sh";
 
             // Open the file dialog with the default filename for bash scripts
             std::wstring filePath = openFileDialog(true, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"sh", defaultFileName);
@@ -4354,7 +4325,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     while (searchResult.pos >= 0)
     {
         bool skipReplace = false;
-        findCount++;
+        ++findCount;
 
         if (itemIndex != SIZE_MAX) {  // check if used in List
             updateCountColumns(itemIndex, findCount);
@@ -4382,7 +4353,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                 vars.COL = static_cast<int>(columnInfo.startColumnIndex);
             }
 
-            lineFindCount++;
+            ++lineFindCount;
 
             vars.CNT = findCount;
             vars.LCNT = lineFindCount;
@@ -4412,7 +4383,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                 else {
                     newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
                 }
-                replaceCount++;
+                ++replaceCount;
 
                 if (itemIndex != SIZE_MAX) { // check if used in List
                     updateCountColumns(itemIndex, -1, replaceCount);
@@ -5264,36 +5235,35 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
 }
 
 void MultiReplace::CopyListViewToClipboard(HWND hListView) {
-    int itemCount = ListView_GetItemCount(hListView);
-    int columnCount = Header_GetItemCount(ListView_GetHeader(hListView));
-
+    const int itemCount = ListView_GetItemCount(hListView);
+    const int columnCount = Header_GetItemCount(ListView_GetHeader(hListView));
     std::wstring clipboardText;
+    clipboardText.reserve(static_cast<size_t>(itemCount) * columnCount * 64);
 
+    wchar_t buffer[512];
     for (int i = 0; i < itemCount; ++i) {
         for (int j = 0; j < columnCount; ++j) {
-            wchar_t buffer[256];
-            ListView_GetItemText(hListView, i, j, buffer, 256);
-            buffer[255] = L'\0';
-            clipboardText += buffer;
-            if (j < columnCount - 1) {
-                clipboardText += L'\t';
-            }
+            LVITEMW li{};
+            li.iSubItem = j;
+            li.cchTextMax = static_cast<int>(std::size(buffer));
+            li.pszText = buffer;
+            SendMessageW(hListView, LVM_GETITEMTEXTW, (WPARAM)i, (LPARAM)&li);
+            int len = lstrlenW(buffer);
+            if (len > 0) clipboardText.append(buffer, len);
+            if (j < columnCount - 1) clipboardText.push_back(L'\t');
         }
-        clipboardText += L'\n';
+        clipboardText.push_back(L'\n');
     }
 
-    if (OpenClipboard(0)) {
+    if (OpenClipboard(nullptr)) {
         EmptyClipboard();
-        HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, sizeof(WCHAR) * (clipboardText.length() + 1));
-        if (hClipboardData) {
-            WCHAR* pchData = reinterpret_cast<WCHAR*>(GlobalLock(hClipboardData));
-            if (pchData) {
-                wcscpy(pchData, clipboardText.c_str());
-                GlobalUnlock(hClipboardData);
-                if (!SetClipboardData(CF_UNICODETEXT, hClipboardData)) {
-                    GlobalFree(hClipboardData);
-                }
-            }
+        size_t bytes = (clipboardText.size() + 1) * sizeof(wchar_t);
+        HGLOBAL hData = GlobalAlloc(GMEM_MOVEABLE, bytes);
+        if (hData) {
+            void* ptr = GlobalLock(hData);
+            memcpy(ptr, clipboardText.c_str(), bytes);
+            GlobalUnlock(hData);
+            SetClipboardData(CF_UNICODETEXT, hData);
         }
         CloseClipboard();
     }
@@ -5624,7 +5594,7 @@ SearchResult MultiReplace::performSearchSelection(const SearchContext& context, 
 
     // Gather all selection positions
     selections.resize(selectionCount);
-    for (int i = 0; i < selectionCount; i++) {
+    for (int i = 0; i < selectionCount; ++i) {
         selections[i].start = send(SCI_GETSELECTIONNSTART, i, 0);
         selections[i].end = send(SCI_GETSELECTIONNEND, i, 0);
     }
@@ -5801,7 +5771,7 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
 
     closestMatchIndex = std::numeric_limits<size_t>::max(); // Initialize with a value representing "no index".
 
-    for (size_t i = 0; i < list.size(); i++) {
+    for (size_t i = 0; i < list.size(); ++i) {
         if (!list[i].isEnabled) {
             continue; // Skip disabled entries
         }
@@ -5971,7 +5941,7 @@ int MultiReplace::markString(const SearchContext& context) {
     while (searchResult.pos >= 0) {
         if (searchResult.length > 0) {
             highlightTextRange(searchResult.pos, searchResult.length, context.findTextUtf8);
-            markCount++;
+            ++markCount;
         }
 
         // Move search position forward to prevent infinite loops
@@ -5985,7 +5955,7 @@ int MultiReplace::markString(const SearchContext& context) {
     }
 
     if (useListEnabled && markCount > 0) {
-        markedStringsCount++;
+        ++markedStringsCount;
     }
 
     return markCount;
@@ -6112,34 +6082,38 @@ void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
         return;
     }
 
-    if (OpenClipboard(0))
-    {
-        EmptyClipboard();
-        HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, sizeof(WCHAR) * (text.length() + 1));
-        if (hClipboardData)
-        {
-            WCHAR* pchData = reinterpret_cast<WCHAR*>(GlobalLock(hClipboardData));
-            if (pchData)
-            {
-                wcscpy(pchData, text.c_str());
-                GlobalUnlock(hClipboardData);
-                if (SetClipboardData(CF_UNICODETEXT, hClipboardData) != NULL)
-                {
-                    showStatusMessage(getLangStr(L"status_items_copied_to_clipboard", { std::to_wstring(textCount) }), COLOR_SUCCESS);
-                }
-                else
-                {
-                    showStatusMessage(getLangStr(L"status_failed_to_copy"), COLOR_ERROR);
-                }
-            }
-            else
-            {
-                showStatusMessage(getLangStr(L"status_failed_allocate_memory"), COLOR_ERROR);
-                GlobalFree(hClipboardData);
-            }
-        }
+    if (!OpenClipboard(nullptr))
+        return;
+    EmptyClipboard();
+
+    const size_t byteSize = (text.size() + 1) * sizeof(wchar_t);
+    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, byteSize);
+    if (!hMem) {
         CloseClipboard();
+        showStatusMessage(getLangStr(L"status_failed_allocate_memory"), COLOR_ERROR);
+        return;
     }
+
+    void* p = GlobalLock(hMem);
+    if (!p) {
+        GlobalFree(hMem);
+        CloseClipboard();
+        showStatusMessage(getLangStr(L"status_failed_allocate_memory"), COLOR_ERROR);
+        return;
+    }
+
+    memcpy(p, text.c_str(), byteSize);
+    GlobalUnlock(hMem);
+
+    if (SetClipboardData(CF_UNICODETEXT, hMem) == nullptr) {
+        GlobalFree(hMem);
+        CloseClipboard();
+        showStatusMessage(getLangStr(L"status_failed_to_copy"), COLOR_ERROR);
+        return;
+    }
+
+    CloseClipboard();
+    showStatusMessage(getLangStr(L"status_items_copied_to_clipboard", { std::to_wstring(textCount) }), COLOR_SUCCESS);
 }
 
 #pragma endregion
@@ -6180,7 +6154,7 @@ void MultiReplace::handleDeleteColumns()
     SIZE_T lineCount = lineDelimiterPositions.size();
 
     // Iterate over lines from last to first.
-    for (SIZE_T i = lineCount; i-- > 0; ) {
+    for (SIZE_T i = lineCount; --i > 0; ) {
         const auto& lineInfo = lineDelimiterPositions[i];
 
         // Get absolute start and end positions for this line.
@@ -6264,7 +6238,7 @@ void MultiReplace::handleDeleteColumns()
                 LRESULT lengthToDelete = it->second - it->first;
                 if (lengthToDelete > 0) {
                     send(SCI_DELETERANGE, it->first, lengthToDelete, false);
-                    deletedFieldsCount++;
+                    ++deletedFieldsCount;
                 }
             }
         }
@@ -6342,7 +6316,7 @@ void MultiReplace::handleCopyColumnsToClipboard()
                 SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
                 lineText += std::string(buffer.data());
 
-                copiedFieldsCount++;
+                ++copiedFieldsCount;
             }
         }
 
@@ -8116,7 +8090,7 @@ LRESULT MultiReplace::getEOLLengthForLine(LRESULT line) {
 
     // Read those chars via SCI_GETCHARAT
     char last[2] = { 0, 0 };
-    for (LRESULT i = 0; i < checkCount; i++) {
+    for (LRESULT i = 0; i < checkCount; ++i) {
         last[i] = static_cast<char>(
             send(SCI_GETCHARAT, lineStart + lineLen - checkCount + i, 0)
             );
@@ -8169,10 +8143,10 @@ bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
     std::string tempStr = str; // Temporary string to hold potentially modified string
     for (char& c : tempStr) {
         if (c == '.') {
-            dotCount++;
+            ++dotCount;
         }
         else if (c == ',') {
-            dotCount++;
+            ++dotCount;
             c = '.';  // Potentially replace comma with dot in tempStr
         }
         else if (!iswdigit(c)) {
@@ -8416,7 +8390,7 @@ std::wstring MultiReplace::promptSaveListToCsv() {
     else {
         // If no file path is set, provide a default file name with a sequential number
         static int fileCounter = 1;
-        defaultFileName = L"Replace_List_" + std::to_wstring(fileCounter++) + L".csv";
+        defaultFileName = L"Replace_List_" + std::to_wstring(++fileCounter) + L".csv";
     }
 
     // Call openFileDialog with the default file path and name
@@ -9116,7 +9090,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"FindTextHistoryCount=" + std::to_wstring(itemsToSave) + L"\n");
 
     // Save only the newest maxHistoryItems entries (starting from index 0)
-    for (LRESULT i = 0; i < itemsToSave; i++) {
+    for (LRESULT i = 0; i < itemsToSave; ++i) {
         LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
         SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
@@ -9130,7 +9104,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"ReplaceTextHistoryCount=" + std::to_wstring(replaceItemsToSave) + L"\n");
 
     // Save only the newest maxHistoryItems entries (starting from index 0)
-    for (LRESULT i = 0; i < replaceItemsToSave; i++) {
+    for (LRESULT i = 0; i < replaceItemsToSave; ++i) {
         LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
         SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
@@ -9167,14 +9141,14 @@ void MultiReplace::loadSettingsFromIni() {
 
     // Loading the history for the Find text field in reverse order
     int findHistoryCount = readIntFromIniCache(L"History", L"FindTextHistoryCount", 0);
-    for (int i = findHistoryCount - 1; i >= 0; i--) {
+    for (int i = findHistoryCount - 1; i >= 0; --i) {
         std::wstring findHistoryItem = readStringFromIniCache(L"History", L"FindTextHistory" + std::to_wstring(i), L"");
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findHistoryItem);
     }
 
     // Loading the history for the Replace text field in reverse order
     int replaceHistoryCount = readIntFromIniCache(L"History", L"ReplaceTextHistoryCount", 0);
-    for (int i = replaceHistoryCount - 1; i >= 0; i--) {
+    for (int i = replaceHistoryCount - 1; i >= 0; --i) {
         std::wstring replaceHistoryItem = readStringFromIniCache(L"History", L"ReplaceTextHistory" + std::to_wstring(i), L"");
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceHistoryItem);
     }
@@ -9610,7 +9584,7 @@ std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<
         }
 
         // Replace placeholders with numbers from highest to lowest
-        for (size_t i = replacements.size(); i > 0; i--) {
+        for (size_t i = replacements.size(); i > 0; --i) {
             std::wstring placeholder = basePlaceholder + std::to_wstring(i);
             size_t pos = result.find(placeholder);
             while (pos != std::wstring::npos) {
