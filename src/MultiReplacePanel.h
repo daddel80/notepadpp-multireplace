@@ -566,6 +566,7 @@ private:
     bool isHoverTextSuppressed = false; // Temporarily supress HoverText to avoid flickering wehn Edit in list is open
     int editFieldSize;
     bool listStatisticsEnabled;
+    bool stayAfterReplaceEnabled;
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace

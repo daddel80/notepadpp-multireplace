@@ -1901,19 +1901,18 @@ void MultiReplace::resetCountColumns() {
 
 void MultiReplace::updateCountColumns(const size_t itemIndex, const int findCount, int replaceCount)
 {
-    // Access the item data from the list
     ReplaceItemData& itemData = replaceListData[itemIndex];
 
-    // Update findCount if provided
-    if (findCount != -1) {
+    if (findCount == -2) {
+        itemData.findCount.clear();
+    }
+    else if (findCount != -1) {
         itemData.findCount = std::to_wstring(findCount);
     }
 
-    // Update replaceCount if provided
     if (replaceCount != -1) {
         itemData.replaceCount = std::to_wstring(replaceCount);
     }
-
 }
 
 void MultiReplace::clearList() {
@@ -4100,7 +4099,7 @@ void MultiReplace::handleReplaceButton() {
             return;
         }
 
-        int replacements = 0;  // Counter for replacements
+        bool wasReplaced = false;  // Detection for eplacements
         for (size_t i = 0; i < replaceListData.size(); ++i) {
             if (replaceListData[i].isEnabled) {
                 context.findTextUtf8 = convertAndExtend(replaceListData[i].findText, replaceListData[i].extended);
@@ -4111,31 +4110,38 @@ void MultiReplace::handleReplaceButton() {
                 // Set search flags before calling replaceOne
                 send(SCI_SETSEARCHFLAGS, context.searchFlags);
 
-                if (replaceOne(replaceListData[i], selection, searchResult, newPos, i, context)) {
-                    replacements++;
+                wasReplaced = replaceOne(replaceListData[i], selection, searchResult, newPos, i, context);
+                if (wasReplaced) {
                     refreshUIListView(); // Refresh the ListView to show updated statistic
+                    break;
                 }
             }
         }
 
-        searchResult = performListSearchForward(replaceListData, newPos, matchIndex, context);
+        if (!(wasReplaced && stayAfterReplaceEnabled)) {
+            searchResult = performListSearchForward(replaceListData, newPos, matchIndex, context);
 
-        if (searchResult.pos < 0 && wrapAroundEnabled) {
-            searchResult = performListSearchForward(replaceListData, 0, matchIndex, context);
+            if (searchResult.pos < 0 && wrapAroundEnabled) {
+                searchResult = performListSearchForward(replaceListData, 0, matchIndex, context);
+            }
         }
 
         // Build and show message based on results
-        if (replacements > 0) {
-            if (searchResult.pos >= 0) {
+        if (wasReplaced) {
+            if (stayAfterReplaceEnabled) {
+                refreshUIListView();
+                showStatusMessage(getLangStr(L"status_replace_one"), COLOR_SUCCESS);
+            }
+            else if (searchResult.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView();
-                selectListItem(matchIndex);
-                showStatusMessage(getLangStr(L"status_replace_next_found", { std::to_wstring(replacements) }), COLOR_INFO);
+                showStatusMessage(getLangStr(L"status_replace_one_next_found"), COLOR_INFO);
             }
             else {
-                showStatusMessage(getLangStr(L"status_replace_none_left", { std::to_wstring(replacements) }), COLOR_INFO);
+                showStatusMessage(getLangStr(L"status_replace_one_none_left"), COLOR_INFO);
             }
         }
+
         else {
             if (searchResult.pos < 0) {
                 showStatusMessage(getLangStr(L"status_no_occurrence_found"), COLOR_ERROR, true);
@@ -4158,7 +4164,6 @@ void MultiReplace::handleReplaceButton() {
         replaceItem.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
         replaceItem.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
-        // Spezifische Werte für `SearchContext` setzen
         context.findTextUtf8 = convertAndExtend(replaceItem.findText, replaceItem.extended);
         context.searchFlags = (replaceItem.wholeWord * SCFIND_WHOLEWORD) |
             (replaceItem.matchCase * SCFIND_MATCHCASE) |
@@ -4173,15 +4178,20 @@ void MultiReplace::handleReplaceButton() {
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), replaceItem.findText);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceItem.replaceText);
 
-        if (searchResult.pos < 0 && wrapAroundEnabled) {
-            searchResult = performSearchForward(context, 0);
-        }
-        else if (searchResult.pos >= 0) {
-            searchResult = performSearchForward(context, newPos);
+        if (!(wasReplaced && stayAfterReplaceEnabled)) {
+            if (searchResult.pos < 0 && wrapAroundEnabled) {
+                searchResult = performSearchForward(context, 0);
+            }
+            else if (searchResult.pos >= 0) {
+                searchResult = performSearchForward(context, newPos);
+            }
         }
 
         if (wasReplaced) {
-            if (searchResult.pos >= 0) {
+            if (stayAfterReplaceEnabled) {
+                showStatusMessage(getLangStr(L"status_replace_one"), COLOR_SUCCESS);
+            }
+            else if (searchResult.pos >= 0) {
                 showStatusMessage(getLangStr(L"status_replace_one_next_found"), COLOR_SUCCESS);
             }
             else {
@@ -4263,7 +4273,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             }
 
             if (itemIndex != SIZE_MAX) {
-                updateCountColumns(itemIndex, -1, 1);
+                updateCountColumns(itemIndex, -2, 1);
             }
 
             return true;  // A replacement was made
@@ -9075,7 +9085,8 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToString(L"DoubleClickEdits=" + std::to_wstring(doubleClickEditsEnabled ? 1 : 0) + L"\n");
     outFile << wstringToString(L"HoverText=" + std::to_wstring(isHoverTextEnabled ? 1 : 0) + L"\n");
     outFile << wstringToString(L"EditFieldSize=" + std::to_wstring(editFieldSize) + L"\n");
-    outFile << wstringToString(L"ListStatistics=" + std::to_wstring(listStatisticsEnabled ? 1 : 0) + L"\n");;
+    outFile << wstringToString(L"ListStatistics=" + std::to_wstring(listStatisticsEnabled ? 1 : 0) + L"\n");
+    outFile << wstringToString(L"StayAfterReplace=" + std::to_wstring(stayAfterReplaceEnabled ? 1 : 0) + L"\n");
 
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
@@ -9223,6 +9234,7 @@ void MultiReplace::loadSettingsFromIni() {
     editFieldSize = std::clamp(editFieldSize, MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
 
     listStatisticsEnabled = readBoolFromIniCache(L"Options", L"ListStatistics", false);
+    stayAfterReplaceEnabled = readBoolFromIniCache(L"Options", L"StayAfterReplace", true);
 
     // Loading and setting the scope
     int selection = readIntFromIniCache(L"Scope", L"Selection", 0);
