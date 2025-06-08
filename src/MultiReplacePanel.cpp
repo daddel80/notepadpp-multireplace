@@ -4242,6 +4242,8 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             else {
                 newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
             }
+            
+            send(SCI_SETSEL, newPos, newPos);
 
             if (itemIndex != SIZE_MAX) {
                 updateCountColumns(itemIndex, -2, 1);
