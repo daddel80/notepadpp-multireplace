@@ -488,6 +488,11 @@ The MultiReplace plugin provides several configuration options, including transp
     - **L**: Total number of list items
     - **R**: Index of the currently focused row
     - **S**: Number of selected items
+   
+- **StayAfterReplace**: Controls whether it jumps to the next match after pressing Replace.
+  - **Default**: `StayAfterReplace=0` (disabled).
+  - **Description**: When enabled (`1`), pressing the **Replace** button replaces the current match without jumping to the next one. When disabled (`0`), it automatically jumps to the next match after replacing.
+
 
 ### Multilingual UI Support
 
