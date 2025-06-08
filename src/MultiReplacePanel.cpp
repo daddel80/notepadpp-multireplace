@@ -9210,7 +9210,7 @@ void MultiReplace::loadSettingsFromIni() {
     editFieldSize = std::clamp(editFieldSize, MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
 
     listStatisticsEnabled = readBoolFromIniCache(L"Options", L"ListStatistics", false);
-    stayAfterReplaceEnabled = readBoolFromIniCache(L"Options", L"StayAfterReplace", true);
+    stayAfterReplaceEnabled = readBoolFromIniCache(L"Options", L"StayAfterReplace", false);
 
     // Loading and setting the scope
     int selection = readIntFromIniCache(L"Scope", L"Selection", 0);
