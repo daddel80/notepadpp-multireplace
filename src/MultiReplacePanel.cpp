@@ -8580,6 +8580,16 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     std::string utf8Content((std::istreambuf_iterator<char>(inFile)), std::istreambuf_iterator<char>());
     inFile.close();
 
+
+    // [BOM REMOVAL] strip BOM bytes if present
+    if (utf8Content.size() >= 3
+        && static_cast<unsigned char>(utf8Content[0]) == 0xEF
+        && static_cast<unsigned char>(utf8Content[1]) == 0xBB
+        && static_cast<unsigned char>(utf8Content[2]) == 0xBF)
+    {
+        utf8Content.erase(0, 3);
+    }
+
     // Validate UTF-8
     if (!isValidUtf8(utf8Content)) {
         return;
