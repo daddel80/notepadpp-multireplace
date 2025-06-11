@@ -536,6 +536,7 @@ private:
     std::string cachedFileName;
     int _luaCompiledReplaceRef = LUA_NOREF;       // Reference to compiled Lua code
     std::string _lastCompiledLuaCode;             // Cached Lua code for reuse
+    int _cachedScintillaCodePage = 0;             // cache Scintilla for codepage
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
@@ -787,7 +788,9 @@ private:
     //StringHandling
     std::wstring utf8ToWString(const std::string& encodedInput) const;
     std::string wstringToUtf8(const std::wstring& input) const;
+    std::string stringToScintilla(const std::string& utf8) const;
     std::wstring trim(const std::wstring& str);
+    bool MultiReplace::isValidUtf8(const std::string& data) const;
 
     //FileOperations
     std::wstring promptSaveListToCsv();
