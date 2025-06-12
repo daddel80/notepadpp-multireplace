@@ -817,7 +817,7 @@ private:
     void loadSettings();
     void loadUIConfigFromIni();
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
-    bool parseIniFile(const std::wstring& iniFilePath);
+    bool parseIniFile(const std::wstring& iniFilePath, bool forceUtf8 = false);
     std::wstring readStringFromIniCache(const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue);
     bool readBoolFromIniCache(const std::wstring& section, const std::wstring& key, bool defaultValue);
     int readIntFromIniCache(const std::wstring& section, const std::wstring& key, int defaultValue);

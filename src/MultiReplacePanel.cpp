@@ -9082,7 +9082,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
 
     // Save the list file path and original hash
     outFile << wstringToString(L"[File]\n");
-    outFile << wstringToString(L"ListFilePath=" + listFilePath + L"\n");
+    outFile << wstringToString(L"ListFilePath=" + escapeCsvValue(listFilePath) + L"\n");
     outFile << wstringToString(L"OriginalListHash=" + std::to_wstring(originalListHash) + L"\n");
 
     // Save the "Find what" history
@@ -9272,7 +9272,7 @@ void MultiReplace::loadSettings() {
 
 void MultiReplace::loadUIConfigFromIni() {
     auto [iniFilePath, _] = generateConfigFilePaths(); // Generating config file paths
-    parseIniFile(iniFilePath);
+    parseIniFile(iniFilePath, false);
 
     // Load DPI Scaling factor from INI file
     float customScaleFactor = readFloatFromIniCache(L"Window", L"ScaleFactor", 1.0f);
@@ -9339,15 +9339,15 @@ void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring
     ::SetDlgItemTextW(hDlg, itemID, text.c_str());
 }
 
-bool MultiReplace::parseIniFile(const std::wstring& iniFilePath)
+bool MultiReplace::parseIniFile(const std::wstring& iniFilePath, bool forceUtf8 /*= false */)
 {
     // Clear any old data
     iniCache.clear();
 
     // Convert iniFilePath from wide string to UTF-8
     int size_needed = WideCharToMultiByte(CP_UTF8, 0, iniFilePath.c_str(), (int)iniFilePath.size(), nullptr, 0, nullptr, nullptr);
-    std::string filePath(size_needed, 0);
-    WideCharToMultiByte(CP_UTF8, 0, iniFilePath.c_str(), (int)iniFilePath.size(), &filePath[0], size_needed, nullptr, nullptr);
+    std::string filePath(size_needed + 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, iniFilePath.c_str(), (int)iniFilePath.size() + 1, &filePath[0], size_needed + 1, nullptr, nullptr );
 
     // Open file in binary mode to read UTF-8 data
     std::ifstream iniFile(filePath, std::ios::binary);
@@ -9357,13 +9357,24 @@ bool MultiReplace::parseIniFile(const std::wstring& iniFilePath)
     }
 
     // Read the entire file content into a std::string
-    std::string utf8Content((std::istreambuf_iterator<char>(iniFile)), std::istreambuf_iterator<char>());
+    std::string buffer((std::istreambuf_iterator<char>(iniFile)), std::istreambuf_iterator<char>());
     iniFile.close();
 
-    // Convert that UTF-8 string to std::wstring
-    int len = MultiByteToWideChar(CP_UTF8, 0, utf8Content.c_str(), -1, nullptr, 0);
-    std::wstring wContent(len, 0);
-    MultiByteToWideChar(CP_UTF8, 0, utf8Content.c_str(), -1, &wContent[0], len);
+    // Choose code page for conversion
+    UINT codePage = forceUtf8
+        ? CP_UTF8
+        : static_cast<UINT>(::SendMessage(s_hScintilla, SCI_GETCODEPAGE, 0, 0));
+    if (codePage == 0) {
+        codePage = CP_ACP;
+    }
+
+    // Convert buffer to wide string
+    int wideLen = MultiByteToWideChar(codePage, 0, buffer.c_str(), (int)buffer.size(), nullptr, 0);
+    if (wideLen <= 0) {
+        return false;
+    }
+    std::wstring wContent(wideLen, L'\0');
+    MultiByteToWideChar(codePage, 0, buffer.c_str(), (int)buffer.size(), &wContent[0], wideLen);
 
     // We'll parse it line by line
     std::wstringstream contentStream(wContent);
@@ -9560,7 +9571,7 @@ void MultiReplace::loadLanguage() {
 void MultiReplace::loadLanguageFromIni(const std::wstring& iniFilePath, const std::wstring& languageCode)
 {
     // Parse the entire file once
-    if (!parseIniFile(iniFilePath)) {
+    if (!parseIniFile(iniFilePath, true)) {
         // If file not found or can't open, handle if needed
         return;
     }
