@@ -786,9 +786,8 @@ private:
     std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
 
     //StringHandling
-    std::wstring utf8ToWString(const std::string& encodedInput) const;
+    std::wstring MultiReplace::utf8ToWString(const std::string& utf8) const;
     std::string wstringToUtf8(const std::wstring& input) const;
-    std::string stringToScintilla(const std::string& utf8) const;
     std::wstring trim(const std::wstring& str);
     bool MultiReplace::isValidUtf8(const std::string& data) const;
 

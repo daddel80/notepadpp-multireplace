@@ -3934,15 +3934,14 @@ void MultiReplace::handleReplaceAllButton() {
         return;
     }
 
+    // ensure UTF-8 for replace operations
+    ::SendMessage(_hScintilla, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
+
     if (!initLuaState()) {
         // Fallback: The _luaInitialized flag remains false, 
         // so resolveLuaSyntax(...) calls will fail safely inside
         // and effectively do nothing. We just continue.
     }
-
-    // Cache codepage for upcoming replaceAll operations
-    _cachedScintillaCodePage = static_cast<int>( send(SCI_GETCODEPAGE, 0, 0));
-
 
     // Read Filename and Path for LUA
     updateFilePathCache();
@@ -4020,8 +4019,6 @@ void MultiReplace::handleReplaceAllButton() {
         ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
     }
 
-    // Reset cache after operations
-    _cachedScintillaCodePage = 0;
 
 }
 
@@ -4038,14 +4035,15 @@ void MultiReplace::handleReplaceButton() {
         return;
     }
 
+    // ensure UTF-8 for replace operations
+    ::SendMessage(_hScintilla, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
+
+
     if (!initLuaState()) {
         // Fallback: The _luaInitialized flag remains false, 
         // so resolveLuaSyntax(...) calls will fail safely inside
         // and effectively do nothing. We just continue.
     }
-
-    // Cache codepage for upcoming replaceAll operations
-    _cachedScintillaCodePage = static_cast<int>(send(SCI_GETCODEPAGE, 0, 0));
 
     // Read Filename and Path for LUA
     updateFilePathCache();
@@ -4197,8 +4195,6 @@ void MultiReplace::handleReplaceButton() {
         ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
     }
 
-    // Reset cache after operations
-    _cachedScintillaCodePage = 0;
 }
 
 bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context)
@@ -4425,9 +4421,6 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
 Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
-    // Convert UTF-8 -> Scintilla codepage if needed
-    std::string replaceBytes = stringToScintilla(replaceTextUtf8);
-
     send(SCI_SETTARGETRANGE, pos, pos + length);
 
     return pos + send(
@@ -4439,9 +4432,6 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
 
 Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
-    // Convert UTF-8 -> Scintilla codepage if needed
-    std::string replaceBytes = stringToScintilla(replaceTextUtf8);
-
     send(SCI_SETTARGETRANGE, pos, pos + length);
 
     sptr_t replacedLen = send(
@@ -5320,6 +5310,9 @@ void MultiReplace::handleFindNextButton() {
         return;
     }
 
+    // ensure UTF-8 for search operations
+    ::SendMessage(_hScintilla, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
+
     size_t matchIndex = std::numeric_limits<size_t>::max();
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
     SelectionInfo selection = getSelectionInfo(false);
@@ -5418,6 +5411,9 @@ void MultiReplace::handleFindPrevButton() {
     if (!validateDelimiterData()) {
         return;
     }
+
+    // ensure UTF-8 for search operations
+    ::SendMessage(_hScintilla, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
 
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
@@ -8292,60 +8288,27 @@ std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, cons
 std::wstring MultiReplace::utf8ToWString(const std::string& utf8) const {
     if (utf8.empty())
         return std::wstring();
-    int requiredSize = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), NULL, 0);
+
+    int requiredSize = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()), nullptr, 0);
     if (requiredSize == 0)
         return std::wstring();
+
     std::wstring result(requiredSize, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), &result[0], requiredSize);
-    return result;
+    int converted = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()), &result[0], requiredSize);
+    return (converted > 0) ? result : std::wstring();
 }
 
 std::string MultiReplace::wstringToUtf8(const std::wstring& input) const {
-    int len = ::WideCharToMultiByte(CP_UTF8, 0,
-        input.data(), (int)input.size(),
-        nullptr, 0, nullptr, nullptr);
-    std::string s(len, '\0');
-    ::WideCharToMultiByte(CP_UTF8, 0,
-        input.data(), (int)input.size(),
-        &s[0], len, nullptr, nullptr);
-    return s;
+    if (input.empty()) return {};
+
+    int len = ::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input.data(), (int)input.size(), nullptr, 0, nullptr, nullptr);
+    if (len <= 0) return {};
+
+    std::string result(len, '\0');
+    ::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input.data(), (int)input.size(), &result[0], len, nullptr, nullptr);
+    return result;
 }
 
-std::string MultiReplace::stringToScintilla(const std::string& utf8) const {
-    // Determine codepage, using cache if available
-    int cp = _cachedScintillaCodePage;
-    if (cp == 0) {
-        cp = static_cast<int>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
-        if (cp == 0) cp = CP_ACP;
-    }
-    // If Scintilla is in UTF-8 mode, skip all conversion
-    if (cp == CP_UTF8) {
-        return utf8;
-    }
-
-    // Step 1: UTF-8 -> wide
-    int wideLen = MultiByteToWideChar(CP_UTF8, 0,
-        utf8.data(), (int)utf8.size(),
-        nullptr, 0);
-    if (wideLen == 0) return {};
-    std::vector<wchar_t> wideBuf(wideLen);
-    MultiByteToWideChar(CP_UTF8, 0,
-        utf8.data(), (int)utf8.size(),
-        wideBuf.data(), wideLen);
-
-    // Step 2: wide -> target codepage
-    int byteLen = WideCharToMultiByte(cp, 0,
-        wideBuf.data(), wideLen,
-        nullptr, 0,
-        nullptr, nullptr);
-    if (byteLen == 0) return {};
-    std::string out(byteLen, '\0');
-    WideCharToMultiByte(cp, 0,
-        wideBuf.data(), wideLen,
-        &out[0], byteLen,
-        nullptr, nullptr);
-    return out;
-}
 
 std::wstring MultiReplace::trim(const std::wstring& str) {
     // Find the first character that is not whitespace, tab, newline, or carriage return
@@ -8367,27 +8330,17 @@ std::wstring MultiReplace::trim(const std::wstring& str) {
 }
 
 bool MultiReplace::isValidUtf8(const std::string& data) const {
-    // MB_ERR_INVALID_CHARS makes MultiByteToWideChar fail on any invalid sequence
     int len = ::MultiByteToWideChar(
         CP_UTF8,
         MB_ERR_INVALID_CHARS,
         data.data(),
-        (int)data.size(),
+        static_cast<int>(data.size()),
         nullptr,
         0
     );
-
     if (len == 0) {
-        // Show error message if invalid UTF-8 detected
-        MessageBox(
-            _hSelf,
-            L"The file is not correctly encoded in UTF-8.",
-            L"Encoding Error",
-            MB_ICONERROR | MB_OK
-        );
         return false;
     }
-
     return true;
 }
 
@@ -8576,27 +8529,29 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
         throw CsvLoadException(wstringToUtf8(getLangStr(L"status_unable_to_open_file", { shortenedFilePathW })));
     }
 
-    // Read the file content into a UTF-8 string
-    std::string utf8Content((std::istreambuf_iterator<char>(inFile)), std::istreambuf_iterator<char>());
+    // Read raw bytes
+    std::string raw((std::istreambuf_iterator<char>(inFile)), std::istreambuf_iterator<char>());
     inFile.close();
 
-
     // [BOM REMOVAL] strip BOM bytes if present
-    if (utf8Content.size() >= 3
-        && static_cast<unsigned char>(utf8Content[0]) == 0xEF
-        && static_cast<unsigned char>(utf8Content[1]) == 0xBB
-        && static_cast<unsigned char>(utf8Content[2]) == 0xBF)
+    size_t offset = 0;
+    UINT cp = CP_UTF8;                                    // assume UTF-8
+    if (raw.size() >= 3
+        && static_cast<unsigned char>(raw[0]) == 0xEF
+        && static_cast<unsigned char>(raw[1]) == 0xBB
+        && static_cast<unsigned char>(raw[2]) == 0xBF)
     {
-        utf8Content.erase(0, 3);
+        offset = 3;                                       // skip BOM
+    }
+    else if (!isValidUtf8(raw)) {
+        cp = CP_ACP;                                      // fallback to ANSI
     }
 
-    // Validate UTF-8
-    if (!isValidUtf8(utf8Content)) {
-        return;
-    }
+    // Convert UTF-8 or ANSI bytes to std::wstring
+    int wlen = MultiByteToWideChar(cp, 0, raw.c_str() + offset, (int)raw.size() - (int)offset, nullptr, 0);
+    std::wstring content(wlen, L'\0');
+    MultiByteToWideChar(cp, 0, raw.c_str() + offset, (int)raw.size() - (int)offset, &content[0], wlen);
 
-    // Convert UTF-8 string to std::wstring
-    std::wstring content = utf8ToWString(utf8Content);
     std::wstringstream contentStream(content);
 
     // Read the header line
@@ -9435,27 +9390,28 @@ bool MultiReplace::parseIniFile(const std::wstring& iniFilePath)
         return false;
     }
 
-    std::string utf8Content((std::istreambuf_iterator<char>(iniFile)), std::istreambuf_iterator<char>());
+    std::string raw((std::istreambuf_iterator<char>(iniFile)), std::istreambuf_iterator<char>());
     iniFile.close();
 
-    // [BOM REMOVAL] If file starts with 0xEF,0xBB,0xBF, erase first 3 bytes
-    if (utf8Content.size() >= 3
-        && static_cast<unsigned char>(utf8Content[0]) == 0xEF
-        && static_cast<unsigned char>(utf8Content[1]) == 0xBB
-        && static_cast<unsigned char>(utf8Content[2]) == 0xBF)
+    // ==== begin UTF-8 / ANSI detection ====
+    size_t offset = 0;
+    UINT cp = CP_UTF8;                                    // always read as UTF-8
+    if (raw.size() >= 3
+        && static_cast<unsigned char>(raw[0]) == 0xEF
+        && static_cast<unsigned char>(raw[1]) == 0xBB
+        && static_cast<unsigned char>(raw[2]) == 0xBF)
     {
-        utf8Content.erase(0, 3);
+        offset = 3;                                       // skip BOM
     }
-
-    // Validate UTF-8 and show message on error
-    if (!isValidUtf8(utf8Content)) {
-        return false;
+    else if (!isValidUtf8(raw)) {
+        cp = CP_ACP;                                      // fallback to ANSI if not valid UTF-8
     }
+    // ==== end detection ====
 
-    // Convert that UTF-8 string to std::wstring
-    int len = MultiByteToWideChar(CP_UTF8, 0, utf8Content.c_str(), -1, nullptr, 0);
+    // Convert that UTF-8 or ANSI string to std::wstring
+    int len = MultiByteToWideChar(cp, 0, raw.c_str() + offset, (int)raw.size() - (int)offset, nullptr, 0);
     std::wstring wContent(len, 0);
-    MultiByteToWideChar(CP_UTF8, 0, utf8Content.c_str(), -1, &wContent[0], len);
+    MultiByteToWideChar(cp, 0, raw.c_str() + offset, (int)raw.size() - (int)offset, &wContent[0], len);
 
     // We'll parse it line by line
     std::wstringstream contentStream(wContent);
