@@ -536,7 +536,7 @@ private:
     std::string cachedFileName;
     int _luaCompiledReplaceRef = LUA_NOREF;       // Reference to compiled Lua code
     std::string _lastCompiledLuaCode;             // Cached Lua code for reuse
-    int _cachedScintillaCodePage = 0;             // cache Scintilla for codepage
+    int _cachedScintillaCodePage = -1;            // cache Scintilla for codepage
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
