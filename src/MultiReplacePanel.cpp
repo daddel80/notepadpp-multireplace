@@ -3934,9 +3934,6 @@ void MultiReplace::handleReplaceAllButton() {
         return;
     }
 
-    // ensure UTF-8 for replace operations
-    ::SendMessage(_hScintilla, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
-
     if (!initLuaState()) {
         // Fallback: The _luaInitialized flag remains false, 
         // so resolveLuaSyntax(...) calls will fail safely inside
@@ -4034,10 +4031,6 @@ void MultiReplace::handleReplaceButton() {
         showStatusMessage(getLangStrLPWSTR(L"status_cannot_replace_read_only"), COLOR_ERROR);
         return;
     }
-
-    // ensure UTF-8 for replace operations
-    ::SendMessage(_hScintilla, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
-
 
     if (!initLuaState()) {
         // Fallback: The _luaInitialized flag remains false, 
@@ -4204,7 +4197,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
     if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
         bool skipReplace = false;
 
-        std::string localReplaceTextUtf8 = wstringToUtf8(itemData.replaceText);
+        std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
 
         if (itemIndex != SIZE_MAX) {
             updateCountColumns(itemIndex, 1); // No refreshUIListView() necessary as implemented in Debug Window
@@ -4321,7 +4314,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     if (itemData.useVariables) {
         // Convert wstring to string once for Lua variable processing
-        basicConvertedReplaceTextUtf8 = wstringToUtf8(itemData.replaceText);
+        basicConvertedReplaceTextUtf8 = wstringToString(itemData.replaceText);
 
         // Compile Lua code once before the loop
         if (!compileLuaReplaceCode(basicConvertedReplaceTextUtf8)) {
@@ -4452,7 +4445,7 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                     if (highlight) {
                         selectListItem(i);  // Highlight the list entry
                     }
-                    std::string localReplaceTextUtf8 = wstringToUtf8(replaceListData[i].replaceText);
+                    std::string localReplaceTextUtf8 = wstringToString(replaceListData[i].replaceText);
 
                     // Compile the Lua code once and cache it
                     if (!compileLuaReplaceCode(localReplaceTextUtf8)) {
@@ -4595,8 +4588,8 @@ void MultiReplace::updateFilePathCache() {
     ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH, reinterpret_cast<LPARAM>(fileNameBuffer));
 
     // Convert from wide string to UTF-8 string
-    cachedFilePath = wstringToUtf8(std::wstring(filePathBuffer));
-    cachedFileName = wstringToUtf8(std::wstring(fileNameBuffer));
+    cachedFilePath = wstringToString(std::wstring(filePathBuffer));
+    cachedFileName = wstringToString(std::wstring(fileNameBuffer));
 }
 
 void MultiReplace::setLuaFileVars(LuaVariables& vars) {
@@ -5310,9 +5303,6 @@ void MultiReplace::handleFindNextButton() {
         return;
     }
 
-    // ensure UTF-8 for search operations
-    ::SendMessage(_hScintilla, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
-
     size_t matchIndex = std::numeric_limits<size_t>::max();
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
     SelectionInfo selection = getSelectionInfo(false);
@@ -5411,9 +5401,6 @@ void MultiReplace::handleFindPrevButton() {
     if (!validateDelimiterData()) {
         return;
     }
-
-    // ensure UTF-8 for search operations
-    ::SendMessage(_hScintilla, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
 
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
@@ -6330,7 +6317,7 @@ void MultiReplace::handleCopyColumnsToClipboard()
                 tr.lpstrText = buffer.data();
 
                 // Extract text for the column
-                SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
+                send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
                 lineText += std::string(buffer.data());
 
                 ++copiedFieldsCount;
@@ -6380,7 +6367,7 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
             tr.chrg.cpMin = lineStartPos;
             tr.chrg.cpMax = lineEndPos;
             tr.lpstrText = lineBuffer.data();
-            SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
+            send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
         }
 
         CombinedColumns rowData;
@@ -6457,11 +6444,11 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
         return;
     }
 
-    SendMessage(_hScintilla, SCI_BEGINUNDOACTION, 0, 0);
+    send(SCI_BEGINUNDOACTION, 0, 0);
 
     size_t lineCount = lineDelimiterPositions.size();
     if (lineCount <= CSVheaderLinesCount) {
-        SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
+        send(SCI_ENDUNDOACTION);
         return;
     }
 
@@ -6510,7 +6497,7 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
     // Reorder lines in the editor based on sorted indices
     reorderLinesInScintilla(tempOrder);
 
-    SendMessage(_hScintilla, SCI_ENDUNDOACTION, 0, 0);
+    send(SCI_ENDUNDOACTION, 0, 0);
 }
 
 void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedIndex) {
@@ -6521,14 +6508,14 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
     std::string combinedLines;
     for (size_t i = 0; i < sortedIndex.size(); ++i) {
         size_t idx = sortedIndex[i];
-        LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, idx, 0);
-        LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, idx, 0);
+        LRESULT lineStart = send(SCI_POSITIONFROMLINE, idx, 0);
+        LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, idx, 0);
         std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1); // Buffer size includes space for null terminator
         Sci_TextRangeFull tr;
         tr.chrg.cpMin = lineStart;
         tr.chrg.cpMax = lineEnd;
         tr.lpstrText = buffer.data();
-        SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
+        send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
         combinedLines += std::string(buffer.data(), buffer.size() - 1); // Exclude null terminator from the string
         if (i < sortedIndex.size() - 1) {
             combinedLines += lineBreak; // Add line break after each line except the last
@@ -6536,10 +6523,10 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
     }
 
     // Clear all content from Scintilla
-    SendMessage(_hScintilla, SCI_CLEARALL, 0, 0);
+    send(SCI_CLEARALL);
 
     // Re-insert the combined lines
-    SendMessage(_hScintilla, SCI_APPENDTEXT, combinedLines.length(), reinterpret_cast<LPARAM>(combinedLines.c_str()));
+    send(SCI_APPENDTEXT, combinedLines.length(), reinterpret_cast<sptr_t>(combinedLines.c_str()));
 
     isSortedColumn = true; // Ready for logging changes
 }
@@ -6547,7 +6534,7 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
 void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalOrder) {
 
     // Determine the total number of lines in the document
-    size_t totalLineCount = SendMessage(_hScintilla, SCI_GETLINECOUNT, 0, 0);
+    size_t totalLineCount = static_cast<size_t>(send(SCI_GETLINECOUNT));
 
     // Ensure the size of the originalOrder vector matches the number of lines in the document
     auto maxElementIt = std::max_element(originalOrder.begin(), originalOrder.end());
@@ -6562,38 +6549,38 @@ void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalO
     // Iterate through each line in the document and fill sortedLines according to originalOrder
     for (size_t i = 0; i < totalLineCount; ++i) {
         size_t newPosition = originalOrder[i];
-        LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, i, 0);
-        LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, i, 0);
+        LRESULT lineStart = send(SCI_POSITIONFROMLINE, i, 0);
+        LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, i, 0);
         std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
         Sci_TextRangeFull tr;
         tr.chrg.cpMin = lineStart;
         tr.chrg.cpMax = lineEnd;
         tr.lpstrText = buffer.data();
-        SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
+        send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
         sortedLines[newPosition] = std::string(buffer.data(), buffer.size() - 1); // Exclude null terminator
     }
 
     // Clear the content of the editor
-    SendMessage(_hScintilla, SCI_CLEARALL, 0, 0);
+    send(SCI_CLEARALL);
 
     // Re-insert the lines in their original order
     for (size_t i = 0; i < sortedLines.size(); ++i) {
         //std::string message = "Inserting line at position: " + std::to_string(i) + "\nContent: " + sortedLines[i];
         //MessageBoxA(NULL, message.c_str(), "Debug Insert Line", MB_OK);
-        SendMessage(_hScintilla, SCI_APPENDTEXT, sortedLines[i].length(), reinterpret_cast<LPARAM>(sortedLines[i].c_str()));
+        send(SCI_APPENDTEXT, sortedLines[i].length(), reinterpret_cast<sptr_t>(sortedLines[i].c_str()));
         // Add a line break after each line except the last one
         if (i < sortedLines.size() - 1) {
-            SendMessage(_hScintilla, SCI_APPENDTEXT, lineBreak.length(), reinterpret_cast<LPARAM>(lineBreak.c_str()));
+            send(SCI_APPENDTEXT, lineBreak.length(),reinterpret_cast<sptr_t>(lineBreak.c_str()));
         }
     }
 }
 
 void MultiReplace::extractLineContent(size_t idx, std::string& content, const std::string& lineBreak) {
-    LRESULT lineStart = SendMessage(_hScintilla, SCI_POSITIONFROMLINE, idx, 0);
-    LRESULT lineEnd = SendMessage(_hScintilla, SCI_GETLINEENDPOSITION, idx, 0);
+    LRESULT lineStart = send(SCI_POSITIONFROMLINE, idx);
+    LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, idx);
     std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
     Sci_TextRangeFull tr{ lineStart, lineEnd, buffer.data() };
-    SendMessage(_hScintilla, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
+    send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
     content.assign(buffer.begin(), buffer.end() - 1); // Remove the null terminator
     content += lineBreak;
 }
@@ -6767,7 +6754,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
 
     // Convert delimiter and quote character to standard strings
     std::string extendedDelimiter = convertAndExtend(delimiterData, true);
-    std::string quoteCharConverted = wstringToUtf8(quoteCharString);
+    std::string quoteCharConverted = wstringToString(quoteCharString);
 
     // Check for changes BEFORE modifying existing values
     bool delimiterChanged = (columnDelimiterData.extendedDelimiter != extendedDelimiter);
@@ -7005,7 +6992,7 @@ void MultiReplace::initializeColumnStyles() {
     ::SendMessage(nppData._nppHandle, NPPM_MENUCOMMAND, 0, IDM_LANG_TEXT);
 
     // Get default text color from Notepad++
-    LRESULT fgColor = SendMessage(_hScintilla, SCI_STYLEGETFORE, STYLE_DEFAULT, 0);
+    LRESULT fgColor = send(SCI_STYLEGETFORE, STYLE_DEFAULT);
 
     // Check if Notepad++ is in dark mode
     bool isDarkMode = SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0);
@@ -7017,8 +7004,8 @@ void MultiReplace::initializeColumnStyles() {
         long bgColor = columnColors[column % columnColors.size()];
         LRESULT adjustedFgColor = isDarkMode ? adjustForegroundForDarkMode(fgColor, bgColor) : fgColor;
 
-        SendMessage(_hScintilla, SCI_STYLESETBACK, hColumnStyles[column], bgColor);
-        SendMessage(_hScintilla, SCI_STYLESETFORE, hColumnStyles[column], adjustedFgColor);
+        send(SCI_STYLESETBACK, hColumnStyles[column], bgColor);
+        send(SCI_STYLESETFORE, hColumnStyles[column], adjustedFgColor);
     }
 }
 
@@ -7113,20 +7100,20 @@ void MultiReplace::handleClearColumnMarks() {
     }
 
     // Get total document length
-    LRESULT textLength = ::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0);
+    LRESULT textLength = send(SCI_GETLENGTH);
 
     // Reset all styling to default
-    ::SendMessage(_hScintilla, SCI_STARTSTYLING, 0, 0);
-    ::SendMessage(_hScintilla, SCI_SETSTYLING, textLength, STYLE_DEFAULT);
+    send(SCI_STARTSTYLING, 0);
+    send(SCI_SETSTYLING, textLength, STYLE_DEFAULT);
 
     isColumnHighlighted = false;
     isCaretPositionEnabled = false;
 
     // Force Scintilla to recalculate word wrapping if highlighting affected layout
-    int originalWrapMode = static_cast<int>(::SendMessage(_hScintilla, SCI_GETWRAPMODE, 0, 0));
+    int originalWrapMode = static_cast<int>(send(SCI_GETWRAPMODE));
     if (originalWrapMode != SC_WRAP_NONE) {
-        ::SendMessage(_hScintilla, SCI_SETWRAPMODE, SC_WRAP_NONE, 0);
-        ::SendMessage(_hScintilla, SCI_SETWRAPMODE, originalWrapMode, 0);
+        send(SCI_SETWRAPMODE, SC_WRAP_NONE, 0);
+        send(SCI_SETWRAPMODE, originalWrapMode, 0);
     }
 
     // Remove tab from tracked highlighted tabs
@@ -7631,9 +7618,9 @@ std::string MultiReplace::convertAndExtend(const std::wstring& input, bool exten
 {
     // Directly return if extended is false
     if (!extended)
-        return wstringToUtf8(input);
+        return wstringToString(input);
 
-    std::string output = wstringToUtf8(input);
+    std::string output = wstringToString(input);
     std::string outputExtended;
     convertExtendedToString(output, outputExtended);
     return outputExtended;
@@ -8125,7 +8112,7 @@ LRESULT MultiReplace::getEOLLengthForLine(LRESULT line) {
 }
 
 std::string MultiReplace::getEOLStyle() {
-    LRESULT eolMode = SendMessage(_hScintilla, SCI_GETEOLMODE, 0, 0);
+    LRESULT eolMode = static_cast<LRESULT>(send(SCI_GETEOLMODE));
     switch (eolMode) {
     case SC_EOL_CRLF:
         return "\r\n";
@@ -8309,6 +8296,20 @@ std::string MultiReplace::wstringToUtf8(const std::wstring& input) const {
     return result;
 }
 
+std::string MultiReplace::wstringToString(const std::wstring& input) const {
+    if (input.empty()) return std::string();
+
+    int codePage = static_cast<int>(send(SCI_GETCODEPAGE, 0, 0, true));
+    if (codePage == 0) codePage = CP_ACP;
+
+    int size_needed = WideCharToMultiByte(codePage, 0, &input[0], (int)input.size(), NULL, 0, NULL, NULL);
+    if (size_needed == 0) return std::string();
+
+    std::string strResult(size_needed, 0);
+    WideCharToMultiByte(codePage, 0, &input[0], (int)input.size(), &strResult[0], size_needed, NULL, NULL);
+
+    return strResult;
+}
 
 std::wstring MultiReplace::trim(const std::wstring& str) {
     // Find the first character that is not whitespace, tab, newline, or carriage return
@@ -9775,8 +9776,6 @@ void MultiReplace::pointerToScintilla() {
         instance->_hScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
         s_hScintilla = instance->_hScintilla;
     }
-
-    ::SendMessage(instance->_hScintilla, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
 
     if (instance->_hScintilla) { // just to supress Warning
         instance->pSciMsg = (SciFnDirect)::SendMessage(instance->_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0);

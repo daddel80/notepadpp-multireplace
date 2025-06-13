@@ -788,6 +788,7 @@ private:
     //StringHandling
     std::wstring MultiReplace::utf8ToWString(const std::string& utf8) const;
     std::string wstringToUtf8(const std::wstring& input) const;
+    std::string wstringToString(const std::wstring& input) const;
     std::wstring trim(const std::wstring& str);
     bool MultiReplace::isValidUtf8(const std::string& data) const;
 
