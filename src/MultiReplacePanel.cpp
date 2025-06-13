@@ -8310,7 +8310,7 @@ std::string MultiReplace::wstringToString(const std::wstring& input) const {
         codePage = static_cast<int>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
     }
 
-    if (codePage == 0) codePage = CP_ACP;
+    //if (codePage == 0) codePage = CP_ACP;
 
     int size_needed = WideCharToMultiByte(codePage, 0, &input[0], (int)input.size(), NULL, 0, NULL, NULL);
     if (size_needed == 0) return std::string();
