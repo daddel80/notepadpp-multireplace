@@ -701,6 +701,7 @@ private:
     void setLuaFileVars(LuaVariables& vars);
     bool initLuaState();
     bool compileLuaReplaceCode(const std::string& luaCode);
+    static int safeLoadFileSandbox(lua_State* L);
 
     //DebugWindow
     int ShowDebugWindow(const std::string& message);
@@ -790,7 +791,7 @@ private:
     std::string wstringToUtf8(const std::wstring& input) const;
     std::string wstringToString(const std::wstring& input) const;
     std::wstring trim(const std::wstring& str);
-    bool MultiReplace::isValidUtf8(const std::string& data) const;
+    static bool MultiReplace::isValidUtf8(const std::string& data);
 
     //FileOperations
     std::wstring promptSaveListToCsv();

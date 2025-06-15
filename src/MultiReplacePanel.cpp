@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #define NOMINMAX
-#define USE_LUA_BYTECODE
+//#define USE_LUA_BYTECODE
 #define WM_UPDATE_FOCUS (WM_APP + 2)
 
 #include "MultiReplacePanel.h"
@@ -4240,6 +4240,10 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
                 return false;  // Exit the function if error in syntax
             }
+
+            // Lua delivers UTF-8, which should be encoded into Scintilla-Codepage
+            std::wstring wide = utf8ToWString(localReplaceTextUtf8);
+            localReplaceTextUtf8 = wstringToString(wide);
         }
 
         if (!skipReplace) {
@@ -4375,6 +4379,10 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
                 return false;  // Exit the loop if error in syntax or process is stopped by debug
             }
+
+            // Lua delivers UTF-8, which should be encoded into Scintilla-Codepage
+            std::wstring wide = utf8ToWString(localReplaceTextUtf8);
+            localReplaceTextUtf8 = wstringToString(wide);
 
             if (!skipReplace) {
                 replaceTextUtf8 = convertAndExtend(std::move(localReplaceTextUtf8), itemData.extended);
@@ -4633,25 +4641,6 @@ bool MultiReplace::initLuaState()
 
     luaL_openlibs(_luaState);
 
-#ifdef USE_LUA_BYTECODE
-    // Try to load the embedded Lua bytecode.
-    int status = luaL_loadbuffer(_luaState, reinterpret_cast<const char*>(luaBytecode), luaBytecodeSize, "embedded_lua");
-    if (status != LUA_OK) {
-        // If bytecode loading fails, clear the error and fall back to Lua source code.
-        lua_pop(_luaState, 1);
-        MessageBox(nppData._nppHandle, L"Failed to load embedded Lua bytecode, falling back to source code.", L"Lua Warning", MB_OK | MB_ICONWARNING);
-        status = luaL_loadstring(_luaState, luaSourceCode);
-        if (status != LUA_OK) {
-            const char* errMsg = lua_tostring(_luaState, -1);
-            MessageBox(nppData._nppHandle, utf8ToWString(errMsg).c_str(), L"Lua Fallback Load Error", MB_OK | MB_ICONERROR);
-            lua_pop(_luaState, 1);
-            lua_close(_luaState);
-            _luaState = nullptr;
-            return false;
-        }
-    }
-
-#else
     // Load Lua source code directly (fallback mode)
     if (luaL_loadstring(_luaState, luaSourceCode) != LUA_OK) {
         const char* errMsg = lua_tostring(_luaState, -1);
@@ -4661,7 +4650,6 @@ bool MultiReplace::initLuaState()
         _luaState = nullptr;
         return false;
     }
-#endif
 
     // Execute the loaded Lua code.
     if (lua_pcall(_luaState, 0, LUA_MULTRET, 0) != LUA_OK) {
@@ -4672,6 +4660,10 @@ bool MultiReplace::initLuaState()
         _luaState = nullptr;
         return false;
     }
+
+    // Any Lua call to safeLoadFileSandbox(...) invokes the C++ code
+    lua_pushcfunction(_luaState, &MultiReplace::safeLoadFileSandbox);
+    lua_setglobal(_luaState, "safeLoadFileSandbox");
 
     return true;
 }
@@ -4926,6 +4918,74 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
     // 13) Return success
     return true;
+}
+
+int MultiReplace::safeLoadFileSandbox(lua_State* L) {
+// Return signature: (bool success, table or errorMessage)
+
+    // 1) Get the file path argument
+    const char* path = luaL_checkstring(L, 1);
+
+    // 2) Read raw bytes from disk
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        lua_pushboolean(L, false);
+        lua_pushfstring(L, "Cannot open file: %s", path);
+        return 2;
+    }
+    std::string raw((std::istreambuf_iterator<char>(in)),
+        std::istreambuf_iterator<char>());
+    in.close();
+
+    // 3) Detect UTF-8 vs ANSI
+    bool rawIsUtf8 = isValidUtf8(raw);
+
+    // 4) Convert to a true UTF-8 buffer if needed
+    std::string utf8_buf;
+    if (rawIsUtf8) {
+        utf8_buf = std::move(raw);
+    }
+    else {
+        // ANSI → UTF-16
+        int wlen = MultiByteToWideChar(CP_ACP, 0, raw.data(), (int)raw.size(), nullptr, 0);
+        std::wstring wide(wlen, L'\0');
+        MultiByteToWideChar(CP_ACP, 0, raw.data(), (int)raw.size(), &wide[0], wlen);
+
+        // UTF-16 → UTF-8
+        int u8len = WideCharToMultiByte(CP_UTF8, 0, wide.data(), wlen, nullptr, 0, nullptr, nullptr);
+        utf8_buf.resize(u8len);
+        WideCharToMultiByte(CP_UTF8, 0, wide.data(), wlen, &utf8_buf[0], u8len, nullptr, nullptr);
+    }
+
+    // 5) Strip UTF-8 BOM if present (optional but recommended)
+    if (utf8_buf.size() >= 3 &&
+        static_cast<unsigned char>(utf8_buf[0]) == 0xEF &&
+        static_cast<unsigned char>(utf8_buf[1]) == 0xBB &&
+        static_cast<unsigned char>(utf8_buf[2]) == 0xBF)
+    {
+        utf8_buf.erase(0, 3);
+    }
+
+    // 6) Load the UTF-8 chunk into Lua
+    if (luaL_loadbuffer(L, utf8_buf.data(), utf8_buf.size(), path) != LUA_OK) { 
+        lua_pushboolean(L, false); 
+        lua_pushstring(L, lua_tostring(L, -1));  // error message
+        return 2;
+    }
+
+    // 7) Run the chunk: expect it to return a table of entries
+    if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
+        lua_pushboolean(L, false);
+        lua_pushstring(L, lua_tostring(L, -1));
+        return 2;
+    }
+    // Stack now: [ table ]
+
+    // 8) Prepend a 'true' for the success flag
+    lua_pushboolean(L, true);
+    lua_insert(L, -2);  // now stack: [ true, table ]
+
+    return 2;
 }
 
 #pragma endregion
@@ -8340,7 +8400,7 @@ std::wstring MultiReplace::trim(const std::wstring& str) {
     return str.substr(strBegin, strRange);
 }
 
-bool MultiReplace::isValidUtf8(const std::string& data) const {
+bool MultiReplace::isValidUtf8(const std::string& data) {
     int len = ::MultiByteToWideChar(
         CP_UTF8,
         MB_ERR_INVALID_CHARS,
