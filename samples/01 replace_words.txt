@@ -1,0 +1,1 @@
+Notepad++ is a text editor and source code editor for use under Microsoft Windows. It supports around 80 programming languages with syntax highlighting and code folding. It allows working with multiple open files in a single window, thanks to its tabbed editing interface. Notepad++ is available under GPL and distributed as free software.

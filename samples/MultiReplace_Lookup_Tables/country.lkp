@@ -1,0 +1,12 @@
+return {
+    { {"US", "USA", "United States"}, "United States" },
+    { {"UK", "United Kingdom", "Britain"}, "United Kingdom" },
+    { {"DE", "Germany", "Deutschland"}, "Deutschland" },
+    { {"FR", "France", "French Republic"}, "France" },
+    { {"IT", "Italy", "Italia"}, "Italia" },
+    { {"ES", "Spain", "España"}, "España" },
+    { {"CA", "Canada"}, "Canada" },
+    { {"AU", "Australia"}, "Australia" },
+    { {"CN", "China", "PRC"}, "??" },
+    { {"JP", "Japan", "Nippon"}, "??" }
+}

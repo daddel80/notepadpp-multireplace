@@ -1,0 +1,10 @@
+Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Regex,Extended
+1,"Notepad++","OpenPad++",0,0,0,0,0
+1,"a","an",1,0,0,0,0
+1,"Microsoft","Apple",1,0,0,0,0
+1,"free","open source",1,0,0,0,0
+1,"editor\\d032","editor\\x20writer",0,0,0,1,0
+1,"\\b01010111indows","Linux",0,0,0,1,0
+1,"multiple\\x20","many\\x20",0,0,0,1,0
+1,"(\\d{2}) programming","eighty languages",0,1,0,0,1
+1,"(syntax highlighting)","code visualization",0,1,0,0,1

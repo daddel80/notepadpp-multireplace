@@ -1,0 +1,13 @@
+
+return {
+    { {"US", "USD", "Dollar"}, "USD" },
+    { {"UK", "GBP", "Pound"}, "GBP" },
+    { {"DE", "EUR", "Euro"}, "EUR" },
+    { {"FR", "EUR", "Euro"}, "EUR" },
+    { {"IT", "EUR", "Euro"}, "EUR" },
+    { {"ES", "EUR", "Euro"}, "EUR" },
+    { {"CA", "CAD", "Canadian Dollar"}, "CAD" },
+    { {"AU", "AUD", "Australian Dollar"}, "AUD" },
+    { {"CN", "CNY", "Yuan"}, "CNY" },
+    { {"JP", "JPY", "Yen"}, "JPY" }
+}

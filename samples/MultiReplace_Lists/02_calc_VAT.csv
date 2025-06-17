@@ -1,0 +1,2 @@
+Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Regex,Extended,Comments
+1,"(\\d+.\\d+)","set(CAP1.."",""..fmtN ( (CAP1 + (CAP1 * 0.15)) ,2,true) )",0,0,1,0,1,""

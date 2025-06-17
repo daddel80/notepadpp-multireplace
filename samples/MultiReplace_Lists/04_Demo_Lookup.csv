@@ -1,0 +1,6 @@
+﻿Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Regex,Extended,Comments
+0,"","vars({DEBUG=true}); ",0,0,1,0,0,"\r"
+1,"","lvars([[C:\\Data\\Projekte\\MultiReplace\\3_MultiReplace_Lookup_Tables\\myvars.vars]])",0,0,1,0,0,"\r\r"
+1,"\\b\\w+\\b","cond(COL==1,lkp(MATCH, countryPath))",0,0,1,0,1,"\r\r"
+1,"\\b\\w+\\b","cond(COL==2,lkp(MATCH, phonecodePath))",0,0,1,0,1,"\r\r"
+1,"\\b\\w+\\b","cond(COL==3,lkp(MATCH, currencyPath))",0,0,1,0,1,"\r\r"

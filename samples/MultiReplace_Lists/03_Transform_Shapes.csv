@@ -1,0 +1,4 @@
+Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Regex,Extended,Comments
+1,"-","cond(\r\n    (\r\n        (LPOS - 20) * (LPOS - 20) \r\n        + \r\n        5 * (LINE - 12) * (LINE - 12)\r\n    ) <= 144,\r\n    ""8"",\r\n    "" ""\r\n)\r\n",0,0,1,0,0,"zeichne Kugel"
+1,"8","cond(\r\n    (\r\n        ((LPOS - 15)^2 + (LINE - 10)^2 < 4 and (LINE - 10)^2 ~= 2) \r\n        or \r\n        ((LPOS - 25)^2 + (LINE - 10)^2 < 4 and (LINE - 10)^2 ~= 2) \r\n        or \r\n        LINE - 11 == (25 - (LPOS - 20)^2)^0.5\r\n    ),\r\n    "" ""\r\n)\r\n",0,0,1,0,0,"Smiley mit Augen und Mund"
+1,"[8 ]","cond(\r\n    (\r\n        (LINE == 5 and LPOS >= 15 and LPOS <= 25) \r\n        or \r\n        (LINE == 6 and LPOS >= 15 and LPOS <= 25) \r\n        or \r\n        (LINE == 7 and LPOS >= 4 and LPOS <= 36)\r\n    ),\r\n    ""H""\r\n)\r\n",0,0,1,0,1,"Heisenberg"
