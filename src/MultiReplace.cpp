@@ -136,8 +136,21 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
     {
         toolbarIconsWithDarkMode tbIcons;
 
-        // Get current DPI
+        // Dynamically load GetDpiForWindow (available only on Win10+), fallback to GetDeviceCaps
         UINT dpi = 96;  // default DPI
+        HMODULE hUser32 = ::GetModuleHandle(TEXT("User32.dll"));
+        if (hUser32) {
+            auto pGetDpiForWindow = reinterpret_cast<UINT(WINAPI*)(HWND)>(
+                ::GetProcAddress(hUser32, "GetDpiForWindow"));
+            if (pGetDpiForWindow) {
+                dpi = pGetDpiForWindow(nppData._nppHandle);
+            }
+            else {
+                HDC hdc = ::GetDC(nppData._nppHandle);
+                dpi = ::GetDeviceCaps(hdc, LOGPIXELSX);
+                ::ReleaseDC(nppData._nppHandle, hdc);
+            }
+        }
 
         // Generate the bitmap with proper DPI scaling
         tbIcons.hToolbarBmp = CreateBitmapFromArray(dpi);
