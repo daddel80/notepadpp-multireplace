@@ -137,7 +137,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
         toolbarIconsWithDarkMode tbIcons;
 
         // Get current DPI
-        UINT dpi = GetDpiForWindow(nppData._nppHandle);
+        UINT dpi = 96;  // default DPI
 
         // Generate the bitmap with proper DPI scaling
         tbIcons.hToolbarBmp = CreateBitmapFromArray(dpi);
