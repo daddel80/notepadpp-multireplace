@@ -50,6 +50,13 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_export_to_bash", L"Export to Bash" },
 { L"panel_move_lines", L"Move Lines" },
 { L"panel_help", L"?" },
+{ L"panel_replace_in_files",  L"Replace in Files" },
+{ L"panel_directory", L"Directory: " },
+{ L"panel_filter", L"Filter: " },
+{ L"panel_in_subfolders", L"In all sub-folders" },
+{ L"panel_in_hidden_folders", L"In hidden folders" },
+{ L"panel_cancel_replace", L"Cancel Replace" },
+{ L"panel_progress", L"Progress:" },
 
 // File Dialog
 { L"filetype_all_files", L"All Files (*.*)" },
@@ -99,8 +106,10 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 // SplitButton entries
 { L"split_menu_replace_all", L"Replace All" },
 { L"split_menu_replace_all_in_docs", L"Replace All in All opened Documents" },
+{ L"split_menu_replace_in_files", L"Replace in Files" },
 { L"split_button_replace_all", L"Replace All" },
 { L"split_button_replace_all_in_docs", L"Replace All in Docs" },
+{ L"split_button_replace_in_files", L"Replace in Files" },
 
 // Static Status message entries
 { L"status_duplicate_entry", L"Duplicate entry: " },

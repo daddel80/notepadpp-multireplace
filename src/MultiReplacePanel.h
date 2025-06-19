@@ -434,7 +434,9 @@ private:
     static constexpr int MAX_TEXT_LENGTH = 4096; // Maximum Textlength for Find and Replace String
     static constexpr int MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
+    static constexpr int REPLACE_FILES_PANEL_HEIGHT = 88;
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
+    bool isReplaceInFiles = false;   // True if replacing in files, false for current document only.
 
     static constexpr int MIN_GENERAL_WIDTH = 40;
     static constexpr int DEFAULT_COLUMN_WIDTH_FIND = 150;   // Default size for Find Column
@@ -620,6 +622,7 @@ private:
     void initializeListView();
     void moveAndResizeControls();
     void updateTwoButtonsVisibility();
+    void updateReplaceInFilesVisibility();
     void setUIElementVisibility();
     void drawGripper();
     void SetWindowTransparency(HWND hwnd, BYTE alpha);

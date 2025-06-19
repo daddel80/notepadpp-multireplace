@@ -40,8 +40,7 @@
 #define IDC_MARK_MATCHES_BUTTON         5015
 #define IDC_COPY_MARKED_TEXT_BUTTON     5016
 #define IDC_CLEAR_MARKS_BUTTON          5017
-#define IDC_REPLACE_ALL_IN_LIST_BUTTON  5018
-#define IDC_DELETE_REPLACE_ITEM_BUTTON  5019
+#define IDC_CANCEL_REPLACE_BUTTON       5018
 #define IDC_LOAD_FROM_CSV_BUTTON        5020
 #define IDC_LOAD_LIST_BUTTON            5021
 #define IDC_NEW_LIST_BUTTON             5022
@@ -55,7 +54,8 @@
 #define IDC_SHIFT_TEXT					5030
 #define ID_REPLACE_ALL_OPTION           5031
 #define ID_REPLACE_IN_ALL_DOCS_OPTION   5032
-#define IDC_USE_LIST_BUTTON				5033
+#define ID_REPLACE_IN_FILES_OPTION      5033
+#define IDC_USE_LIST_BUTTON				5034
 
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101
@@ -91,6 +91,17 @@
 #define IDC_DELIMITER_STATIC            5463
 #define IDC_COLUMN_NUM_STATIC           5464
 #define IDC_QUOTECHAR_STATIC            5465
+
+#define IDC_REPLACE_IN_FILES_GROUP      5469
+#define IDC_DIR_STATIC                  5470
+#define IDC_DIR_EDIT                    5471
+#define IDC_BROWSE_DIR_BUTTON           5472
+#define IDC_FILTER_STATIC               5473
+#define IDC_FILTER_EDIT                 5474
+#define IDC_SUBFOLDERS_CHECKBOX         5475
+#define IDC_HIDDENFILES_CHECKBOX        5476
+#define IDC_DIR_PROGRESS_STATIC         5477
+#define IDC_DIR_PROGRESS_BAR            5478
 
 #define IDC_STATIC_FRAME                5501
 #define IDC_REPLACE_LIST                5502

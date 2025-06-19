@@ -218,7 +218,13 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     int borderWidth = ((tempWindowRect.right - tempWindowRect.left) - (clientRect.right - clientRect.left)) / 2;
     int titleBarHeight = (tempWindowRect.bottom - tempWindowRect.top) - (clientRect.bottom - clientRect.top) - borderWidth;
 
-    int minHeight = useListEnabled ? MIN_HEIGHT_scaled : SHRUNK_HEIGHT_scaled;
+    // Base minimum content height (list on/off)
+    int minContentHeight = useListEnabled ? MIN_HEIGHT_scaled : SHRUNK_HEIGHT_scaled;
+
+    // Add extra room if “Replace in Files” panel is visible
+    int panelExtra = isReplaceInFiles ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
+
+    int minHeight = minContentHeight + panelExtra;
     int minWidth = MIN_WIDTH_scaled;
 
     // Adjust for window borders and title bar
@@ -252,13 +258,14 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int radioButtonHeight = std::max(radioButtonBaseHeight, fontHeight);
 
     // Calculate dimensions without scaling
+    int filesOffsetY = isReplaceInFiles ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
     int buttonX = windowWidth - sx(33 + 128);
     int checkbox2X = buttonX + sx(134);
     int useListButtonX = buttonX + sx(133);
     int swapButtonX = windowWidth - sx(33 + 128 + 26);
     int comboWidth = windowWidth - sx(289);
     int listWidth = windowWidth - sx(202);
-    int listHeight = std::max(windowHeight - sy(245), sy(20)); // Minimum listHeight to prevent IDC_PATH_DISPLAY from overlapping with IDC_STATUS_MESSAGE
+    int listHeight = std::max(windowHeight - sy(245) - filesOffsetY, sy(20)); // Minimum listHeight to prevent IDC_PATH_DISPLAY from overlapping with IDC_STATUS_MESSAGE
     int useListButtonY = windowHeight - sy(34);
 
     // Apply scaling only when assigning to ctrlMap
@@ -296,7 +303,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(487), sy(149), sx(25), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_columns") }; //🗍
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(515), sy(149), sx(45), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
 
-    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(208), sx(530), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
+    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(208) + filesOffsetY, sx(530), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -317,21 +324,38 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") }; //🗍
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227), sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_new_list") };
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, sy(255), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, sy(255), sx(28), sy(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_save") };
-    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(4), sy(323), sx(24), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
-    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4), sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
-    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11), sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16), sx(96), sy(16), WC_STATIC, getLangStrLPCWSTR(L"panel_move_lines"), SS_LEFT, NULL };
-    ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227), listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
-    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5), listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
-    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, sy(225) + listHeight + sy(5), 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
-    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY, sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_new_list") };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_save") };
+    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255) + filesOffsetY, sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283) + filesOffsetY, sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(4), sy(323) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
+    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
+    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11) + filesOffsetY, sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL };
+    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16) + filesOffsetY, sx(96), sy(16), WC_STATIC, getLangStrLPCWSTR(L"panel_move_lines"), SS_LEFT, NULL };
+    ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227) + filesOffsetY, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
+    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5) + filesOffsetY, listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
+    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, sy(225) + listHeight + sy(5) + filesOffsetY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
+    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY , sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+
+    ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+
+    ctrlMap[IDC_REPLACE_IN_FILES_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,getLangStrLPCWSTR(L"panel_replace_in_files"), BS_GROUPBOX, NULL };
+
+    ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_filter"), SS_RIGHT, NULL };
+    ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
+    ctrlMap[IDC_DIR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_directory"), SS_RIGHT, NULL };
+    ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
+    ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+
+    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(20), sy(230), sx(120), sy(13), WC_BUTTON, getLangStrLPCWSTR(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL};
+    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(20), sy(257), sx(120), sy(13), WC_BUTTON, getLangStrLPCWSTR(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, NULL};
+
+    //ctrlMap[IDC_DIR_PROGRESS_STATIC] = { sx(15), sy(284), sx(75), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_progress"), SS_RIGHT, NULL };
+    //ctrlMap[IDC_DIR_PROGRESS_BAR] = { sx(96), sy(290), listWidth - sx(90), sy(2), PROGRESS_CLASS, NULL, PBS_SMOOTH | WS_VISIBLE, NULL};
+
 }
 
 void MultiReplace::initializeCtrlMap() {
@@ -353,6 +377,9 @@ void MultiReplace::initializeCtrlMap() {
     if (!createAndShowWindows()) {
         return;
     }
+
+    // immediately hide or show the "Replace in Files" sub-panel
+    updateReplaceInFilesVisibility();
 
     // Initialize the tooltip for the "Use List" button with dynamic text
     updateUseListState(false);
@@ -475,9 +502,10 @@ void MultiReplace::moveAndResizeControls() {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON,
         IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON,
         IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
-        IDC_USE_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+        IDC_USE_LIST_BUTTON, IDC_CANCEL_REPLACE_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
         IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, 
-        IDC_PATH_DISPLAY, IDC_STATS_DISPLAY
+        IDC_PATH_DISPLAY, IDC_STATS_DISPLAY, IDC_DIR_EDIT, IDC_FILTER_EDIT, IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX, 
+        IDC_BROWSE_DIR_BUTTON, IDC_REPLACE_IN_FILES_GROUP, IDC_DIR_PROGRESS_BAR, IDC_STATUS_MESSAGE
     };
 
     std::unordered_map<int, HWND> hwndMap;  // Store HWNDs to avoid multiple calls to GetDlgItem
@@ -492,12 +520,14 @@ void MultiReplace::moveAndResizeControls() {
         GetClientRect(resizeHwnd, &rc);
 
         DWORD startSelection = 0, endSelection = 0;
-        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT) {
+        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT 
+            || ctrlId == IDC_DIR_EDIT || ctrlId == IDC_FILTER_EDIT) {
             SendMessage(resizeHwnd, CB_GETEDITSEL, (WPARAM)&startSelection, (LPARAM)&endSelection);
         }
 
         int height = ctrlInfo.cy;
-        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT) {
+        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT
+            || ctrlId == IDC_DIR_EDIT || ctrlId == IDC_FILTER_EDIT) {
             COMBOBOXINFO cbi = { sizeof(COMBOBOXINFO) };
             if (GetComboBoxInfo(resizeHwnd, &cbi)) {
                 height = cbi.rcItem.bottom - cbi.rcItem.top;
@@ -506,7 +536,8 @@ void MultiReplace::moveAndResizeControls() {
 
         MoveWindow(resizeHwnd, ctrlInfo.x, ctrlInfo.y, ctrlInfo.cx, height, TRUE);
 
-        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT) {
+        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT
+            || ctrlId == IDC_DIR_EDIT || ctrlId == IDC_FILTER_EDIT) {
             SendMessage(resizeHwnd, CB_SETEDITSEL, 0, MAKELPARAM(startSelection, endSelection));
         }
     }
@@ -555,7 +586,34 @@ void MultiReplace::updateTwoButtonsVisibility() {
     // Save-Buttons (only depend on twoButtonsMode now)
     setVisibility({ IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON }, twoButtonsMode);
     setVisibility({ IDC_SAVE_TO_CSV_BUTTON }, !twoButtonsMode);
+}
 
+void MultiReplace::updateReplaceInFilesVisibility()
+{
+    // IDs of everything in the “Replace in Files” frame
+    static const std::vector<int> repInFilesIds = {
+        IDC_REPLACE_IN_FILES_GROUP,
+        IDC_FILTER_STATIC,  IDC_FILTER_EDIT,
+        IDC_DIR_STATIC,     IDC_DIR_EDIT,       IDC_BROWSE_DIR_BUTTON,
+        IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
+        IDC_CANCEL_REPLACE_BUTTON
+    };
+
+    bool show = isReplaceInFiles;
+    for (int id : repInFilesIds) {
+        ShowWindow(GetDlgItem(_hSelf, id), show ? SW_SHOW : SW_HIDE);
+    }
+
+    // now re-flow the rest of the UI
+    RECT rcClient;
+    GetClientRect(_hSelf, &rcClient);
+    int w = rcClient.right - rcClient.left, h = rcClient.bottom - rcClient.top;
+    positionAndResizeControls(w, h);       // recalc ctrlMap positions
+    updateListViewAndColumns();            // resize columns if needed
+    moveAndResizeControls();               // actually MoveWindow()/SetWindowPos() all controls
+    adjustWindowSize();                    // shrink/grow the dialog to fit
+    InvalidateRect(_hSelf, NULL, TRUE);    // repaint client
+    UpdateWindow(_hSelf);
 }
 
 void MultiReplace::setUIElementVisibility() {
@@ -3128,6 +3186,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             HMENU hMenu = CreatePopupMenu();
             AppendMenu(hMenu, MF_STRING, ID_REPLACE_ALL_OPTION, getLangStrLPWSTR(L"split_menu_replace_all"));
             AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_ALL_DOCS_OPTION, getLangStrLPWSTR(L"split_menu_replace_all_in_docs"));
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_FILES_OPTION, getLangStrLPWSTR(L"split_menu_replace_in_files"));
 
             // Display the menu directly below the button
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, NULL);
@@ -3665,6 +3724,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, visibleMain ? MAIN_VIEW : SUB_VIEW, currentDocIndex);
                 }
             }
+            else if (isReplaceInFiles) {
+                std::wstring filter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+                std::wstring dir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
+
+                addStringToComboBoxHistory( GetDlgItem(_hSelf, IDC_FILTER_EDIT), filter);
+                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), dir);
+                handleReplaceAllButton();
+            }
             else
             {
                 CloseDebugWindow(); // Close the Lua debug window if it is open
@@ -3807,6 +3874,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, getLangStrLPWSTR(L"split_button_replace_all"));
             isReplaceAllInDocs = false;
+            isReplaceInFiles = false;
+            updateReplaceInFilesVisibility();
             return TRUE;
         }
 
@@ -3814,6 +3883,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, getLangStrLPWSTR(L"split_button_replace_all_in_docs"));
             isReplaceAllInDocs = true;
+            isReplaceInFiles = false;
+            updateReplaceInFilesVisibility();
+            return TRUE;
+        }
+
+        case ID_REPLACE_IN_FILES_OPTION:
+        {
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, getLangStrLPWSTR(L"split_button_replace_in_files"));
+            isReplaceAllInDocs = false;
+            isReplaceInFiles = true;
+            updateReplaceInFilesVisibility();
             return TRUE;
         }
 
@@ -9184,6 +9264,17 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToUtf8(L"QuoteChar=" + quoteChar + L"\n");
     outFile << wstringToUtf8(L"HeaderLines=" + headerLines + L"\n");
 
+    // Save “Replace in Files” settings
+    std::wstring filterText = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+    std::wstring dirText = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
+    int inSub = IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED ? 1 : 0;
+    int inHidden = IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED ? 1 : 0;
+    outFile << wstringToUtf8(L"[ReplaceInFiles]\n");
+    outFile << wstringToUtf8(L"Filter=\"" + filterText + L"\"\n");
+    outFile << wstringToUtf8(L"Directory=\"" + dirText + L"\"\n");
+    outFile << wstringToUtf8(L"InSubfolders=" + std::to_wstring(inSub) + L"\n");
+    outFile << wstringToUtf8(L"InHiddenFolders=" + std::to_wstring(inHidden) + L"\n");
+
     // Save the list file path and original hash
     outFile << wstringToUtf8(L"[File]\n");
     outFile << wstringToUtf8(L"ListFilePath=" + escapeCsvValue(listFilePath) + L"\n");
@@ -9216,6 +9307,28 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
         SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
         std::wstring replaceTextData = escapeCsvValue(std::wstring(buffer.data()));
         outFile << wstringToUtf8(L"ReplaceTextHistory" + std::to_wstring(i) + L"=" + replaceTextData + L"\n");
+    }
+
+    // Save Filter history
+    LRESULT filterCount = SendMessage(GetDlgItem(_hSelf, IDC_FILTER_EDIT), CB_GETCOUNT, 0, 0);
+    int filterItemsToSave = std::min(static_cast<int>(filterCount), maxHistoryItems);
+    outFile << wstringToUtf8(L"FilterHistoryCount=" + std::to_wstring(filterItemsToSave) + L"\n");
+    for (int i = 0; i < filterItemsToSave; ++i) {
+        LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_FILTER_EDIT), CB_GETLBTEXTLEN, i, 0);
+        std::vector<wchar_t> buf(len + 1);
+        SendMessage(GetDlgItem(_hSelf, IDC_FILTER_EDIT), CB_GETLBTEXT, i, (LPARAM)buf.data());
+        outFile << wstringToUtf8(L"FilterHistory" + std::to_wstring(i) + L"=" + escapeCsvValue(buf.data()) + L"\n");
+    }
+
+    //  Save Dir history
+    LRESULT dirCount = SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_GETCOUNT, 0, 0);
+    int dirItemsToSave = std::min(static_cast<int>(dirCount), maxHistoryItems);
+    outFile << wstringToUtf8(L"DirHistoryCount=" + std::to_wstring(dirItemsToSave) + L"\n");
+    for (int i = 0; i < dirItemsToSave; ++i) {
+        LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_GETLBTEXTLEN, i, 0);
+        std::vector<wchar_t> buf(len + 1);
+        SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_GETLBTEXT, i, (LPARAM)buf.data());
+        outFile << wstringToUtf8(L"DirHistory" + std::to_wstring(i) + L"=" + escapeCsvValue(buf.data()) + L"\n");
     }
 
     outFile.close();
@@ -9257,6 +9370,20 @@ void MultiReplace::loadSettingsFromIni() {
     for (int i = replaceHistoryCount - 1; i >= 0; --i) {
         std::wstring replaceHistoryItem = readStringFromIniCache(L"History", L"ReplaceTextHistory" + std::to_wstring(i), L"");
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceHistoryItem);
+    }
+
+    // Load Filter history
+    int filterHistoryCount = readIntFromIniCache(L"History", L"FilterHistoryCount", 0);
+    for (int i = filterHistoryCount - 1; i >= 0; --i) {
+        std::wstring item = readStringFromIniCache(L"History", L"FilterHistory" + std::to_wstring(i), L"");
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FILTER_EDIT), item);
+    }
+
+    // Load Dir history
+    int dirHistoryCount = readIntFromIniCache(L"History", L"DirHistoryCount", 0);
+    for (int i = dirHistoryCount - 1; i >= 0; --i) {
+        std::wstring item = readStringFromIniCache(L"History", L"DirHistory" + std::to_wstring(i), L"");
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), item);
     }
 
     // Reading and setting current "Find what" and "Replace with" texts
@@ -9331,6 +9458,20 @@ void MultiReplace::loadSettingsFromIni() {
     setTextInDialogItem(_hSelf, IDC_QUOTECHAR_EDIT, quoteChar);
 
     CSVheaderLinesCount = readIntFromIniCache(L"Scope", L"HeaderLines", 1);
+
+    // --- Load “Replace in Files” settings --------------------------
+    std::wstring filter = readStringFromIniCache(L"ReplaceInFiles", L"Filter", L"");
+    setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, filter);
+
+    std::wstring dir = readStringFromIniCache(L"ReplaceInFiles", L"Directory", L"");
+    setTextInDialogItem(_hSelf, IDC_DIR_EDIT, dir);
+
+    bool inSub = readBoolFromIniCache(L"ReplaceInFiles", L"InSubfolders", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_SUBFOLDERS_CHECKBOX), BM_SETCHECK, inSub ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    bool inHidden = readBoolFromIniCache(L"ReplaceInFiles", L"InHiddenFolders", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_HIDDENFILES_CHECKBOX), BM_SETCHECK, inHidden ? BST_CHECKED : BST_UNCHECKED, 0);
+
 
     // Load file path and original hash
     listFilePath = readStringFromIniCache(L"File", L"ListFilePath", L"");
