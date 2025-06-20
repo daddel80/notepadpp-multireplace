@@ -221,8 +221,9 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     // Base minimum content height (list on/off)
     int minContentHeight = useListEnabled ? MIN_HEIGHT_scaled : SHRUNK_HEIGHT_scaled;
 
-    // Add extra room if “Replace in Files” panel is visible
-    int panelExtra = isReplaceInFiles ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
+    // Add extra room if “Replace in Files” panel is visible AND we're not in Two-Buttons-Mode
+    bool twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
+    int panelExtra = (isReplaceInFiles && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
 
     int minHeight = minContentHeight + panelExtra;
     int minWidth = MIN_WIDTH_scaled;
@@ -258,7 +259,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int radioButtonHeight = std::max(radioButtonBaseHeight, fontHeight);
 
     // Calculate dimensions without scaling
-    int filesOffsetY = isReplaceInFiles ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
+    BOOL twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
+    int filesOffsetY = (isReplaceInFiles && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
     int buttonX = windowWidth - sx(33 + 128);
     int checkbox2X = buttonX + sx(134);
     int useListButtonX = buttonX + sx(133);
@@ -586,6 +588,8 @@ void MultiReplace::updateTwoButtonsVisibility() {
     // Save-Buttons (only depend on twoButtonsMode now)
     setVisibility({ IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON }, twoButtonsMode);
     setVisibility({ IDC_SAVE_TO_CSV_BUTTON }, !twoButtonsMode);
+
+    updateReplaceInFilesVisibility();
 }
 
 void MultiReplace::updateReplaceInFilesVisibility()
@@ -599,7 +603,9 @@ void MultiReplace::updateReplaceInFilesVisibility()
         IDC_CANCEL_REPLACE_BUTTON
     };
 
-    bool show = isReplaceInFiles;
+    bool twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
+    bool show = isReplaceInFiles && !twoButtonsMode;
+
     for (int id : repInFilesIds) {
         ShowWindow(GetDlgItem(_hSelf, id), show ? SW_SHOW : SW_HIDE);
     }
@@ -3742,6 +3748,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
+        case IDC_BROWSE_DIR_BUTTON:
+        {
+            handleBrowseDirectoryButton();
+            return TRUE;
+        }
+
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
         {
@@ -5069,6 +5081,63 @@ int MultiReplace::safeLoadFileSandbox(lua_State* L) {
 
 #pragma endregion
 
+
+#pragma region Replace in Files
+
+bool MultiReplace::selectDirectoryDialog(HWND owner, std::wstring& outPath)
+{
+    // Initialize COM for this thread (if you haven’t already elsewhere)
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+
+    IFileDialog* pfd = nullptr;
+    HRESULT hr = CoCreateInstance(
+        CLSID_FileOpenDialog, nullptr,
+        CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd)
+    );
+    if (FAILED(hr)) {
+        CoUninitialize();
+        return false;
+    }
+
+    // Tell it to pick folders only
+    FILEOPENDIALOGOPTIONS opts;
+    pfd->GetOptions(&opts);
+    pfd->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+
+    // Show the dialog
+    if (SUCCEEDED(pfd->Show(owner)))
+    {
+        IShellItem* psi = nullptr;
+        if (SUCCEEDED(pfd->GetResult(&psi)) && psi)
+        {
+            // Retrieve the selected folder’s file system path
+            PWSTR pszPath = nullptr;
+            if (SUCCEEDED(psi->GetDisplayName(SIGDN_FILESYSPATH, &pszPath)))
+            {
+                outPath = pszPath;
+                CoTaskMemFree(pszPath);
+            }
+            psi->Release();
+        }
+    }
+    pfd->Release();
+    CoUninitialize();
+    return !outPath.empty();
+}
+
+bool MultiReplace::handleBrowseDirectoryButton()
+{
+    std::wstring dir;
+    if (selectDirectoryDialog(_hSelf, dir))
+    {
+        // User picked one — set the combo-box text & keep history
+        SetDlgItemTextW(_hSelf, IDC_DIR_EDIT, dir.c_str());
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), dir);
+    }
+    return true;  // always return TRUE so the dialog proc knows we handled it
+}
+
+#pragma endregion
 
 #pragma region DebugWindow from resolveLuaSyntax
 

@@ -707,6 +707,10 @@ private:
     bool compileLuaReplaceCode(const std::string& luaCode);
     static int safeLoadFileSandbox(lua_State* L);
 
+    //Replace in files
+    bool handleBrowseDirectoryButton();
+    bool selectDirectoryDialog(HWND owner, std::wstring& outPath);
+
     //DebugWindow
     int ShowDebugWindow(const std::string& message);
     static LRESULT CALLBACK DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
