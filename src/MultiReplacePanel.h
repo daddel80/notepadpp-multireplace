@@ -461,6 +461,7 @@ private:
     static constexpr int MAX_CAP_GROUPS = 9; // Maximum number of capture groups supported by Notepad++
     static constexpr COLORREF COLOR_SUCCESS = RGB(0, 128, 0); // Green for success messages
     static constexpr COLORREF COLOR_ERROR = RGB(255, 0, 0);   // Red for error messages
+    static constexpr COLORREF COLOR_WARNING = RGB(255, 0, 0);
     static constexpr COLORREF COLOR_INFO = RGB(0, 0, 128);    // Blue for informational messages
 
     DPIManager* dpiMgr; // Pointer to DPIManager instance
@@ -710,6 +711,7 @@ private:
     //Replace in files
     bool handleBrowseDirectoryButton();
     bool selectDirectoryDialog(HWND owner, std::wstring& outPath);
+    void handleReplaceInFiles();
 
     //DebugWindow
     int ShowDebugWindow(const std::string& message);

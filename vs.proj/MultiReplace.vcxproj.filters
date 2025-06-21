@@ -207,6 +207,7 @@
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\luaEmbedded.h" />
     <ClInclude Include="..\src\image_data.h" />
+    <ClInclude Include="..\src\HiddenSciGuard.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

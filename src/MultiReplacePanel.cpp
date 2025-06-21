@@ -23,6 +23,7 @@
 #include "Scintilla.h"
 #include "DPIManager.h"
 #include "luaEmbedded.h"
+#include "HiddenSciGuard.h"
 
 #include <algorithm>
 #include <bitset>
@@ -44,6 +45,7 @@
 #include <windows.h>
 #include <Commctrl.h>
 #include <filesystem>
+#include <iomanip>
 
 #include <lua.hpp>
 
@@ -3736,7 +3738,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
                 addStringToComboBoxHistory( GetDlgItem(_hSelf, IDC_FILTER_EDIT), filter);
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), dir);
-                handleReplaceAllButton();
+                handleReplaceInFiles();
             }
             else
             {
@@ -5137,7 +5139,138 @@ bool MultiReplace::handleBrowseDirectoryButton()
     return true;  // always return TRUE so the dialog proc knows we handled it
 }
 
+void MultiReplace::handleReplaceInFiles() {
+    // A RAII guard to ensure the hidden Scintilla buffer is created and automatically destroyed.
+    HiddenSciGuard guard;
+    if (!guard.create()) {
+        showStatusMessage(getLangStr(L"status_error_hidden_buffer"), COLOR_ERROR);
+        return;
+    }
+
+    // 1) Gather user input from the dialog controls.
+    auto wDir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
+    auto wFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+    bool recurse = IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED;
+    bool hide = IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED;
+    guard.parseFilter(wFilter);
+
+    if (wDir.empty() || !std::filesystem::exists(wDir)) {
+        showStatusMessage(getLangStr(L"status_error_invalid_directory"), COLOR_ERROR);
+        return;
+    }
+
+    // 2) Find all files that match the specified filters.
+    std::vector<std::filesystem::path> files;
+    try {
+        namespace fs = std::filesystem;
+        if (recurse) {
+            for (auto& e : fs::recursive_directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) {
+                    files.push_back(e.path());
+                }
+            }
+        }
+        else {
+            for (auto& e : fs::directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) {
+                    files.push_back(e.path());
+                }
+            }
+        }
+    }
+    catch (const std::exception& ex) {
+        std::string narrowReason = ex.what();
+        std::wstring wideReason(narrowReason.begin(), narrowReason.end());
+        showStatusMessage(getLangStr(L"status_error_scanning_directory", { wideReason }), COLOR_ERROR);
+        return;
+    }
+
+    if (files.empty()) {
+        MessageBox(_hSelf, getLangStrLPWSTR(L"msgbox_no_files"), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    // 3) Confirm the operation with the user.
+    auto msg = getLangStr(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()) });
+    if (MessageBox(_hSelf, msg.c_str(), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_ICONWARNING | MB_OKCANCEL) != IDOK)
+        return;
+
+    // 4) Save the original Scintilla context before starting the loop.
+    HWND        oldSci = _hScintilla;
+    SciFnDirect oldFn = pSciMsg;
+    sptr_t      oldData = pSciWndData;
+
+    // Reset the UI count columns once before processing all files.
+    resetCountColumns();
+
+    int total = (int)files.size(), idx = 0, changed = 0;
+    int last_percent = -1; // Used to prevent flickering by only updating on change.
+
+    // Show initial progress state.
+    showStatusMessage(L"Progress: [  0%]", COLOR_INFO);
+
+    for (auto& fp : files) {
+        ++idx;
+
+        // Silently skip files that cannot be loaded or are read-only.
+        std::string buf;
+        if (!guard.loadFile(fp, buf)) {
+            continue;
+        }
+        auto a = GetFileAttributesW(fp.c_str());
+        if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_READONLY)) {
+            continue;
+        }
+
+        // --- Perform replacement on processable files ---
+        _hScintilla = guard.hSci;
+        pSciMsg = guard.fn;
+        pSciWndData = guard.pData;
+
+        send(SCI_CLEARALL, 0, 0);
+        send(SCI_ADDTEXT, buf.length(), reinterpret_cast<sptr_t>(buf.data()));
+
+        handleDelimiterPositions(DelimiterOperation::LoadAll);
+        handleReplaceAllButton();
+
+        std::string out;
+        int len = static_cast<int>(send(SCI_GETLENGTH, 0, 0));
+        if (len > 0) {
+            out.resize(len);
+            Sci_TextRange tr{ {0, len}, &out[0] };
+            send(SCI_GETTEXTRANGE, 0, reinterpret_cast<sptr_t>(&tr));
+        }
+
+        _hScintilla = oldSci;
+        pSciMsg = oldFn;
+        pSciWndData = oldData;
+
+        if (out != buf) {
+            if (guard.writeFile(fp, out)) {
+                ++changed;
+            }
+        }
+
+        // --- Intelligent Progress Update ---
+        // Calculate current progress.
+        int percent = static_cast<int>((static_cast<double>(idx) / total) * 100.0);
+
+        // Only update the status bar if the percentage value has changed to avoid flickering.
+        if (percent > last_percent) {
+            last_percent = percent;
+            std::wstringstream ss;
+            // Format the string to have a fixed width (e.g., "[  7%]", "[ 15%]", "[100%]")
+            ss << L"Progress: [" << std::setw(3) << std::right << percent << L"%]";
+            showStatusMessage(ss.str(), COLOR_INFO);
+        }
+    }
+
+    // 5) Display a final summary message to the user.
+    auto done = getLangStr(L"msgbox_replace_done_in_files", { std::to_wstring(changed), std::to_wstring(total) });
+    MessageBox(_hSelf, done.c_str(), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OK | MB_ICONINFORMATION);
+}
 #pragma endregion
+
 
 #pragma region DebugWindow from resolveLuaSyntax
 

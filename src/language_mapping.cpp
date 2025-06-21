@@ -157,6 +157,9 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_new_list_created", L"New list created." },
 { L"status_no_rows_selected_to_delete", L"No rows selected to delete." },
 { L"status_invalid_indices", L"Invalid indices supplied." },
+{ L"status_error_hidden_buffer", L"Error creating hidden buffer for processing." },
+{ L"status_error_invalid_directory", L"The specified directory is invalid or does not exist." },
+{ L"status_error_scanning_directory", L"Error scanning directory: $REPLACE_STRING" },
 
 // Dynamic Status message entries
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },
@@ -193,6 +196,9 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_unsaved_changes", L"You have unsaved changes.<br/>Would you like to save them?" },
 { L"msgbox_file_modified_prompt", L"'$REPLACE_STRING'<br/><br/>The file has been modified by another program.<br/>Do you want to load the changes and lose unsaved modifications?" },
 { L"msgbox_use_variables_not_exported", L"Some items with 'Use Variables' enabled were not exported." },
+{ L"msgbox_no_files", L"No files matched the specified filter." },
+{ L"msgbox_confirm_replace_in_files", L"Are you sure you want to perform replacement in $REPLACE_STRING file(s)?" },
+{ L"msgbox_replace_done_in_files", L"Replacement finished.\n\n$REPLACE_STRING1 of $REPLACE_STRING2 file(s) were modified." },
 
 // Context Menu Strings
 { L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },
