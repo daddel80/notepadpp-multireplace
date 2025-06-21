@@ -11,8 +11,6 @@
 
 extern NppData nppData;       // From your plugin definition
 
-using SciFnDirect = sptr_t(__stdcall*)(sptr_t, unsigned int, uptr_t, sptr_t);
-
 class HiddenSciGuard {
 public:
     HiddenSciGuard() = default;
