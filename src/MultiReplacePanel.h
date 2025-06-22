@@ -154,7 +154,6 @@ struct ColumnDelimiterData {
     }
 };
 
-
 struct ColumnValue {
     bool        isNumeric = false;
     double      numericValue = 0;
@@ -301,6 +300,11 @@ struct LuaVariable {
     bool booleanValue;
 
     LuaVariable() : name(""), type(LuaVariableType::None), numberValue(0.0), booleanValue(false) {}
+};
+
+struct EncodingInfo {
+    int sc_codepage = 0;      // The codepage value for Scintilla (e.g., SC_CP_UTF8)
+    size_t bom_length = 0;    // The length of the BOM in bytes (0 if no BOM)
 };
 
 using LuaVariablesMap = std::map<std::string, LuaVariable>;
@@ -461,7 +465,6 @@ private:
     static constexpr int MAX_CAP_GROUPS = 9; // Maximum number of capture groups supported by Notepad++
     static constexpr COLORREF COLOR_SUCCESS = RGB(0, 128, 0); // Green for success messages
     static constexpr COLORREF COLOR_ERROR = RGB(255, 0, 0);   // Red for error messages
-    static constexpr COLORREF COLOR_WARNING = RGB(255, 0, 0);
     static constexpr COLORREF COLOR_INFO = RGB(0, 0, 128);    // Blue for informational messages
 
     DPIManager* dpiMgr; // Pointer to DPIManager instance
@@ -712,6 +715,10 @@ private:
     bool handleBrowseDirectoryButton();
     bool selectDirectoryDialog(HWND owner, std::wstring& outPath);
     void handleReplaceInFiles();
+    bool convertUtf8ToOriginal(const std::string& utf8_input, const EncodingInfo& original_enc_info, const std::string& original_buf_with_bom, std::string& final_output_with_bom);
+    bool convertBufferToUtf8(const std::string& original_buf, const EncodingInfo& enc_info, std::string& utf8_output);
+    EncodingInfo detectEncoding(const std::string& buffer);
+    //std::string getTextFromCurrentBuffer() const;
 
     //DebugWindow
     int ShowDebugWindow(const std::string& message);

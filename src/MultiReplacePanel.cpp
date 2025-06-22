@@ -3194,7 +3194,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             HMENU hMenu = CreatePopupMenu();
             AppendMenu(hMenu, MF_STRING, ID_REPLACE_ALL_OPTION, getLangStrLPWSTR(L"split_menu_replace_all"));
             AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_ALL_DOCS_OPTION, getLangStrLPWSTR(L"split_menu_replace_all_in_docs"));
-            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_FILES_OPTION, getLangStrLPWSTR(L"split_menu_replace_in_files"));
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_FILES_OPTION, getLangStrLPWSTR(L"split_menu_replace_all_in_files"));
 
             // Display the menu directly below the button
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, NULL);
@@ -3904,7 +3904,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case ID_REPLACE_IN_FILES_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, getLangStrLPWSTR(L"split_button_replace_in_files"));
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, getLangStrLPWSTR(L"split_button_replace_all_in_files"));
             isReplaceAllInDocs = false;
             isReplaceInFiles = true;
             updateReplaceInFilesVisibility();
@@ -4519,6 +4519,94 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     return true;
 }
 
+/*
+std::wstring toHex(const std::string& s) {
+    std::wstringstream ret;
+    for (char c : s) {
+        ret << std::hex << std::setfill(L'0') << std::setw(2) << static_cast<int>(static_cast<unsigned char>(c)) << L" ";
+    }
+    return ret.str();
+}
+
+
+// New helper function to get all text from the currently active Scintilla buffer.
+std::string MultiReplace::getTextFromCurrentBuffer() const {
+    int len = static_cast<int>(send(SCI_GETLENGTH, 0, 0));
+    if (len <= 0) {
+        return std::string();
+    }
+    std::string buffer(len, '\0');
+    // Use the Sci_TextRange struct for compatibility
+    Sci_TextRange tr;
+    tr.chrg.cpMin = 0;
+    tr.chrg.cpMax = len;
+    tr.lpstrText = &buffer[0];
+    send(SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+    return buffer;
+}
+
+// FINAL DIAGNOSTIC VERSION
+bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, size_t itemIndex)
+{
+    if (itemData.findText.empty() && !itemData.useVariables) {
+        findCount = 0; replaceCount = 0; return true;
+    }
+
+    // --- DIAGNOSTIC POINT A: Check Inputs ---
+    SearchContext context;
+    context.findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
+    std::string replaceTextUtf8_for_debug = convertAndExtend(itemData.replaceText, itemData.extended);
+
+    std::wstringstream debugMsg;
+    debugMsg << L"--- replaceAll Inputs ---\n\n";
+    debugMsg << L"Document Codepage (cached): " << _cachedScintillaCodePage << L"\n\n";
+    debugMsg << L"Find String (Hex): " << toHex(context.findTextUtf8) << L"\n";
+    debugMsg << L"Replace String (Hex): " << toHex(replaceTextUtf8_for_debug) << L"\n";
+    MessageBoxW(_hSelf, debugMsg.str().c_str(), L"replaceAll Diagnostic (Inputs)", MB_OK | MB_ICONINFORMATION);
+    // --- END DIAGNOSTIC ---
+
+    context.searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
+    context.docLength = send(SCI_GETLENGTH, 0, 0);
+    context.isColumnMode = false;
+    context.isSelectionMode = false;
+    context.retrieveFoundText = itemData.useVariables;
+    context.highlightMatch = false;
+
+    send(SCI_SETSEARCHFLAGS, context.searchFlags);
+
+    SearchResult searchResult = performSearchForward(context, 0);
+    std::string replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
+
+    while (searchResult.pos >= 0)
+    {
+        ++findCount;
+        if (itemIndex != SIZE_MAX) { updateCountColumns(itemIndex, findCount); }
+
+        Sci_Position newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+        ++replaceCount;
+
+        // --- DIAGNOSTIC POINT B: Check Buffer State AFTER Replacement ---
+        std::wstring after_text = utf8ToWString(getTextFromCurrentBuffer()); // CORRECTED CALL
+
+        std::wstringstream loop_report;
+        loop_report << L"--- In-Loop Diagnostic ---\n\n";
+        loop_report << L"Match #" << findCount << L" found at position: " << searchResult.pos << L"\n";
+        loop_report << L"Called SCI_REPLACETARGET.\n\n";
+        loop_report << L"Buffer content AFTER replace attempt:\n" << after_text.substr(0, 100);
+
+        int response = MessageBoxW(_hSelf, loop_report.str().c_str(), L"Inside replaceAll Loop", MB_OKCANCEL | MB_ICONINFORMATION);
+        if (response == IDCANCEL) return false;
+        // --- END DIAGNOSTIC ---
+
+        if (itemIndex != SIZE_MAX) { updateCountColumns(itemIndex, -1, replaceCount); }
+
+        context.docLength = send(SCI_GETLENGTH, 0, 0);
+        searchResult = performSearchForward(context, newPos);
+    }
+    return true;
+}
+*/
+
 Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
     send(SCI_SETTARGETRANGE, pos, pos + length);
@@ -5088,42 +5176,52 @@ int MultiReplace::safeLoadFileSandbox(lua_State* L) {
 
 bool MultiReplace::selectDirectoryDialog(HWND owner, std::wstring& outPath)
 {
-    // Initialize COM for this thread (if you haven’t already elsewhere)
-    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
-
-    IFileDialog* pfd = nullptr;
-    HRESULT hr = CoCreateInstance(
-        CLSID_FileOpenDialog, nullptr,
-        CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd)
-    );
-    if (FAILED(hr)) {
-        CoUninitialize();
+    // Initialize COM and store the result.
+    HRESULT hrInit = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    if (FAILED(hrInit)) {
+        // If critical COM error, we cannot proceed at all.
         return false;
     }
 
-    // Tell it to pick folders only
-    FILEOPENDIALOGOPTIONS opts;
-    pfd->GetOptions(&opts);
-    pfd->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+    IFileDialog* pfd = nullptr;
+    // Use a different HRESULT variable for the instance creation.
+    HRESULT hrCreate = CoCreateInstance(
+        CLSID_FileOpenDialog, nullptr,
+        CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd)
+    );
 
-    // Show the dialog
-    if (SUCCEEDED(pfd->Show(owner)))
-    {
-        IShellItem* psi = nullptr;
-        if (SUCCEEDED(pfd->GetResult(&psi)) && psi)
+    // Only proceed if the dialog instance was created successfully.
+    if (SUCCEEDED(hrCreate)) {
+        // Tell it to pick folders only.
+        FILEOPENDIALOGOPTIONS opts;
+        pfd->GetOptions(&opts);
+        pfd->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+
+        // Show the dialog.
+        if (SUCCEEDED(pfd->Show(owner)))
         {
-            // Retrieve the selected folder’s file system path
-            PWSTR pszPath = nullptr;
-            if (SUCCEEDED(psi->GetDisplayName(SIGDN_FILESYSPATH, &pszPath)))
+            IShellItem* psi = nullptr;
+            if (SUCCEEDED(pfd->GetResult(&psi)) && psi)
             {
-                outPath = pszPath;
-                CoTaskMemFree(pszPath);
+                // Retrieve the selected folder’s file system path.
+                PWSTR pszPath = nullptr;
+                if (SUCCEEDED(psi->GetDisplayName(SIGDN_FILESYSPATH, &pszPath)))
+                {
+                    outPath = pszPath;
+                    CoTaskMemFree(pszPath);
+                }
+                psi->Release();
             }
-            psi->Release();
         }
+        pfd->Release();
     }
-    pfd->Release();
-    CoUninitialize();
+
+    // Uninitialize COM only if our initial call was the one that actually
+    // initialized it (returned S_OK).
+    if (hrInit == S_OK) {
+        CoUninitialize();
+    }
+
     return !outPath.empty();
 }
 
@@ -5140,14 +5238,12 @@ bool MultiReplace::handleBrowseDirectoryButton()
 }
 
 void MultiReplace::handleReplaceInFiles() {
-    // A RAII guard to ensure the hidden Scintilla buffer is created and automatically destroyed.
     HiddenSciGuard guard;
     if (!guard.create()) {
         showStatusMessage(getLangStr(L"status_error_hidden_buffer"), COLOR_ERROR);
         return;
     }
 
-    // 1) Gather user input from the dialog controls.
     auto wDir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
     auto wFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
     bool recurse = IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED;
@@ -5159,22 +5255,17 @@ void MultiReplace::handleReplaceInFiles() {
         return;
     }
 
-    // 2) Find all files that match the specified filters.
     std::vector<std::filesystem::path> files;
     try {
         namespace fs = std::filesystem;
         if (recurse) {
             for (auto& e : fs::recursive_directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) {
-                    files.push_back(e.path());
-                }
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
             }
         }
         else {
             for (auto& e : fs::directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) {
-                    files.push_back(e.path());
-                }
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
             }
         }
     }
@@ -5190,85 +5281,194 @@ void MultiReplace::handleReplaceInFiles() {
         return;
     }
 
-    // 3) Confirm the operation with the user.
     auto msg = getLangStr(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()) });
     if (MessageBox(_hSelf, msg.c_str(), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_ICONWARNING | MB_OKCANCEL) != IDOK)
         return;
 
-    // 4) Save the original Scintilla context before starting the loop.
+    // Save original Scintilla context
     HWND        oldSci = _hScintilla;
     SciFnDirect oldFn = pSciMsg;
     sptr_t      oldData = pSciWndData;
 
-    // Reset the UI count columns once before processing all files.
     resetCountColumns();
 
-    int total = (int)files.size(), idx = 0, changed = 0;
-    int last_percent = -1; // Used to prevent flickering by only updating on change.
+    int total = static_cast<int>(files.size());
+    int idx = 0, changed = 0;
+    int last_percent = -1;
 
-    // Show initial progress state.
     showStatusMessage(L"Progress: [  0%]", COLOR_INFO);
 
     for (auto& fp : files) {
         ++idx;
 
-        // Silently skip files that cannot be loaded or are read-only.
-        std::string buf;
-        if (!guard.loadFile(fp, buf)) {
-            continue;
-        }
+        std::string original_buf;
+        if (!guard.loadFile(fp, original_buf)) { continue; }
         auto a = GetFileAttributesW(fp.c_str());
-        if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_READONLY)) {
+        if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_READONLY)) { continue; }
+
+        EncodingInfo enc_info = detectEncoding(original_buf);
+        std::string utf8_input_buf;
+        if (!convertBufferToUtf8(original_buf, enc_info, utf8_input_buf)) {
             continue;
         }
 
-        // --- Perform replacement on processable files ---
+        // Switch context to the hidden Scintilla buffer
         _hScintilla = guard.hSci;
         pSciMsg = guard.fn;
         pSciWndData = guard.pData;
 
+        // Always set the hidden buffer to UTF-8 mode
         send(SCI_CLEARALL, 0, 0);
-        send(SCI_ADDTEXT, buf.length(), reinterpret_cast<sptr_t>(buf.data()));
+        send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
+        send(SCI_ADDTEXT, utf8_input_buf.length(), reinterpret_cast<sptr_t>(utf8_input_buf.data()));
 
+        // Call the original replace logic, which will operate on the prepared UTF-8 buffer
         handleDelimiterPositions(DelimiterOperation::LoadAll);
         handleReplaceAllButton();
 
-        std::string out;
-        int len = static_cast<int>(send(SCI_GETLENGTH, 0, 0));
-        if (len > 0) {
-            out.resize(len);
-            Sci_TextRange tr{ {0, len}, &out[0] };
-            send(SCI_GETTEXTRANGE, 0, reinterpret_cast<sptr_t>(&tr));
-        }
+        // Get the modified text from the buffer
+        std::string utf8_out = guard.getText();
 
+        // Restore original Scintilla context
         _hScintilla = oldSci;
         pSciMsg = oldFn;
         pSciWndData = oldData;
 
-        if (out != buf) {
-            if (guard.writeFile(fp, out)) {
-                ++changed;
+        // Compare the UTF-8 versions to detect if a change occurred
+        if (utf8_out != utf8_input_buf) {
+            std::string final_write_buf;
+            // Convert back to the original encoding and prepend BOM before writing
+            if (convertUtf8ToOriginal(utf8_out, enc_info, original_buf, final_write_buf)) {
+                if (guard.writeFile(fp, final_write_buf)) {
+                    ++changed;
+                }
             }
         }
 
-        // --- Intelligent Progress Update ---
-        // Calculate current progress.
+        // Update progress indicator
         int percent = static_cast<int>((static_cast<double>(idx) / total) * 100.0);
-
-        // Only update the status bar if the percentage value has changed to avoid flickering.
         if (percent > last_percent) {
             last_percent = percent;
             std::wstringstream ss;
-            // Format the string to have a fixed width (e.g., "[  7%]", "[ 15%]", "[100%]")
             ss << L"Progress: [" << std::setw(3) << std::right << percent << L"%]";
             showStatusMessage(ss.str(), COLOR_INFO);
         }
     }
 
-    // 5) Display a final summary message to the user.
     auto done = getLangStr(L"msgbox_replace_done_in_files", { std::to_wstring(changed), std::to_wstring(total) });
     MessageBox(_hSelf, done.c_str(), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OK | MB_ICONINFORMATION);
 }
+
+bool MultiReplace::convertBufferToUtf8(const std::string& original_buf, const EncodingInfo& enc_info, std::string& utf8_output) {
+    const char* data_ptr = original_buf.data() + enc_info.bom_length;
+    int data_len = static_cast<int>(original_buf.size() - enc_info.bom_length);
+    if (data_len < 0) return false;
+
+    if (enc_info.sc_codepage == SC_CP_UTF8) {
+        utf8_output.assign(data_ptr, data_len);
+        return true;
+    }
+
+    std::wstring wbuf;
+
+    switch (enc_info.sc_codepage) {
+    case 1200: { // UTF-16 LE
+        if (data_len % 2 != 0) return false;
+        wbuf.assign(reinterpret_cast<const wchar_t*>(data_ptr), data_len / sizeof(wchar_t));
+        break;
+    }
+    case 1201: { // UTF-16 BE
+        if (data_len % 2 != 0) return false;
+        std::string temp_le_buf(data_ptr, data_len);
+        for (size_t i = 0; i < temp_le_buf.length(); i += 2) {
+            std::swap(temp_le_buf[i], temp_le_buf[i + 1]);
+        }
+        wbuf.assign(reinterpret_cast<const wchar_t*>(temp_le_buf.data()), temp_le_buf.length() / sizeof(wchar_t));
+        break;
+    }
+    default: { // ANSI
+        int wide_len = MultiByteToWideChar(enc_info.sc_codepage, 0, data_ptr, data_len, nullptr, 0);
+        if (wide_len <= 0) return false;
+        wbuf.resize(wide_len);
+        MultiByteToWideChar(enc_info.sc_codepage, 0, data_ptr, data_len, &wbuf[0], wide_len);
+        break;
+    }
+    }
+
+    if (wbuf.empty() && data_len > 0) return false; // Conversion to wstring failed
+
+    int utf8_len = WideCharToMultiByte(CP_UTF8, 0, &wbuf[0], (int)wbuf.size(), nullptr, 0, nullptr, nullptr);
+    if (utf8_len <= 0) return false;
+    utf8_output.resize(utf8_len);
+    WideCharToMultiByte(CP_UTF8, 0, &wbuf[0], (int)wbuf.size(), &utf8_output[0], utf8_len, nullptr, nullptr);
+
+    return true;
+}
+
+bool MultiReplace::convertUtf8ToOriginal(const std::string& utf8_input, const EncodingInfo& original_enc_info, const std::string& original_buf_with_bom, std::string& final_output_with_bom) {
+    std::string final_output_no_bom;
+
+    if (original_enc_info.sc_codepage == SC_CP_UTF8) {
+        final_output_no_bom = utf8_input;
+    }
+    else {
+        // Step 1: Convert the modified UTF-8 string back to a standard wstring (UTF-16 LE on Windows)
+        std::wstring wbuf_out;
+        int wide_len_out = MultiByteToWideChar(CP_UTF8, 0, utf8_input.c_str(), (int)utf8_input.size(), nullptr, 0);
+        if (wide_len_out <= 0) return false;
+        wbuf_out.resize(wide_len_out);
+        MultiByteToWideChar(CP_UTF8, 0, utf8_input.c_str(), (int)utf8_input.size(), &wbuf_out[0], wide_len_out);
+
+        // Step 2: Convert the wstring to the original target encoding
+        switch (original_enc_info.sc_codepage) {
+        case 1200: { // Original was UTF-16 LE
+            final_output_no_bom.assign(reinterpret_cast<const char*>(wbuf_out.data()), wbuf_out.size() * sizeof(wchar_t));
+            break;
+        }
+        case 1201: { // Original was UTF-16 BE
+            // To convert from our wstring (UTF-16 LE) to UTF-16 BE, we must byte-swap each character.
+            final_output_no_bom.assign(reinterpret_cast<const char*>(wbuf_out.data()), wbuf_out.size() * sizeof(wchar_t));
+            for (size_t i = 0; i < final_output_no_bom.length(); i += 2) {
+                std::swap(final_output_no_bom[i], final_output_no_bom[i + 1]);
+            }
+            break;
+        }
+        default: { // Original was ANSI
+            int final_len = WideCharToMultiByte(original_enc_info.sc_codepage, 0, wbuf_out.c_str(), (int)wbuf_out.size(), nullptr, 0, nullptr, nullptr);
+            if (final_len <= 0) return false;
+            final_output_no_bom.resize(final_len);
+            WideCharToMultiByte(original_enc_info.sc_codepage, 0, wbuf_out.c_str(), (int)wbuf_out.size(), &final_output_no_bom[0], final_len, nullptr, nullptr);
+            break;
+        }
+        }
+    }
+
+    // Step 3: Prepend the original BOM
+    final_output_with_bom.clear();
+    if (original_enc_info.bom_length > 0) {
+        final_output_with_bom.append(original_buf_with_bom.data(), original_enc_info.bom_length);
+    }
+    final_output_with_bom.append(final_output_no_bom);
+    return true;
+}
+
+EncodingInfo MultiReplace::detectEncoding(const std::string& buffer) {
+    if (buffer.empty()) { return { CP_ACP, 0 }; }
+    if (buffer.size() >= 3 && static_cast<unsigned char>(buffer[0]) == 0xEF && static_cast<unsigned char>(buffer[1]) == 0xBB && static_cast<unsigned char>(buffer[2]) == 0xBF) { return { SC_CP_UTF8, 3 }; }
+    if (buffer.size() >= 2 && static_cast<unsigned char>(buffer[0]) == 0xFF && static_cast<unsigned char>(buffer[1]) == 0xFE) { return { 1200, 2 }; }
+    if (buffer.size() >= 2 && static_cast<unsigned char>(buffer[0]) == 0xFE && static_cast<unsigned char>(buffer[1]) == 0xFF) { return { 1201, 2 }; }
+    if (isValidUtf8(buffer)) { return { SC_CP_UTF8, 0 }; }
+    int check_len = std::min((int)buffer.size(), 512);
+    if (check_len > 1) {
+        if (check_len % 2 != 0) check_len--;
+        int nulls_at_odd_pos = 0;
+        for (int i = 1; i < check_len; i += 2) { if (buffer[i] == '\0') { nulls_at_odd_pos++; } }
+        double null_ratio = (check_len > 0) ? (static_cast<double>(nulls_at_odd_pos) / (check_len / 2.0)) : 0.0;
+        if (null_ratio > 0.40) { return { 1200, 0 }; }
+    }
+    return { CP_ACP, 0 };
+}
+
 #pragma endregion
 
 
@@ -5587,23 +5787,41 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
 
 void MultiReplace::CopyListViewToClipboard(HWND hListView) {
     const int itemCount = ListView_GetItemCount(hListView);
+    if (itemCount <= 0) {
+        return;
+    }
+
     const int columnCount = Header_GetItemCount(ListView_GetHeader(hListView));
     std::wstring clipboardText;
     clipboardText.reserve(static_cast<size_t>(itemCount) * columnCount * 64);
 
     wchar_t buffer[512];
+
     for (int i = 0; i < itemCount; ++i) {
         for (int j = 0; j < columnCount; ++j) {
             LVITEMW li{};
             li.iSubItem = j;
-            li.cchTextMax = static_cast<int>(std::size(buffer));
+            li.cchTextMax = std::size(buffer);
             li.pszText = buffer;
+
+            buffer[0] = L'\0';
             SendMessageW(hListView, LVM_GETITEMTEXTW, (WPARAM)i, (LPARAM)&li);
+            buffer[std::size(buffer) - 1] = L'\0';
+
             int len = lstrlenW(buffer);
-            if (len > 0) clipboardText.append(buffer, len);
-            if (j < columnCount - 1) clipboardText.push_back(L'\t');
+            if (len > 0) {
+                clipboardText.append(buffer, len);
+            }
+
+            if (j < columnCount - 1) {
+                clipboardText.push_back(L'\t');
+            }
         }
         clipboardText.push_back(L'\n');
+    }
+
+    if (clipboardText.empty()) {
+        return;
     }
 
     if (OpenClipboard(nullptr)) {
@@ -5612,9 +5830,14 @@ void MultiReplace::CopyListViewToClipboard(HWND hListView) {
         HGLOBAL hData = GlobalAlloc(GMEM_MOVEABLE, bytes);
         if (hData) {
             void* ptr = GlobalLock(hData);
-            memcpy(ptr, clipboardText.c_str(), bytes);
-            GlobalUnlock(hData);
-            SetClipboardData(CF_UNICODETEXT, hData);
+            if (ptr) {
+                memcpy(ptr, clipboardText.c_str(), bytes);
+                GlobalUnlock(hData);
+                SetClipboardData(CF_UNICODETEXT, hData);
+            }
+            else {
+                GlobalFree(hData);
+            }
         }
         CloseClipboard();
     }
@@ -8643,6 +8866,7 @@ std::string MultiReplace::wstringToUtf8(const std::wstring& input) const {
     return result;
 }
 
+/*
 std::string MultiReplace::wstringToString(const std::wstring& input) const {
     if (input.empty()) return std::string();
 
@@ -8658,6 +8882,38 @@ std::string MultiReplace::wstringToString(const std::wstring& input) const {
 
     std::string strResult(size_needed, 0);
     WideCharToMultiByte(codePage, 0, &input[0], (int)input.size(), &strResult[0], size_needed, NULL, NULL);
+
+    return strResult;
+}
+*/
+
+
+std::string MultiReplace::wstringToString(const std::wstring& input) const {
+    if (input.empty()) return std::string();
+
+    // 1. Get the document's codepage (from cache for performance)
+    int documentCodePage = _cachedScintillaCodePage;
+    if (documentCodePage == -1) {
+        documentCodePage = static_cast<int>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
+    }
+
+    // 2. Determine the required encoding for the Scintilla API
+    int targetCodePage;
+    if (documentCodePage == CP_ACP) {
+        // If the document is ANSI, the API expects ANSI
+        targetCodePage = CP_ACP;
+    }
+    else {
+        // For ANY other encoding (UTF-8, UTF-16LE, UTF-16BE), the API expects UTF-8
+        targetCodePage = CP_UTF8;
+    }
+
+    // 3. Perform the conversion
+    int size_needed = WideCharToMultiByte(targetCodePage, 0, &input[0], (int)input.size(), NULL, 0, NULL, NULL);
+    if (size_needed == 0) return std::string();
+
+    std::string strResult(size_needed, 0);
+    WideCharToMultiByte(targetCodePage, 0, &input[0], (int)input.size(), &strResult[0], size_needed, NULL, NULL);
 
     return strResult;
 }
