@@ -136,21 +136,36 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
     {
         toolbarIconsWithDarkMode tbIcons;
 
-        // Dynamically load GetDpiForWindow (available only on Win10+), fallback to GetDeviceCaps
-        UINT dpi = 96;  // default DPI
-        HMODULE hUser32 = ::GetModuleHandle(TEXT("User32.dll"));
-        if (hUser32) {
-            auto pGetDpiForWindow = reinterpret_cast<UINT(WINAPI*)(HWND)>(
-                ::GetProcAddress(hUser32, "GetDpiForWindow"));
-            if (pGetDpiForWindow) {
-                dpi = pGetDpiForWindow(nppData._nppHandle);
+        // --- Start of the optimized DPI detection block-- -
+        static bool s_isInitialized = false;
+        static decltype(&GetDpiForWindow) s_pfnGetDpiForWindow = nullptr;
+
+        if (!s_isInitialized)
+        {
+            // One-time check for the modern DPI API on first run.
+            HMODULE hUser32 = ::GetModuleHandle(TEXT("User32.dll"));
+            if (hUser32) {
+                s_pfnGetDpiForWindow = reinterpret_cast<decltype(s_pfnGetDpiForWindow)>(
+                    ::GetProcAddress(hUser32, "GetDpiForWindow"));
             }
-            else {
-                HDC hdc = ::GetDC(nppData._nppHandle);
+            s_isInitialized = true;
+        }
+
+        UINT dpi = 96; // Default DPI
+
+        if (s_pfnGetDpiForWindow) {
+            // Use the modern API if available.
+            dpi = s_pfnGetDpiForWindow(nppData._nppHandle);
+        }
+        else {
+            // Fallback to the legacy method on older systems.
+            HDC hdc = ::GetDC(nppData._nppHandle);
+            if (hdc) {
                 dpi = ::GetDeviceCaps(hdc, LOGPIXELSX);
                 ::ReleaseDC(nppData._nppHandle, hdc);
             }
         }
+        // --- End of the optimized DPI detection block-- -
 
         // Generate the bitmap with proper DPI scaling
         tbIcons.hToolbarBmp = CreateBitmapFromArray(dpi);
@@ -167,6 +182,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
 
     case NPPN_SHUTDOWN:
     {
+        MultiReplace::signalShutdown();
         commandMenuCleanUp();
     }
     break;

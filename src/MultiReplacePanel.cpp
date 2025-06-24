@@ -80,6 +80,7 @@ int MultiReplace::debugWindowResponse = -1;
 SIZE MultiReplace::debugWindowSize = { 400, 250 };
 bool MultiReplace::debugWindowSizeSet = false;
 HWND MultiReplace::hDebugWnd = NULL;
+bool MultiReplace::_isShuttingDown = false;
 
 #pragma warning(disable: 6262)
 
@@ -610,6 +611,11 @@ void MultiReplace::updateReplaceInFilesVisibility()
 
     for (int id : repInFilesIds) {
         ShowWindow(GetDlgItem(_hSelf, id), show ? SW_SHOW : SW_HIDE);
+    }
+
+
+    if (show) {
+        EnableWindow(GetDlgItem(_hSelf, IDC_CANCEL_REPLACE_BUTTON), FALSE);
     }
 
     // now re-flow the rest of the UI
@@ -3911,6 +3917,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
+        case IDC_CANCEL_REPLACE_BUTTON:
+        {
+            _isCancelRequested = true;
+            return TRUE;
+        }
+
         case IDM_SEARCH_IN_LIST:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Search);
@@ -4014,7 +4026,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
 #pragma region Replace
 
-void MultiReplace::handleReplaceAllButton() {
+void MultiReplace::handleReplaceAllButton(bool showCompletionMessage) {
 
     if (!validateDelimiterData()) {
         return;
@@ -4100,7 +4112,7 @@ void MultiReplace::handleReplaceAllButton() {
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
     }
     // Display status message
-    if (replaceSuccess) {
+    if (replaceSuccess && showCompletionMessage) {
         showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), COLOR_SUCCESS);
     }
 
@@ -5260,11 +5272,13 @@ void MultiReplace::handleReplaceInFiles() {
         namespace fs = std::filesystem;
         if (recurse) {
             for (auto& e : fs::recursive_directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
+                if (_isShuttingDown) return;
                 if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
             }
         }
         else {
             for (auto& e : fs::directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
+                if (_isShuttingDown) return;
                 if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
             }
         }
@@ -5277,29 +5291,102 @@ void MultiReplace::handleReplaceInFiles() {
     }
 
     if (files.empty()) {
-        MessageBox(_hSelf, getLangStrLPWSTR(L"msgbox_no_files"), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OK | MB_ICONWARNING);
+        MessageBox(_hSelf, getLangStrLPWSTR(L"msgbox_no_files"), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OK);
         return;
     }
 
     auto msg = getLangStr(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()) });
-    if (MessageBox(_hSelf, msg.c_str(), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_ICONWARNING | MB_OKCANCEL) != IDOK)
+    if (MessageBox(_hSelf, msg.c_str(), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OKCANCEL) != IDOK)
         return;
 
-    // Save original Scintilla context
+    // RAII-based UI State Management with a comprehensive list of controls.
+    struct UiStateGuard {
+        HWND hDlg;
+        UiStateGuard(HWND h) : hDlg(h) { setUiInProgress(true); }
+        ~UiStateGuard() { setUiInProgress(false); }
+
+        void setUiInProgress(bool inProgress) {
+            // This list contains all interactive controls that could interfere with the process.
+            // The ListView (IDC_REPLACE_LIST) itself is intentionally left out to prevent repaint issues.
+            const std::vector<int> controlsToDisable = {
+                // Main Action Buttons
+                IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_FIND_BUTTON, IDC_MARK_BUTTON,
+                IDC_CLEAR_MARKS_BUTTON, IDC_COPY_TO_LIST_BUTTON,
+                // Split Buttons
+                IDC_REPLACE_ALL_SMALL_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON,
+                IDC_MARK_MATCHES_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
+                // File/List I/O
+                IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON,
+                IDC_SAVE_TO_CSV_BUTTON, IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON,
+                IDC_EXPORT_BASH_BUTTON, IDC_BROWSE_DIR_BUTTON,
+                // List manipulation
+                IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_USE_LIST_BUTTON, IDC_SWAP_BUTTON,
+                // Column mode buttons
+                IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON,
+                IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON,
+                // Edit/ComboBoxes
+                IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_FILTER_EDIT, IDC_DIR_EDIT,
+                IDC_REPLACE_HIT_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT,
+                // Checkboxes
+                IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX, IDC_USE_VARIABLES_CHECKBOX,
+                IDC_WRAP_AROUND_CHECKBOX, IDC_REPLACE_AT_MATCHES_CHECKBOX, IDC_2_BUTTONS_MODE,
+                IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
+                // Radios
+                IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
+                IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO
+            };
+
+            for (int id : controlsToDisable) {
+                EnableWindow(GetDlgItem(hDlg, id), !inProgress);
+            }
+
+            // Special handling for the Cancel button
+            EnableWindow(GetDlgItem(hDlg, IDC_CANCEL_REPLACE_BUTTON), inProgress);
+        }
+    };
+    UiStateGuard uiGuard(_hSelf);
+
+    _isCancelRequested = false;
+
     HWND        oldSci = _hScintilla;
     SciFnDirect oldFn = pSciMsg;
     sptr_t      oldData = pSciWndData;
 
     resetCountColumns();
 
-    int total = static_cast<int>(files.size());
-    int idx = 0, changed = 0;
-    int last_percent = -1;
-
+    int total = static_cast<int>(files.size()), idx = 0, changed = 0;
     showStatusMessage(L"Progress: [  0%]", COLOR_INFO);
 
     for (auto& fp : files) {
+        MSG m;
+        while (::PeekMessage(&m, NULL, 0, 0, PM_REMOVE)) {
+            ::TranslateMessage(&m);
+            ::DispatchMessage(&m);
+        }
+
+        if (_isShuttingDown) { return; }
+
+        if (_isCancelRequested) {
+            showStatusMessage(getLangStr(L"status_operation_cancelled"), COLOR_INFO);
+            break;
+        }
+
         ++idx;
+
+        int percent = static_cast<int>((static_cast<double>(idx) / total) * 100.0);
+        std::wstring progress_part = L"Progress: [" + std::to_wstring(percent) + L"%] ";
+        HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
+        HDC hdc = GetDC(hStatus);
+        HFONT hFont = (HFONT)SendMessage(hStatus, WM_GETFONT, 0, 0);
+        SelectObject(hdc, hFont);
+        SIZE progress_size;
+        GetTextExtentPoint32W(hdc, progress_part.c_str(), static_cast<int>(progress_part.length()), &progress_size);
+        RECT status_rect;
+        GetClientRect(hStatus, &status_rect);
+        int available_width = status_rect.right - status_rect.left - progress_size.cx;
+        std::wstring shortened_path = getShortenedFilePath(fp.wstring(), available_width, hdc);
+        ReleaseDC(hStatus, hdc);
+        showStatusMessage(progress_part + shortened_path, COLOR_INFO);
 
         std::string original_buf;
         if (!guard.loadFile(fp, original_buf)) { continue; }
@@ -5312,51 +5399,41 @@ void MultiReplace::handleReplaceInFiles() {
             continue;
         }
 
-        // Switch context to the hidden Scintilla buffer
         _hScintilla = guard.hSci;
         pSciMsg = guard.fn;
         pSciWndData = guard.pData;
 
-        // Always set the hidden buffer to UTF-8 mode
         send(SCI_CLEARALL, 0, 0);
         send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
         send(SCI_ADDTEXT, utf8_input_buf.length(), reinterpret_cast<sptr_t>(utf8_input_buf.data()));
 
-        // Call the original replace logic, which will operate on the prepared UTF-8 buffer
         handleDelimiterPositions(DelimiterOperation::LoadAll);
-        handleReplaceAllButton();
+        handleReplaceAllButton(false);
 
-        // Get the modified text from the buffer
         std::string utf8_out = guard.getText();
 
-        // Restore original Scintilla context
         _hScintilla = oldSci;
         pSciMsg = oldFn;
         pSciWndData = oldData;
 
-        // Compare the UTF-8 versions to detect if a change occurred
         if (utf8_out != utf8_input_buf) {
             std::string final_write_buf;
-            // Convert back to the original encoding and prepend BOM before writing
             if (convertUtf8ToOriginal(utf8_out, enc_info, original_buf, final_write_buf)) {
                 if (guard.writeFile(fp, final_write_buf)) {
                     ++changed;
                 }
             }
         }
-
-        // Update progress indicator
-        int percent = static_cast<int>((static_cast<double>(idx) / total) * 100.0);
-        if (percent > last_percent) {
-            last_percent = percent;
-            std::wstringstream ss;
-            ss << L"Progress: [" << std::setw(3) << std::right << percent << L"%]";
-            showStatusMessage(ss.str(), COLOR_INFO);
-        }
     }
 
-    auto done = getLangStr(L"msgbox_replace_done_in_files", { std::to_wstring(changed), std::to_wstring(total) });
-    MessageBox(_hSelf, done.c_str(), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OK | MB_ICONINFORMATION);
+    // The UiStateGuard destructor automatically restores the UI here.
+
+    if (!_isCancelRequested && !_isShuttingDown) {
+        auto done = getLangStr(L"msgbox_replace_done_in_files", { std::to_wstring(changed), std::to_wstring(total) });
+        MessageBox(_hSelf, done.c_str(), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OK);
+    }
+
+    _isCancelRequested = false;
 }
 
 bool MultiReplace::convertBufferToUtf8(const std::string& original_buf, const EncodingInfo& enc_info, std::string& utf8_output) {
@@ -10500,6 +10577,14 @@ void MultiReplace::onThemeChanged()
     // Only update column styles if column highlighting is enabled
     if (instance->isColumnHighlighted) {
         instance->initializeColumnStyles();
+    }
+}
+
+void MultiReplace::signalShutdown() {
+    // This static method can be called from the global beNotified function
+    if (instance) {
+        instance->_isShuttingDown = true;
+        instance->_isCancelRequested = true; // Also trigger the cancel flag
     }
 }
 

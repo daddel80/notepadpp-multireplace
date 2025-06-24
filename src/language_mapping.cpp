@@ -174,6 +174,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_deleted_fields_count", L"Deleted $REPLACE_STRING fields." },
 { L"status_line_and_column_position", L" (Line: $REPLACE_STRING1, Column: $REPLACE_STRING2)" },
 { L"status_unable_to_open_file", L"Failed to open the file: $REPLACE_STRING" },
+{ L"status_operation_cancelled", L"Replacement cancelled." },
 
 // MessageBox Titles
 { L"msgbox_title_error", L"Error" },

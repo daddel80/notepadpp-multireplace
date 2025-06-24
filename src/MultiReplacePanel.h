@@ -412,7 +412,8 @@ public:
     static void processLog();
     static void processTextChange(SCNotification* notifyCode);
     static void onCaretPositionChanged();
-    static void MultiReplace::onThemeChanged();
+    static void onThemeChanged();
+    static void signalShutdown();
 
     enum class ChangeType { Insert, Delete, Modify };
     enum class ReplaceMode { Normal, Extended, Regex };
@@ -575,6 +576,8 @@ private:
     int editFieldSize;
     bool listStatisticsEnabled;
     bool stayAfterReplaceEnabled;
+    bool _isCancelRequested = false; // Flag to signal cancellation in Replace Files
+    static bool _isShuttingDown; // Flag to signal app shutdown
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
@@ -693,7 +696,7 @@ private:
     void handleEditOnDoubleClick(int itemIndex, ColumnID columnID);
 
     //Replace
-    void handleReplaceAllButton();
+    void handleReplaceAllButton(bool showCompletionMessage = true);
     void handleReplaceButton();
     bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX);
     bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context);
