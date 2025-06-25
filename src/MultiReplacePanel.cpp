@@ -305,10 +305,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(418), sy(149), sx(19), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
     ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(437), sy(149), sx(19), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
     ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(459), sy(149), sx(25), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_drop_columns") };
-    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(487), sy(149), sx(25), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_columns") }; //🗍
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(487), sy(149), sx(25), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_columns") }; // 
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(515), sy(149), sx(45), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
-
-    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(208) + filesOffsetY, sx(530), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT, NULL };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -327,8 +325,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") }; //🗍
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") }; // 
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(208) + filesOffsetY, listWidth - sx(5), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX, NULL };
     ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_new_list") };
@@ -355,14 +354,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(20), sy(230), sx(120), sy(13), WC_BUTTON, getLangStrLPCWSTR(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL};
-    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(20), sy(257), sx(120), sy(13), WC_BUTTON, getLangStrLPCWSTR(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, NULL};
-
-    //ctrlMap[IDC_DIR_PROGRESS_STATIC] = { sx(15), sy(284), sx(75), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_progress"), SS_RIGHT, NULL };
-    //ctrlMap[IDC_DIR_PROGRESS_BAR] = { sx(96), sy(290), listWidth - sx(90), sy(2), PROGRESS_CLASS, NULL, PBS_SMOOTH | WS_VISIBLE, NULL};
-
+    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(20), sy(230), sx(120), sy(13), WC_BUTTON, getLangStrLPCWSTR(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(20), sy(257), sx(120), sy(13), WC_BUTTON, getLangStrLPCWSTR(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 }
-
 void MultiReplace::initializeCtrlMap() {
 
     hInstance = (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE);
@@ -5256,10 +5250,18 @@ void MultiReplace::handleReplaceInFiles() {
         return;
     }
 
+    // Read all inputs once at the beginning.
     auto wDir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
     auto wFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
     bool recurse = IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED;
     bool hide = IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED;
+
+    // If the filter is empty, default to "*.*" and update the UI.
+    if (wFilter.empty()) {
+        wFilter = L"*.*";
+        // FIX 2: Update the filter edit control to show the default value.
+        SetDlgItemTextW(_hSelf, IDC_FILTER_EDIT, wFilter.c_str());
+    }
     guard.parseFilter(wFilter);
 
     if (wDir.empty() || !std::filesystem::exists(wDir)) {
@@ -5295,9 +5297,23 @@ void MultiReplace::handleReplaceInFiles() {
         return;
     }
 
-    auto msg = getLangStr(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()) });
-    if (MessageBox(_hSelf, msg.c_str(), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OKCANCEL) != IDOK)
+    // --- Confirmation Dialog Setup ---
+    // Manually shorten the directory path to prevent ugly wrapping.
+    HDC dialogHdc = GetDC(_hSelf);
+    HFONT dialogHFont = (HFONT)SendMessage(_hSelf, WM_GETFONT, 0, 0);
+    SelectObject(dialogHdc, dialogHFont);
+    std::wstring shortenedDirectory = getShortenedFilePath(wDir, 400, dialogHdc);
+    ReleaseDC(_hSelf, dialogHdc);
+
+    // Build the structured message using the variables from the top of the function.
+    std::wstring message = getLangStr(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()), shortenedDirectory, wFilter });
+
+    // Show the MessageBox.
+    // FIX 1: Removed MB_ICONWARNING to prevent the system sound.
+    if (MessageBox(_hSelf, message.c_str(), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OKCANCEL | MB_SETFOREGROUND) != IDOK)
+    {
         return;
+    }
 
     // RAII-based UI State Management with a comprehensive list of controls.
     struct UiStateGuard {
@@ -5306,41 +5322,27 @@ void MultiReplace::handleReplaceInFiles() {
         ~UiStateGuard() { setUiInProgress(false); }
 
         void setUiInProgress(bool inProgress) {
-            // This list contains all interactive controls that could interfere with the process.
-            // The ListView (IDC_REPLACE_LIST) itself is intentionally left out to prevent repaint issues.
             const std::vector<int> controlsToDisable = {
-                // Main Action Buttons
                 IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_FIND_BUTTON, IDC_MARK_BUTTON,
-                IDC_CLEAR_MARKS_BUTTON, IDC_COPY_TO_LIST_BUTTON,
-                // Split Buttons
-                IDC_REPLACE_ALL_SMALL_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON,
-                IDC_MARK_MATCHES_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
-                // File/List I/O
-                IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON,
-                IDC_SAVE_TO_CSV_BUTTON, IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON,
-                IDC_EXPORT_BASH_BUTTON, IDC_BROWSE_DIR_BUTTON,
-                // List manipulation
-                IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_USE_LIST_BUTTON, IDC_SWAP_BUTTON,
-                // Column mode buttons
-                IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON,
-                IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON,
-                // Edit/ComboBoxes
-                IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_FILTER_EDIT, IDC_DIR_EDIT,
-                IDC_REPLACE_HIT_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT, IDC_QUOTECHAR_EDIT,
-                // Checkboxes
-                IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX, IDC_USE_VARIABLES_CHECKBOX,
-                IDC_WRAP_AROUND_CHECKBOX, IDC_REPLACE_AT_MATCHES_CHECKBOX, IDC_2_BUTTONS_MODE,
-                IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
-                // Radios
-                IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
+                IDC_CLEAR_MARKS_BUTTON, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
+                IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_MARK_MATCHES_BUTTON,
+                IDC_COPY_MARKED_TEXT_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON,
+                IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON,
+                IDC_EXPORT_BASH_BUTTON, IDC_BROWSE_DIR_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON,
+                IDC_USE_LIST_BUTTON, IDC_SWAP_BUTTON, IDC_COLUMN_SORT_DESC_BUTTON,
+                IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON,
+                IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_FILTER_EDIT,
+                IDC_DIR_EDIT, IDC_REPLACE_HIT_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT,
+                IDC_QUOTECHAR_EDIT, IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX,
+                IDC_USE_VARIABLES_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
+                IDC_REPLACE_AT_MATCHES_CHECKBOX, IDC_2_BUTTONS_MODE, IDC_SUBFOLDERS_CHECKBOX,
+                IDC_HIDDENFILES_CHECKBOX, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
                 IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO
             };
 
             for (int id : controlsToDisable) {
                 EnableWindow(GetDlgItem(hDlg, id), !inProgress);
             }
-
-            // Special handling for the Cancel button
             EnableWindow(GetDlgItem(hDlg, IDC_CANCEL_REPLACE_BUTTON), inProgress);
         }
     };
@@ -5367,7 +5369,6 @@ void MultiReplace::handleReplaceInFiles() {
         if (_isShuttingDown) { return; }
 
         if (_isCancelRequested) {
-            showStatusMessage(getLangStr(L"status_operation_cancelled"), COLOR_INFO);
             break;
         }
 
@@ -5428,9 +5429,10 @@ void MultiReplace::handleReplaceInFiles() {
 
     // The UiStateGuard destructor automatically restores the UI here.
 
-    if (!_isCancelRequested && !_isShuttingDown) {
-        auto done = getLangStr(L"msgbox_replace_done_in_files", { std::to_wstring(changed), std::to_wstring(total) });
-        MessageBox(_hSelf, done.c_str(), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OK);
+    // Display a simple, universal summary message unless the plugin is shutting down.
+    if (!_isShuttingDown) {
+        std::wstring summaryMsg = getLangStr(L"status_replace_summary", { std::to_wstring(changed), std::to_wstring(total) });
+        showStatusMessage(summaryMsg, _isCancelRequested ? COLOR_INFO : COLOR_SUCCESS);
     }
 
     _isCancelRequested = false;

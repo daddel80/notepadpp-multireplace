@@ -175,6 +175,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_line_and_column_position", L" (Line: $REPLACE_STRING1, Column: $REPLACE_STRING2)" },
 { L"status_unable_to_open_file", L"Failed to open the file: $REPLACE_STRING" },
 { L"status_operation_cancelled", L"Replacement cancelled." },
+{ L"status_replace_summary", L"Replace in files : $REPLACE_STRING1 of $REPLACE_STRING2 file(s) modified." },
 
 // MessageBox Titles
 { L"msgbox_title_error", L"Error" },
@@ -198,8 +199,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_file_modified_prompt", L"'$REPLACE_STRING'<br/><br/>The file has been modified by another program.<br/>Do you want to load the changes and lose unsaved modifications?" },
 { L"msgbox_use_variables_not_exported", L"Some items with 'Use Variables' enabled were not exported." },
 { L"msgbox_no_files", L"No files matched the specified filter." },
-{ L"msgbox_confirm_replace_in_files", L"Are you sure you want to perform replacement in $REPLACE_STRING file(s)?" },
-{ L"msgbox_replace_done_in_files", L"Replacement finished.\n\n$REPLACE_STRING1 of $REPLACE_STRING2 file(s) were modified." },
+{ L"msgbox_confirm_replace_in_files", L"Do you want to perform replacements in $REPLACE_STRING1 files?<br/><br/>In the directory:<br/>  $REPLACE_STRING2<br/><br/>For file type:<br/>  $REPLACE_STRING3" },
 
 // Context Menu Strings
 { L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },
