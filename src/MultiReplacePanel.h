@@ -391,6 +391,29 @@ public:
     static inline HWND getDialogHandle() {
         return s_hDlg;
     }
+    
+    struct DMDARKMODECOLORS {
+        COLORREF bkgColor;
+        COLORREF foreColor;
+        COLORREF hotColor;
+        COLORREF darkColor;
+    };
+
+    enum class MessageStatus {
+        Info,
+        Success,
+        Error
+    };
+
+    // Light Mode Colors for Message
+    static constexpr COLORREF LMODE_SUCCESS = RGB(0, 128, 0);
+    static constexpr COLORREF LMODE_ERROR = RGB(200, 0, 0);
+    static constexpr COLORREF LMODE_INFO = RGB(0, 0, 128);
+
+    // Dark Mode Colors for Message
+    static constexpr COLORREF DMODE_SUCCESS = RGB(120, 220, 120); 
+    static constexpr COLORREF DMODE_ERROR = RGB(255, 110, 110);
+    static constexpr COLORREF DMODE_INFO = RGB(147, 147, 255);
 
     static bool isWindowOpen;
     static bool textModified;
@@ -464,9 +487,6 @@ private:
     static constexpr wchar_t* symbolSortAscUnsorted = L"▽";
     static constexpr wchar_t* symbolSortDescUnsorted = L"△";
     static constexpr int MAX_CAP_GROUPS = 9; // Maximum number of capture groups supported by Notepad++
-    static constexpr COLORREF COLOR_SUCCESS = RGB(0, 128, 0); // Green for success messages
-    static constexpr COLORREF COLOR_ERROR = RGB(255, 0, 0);   // Red for error messages
-    static constexpr COLORREF COLOR_INFO = RGB(0, 0, 128);    // Blue for informational messages
 
     DPIManager* dpiMgr; // Pointer to DPIManager instance
 
@@ -495,7 +515,11 @@ private:
     HFONT _hNormalFont4;
     HFONT _hNormalFont5;
     HFONT _hNormalFont6;
-    COLORREF _statusMessageColor;
+    COLORREF COLOR_SUCCESS;
+    COLORREF COLOR_ERROR;
+    COLORREF COLOR_INFO;
+    COLORREF _statusMessageColor = LMODE_INFO; // Holds the actual color to be drawn. Initialized for light mode.
+    MessageStatus _lastMessageStatus = MessageStatus::Info; // Holds the TYPE of the last message.
     HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
     HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button
 
@@ -578,6 +602,7 @@ private:
     bool stayAfterReplaceEnabled;
     bool _isCancelRequested = false; // Flag to signal cancellation in Replace Files
     static bool _isShuttingDown; // Flag to signal app shutdown
+    HBRUSH _hDlgBrush = nullptr; // Handle for the dialog's background brush
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
@@ -793,7 +818,8 @@ private:
     void setSelections(bool select, bool onlySelected = false);
     void updateHeaderSelection();
     void updateHeaderSortDirection();
-    void showStatusMessage(const std::wstring& messageText, COLORREF color, bool isNotFound = false);
+    void showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound = false);
+    void updateThemeAndColors();
     std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();

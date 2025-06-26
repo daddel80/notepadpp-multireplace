@@ -55,7 +55,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_filter", L"Filter: " },
 { L"panel_in_subfolders", L"In all sub-folders" },
 { L"panel_in_hidden_folders", L"In hidden folders" },
-{ L"panel_cancel_replace", L"Cancel Replace" },
+{ L"panel_cancel_replace", L"Cancel" },
 { L"panel_progress", L"Progress:" },
 
 // File Dialog
