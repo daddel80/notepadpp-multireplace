@@ -619,6 +619,13 @@ void MultiReplace::updateReplaceInFilesVisibility()
     GetClientRect(_hSelf, &rcClient);
     int w = rcClient.right - rcClient.left, h = rcClient.bottom - rcClient.top;
     positionAndResizeControls(w, h);       // recalc ctrlMap positions
+    
+    // resize listview
+    HWND listView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+    if (!listView) return;
+    const ControlInfo& ci = ctrlMap[IDC_REPLACE_LIST];
+    MoveWindow(listView, ci.x, ci.y, ci.cx, ci.cy, TRUE);
+
     moveAndResizeControls();               // actually MoveWindow()/SetWindowPos() all controls
     adjustWindowSize();                    // shrink/grow the dialog to fit
     InvalidateRect(_hSelf, NULL, TRUE);    // repaint client
