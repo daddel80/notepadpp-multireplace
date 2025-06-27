@@ -619,7 +619,6 @@ void MultiReplace::updateReplaceInFilesVisibility()
     GetClientRect(_hSelf, &rcClient);
     int w = rcClient.right - rcClient.left, h = rcClient.bottom - rcClient.top;
     positionAndResizeControls(w, h);       // recalc ctrlMap positions
-    updateListViewAndColumns();            // resize columns if needed
     moveAndResizeControls();               // actually MoveWindow()/SetWindowPos() all controls
     adjustWindowSize();                    // shrink/grow the dialog to fit
     InvalidateRect(_hSelf, NULL, TRUE);    // repaint client
