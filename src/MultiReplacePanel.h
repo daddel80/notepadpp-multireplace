@@ -32,6 +32,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
+#include <filesystem>
 
 #include <commctrl.h>
 
@@ -707,7 +708,7 @@ private:
     void toggleBooleanAt(int itemIndex, ColumnID columnID);
     void editTextAt(int itemIndex, ColumnID columnID);
     void closeEditField(bool commitChanges);
-    static LRESULT CALLBACK ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    static LRESULT CALLBACK ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
     static LRESULT CALLBACK EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
     void toggleEditExpand();
     void createContextMenu(HWND hwnd, POINT ptScreen, MenuState state);
@@ -721,7 +722,7 @@ private:
     void handleEditOnDoubleClick(int itemIndex, ColumnID columnID);
 
     //Replace
-    void handleReplaceAllButton(bool showCompletionMessage = true);
+    bool handleReplaceAllButton(bool showCompletionMessage = true, const std::filesystem::path* explicitPath = nullptr);
     void handleReplaceButton();
     bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX);
     bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context);
@@ -733,7 +734,7 @@ private:
     std::string escapeForRegex(const std::string& input);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
     void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
-    void updateFilePathCache();
+    void updateFilePathCache(const std::filesystem::path* explicitPath = nullptr);
     void setLuaFileVars(LuaVariables& vars);
     bool initLuaState();
     bool compileLuaReplaceCode(const std::string& luaCode);
@@ -746,7 +747,6 @@ private:
     bool convertUtf8ToOriginal(const std::string& utf8_input, const EncodingInfo& original_enc_info, const std::string& original_buf_with_bom, std::string& final_output_with_bom);
     bool convertBufferToUtf8(const std::string& original_buf, const EncodingInfo& enc_info, std::string& utf8_output);
     EncodingInfo detectEncoding(const std::string& buffer);
-    //std::string getTextFromCurrentBuffer() const;
 
     //DebugWindow
     int ShowDebugWindow(const std::string& message);
@@ -836,6 +836,7 @@ private:
     std::wstring MultiReplace::utf8ToWString(const std::string& utf8) const;
     std::string wstringToUtf8(const std::wstring& input) const;
     std::string wstringToString(const std::wstring& input) const;
+    std::wstring ansiToWString(const std::string& input, UINT codePage);
     std::wstring trim(const std::wstring& str);
     static bool MultiReplace::isValidUtf8(const std::string& data);
 

@@ -41,6 +41,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <filesystem>
 
 #include <windows.h>
 #include <Commctrl.h>
@@ -464,7 +465,7 @@ void MultiReplace::initializeMarkerStyle() {
 
 void MultiReplace::initializeListView() {
     _replaceListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
-    originalListViewProc = (WNDPROC)SetWindowLongPtr(_replaceListView, GWLP_WNDPROC, (LONG_PTR)ListViewSubclassProc);
+    SetWindowSubclass(_replaceListView, &MultiReplace::ListViewSubclassProc, 0, reinterpret_cast<DWORD_PTR>(this));
     createListViewColumns();
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
@@ -2350,9 +2351,21 @@ LRESULT CALLBACK MultiReplace::EditControlSubclassProc(HWND hwnd, UINT msg, WPAR
     return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
 
-LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    MultiReplace* pThis = reinterpret_cast<MultiReplace*>(GetWindowLongPtr(GetParent(hwnd), GWLP_USERDATA));
+LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+{
+    // Retrieve the 'this' pointer from the safe reference data, not from GWLP_USERDATA.
+    MultiReplace* pThis = reinterpret_cast<MultiReplace*>(dwRefData);
 
+    // Defensive check: If the pointer is somehow invalid, fall back to the default procedure.
+    if (!pThis || !IsWindow(pThis->_hSelf)) {
+        return DefSubclassProc(hwnd, msg, wParam, lParam);
+    }
+
+    // Handle WM_NCDESTROY to remove the subclass before the window is finally destroyed.
+    if (msg == WM_NCDESTROY) {
+        RemoveWindowSubclass(hwnd, &MultiReplace::ListViewSubclassProc, uIdSubclass);
+        return DefSubclassProc(hwnd, msg, wParam, lParam);
+    }
     switch (msg) {
     case WM_VSCROLL:
     case WM_MOUSEWHEEL:
@@ -2502,7 +2515,8 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         break;
     }
 
-    return CallWindowProc(pThis->originalListViewProc, hwnd, msg, wParam, lParam);
+    // For all unhandled messages, call the default subclass procedure.
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
 
 void MultiReplace::toggleEditExpand()
@@ -3744,7 +3758,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         for (LRESULT i = 0; i < docCountMain; ++i) {
                             ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
                             handleDelimiterPositions(DelimiterOperation::LoadAll);
-                            handleReplaceAllButton();
+                            if (!handleReplaceAllButton()) {
+                                break;
+                            }
                         }
                     }
 
@@ -3753,7 +3769,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         for (LRESULT i = 0; i < docCountSecondary; ++i) {
                             ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, i);
                             handleDelimiterPositions(DelimiterOperation::LoadAll);
-                            handleReplaceAllButton();
+                            if (!handleReplaceAllButton()) {
+                                break;
+                            }
                         }
                     }
 
@@ -4049,17 +4067,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
 #pragma region Replace
 
-void MultiReplace::handleReplaceAllButton(bool showCompletionMessage) {
+bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std::filesystem::path* explicitPath) {
 
     if (!validateDelimiterData()) {
-        return;
+        return false;
     }
 
     // First check if the document is read-only
     LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
         showStatusMessage(getLangStr(L"status_cannot_replace_read_only"), MessageStatus::Error);
-        return;
+        return false;
     }
 
     if (!initLuaState()) {
@@ -4072,7 +4090,7 @@ void MultiReplace::handleReplaceAllButton(bool showCompletionMessage) {
     _cachedScintillaCodePage = static_cast<int>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
 
     // Read Filename and Path for LUA
-    updateFilePathCache();
+    updateFilePathCache(explicitPath);
 
     int totalReplaceCount = 0;
     bool replaceSuccess = true;
@@ -4082,12 +4100,12 @@ void MultiReplace::handleReplaceAllButton(bool showCompletionMessage) {
         // Check if the replaceListData is empty and warn the user if so
         if (replaceListData.empty()) {
             showStatusMessage(getLangStr(L"status_add_values_instructions"), MessageStatus::Error);
-            return;
+            return false;
         }
 
         // Check status for initial call if stopped by DEBUG, don't highlight entry
         if (!preProcessListForReplace(/*highlightEntry=*/false)) {
-            return;
+            return false;
         }
 
         send(SCI_BEGINUNDOACTION, 0, 0);
@@ -4148,6 +4166,7 @@ void MultiReplace::handleReplaceAllButton(bool showCompletionMessage) {
     }
 
     _cachedScintillaCodePage = -1;
+    return replaceSuccess;
 
 }
 
@@ -4331,7 +4350,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
     if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
         bool skipReplace = false;
 
-        std::string localReplaceTextUtf8 = wstringToString(itemData.replaceText);
+        std::string localReplaceTextUtf8 = wstringToUtf8(itemData.replaceText);
 
         if (itemIndex != SIZE_MAX) {
             updateCountColumns(itemIndex, 1); // No refreshUIListView() necessary as implemented in Debug Window
@@ -4364,6 +4383,11 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             vars.LINE = currentLineIndex + 1;
             vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPosition + 1;
             vars.MATCH = searchResult.foundText;
+
+            // Value should be always UTF8 for use in LUA
+            if (_cachedScintillaCodePage == CP_ACP) {
+                vars.MATCH = wstringToUtf8(ansiToWString(vars.MATCH, CP_ACP));
+            }
 
             if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
                 return false;  // Exit the function if error in syntax
@@ -4452,7 +4476,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     if (itemData.useVariables) {
         // Convert wstring to string once for Lua variable processing
-        basicConvertedReplaceTextUtf8 = wstringToString(itemData.replaceText);
+        basicConvertedReplaceTextUtf8 = wstringToUtf8(itemData.replaceText);
 
         // Compile Lua code once before the loop
         if (!compileLuaReplaceCode(basicConvertedReplaceTextUtf8)) {
@@ -4504,6 +4528,10 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPosition + 1;
             vars.MATCH = searchResult.foundText;
 
+            if (_cachedScintillaCodePage == CP_ACP) {
+                vars.MATCH = wstringToUtf8(ansiToWString(vars.MATCH, CP_ACP));
+            }
+
             if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
                 return false;  // Exit the loop if error in syntax or process is stopped by debug
             }
@@ -4553,94 +4581,6 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     return true;
 }
-
-/*
-std::wstring toHex(const std::string& s) {
-    std::wstringstream ret;
-    for (char c : s) {
-        ret << std::hex << std::setfill(L'0') << std::setw(2) << static_cast<int>(static_cast<unsigned char>(c)) << L" ";
-    }
-    return ret.str();
-}
-
-
-// New helper function to get all text from the currently active Scintilla buffer.
-std::string MultiReplace::getTextFromCurrentBuffer() const {
-    int len = static_cast<int>(send(SCI_GETLENGTH, 0, 0));
-    if (len <= 0) {
-        return std::string();
-    }
-    std::string buffer(len, '\0');
-    // Use the Sci_TextRange struct for compatibility
-    Sci_TextRange tr;
-    tr.chrg.cpMin = 0;
-    tr.chrg.cpMax = len;
-    tr.lpstrText = &buffer[0];
-    send(SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
-    return buffer;
-}
-
-// FINAL DIAGNOSTIC VERSION
-bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, size_t itemIndex)
-{
-    if (itemData.findText.empty() && !itemData.useVariables) {
-        findCount = 0; replaceCount = 0; return true;
-    }
-
-    // --- DIAGNOSTIC POINT A: Check Inputs ---
-    SearchContext context;
-    context.findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
-    std::string replaceTextUtf8_for_debug = convertAndExtend(itemData.replaceText, itemData.extended);
-
-    std::wstringstream debugMsg;
-    debugMsg << L"--- replaceAll Inputs ---\n\n";
-    debugMsg << L"Document Codepage (cached): " << _cachedScintillaCodePage << L"\n\n";
-    debugMsg << L"Find String (Hex): " << toHex(context.findTextUtf8) << L"\n";
-    debugMsg << L"Replace String (Hex): " << toHex(replaceTextUtf8_for_debug) << L"\n";
-    MessageBoxW(_hSelf, debugMsg.str().c_str(), L"replaceAll Diagnostic (Inputs)", MB_OK | MB_ICONINFORMATION);
-    // --- END DIAGNOSTIC ---
-
-    context.searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
-    context.docLength = send(SCI_GETLENGTH, 0, 0);
-    context.isColumnMode = false;
-    context.isSelectionMode = false;
-    context.retrieveFoundText = itemData.useVariables;
-    context.highlightMatch = false;
-
-    send(SCI_SETSEARCHFLAGS, context.searchFlags);
-
-    SearchResult searchResult = performSearchForward(context, 0);
-    std::string replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
-
-    while (searchResult.pos >= 0)
-    {
-        ++findCount;
-        if (itemIndex != SIZE_MAX) { updateCountColumns(itemIndex, findCount); }
-
-        Sci_Position newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
-        ++replaceCount;
-
-        // --- DIAGNOSTIC POINT B: Check Buffer State AFTER Replacement ---
-        std::wstring after_text = utf8ToWString(getTextFromCurrentBuffer()); // CORRECTED CALL
-
-        std::wstringstream loop_report;
-        loop_report << L"--- In-Loop Diagnostic ---\n\n";
-        loop_report << L"Match #" << findCount << L" found at position: " << searchResult.pos << L"\n";
-        loop_report << L"Called SCI_REPLACETARGET.\n\n";
-        loop_report << L"Buffer content AFTER replace attempt:\n" << after_text.substr(0, 100);
-
-        int response = MessageBoxW(_hSelf, loop_report.str().c_str(), L"Inside replaceAll Loop", MB_OKCANCEL | MB_ICONINFORMATION);
-        if (response == IDCANCEL) return false;
-        // --- END DIAGNOSTIC ---
-
-        if (itemIndex != SIZE_MAX) { updateCountColumns(itemIndex, -1, replaceCount); }
-
-        context.docLength = send(SCI_GETLENGTH, 0, 0);
-        searchResult = performSearchForward(context, newPos);
-    }
-    return true;
-}
-*/
 
 Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
@@ -4809,17 +4749,24 @@ void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std:
     lua_setglobal(L, varName.c_str()); // Set the global variable in Lua
 }
 
-void MultiReplace::updateFilePathCache() {
-    wchar_t filePathBuffer[MAX_PATH] = { 0 };
-    wchar_t fileNameBuffer[MAX_PATH] = { 0 };
+void MultiReplace::updateFilePathCache(const std::filesystem::path* explicitPath) {
+    if (explicitPath) {
+        // A specific path was provided (during "Replace in Files"). Use it.
+        // Convert reliably to UTF-8 for Lua.
+        cachedFilePath = wstringToUtf8(explicitPath->wstring());
+        cachedFileName = wstringToUtf8(explicitPath->filename().wstring());
+    }
+    else {
+        // No specific path was provided. Default to the active Notepad++ document.
+        wchar_t filePathBuffer[MAX_PATH] = { 0 };
+        wchar_t fileNameBuffer[MAX_PATH] = { 0 };
+        ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(filePathBuffer));
+        ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH, reinterpret_cast<LPARAM>(fileNameBuffer));
 
-    // Retrieve the full current path and file name from Notepad++
-    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(filePathBuffer));
-    ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH, reinterpret_cast<LPARAM>(fileNameBuffer));
-
-    // Convert from wide string to UTF-8 string
-    cachedFilePath = wstringToString(std::wstring(filePathBuffer));
-    cachedFileName = wstringToString(std::wstring(fileNameBuffer));
+        // Convert reliably to UTF-8 for Lua.
+        cachedFilePath = wstringToUtf8(std::wstring(filePathBuffer));
+        cachedFileName = wstringToUtf8(std::wstring(fileNameBuffer));
+    }
 }
 
 void MultiReplace::setLuaFileVars(LuaVariables& vars) {
@@ -5438,22 +5385,33 @@ void MultiReplace::handleReplaceInFiles() {
         send(SCI_ADDTEXT, utf8_input_buf.length(), reinterpret_cast<sptr_t>(utf8_input_buf.data()));
 
         handleDelimiterPositions(DelimiterOperation::LoadAll);
-        handleReplaceAllButton(false);
+        bool fileProcessedSuccessfully = handleReplaceAllButton(false, &fp);
 
-        std::string utf8_out = guard.getText();
+        if (fileProcessedSuccessfully) {
+            // write the modified text back to the file.
+            std::string utf8_out = guard.getText();
 
-        _hScintilla = oldSci;
-        pSciMsg = oldFn;
-        pSciWndData = oldData;
+            // Restore original Scintilla context before writing
+            _hScintilla = oldSci;
+            pSciMsg = oldFn;
+            pSciWndData = oldData;
 
-        if (utf8_out != utf8_input_buf) {
-            std::string final_write_buf;
-            if (convertUtf8ToOriginal(utf8_out, enc_info, original_buf, final_write_buf)) {
-                if (guard.writeFile(fp, final_write_buf)) {
-                    ++changed;
+            if (utf8_out != utf8_input_buf) {
+                std::string final_write_buf;
+                if (convertUtf8ToOriginal(utf8_out, enc_info, original_buf, final_write_buf)) {
+                    if (guard.writeFile(fp, final_write_buf)) {
+                        ++changed; // Only increment if the file was successfully written.
+                    }
                 }
             }
         }
+        else {
+            // The user clicked "Stop" (e.g., from the Debug Window).
+            // The changes for THIS file will be discarded as it's never written to disk.
+            _isCancelRequested = true;
+            break;
+        }
+
     }
 
     // The UiStateGuard destructor automatically restores the UI here.
@@ -5696,44 +5654,60 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     MSG msg = { 0 };
 
     // Scintilla needs seperate key handling
-    while (GetMessage(&msg, NULL, 0, 0)) {
-        if (!IsDialogMessage(hwnd, &msg)) {
-            // Check if the Debug window is not focused and forward key combinations to Notepad++
-            if (GetForegroundWindow() != hwnd) {
-                if (msg.message == WM_KEYDOWN && (GetKeyState(VK_CONTROL) & 0x8000)) {
-                    // Handle Ctrl-C, Ctrl-V, and Ctrl-X
-                    if (msg.wParam == 'C') {
-                        SendMessage(nppData._scintillaMainHandle, SCI_COPY, 0, 0);
-                        continue;
-                    }
-                    else if (msg.wParam == 'V') {
-                        SendMessage(nppData._scintillaMainHandle, SCI_PASTE, 0, 0);
-                        continue;
-                    }
-                    else if (msg.wParam == 'X') {
-                        SendMessage(nppData._scintillaMainHandle, SCI_CUT, 0, 0);
-                        continue;
-                    }
-                    // Handle Ctrl-U for lowercase
-                    else if (msg.wParam == 'U' && !(GetKeyState(VK_SHIFT) & 0x8000)) {
-                        SendMessage(nppData._scintillaMainHandle, SCI_LOWERCASE, 0, 0);
-                        continue;
-                    }
-                    // Handle Ctrl-Shift-U for uppercase
-                    else if (msg.wParam == 'U' && (GetKeyState(VK_SHIFT) & 0x8000)) {
-                        SendMessage(nppData._scintillaMainHandle, SCI_UPPERCASE, 0, 0);
-                        continue;
-                    }
-                }
-            }
-            // Process other messages normally
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
+    while (IsWindow(hwnd))
+    {
+        // Check for the global shutdown signal from Notepad++
+        if (_isShuttingDown) {
+            // If N++ is closing, we must break our loop immediately to allow a clean shutdown.
+            DestroyWindow(hwnd); // This will post a WM_QUIT message and terminate the loop.
+            debugWindowResponse = 3; // Simulate a "Stop" press.
+            continue;
         }
 
-        // Check for WM_QUIT after dispatching the message
-        if (msg.message == WM_QUIT) {
-            break;
+        // Process messages in a non-blocking way
+        if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+        {
+            if (msg.message == WM_QUIT) {
+                break; // Exit loop on WM_QUIT
+            }
+            if (!IsDialogMessage(hwnd, &msg)) {
+                // Check if the Debug window is not focused and forward key combinations to Notepad++
+                if (GetForegroundWindow() != hwnd) {
+                    if (msg.message == WM_KEYDOWN && (GetKeyState(VK_CONTROL) & 0x8000)) {
+                        // Handle Ctrl-C, Ctrl-V, and Ctrl-X
+                        if (msg.wParam == 'C') {
+                            SendMessage(nppData._scintillaMainHandle, SCI_COPY, 0, 0);
+                            continue;
+                        }
+                        else if (msg.wParam == 'V') {
+                            SendMessage(nppData._scintillaMainHandle, SCI_PASTE, 0, 0);
+                            continue;
+                        }
+                        else if (msg.wParam == 'X') {
+                            SendMessage(nppData._scintillaMainHandle, SCI_CUT, 0, 0);
+                            continue;
+                        }
+                        // Handle Ctrl-U for lowercase
+                        else if (msg.wParam == 'U' && !(GetKeyState(VK_SHIFT) & 0x8000)) {
+                            SendMessage(nppData._scintillaMainHandle, SCI_LOWERCASE, 0, 0);
+                            continue;
+                        }
+                        // Handle Ctrl-Shift-U for uppercase
+                        else if (msg.wParam == 'U' && (GetKeyState(VK_SHIFT) & 0x8000)) {
+                            SendMessage(nppData._scintillaMainHandle, SCI_UPPERCASE, 0, 0);
+                            continue;
+                        }
+                    }
+                }
+                // Process other messages normally
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
+            }
+        }
+        else
+        {
+            // If there are no messages, wait for the next one without consuming 100% CPU
+            WaitMessage();
         }
     }
 
@@ -5751,6 +5725,19 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
 
     DestroyWindow(hwnd);
     hDebugWnd = NULL; // Reset the handle after the window is destroyed
+
+    if (debugWindowResponse == 2) // ID of "Next" is 2
+    {
+        MSG m;
+        // Check for and remove any pending mouse messages from the queue.
+        // This prevents a lingering WM_LBUTTONUP from re-triggering the "Next" button
+        // on the next debug window that will be created.
+        while (PeekMessage(&m, nullptr, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE))
+        {
+            // Do nothing with the message, effectively discarding it.
+        }
+    }
+
     return debugWindowResponse;
 }
 
@@ -5884,7 +5871,6 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         break;
 
     case WM_DESTROY:
-        PostQuitMessage(0);
         break;
 
     default:
@@ -7435,6 +7421,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     std::string quoteCharConverted = wstringToString(quoteCharString);
 
     // Check for changes BEFORE modifying existing values
+    // Cannot be used in LUA as it is Scintilla encoded and not UTF8
     bool delimiterChanged = (columnDelimiterData.extendedDelimiter != extendedDelimiter);
     bool quoteCharChanged = (columnDelimiterData.quoteChar != quoteCharConverted);
 
@@ -9021,27 +9008,14 @@ std::string MultiReplace::wstringToUtf8(const std::wstring& input) const {
     return result;
 }
 
-/*
-std::string MultiReplace::wstringToString(const std::wstring& input) const {
-    if (input.empty()) return std::string();
-
-    int codePage = _cachedScintillaCodePage;
-    if (codePage == -1 ) {
-        codePage = static_cast<int>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
-    }
-
-    //if (codePage == 0) codePage = CP_ACP;
-
-    int size_needed = WideCharToMultiByte(codePage, 0, &input[0], (int)input.size(), NULL, 0, NULL, NULL);
-    if (size_needed == 0) return std::string();
-
-    std::string strResult(size_needed, 0);
-    WideCharToMultiByte(codePage, 0, &input[0], (int)input.size(), &strResult[0], size_needed, NULL, NULL);
-
-    return strResult;
+std::wstring MultiReplace::ansiToWString(const std::string& input, UINT codePage) {
+    if (input.empty()) return {};
+    int len = ::MultiByteToWideChar(codePage, 0, input.data(), (int)input.size(), nullptr, 0);
+    if (len <= 0) return {};
+    std::wstring result(len, L'\0');
+    ::MultiByteToWideChar(codePage, 0, input.data(), (int)input.size(), &result[0], len);
+    return result;
 }
-*/
-
 
 std::string MultiReplace::wstringToString(const std::wstring& input) const {
     if (input.empty()) return std::string();
