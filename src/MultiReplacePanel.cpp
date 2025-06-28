@@ -591,6 +591,15 @@ void MultiReplace::updateTwoButtonsVisibility() {
     updateReplaceInFilesVisibility();
 }
 
+void MultiReplace::updateListViewFrame()
+{
+    HWND lv = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+    if (!lv) return;
+
+    const ControlInfo& ci = ctrlMap[IDC_REPLACE_LIST];
+    MoveWindow(lv, ci.x, ci.y, ci.cx, ci.cy, TRUE);
+}
+
 void MultiReplace::updateReplaceInFilesVisibility()
 {
     // IDs of everything in the “Replace in Files” frame
@@ -621,10 +630,7 @@ void MultiReplace::updateReplaceInFilesVisibility()
     positionAndResizeControls(w, h);       // recalc ctrlMap positions
     
     // resize listview
-    HWND listView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
-    if (!listView) return;
-    const ControlInfo& ci = ctrlMap[IDC_REPLACE_LIST];
-    MoveWindow(listView, ci.x, ci.y, ci.cx, ci.cy, TRUE);
+    updateListViewFrame();
 
     moveAndResizeControls();               // actually MoveWindow()/SetWindowPos() all controls
     adjustWindowSize();                    // shrink/grow the dialog to fit
@@ -1648,7 +1654,7 @@ void MultiReplace::updateListViewAndColumns() {
     }
 
     // Resize the ListView control to the updated width and height
-    MoveWindow(listView, listCtrlInfo.x, listCtrlInfo.y, listCtrlInfo.cx, listCtrlInfo.cy, TRUE);
+    updateListViewFrame();
 
     // Re-enable redraw after updates
     SendMessage(listView, WM_SETREDRAW, TRUE, 0);

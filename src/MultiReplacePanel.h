@@ -655,6 +655,7 @@ private:
     void initializeListView();
     void moveAndResizeControls();
     void updateTwoButtonsVisibility();
+    void updateListViewFrame();
     void updateReplaceInFilesVisibility();
     void setUIElementVisibility();
     void drawGripper();
