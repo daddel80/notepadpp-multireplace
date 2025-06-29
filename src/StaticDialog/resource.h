@@ -98,10 +98,11 @@
 #define IDC_BROWSE_DIR_BUTTON           5472
 #define IDC_FILTER_STATIC               5473
 #define IDC_FILTER_EDIT                 5474
-#define IDC_SUBFOLDERS_CHECKBOX         5475
-#define IDC_HIDDENFILES_CHECKBOX        5476
-#define IDC_DIR_PROGRESS_STATIC         5477
-#define IDC_DIR_PROGRESS_BAR            5478
+#define IDC_FILTER_HELP                 5475
+#define IDC_SUBFOLDERS_CHECKBOX         5476
+#define IDC_HIDDENFILES_CHECKBOX        5477
+#define IDC_DIR_PROGRESS_STATIC         5478
+#define IDC_DIR_PROGRESS_BAR            5479
 
 #define IDC_STATIC_FRAME                5501
 #define IDC_REPLACE_LIST                5502

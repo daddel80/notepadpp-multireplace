@@ -351,6 +351,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_filter"), SS_RIGHT, NULL };
     ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FILTER_HELP] = { sx(96) + comboWidth - sx(170) + sx(5), sy(230), sx(20), sy(20), WC_STATIC, L"(?)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, getLangStrLPCWSTR(L"tooltip_filter_help") };
     ctrlMap[IDC_DIR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_directory"), SS_RIGHT, NULL };
     ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, NULL };
@@ -3510,6 +3511,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         DRAWITEMSTRUCT* pdis = (DRAWITEMSTRUCT*)lParam;
 
+        // Bestehender, funktionierender Code für die Status-Nachricht
         if (pdis->CtlID == IDC_STATUS_MESSAGE) {
             wchar_t buffer[256];
             GetWindowTextW(pdis->hwndItem, buffer, 256);
@@ -3518,11 +3520,23 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             SetBkMode(pdis->hDC, TRANSPARENT);
 
             RECT textRect = pdis->rcItem;
-            //textRect.left += sx(2); // Add a small left margin
             DrawTextW(pdis->hDC, buffer, -1, &textRect, DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
             return TRUE;
         }
+        else if (pdis->CtlID == IDC_FILTER_HELP) {
+
+            wchar_t buffer[16];
+            GetWindowTextW(pdis->hwndItem, buffer, 16);
+
+            SetTextColor(pdis->hDC, _filterHelpColor);
+            SetBkMode(pdis->hDC, TRANSPARENT);
+
+            DrawTextW(pdis->hDC, buffer, -1, &pdis->rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+            return TRUE;
+        }
+
         return FALSE;
     }
 
@@ -8594,11 +8608,12 @@ void MultiReplace::updateThemeAndColors() {
         COLOR_SUCCESS = DMODE_SUCCESS;
         COLOR_ERROR = DMODE_ERROR;
         COLOR_INFO = DMODE_INFO;
-    }
-    else {
+        _filterHelpColor = DMODE_FILTER_HELP; // Setzt die (?) Farbe für Dark Mode
+    } else {
         COLOR_SUCCESS = LMODE_SUCCESS;
         COLOR_ERROR = LMODE_ERROR;
         COLOR_INFO = LMODE_INFO;
+        _filterHelpColor = LMODE_FILTER_HELP; // Setzt die (?) Farbe für Light Mode
     }
 
     // Update the active color based on the type of the last message shown.
@@ -8621,6 +8636,9 @@ void MultiReplace::updateThemeAndColors() {
 
     // Force the owner-drawn status control to repaint with the new colors
     InvalidateRect(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), NULL, TRUE);
+
+    // draws the (?) Find Tooltip
+    InvalidateRect(GetDlgItem(_hSelf, IDC_FILTER_HELP), NULL, TRUE);
 }
 
 std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC) {

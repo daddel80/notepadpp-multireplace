@@ -410,11 +410,13 @@ public:
     static constexpr COLORREF LMODE_SUCCESS = RGB(0, 128, 0);
     static constexpr COLORREF LMODE_ERROR = RGB(200, 0, 0);
     static constexpr COLORREF LMODE_INFO = RGB(0, 0, 128);
+    static constexpr COLORREF LMODE_FILTER_HELP = RGB(0, 0, 255);
 
     // Dark Mode Colors for Message
     static constexpr COLORREF DMODE_SUCCESS = RGB(120, 220, 120); 
     static constexpr COLORREF DMODE_ERROR = RGB(255, 110, 110);
     static constexpr COLORREF DMODE_INFO = RGB(147, 147, 255);
+    static constexpr COLORREF DMODE_FILTER_HELP = RGB(57, 255, 20);
 
     static bool isWindowOpen;
     static bool textModified;
@@ -520,6 +522,7 @@ private:
     COLORREF COLOR_ERROR;
     COLORREF COLOR_INFO;
     COLORREF _statusMessageColor = LMODE_INFO; // Holds the actual color to be drawn. Initialized for light mode.
+    COLORREF _filterHelpColor;
     MessageStatus _lastMessageStatus = MessageStatus::Info; // Holds the TYPE of the last message.
     HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
     HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button
