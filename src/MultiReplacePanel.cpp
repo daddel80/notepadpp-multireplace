@@ -328,7 +328,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") }; // 
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(208) + filesOffsetY, listWidth - sx(5), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, NULL };
+    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(205) + filesOffsetY, listWidth - sx(5), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, NULL };
     ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_new_list") };
@@ -351,7 +351,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_filter"), SS_RIGHT, NULL };
     ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
-    ctrlMap[IDC_FILTER_HELP] = { sx(96) + comboWidth - sx(170) + sx(5), sy(230), sx(20), sy(20), WC_STATIC, L"(?)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, getLangStrLPCWSTR(L"tooltip_filter_help") };
+    ctrlMap[IDC_FILTER_HELP] = { sx(96) + comboWidth - sx(170) + sx(5), sy(228), sx(20), sy(20), WC_STATIC, L"(?)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, getLangStrLPCWSTR(L"tooltip_filter_help") };
     ctrlMap[IDC_DIR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_directory"), SS_RIGHT, NULL };
     ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, NULL };
@@ -425,7 +425,7 @@ bool MultiReplace::createAndShowWindows() {
         }
 
         // Only create tooltips if enabled and text is available
-        if (tooltipsEnabled && pair.second.tooltipText != nullptr && pair.second.tooltipText[0] != '\0')
+        if ((tooltipsEnabled || pair.first == IDC_FILTER_HELP) && pair.second.tooltipText != nullptr && pair.second.tooltipText[0] != '\0')
         {
             HWND hwndTooltip = CreateWindowEx(
                 NULL, TOOLTIPS_CLASS, NULL,
@@ -436,6 +436,7 @@ bool MultiReplace::createAndShowWindows() {
             if (hwndTooltip)
             {
                 // Associate the tooltip with the control
+                SendMessage(hwndTooltip, TTM_SETMAXTIPWIDTH, 0, 350);
                 TOOLINFO toolInfo = { 0 };
                 toolInfo.cbSize = sizeof(toolInfo);
                 toolInfo.hwnd = _hSelf;
@@ -3511,7 +3512,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         DRAWITEMSTRUCT* pdis = (DRAWITEMSTRUCT*)lParam;
 
-        // Bestehender, funktionierender Code für die Status-Nachricht
         if (pdis->CtlID == IDC_STATUS_MESSAGE) {
             wchar_t buffer[256];
             GetWindowTextW(pdis->hwndItem, buffer, 256);
@@ -8608,12 +8608,12 @@ void MultiReplace::updateThemeAndColors() {
         COLOR_SUCCESS = DMODE_SUCCESS;
         COLOR_ERROR = DMODE_ERROR;
         COLOR_INFO = DMODE_INFO;
-        _filterHelpColor = DMODE_FILTER_HELP; // Setzt die (?) Farbe für Dark Mode
+        _filterHelpColor = DMODE_FILTER_HELP;
     } else {
         COLOR_SUCCESS = LMODE_SUCCESS;
         COLOR_ERROR = LMODE_ERROR;
         COLOR_INFO = LMODE_INFO;
-        _filterHelpColor = LMODE_FILTER_HELP; // Setzt die (?) Farbe für Light Mode
+        _filterHelpColor = LMODE_FILTER_HELP;
     }
 
     // Update the active color based on the type of the last message shown.
@@ -9772,7 +9772,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
         throw std::runtime_error("Could not open settings file for writing.");
     }
 
-    // [BOM] Write UTF-8 BOM so editors/Parser erkennen UTF-8
+    // [BOM] Write UTF-8 BOM so that editors/parsers recognize UTF-8
     outFile.write("\xEF\xBB\xBF", 3);
 
     // Get the current window rectangle

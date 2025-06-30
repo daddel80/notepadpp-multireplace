@@ -330,7 +330,7 @@ struct EditControlContext
 };
 
 // each new Vector has to be delared outside of the class due to unresolved memory behaviours, 
-// possible initial limited stack size bei N++ for Plugins
+// possible initial limited stack size in N++ for Plugins
 inline std::vector<UndoRedoAction> undoStack;
 inline std::vector<UndoRedoAction> redoStack;
 inline HWND hwndExpandBtn = nullptr;
@@ -416,7 +416,7 @@ public:
     static constexpr COLORREF DMODE_SUCCESS = RGB(120, 220, 120); 
     static constexpr COLORREF DMODE_ERROR = RGB(255, 110, 110);
     static constexpr COLORREF DMODE_INFO = RGB(147, 147, 255);
-    static constexpr COLORREF DMODE_FILTER_HELP = RGB(57, 255, 20);
+    static constexpr COLORREF DMODE_FILTER_HELP = RGB(255, 235, 59);
 
     static bool isWindowOpen;
     static bool textModified;
@@ -462,7 +462,7 @@ protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 
 private:
-    static constexpr int MAX_TEXT_LENGTH = 4096; // Maximum Textlength for Find and Replace String
+    static constexpr int MAX_TEXT_LENGTH = 4096; // Maximum text length for Find and Replace String
     static constexpr int MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     static constexpr int REPLACE_FILES_PANEL_HEIGHT = 88;

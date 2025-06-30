@@ -81,6 +81,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"tooltip_save", L"Save List" },
 { L"tooltip_enable_list", L"Enable list" },
 { L"tooltip_disable_list", L"Disable list" },
+{ L"tooltip_filter_help", L"Find in cpp, cxx, h, hxx & hpp:\n*.cpp *.cxx *.h *.hxx *.hpp\n\nFind in all files except exe, obj & log:\n*.* !*.exe !*.obj !*.log\n\nFind in all files but exclude folders\ntests, bin & bin64:\n*.* !\\tests\\ !\\bin*\n\nFind in all files but exclude all folders\nlog or logs recursively:\n*.* !+\\log*" },
 
 // header entries
 { L"header_find_count", L"Find Count" },

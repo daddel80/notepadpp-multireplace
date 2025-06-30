@@ -72,44 +72,54 @@ public:
     }
 
     // 2) Test a path against the filter
-    bool matchPath(const std::filesystem::path& path, bool includeHidden) const {
-        auto ws = path.wstring();
+    // Requires <ranges> (C++20) for clarity; switch to a loop if C++17.
+    bool matchPath(const std::filesystem::path& path, bool includeHidden) const
+    {
+        // 1) Hidden attribute ----------------------------------------------------
+        if (!includeHidden) {
+            const DWORD a = GetFileAttributesW(path.c_str());
+            if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_HIDDEN))
+                return false;
+        }
 
-        // Folder-recursive excludes
-        for (auto const& pat : exclude_folders_recursive)
-            if (ws.find(pat) != std::wstring::npos) return false;
+        const std::wstring fname = path.filename().wstring();
+        const std::filesystem::path parentPath = path.parent_path();
 
-        // Folder-nonrecursive excludes
-        auto parent = path.parent_path();
-        while (!parent.empty() && parent != parent.root_path()) {
-            // FIX: Avoid dangling pointer by storing the result in a variable
-            const std::wstring parent_fname = parent.filename().wstring();
-            for (auto const& pat : exclude_folders) {
-                if (::PathMatchSpecW(parent_fname.c_str(), pat.c_str()))
+        // 2) Non-recursive folder excludes (!)  – only the *direct* parent folder
+        if (!parentPath.empty()) {
+            const std::wstring parentName = parentPath.filename().wstring();
+            for (const auto& pat : exclude_folders)
+                if (PathMatchSpecW(parentName.c_str(), pat.c_str()))
+                    return false;
+        }
+
+        // 3) Recursive folder excludes (!+)  – walk every ancestor folder
+        for (auto dir = parentPath; !dir.empty() && dir != dir.root_path(); dir = dir.parent_path()) {
+            const std::wstring dirName = dir.filename().wstring();
+
+            for (const auto& rawPat : exclude_folders_recursive) {
+                // Strip an optional leading backslash the user may have typed
+                std::wstring_view pat = rawPat;
+                if (!pat.empty() && (pat.front() == L'\\' || pat.front() == L'/'))
+                    pat.remove_prefix(1);
+
+                if (PathMatchSpecW(dirName.c_str(), std::wstring{ pat }.c_str()))
                     return false;
             }
-            parent = parent.parent_path();
         }
 
-        // File-hidden check
-        if (!includeHidden) {
-            DWORD a = GetFileAttributesW(path.c_str());
-            if (a != INVALID_FILE_ATTRIBUTES &&
-                (a & FILE_ATTRIBUTE_HIDDEN)) return false;
-        }
+        // 4) File-level excludes (!*.log)
+        for (const auto& pat : exclude_patterns)
+            if (PathMatchSpecW(fname.c_str(), pat.c_str()))
+                return false;
 
-        // FIX: Avoid dangling pointer by storing the filename in a std::wstring
-        const std::wstring fname = path.filename().wstring();
+        // 5) File-level includes (*.cpp…)  – if no include pattern, everything left is in
+        if (include_patterns.empty())
+            return true;
 
-        // File-excludes
-        for (auto const& pat : exclude_patterns)
-            if (::PathMatchSpecW(fname.c_str(), pat.c_str())) return false;
-
-        // File-includes
-        if (include_patterns.empty()) return true;
-        for (auto const& pat : include_patterns) {
-            if (::PathMatchSpecW(fname.c_str(), pat.c_str())) return true;
-        }
+        for (const auto& pat : include_patterns)
+            if (PathMatchSpecW(fname.c_str(), pat.c_str()))
+                return true;
 
         return false;
     }
