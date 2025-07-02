@@ -45,10 +45,9 @@
 
 #include <windows.h>
 #include <Commctrl.h>
-#include <filesystem>
 #include <iomanip>
-
 #include <lua.hpp>
+#include <sdkddkver.h>
 
 
 #ifdef UNICODE
@@ -429,14 +428,16 @@ bool MultiReplace::createAndShowWindows() {
         {
             HWND hwndTooltip = CreateWindowEx(
                 NULL, TOOLTIPS_CLASS, NULL,
-                WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON,
+                WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON | TTS_NOPREFIX,
                 CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
                 _hSelf, NULL, hInstance, NULL);
 
             if (hwndTooltip)
             {
-                // Associate the tooltip with the control
-                SendMessage(hwndTooltip, TTM_SETMAXTIPWIDTH, 0, 350);
+                // limit width only for the "?" help tooltip
+                DWORD maxWidth = (pair.first == IDC_FILTER_HELP) ? 200 /*px*/ : 0; // 0 = unlimited
+                SendMessage(hwndTooltip, TTM_SETMAXTIPWIDTH, 0, maxWidth);
+
                 TOOLINFO toolInfo = { 0 };
                 toolInfo.cbSize = sizeof(toolInfo);
                 toolInfo.hwnd = _hSelf;
