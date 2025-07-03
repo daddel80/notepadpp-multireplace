@@ -8806,23 +8806,23 @@ void MultiReplace::showListFilePath()
     }
 }
 
-std::wstring MultiReplace::getSelectedText() {
-    SIZE_T length = SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, 0);
+std::wstring MultiReplace::getSelectedText()
+{
+    SIZE_T len = SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, 0);
+    if (len > MAX_TEXT_LENGTH) return L"";
 
-    if (length > MAX_TEXT_LENGTH) {
-        return L"";
-    }
+    std::vector<char> buf(len + 1);
+    SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0,
+        reinterpret_cast<LPARAM>(buf.data()));
 
-    char* buffer = new char[length + 1];  // Add 1 for null terminator
-    SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, (LPARAM)buffer);
-    buffer[length] = '\0';
+    std::string raw(buf.data());
+    int cp = static_cast<int>(
+        SendMessage(nppData._scintillaMainHandle, SCI_GETCODEPAGE, 0, 0));
 
-    std::string str(buffer);
-    std::wstring wstr = utf8ToWString(str);
-
-    delete[] buffer;
-
-    return wstr;
+    if (cp == SC_CP_UTF8)
+        return utf8ToWString(raw);
+    else
+        return ansiToWString(raw, cp);
 }
 
 LRESULT MultiReplace::getEOLLengthForLine(LRESULT line) {
