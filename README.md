@@ -64,6 +64,21 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 
 **Wrap Around:** When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
 
+**Extended (Backslash Escapes)**  
+This mode allows the use of backslash escape sequences to find or insert special and non-printable characters. It is a powerful *middle ground* between **Normal** and **Regular expression** modes.
+
+| Sequence | Description            | Example                                                             |
+|----------|------------------------|---------------------------------------------------------------------|
+| `\n`     | Line Feed (LF)         | Replaces all `\n` with a space to join lines.                       |
+| `\r`     | Carriage Return (CR)   | Useful for cleaning up Windows-style line endings (`\r\n`).         |
+| `\t`     | Tab character          | Replaces four spaces with `\t` to standardize indentation.          |
+| `\0`     | NULL character         | Finds or inserts the NULL character, often used as a string terminator. |
+| `\\`     | Literal Backslash      | To search for a single `\`, you must enter `\\`.                    |
+| `\xHH`   | Hexadecimal value      | `\x41` finds or inserts the character **A**.                        |
+| `\oNNN`  | Octal value            | `\o101` finds or inserts **A**.                                     |
+| `\dNNN`  | Decimal value          | `\d065` finds or inserts **A**.                                     |
+| `\uXXXX` | Unicode character      | `\u20AC` finds or inserts the Euro symbol **€**. *(This is an extension not available in standard Notepad++.)* |
+
 <br>
 
 ## Scope Functions
