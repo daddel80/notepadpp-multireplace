@@ -119,11 +119,11 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
 ### Execution Targets  
 Execution targets define **which files** an operation is applied to. They are accessible via the **Replace All** split-button menu.
 
-- **Replace All:**
+- **Replace All**  
     Executes the replacement in the **current document only**.
-- **Replace All in All Open Docs:**
+- **Replace All in All Open Docs**  
     Executes the replacement across **all open files** in Notepad++.
-- **Replace in Files:**
+- **Replace in Files**  
     Extends the replacement scope to entire directory structures. When selected, the main window expands to show a dedicated panel for configuration.
     - **Directory:** The starting folder for the file search.
     - **Filters:** Space-separated list of patterns to include or exclude files and folders.
