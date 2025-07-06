@@ -112,7 +112,7 @@ struct ControlInfo
 };
 
 struct SearchContext {
-    std::string findTextUtf8 = "";  // Pre-converted search string (UTF-8)
+    std::string findText = "";      // search string in Scintilla encoding
     int searchFlags = 0;            // Search flags (e.g., SCFIND_MATCHCASE, SCFIND_WHOLEWORD, etc.)
     LRESULT docLength = 0;          // Cached document length
     bool isColumnMode = false;      // Cached state: true if Column Mode is active
@@ -572,7 +572,6 @@ private:
     std::string cachedFileName;
     int _luaCompiledReplaceRef = LUA_NOREF;       // Reference to compiled Lua code
     std::string _lastCompiledLuaCode;             // Cached Lua code for reuse
-    int _cachedScintillaCodePage = -1;            // cache Scintilla for codepage
 
     // Debugging and logging related 
     std::string messageBoxContent;  // just for temporary debugging usage
@@ -814,9 +813,8 @@ private:
     void handleClearDelimiterState();
 
     //Utilities
-    int convertExtendedToString(const std::string& query, std::string& result);
-    std::string convertAndExtend(const std::wstring& input, bool extended);
-    std::string convertAndExtend(const std::string& input, bool extended);
+    std::string convertAndExtendW(const std::wstring& input, bool extended, UINT cp /*docCp or CP_UTF8*/) const;
+    std::string convertAndExtendW(const std::wstring& input, bool extended);
     static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 100);
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
     void setSelections(bool select, bool onlySelected = false);
@@ -837,10 +835,12 @@ private:
     std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
 
     //StringHandling
-    std::wstring MultiReplace::utf8ToWString(const std::string& utf8) const;
+    std::wstring utf8ToWString(const std::string& utf8) const;
+    std::wstring ansiToWString(const std::string& input, UINT codePage) const;
     std::string wstringToUtf8(const std::wstring& input) const;
     std::string wstringToString(const std::wstring& input) const;
-    std::wstring ansiToWString(const std::string& input, UINT codePage);
+    std::string wstringToString(const std::wstring& ws, UINT cp) const;
+    std::wstring stringToWString(const std::string& input) const;
     std::wstring trim(const std::wstring& str);
     static bool MultiReplace::isValidUtf8(const std::string& data);
 

@@ -4113,9 +4113,6 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         // and effectively do nothing. We just continue.
     }
 
-    // reads Codepage for Performance reason
-    _cachedScintillaCodePage = static_cast<int>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
-
     // Read Filename and Path for LUA
     updateFilePathCache(explicitPath);
 
@@ -4192,7 +4189,6 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
     }
 
-    _cachedScintillaCodePage = -1;
     return replaceSuccess;
 
 }
@@ -4252,7 +4248,7 @@ void MultiReplace::handleReplaceButton() {
         bool wasReplaced = false;  // Detection for eplacements
         for (size_t i = 0; i < replaceListData.size(); ++i) {
             if (replaceListData[i].isEnabled) {
-                context.findTextUtf8 = convertAndExtend(replaceListData[i].findText, replaceListData[i].extended);
+                context.findText = convertAndExtendW(replaceListData[i].findText, replaceListData[i].extended);
                 context.searchFlags = (replaceListData[i].wholeWord * SCFIND_WHOLEWORD) |
                     (replaceListData[i].matchCase * SCFIND_MATCHCASE) |
                     (replaceListData[i].regex * SCFIND_REGEXP);
@@ -4314,7 +4310,7 @@ void MultiReplace::handleReplaceButton() {
         replaceItem.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
         replaceItem.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
-        context.findTextUtf8 = convertAndExtend(replaceItem.findText, replaceItem.extended);
+        context.findText = convertAndExtendW(replaceItem.findText, replaceItem.extended);
         context.searchFlags = (replaceItem.wholeWord * SCFIND_WHOLEWORD) |
             (replaceItem.matchCase * SCFIND_MATCHCASE) |
             (replaceItem.regex * SCFIND_REGEXP);
@@ -4366,246 +4362,209 @@ void MultiReplace::handleReplaceButton() {
         ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
     }
 
-    _cachedScintillaCodePage = -1;
-
 }
 
 bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context)
 {
+    // Get the document's codepage once at the beginning.
+    int documentCodepage = static_cast<int>(send(SCI_GETCODEPAGE, 0, 0));
+    if (documentCodepage == 0) documentCodepage = CP_ACP;
+
     searchResult = performSearchForward(context, selection.startPos);
 
+    // Only proceed if the found match is exactly the same as the initial selection.
     if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
         bool skipReplace = false;
 
-        std::string localReplaceTextUtf8 = wstringToUtf8(itemData.replaceText);
-
         if (itemIndex != SIZE_MAX) {
-            updateCountColumns(itemIndex, 1); // No refreshUIListView() necessary as implemented in Debug Window
+            updateCountColumns(itemIndex, 1);
             selectListItem(itemIndex);
         }
 
-        if (itemData.useVariables) {
+        // This block contains the core replacement logic, structured to be consistent with replaceAll.
+        {
+            std::string finalReplaceText; // Will hold the final text in the document's native encoding.
 
-            // Compile Lua code (once, cached internally)
-            if (!compileLuaReplaceCode(localReplaceTextUtf8)) {
-                return false;
-            }
+            // --- Lua Variable Expansion ---
+            if (itemData.useVariables) {
+                std::string luaTemplateUtf8 = wstringToUtf8(itemData.replaceText);
+                if (!compileLuaReplaceCode(luaTemplateUtf8)) {
+                    return false;
+                }
 
-            LuaVariables vars;
+                LuaVariables vars;
+                // Fill vars struct with context for the current match.
+                int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
+                int previousLineStartPos = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
+                setLuaFileVars(vars);
+                if (context.isColumnMode) {
+                    ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
+                    vars.COL = static_cast<int>(columnInfo.startColumnIndex);
+                }
+                vars.CNT = 1;
+                vars.LCNT = 1;
+                vars.APOS = static_cast<int>(searchResult.pos) + 1;
+                vars.LINE = currentLineIndex + 1;
+                vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPos + 1;
 
-            int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
-            int previousLineStartPosition = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
+                // Convert the MATCH variable to UTF-8 for Lua if the document is ANSI.
+                vars.MATCH = searchResult.foundText;
+                if (documentCodepage != SC_CP_UTF8) {
+                    vars.MATCH = wstringToUtf8(ansiToWString(vars.MATCH, documentCodepage));
+                }
 
-            // Setting FNAME and FPATH
-            setLuaFileVars(vars);
+                if (!resolveLuaSyntax(luaTemplateUtf8, vars, skipReplace, itemData.regex)) {
+                    return false;
+                }
 
-            if (context.isColumnMode) {
-                ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
-                vars.COL = static_cast<int>(columnInfo.startColumnIndex);
-            }
-
-            vars.CNT = 1;
-            vars.LCNT = 1;
-            vars.APOS = static_cast<int>(searchResult.pos) + 1;
-            vars.LINE = currentLineIndex + 1;
-            vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPosition + 1;
-            vars.MATCH = searchResult.foundText;
-
-            // Value should be always UTF8 for use in LUA
-            if (_cachedScintillaCodePage == CP_ACP) {
-                vars.MATCH = wstringToUtf8(ansiToWString(vars.MATCH, CP_ACP));
-            }
-
-            if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
-                return false;  // Exit the function if error in syntax
-            }
-
-            // Lua delivers UTF-8, which should be encoded into Scintilla-Codepage
-            std::wstring wide = utf8ToWString(localReplaceTextUtf8);
-            localReplaceTextUtf8 = wstringToString(wide);
-        }
-
-        if (!skipReplace) {
-            std::string replaceTextUtf8 = convertAndExtend(localReplaceTextUtf8, itemData.extended);
-            if (itemData.regex) {
-                newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
+                // Convert the result from Lua (UTF-8) to the final document codepage.
+                finalReplaceText = convertAndExtendW(utf8ToWString(luaTemplateUtf8), itemData.extended, documentCodepage);
             }
             else {
-                newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
-            }
-            
-            send(SCI_SETSEL, newPos, newPos);
-
-            if (itemIndex != SIZE_MAX) {
-                updateCountColumns(itemIndex, -2, 1);
+                // Case without variables: convert once using the safe helper.
+                finalReplaceText = convertAndExtendW(itemData.replaceText, itemData.extended, documentCodepage);
             }
 
-            return true;  // A replacement was made
+            // --- Final Replacement Execution ---
+            if (!skipReplace) {
+                newPos = itemData.regex
+                    ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
+                    : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
+
+                send(SCI_SETSEL, newPos, newPos);
+                if (itemIndex != SIZE_MAX) {
+                    updateCountColumns(itemIndex, -2, 1);
+                }
+                return true; // A replacement was made.
+            }
         }
-        else {
-            newPos = searchResult.pos + searchResult.length;
-            // Clear selection
-            send(SCI_SETSELECTIONSTART, newPos, 0);
-            send(SCI_SETSELECTIONEND, newPos, 0);
-        }
+
+        // Replacement was skipped by Lua logic.
+        newPos = searchResult.pos + searchResult.length;
+        send(SCI_SETSELECTIONSTART, newPos, 0);
+        send(SCI_SETSELECTIONEND, newPos, 0);
     }
-    return false;  // No replacement was made
+    return false; // No replacement was made.
 }
 
 bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, size_t itemIndex)
 {
-    if (itemData.findText.empty()) {
-        findCount = 0;
-        replaceCount = 0;
+    if (itemData.findText.empty() && !itemData.useVariables) {
+        findCount = replaceCount = 0;
         return true;
     }
 
-    // Initialize SearchContext
+    // Get the document's codepage once at the beginning.
+    const int documentCodepage = static_cast<int>(send(SCI_GETCODEPAGE, 0, 0));
+
+    // --- Search bytes MUST match document codepage---
     SearchContext context;
-    context.findTextUtf8 = convertAndExtend(itemData.findText, itemData.extended);
+    context.findText = convertAndExtendW(itemData.findText, itemData.extended);
     context.searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
     context.docLength = send(SCI_GETLENGTH, 0, 0);
-    context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
-    context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    context.isColumnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED;
+    context.isSelectionMode = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED;
     context.retrieveFoundText = itemData.useVariables;
     context.highlightMatch = false;
 
     send(SCI_SETSEARCHFLAGS, context.searchFlags);
-
     SearchResult searchResult = performSearchForward(context, 0);
 
-    bool isReplaceAtMatchesEnabled = (IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED);
-
-    std::vector<int> selectedMatches;
-
-    // Only process the match selection if the option is enabled
-    if (isReplaceAtMatchesEnabled) {
-        std::wstring matchSelection = getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT);
-
-        if (matchSelection.empty()) {
+    // --- "Replace at matches" logic (unchanged) ---
+    bool useMatchList = IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED;
+    std::vector<int> matchList;
+    if (useMatchList) {
+        std::wstring sel = getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT);
+        if (sel.empty()) {
             showStatusMessage(getLangStr(L"status_missing_match_selection"), MessageStatus::Error);
             return false;
         }
-
-        selectedMatches = parseNumberRanges(matchSelection, getLangStr(L"status_invalid_range_in_match_data"));
-
-        if (selectedMatches.empty()) return false;
+        matchList = parseNumberRanges(sel, getLangStr(L"status_invalid_range_in_match_data"));
+        if (matchList.empty()) return false;
     }
 
-
-    int previousLineIndex = -1;
-    int lineFindCount = 0;
-
-    // Perform string conversion once outside the loop
-    std::string basicConvertedReplaceTextUtf8;
-    std::string localReplaceTextUtf8;
-    std::string replaceTextUtf8;
-
+    // --- Prepare replacement text template (only if needed for Lua) ---
+    std::string luaTemplateUtf8;
     if (itemData.useVariables) {
-        // Convert wstring to string once for Lua variable processing
-        basicConvertedReplaceTextUtf8 = wstringToUtf8(itemData.replaceText);
-
-        // Compile Lua code once before the loop
-        if (!compileLuaReplaceCode(basicConvertedReplaceTextUtf8)) {
+        luaTemplateUtf8 = wstringToUtf8(itemData.replaceText);
+        if (!compileLuaReplaceCode(luaTemplateUtf8)) {
             return false;
         }
     }
-    else {
-        // Convert and extend only once when no variables are used
-        replaceTextUtf8 = convertAndExtend(itemData.replaceText, itemData.extended);
-    }
 
+    int prevLineIdx = -1;
+    int lineFindCount = 0;
+
+    // --- Main replacement loop ---
     while (searchResult.pos >= 0)
     {
         bool skipReplace = false;
         ++findCount;
+        if (itemIndex != SIZE_MAX) updateCountColumns(itemIndex, findCount);
 
-        if (itemIndex != SIZE_MAX) {  // check if used in List
-            updateCountColumns(itemIndex, findCount);
-        }
-
-        if (itemData.useVariables) {
-            localReplaceTextUtf8 = basicConvertedReplaceTextUtf8;
-
-            LuaVariables vars;
-
-            int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
-            int previousLineStartPosition = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
-
-            // Reset lineReplaceCount if the line has changed
-            if (currentLineIndex != previousLineIndex) {
-                lineFindCount = 0;
-                previousLineIndex = currentLineIndex;
-            }
-
-            // Setting FNAME and FPATH
-            setLuaFileVars(vars);
-
-            if (context.isColumnMode) {
-                ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
-                vars.COL = static_cast<int>(columnInfo.startColumnIndex);
-            }
-
-            ++lineFindCount;
-
-            vars.CNT = findCount;
-            vars.LCNT = lineFindCount;
-            vars.APOS = static_cast<int>(searchResult.pos) + 1;
-            vars.LINE = currentLineIndex + 1;
-            vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPosition + 1;
-            vars.MATCH = searchResult.foundText;
-
-            if (_cachedScintillaCodePage == CP_ACP) {
-                vars.MATCH = wstringToUtf8(ansiToWString(vars.MATCH, CP_ACP));
-            }
-
-            if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, itemData.regex)) {
-                return false;  // Exit the loop if error in syntax or process is stopped by debug
-            }
-
-            // Lua delivers UTF-8, which should be encoded into Scintilla-Codepage
-            std::wstring wide = utf8ToWString(localReplaceTextUtf8);
-            localReplaceTextUtf8 = wstringToString(wide);
-
-            if (!skipReplace) {
-                replaceTextUtf8 = convertAndExtend(std::move(localReplaceTextUtf8), itemData.extended);
-            }
-        }
-
-        Sci_Position newPos;
-
-        // Check if the current match should be replaced
-        if (!isReplaceAtMatchesEnabled || std::find(selectedMatches.begin(), selectedMatches.end(), findCount) != selectedMatches.end())
+        // This block contains the core replacement logic, structured to be consistent with replaceOne.
         {
-            if (!skipReplace) {
-                if (itemData.regex) {
-                    newPos = performRegexReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
-                }
-                else {
-                    newPos = performReplace(replaceTextUtf8, searchResult.pos, searchResult.length);
-                }
-                ++replaceCount;
+            std::string finalReplaceText; // Will hold the final text in the document's native encoding.
 
-                if (itemIndex != SIZE_MAX) { // check if used in List
-                    updateCountColumns(itemIndex, -1, replaceCount);
+            // --- Lua Variable Expansion ---
+            if (itemData.useVariables) {
+                std::string luaWorkingUtf8 = luaTemplateUtf8; // Use a fresh copy of the template.
+                LuaVariables vars;
+                // (Fill vars struct - this part is identical in both functions)
+                int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
+                int previousLineStartPos = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
+                setLuaFileVars(vars);
+                if (context.isColumnMode) {
+                    ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
+                    vars.COL = static_cast<int>(columnInfo.startColumnIndex);
+                }
+                if (currentLineIndex != prevLineIdx) { lineFindCount = 0; prevLineIdx = currentLineIndex; }
+                ++lineFindCount;
+                vars.CNT = findCount;
+                vars.LCNT = lineFindCount;
+                vars.APOS = static_cast<int>(searchResult.pos) + 1;
+                vars.LINE = currentLineIndex + 1;
+                vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPos + 1;
+
+                // Convert the MATCH variable to UTF-8 for Lua if the document is ANSI.
+                vars.MATCH = searchResult.foundText;
+                if (documentCodepage != SC_CP_UTF8) {
+                    vars.MATCH = wstringToUtf8(ansiToWString(vars.MATCH, documentCodepage));
                 }
 
-                context.docLength = send(SCI_GETLENGTH, 0, 0);
+                if (!resolveLuaSyntax(luaWorkingUtf8, vars, skipReplace, itemData.regex)) {
+                    return false;
+                }
+
+                // Convert the result from Lua (UTF-8) to the final document codepage.
+                finalReplaceText = convertAndExtendW(utf8ToWString(luaWorkingUtf8), itemData.extended, documentCodepage);
             }
             else {
-                newPos = searchResult.pos + searchResult.length;
-                // Clear selection
-                send(SCI_SETSELECTIONSTART, newPos, 0);
-                send(SCI_SETSELECTIONEND, newPos, 0);
+                // Case without variables: convert once using the safe helper.
+                finalReplaceText = convertAndExtendW(itemData.replaceText, itemData.extended, documentCodepage);
             }
-        }
-        else {
-            newPos = searchResult.pos + searchResult.length; // Move to next match without replacing
-        }
 
-        searchResult = performSearchForward(context, newPos);
+            // --- Final Replacement Execution ---
+            bool replaceThisHit = !useMatchList || std::find(matchList.begin(), matchList.end(), findCount) != matchList.end();
+            Sci_Position nextPos;
+
+            if (replaceThisHit && !skipReplace) {
+                nextPos = itemData.regex
+                    ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
+                    : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
+
+                ++replaceCount;
+                if (itemIndex != SIZE_MAX) updateCountColumns(itemIndex, -1, replaceCount);
+                context.docLength = send(SCI_GETLENGTH, 0, 0); // Update doc length after modification.
+            }
+            else {
+                nextPos = searchResult.pos + searchResult.length;
+                send(SCI_SETSELECTIONSTART, nextPos, 0);
+                send(SCI_SETSELECTIONEND, nextPos, 0);
+            }
+            searchResult = performSearchForward(context, nextPos);
+        }
     }
-
     return true;
 }
 
@@ -6053,7 +6012,7 @@ void MultiReplace::handleFindNextButton() {
 
         // Determine if extended mode is active
         bool isExtended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-        context.findTextUtf8 = convertAndExtend(findText, isExtended);
+        context.findText = convertAndExtendW(findText, isExtended);
 
         // Set search flags
         context.searchFlags =
@@ -6112,7 +6071,7 @@ void MultiReplace::handleFindPrevButton() {
 
     // Create a fully initialized `SearchContext`
     SearchContext context;
-    context.findTextUtf8 = convertAndExtend(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT),
+    context.findText = convertAndExtendW(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT),
         IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
     context.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) |
         (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) |
@@ -6198,7 +6157,7 @@ void MultiReplace::handleFindPrevButton() {
 SearchResult MultiReplace::performSingleSearch(const SearchContext& context, SelectionRange range)
 {
     // Early exit if the search string is empty
-    if (context.findTextUtf8.empty()) {
+    if (context.findText.empty()) {
         return {};  // Return default-initialized SearchResult
     }
 
@@ -6206,7 +6165,7 @@ SearchResult MultiReplace::performSingleSearch(const SearchContext& context, Sel
     send(SCI_SETTARGETRANGE, range.start, range.end);
 
     // Perform the search using SCI_SEARCHINTARGET
-    Sci_Position pos = send(SCI_SEARCHINTARGET, context.findTextUtf8.size(), reinterpret_cast<sptr_t>(context.findTextUtf8.c_str()));
+    Sci_Position pos = send(SCI_SEARCHINTARGET, context.findText.size(), reinterpret_cast<sptr_t>(context.findText.c_str()));
     Sci_Position matchEnd = send(SCI_GETTARGETEND);
 
     // Validate the search result using cached document length from context
@@ -6431,9 +6390,9 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
             continue; // Skip disabled entries
         }
 
-        // Use the existing search context and only override `findTextUtf8` and `searchFlags`
+        // Use the existing search context and only override `findText` and `searchFlags`
         SearchContext localContext = context;
-        localContext.findTextUtf8 = convertAndExtend(list[i].findText, list[i].extended);
+        localContext.findText = convertAndExtendW(list[i].findText, list[i].extended);
         localContext.searchFlags = (list[i].wholeWord ? SCFIND_WHOLEWORD : 0) |
             (list[i].matchCase ? SCFIND_MATCHCASE : 0) |
             (list[i].regex ? SCFIND_REGEXP : 0);
@@ -6471,9 +6430,9 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
             continue; // Skip disabled entries
         }
 
-        // Use the existing search context and only override `findTextUtf8` and `searchFlags`
+        // Use the existing search context and only override `findText` and `searchFlags`
         SearchContext localContext = context;
-        localContext.findTextUtf8 = convertAndExtend(list[i].findText, list[i].extended);
+        localContext.findText = convertAndExtendW(list[i].findText, list[i].extended);
         localContext.searchFlags = (list[i].wholeWord ? SCFIND_WHOLEWORD : 0) |
             (list[i].matchCase ? SCFIND_MATCHCASE : 0) |
             (list[i].regex ? SCFIND_REGEXP : 0);
@@ -6571,7 +6530,7 @@ void MultiReplace::handleMarkMatchesButton() {
 
                 // Prepare SearchContext for list-based marking
                 SearchContext context;
-                context.findTextUtf8 = convertAndExtend(item.findText, item.extended);
+                context.findText = convertAndExtendW(item.findText, item.extended);
                 context.searchFlags = (item.wholeWord * SCFIND_WHOLEWORD)
                     | (item.matchCase * SCFIND_MATCHCASE)
                     | (item.regex * SCFIND_REGEXP);
@@ -6601,7 +6560,7 @@ void MultiReplace::handleMarkMatchesButton() {
 
         // Prepare SearchContext for direct marking
         SearchContext context;
-        context.findTextUtf8 = convertAndExtend(findText, extended);
+        context.findText = convertAndExtendW(findText, extended);
         context.searchFlags = (wholeWord * SCFIND_WHOLEWORD)
             | (matchCase * SCFIND_MATCHCASE)
             | (regex * SCFIND_REGEXP);
@@ -6620,7 +6579,7 @@ void MultiReplace::handleMarkMatchesButton() {
 }
 
 int MultiReplace::markString(const SearchContext& context) {
-    if (context.findTextUtf8.empty()) {
+    if (context.findText.empty()) {
         return 0; // Exit early if the search string is empty
     }
 
@@ -6635,7 +6594,7 @@ int MultiReplace::markString(const SearchContext& context) {
 
     while (searchResult.pos >= 0) {
         if (searchResult.length > 0) {
-            highlightTextRange(searchResult.pos, searchResult.length, context.findTextUtf8);
+            highlightTextRange(searchResult.pos, searchResult.length, context.findText);
             ++markCount;
         }
 
@@ -6656,9 +6615,9 @@ int MultiReplace::markString(const SearchContext& context) {
     return markCount;
 }
 
-void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8)
+void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findText)
 {
-    int color = useListEnabled ? generateColorValue(findTextUtf8) : MARKER_COLOR;
+    int color = useListEnabled ? generateColorValue(findText) : MARKER_COLOR;
     auto it = colorToStyleMap.find(color);
     int indicatorStyle;
 
@@ -6765,7 +6724,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
     }
 
     // Convert encoding to wide string
-    std::wstring wstr = utf8ToWString(markedText);
+    std::wstring wstr = stringToWString(markedText);
 
     copyTextToClipboard(wstr, static_cast<int>(markedTextCount));
 }
@@ -7024,7 +6983,7 @@ void MultiReplace::handleCopyColumnsToClipboard()
     }
 
     // Convert to Wide String and copy to clipboard
-    std::wstring wstr = utf8ToWString(combinedText);
+    std::wstring wstr = stringToWString(combinedText);
     copyTextToClipboard(wstr, copiedFieldsCount);
 }
 
@@ -7444,7 +7403,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     }
 
     // Convert delimiter and quote character to standard strings
-    std::string extendedDelimiter = convertAndExtend(delimiterData, true);
+    std::string extendedDelimiter = convertAndExtendW(delimiterData, true);
     std::string quoteCharConverted = wstringToString(quoteCharString);
 
     // Check for changes BEFORE modifying existing values
@@ -8176,157 +8135,107 @@ void MultiReplace::displayLogChangesInMessageBox() {
 
 #pragma region Utilities
 
-int MultiReplace::convertExtendedToString(const std::string& query, std::string& result)
+static inline bool decodeNumericEscape(const std::wstring& src,size_t pos, int  base, int digits,wchar_t& out)
 {
-    auto readBase = [](const char* str, int* value, int base, int size) -> bool
-        {
-            int i = 0, temp = 0;
-            *value = 0;
-            char max = '0' + static_cast<char>(base) - 1;
-            char current;
-            while (i < size)
-            {
-                current = str[i];
-                if (current >= 'A')
-                {
-                    current &= 0xdf;
-                    current -= ('A' - '0' - 10);
-                }
-                else if (current > '9')
-                    return false;
+    if (pos + digits > src.size())           // not enough characters
+        return false;
 
-                if (current >= '0' && current <= max)
-                {
-                    temp *= base;
-                    temp += (current - '0');
-                }
-                else
-                {
-                    return false;
-                }
-                ++i;
-            }
-            *value = temp;
-            return true;
-        };
-
-    int i = 0, j = 0;
-    int charLeft = static_cast<int>(query.length());
-    char current;
-    result.clear();
-    result.resize(query.length()); // Preallocate memory for optimal performance
-
-    while (i < static_cast<int>(query.length()))
+    unsigned value = 0;
+    for (int k = 0; k < digits; ++k)
     {
-        current = query[i];
-        --charLeft;
-        if (current == '\\' && charLeft)
-        {
-            ++i;
-            --charLeft;
-            current = query[i];
-            switch (current)
-            {
-            case 'r':
-                result[j] = '\r';
-                break;
-            case 'n':
-                result[j] = '\n';
-                break;
-            case '0':
-                result[j] = '\0';
-                break;
-            case 't':
-                result[j] = '\t';
-                break;
-            case '\\':
-                result[j] = '\\';
-                break;
-            case 'b':
-            case 'd':
-            case 'o':
-            case 'x':
-            case 'u':
-            {
-                int size = 0, base = 0;
-                if (current == 'b')
-                {
-                    size = 8, base = 2;
-                }
-                else if (current == 'o')
-                {
-                    size = 3, base = 8;
-                }
-                else if (current == 'd')
-                {
-                    size = 3, base = 10;
-                }
-                else if (current == 'x')
-                {
-                    size = 2, base = 16;
-                }
-                else if (current == 'u')
-                {
-                    size = 4, base = 16;
-                }
+        wchar_t ch = src[pos + k];
+        unsigned v;
 
-                if (charLeft >= size)
-                {
-                    int res = 0;
-                    if (readBase(query.c_str() + (i + 1), &res, base, size))
-                    {
-                        result[j] = static_cast<char>(res);
-                        i += size;
-                        break;
-                    }
-                }
-                // not enough chars to make parameter, use default method as fallback
-            }
-            [[fallthrough]];
-            default:
-                // unknown sequence, treat as regular text
-                result[j] = '\\';
-                ++j;
-                result[j] = current;
-                break;
-            }
-        }
-        else
-        {
-            result[j] = query[i];
-        }
-        ++i;
-        ++j;
+        if (ch >= L'0' && ch <= L'9') v = ch - L'0';
+        else if (ch >= L'A' && ch <= L'F') v = (ch - L'A') + 10;
+        else if (ch >= L'a' && ch <= L'f') v = (ch - L'a') + 10;
+        else return false;                  // invalid digit
+
+        if (v >= static_cast<unsigned>(base))
+            return false;                   // digit not allowed in this base
+
+        value = value * base + v;
     }
 
-    // Nullterminate the result-String
-    result.resize(j);
+    if (value > 0xFFFF)                     // outside BMP range
+        return false;
 
-    // Return length of result-Strings
-    return j;
+    out = static_cast<wchar_t>(value);
+    return true;
 }
 
-std::string MultiReplace::convertAndExtend(const std::wstring& input, bool extended)
+std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool extended, UINT targetCodepage) const
 {
-    // Directly return if extended is false
-    if (!extended)
-        return wstringToString(input);
+    if (!extended)                          // fast path – no escapes
+        return wstringToString(input, targetCodepage);
 
-    std::string output = wstringToString(input);
-    std::string outputExtended;
-    convertExtendedToString(output, outputExtended);
-    return outputExtended;
+    std::wstring out;
+    out.reserve(input.size());
+
+    for (size_t i = 0; i < input.size(); ++i)
+    {
+        wchar_t ch = input[i];
+
+        if (ch != L'\\' || i + 1 >= input.size())
+        {
+            out.push_back(ch);
+            continue;
+        }
+
+        wchar_t esc = input[++i];           // escape designator
+        wchar_t decoded;
+
+        switch (esc)
+        {
+        case L'r': out.push_back(L'\r');                    break;
+        case L'n': out.push_back(L'\n');                    break;
+        case L't': out.push_back(L'\t');                    break;
+        case L'\\':out.push_back(L'\\');                    break;
+        case L'0': out.push_back(L'\0');                    break;
+
+        case L'o': // \oNNN  (octal)
+            if (decodeNumericEscape(input, i + 1, 8, 3, decoded))
+            {
+                out.push_back(decoded); i += 3; break;
+            }
+            [[fallthrough]];                                // literal fallback
+
+        case L'd': // \dNNN  (decimal)
+            if (decodeNumericEscape(input, i + 1, 10, 3, decoded))
+            {
+                out.push_back(decoded); i += 3; break;
+            }
+            [[fallthrough]];
+
+        case L'x': // \xHH   (hex-byte)
+            if (decodeNumericEscape(input, i + 1, 16, 2, decoded))
+            {
+                out.push_back(decoded); i += 2; break;
+            }
+            [[fallthrough]];
+
+        case L'u': // \uXXXX (Unicode BMP)
+            if (decodeNumericEscape(input, i + 1, 16, 4, decoded))
+            {
+                out.push_back(decoded); i += 4; break;
+            }
+            [[fallthrough]];
+
+        default:  // unknown or invalid sequence → keep literally
+            out.append({ L'\\', esc });
+            break;
+        }
+    }
+
+    return wstringToString(out, targetCodepage);
 }
 
-std::string MultiReplace::convertAndExtend(const std::string& input, bool extended)
+std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool extended)
 {
-    // Directly return if extended is false
-    if (!extended)
-        return input;
+    UINT cp = static_cast<UINT>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
+    if (cp == 0) cp = CP_ACP;               // Scintilla returns 0 for ANSI
 
-    std::string outputExtended;
-    convertExtendedToString(input, outputExtended);
-    return outputExtended;
+    return convertAndExtendW(input, extended, cp);
 }
 
 void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems)
@@ -8806,23 +8715,23 @@ void MultiReplace::showListFilePath()
     }
 }
 
-std::wstring MultiReplace::getSelectedText()
-{
-    SIZE_T len = SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, 0);
-    if (len > MAX_TEXT_LENGTH) return L"";
+std::wstring MultiReplace::getSelectedText() {
+    SIZE_T length = SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, 0);
 
-    std::vector<char> buf(len + 1);
-    SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0,
-        reinterpret_cast<LPARAM>(buf.data()));
+    if (length > MAX_TEXT_LENGTH) {
+        return L"";
+    }
 
-    std::string raw(buf.data());
-    int cp = static_cast<int>(
-        SendMessage(nppData._scintillaMainHandle, SCI_GETCODEPAGE, 0, 0));
+    char* buffer = new char[length + 1];  // Add 1 for null terminator
+    SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, (LPARAM)buffer);
+    buffer[length] = '\0';
 
-    if (cp == SC_CP_UTF8)
-        return utf8ToWString(raw);
-    else
-        return ansiToWString(raw, cp);
+    std::string str(buffer);
+    std::wstring wstr = stringToWString(str);
+
+    delete[] buffer;
+
+    return wstr;
 }
 
 LRESULT MultiReplace::getEOLLengthForLine(LRESULT line) {
@@ -9028,6 +8937,15 @@ std::wstring MultiReplace::utf8ToWString(const std::string& utf8) const {
     return (converted > 0) ? result : std::wstring();
 }
 
+std::wstring MultiReplace::ansiToWString(const std::string& input, UINT codePage) const  {
+    if (input.empty()) return {};
+    int len = ::MultiByteToWideChar(codePage, 0, input.data(), (int)input.size(), nullptr, 0);
+    if (len <= 0) return {};
+    std::wstring result(len, L'\0');
+    ::MultiByteToWideChar(codePage, 0, input.data(), (int)input.size(), &result[0], len);
+    return result;
+}
+
 std::string MultiReplace::wstringToUtf8(const std::wstring& input) const {
     if (input.empty()) return {};
 
@@ -9039,23 +8957,11 @@ std::string MultiReplace::wstringToUtf8(const std::wstring& input) const {
     return result;
 }
 
-std::wstring MultiReplace::ansiToWString(const std::string& input, UINT codePage) {
-    if (input.empty()) return {};
-    int len = ::MultiByteToWideChar(codePage, 0, input.data(), (int)input.size(), nullptr, 0);
-    if (len <= 0) return {};
-    std::wstring result(len, L'\0');
-    ::MultiByteToWideChar(codePage, 0, input.data(), (int)input.size(), &result[0], len);
-    return result;
-}
-
 std::string MultiReplace::wstringToString(const std::wstring& input) const {
     if (input.empty()) return std::string();
 
     // 1. Get the document's codepage (from cache for performance)
-    int documentCodePage = _cachedScintillaCodePage;
-    if (documentCodePage == -1) {
-        documentCodePage = static_cast<int>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
-    }
+    int documentCodePage = static_cast<int>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
 
     // 2. Determine the required encoding for the Scintilla API
     int targetCodePage;
@@ -9076,6 +8982,34 @@ std::string MultiReplace::wstringToString(const std::wstring& input) const {
     WideCharToMultiByte(targetCodePage, 0, &input[0], (int)input.size(), &strResult[0], size_needed, NULL, NULL);
 
     return strResult;
+}
+
+std::string MultiReplace::wstringToString(const std::wstring& ws, UINT cp) const
+{
+    if (ws.empty()) return {};
+
+    if (cp == 0) cp = CP_ACP;                       // 0 means “ANSI” for Scintilla
+
+    int len = ::WideCharToMultiByte(cp, 0,
+        ws.data(), static_cast<int>(ws.size()),
+        nullptr, 0, nullptr, nullptr);
+
+    std::string out(len, '\0');
+    ::WideCharToMultiByte(cp, 0,
+        ws.data(), static_cast<int>(ws.size()),
+        out.data(), len, nullptr, nullptr);
+    return out;
+}
+
+std::wstring MultiReplace::stringToWString(const std::string& input) const {
+    if (input.empty()) return {};
+
+    int cp = static_cast<int>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
+    if (cp == 0) cp = CP_ACP;
+
+    return (cp == SC_CP_UTF8)
+        ? utf8ToWString(input)
+        : ansiToWString(input, cp);
 }
 
 std::wstring MultiReplace::trim(const std::wstring& str) {
