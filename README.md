@@ -9,9 +9,13 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 
 ## Table of Contents
 - [Key Features](#key-features)
-- [Match and Replace Options](#match-and-replace-options)
-- [Scope Functions](#scope-functions)
-- [CSV Column Operations](#csv-column-operations)
+- [Search Configuration](#search-configuration)
+  - [Search Mode](#search-mode)
+  - [Match Options](#match-options)
+- [Search Scopes and Targets](#search-scopes-and-targets)
+  - [Search Scopes](#search-scopes)
+  - [CSV Scope and Column Operations](#csv-scope-and-column-operations)
+  - [Execution Targets](#execution-targets)
 - [Option 'Use Variables'](#option-use-variables)
   - [Quick Start: Use Variables](#quick-start-use-variables)  
   - [Variables Overview](#variables-overview)
@@ -52,53 +56,95 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 
 <br>
 
-## Match and Replace Options
+## Search Configuration
+This section describes the different modes and options to control how search patterns are interpreted and matched.
 
-**Match Whole Word Only:** When this option is enabled, the search term is matched only if it appears as a whole word. This is particularly useful for avoiding partial matches within larger words, ensuring more precise and targeted search results.
+### Search Mode
+The search mode determines how the text in the **Find what** field is interpreted.
 
-**Match Case:** Selecting this option makes the search case-sensitive, meaning 'Hello' and 'hello' will be treated as distinct terms. It's useful for scenarios where the case of the letters is crucial to the search.
+- **Normal**  
+  Treats the search string literally. Special characters like `.` or `*` have no special meaning.
 
-**Use Variables:** This feature allows the use of variables within the replacement string for dynamic and conditional replacements. For more detailed information, refer to the [Option 'Use Variables' chapter](#option-use-variables).
+- **Extended**  
+  Allows the use of backslash escape sequences to find or insert special and non-printable characters.
 
-**Replace matches:** For Replace-All operations, this option allows specifying which occurrences of a match should be replaced in a Search and Replace list, enabling precise control over targeted changes. The same effect can be achieved with the 'Use Variables' option using `cond(CNT == 1, 'Replace String')` for conditional replacements.
+  | Sequence | Description            | Example                                                             |
+  |----------|------------------------|---------------------------------------------------------------------|
+  | `\n`     | Line Feed (LF)         | Replaces all `\n` with a space to join lines.                       |
+  | `\r`     | Carriage Return (CR)   | Useful for cleaning up Windows-style line endings (`\r\n`).         |
+  | `\t`     | Tab character          | Replaces four spaces with `\t`.                                     |
+  | `\0`     | NULL character         | Finds or inserts the NULL character.                                |
+  | `\\`     | Literal Backslash      | To search for a single `\`, you must enter `\\`.                    |
+  | `\xHH`   | Hexadecimal value      | `\x41` finds or inserts the character **A**.                        |
+  | `\oNNN`  | Octal value            | `\o101` finds or inserts **A**.                                     |
+  | `\dNNN`  | Decimal value          | `\d065` finds or inserts **A**.                                     |
+  | `\uXXXX` | Unicode character      | `\u20AC` finds or inserts **€**. *(This is an extension not available in standard Notepad++.)* |
 
-**Wrap Around:** When this option is active, the search will continue from the beginning of the document after reaching the end, ensuring that no potential matches are missed in the document.
+- **Regular expression**  
+  Enables powerful pattern matching using the regex engine integrated into the Notepad++ editor component. It supports common syntax for character classes (`[a-z]`), quantifiers (`*`, `+`, `?`), and capture groups (`(...)`). For a detailed reference, see the official Notepad++ Regular Expressions documentation.
 
-**Extended (Backslash Escapes)**  
-This mode allows the use of backslash escape sequences to find or insert special and non-printable characters. It is a powerful *middle ground* between **Normal** and **Regular expression** modes.
+### Match Options
+These options refine the search behavior across all modes.
 
-| Sequence | Description            | Example                                                             |
-|----------|------------------------|---------------------------------------------------------------------|
-| `\n`     | Line Feed (LF)         | Replaces all `\n` with a space to join lines.                       |
-| `\r`     | Carriage Return (CR)   | Useful for cleaning up Windows-style line endings (`\r\n`).         |
-| `\t`     | Tab character          | Replaces four spaces with `\t` to standardize indentation.          |
-| `\0`     | NULL character         | Finds or inserts the NULL character, often used as a string terminator. |
-| `\\`     | Literal Backslash      | To search for a single `\`, you must enter `\\`.                    |
-| `\xHH`   | Hexadecimal value      | `\x41` finds or inserts the character **A**.                        |
-| `\oNNN`  | Octal value            | `\o101` finds or inserts **A**.                                     |
-| `\dNNN`  | Decimal value          | `\d065` finds or inserts **A**.                                     |
-| `\uXXXX` | Unicode character      | `\u20AC` finds or inserts the Euro symbol **€**. *(This is an extension not available in standard Notepad++.)* |
+- **Match Whole Word Only** — The search term is matched only if it is a whole word, surrounded by non-word characters.  
+- **Match Case** — Makes the search case-sensitive, treating `Hello` and `hello` as distinct terms.  
+- **Use Variables** — Enables dynamic replacements using Lua-based logic. See the chapter **Option 'Use Variables'** for details.  
+- **Wrap Around** — If active, the search continues from the beginning of the document after reaching the end.  
+- **Replace matches** — For **Replace All** operations, specify exactly which occurrences to replace. Accepts single numbers, commas, or ranges (e.g. `1,3,5-7`).  
 
-<br>
+## Search Scopes and Targets
+This section describes **where** to search (Scopes) and **in which files** (Targets).
 
-## Scope Functions
-Scope functions define the range for searching and replacing strings:
--   **Selection Option**: Supports Rectangular and Multiselect to focus on specific areas for search or replace.
--   **CSV Option**: Enables targeted search or replacement within specified columns of a delimited file.
-    -   `Cols`: Specify the columns for focused operations.
-    -   `Delim`: Define the delimiter character.
-    -   `Quote`: Delineate areas where characters are not recognized as delimiters.
+### Search Scopes
+Search scopes define the area within a document for search and replace operations.
 
-<br>
+- **All Text** — The entire document is searched.  
+- **Selection** — Operations are restricted to the selected text. Supports standard, rectangular (columnar), and multi-selections.  
 
-### CSV Column Operations
-CSV-related operations extend the functionality of scope-based processing, providing additional features for structured data handling:
-- **Sorting Lines by Columns**: Ascend or descend, combining columns in any prioritized order.  
-- **Sorting Behavior**: CSV column sorting treats numeric and text values equally, ensuring correct order in mixed data.
-- **Toggle Sort**: Allows users to return columns to their initial unsorted state with just an extra click on the sorting button. This feature is effective even after rows are modified, deleted, or added.
-- **Exclude Header Lines from Sorting**: When sorting CSV files with the CSV scope selected, you can exclude a specified number of top lines (usually header rows) from sorting. Configure this behavior using the `HeaderLines` parameter in the INI file. For details, see the [`INI File Settings`](#configuration-settings).
-- **Deleting Multiple Columns**: Remove multiple columns at once, cleaning obsolete delimiters.
-- **Clipboard Column Copying**: Copy columns with original delimiters to clipboard.
+### CSV Scope and Column Operations  
+Selecting the **CSV** scope enables powerful tools for working with delimited data.
+
+- **Scope Definition:**
+  - **Cols**: Specify the columns for focused operations (e.g., `1,3-5`).
+  - **Delim**: Define the delimiter character.
+  - **Quote**: Specify a quote character (`"` or `'`) to ignore delimiters within quoted text.
+
+- **Available Column Operations:**
+  - **Sorting Lines by Columns**: Sort lines based on one or more columns in ascending or descending order. The sorting algorithm correctly handles mixed numeric and text values.  
+    - **Smart Undo&nbsp;(Toggle Sort)**: A second click on the same sort button reverts the lines to their original order. This powerful undo works even if rows have been modified, added, or deleted after the initial sort.  
+    - **Exclude Header Lines**: You can protect header rows from being sorted. Configure the number of header rows via the `HeaderLines` parameter in the INI file.
+  - **Deleting Multiple Columns**: Remove specified columns at once, automatically cleaning up obsolete delimiters.
+  - **Clipboard Column Copying**: Copy the content of specified columns, including their delimiters, to the clipboard.
+
+### Execution Targets  
+Execution targets define **which files** an operation is applied to. They are accessible via the **Replace All** split-button menu.
+
+- **Replace All:**
+    Executes the replacement in the **current document only**.
+- **Replace All in All Open Docs:**
+    Executes the replacement across **all open files** in Notepad++.
+- **Replace in Files:**
+    Extends the replacement scope to entire directory structures. When selected, the main window expands to show a dedicated panel for configuration.
+    - **Directory:** The starting folder for the file search.
+    - **Filters:** Space-separated list of patterns to include or exclude files and folders.
+    - **In Subfolders:** Recursively include all subdirectories.
+    - **In Hidden Files;** Include hidden files and folders.
+
+**Filter Syntax**
+
+| Prefix   | Example      | Description                                                            |
+|----------|--------------|------------------------------------------------------------------------|
+| *(none)* | `*.cpp *.h`  | Includes files matching the pattern.                                   |
+| `!`      | `!*.bak`     | Excludes files matching the pattern.                                   |
+| `!\`     | `!\obj\`     | Excludes the specified folder *non-recursive*.                         |
+| `!+\`    | `!+\logs\`   | Excludes the specified folder **and** all its subfolders *recursive*.  |
+
+
+**Operation Control**
+
+- **Progress Feedback** — A message line shows real-time progress (percentage and current file).  
+- **Cancel Button** — A **Cancel** button appears during long operations, allowing safe abort.  
+- **Encoding Handling** — Encoding (ANSI, UTF-8, UTF-16, etc.) is auto-detected and preserved when writing changes back to disk.  
 
 <br>
 
