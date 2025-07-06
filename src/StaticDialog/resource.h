@@ -93,12 +93,12 @@
 #define IDC_QUOTECHAR_STATIC            5465
 
 #define IDC_REPLACE_IN_FILES_GROUP      5469
-#define IDC_DIR_STATIC                  5470
-#define IDC_DIR_EDIT                    5471
-#define IDC_BROWSE_DIR_BUTTON           5472
-#define IDC_FILTER_STATIC               5473
-#define IDC_FILTER_EDIT                 5474
-#define IDC_FILTER_HELP                 5475
+#define IDC_FILTER_EDIT                 5470
+#define IDC_FILTER_HELP                 5471
+#define IDC_FILTER_STATIC               5472
+#define IDC_DIR_STATIC                  5473
+#define IDC_DIR_EDIT                    5474
+#define IDC_BROWSE_DIR_BUTTON           5475
 #define IDC_SUBFOLDERS_CHECKBOX         5476
 #define IDC_HIDDENFILES_CHECKBOX        5477
 #define IDC_DIR_PROGRESS_STATIC         5478

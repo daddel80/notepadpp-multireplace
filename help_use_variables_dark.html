@@ -456,12 +456,13 @@
                 <td><strong>CAP1</strong>, <strong>CAP2</strong>,...</td>
                 <td>These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.</td>
             </tr>
-            <tr>
-                <td colspan="2">
-                <strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.
-                </td>
-            </tr>
         </table>
+
+        <strong>Note:</strong>
+        <ul>
+            <li><code>FNAME</code> and <code>FPATH</code> are updated for each file processed by <em>Replace&nbsp;All&nbsp;in&nbsp;All&nbsp;Open&nbsp;Docs</em> and <em>Replace&nbsp;All&nbsp;in&nbsp;Files</em>; they always refer to the file currently being modified.</li>
+            <li><strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are interpreted as numbers, both dot (.) and comma (,) may be used as decimal separators. Thousands separators are not supported.</li>
+        </ul>
     </section>
 
     <section id="Commands">
