@@ -88,9 +88,9 @@ These options refine the search behavior across all modes.
 
 - **Match Whole Word Only** — The search term is matched only if it is a whole word, surrounded by non-word characters.  
 - **Match Case** — Makes the search case-sensitive, treating `Hello` and `hello` as distinct terms.  
-- **Use Variables** — Enables dynamic replacements using Lua-based logic. See the chapter **Option 'Use Variables'** for details.  
+- **Use Variables** — Allows the use of variables within the replacement string for dynamic and conditional replacements. See the [chapter 'Use Variables'](#option-use-variables) for details.  
 - **Wrap Around** — If active, the search continues from the beginning of the document after reaching the end.  
-- **Replace matches** — For **Replace All** operations, specify exactly which occurrences to replace. Accepts single numbers, commas, or ranges (e.g. `1,3,5-7`).  
+- **Replace matches** — Applies to all **Replace All** actions (current document, all open docs, and in files). Allows you to specify exactly which occurrences of a match to replace. Accepts single numbers, commas, or ranges (e.g., `1,3,5-7`).
 
 ## Search Scopes and Targets
 This section describes **where** to search (Scopes) and **in which files** (Targets).
@@ -112,7 +112,7 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
 - **Available Column Operations:**
   - **Sorting Lines by Columns**: Sort lines based on one or more columns in ascending or descending order. The sorting algorithm correctly handles mixed numeric and text values.  
     - **Smart Undo&nbsp;(Toggle Sort)**: A second click on the same sort button reverts the lines to their original order. This powerful undo works even if rows have been modified, added, or deleted after the initial sort.  
-    - **Exclude Header Lines**: You can protect header rows from being sorted. Configure the number of header rows via the `HeaderLines` parameter in the INI file.
+    - **Exclude Header Lines**: You can protect header rows from being sorted. Configure the number of header rows via the `HeaderLines` parameter in the INI file. For details, see the [`INI File Settings`](#configuration-settings).
   - **Deleting Multiple Columns**: Remove specified columns at once, automatically cleaning up obsolete delimiters.
   - **Clipboard Column Copying**: Copy the content of specified columns, including their delimiters, to the clipboard.
 
