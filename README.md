@@ -396,9 +396,9 @@ This example shows how to use `if` statements with `cond()` to manage variables 
 
 The `DEBUG` option lets you inspect global variables during replacements. When enabled, it opens a message box displaying the current values of all global variables for each replacement hit, requiring confirmation to proceed to the next match. Initialize the `DEBUG` option in your replacement string to enable it.
 
-| Find      | Replace                              |
-|------------|--------------------------------------------|
-| `(\d+)`    | `vars({DEBUG=true}); set("Number: "..CAP1)`|
+| Find      | Replace               |
+|------------|----------------------|
+| *(empty)*  | `vars({DEBUG=true})`|
 
 <br>
 
