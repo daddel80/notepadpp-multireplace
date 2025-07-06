@@ -195,8 +195,9 @@ Enable the '**Use Variables**' option to enhance replacements with calculations 
 | **FPATH**| Full path including the filename, or empty for new, unsaved files. |
 | **CAP1**, **CAP2**, ...  | These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.|
 
-**Decimal Separator**<br>
-When `MATCH` and `CAP` variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.
+**Note:**
+- FNAME and FPATH are updated for each file processed by `Replace All in All Open Docs` and `Replace All in Files`. This ensures that variables always refer to the file currently being modified.
+- **Decimal Separator:** When `MATCH` and `CAP` variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.
 
 <br>
 
@@ -396,9 +397,9 @@ This example shows how to use `if` statements with `cond()` to manage variables 
 
 The `DEBUG` option lets you inspect global variables during replacements. When enabled, it opens a message box displaying the current values of all global variables for each replacement hit, requiring confirmation to proceed to the next match. Initialize the `DEBUG` option in your replacement string to enable it.
 
-| Find      | Replace                              |
-|------------|--------------------------------------------|
-| `(\d+)`    | `vars({DEBUG=true}); set("Number: "..CAP1)`|
+| Find      | Replace               |
+|------------|----------------------|
+| *(empty)*  | `vars({DEBUG=true})`|
 
 <br>
 
