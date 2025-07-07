@@ -379,6 +379,9 @@ void MultiReplace::initializeCtrlMap() {
         return;
     }
 
+    // Show or hide the "Export to Bash" button according to the ExportToBash option
+    ShowWindow(GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON), exportToBashEnabled ? SW_SHOW : SW_HIDE);
+
     // immediately hide or show the "Replace in Files" sub-panel
     updateReplaceInFilesVisibility();
 
@@ -620,7 +623,6 @@ void MultiReplace::updateReplaceInFilesVisibility()
     for (int id : repInFilesIds) {
         ShowWindow(GetDlgItem(_hSelf, id), show ? SW_SHOW : SW_HIDE);
     }
-
 
     if (show) {
         EnableWindow(GetDlgItem(_hSelf, IDC_CANCEL_REPLACE_BUTTON), FALSE);
@@ -9801,6 +9803,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << wstringToUtf8(L"EditFieldSize=" + std::to_wstring(editFieldSize) + L"\n");
     outFile << wstringToUtf8(L"ListStatistics=" + std::to_wstring(listStatisticsEnabled ? 1 : 0) + L"\n");
     outFile << wstringToUtf8(L"StayAfterReplace=" + std::to_wstring(stayAfterReplaceEnabled ? 1 : 0) + L"\n");
+    outFile << wstringToUtf8(L"ExportToBash=" + std::to_wstring(exportToBashEnabled ? 1 : 0) + L"\n");
 
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
@@ -9996,6 +9999,7 @@ void MultiReplace::loadSettingsFromIni() {
 
     listStatisticsEnabled = readBoolFromIniCache(L"Options", L"ListStatistics", false);
     stayAfterReplaceEnabled = readBoolFromIniCache(L"Options", L"StayAfterReplace", false);
+    exportToBashEnabled = readBoolFromIniCache(L"Options", L"ExportToBash", false);
 
     // Loading and setting the scope
     int selection = readIntFromIniCache(L"Scope", L"Selection", 0);

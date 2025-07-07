@@ -598,6 +598,7 @@ private:
     int lastTooltipSubItem;
     int lastMouseX;
     int lastMouseY;
+    bool exportToBashEnabled = false; // shows/hides the "Export to Bash" button
     bool isHoverTextEnabled = false; // Important to set on false as TIMER will be triggered at startup.
     bool isHoverTextSuppressed = false; // Temporarily supress HoverText to avoid flickering wehn Edit in list is open
     int editFieldSize;
