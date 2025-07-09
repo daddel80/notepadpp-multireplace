@@ -557,8 +557,7 @@ The MultiReplace plugin provides several configuration options, including transp
 
 - **ExportToBash**: Controls the visibility of the Export to Bash button.
   - **Default**: `ExportToBash=0` (disabled).
-  - **Description**: When set to `1`, the Export to Bash button is visible and allows exporting the replacement list as a Bash script. When set to `0`, the button is hidden.
-
+  - **Description**: When enabled (`1`), the Export to Bash button is visible and allows exporting the replacement list as a Bash script. When disabled (`0`), the button is hidden.
 
 ### Multilingual UI Support
 
