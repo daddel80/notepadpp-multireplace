@@ -641,6 +641,21 @@ void MultiReplace::updateReplaceInFilesVisibility()
 
     moveAndResizeControls();               // actually MoveWindow()/SetWindowPos() all controls
     adjustWindowSize();                    // shrink/grow the dialog to fit
+
+    // Keep the Scope-radio buttons consistent with current mode
+    if (isReplaceInFiles)
+    {
+        // Selection scope is meaningless while replacing in files – disable it.
+        ::EnableWindow(GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+        ::SendMessage(GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+        ::SendMessage(GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+    }
+    else
+    {
+        // Back to normal replace modes – let selection logic decide.
+        onSelectionChanged();   // re-evaluate current text selection
+    }
+
     InvalidateRect(_hSelf, NULL, TRUE);    // repaint client
     UpdateWindow(_hSelf);
 }
@@ -10572,6 +10587,16 @@ void MultiReplace::pointerToScintilla() {
 void MultiReplace::onSelectionChanged() {
 
     static bool wasTextSelected = false;  // This stores the previous state
+
+    // Always force “All Text”, disable the Selection radio, and leave early.
+    if (instance->isReplaceInFiles) {
+        HWND hSel = ::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO);
+        HWND hAll = ::GetDlgItem(getDialogHandle(), IDC_ALL_TEXT_RADIO);
+        ::EnableWindow(hSel, FALSE);
+        ::SendMessage(hSel, BM_SETCHECK, BST_UNCHECKED, 0);
+        ::SendMessage(hAll, BM_SETCHECK, BST_CHECKED, 0);
+        return;
+    }
 
     // Get the start and end of the selection
     Sci_Position start = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
