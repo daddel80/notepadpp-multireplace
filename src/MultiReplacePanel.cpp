@@ -3808,6 +3808,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
                     // Restore opened Document
                     ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, visibleMain ? MAIN_VIEW : SUB_VIEW, currentDocIndex);
+
+                    // After the multi-document operation, reset the scope UI to a consistent state.
+                    ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+                    ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+                    ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
                 }
             }
             else if (isReplaceInFiles) {
@@ -4104,6 +4109,14 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         return false;
     }
 
+    // In "Replace in All Docs" + "Selection" scope, skip documents that have no selection.
+    if (isReplaceAllInDocs &&
+        IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED &&
+        getSelectionInfo(false).length == 0)
+    {
+        return true;          // just jump into next Document
+    }
+
     // First check if the document is read-only
     LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
@@ -4185,12 +4198,17 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), MessageStatus::Success);
     }
 
-    // Disable selection radio and switch to "All Text" if it was Replaced an none selection left or it will be trapped
-    SelectionInfo selection = getSelectionInfo(false);
-    if (selection.length == 0 && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-        ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-        ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+    // Only reset the scope radio buttons for a single-document "Replace All"
+    if (!isReplaceAllInDocs) {
+        SelectionInfo selection = getSelectionInfo(false);
+        if (selection.length == 0 &&
+            IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED)
+        {
+            ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+            ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+            ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+        }
+
     }
 
     return replaceSuccess;
