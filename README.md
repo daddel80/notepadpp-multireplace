@@ -555,6 +555,10 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Default**: `StayAfterReplace=0` (disabled).
   - **Description**: When enabled (`1`), pressing the **Replace** button replaces the current match without jumping to the next one. When disabled (`0`), it automatically jumps to the next match after replacing.
 
+- **ExportToBash**: Controls the visibility of the Export to Bash button.
+  - **Default**: `ExportToBash=0` (disabled).
+  - **Description**: When set to `1`, the Export to Bash button is visible and allows exporting the replacement list as a Bash script. When set to `0`, the button is hidden.
+
 
 ### Multilingual UI Support
 
