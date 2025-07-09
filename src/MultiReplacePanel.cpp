@@ -611,7 +611,7 @@ void MultiReplace::updateReplaceInFilesVisibility()
     // IDs of everything in the “Replace in Files” frame
     static const std::vector<int> repInFilesIds = {
         IDC_REPLACE_IN_FILES_GROUP,
-        IDC_FILTER_STATIC,  IDC_FILTER_EDIT,
+        IDC_FILTER_STATIC,  IDC_FILTER_EDIT, IDC_FILTER_HELP,
         IDC_DIR_STATIC,     IDC_DIR_EDIT,       IDC_BROWSE_DIR_BUTTON,
         IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
         IDC_CANCEL_REPLACE_BUTTON
