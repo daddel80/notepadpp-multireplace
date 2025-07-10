@@ -9089,6 +9089,7 @@ bool MultiReplace::isValidUtf8(const std::string& data) {
 #pragma region FileOperations
 
 std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath) {
+    flags |= OFN_NOCHANGEDIR;
     OPENFILENAME ofn = { 0 };
     WCHAR szFile[MAX_PATH] = { 0 };
 
