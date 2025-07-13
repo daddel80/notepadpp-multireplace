@@ -24,6 +24,7 @@
 #include "DPIManager.h"
 #include "luaEmbedded.h"
 #include "HiddenSciGuard.h"
+#include "ResultDock.h"
 
 #include <algorithm>
 #include <bitset>
@@ -317,7 +318,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
     ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_2_buttons_mode") };
-    ctrlMap[IDC_FIND_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_find_next"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_ALL_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_find_all"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
     findNextButtonText = L"▼ " + getLangStr(L"panel_find_next_small");
     ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
@@ -507,7 +508,7 @@ void MultiReplace::moveAndResizeControls() {
     // IDs of controls to be moved or resized
     const int controlIds[] = {
         IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON,
-        IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON,
+        IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_ALL_BUTTON, IDC_FIND_NEXT_BUTTON,
         IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
         IDC_USE_LIST_BUTTON, IDC_CANCEL_REPLACE_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
         IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, 
@@ -580,7 +581,7 @@ void MultiReplace::updateTwoButtonsVisibility() {
 
     // Find-Buttons
     setVisibility({ IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON }, twoButtonsMode);
-    setVisibility({ IDC_FIND_BUTTON }, !twoButtonsMode);
+    setVisibility({ IDC_FIND_ALL_BUTTON }, !twoButtonsMode);
 
     // Mark-Buttons
     setVisibility({ IDC_MARK_MATCHES_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON }, twoButtonsMode);
@@ -3235,7 +3236,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
 #pragma warning(push)
 #pragma warning(disable:26454)  // Suppress the overflow warning due to BCN_DROPDOWN and NM_RDBLCLK definition
-
         if (pnmh->code == BCN_DROPDOWN && pnmh->hwndFrom == GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON))
         {
             RECT rc;
@@ -3249,6 +3249,40 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // Display the menu directly below the button
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, NULL);
             DestroyMenu(hMenu);  // Clean up after displaying menu
+
+            return TRUE;
+        }
+
+        if (pnmh->idFrom == IDC_FIND_ALL_BUTTON && pnmh->code == BCN_DROPDOWN)
+        {
+            HMENU hMenu = CreatePopupMenu();
+            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_DOC_OPTION,
+                getLangStrLPWSTR(L"split_menu_find_all"));
+            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_ALL_DOCS_OPTION,
+                getLangStrLPWSTR(L"split_menu_find_all_in_docs"));
+            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_FILES_OPTION,
+                getLangStrLPWSTR(L"split_menu_find_all_in_files"));
+
+            RECT rc{};  GetWindowRect(pnmh->hwndFrom, &rc);
+            int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_LEFTALIGN,
+                rc.left, rc.bottom, 0, _hSelf, nullptr);
+            DestroyMenu(hMenu);
+
+            switch (cmd)
+            {
+            case ID_FIND_ALL_IN_DOC_OPTION:
+                handleFindAllButton();                       // current doc
+                break;
+/*
+            case ID_FIND_ALL_IN_ALL_DOCS_OPTION:
+                handleFindAllInDocs();                       // stub, next step
+                break;
+
+            case ID_FIND_ALL_IN_FILES_OPTION:
+                handleFindAllInFiles();                      // stub, next step
+                break;
+*/
+            }
 
             return TRUE;
         }
@@ -3734,7 +3768,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDC_FIND_BUTTON:
+        case IDC_FIND_ALL_BUTTON:
+        {
+            CloseDebugWindow();
+            resetCountColumns();
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            handleFindAllButton();
+            return TRUE;
+        }
+
         case IDC_FIND_NEXT_BUTTON:
         {
             CloseDebugWindow(); // Close the Lua debug window if it is open
@@ -5322,7 +5364,7 @@ void MultiReplace::handleReplaceInFiles() {
 
         void setUiInProgress(bool inProgress) {
             const std::vector<int> controlsToDisable = {
-                IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_FIND_BUTTON, IDC_MARK_BUTTON,
+                IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_FIND_ALL_BUTTON, IDC_MARK_BUTTON,
                 IDC_CLEAR_MARKS_BUTTON, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
                 IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_MARK_MATCHES_BUTTON,
                 IDC_COPY_MARKED_TEXT_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON,
@@ -5977,6 +6019,222 @@ void MultiReplace::CloseDebugWindow() {
 
         PostMessage(hDebugWnd, WM_CLOSE, 0, 0);
     }
+}
+
+#pragma endregion
+
+
+#pragma region Find All
+
+void MultiReplace::handleFindAllButton()
+{
+    // ---------- early checks ------------------------------------------------
+    if (!validateDelimiterData())
+        return;
+
+    ResultDock::instance().ensureCreatedAndVisible(nppData);
+
+    // ---------- Scintilla shortcut lambda -----------------------------------
+    auto sciSend = [this](UINT msg, WPARAM w = 0, LPARAM l = 0) -> LRESULT
+        {
+            return ::SendMessage(_hScintilla, msg, w, l);
+        };
+
+    // ---------- current file path -------------------------------------------
+    wchar_t pathBuf[MAX_PATH] = {};
+    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH,
+        MAX_PATH, reinterpret_cast<LPARAM>(pathBuf));
+    std::wstring filePath = *pathBuf ? pathBuf : L"<untitled>";
+
+    // ---------- base search context -----------------------------------------
+    SearchContext ctx{};
+    ctx.docLength = sciSend(SCI_GETLENGTH);
+    ctx.isColumnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED;
+    ctx.isSelectionMode = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED;
+    ctx.retrieveFoundText = false;        // we only dump whole lines
+    ctx.highlightMatch = false;        // Find-All never highlights live
+
+    std::wstringstream hitsPerFile;       // collects “Line N: …”
+    int totalHits = 0;
+
+    // helper to append one result line
+    auto appendHit = [&](LRESULT pos)
+        {
+            LRESULT lineIdx = sciSend(SCI_LINEFROMPOSITION, pos);
+            LRESULT lineLen = sciSend(SCI_LINELENGTH, lineIdx);
+
+            std::string utf8(lineLen, '\0');
+            sciSend(SCI_GETLINE, lineIdx,
+                reinterpret_cast<sptr_t>(utf8.data()));
+            utf8.resize(strnlen(utf8.data(), lineLen));
+
+            std::wstring wLine = stringToWString(utf8);
+            wLine.erase(0, wLine.find_first_not_of(L" \t"));   // left-trim
+
+            hitsPerFile << L"    \tLine "
+                << (lineIdx + 1) << L": "
+                << wLine << L"\r\n";
+            ++totalHits;
+        };
+
+    // ---------- list-mode vs. single search ---------------------------------
+    if (useListEnabled)
+    {
+        if (replaceListData.empty())
+        {
+            showStatusMessage(getLangStr(L"status_add_values_or_find_directly"),
+                MessageStatus::Error);
+            return;
+        }
+
+        for (const auto& it : replaceListData)
+        {
+            if (!it.isEnabled) continue;
+
+            ctx.findText = convertAndExtendW(it.findText, it.extended);
+            ctx.searchFlags =
+                (it.wholeWord ? SCFIND_WHOLEWORD : 0)
+                | (it.matchCase ? SCFIND_MATCHCASE : 0)
+                | (it.regex ? SCFIND_REGEXP : 0);
+
+            sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+
+            LRESULT pos = 0;
+            while (true)
+            {
+                SearchResult r = performSearchForward(ctx, pos);
+                if (r.pos < 0) break;
+                appendHit(r.pos);
+                pos = r.pos + r.length;
+            }
+        }
+    }
+    else
+    {
+        std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        if (findText.empty())
+        {
+            showStatusMessage(getLangStr(L"status_no_search_string"),
+                MessageStatus::Error);
+            return;
+        }
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+
+        bool ww = IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED;
+        bool mc = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED;
+        bool rgx = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED;
+        bool ext = IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED;
+
+        ctx.findText = convertAndExtendW(findText, ext);
+        ctx.searchFlags = (ww ? SCFIND_WHOLEWORD : 0) | (mc ? SCFIND_MATCHCASE : 0) | (rgx ? SCFIND_REGEXP : 0);
+        sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+
+        LRESULT pos = 0;
+        while (true)
+        {
+            SearchResult r = performSearchForward(ctx, pos);
+            if (r.pos < 0) break;
+            appendHit(r.pos);
+            pos = r.pos + r.length;
+        }
+    }
+
+    // ---------- nothing found -----------------------------------------------
+    if (!totalHits)
+    {
+        showStatusMessage(getLangStr(L"status_no_matches_found"),
+            MessageStatus::Error, true);
+        return;
+    }
+
+    // ---------- build final Search-Result text ------------------------------
+    std::wstring header = L"Search \""
+        + (useListEnabled ? std::wstring(L"[list-mode]") :
+            getTextFromDialogItem(_hSelf, IDC_FIND_EDIT))
+        + L"\" (" + std::to_wstring(totalHits) + L" hits in 1 files)\r\n";
+
+    std::wstring fileHdr = L"  \t" + filePath + L" ("
+        + std::to_wstring(totalHits) + L" hits)\r\n";
+
+    populateResultDockText(header + fileHdr + hitsPerFile.str());
+
+    showStatusMessage(getLangStr(L"status_occurrences_found",
+        { std::to_wstring(totalHits) }),
+        MessageStatus::Success);
+}
+
+HWND MultiReplace::createResultSci()
+{
+    return ::CreateWindowExW(0, L"Scintilla", nullptr,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+        0, 0, 100, 100,
+        _hSelf, nullptr,
+        _hInst, nullptr);
+}
+
+void MultiReplace::initResultFolding(HWND hSci)
+{
+    auto S = [&](UINT m, WPARAM w = 0, sptr_t l = 0) { ::SendMessage(hSci, m, w, l); };
+
+    // margin #2 shows folding symbols
+    constexpr int M_FOLD = 2;
+    S(SCI_SETMARGINTYPEN, M_FOLD, SC_MARGIN_SYMBOL);
+    S(SCI_SETMARGINMASKN, M_FOLD, SC_MASK_FOLDERS);
+    S(SCI_SETMARGINWIDTHN, M_FOLD, 16);
+
+    // standard markers (N++ uses the same set)
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDER, SC_MARK_BOXPLUS);
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPEN, SC_MARK_BOXMINUS);
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERSUB, SC_MARK_EMPTY);
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEREND, SC_MARK_BOXPLUSCONNECTED);
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPENMID, SC_MARK_BOXMINUSCONNECTED);
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERMIDTAIL, SC_MARK_TCORNER);
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERTAIL, SC_MARK_LCORNER);
+
+    S(SCI_SETPROPERTY, (sptr_t)"fold", (sptr_t)"1");
+    S(SCI_SETPROPERTY, (sptr_t)"fold.compact", (sptr_t)"1");
+}
+
+void ResultDock::_rebuildFolding() const
+{
+    if (!_hSci) return;
+
+    // Get the total number of lines in the control.
+    const int lineCount = static_cast<int>(::SendMessage(_hSci, SCI_GETLINECOUNT, 0, 0));
+    int currentParentLine = -1;
+
+    // Iterate over each line to set its fold level.
+    for (int i = 0; i < lineCount; ++i)
+    {
+        int lineStartPos = static_cast<int>(::SendMessage(_hSci, SCI_POSITIONFROMLINE, i, 0));
+        // Get the first character of the line to check for indentation.
+        int firstChar = static_cast<int>(::SendMessage(_hSci, SCI_GETCHARAT, lineStartPos, 0));
+
+        // Heuristic: Lines that do not start with whitespace are considered headers.
+        bool isHeader = (firstChar != ' ' && firstChar != '\t');
+
+        if (isHeader)
+        {
+            // This line is a parent/header for a collapsible block.
+            ::SendMessage(_hSci, SCI_SETFOLDLEVEL, i, SC_FOLDLEVELBASE | SC_FOLDLEVELHEADERFLAG);
+            currentParentLine = i;
+        }
+        else if (currentParentLine >= 0)
+        {
+            // This line is a child of the current header.
+            ::SendMessage(_hSci, SCI_SETFOLDLEVEL, i, SC_FOLDLEVELBASE + 1);
+        }
+        else
+        {
+            // This line has no parent.
+            ::SendMessage(_hSci, SCI_SETFOLDLEVEL, i, SC_FOLDLEVELBASE);
+        }
+    }
+}
+
+void MultiReplace::populateResultDockText(const std::wstring& wtxt)
+{
+    ResultDock::instance().setText(wtxt);
 }
 
 #pragma endregion
@@ -9089,6 +9347,7 @@ bool MultiReplace::isValidUtf8(const std::string& data) {
 #pragma region FileOperations
 
 std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath) {
+    flags |= OFN_NOCHANGEDIR;
     OPENFILENAME ofn = { 0 };
     WCHAR szFile[MAX_PATH] = { 0 };
 

@@ -39,7 +39,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"panel_add_into_list", L"Add into List" },
 { L"panel_replace_all", L"Replace All" },
 { L"panel_replace", L"Replace" },
-{ L"panel_find_next", L"Find Next" },
+{ L"panel_find_all", L"Find All" },
 { L"panel_find_next_small", L"Find Next"},
 { L"panel_mark_matches", L"Mark Matches" },
 { L"panel_mark_matches_small", L"Mark Matches"},

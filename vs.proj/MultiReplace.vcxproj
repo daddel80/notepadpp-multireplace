@@ -28,6 +28,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
+    <ClInclude Include="..\src\DockingDlgInterface.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
     <ClInclude Include="..\src\HiddenSciGuard.h" />
@@ -64,6 +65,8 @@
     <ClInclude Include="..\src\MultiReplacePanel.h" />
     <ClInclude Include="..\src\Notepad_plus_msgs.h" />
     <ClInclude Include="..\src\PluginDefinition.h" />
+    <ClInclude Include="..\src\ResultDock.h" />
+    <ClInclude Include="..\src\StaticDialog\Docking.h" />
     <ClInclude Include="..\src\StaticDialog\resource.h" />
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
   </ItemGroup>
@@ -143,6 +146,7 @@
     <ClCompile Include="..\src\MultiReplacePanel.cpp" />
     <ClCompile Include="..\src\MultiReplace.cpp" />
     <ClCompile Include="..\src\PluginDefinition.cpp" />
+    <ClCompile Include="..\src\ResultDock.cpp" />
     <ClCompile Include="..\src\StaticDialog\StaticDialog.cpp" />
   </ItemGroup>
   <ItemGroup>

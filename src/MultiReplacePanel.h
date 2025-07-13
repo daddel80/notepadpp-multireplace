@@ -22,6 +22,7 @@
 #include "PluginInterface.h"
 #include "DropTarget.h"
 #include "DPIManager.h"
+#include "ResultDock.h"
 
 #include <string>
 #include <vector>
@@ -757,6 +758,12 @@ private:
     static LRESULT CALLBACK DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     static void CopyListViewToClipboard(HWND hListView);
     static void CloseDebugWindow();
+
+    //Find All
+    void handleFindAllButton();
+    HWND createResultSci();
+    void initResultFolding(HWND hSci);
+    void populateResultDockText(const std::wstring& wtxt);
 
     //Find
     void handleFindNextButton();
