@@ -147,14 +147,20 @@ public:
         fn(pData, SCI_CLEARALL, 0, 0);
         fn(pData, SCI_ADDTEXT, txt.length(), reinterpret_cast<sptr_t>(txt.data()));
     }
-    std::string getText() const {
-        int len = static_cast<int>(fn(pData, SCI_GETLENGTH, 0, 0));
+
+    std::string getText() const
+    {
+        Sci_Position len = fn(pData, SCI_GETLENGTH, 0, 0);
         if (len <= 0) return {};
-        std::string s(len, '\0');
-        Sci_TextRange tr{ {0, len}, &s[0] };
-        fn(pData, SCI_GETTEXTRANGE, 0, reinterpret_cast<sptr_t>(&tr));
-        return s;
+        std::string buf(static_cast<size_t>(len), '\0');
+        Sci_TextRangeFull tr;
+        tr.chrg.cpMin = 0;
+        tr.chrg.cpMax = len;
+        tr.lpstrText = buf.data();
+        fn(pData, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
+        return buf;
     }
+
     void replaceAllInBuffer(const std::string& findUtf8,
         const std::string& replUtf8,
         int searchFlags)
