@@ -152,14 +152,11 @@ public:
     {
         Sci_Position len = fn(pData, SCI_GETLENGTH, 0, 0);
         if (len <= 0) return {};
-
         std::string buf(static_cast<size_t>(len), '\0');
-
         Sci_TextRangeFull tr;
         tr.chrg.cpMin = 0;
         tr.chrg.cpMax = len;
         tr.lpstrText = buf.data();
-
         fn(pData, SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
         return buf;
     }

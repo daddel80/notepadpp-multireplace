@@ -6028,56 +6028,50 @@ void MultiReplace::CloseDebugWindow() {
 
 void MultiReplace::handleFindAllButton()
 {
-    // ---------- early checks ------------------------------------------------
+    // 1) Early validation
     if (!validateDelimiterData())
         return;
 
-    ResultDock::instance().ensureCreatedAndVisible(nppData);
+    // 2) Setup the result-dock and clear previous hits
+    ResultDock& dock = ResultDock::instance();
+    dock.ensureCreatedAndVisible(nppData);
+    dock.clearHits();
 
-    // ---------- Scintilla shortcut lambda -----------------------------------
-    auto sciSend = [this](UINT msg, WPARAM w = 0, LPARAM l = 0) -> LRESULT
-        {
-            return ::SendMessage(_hScintilla, msg, w, l);
+    // 3) Shortcut for sending Scintilla messages
+    auto sciSend = [this](UINT msg, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
+        return ::SendMessage(_hScintilla, msg, w, l);
         };
 
-    // ---------- current file path -------------------------------------------
-    wchar_t pathBuf[MAX_PATH] = {};
-    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH,
-        MAX_PATH, reinterpret_cast<LPARAM>(pathBuf));
+    // 4) Determine current file path
+    wchar_t pathBuf[MAX_PATH]{};
+    ::SendMessage(nppData._nppHandle,
+        NPPM_GETFULLCURRENTPATH,
+        MAX_PATH,
+        reinterpret_cast<LPARAM>(pathBuf));
     std::wstring filePath = *pathBuf ? pathBuf : L"<untitled>";
 
-    // ---------- base search context -----------------------------------------
+    // 5) Base search context
     SearchContext ctx{};
     ctx.docLength = sciSend(SCI_GETLENGTH);
-    ctx.isColumnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED;
-    ctx.isSelectionMode = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED;
-    ctx.retrieveFoundText = false;        // we only dump whole lines
-    ctx.highlightMatch = false;        // Find-All never highlights live
+    ctx.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+    ctx.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    ctx.retrieveFoundText = false;  // only dump whole lines
+    ctx.highlightMatch = false;  // no live highlighting
 
-    std::wstringstream hitsPerFile;       // collects “Line N: …”
+    std::wstringstream hitsPerFile;  // collects “Line N: …”
     int totalHits = 0;
 
-    // helper to append one result line
-    auto appendHit = [&](LRESULT pos)
-        {
-            LRESULT lineIdx = sciSend(SCI_LINEFROMPOSITION, pos);
-            LRESULT lineLen = sciSend(SCI_LINELENGTH, lineIdx);
-
-            std::string utf8(lineLen, '\0');
-            sciSend(SCI_GETLINE, lineIdx,
-                reinterpret_cast<sptr_t>(utf8.data()));
-            utf8.resize(strnlen(utf8.data(), lineLen));
-
-            std::wstring wLine = stringToWString(utf8);
-            wLine.erase(0, wLine.find_first_not_of(L" \t"));   // left-trim
-
-            hitsPerFile << L"    \tLine "
-                << (lineIdx + 1) << L": "
-                << wLine << L"\r\n";
-            ++totalHits;
+    // 6) Helper to append one result‐line
+    auto appendHitText = [&](int lineIdx, const std::wstring& wLine) {
+        hitsPerFile << L"    \tLine " << (lineIdx + 1)
+            << L": " << wLine << L"\r\n";
+        ++totalHits;
         };
 
-    // ---------- list-mode vs. single search ---------------------------------
+    // 7) Keep track of which lines we've already listed
+    std::unordered_set<int> seenLines;
+
+    // 8) Handle list-mode vs single-pattern
     if (useListEnabled)
     {
         if (replaceListData.empty())
@@ -6091,26 +6085,53 @@ void MultiReplace::handleFindAllButton()
         {
             if (!it.isEnabled) continue;
 
-            ctx.findText = convertAndExtendW(it.findText, it.extended);
+            // 8.1) Build escaped/extended UTF-8 pattern
+            std::string patternUtf8 = convertAndExtendW(it.findText, it.extended);
+            ctx.findText = patternUtf8;
+
+            // 8.2) Set search flags
             ctx.searchFlags =
                 (it.wholeWord ? SCFIND_WHOLEWORD : 0)
                 | (it.matchCase ? SCFIND_MATCHCASE : 0)
                 | (it.regex ? SCFIND_REGEXP : 0);
-
             sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
 
+            // 8.3) Iterate all matches
             LRESULT pos = 0;
             while (true)
             {
                 SearchResult r = performSearchForward(ctx, pos);
                 if (r.pos < 0) break;
-                appendHit(r.pos);
+
+                int lineIdx = static_cast<int>(
+                    sciSend(SCI_LINEFROMPOSITION, r.pos));
+
+                // 8.4) Only record/append if this line not seen yet
+                if (seenLines.insert(lineIdx).second)
+                {
+                    dock.recordHit(lineIdx + 1, patternUtf8);
+
+                    // Fetch & trim the full line text for display
+                    LRESULT lineLen = sciSend(SCI_LINELENGTH, lineIdx);
+                    std::string utf8Buf(lineLen, '\0');
+                    sciSend(SCI_GETLINE, lineIdx,
+                        reinterpret_cast<sptr_t>(utf8Buf.data()));
+                    utf8Buf.resize(strnlen(utf8Buf.c_str(), lineLen));
+
+                    std::wstring wLine = stringToWString(utf8Buf);
+                    wLine.erase(0, wLine.find_first_not_of(L" \t"));
+                    wLine.erase(wLine.find_last_not_of(L"\r\n") + 1);
+
+                    appendHitText(lineIdx, wLine);
+                }
+
                 pos = r.pos + r.length;
             }
         }
     }
     else
     {
+        // 8.1) Single-pattern branch: get the term from the UI
         std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         if (findText.empty())
         {
@@ -6118,28 +6139,58 @@ void MultiReplace::handleFindAllButton()
                 MessageStatus::Error);
             return;
         }
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT),
+            findText);
 
-        bool ww = IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED;
-        bool mc = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED;
-        bool rgx = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED;
-        bool ext = IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED;
+        // 8.2) Build escaped/extended UTF-8 pattern
+        bool ww = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+        bool mc = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+        bool rgx = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+        bool ext = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
-        ctx.findText = convertAndExtendW(findText, ext);
-        ctx.searchFlags = (ww ? SCFIND_WHOLEWORD : 0) | (mc ? SCFIND_MATCHCASE : 0) | (rgx ? SCFIND_REGEXP : 0);
+        std::string patternUtf8 = convertAndExtendW(findText, ext);
+        ctx.findText = patternUtf8;
+
+        // 8.3) Set flags
+        ctx.searchFlags =
+            (ww ? SCFIND_WHOLEWORD : 0)
+            | (mc ? SCFIND_MATCHCASE : 0)
+            | (rgx ? SCFIND_REGEXP : 0);
         sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
 
+        // 8.4) Search loop
         LRESULT pos = 0;
         while (true)
         {
             SearchResult r = performSearchForward(ctx, pos);
             if (r.pos < 0) break;
-            appendHit(r.pos);
+
+            int lineIdx = static_cast<int>(
+                sciSend(SCI_LINEFROMPOSITION, r.pos));
+
+            // 8.5) Only record/append if not seen
+            if (seenLines.insert(lineIdx).second)
+            {
+                dock.recordHit(lineIdx + 1, patternUtf8);
+
+                LRESULT lineLen = sciSend(SCI_LINELENGTH, lineIdx);
+                std::string utf8Buf(lineLen, '\0');
+                sciSend(SCI_GETLINE, lineIdx,
+                    reinterpret_cast<sptr_t>(utf8Buf.data()));
+                utf8Buf.resize(strnlen(utf8Buf.c_str(), lineLen));
+
+                std::wstring wLine = stringToWString(utf8Buf);
+                wLine.erase(0, wLine.find_first_not_of(L" \t"));
+                wLine.erase(wLine.find_last_not_of(L"\r\n") + 1);
+
+                appendHitText(lineIdx, wLine);
+            }
+
             pos = r.pos + r.length;
         }
     }
 
-    // ---------- nothing found -----------------------------------------------
+    // 9) Nothing found?
     if (!totalHits)
     {
         showStatusMessage(getLangStr(L"status_no_matches_found"),
@@ -6147,10 +6198,11 @@ void MultiReplace::handleFindAllButton()
         return;
     }
 
-    // ---------- build final Search-Result text ------------------------------
+    // 10) Build and show the final result buffer
     std::wstring header = L"Search \""
-        + (useListEnabled ? std::wstring(L"[list-mode]") :
-            getTextFromDialogItem(_hSelf, IDC_FIND_EDIT))
+        + (useListEnabled
+            ? std::wstring(L"[list-mode]")
+            : getTextFromDialogItem(_hSelf, IDC_FIND_EDIT))
         + L"\" (" + std::to_wstring(totalHits) + L" hits in 1 files)\r\n";
 
     std::wstring fileHdr = L"  \t" + filePath + L" ("
@@ -6158,11 +6210,12 @@ void MultiReplace::handleFindAllButton()
 
     populateResultDockText(header + fileHdr + hitsPerFile.str());
 
-    showStatusMessage(getLangStr(L"status_occurrences_found",
-        { std::to_wstring(totalHits) }),
+    // 11) Status message
+    showStatusMessage(
+        getLangStr(L"status_occurrences_found",
+            { std::to_wstring(totalHits) }),
         MessageStatus::Success);
 }
-
 HWND MultiReplace::createResultSci()
 {
     return ::CreateWindowExW(0, L"Scintilla", nullptr,
@@ -6195,46 +6248,9 @@ void MultiReplace::initResultFolding(HWND hSci)
     S(SCI_SETPROPERTY, (sptr_t)"fold.compact", (sptr_t)"1");
 }
 
-void ResultDock::_rebuildFolding() const
-{
-    if (!_hSci) return;
-
-    // Get the total number of lines in the control.
-    const int lineCount = static_cast<int>(::SendMessage(_hSci, SCI_GETLINECOUNT, 0, 0));
-    int currentParentLine = -1;
-
-    // Iterate over each line to set its fold level.
-    for (int i = 0; i < lineCount; ++i)
-    {
-        int lineStartPos = static_cast<int>(::SendMessage(_hSci, SCI_POSITIONFROMLINE, i, 0));
-        // Get the first character of the line to check for indentation.
-        int firstChar = static_cast<int>(::SendMessage(_hSci, SCI_GETCHARAT, lineStartPos, 0));
-
-        // Heuristic: Lines that do not start with whitespace are considered headers.
-        bool isHeader = (firstChar != ' ' && firstChar != '\t');
-
-        if (isHeader)
-        {
-            // This line is a parent/header for a collapsible block.
-            ::SendMessage(_hSci, SCI_SETFOLDLEVEL, i, SC_FOLDLEVELBASE | SC_FOLDLEVELHEADERFLAG);
-            currentParentLine = i;
-        }
-        else if (currentParentLine >= 0)
-        {
-            // This line is a child of the current header.
-            ::SendMessage(_hSci, SCI_SETFOLDLEVEL, i, SC_FOLDLEVELBASE + 1);
-        }
-        else
-        {
-            // This line has no parent.
-            ::SendMessage(_hSci, SCI_SETFOLDLEVEL, i, SC_FOLDLEVELBASE);
-        }
-    }
-}
-
 void MultiReplace::populateResultDockText(const std::wstring& wtxt)
 {
-    ResultDock::instance().setText(wtxt);
+    ResultDock::instance().prependText(wtxt);
 }
 
 #pragma endregion
