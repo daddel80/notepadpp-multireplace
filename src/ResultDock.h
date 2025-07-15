@@ -9,11 +9,7 @@
 class ResultDock
 {
 private:
-    struct Hit {
-        int           fileLine;    // 1-based file line number
-        std::string   findUtf8;    // exact UTF-8 search pattern
-    };
-    std::vector<Hit> _hits;        // one entry per visible “Line N: …” in the dock
+    
 
     // The subclass procedure is still needed to handle the close button.
     static LRESULT CALLBACK sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
@@ -35,6 +31,13 @@ private:
     HWND      _hDock = nullptr;   // Handle to the dockable container window returned by Notepad++.
 
 public:
+    struct Hit {
+        std::string fullPathUtf8;
+        Sci_Position pos;
+        Sci_Position length;
+    };
+    std::vector<Hit> _hits;        // one entry per visible “Line N: …” in the dock
+
     // Singleton accessor
     static ResultDock& instance();
 
@@ -56,11 +59,14 @@ public:
 
     void _applyTheme();
 
-    // Clear all recorded hits (call before running a new Find All)
-    void clearHits();
+    // Replace recordHit with a straight push_back if you ever need it:
+    void recordHit(const std::string& fullPathUtf8, Sci_Position pos, Sci_Position length);
 
-    // Record one hit (fileLine is 1-based, findUtf8 is the exact pattern)
-    void recordHit(int fileLine, const std::string& findUtf8);
+    // New prependHits: insert _and_ update the view in one go.
+    void prependHits(const std::vector<Hit>& newHits, const std::wstring& text);
+
+    // Clear everything (if you ever need a full reset):
+    void clearAll();
 
     // Expose hits for your double-click handler
     const std::vector<Hit>& hits() const { return _hits; }

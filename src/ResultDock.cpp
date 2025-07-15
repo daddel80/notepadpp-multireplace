@@ -45,123 +45,99 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
     {
     case WM_LBUTTONDBLCLK:
     {
-        // 0) Save the current scroll position
-        LRESULT firstVisibleLine = ::SendMessage(
-            hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0);
-
-        // 1) Hit-test to find which buffer line was clicked
+        // 0) Get the display line number that was clicked.
         int x = static_cast<short>(LOWORD(lp));
         int y = static_cast<short>(HIWORD(lp));
-        Sci_Position pos = static_cast<Sci_Position>(
-            ::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y));
-        int displayLine = static_cast<int>(
-            ::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0));
+        Sci_Position pos = static_cast<Sci_Position>(::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y));
+        int dispLine = static_cast<int>(::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0));
 
-        // 2) Convert to hit index (skip the two header lines)
-        constexpr int headerLines = 2;
-        int hitIndex = displayLine - headerLines;
-        const auto& hits = ResultDock::instance().hits();
-        if (hitIndex < 0 || hitIndex >= static_cast<int>(hits.size()))
-        {
-            // Click was outside of actual hits: restore scroll and consume
-            ::SendMessage(hwnd,
-                SCI_SETFIRSTVISIBLELINE,
-                firstVisibleLine,
-                0);
+        // --- DEFINITIVE FIX FOR HIT DETECTION ---
+
+        // 1. Define the EXACT prefix for a hit line, including the tab character.
+        const std::string hitLinePrefix = "    \tLine ";
+
+        // 2. Check if the clicked line is a valid hit line.
+        int lineLength = static_cast<int>(::SendMessage(hwnd, SCI_LINELENGTH, dispLine, 0));
+        if (lineLength < static_cast<int>(hitLinePrefix.length())) {
+            return 0; // Line is too short to be a hit.
+        }
+
+        std::string clickedLineText(lineLength, '\0');
+        ::SendMessage(hwnd, SCI_GETLINE, dispLine, reinterpret_cast<LPARAM>(&clickedLineText[0]));
+
+        if (clickedLineText.rfind(hitLinePrefix, 0) != 0) {
+            // The user clicked on a header or a blank line, not a hit. Do nothing.
             return 0;
+        }
+
+        // 3. Calculate the correct index by counting all preceding lines that are also hits.
+        int hitIndex = -1;
+        for (int i = 0; i <= dispLine; ++i) {
+            int len = static_cast<int>(::SendMessage(hwnd, SCI_LINELENGTH, i, 0));
+            if (len >= static_cast<int>(hitLinePrefix.length())) {
+                std::string lineContent(len, '\0');
+                ::SendMessage(hwnd, SCI_GETLINE, i, reinterpret_cast<LPARAM>(&lineContent[0]));
+                if (lineContent.rfind(hitLinePrefix, 0) == 0) {
+                    hitIndex++; // This is a hit line, increment our index counter.
+                }
+            }
+        }
+
+        // 4. Access the hit data using the correctly calculated index.
+        const auto& hits = ResultDock::instance().hits();
+        if (hitIndex < 0 || hitIndex >= static_cast<int>(hits.size())) {
+            return 0; // Safeguard.
         }
         const auto& hit = hits[hitIndex];
 
-        // 3) Jump main editor to the hit’s line and select the pattern
-        {
-            HWND mainEditor = nppData._scintillaMainHandle;
-            ::SendMessage(mainEditor,
-                SCI_GOTOLINE,
-                hit.fileLine - 1,
-                0);
-            ::SendMessage(mainEditor,
-                SCI_ENSUREVISIBLEENFORCEPOLICY,
-                hit.fileLine - 1,
-                0);
+        // --- End of Fix ---
 
-            // Restrict search to that line
-            Sci_Position lineStart = static_cast<Sci_Position>(
-                ::SendMessage(mainEditor,
-                    SCI_POSITIONFROMLINE,
-                    hit.fileLine - 1,
-                    0));
-            Sci_Position lineEnd = static_cast<Sci_Position>(
-                ::SendMessage(mainEditor,
-                    SCI_GETLINEENDPOSITION,
-                    hit.fileLine - 1,
-                    0));
-            ::SendMessage(mainEditor,
-                SCI_SETTARGETRANGE,
-                lineStart,
-                lineEnd);
+        // The rest of the logic for jumping to the file remains the same.
+        LRESULT firstVis = ::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0);
 
-            // Search for exact UTF-8 pattern
-            ::SendMessage(mainEditor,
-                SCI_SEARCHINTARGET,
-                static_cast<WPARAM>(hit.findUtf8.length()),
-                reinterpret_cast<LPARAM>(hit.findUtf8.c_str()));
-            // Highlight it
-            ::SendMessage(mainEditor,
-                SCI_SETSEL,
-                ::SendMessage(mainEditor, SCI_GETTARGETSTART, 0, 0),
-                ::SendMessage(mainEditor, SCI_GETTARGETEND, 0, 0));
+        std::wstring widePath;
+        if (!hit.fullPathUtf8.empty()) {
+            int wlen = ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, nullptr, 0);
+            if (wlen > 0) {
+                widePath.resize(wlen - 1);
+                ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, &widePath[0], wlen);
+            }
         }
 
-        // --- START OF CORRECTIONS ---
+        ::SendMessage(nppData._nppHandle, NPPM_SWITCHTOFILE, 0, reinterpret_cast<LPARAM>(widePath.c_str()));
 
-        // 4) Place caret in the dock at the start of the clicked line
-        Sci_Position dockLineStartPos = static_cast<Sci_Position>(
-            ::SendMessage(hwnd,
-                SCI_POSITIONFROMLINE,
-                displayLine,
-                0));
-        ::SendMessage(hwnd,
-            SCI_SETEMPTYSELECTION,
-            dockLineStartPos,
-            0);
+        HWND hEd = nppData._scintillaMainHandle;
+        if (hEd)
+        {
+            int targetLine = static_cast<int>(::SendMessage(hEd, SCI_LINEFROMPOSITION, hit.pos, 0));
+            ::SendMessage(hEd, SCI_GOTOLINE, targetLine, 0);
+            ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY, targetLine, 0);
+            ::SendMessage(hEd, SCI_SETSEL, hit.pos, hit.pos + hit.length);
+            ::SetFocus(hEd);
+        }
 
-        // 5) Restore the dock’s original scroll position
-        ::SendMessage(hwnd,
-            SCI_SETFIRSTVISIBLELINE,
-            firstVisibleLine,
-            0);
-
-        // 6) Focus the dock so its caret-line highlight remains visible
+        Sci_Position dockPos = static_cast<Sci_Position>(::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0));
+        ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockPos, 0);
+        ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVis, 0);
         ::SetFocus(hwnd);
 
-        // --- END OF CORRECTIONS ---
-
-        // 7) Consume the double-click so Scintilla’s default handler won’t scroll
         return 0;
     }
 
+    // ... (WM_NCDESTROY and DMN_CLOSE cases remain the same) ...
     case WM_NCDESTROY:
     {
-        // Restore the original Scintilla WNDPROC
-        ::SetWindowLongPtr(hwnd,
-            GWLP_WNDPROC,
-            reinterpret_cast<LONG_PTR>(s_prevSciProc));
+        //::RemoveWindowSubclass(hwnd, &sciSubclassProc, 0);
         s_prevSciProc = nullptr;
         break;
     }
-
     case DMN_CLOSE:
     {
-        // Hide the dock when its close button is clicked
-        ::SendMessage(nppData._nppHandle,
-            NPPM_DMMHIDE,
-            0,
-            reinterpret_cast<LPARAM>(hwnd));
+        ::SendMessage(nppData._nppHandle, NPPM_DMMHIDE, 0, reinterpret_cast<LPARAM>(hwnd));
         break;
     }
     }
 
-    // Forward all other messages to the previous proc
     if (s_prevSciProc)
         return ::CallWindowProc(s_prevSciProc, hwnd, msg, wp, lp);
 
@@ -410,7 +386,6 @@ void ResultDock::_initFolding() const
     }
 }
 
-
 void ResultDock::_rebuildFolding() const
 {
     if (!_hSci) return;
@@ -434,39 +409,53 @@ void ResultDock::_rebuildFolding() const
     }
 }
 
-// ResultDock.cpp
 void ResultDock::prependText(const std::wstring& wText)
 {
-    if (!_hSci) return;
+    if (!_hSci || wText.empty()) {
+        return;
+    }
 
-    // UTF-16 → UTF-8 helper (same as the one used in setText)
-    auto w2u = [](const std::wstring& ws)->std::string
-    {
-        if (ws.empty()) return {};
-        int len = ::WideCharToMultiByte(CP_UTF8,0,ws.data(),
-                                        (int)ws.size(),nullptr,0,nullptr,nullptr);
-        std::string out(len, '\0');
-        ::WideCharToMultiByte(CP_UTF8,0,ws.data(),(int)ws.size(),
-                              out.data(),len,nullptr,nullptr);
-        return out;
-    };
+    // Convert the incoming wide string (UTF-16) to a UTF-8 encoded std::string.
+    std::string utf8Text;
+    int len = ::WideCharToMultiByte(CP_UTF8, 0, wText.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (len > 1) {
+        utf8Text.resize(len - 1);
+        ::WideCharToMultiByte(CP_UTF8, 0, wText.c_str(), -1, &utf8Text[0], len, nullptr, nullptr);
+    }
+    else {
+        return; // Nothing to insert.
+    }
 
-    std::string utf8 = w2u(wText);
+    // --- FIX: Add a separating newline if the dock is not empty ---
+    LRESULT currentLength = ::SendMessage(_hSci, SCI_GETLENGTH, 0, 0);
+    if (currentLength > 0) {
+        // Prepend a newline to separate this block from the previous one.
+        utf8Text.insert(0, "\r\n");
+    }
+    // --- End of FIX ---
+
+    // Temporarily make the control writable if it's in read-only mode.
+    bool isReadOnly = (::SendMessage(_hSci, SCI_GETREADONLY, 0, 0) != 0);
+    if (isReadOnly) {
+        ::SendMessage(_hSci, SCI_SETREADONLY, 0, 0);
+    }
 
     ::SendMessage(_hSci, SCI_BEGINUNDOACTION, 0, 0);
 
-    // add CR/LF before existing text if buffer is not empty
-    if (::SendMessage(_hSci, SCI_GETLENGTH, 0, 0) > 0)
-        ::SendMessage(_hSci, SCI_INSERTTEXT, 0, (LPARAM)"\r\n");
-
-    // insert new block at buffer start
-    ::SendMessage(_hSci, SCI_INSERTTEXT, 0, (LPARAM)utf8.c_str());
+    // Insert the correctly converted UTF-8 text at the beginning of the document.
+    ::SendMessage(_hSci, SCI_INSERTTEXT, 0, reinterpret_cast<LPARAM>(utf8Text.c_str()));
 
     ::SendMessage(_hSci, SCI_ENDUNDOACTION, 0, 0);
 
-    _rebuildFolding();   // rebuild fold levels incl. new header
-}
+    // Restore read-only state if it was set.
+    if (isReadOnly) {
+        ::SendMessage(_hSci, SCI_SETREADONLY, 1, 0);
+    }
 
+    // After prepending, the entire view needs to be restyled and folded again.
+    _rebuildFolding();
+    _applyTheme();
+}
 
 void ResultDock::appendText(const std::wstring& wText)
 {
@@ -504,10 +493,57 @@ void ResultDock::appendText(const std::wstring& wText)
     _rebuildFolding();          // refresh fold map incl. new header
 }
 
-void ResultDock::clearHits() {
-    _hits.clear();
+void ResultDock::recordHit(const std::string& fullPathUtf8, Sci_Position pos, Sci_Position length) {
+    _hits.push_back({ fullPathUtf8, pos, length });
 }
 
-void ResultDock::recordHit(int fileLine, const std::string& findUtf8) {
-    _hits.push_back({ fileLine, findUtf8 });
+void ResultDock::clearAll() {
+    _hits.clear();
+    if (_hSci) {
+        ::SendMessage(_hSci, SCI_CLEARALL, 0, 0);
+    }
+}
+
+void ResultDock::prependHits(const std::vector<Hit>& newHits, const std::wstring& text)
+{
+    // 1) Prepend the new data to the internal data model.
+    _hits.insert(_hits.begin(), newHits.begin(), newHits.end());
+
+    if (!_hSci || text.empty()) {
+        return;
+    }
+
+    // 2) Convert the incoming wstring (UTF-16) to a UTF-8 encoded std::string.
+    std::string utf8PrependedText;
+    int len = ::WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (len > 1) {
+        utf8PrependedText.resize(len - 1);
+        ::WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, &utf8PrependedText[0], len, nullptr, nullptr);
+    }
+    else {
+        return; // Nothing to insert.
+    }
+
+    // --- FINAL FIX FOR SEPARATION ---
+    // 3) Check if the dock already contains text. If so, add a separator.
+    LRESULT currentLength = ::SendMessage(_hSci, SCI_GETLENGTH, 0, 0);
+    if (currentLength > 0) {
+        // Prepend a newline to the new text block to separate it from the old content.
+        utf8PrependedText.insert(0, "\r\n");
+    }
+    // --- End of FIX ---
+
+    // 4) Inject the correctly formatted and separated text at the top of the Scintilla control.
+    ::SendMessage(_hSci, SCI_SETREADONLY, FALSE, 0);
+    ::SendMessage(_hSci, SCI_BEGINUNDOACTION, 0, 0);
+
+    // Using SCI_INSERTTEXT at position 0 is the most direct way to prepend.
+    ::SendMessage(_hSci, SCI_INSERTTEXT, 0, reinterpret_cast<LPARAM>(utf8PrependedText.c_str()));
+
+    ::SendMessage(_hSci, SCI_ENDUNDOACTION, 0, 0);
+    ::SendMessage(_hSci, SCI_SETREADONLY, TRUE, 0);
+
+    // 5) After prepending, the entire view needs to be restyled and folded again.
+    _rebuildFolding();
+    _applyTheme();
 }
