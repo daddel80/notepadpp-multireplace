@@ -120,24 +120,28 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             NPPM_SWITCHTOFILE, 0,
             (LPARAM)wpath.c_str());
 
-        // 8) Jump + select
+        // 8) Jump + select in the editor
         HWND hEd = nppData._scintillaMainHandle;
         int targetLine = (int)::SendMessage(hEd, SCI_LINEFROMPOSITION, hit.pos, 0);
         ::SendMessage(hEd, SCI_GOTOLINE, targetLine, 0);
         ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY, targetLine, 0);
         ::SendMessage(hEd, SCI_SETSEL, hit.pos, hit.pos + hit.length);
-        ::SetFocus(hEd);
+        // no SetFocus(hEd)
 
         // 9) Restore dock scroll
         ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
 
+        // 10) Clear selection in the dock
+        Sci_Position dockPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
+        ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockPos, 0);
+
+        // 11) Give focus back to the dock control so its caret‐line highlight stays visible
+        ::SetFocus(hwnd);
         return 0;
     }
 
     case DMN_CLOSE:
-        ::SendMessage(nppData._nppHandle,
-            NPPM_DMMHIDE, 0,
-            (LPARAM)ResultDock::instance()._hDock);
+        ::SendMessage(nppData._nppHandle, NPPM_DMMHIDE, 0, (LPARAM)ResultDock::instance()._hDock);
         return TRUE;
 
     case WM_NCDESTROY:
