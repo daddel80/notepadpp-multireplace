@@ -6025,125 +6025,282 @@ void MultiReplace::CloseDebugWindow() {
 
 
 #pragma region Find All
-
 void MultiReplace::handleFindAllButton()
 {
+    // 1) Early exit if delimiters invalid
     if (!validateDelimiterData())
         return;
 
-    // 1) Prepare dock (DON’T clear old hits – we prepend)
+    // 2) Prepare the result dock
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
+    //dock.clearAll(); // ← AUSKOMMENTIERT, damit ältere Treffer erhalten bleiben
 
-    // 2) Scintilla shortcut
+    // 3) Scintilla message helper
     auto sciSend = [this](UINT msg, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
         return ::SendMessage(_hScintilla, msg, w, l);
         };
 
-    // 3) Get current file path (wide → UTF-8)
-    wchar_t buf[MAX_PATH] = {};
+    // 4) Get current file path (wide → UTF-8)
+    wchar_t filePathBuf[MAX_PATH] = {};
     ::SendMessage(nppData._nppHandle,
         NPPM_GETFULLCURRENTPATH,
         MAX_PATH,
-        reinterpret_cast<LPARAM>(buf));
-    std::wstring wPath = *buf ? buf : L"<untitled>";
-    std::string utf8Path = wstringToUtf8(wPath);
+        reinterpret_cast<LPARAM>(filePathBuf));
+    std::wstring wFilePath = *filePathBuf ? filePathBuf : L"<untitled>";
+    std::string utf8FilePath = wstringToUtf8(wFilePath);
 
-    // 4) Prepare batch of hits + the display text block
-    std::vector<ResultDock::Hit> newHits;
-    std::wstringstream ss;
-    int totalHits = 0;
-
-    // — build header (we’ll patch the hit-count in a moment)
-    ss << L"Search \""
-        << getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)
-        << L"\" ( hits in 1 files)\r\n";
-    // — file header —
-    ss << L"  \t" << wPath << L" ( hits)\r\n";
-
-    // 5) Set up SearchContext
+    // 5) Base search context
     SearchContext ctx{};
     ctx.docLength = sciSend(SCI_GETLENGTH);
     ctx.retrieveFoundText = false;
     ctx.highlightMatch = false;
 
-    // 6) Build the UTF-8 search pattern from the dialog’s wide string
-    std::wstring wFind = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-    if (wFind.empty()) {
-        showStatusMessage(
-            getLangStr(L"status_no_search_string"),
-            MessageStatus::Error);
-        return;
+    // 6) Containers for this run
+    std::vector<ResultDock::Hit> allHits;
+    std::wstringstream           displayText;
+    int                           totalHits = 0;
+
+    if (useListEnabled)
+    {
+        // --- LIST MODE ---
+        if (replaceListData.empty())
+        {
+            showStatusMessage(
+                getLangStr(L"status_add_values_or_uncheck"),
+                MessageStatus::Error
+            );
+            return;
+        }
+
+        // Root header (wird einmal ganz oben stehen, älter wird nach unten geschoben)
+        displayText
+            << L"Search in List ("
+            << totalHits << L" total hits in ";
+
+        std::set<std::string> filesSeen;
+        for (auto const& item : replaceListData)
+            if (item.isEnabled && !item.findText.empty())
+                filesSeen.insert(utf8FilePath);
+        displayText
+            << filesSeen.size()
+            << L" files)\r\n";
+
+        // Per-list-item searches
+        for (auto const& item : replaceListData)
+        {
+            if (!item.isEnabled || item.findText.empty()) continue;
+
+            // Configure context
+            ctx.findText = convertAndExtendW(item.findText, item.extended);
+            ctx.searchFlags =
+                (item.wholeWord ? SCFIND_WHOLEWORD : 0)
+                | (item.matchCase ? SCFIND_MATCHCASE : 0)
+                | (item.regex ? SCFIND_REGEXP : 0);
+            sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+
+            // Track hits
+            size_t startIndex = allHits.size();
+            int    hitsInThisFile = 0;
+
+            // Collect matches
+            LRESULT pos = 0;
+            while (true)
+            {
+                SearchResult r = performSearchForward(ctx, pos);
+                if (r.pos < 0) break;
+                pos = r.pos + r.length;
+
+                allHits.push_back({
+                    utf8FilePath,
+                    static_cast<Sci_Position>(r.pos),
+                    static_cast<Sci_Position>(r.length)
+                    });
+                ++hitsInThisFile;
+                ++totalHits;
+            }
+
+            if (hitsInThisFile > 0)
+            {
+                // Term header
+                displayText
+                    << L"\tSearch \""
+                    << item.findText
+                    << L"\" ("
+                    << hitsInThisFile
+                    << L" hits in 1 file)\r\n";
+
+                // File line
+                displayText
+                    << L"\t\t"
+                    << wFilePath
+                    << L" ("
+                    << hitsInThisFile
+                    << L" hits)\r\n";
+
+                // Match lines
+                for (size_t i = startIndex; i < startIndex + hitsInThisFile; ++i)
+                {
+                    int lineNum = static_cast<int>(
+                        sciSend(SCI_LINEFROMPOSITION, allHits[i].pos)
+                        ) + 1;
+
+                    LRESULT lineLen = sciSend(SCI_LINELENGTH, lineNum - 1);
+                    std::string lineUtf8(lineLen, '\0');
+                    sciSend(SCI_GETLINE, lineNum - 1,
+                        reinterpret_cast<LPARAM>(&lineUtf8[0]));
+                    lineUtf8.resize(strnlen(lineUtf8.c_str(), lineLen));
+                    std::wstring wLine = stringToWString(lineUtf8);
+                    wLine.erase(0, wLine.find_first_not_of(L" \t"));
+                    wLine.erase(wLine.find_last_not_of(L"\r\n") + 1);
+
+                    displayText
+                        << L"\t\t\tLine "
+                        << lineNum
+                        << L": "
+                        << wLine
+                        << L"\r\n";
+                }
+            }
+        }
     }
-    // ** convert wide → UTF-8 **
-    ctx.findText = wstringToUtf8(wFind);
+    else
+    {
+        // --- SINGLE MODE ---
+        std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        if (findText.empty())
+        {
+            showStatusMessage(
+                getLangStr(L"status_no_search_string"),
+                MessageStatus::Error
+            );
+            return;
+        }
+        addStringToComboBoxHistory(
+            GetDlgItem(_hSelf, IDC_FIND_EDIT),
+            findText
+        );
 
-    // 7) Set flags
-    bool ww = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-    bool mc = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-    bool rgx = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-    //bool ext = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-    ctx.searchFlags = (ww ? SCFIND_WHOLEWORD : 0)
-        | (mc ? SCFIND_MATCHCASE : 0)
-        | (rgx ? SCFIND_REGEXP : 0);
-    sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+        ctx.findText = convertAndExtendW(
+            findText,
+            (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED)
+        );
+        ctx.searchFlags =
+            (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
+            | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
+            | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+        sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
 
-    // 8) Perform the search & collect hits
-    LRESULT pos = 0;
-    while (true) {
-        SearchResult r = performSearchForward(ctx, pos);
-        if (r.pos < 0) break;
-        pos = r.pos + r.length;
+        // Header
+        displayText
+            << L"Search \""
+            << findText
+            << L"\" (";
 
-        // record exact buffer range + file
-        newHits.push_back({ utf8Path,
-                            static_cast<Sci_Position>(r.pos),
-                            static_cast<Sci_Position>(r.length) });
+        size_t hitsInThisFile = 0;
+        LRESULT pos = 0;
+        while (true)
+        {
+            SearchResult r = performSearchForward(ctx, pos);
+            if (r.pos < 0) break;
+            pos = r.pos + r.length;
 
-        // fetch line text for display
-        int lineIdx = static_cast<int>(
-            sciSend(SCI_LINEFROMPOSITION, r.pos));
-        LRESULT lineLen = sciSend(SCI_LINELENGTH, lineIdx);
-        std::string bufA(lineLen, '\0');
-        sciSend(SCI_GETLINE, lineIdx,
-            reinterpret_cast<sptr_t>(bufA.data()));
-        bufA.resize(strnlen(bufA.c_str(), lineLen));
-        std::wstring wLine = stringToWString(bufA);
-        wLine.erase(0, wLine.find_first_not_of(L" \t"));
-        wLine.erase(wLine.find_last_not_of(L"\r\n") + 1);
+            allHits.push_back({
+                utf8FilePath,
+                static_cast<Sci_Position>(r.pos),
+                static_cast<Sci_Position>(r.length)
+                });
+            ++hitsInThisFile;
+            ++totalHits;
+        }
 
-        // append the display line
-        ss << L"    \tLine " << (lineIdx + 1)
-            << L": " << wLine << L"\r\n";
-        ++totalHits;
+        if (hitsInThisFile == 0)
+        {
+            showStatusMessage(
+                getLangStr(L"status_no_matches_found"),
+                MessageStatus::Error, true
+            );
+            return;
+        }
+
+        displayText
+            << hitsInThisFile
+            << L" hits in 1 file)\r\n"
+            << L"\t" << wFilePath
+            << L" (" << hitsInThisFile << L" hits)\r\n";
+
+        size_t startIdx = allHits.size() - hitsInThisFile;
+        for (size_t i = startIdx; i < allHits.size(); ++i)
+        {
+            int lineNum = static_cast<int>(
+                sciSend(SCI_LINEFROMPOSITION, allHits[i].pos)
+                ) + 1;
+
+            LRESULT lineLen2 = sciSend(SCI_LINELENGTH, lineNum - 1);
+            std::string lineUtf82(lineLen2, '\0');
+            sciSend(SCI_GETLINE, lineNum - 1,
+                reinterpret_cast<LPARAM>(&lineUtf82[0]));
+            lineUtf82.resize(strnlen(lineUtf82.c_str(), lineLen2));
+            std::wstring wLine2 = stringToWString(lineUtf82);
+            wLine2.erase(0, wLine2.find_first_not_of(L" \t"));
+            wLine2.erase(wLine2.find_last_not_of(L"\r\n") + 1);
+
+            displayText
+                << L"\t\tLine "
+                << lineNum
+                << L": "
+                << wLine2
+                << L"\r\n";
+        }
     }
 
-    // 9) No hits? bail out
-    if (totalHits == 0) {
-        showStatusMessage(
-            getLangStr(L"status_no_matches_found"),
-            MessageStatus::Error, true);
-        return;
-    }
-
-    // 10) Patch the placeholder counts in our header block
-    std::wstring text = ss.str();
-    // replace "( hits" → "(N hits"
-    if (auto p = text.find(L"( hits"); p != std::wstring::npos) {
-        text.replace(p, 6, L"(" + std::to_wstring(totalHits));
-    }
-    // replace " ( hits)" in the file-header
-    if (auto q = text.find(L" ( hits)"); q != std::wstring::npos) {
-        text.replace(q, 8, L" (" + std::to_wstring(totalHits) + L")");
-    }
-
-    // 11) Prepend into the dock (older batches remain below)
-    dock.prependHits(newHits, text);
-
+    // 7) Push into dock and update status
+    dock.prependHits(allHits, displayText.str());
     showStatusMessage(
-        getLangStr(L"status_occurrences_found",
-            { std::to_wstring(totalHits) }),
-        MessageStatus::Success);
+        getLangStr(
+            L"status_occurrences_found",
+            { std::to_wstring(totalHits) }
+        ),
+        MessageStatus::Success
+    );
+
+    /*
+    // ────────────────────────────────
+    // Debug: MessageBox mit allen Hit-Infos
+    {
+        std::wstringstream dbg;
+        dbg << L"=== Hit Debug Info ===\r\n";
+        const auto& hits = ResultDock::instance().hits();
+        for (size_t i = 0; i < hits.size(); ++i) {
+            const auto& h = hits[i];
+            int wlen = ::MultiByteToWideChar(
+                CP_UTF8, 0,
+                h.fullPathUtf8.c_str(), -1,
+                nullptr, 0
+            );
+            std::wstring wpath;
+            if (wlen > 0) {
+                wpath.resize(wlen - 1);
+                ::MultiByteToWideChar(
+                    CP_UTF8, 0,
+                    h.fullPathUtf8.c_str(), -1,
+                    &wpath[0], wlen
+                );
+            }
+            dbg
+                << L"[" << i << L"] "
+                << wpath
+                << L"  pos=" << h.pos
+                << L"  len=" << h.length
+                << L"\r\n";
+        }
+        ::MessageBoxW(
+            nppData._nppHandle,
+            dbg.str().c_str(),
+            L"MultiReplace Hit Debug",
+            MB_OK
+        );
+    }*/
 }
 
 HWND MultiReplace::createResultSci()

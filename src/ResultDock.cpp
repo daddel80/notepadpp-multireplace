@@ -41,107 +41,106 @@ void ResultDock::ensureCreatedAndVisible(const NppData& npp)
 
 LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
+    extern NppData nppData;
+    const std::string marker = "Line ";
+
     switch (msg)
     {
-    case WM_LBUTTONDBLCLK:
+    case WM_NOTIFY:
     {
-        // 0) Get the display line number that was clicked.
-        int x = static_cast<short>(LOWORD(lp));
-        int y = static_cast<short>(HIWORD(lp));
-        Sci_Position pos = static_cast<Sci_Position>(::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y));
-        int dispLine = static_cast<int>(::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0));
-
-        // --- DEFINITIVE FIX FOR HIT DETECTION ---
-
-        // 1. Define the EXACT prefix for a hit line, including the tab character.
-        const std::string hitLinePrefix = "    \tLine ";
-
-        // 2. Check if the clicked line is a valid hit line.
-        int lineLength = static_cast<int>(::SendMessage(hwnd, SCI_LINELENGTH, dispLine, 0));
-        if (lineLength < static_cast<int>(hitLinePrefix.length())) {
-            return 0; // Line is too short to be a hit.
-        }
-
-        std::string clickedLineText(lineLength, '\0');
-        ::SendMessage(hwnd, SCI_GETLINE, dispLine, reinterpret_cast<LPARAM>(&clickedLineText[0]));
-
-        if (clickedLineText.rfind(hitLinePrefix, 0) != 0) {
-            // The user clicked on a header or a blank line, not a hit. Do nothing.
+        SCNotification* scn = reinterpret_cast<SCNotification*>(lp);
+        if (scn->nmhdr.code == SCN_MARGINCLICK && scn->margin == 2)
+        {
+            int line = (int)::SendMessage(hwnd, SCI_LINEFROMPOSITION, scn->position, 0);
+            ::SendMessage(hwnd, SCI_TOGGLEFOLD, line, 0);
             return 0;
         }
+        break;
+    }
 
-        // 3. Calculate the correct index by counting all preceding lines that are also hits.
+    case WM_LBUTTONDBLCLK:
+    {
+        // 1) Remember scroll
+        LRESULT firstVisible = ::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0);
+
+        // 2) Which display‐line was clicked?
+        int x = (short)LOWORD(lp), y = (short)HIWORD(lp);
+        Sci_Position pos = ::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y);
+        int dispLine = (int)::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0);
+
+        // 3) Read the raw text of that line
+        int lineLen = (int)::SendMessage(hwnd, SCI_LINELENGTH, dispLine, 0);
+        std::string raw(lineLen, '\0');
+        ::SendMessage(hwnd, SCI_GETLINE, dispLine, (LPARAM)&raw[0]);
+        raw.resize(strnlen(raw.c_str(), lineLen));
+
+        // 4) Bail if this line does *not* contain "Line "
+        if (raw.find(marker) == std::string::npos)
+            return 0;
+
+        // 5) Count *all* previous "Line " occurrences to get our hitIndex
         int hitIndex = -1;
-        for (int i = 0; i <= dispLine; ++i) {
-            int len = static_cast<int>(::SendMessage(hwnd, SCI_LINELENGTH, i, 0));
-            if (len >= static_cast<int>(hitLinePrefix.length())) {
-                std::string lineContent(len, '\0');
-                ::SendMessage(hwnd, SCI_GETLINE, i, reinterpret_cast<LPARAM>(&lineContent[0]));
-                if (lineContent.rfind(hitLinePrefix, 0) == 0) {
-                    hitIndex++; // This is a hit line, increment our index counter.
-                }
-            }
+        for (int i = 0; i <= dispLine; ++i)
+        {
+            int len = (int)::SendMessage(hwnd, SCI_LINELENGTH, i, 0);
+            std::string buf(len, '\0');
+            ::SendMessage(hwnd, SCI_GETLINE, i, (LPARAM)&buf[0]);
+            buf.resize(strnlen(buf.c_str(), len));
+            if (buf.find(marker) != std::string::npos)
+                ++hitIndex;
         }
 
-        // 4. Access the hit data using the correctly calculated index.
         const auto& hits = ResultDock::instance().hits();
-        if (hitIndex < 0 || hitIndex >= static_cast<int>(hits.size())) {
-            return 0; // Safeguard.
-        }
+        if (hitIndex < 0 || hitIndex >= (int)hits.size())
+            return 0;
         const auto& hit = hits[hitIndex];
 
-        // --- End of Fix ---
-
-        // The rest of the logic for jumping to the file remains the same.
-        LRESULT firstVis = ::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0);
-
-        std::wstring widePath;
-        if (!hit.fullPathUtf8.empty()) {
-            int wlen = ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, nullptr, 0);
-            if (wlen > 0) {
-                widePath.resize(wlen - 1);
-                ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, &widePath[0], wlen);
-            }
-        }
-
-        ::SendMessage(nppData._nppHandle, NPPM_SWITCHTOFILE, 0, reinterpret_cast<LPARAM>(widePath.c_str()));
-
-        HWND hEd = nppData._scintillaMainHandle;
-        if (hEd)
+        // 6) Convert UTF-8 path → wide
+        std::wstring wpath;
+        int wlen = ::MultiByteToWideChar(CP_UTF8, 0,
+            hit.fullPathUtf8.c_str(), -1,
+            nullptr, 0);
+        if (wlen > 0)
         {
-            int targetLine = static_cast<int>(::SendMessage(hEd, SCI_LINEFROMPOSITION, hit.pos, 0));
-            ::SendMessage(hEd, SCI_GOTOLINE, targetLine, 0);
-            ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY, targetLine, 0);
-            ::SendMessage(hEd, SCI_SETSEL, hit.pos, hit.pos + hit.length);
-            ::SetFocus(hEd);
+            wpath.resize(wlen - 1);
+            ::MultiByteToWideChar(CP_UTF8, 0,
+                hit.fullPathUtf8.c_str(), -1,
+                &wpath[0], wlen);
         }
 
-        Sci_Position dockPos = static_cast<Sci_Position>(::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0));
-        ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockPos, 0);
-        ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVis, 0);
-        ::SetFocus(hwnd);
+        // 7) Switch file
+        ::SendMessage(nppData._nppHandle,
+            NPPM_SWITCHTOFILE, 0,
+            (LPARAM)wpath.c_str());
+
+        // 8) Jump + select
+        HWND hEd = nppData._scintillaMainHandle;
+        int targetLine = (int)::SendMessage(hEd, SCI_LINEFROMPOSITION, hit.pos, 0);
+        ::SendMessage(hEd, SCI_GOTOLINE, targetLine, 0);
+        ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY, targetLine, 0);
+        ::SendMessage(hEd, SCI_SETSEL, hit.pos, hit.pos + hit.length);
+        ::SetFocus(hEd);
+
+        // 9) Restore dock scroll
+        ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
 
         return 0;
     }
 
-    // ... (WM_NCDESTROY and DMN_CLOSE cases remain the same) ...
+    case DMN_CLOSE:
+        ::SendMessage(nppData._nppHandle,
+            NPPM_DMMHIDE, 0,
+            (LPARAM)ResultDock::instance()._hDock);
+        return TRUE;
+
     case WM_NCDESTROY:
-    {
-        //::RemoveWindowSubclass(hwnd, &sciSubclassProc, 0);
         s_prevSciProc = nullptr;
         break;
     }
-    case DMN_CLOSE:
-    {
-        ::SendMessage(nppData._nppHandle, NPPM_DMMHIDE, 0, reinterpret_cast<LPARAM>(hwnd));
-        break;
-    }
-    }
 
-    if (s_prevSciProc)
-        return ::CallWindowProc(s_prevSciProc, hwnd, msg, wp, lp);
-
-    return ::DefWindowProc(hwnd, msg, wp, lp);
+    return s_prevSciProc
+        ? ::CallWindowProc(s_prevSciProc, hwnd, msg, wp, lp)
+        : ::DefWindowProc(hwnd, msg, wp, lp);
 }
 
 void ResultDock::onThemeChanged()
