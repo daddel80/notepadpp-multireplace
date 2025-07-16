@@ -68,6 +68,8 @@ public:
     // Clear everything (if you ever need a full reset):
     void clearAll();
 
+    void rebuildFolding() const { _rebuildFolding(); }
+
     // Expose hits for your double-click handler
     const std::vector<Hit>& hits() const { return _hits; }
 

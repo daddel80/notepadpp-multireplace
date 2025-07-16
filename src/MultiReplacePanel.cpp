@@ -6027,43 +6027,46 @@ void MultiReplace::CloseDebugWindow() {
 #pragma region Find All
 void MultiReplace::handleFindAllButton()
 {
-    // 1) Early exit if delimiters invalid
+    // 1) Early exit if delimiter settings are invalid
     if (!validateDelimiterData())
         return;
 
-    // 2) Prepare the result dock
+    // 2) Prepare and show the result dock
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
-    //dock.clearAll(); // ← AUSKOMMENTIERT, damit ältere Treffer erhalten bleiben
 
-    // 3) Scintilla message helper
+    // 3) Helper lambda to send messages to the current Scintilla view
     auto sciSend = [this](UINT msg, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
         return ::SendMessage(_hScintilla, msg, w, l);
         };
 
-    // 4) Get current file path (wide → UTF-8)
-    wchar_t filePathBuf[MAX_PATH] = {};
+    // 4) Get the current file path (wide → UTF-8)
+    wchar_t wPathBuf[MAX_PATH] = {};
     ::SendMessage(nppData._nppHandle,
         NPPM_GETFULLCURRENTPATH,
         MAX_PATH,
-        reinterpret_cast<LPARAM>(filePathBuf));
-    std::wstring wFilePath = *filePathBuf ? filePathBuf : L"<untitled>";
+        reinterpret_cast<LPARAM>(wPathBuf));
+    std::wstring wFilePath = *wPathBuf ? wPathBuf : L"<untitled>";
     std::string utf8FilePath = wstringToUtf8(wFilePath);
 
-    // 5) Base search context
+    // 5) Base search context setup
     SearchContext ctx{};
     ctx.docLength = sciSend(SCI_GETLENGTH);
     ctx.retrieveFoundText = false;
     ctx.highlightMatch = false;
 
-    // 6) Containers for this run
+    // 6) Containers for all hits and for each item counts + start indices
     std::vector<ResultDock::Hit> allHits;
+    std::vector<size_t>          startIndices;
+    std::vector<int>             hitsPerItem;
     std::wstringstream           displayText;
-    int                           totalHits = 0;
+    int                          totalHits = 0;
 
     if (useListEnabled)
     {
         // --- LIST MODE ---
+
+        // 6.1) Early exit if no search criteria
         if (replaceListData.empty())
         {
             showStatusMessage(
@@ -6073,25 +6076,22 @@ void MultiReplace::handleFindAllButton()
             return;
         }
 
-        // Root header (wird einmal ganz oben stehen, älter wird nach unten geschoben)
-        displayText
-            << L"Search in List ("
-            << totalHits << L" total hits in ";
-
-        std::set<std::string> filesSeen;
-        for (auto const& item : replaceListData)
-            if (item.isEnabled && !item.findText.empty())
-                filesSeen.insert(utf8FilePath);
-        displayText
-            << filesSeen.size()
-            << L" files)\r\n";
-
-        // Per-list-item searches
+        // 6.2) First pass: for each item, collect its hits
         for (auto const& item : replaceListData)
         {
-            if (!item.isEnabled || item.findText.empty()) continue;
+            if (!item.isEnabled || item.findText.empty())
+            {
+                // record zero hits and no start shift
+                startIndices.push_back(allHits.size());
+                hitsPerItem.push_back(0);
+                continue;
+            }
 
-            // Configure context
+            // record where this item's hits will start
+            size_t thisStart = allHits.size();
+            startIndices.push_back(thisStart);
+
+            // prepare search flags
             ctx.findText = convertAndExtendW(item.findText, item.extended);
             ctx.searchFlags =
                 (item.wholeWord ? SCFIND_WHOLEWORD : 0)
@@ -6099,11 +6099,8 @@ void MultiReplace::handleFindAllButton()
                 | (item.regex ? SCFIND_REGEXP : 0);
             sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
 
-            // Track hits
-            size_t startIndex = allHits.size();
-            int    hitsInThisFile = 0;
-
-            // Collect matches
+            // collect all matches for this item
+            int hitsInThisFile = 0;
             LRESULT pos = 0;
             while (true)
             {
@@ -6120,53 +6117,69 @@ void MultiReplace::handleFindAllButton()
                 ++totalHits;
             }
 
-            if (hitsInThisFile > 0)
+            hitsPerItem.push_back(hitsInThisFile);
+        }
+
+        // 6.3) Build the root header with correct totals
+        displayText
+            << L"Search in List ("
+            << totalHits << L" total hits in 1 file)\r\n";
+
+        // 6.4) Second pass: output per-item blocks in original order
+        for (size_t idx = 0; idx < replaceListData.size(); ++idx)
+        {
+            int    hitsCount = hitsPerItem[idx];
+            if (hitsCount == 0)
+                continue;
+
+            const auto& item = replaceListData[idx];
+            size_t      itemStart = startIndices[idx];
+
+            // criterion header (indent 4 spaces)
+            displayText
+                << L"    Search \""
+                << item.findText
+                << L"\" ("
+                << hitsCount
+                << L" hits in 1 file)\r\n";
+
+            // file path line (indent 8 spaces)
+            displayText
+                << L"        "
+                << wFilePath
+                << L" ("
+                << hitsCount
+                << L" hits)\r\n";
+
+            // individual match lines (indent 12 spaces)
+            for (size_t j = 0; j < static_cast<size_t>(hitsCount); ++j)
             {
-                // Term header
+                const auto& hit = allHits[itemStart + j];
+                int          lineNum = static_cast<int>(
+                    sciSend(SCI_LINEFROMPOSITION, hit.pos)
+                    ) + 1;
+
+                LRESULT lineLen = sciSend(SCI_LINELENGTH, lineNum - 1);
+                std::string lineUtf8(lineLen, '\0');
+                sciSend(SCI_GETLINE, lineNum - 1,
+                    reinterpret_cast<LPARAM>(&lineUtf8[0]));
+                lineUtf8.resize(strnlen(lineUtf8.c_str(), lineLen));
+                std::wstring wLine = stringToWString(lineUtf8);
+                wLine.erase(0, wLine.find_first_not_of(L" \t"));
+                wLine.erase(wLine.find_last_not_of(L"\r\n") + 1);
+
                 displayText
-                    << L"\tSearch \""
-                    << item.findText
-                    << L"\" ("
-                    << hitsInThisFile
-                    << L" hits in 1 file)\r\n";
-
-                // File line
-                displayText
-                    << L"\t\t"
-                    << wFilePath
-                    << L" ("
-                    << hitsInThisFile
-                    << L" hits)\r\n";
-
-                // Match lines
-                for (size_t i = startIndex; i < startIndex + hitsInThisFile; ++i)
-                {
-                    int lineNum = static_cast<int>(
-                        sciSend(SCI_LINEFROMPOSITION, allHits[i].pos)
-                        ) + 1;
-
-                    LRESULT lineLen = sciSend(SCI_LINELENGTH, lineNum - 1);
-                    std::string lineUtf8(lineLen, '\0');
-                    sciSend(SCI_GETLINE, lineNum - 1,
-                        reinterpret_cast<LPARAM>(&lineUtf8[0]));
-                    lineUtf8.resize(strnlen(lineUtf8.c_str(), lineLen));
-                    std::wstring wLine = stringToWString(lineUtf8);
-                    wLine.erase(0, wLine.find_first_not_of(L" \t"));
-                    wLine.erase(wLine.find_last_not_of(L"\r\n") + 1);
-
-                    displayText
-                        << L"\t\t\tLine "
-                        << lineNum
-                        << L": "
-                        << wLine
-                        << L"\r\n";
-                }
+                    << L"            Line "
+                    << lineNum
+                    << L": "
+                    << wLine
+                    << L"\r\n";
             }
         }
     }
     else
     {
-        // --- SINGLE MODE ---
+        // --- SINGLE MODE (unchanged) ---
         std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         if (findText.empty())
         {
@@ -6191,7 +6204,7 @@ void MultiReplace::handleFindAllButton()
             | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
         sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
 
-        // Header
+        // build header
         displayText
             << L"Search \""
             << findText
@@ -6232,10 +6245,9 @@ void MultiReplace::handleFindAllButton()
         size_t startIdx = allHits.size() - hitsInThisFile;
         for (size_t i = startIdx; i < allHits.size(); ++i)
         {
-            int lineNum = static_cast<int>(
+            int    lineNum = static_cast<int>(
                 sciSend(SCI_LINEFROMPOSITION, allHits[i].pos)
                 ) + 1;
-
             LRESULT lineLen2 = sciSend(SCI_LINELENGTH, lineNum - 1);
             std::string lineUtf82(lineLen2, '\0');
             sciSend(SCI_GETLINE, lineNum - 1,
@@ -6254,53 +6266,16 @@ void MultiReplace::handleFindAllButton()
         }
     }
 
-    // 7) Push into dock and update status
+    // 7) Commit to dock and update status
     dock.prependHits(allHits, displayText.str());
+
+    // 8) Rebuild folding so each list block is independently collapsible
+    dock.rebuildFolding();
+
     showStatusMessage(
-        getLangStr(
-            L"status_occurrences_found",
-            { std::to_wstring(totalHits) }
-        ),
+        getLangStr(L"status_occurrences_found", { std::to_wstring(totalHits) }),
         MessageStatus::Success
     );
-
-    /*
-    // ────────────────────────────────
-    // Debug: MessageBox mit allen Hit-Infos
-    {
-        std::wstringstream dbg;
-        dbg << L"=== Hit Debug Info ===\r\n";
-        const auto& hits = ResultDock::instance().hits();
-        for (size_t i = 0; i < hits.size(); ++i) {
-            const auto& h = hits[i];
-            int wlen = ::MultiByteToWideChar(
-                CP_UTF8, 0,
-                h.fullPathUtf8.c_str(), -1,
-                nullptr, 0
-            );
-            std::wstring wpath;
-            if (wlen > 0) {
-                wpath.resize(wlen - 1);
-                ::MultiByteToWideChar(
-                    CP_UTF8, 0,
-                    h.fullPathUtf8.c_str(), -1,
-                    &wpath[0], wlen
-                );
-            }
-            dbg
-                << L"[" << i << L"] "
-                << wpath
-                << L"  pos=" << h.pos
-                << L"  len=" << h.length
-                << L"\r\n";
-        }
-        ::MessageBoxW(
-            nppData._nppHandle,
-            dbg.str().c_str(),
-            L"MultiReplace Hit Debug",
-            MB_OK
-        );
-    }*/
 }
 
 HWND MultiReplace::createResultSci()

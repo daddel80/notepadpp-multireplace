@@ -388,23 +388,32 @@ void ResultDock::_initFolding() const
 void ResultDock::_rebuildFolding() const
 {
     if (!_hSci) return;
+    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) {
+        return ::SendMessage(_hSci, m, w, l);
+        };
 
-    int lines = (int)::SendMessage(_hSci, SCI_GETLINECOUNT, 0, 0);
+    const int lines = (int)S(SCI_GETLINECOUNT);
+    std::string txt;
+    for (int i = 0; i < lines; ++i) {
+        // get raw line
+        int len = (int)S(SCI_LINELENGTH, i, 0);
+        txt.resize(len);
+        if (len > 0) S(SCI_GETLINE, i, reinterpret_cast<LPARAM>(&txt[0]));
 
-    for (int i = 0, level; i < lines; ++i)
-    {
-        Sci_Position pos = ::SendMessage(_hSci, SCI_POSITIONFROMLINE, i, 0);
-        int ch = (int)::SendMessage(_hSci, SCI_GETCHARAT, pos, 0);
+        bool blank = (len == 0);
+        // match either no indent or 4-space indent
+        bool header =
+            !blank
+            && (txt.rfind("Search ", 0) == 0
+                || txt.rfind("    Search ", 0) == 0);
 
-        bool blank = (ch == '\r' || ch == '\n');
-        bool header = !blank && (ch != ' ' && ch != '\t');   // indent == 0
-
-        level = header ? (SC_FOLDLEVELBASE | SC_FOLDLEVELHEADERFLAG)
+        // header → BASE+HEADERFLAG, others → BASE+1
+        int level = header
+            ? (SC_FOLDLEVELBASE | SC_FOLDLEVELHEADERFLAG)
             : (SC_FOLDLEVELBASE + 1);
 
         if (blank) level |= SC_FOLDLEVELWHITEFLAG;
-
-        ::SendMessage(_hSci, SCI_SETFOLDLEVEL, i, level);
+        S(SCI_SETFOLDLEVEL, i, level);
     }
 }
 
