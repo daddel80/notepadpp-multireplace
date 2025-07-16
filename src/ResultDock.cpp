@@ -48,6 +48,13 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
     {
     case WM_NOTIFY:
     {
+        NMHDR* hdr = reinterpret_cast<NMHDR*>(lp);
+        if (hdr->code == DMN_CLOSE)
+        {
+            ::SendMessage(nppData._nppHandle, NPPM_DMMHIDE, 0, reinterpret_cast<LPARAM>(hwnd));
+            return TRUE;  
+        }
+
         SCNotification* scn = reinterpret_cast<SCNotification*>(lp);
         if (scn->nmhdr.code == SCN_MARGINCLICK && scn->margin == 2)
         {
