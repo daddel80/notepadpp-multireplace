@@ -524,26 +524,34 @@ void ResultDock::prependHits(const std::vector<Hit>& newHits, const std::wstring
         return; // Nothing to insert.
     }
 
-    // --- FINAL FIX FOR SEPARATION ---
-    // 3) Check if the dock already contains text. If so, add a separator.
-    LRESULT currentLength = ::SendMessage(_hSci, SCI_GETLENGTH, 0, 0);
-    if (currentLength > 0) {
-        // Prepend a newline to the new text block to separate it from the old content.
-        utf8PrependedText.insert(0, "\r\n");
-    }
-    // --- End of FIX ---
-
-    // 4) Inject the correctly formatted and separated text at the top of the Scintilla control.
     ::SendMessage(_hSci, SCI_SETREADONLY, FALSE, 0);
     ::SendMessage(_hSci, SCI_BEGINUNDOACTION, 0, 0);
 
-    // Using SCI_INSERTTEXT at position 0 is the most direct way to prepend.
+    // --- START OF FIX ---
+
+    // 3) Get the current document length BEFORE any insertion.
+    LRESULT currentLength = ::SendMessage(_hSci, SCI_GETLENGTH, 0, 0);
+
+    // 4) Insert the new text block at the very beginning.
     ::SendMessage(_hSci, SCI_INSERTTEXT, 0, reinterpret_cast<LPARAM>(utf8PrependedText.c_str()));
+
+    // 5) If the document was NOT empty before, insert a newline separator AFTER the new block.
+    if (currentLength > 0) {
+        const char* separator = "\r\n";
+        ::SendMessage(_hSci, SCI_INSERTTEXT, utf8PrependedText.length(), reinterpret_cast<LPARAM>(separator));
+    }
+
+    // --- END OF FIX ---
 
     ::SendMessage(_hSci, SCI_ENDUNDOACTION, 0, 0);
     ::SendMessage(_hSci, SCI_SETREADONLY, TRUE, 0);
 
-    // 5) After prepending, the entire view needs to be restyled and folded again.
+    // 6) After prepending, rebuild folding and apply themes.
     _rebuildFolding();
     _applyTheme();
+
+    // 7) Explicitly set the scroll position and caret to the top of the document.
+    // This prevents the view from jumping and keeps the caret at a predictable location.
+    ::SendMessage(_hSci, SCI_SETFIRSTVISIBLELINE, 0, 0);
+    ::SendMessage(_hSci, SCI_GOTOPOS, 0, 0);
 }
