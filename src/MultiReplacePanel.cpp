@@ -25,6 +25,7 @@
 #include "luaEmbedded.h"
 #include "HiddenSciGuard.h"
 #include "ResultDock.h"
+#include "Encoding.h"
 
 #include <algorithm>
 #include <bitset>
@@ -49,7 +50,6 @@
 #include <iomanip>
 #include <lua.hpp>
 #include <sdkddkver.h>
-
 
 #ifdef UNICODE
 #define generic_strtoul wcstoul
@@ -4466,7 +4466,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
             // --- Lua Variable Expansion ---
             if (itemData.useVariables) {
-                std::string luaTemplateUtf8 = wstringToUtf8(itemData.replaceText);
+                std::string luaTemplateUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
                 if (!compileLuaReplaceCode(luaTemplateUtf8)) {
                     return false;
                 }
@@ -4489,7 +4489,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 // Convert the MATCH variable to UTF-8 for Lua if the document is ANSI.
                 vars.MATCH = searchResult.foundText;
                 if (documentCodepage != SC_CP_UTF8) {
-                    vars.MATCH = wstringToUtf8(ansiToWString(vars.MATCH, documentCodepage));
+                    vars.MATCH = Encoding::wstringToUtf8(Encoding::ansiToWString(vars.MATCH, documentCodepage));
                 }
 
                 if (!resolveLuaSyntax(luaTemplateUtf8, vars, skipReplace, itemData.regex)) {
@@ -4497,7 +4497,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 }
 
                 // Convert the result from Lua (UTF-8) to the final document codepage.
-                finalReplaceText = convertAndExtendW(utf8ToWString(luaTemplateUtf8), itemData.extended, documentCodepage);
+                finalReplaceText = convertAndExtendW(Encoding::utf8ToWString(luaTemplateUtf8), itemData.extended, documentCodepage);
             }
             else {
                 // Case without variables: convert once using the safe helper.
@@ -4565,7 +4565,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     // --- Prepare replacement text template (only if needed for Lua) ---
     std::string luaTemplateUtf8;
     if (itemData.useVariables) {
-        luaTemplateUtf8 = wstringToUtf8(itemData.replaceText);
+        luaTemplateUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
         if (!compileLuaReplaceCode(luaTemplateUtf8)) {
             return false;
         }
@@ -4608,7 +4608,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                 // Convert the MATCH variable to UTF-8 for Lua if the document is ANSI.
                 vars.MATCH = searchResult.foundText;
                 if (documentCodepage != SC_CP_UTF8) {
-                    vars.MATCH = wstringToUtf8(ansiToWString(vars.MATCH, documentCodepage));
+                    vars.MATCH = Encoding::wstringToUtf8(Encoding::ansiToWString(vars.MATCH, documentCodepage));
                 }
 
                 if (!resolveLuaSyntax(luaWorkingUtf8, vars, skipReplace, itemData.regex)) {
@@ -4616,7 +4616,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                 }
 
                 // Convert the result from Lua (UTF-8) to the final document codepage.
-                finalReplaceText = convertAndExtendW(utf8ToWString(luaWorkingUtf8), itemData.extended, documentCodepage);
+                finalReplaceText = convertAndExtendW(Encoding::utf8ToWString(luaWorkingUtf8), itemData.extended, documentCodepage);
             }
             else {
                 // Case without variables: convert once using the safe helper.
@@ -4680,7 +4680,7 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                     if (highlight) {
                         selectListItem(i);  // Highlight the list entry
                     }
-                    std::string localReplaceTextUtf8 = wstringToString(replaceListData[i].replaceText);
+                    std::string localReplaceTextUtf8 = Encoding::wstringToString(replaceListData[i].replaceText);
 
                     // Compile the Lua code once and cache it
                     if (!compileLuaReplaceCode(localReplaceTextUtf8)) {
@@ -4818,8 +4818,8 @@ void MultiReplace::updateFilePathCache(const std::filesystem::path* explicitPath
     if (explicitPath) {
         // A specific path was provided (during "Replace in Files"). Use it.
         // Convert reliably to UTF-8 for Lua.
-        cachedFilePath = wstringToUtf8(explicitPath->wstring());
-        cachedFileName = wstringToUtf8(explicitPath->filename().wstring());
+        cachedFilePath = Encoding::wstringToUtf8(explicitPath->wstring());
+        cachedFileName = Encoding::wstringToUtf8(explicitPath->filename().wstring());
     }
     else {
         // No specific path was provided. Default to the active Notepad++ document.
@@ -4829,8 +4829,8 @@ void MultiReplace::updateFilePathCache(const std::filesystem::path* explicitPath
         ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH, reinterpret_cast<LPARAM>(fileNameBuffer));
 
         // Convert reliably to UTF-8 for Lua.
-        cachedFilePath = wstringToUtf8(std::wstring(filePathBuffer));
-        cachedFileName = wstringToUtf8(std::wstring(fileNameBuffer));
+        cachedFilePath = Encoding::wstringToUtf8(std::wstring(filePathBuffer));
+        cachedFileName = Encoding::wstringToUtf8(std::wstring(fileNameBuffer));
     }
 }
 
@@ -4872,7 +4872,7 @@ bool MultiReplace::initLuaState()
     // Load Lua source code directly (fallback mode)
     if (luaL_loadstring(_luaState, luaSourceCode) != LUA_OK) {
         const char* errMsg = lua_tostring(_luaState, -1);
-        MessageBox(nppData._nppHandle, utf8ToWString(errMsg).c_str(), L"Lua Script Load Error", MB_OK | MB_ICONERROR);
+        MessageBox(nppData._nppHandle, Encoding::utf8ToWString(errMsg).c_str(), L"Lua Script Load Error", MB_OK | MB_ICONERROR);
         lua_pop(_luaState, 1);
         lua_close(_luaState);
         _luaState = nullptr;
@@ -4882,7 +4882,7 @@ bool MultiReplace::initLuaState()
     // Execute the loaded Lua code.
     if (lua_pcall(_luaState, 0, LUA_MULTRET, 0) != LUA_OK) {
         const char* errMsg = lua_tostring(_luaState, -1);
-        MessageBox(nppData._nppHandle, utf8ToWString(errMsg).c_str(), L"Lua Execution Error", MB_OK | MB_ICONERROR);
+        MessageBox(nppData._nppHandle, Encoding::utf8ToWString(errMsg).c_str(), L"Lua Execution Error", MB_OK | MB_ICONERROR);
         lua_pop(_luaState, 1);
         lua_close(_luaState);
         _luaState = nullptr;
@@ -4918,7 +4918,7 @@ bool MultiReplace::compileLuaReplaceCode(const std::string& luaCode)
 
             if (isLuaErrorDialogEnabled)
             {
-                std::wstring error_message = utf8ToWString(errMsg);
+                std::wstring error_message = Encoding::utf8ToWString(errMsg);
                 MessageBox(nppData._nppHandle,
                     error_message.c_str(),
                     getLangStr(L"msgbox_title_use_variables_syntax_error").c_str(),
@@ -5011,7 +5011,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             // Show a message box if user enabled it
             if (isLuaErrorDialogEnabled)
             {
-                std::wstring error_message = utf8ToWString(errMsg);
+                std::wstring error_message = Encoding::utf8ToWString(errMsg);
                 MessageBox(nppData._nppHandle,
                     error_message.c_str(),
                     getLangStr(L"msgbox_title_use_variables_syntax_error").c_str(),
@@ -5031,7 +5031,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         if (isLuaErrorDialogEnabled)
         {
             std::wstring errorMsg = getLangStr(L"msgbox_use_variables_execution_error",
-                { utf8ToWString(inputString.c_str()) });
+                { Encoding::utf8ToWString(inputString.c_str()) });
             std::wstring errorTitle = getLangStr(L"msgbox_title_use_variables_execution_error");
             MessageBox(nppData._nppHandle, errorMsg.c_str(), errorTitle.c_str(), MB_OK);
         }
@@ -5166,7 +5166,7 @@ int MultiReplace::safeLoadFileSandbox(lua_State* L) {
     in.close();
 
     // 3) Detect UTF-8 vs ANSI
-    bool rawIsUtf8 = isValidUtf8(raw);
+    bool rawIsUtf8 = Encoding::isValidUtf8(raw);
 
     // 4) Convert to a true UTF-8 buffer if needed
     std::string utf8_buf;
@@ -5588,7 +5588,7 @@ EncodingInfo MultiReplace::detectEncoding(const std::string& buffer) {
     if (buffer.size() >= 3 && static_cast<unsigned char>(buffer[0]) == 0xEF && static_cast<unsigned char>(buffer[1]) == 0xBB && static_cast<unsigned char>(buffer[2]) == 0xBF) { return { SC_CP_UTF8, 3 }; }
     if (buffer.size() >= 2 && static_cast<unsigned char>(buffer[0]) == 0xFF && static_cast<unsigned char>(buffer[1]) == 0xFE) { return { 1200, 2 }; }
     if (buffer.size() >= 2 && static_cast<unsigned char>(buffer[0]) == 0xFE && static_cast<unsigned char>(buffer[1]) == 0xFF) { return { 1201, 2 }; }
-    if (isValidUtf8(buffer)) { return { SC_CP_UTF8, 0 }; }
+    if (Encoding::isValidUtf8(buffer)) { return { SC_CP_UTF8, 0 }; }
     int check_len = std::min((int)buffer.size(), 512);
     if (check_len > 1) {
         if (check_len % 2 != 0) check_len--;
@@ -6027,65 +6027,58 @@ void MultiReplace::CloseDebugWindow() {
 #pragma region Find All
 void MultiReplace::handleFindAllButton()
 {
-    /* 1) delimiter sanity ---------------------------------------------- */
-    if (!validateDelimiterData()) return;
+    /* 1) sanity ------------------------------------------------------ */
+    if (!validateDelimiterData())
+        return;
 
-    /* 2) show / create result dock ------------------------------------- */
+    /* 2) result dock ------------------------------------------------- */
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
 
-    /* 3) short lambda for Scintilla ------------------------------------ */
+    /* 3) helper lambdas --------------------------------------------- */
     auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
         { return ::SendMessage(_hScintilla, m, w, l); };
 
-    /* 4) active file path ---------------------------------------------- */
-    wchar_t wPathBuf[MAX_PATH] = {};
-    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH,
-        (LPARAM)wPathBuf);
-    std::wstring wFilePath = *wPathBuf ? wPathBuf : L"<untitled>";
-    std::string  utf8FilePath = wstringToUtf8(wFilePath);
+    /* 4) current file path ------------------------------------------ */
+    wchar_t buf[MAX_PATH] = {};
+    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, (LPARAM)buf);
+    std::wstring wFilePath = *buf ? buf : L"<untitled>";
+    std::string  utf8FilePath = Encoding::wstringToUtf8(wFilePath);
 
-    /* 5) search context ------------------------------------------------ */
+    /* 5) search context --------------------------------------------- */
     SearchContext ctx{}; ctx.docLength = sciSend(SCI_GETLENGTH);
 
-    /* 6) containers ---------------------------------------------------- */
-    std::vector<ResultDock::Hit> allHits;      // raw list (incl. duplicates)
-    std::vector<size_t> startIndices; std::vector<int> hitsPerItem;
-    std::wstringstream displayText;   size_t dockUtf8Len = 0;
-    int totalHits = 0;
+    /* 6) containers -------------------------------------------------- */
+    std::vector<ResultDock::Hit> allHits;     // only visible hits
+    std::wstring                 bodyText;    // everything except header
+    size_t                       utf8Len = 0; // running length for styling
+    int                          totalHits = 0;
 
-    /* ------------------------------------------------------------------ */
-    /* LIST MODE                                                          */
-    /* ------------------------------------------------------------------ */
+    /* ----------------------------------------------------------------
+     * LIST MODE
+     * ---------------------------------------------------------------- */
     if (useListEnabled)
     {
         if (replaceListData.empty())
         {
-            showStatusMessage(getLangStr(L"status_add_values_or_uncheck"),
-                MessageStatus::Error);
+            showStatusMessage(getLangStr(L"status_add_values_or_uncheck"), MessageStatus::Error);
             return;
         }
 
-        /* first pass – gather hits ------------------------------------ */
-        for (auto const& item : replaceListData)
+        for (const auto& item : replaceListData)
         {
-            if (!item.isEnabled || item.findText.empty())
-            {
-                startIndices.push_back(allHits.size());
-                hitsPerItem.push_back(0);
-                continue;
-            }
+            if (!item.isEnabled || item.findText.empty()) continue;
 
-            startIndices.push_back(allHits.size());
-
+            /* --- collect raw hits ---------------------------------- */
+            std::vector<ResultDock::Hit> rawHits;
             ctx.findText = convertAndExtendW(item.findText, item.extended);
             ctx.searchFlags =
-                (item.wholeWord ? SCFIND_WHOLEWORD : 0) |
-                (item.matchCase ? SCFIND_MATCHCASE : 0) |
-                (item.regex ? SCFIND_REGEXP : 0);
+                (item.wholeWord ? SCFIND_WHOLEWORD : 0)
+                | (item.matchCase ? SCFIND_MATCHCASE : 0)
+                | (item.regex ? SCFIND_REGEXP : 0);
             sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
 
-            int hitsHere = 0; LRESULT pos = 0;
+            LRESULT pos = 0;
             while (true)
             {
                 SearchResult r = performSearchForward(ctx, pos);
@@ -6094,146 +6087,68 @@ void MultiReplace::handleFindAllButton()
 
                 ResultDock::Hit h{};
                 h.fullPathUtf8 = utf8FilePath;
-                h.pos = static_cast<Sci_Position>(r.pos);
-                h.length = static_cast<Sci_Position>(r.length);
-                h.displayLineStart = -1;              // *** NEW ***
-                allHits.push_back(std::move(h));
-                ++hitsHere; ++totalHits;
+                h.pos = (Sci_Position)r.pos;
+                h.length = (Sci_Position)r.length;
+                rawHits.push_back(std::move(h));
             }
-            hitsPerItem.push_back(hitsHere);
+            if (rawHits.empty()) continue;
+
+            /* criterion header -------------------------------------- */
+            std::wstring critHdr = L"    Search \"" + item.findText + L"\" ("
+                + std::to_wstring(rawHits.size())
+                + L" hits in 1 file)\r\n";
+            bodyText += critHdr;
+            utf8Len += Encoding::wstringToUtf8(critHdr).size();
+
+            /* format this file’s hits -------------------------------- */
+            std::wstring block;
+            dock.formatHitsForFile(wFilePath, sciSend, rawHits, block, utf8Len);
+            bodyText += block;
+
+            totalHits += static_cast<int>(rawHits.size());
+            allHits.insert(allHits.end(), rawHits.begin(), rawHits.end());
         }
 
-        /* header ------------------------------------------------------- */
-        {
-            std::wstring h = L"Search in List (" +
-                std::to_wstring(totalHits) +
-                L" total hits in 1 file)\r\n";
-            displayText << h;
-            dockUtf8Len += wstringToUtf8(h).size();
-        }
+        /* --- build header now that totalHits is known -------------- */
+        std::wstring header =
+            L"Search in List (" + std::to_wstring(totalHits) +
+            L" total hits in 1 file)\r\n";
 
-        /* second pass – build result text ----------------------------- */
-        for (size_t idx = 0; idx < replaceListData.size(); ++idx)
-        {
-            int hitsCount = hitsPerItem[idx]; if (hitsCount == 0) continue;
-            const auto& item = replaceListData[idx];
-            size_t base = startIndices[idx];
+        const int delta =
+            static_cast<int>(Encoding::wstringToUtf8(header).size());
 
-            std::wstring crit = L"    Search \"" + item.findText + L"\" (" +
-                std::to_wstring(hitsCount) +
-                L" hits in 1 file)\r\n";
-            displayText << crit;
-            dockUtf8Len += wstringToUtf8(crit).size();
+        /* shift ALL offsets because header is prepended ------------- */
+        for (auto& h : allHits)
+            h.displayLineStart += delta;
 
-            std::wstring file = L"        " + wFilePath + L" (" +
-                std::to_wstring(hitsCount) + L" hits)\r\n";
-            displayText << file;
-            dockUtf8Len += wstringToUtf8(file).size();
-
-            int lastPrintedLine = -1;
-            ResultDock::Hit* lastHit = nullptr;
-
-            for (int j = 0; j < hitsCount; ++j)
-            {
-                auto& hit = allHits[base + j];
-                int   lineN = (int)sciSend(SCI_LINEFROMPOSITION, hit.pos) + 1;
-                Sci_Position lineStartPos =
-                    sciSend(SCI_POSITIONFROMLINE, lineN - 1);
-
-                /* fetch raw line -------------------------------------- */
-                LRESULT rawLen = sciSend(SCI_LINELENGTH, lineN - 1);
-                std::string raw(rawLen, '\0');
-                sciSend(SCI_GETLINE, lineN - 1, (LPARAM)&raw[0]);
-                raw.resize(strnlen(raw.c_str(), rawLen));
-                size_t lead = raw.find_first_not_of(" \t");
-                if (lead == std::string::npos) lead = 0;
-                std::string trim = raw.substr(lead);
-                while (!trim.empty() &&
-                    (trim.back() == '\r' || trim.back() == '\n'))
-                    trim.pop_back();
-
-                Sci_Position absLineStart =
-                    lineStartPos + static_cast<Sci_Position>(lead);
-
-                /* MERGE same line: only first hit prints the line text */
-                if (lineN == lastPrintedLine && lastHit)
-                {
-                    int rel = (int)(hit.pos - absLineStart);
-                    lastHit->matchStarts.push_back(
-                        lastHit->numberStart + lastHit->numberLen + 2 + rel);
-                    lastHit->matchLens.push_back((int)hit.length);
-
-                    // *** NEW *** mark this hit as "visual only"
-                    hit.matchStarts.clear();
-                    hit.displayLineStart = -1;
-
-                    continue;       // skip extra visual line
-                }
-                lastPrintedLine = lineN;
-                lastHit = &hit;
-
-                /* offsets for styling (first hit in this line) -------- */
-                hit.displayLineStart = (int)dockUtf8Len;            // *** CHANGED ***
-                hit.numberStart = (int)std::string(
-                    "            Line ").size();
-                hit.numberLen =
-                    (int)std::to_string(lineN).size();
-                hit.matchStarts.clear(); hit.matchLens.clear();
-
-                int rel = (int)(hit.pos - absLineStart);
-                hit.matchStarts.push_back(
-                    hit.numberStart + hit.numberLen + 2 + rel);
-                hit.matchLens.push_back((int)hit.length);
-
-                /* output ---------------------------------------------- */
-                std::wstring prefixW = L"            Line " +
-                    std::to_wstring(lineN) + L": ";
-                std::wstring wLine = stringToWString(trim);
-                displayText << prefixW << wLine << L"\r\n";
-                dockUtf8Len +=
-                    wstringToUtf8(prefixW).size() + trim.size() + 2;
-            }
-        }
+        /* final dock text ------------------------------------------- */
+        std::wstring finalText = header + bodyText;
+        dock.prependHits(allHits, finalText);
     }
-    /* ------------------------------------------------------------------ */
-    /* SINGLE MODE ------------------------------------------------------- */
+    /* ----------------------------------------------------------------
+     * SINGLE MODE
+     * ---------------------------------------------------------------- */
     else
     {
-        std::wstring findTextW =
-            getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-        if (findTextW.empty())
+        std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        if (findW.empty())
         {
-            showStatusMessage(getLangStr(L"status_no_search_string"),
-                MessageStatus::Error);
+            showStatusMessage(getLangStr(L"status_no_search_string"), MessageStatus::Error);
             return;
         }
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT),
-            findTextW);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
 
-        ctx.findText =
-            convertAndExtendW(findTextW,
-                IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO)
-                == BST_CHECKED);
+        ctx.findText = convertAndExtendW(findW,
+            IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
         ctx.searchFlags =
-            (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX)
-                == BST_CHECKED
-                ? SCFIND_WHOLEWORD
-                : 0) |
-            (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX)
-                == BST_CHECKED
-                ? SCFIND_MATCHCASE
-                : 0) |
-            (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED
-                ? SCFIND_REGEXP
-                : 0);
+            (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
+            | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
+            | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
         sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
 
-        /* header ------------------------------------------------------- */
-        std::wstring hdr1 = L"Search \"" + findTextW + L"\" (";
-        displayText << hdr1;
-        dockUtf8Len += wstringToUtf8(hdr1).size();
-
-        int hitsFile = 0; LRESULT pos = 0;
+        /* collect raw hits ----------------------------------------- */
+        std::vector<ResultDock::Hit> rawHits;
+        LRESULT pos = 0;
         while (true)
         {
             SearchResult r = performSearchForward(ctx, pos);
@@ -6244,107 +6159,36 @@ void MultiReplace::handleFindAllButton()
             h.fullPathUtf8 = utf8FilePath;
             h.pos = r.pos;
             h.length = r.length;
-            h.displayLineStart = -1;                  // *** NEW ***
-            allHits.push_back(std::move(h));
-            ++hitsFile; ++totalHits;
+            rawHits.push_back(std::move(h));
         }
-        if (hitsFile == 0)
+        if (rawHits.empty())
         {
-            showStatusMessage(getLangStr(L"status_no_matches_found"),
-                MessageStatus::Error, true);
+            showStatusMessage(getLangStr(L"status_no_matches_found"), MessageStatus::Error, true);
             return;
         }
 
-        std::wstring hdr2 = std::to_wstring(hitsFile) +
-            L" hits in 1 file)\r\n";
-        displayText << hdr2;
-        dockUtf8Len += wstringToUtf8(hdr2).size();
+        /* header ---------------------------------------------------- */
+        std::wstring header = L"Search \"" + findW + L"\" ("
+            + std::to_wstring(rawHits.size())
+            + L" hits in 1 file)\r\n";
 
-        std::wstring file = L"\t" + wFilePath + L" (" +
-            std::to_wstring(hitsFile) + L" hits)\r\n";
-        displayText << file;
-        dockUtf8Len += wstringToUtf8(file).size();
+        utf8Len += Encoding::wstringToUtf8(header).size();
 
-        int lastPrintedLine = -1;
-        ResultDock::Hit* lastHit = nullptr;
+        std::wstring block;
+        dock.formatHitsForFile(wFilePath, sciSend, rawHits, block, utf8Len);
 
-        size_t base = allHits.size() - hitsFile;
-        for (size_t i = base; i < allHits.size(); ++i)
-        {
-            auto& hit = allHits[i];
-            int   lineN = (int)sciSend(SCI_LINEFROMPOSITION, hit.pos) + 1;
-            Sci_Position lineStartPos =
-                sciSend(SCI_POSITIONFROMLINE, lineN - 1);
+        allHits = std::move(rawHits);
 
-            LRESULT rawLen = sciSend(SCI_LINELENGTH, lineN - 1);
-            std::string raw(rawLen, '\0');
-            sciSend(SCI_GETLINE, lineN - 1, (LPARAM)&raw[0]);
-            raw.resize(strnlen(raw.c_str(), rawLen));
-            size_t lead = raw.find_first_not_of(" \t");
-            if (lead == std::string::npos) lead = 0;
-            std::string trim = raw.substr(lead);
-            while (!trim.empty() &&
-                (trim.back() == '\r' || trim.back() == '\n'))
-                trim.pop_back();
-
-            Sci_Position absLineStart =
-                lineStartPos + static_cast<Sci_Position>(lead);
-
-            /* MERGE same line ---------------------------------------- */
-            if (lineN == lastPrintedLine && lastHit)
-            {
-                int rel = (int)(hit.pos - absLineStart);
-                lastHit->matchStarts.push_back(
-                    lastHit->numberStart + lastHit->numberLen + 2 + rel);
-                lastHit->matchLens.push_back((int)hit.length);
-
-                // *** NEW *** mark this hit as "visual only"
-                hit.matchStarts.clear();
-                hit.displayLineStart = -1;
-
-                continue;
-            }
-            lastPrintedLine = lineN;
-            lastHit = &hit;
-
-            hit.displayLineStart = (int)dockUtf8Len;        // *** CHANGED ***
-            hit.numberStart =
-                (int)std::string("\t\tLine ").size();
-            hit.numberLen =
-                (int)std::to_string(lineN).size();
-            hit.matchStarts.clear(); hit.matchLens.clear();
-
-            int rel = (int)(hit.pos - absLineStart);
-            hit.matchStarts.push_back(
-                hit.numberStart + hit.numberLen + 2 + rel);
-            hit.matchLens.push_back((int)hit.length);
-
-            std::wstring prefixW = L"\t\tLine " +
-                std::to_wstring(lineN) + L": ";
-            std::wstring wLine = stringToWString(trim);
-            displayText << prefixW << wLine << L"\r\n";
-            dockUtf8Len +=
-                wstringToUtf8(prefixW).size() + trim.size() + 2;
-        }
+        dock.prependHits(allHits, header + block);
+        totalHits = (int)allHits.size();
     }
 
-    /* 7) commit + style ------------------------------------------------ */
-
-    // *** NEW *** keep only hits that have their own display line
-    std::vector<ResultDock::Hit> visibleHits;
-    visibleHits.reserve(allHits.size());
-    for (auto& h : allHits)
-        if (h.displayLineStart != -1)
-            visibleHits.push_back(std::move(h));
-
-    dock.prependHits(visibleHits, displayText.str());   // *** CHANGED ***
     dock.rebuildFolding();
-    dock.applyStyling();        // uses new offsets
+    dock.applyStyling();
 
-    showStatusMessage(getLangStr(L"status_occurrences_found",
-        { std::to_wstring(totalHits) }),
-        MessageStatus::Success);
+    showStatusMessage(getLangStr(L"status_occurrences_found", { std::to_wstring(totalHits) }), MessageStatus::Success);
 }
+
 HWND MultiReplace::createResultSci()
 {
     return ::CreateWindowExW(0, L"Scintilla", nullptr,
@@ -7164,7 +7008,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
     }
 
     // Convert encoding to wide string
-    std::wstring wstr = stringToWString(markedText);
+    std::wstring wstr = Encoding::stringToWString(markedText);
 
     copyTextToClipboard(wstr, static_cast<int>(markedTextCount));
 }
@@ -7423,7 +7267,7 @@ void MultiReplace::handleCopyColumnsToClipboard()
     }
 
     // Convert to Wide String and copy to clipboard
-    std::wstring wstr = stringToWString(combinedText);
+    std::wstring wstr = Encoding::stringToWString(combinedText);
     copyTextToClipboard(wstr, copiedFieldsCount);
 }
 
@@ -7844,7 +7688,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
 
     // Convert delimiter and quote character to standard strings
     std::string extendedDelimiter = convertAndExtendW(delimiterData, true);
-    std::string quoteCharConverted = wstringToString(quoteCharString);
+    std::string quoteCharConverted = Encoding::wstringToString(quoteCharString);
 
     // Check for changes BEFORE modifying existing values
     // Cannot be used in LUA as it is Scintilla encoded and not UTF8
@@ -8607,7 +8451,7 @@ static inline bool decodeNumericEscape(const std::wstring& src,size_t pos, int  
 std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool extended, UINT targetCodepage) const
 {
     if (!extended)                          // fast path – no escapes
-        return wstringToString(input, targetCodepage);
+        return Encoding::wstringToString(input, targetCodepage);
 
     std::wstring out;
     out.reserve(input.size());
@@ -8667,7 +8511,7 @@ std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool exte
         }
     }
 
-    return wstringToString(out, targetCodepage);
+    return Encoding::wstringToString(out, targetCodepage);
 }
 
 std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool extended)
@@ -9167,7 +9011,7 @@ std::wstring MultiReplace::getSelectedText() {
     buffer[length] = '\0';
 
     std::string str(buffer);
-    std::wstring wstr = stringToWString(str);
+    std::wstring wstr = Encoding::stringToWString(str);
 
     delete[] buffer;
 
@@ -9364,128 +9208,6 @@ std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, cons
 
 #pragma region StringHandling
 
-std::wstring MultiReplace::utf8ToWString(const std::string& utf8) const {
-    if (utf8.empty())
-        return std::wstring();
-
-    int requiredSize = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()), nullptr, 0);
-    if (requiredSize == 0)
-        return std::wstring();
-
-    std::wstring result(requiredSize, L'\0');
-    int converted = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()), &result[0], requiredSize);
-    return (converted > 0) ? result : std::wstring();
-}
-
-std::wstring MultiReplace::ansiToWString(const std::string& input, UINT codePage) const  {
-    if (input.empty()) return {};
-    int len = ::MultiByteToWideChar(codePage, 0, input.data(), (int)input.size(), nullptr, 0);
-    if (len <= 0) return {};
-    std::wstring result(len, L'\0');
-    ::MultiByteToWideChar(codePage, 0, input.data(), (int)input.size(), &result[0], len);
-    return result;
-}
-
-std::string MultiReplace::wstringToUtf8(const std::wstring& input) const {
-    if (input.empty()) return {};
-
-    int len = ::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input.data(), (int)input.size(), nullptr, 0, nullptr, nullptr);
-    if (len <= 0) return {};
-
-    std::string result(len, '\0');
-    ::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input.data(), (int)input.size(), &result[0], len, nullptr, nullptr);
-    return result;
-}
-
-std::string MultiReplace::wstringToString(const std::wstring& input) const {
-    if (input.empty()) return std::string();
-
-    // 1. Get the document's codepage (from cache for performance)
-    int documentCodePage = static_cast<int>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
-
-    // 2. Determine the required encoding for the Scintilla API
-    int targetCodePage;
-    if (documentCodePage == CP_ACP) {
-        // If the document is ANSI, the API expects ANSI
-        targetCodePage = CP_ACP;
-    }
-    else {
-        // For ANY other encoding (UTF-8, UTF-16LE, UTF-16BE), the API expects UTF-8
-        targetCodePage = CP_UTF8;
-    }
-
-    // 3. Perform the conversion
-    int size_needed = WideCharToMultiByte(targetCodePage, 0, &input[0], (int)input.size(), NULL, 0, NULL, NULL);
-    if (size_needed == 0) return std::string();
-
-    std::string strResult(size_needed, 0);
-    WideCharToMultiByte(targetCodePage, 0, &input[0], (int)input.size(), &strResult[0], size_needed, NULL, NULL);
-
-    return strResult;
-}
-
-std::string MultiReplace::wstringToString(const std::wstring& ws, UINT cp) const
-{
-    if (ws.empty()) return {};
-
-    if (cp == 0) cp = CP_ACP;                       // 0 means “ANSI” for Scintilla
-
-    int len = ::WideCharToMultiByte(cp, 0,
-        ws.data(), static_cast<int>(ws.size()),
-        nullptr, 0, nullptr, nullptr);
-
-    std::string out(len, '\0');
-    ::WideCharToMultiByte(cp, 0,
-        ws.data(), static_cast<int>(ws.size()),
-        out.data(), len, nullptr, nullptr);
-    return out;
-}
-
-std::wstring MultiReplace::stringToWString(const std::string& input) const {
-    if (input.empty()) return {};
-
-    int cp = static_cast<int>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
-    if (cp == 0) cp = CP_ACP;
-
-    return (cp == SC_CP_UTF8)
-        ? utf8ToWString(input)
-        : ansiToWString(input, cp);
-}
-
-std::wstring MultiReplace::trim(const std::wstring& str) {
-    // Find the first character that is not whitespace, tab, newline, or carriage return
-    const auto strBegin = str.find_first_not_of(L" \t\n\r");
-
-    if (strBegin == std::wstring::npos) {
-        // If the entire string consists of whitespace, return an empty string
-        return L"";
-    }
-
-    // Find the last character that is not whitespace, tab, newline, or carriage return
-    const auto strEnd = str.find_last_not_of(L" \t\n\r");
-
-    // Calculate the range of non-whitespace characters
-    const auto strRange = strEnd - strBegin + 1;
-
-    // Return the substring without leading and trailing whitespace
-    return str.substr(strBegin, strRange);
-}
-
-bool MultiReplace::isValidUtf8(const std::string& data) {
-    int len = ::MultiByteToWideChar(
-        CP_UTF8,
-        MB_ERR_INVALID_CHARS,
-        data.data(),
-        static_cast<int>(data.size()),
-        nullptr,
-        0
-    );
-    if (len == 0) {
-        return false;
-    }
-    return true;
-}
-
 #pragma endregion
 
 
@@ -9573,7 +9295,7 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
     outFile.write("\xEF\xBB\xBF", 3);
 
     // Convert and Write CSV header
-    std::string utf8Header = wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Regex,Extended,Comments\n");
+    std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Regex,Extended,Comments\n");
     outFile << utf8Header;
 
     // Write list items to CSV file
@@ -9587,7 +9309,7 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
             std::to_wstring(item.extended) + L"," +
             std::to_wstring(item.regex) + L"," +
             escapeCsvValue(item.comments) + L"\n";
-        std::string utf8Line = wstringToUtf8(line);
+        std::string utf8Line = Encoding::wstringToUtf8(line);
         outFile << utf8Line;
     }
 
@@ -9669,7 +9391,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     std::ifstream inFile(filePath, std::ios::binary);
     if (!inFile.is_open()) {
         std::wstring shortenedFilePathW = getShortenedFilePath(filePath, 500);
-        throw CsvLoadException(wstringToUtf8(getLangStr(L"status_unable_to_open_file", { shortenedFilePathW })));
+        throw CsvLoadException(Encoding::wstringToUtf8(getLangStr(L"status_unable_to_open_file", { shortenedFilePathW })));
     }
 
     // Read raw bytes
@@ -9686,7 +9408,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     {
         offset = 3;                                       // skip BOM
     }
-    else if (!isValidUtf8(raw)) {
+    else if (!Encoding::isValidUtf8(raw)) {
         cp = CP_ACP;                                      // fallback to ANSI
     }
 
@@ -9700,7 +9422,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     // Read the header line
     std::wstring headerLine;
     if (!std::getline(contentStream, headerLine)) {
-        throw CsvLoadException(wstringToUtf8(getLangStr(L"status_invalid_column_count")));
+        throw CsvLoadException(Encoding::wstringToUtf8(getLangStr(L"status_invalid_column_count")));
     }
 
     // Temporary list to hold parsed items
@@ -9713,7 +9435,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
         // Check if column count is valid
         if (columns.size() < 8 || columns.size() > 9) {
-            throw CsvLoadException(wstringToUtf8(getLangStr(L"status_invalid_column_count")));
+            throw CsvLoadException(Encoding::wstringToUtf8(getLangStr(L"status_invalid_column_count")));
         }
 
         try {
@@ -9730,13 +9452,13 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
             tempList.push_back(item);
         }
         catch (const std::exception&) {
-            throw CsvLoadException(wstringToUtf8(getLangStr(L"status_invalid_data_in_columns")));
+            throw CsvLoadException(Encoding::wstringToUtf8(getLangStr(L"status_invalid_data_in_columns")));
         }
     }
 
     // Check if the file contains valid data rows
     if (tempList.empty()) {
-        throw CsvLoadException(wstringToUtf8(getLangStr(L"status_no_valid_items_in_csv")));
+        throw CsvLoadException(Encoding::wstringToUtf8(getLangStr(L"status_no_valid_items_in_csv")));
     }
 
     // Transfer parsed data to the target list
@@ -9771,7 +9493,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         }
     }
     catch (const CsvLoadException& ex) {
-        showStatusMessage(utf8ToWString(ex.what()), MessageStatus::Error);
+        showStatusMessage(Encoding::utf8ToWString(ex.what()), MessageStatus::Error);
     }
 }
 
@@ -9797,7 +9519,7 @@ void MultiReplace::checkForFileChangesAtStartup() {
         }
     }
     catch (const CsvLoadException& ex) {
-        showStatusMessage(utf8ToWString(ex.what()), MessageStatus::Error);
+        showStatusMessage(Encoding::utf8ToWString(ex.what()), MessageStatus::Error);
     }
 
     if (replaceListData.empty()) {
@@ -9971,16 +9693,16 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
         std::string find;
         std::string replace;
         if (itemData.extended) {
-            find = replaceNewline(translateEscapes(escapeSpecialChars(wstringToUtf8(itemData.findText), true)), ReplaceMode::Extended);
-            replace = replaceNewline(translateEscapes(escapeSpecialChars(wstringToUtf8(itemData.replaceText), true)), ReplaceMode::Extended);
+            find = replaceNewline(translateEscapes(escapeSpecialChars(Encoding::wstringToUtf8(itemData.findText), true)), ReplaceMode::Extended);
+            replace = replaceNewline(translateEscapes(escapeSpecialChars(Encoding::wstringToUtf8(itemData.replaceText), true)), ReplaceMode::Extended);
         }
         else if (itemData.regex) {
-            find = replaceNewline(wstringToUtf8(itemData.findText), ReplaceMode::Regex);
-            replace = replaceNewline(wstringToUtf8(itemData.replaceText), ReplaceMode::Regex);
+            find = replaceNewline(Encoding::wstringToUtf8(itemData.findText), ReplaceMode::Regex);
+            replace = replaceNewline(Encoding::wstringToUtf8(itemData.replaceText), ReplaceMode::Regex);
         }
         else {
-            find = replaceNewline(escapeSpecialChars(wstringToUtf8(itemData.findText), false), ReplaceMode::Normal);
-            replace = replaceNewline(escapeSpecialChars(wstringToUtf8(itemData.replaceText), false), ReplaceMode::Normal);
+            find = replaceNewline(escapeSpecialChars(Encoding::wstringToUtf8(itemData.findText), false), ReplaceMode::Normal);
+            replace = replaceNewline(escapeSpecialChars(Encoding::wstringToUtf8(itemData.replaceText), false), ReplaceMode::Normal);
         }
 
         std::string wholeWord = itemData.wholeWord ? "1" : "0";
@@ -10095,7 +9817,7 @@ std::string MultiReplace::translateEscapes(const std::string& input) {
         int codepoint = std::stoi(unicodeEscape.substr(2), nullptr, 16);
         wchar_t unicodeChar = static_cast<wchar_t>(codepoint);
         std::wstring unicodeString = { unicodeChar };
-        std::string result = wstringToUtf8(unicodeString);
+        std::string result = Encoding::wstringToUtf8(unicodeString);
         return result.empty() ? 0 : result.front();
         });
 
@@ -10165,16 +9887,16 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
         useListOnHeight = height;
     }
 
-    outFile << wstringToUtf8(L"[Window]\n");
-    outFile << wstringToUtf8(L"PosX=" + std::to_wstring(posX) + L"\n");
-    outFile << wstringToUtf8(L"PosY=" + std::to_wstring(posY) + L"\n");
-    outFile << wstringToUtf8(L"Width=" + std::to_wstring(width) + L"\n");
-    outFile << wstringToUtf8(L"Height=" + std::to_wstring(useListOnHeight) + L"\n");
-    outFile << wstringToUtf8(L"ScaleFactor=" + std::to_wstring(dpiMgr->getCustomScaleFactor()).substr(0, std::to_wstring(dpiMgr->getCustomScaleFactor()).find(L'.') + 2) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"[Window]\n");
+    outFile << Encoding::wstringToUtf8(L"PosX=" + std::to_wstring(posX) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"PosY=" + std::to_wstring(posY) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"Width=" + std::to_wstring(width) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"Height=" + std::to_wstring(useListOnHeight) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ScaleFactor=" + std::to_wstring(dpiMgr->getCustomScaleFactor()).substr(0, std::to_wstring(dpiMgr->getCustomScaleFactor()).find(L'.') + 2) + L"\n");
 
     // Save transparency settings
-    outFile << wstringToUtf8(L"ForegroundTransparency=" + std::to_wstring(foregroundTransparency) + L"\n");
-    outFile << wstringToUtf8(L"BackgroundTransparency=" + std::to_wstring(backgroundTransparency) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ForegroundTransparency=" + std::to_wstring(foregroundTransparency) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"BackgroundTransparency=" + std::to_wstring(backgroundTransparency) + L"\n");
 
     // Store column widths for "Find Count", "Replace Count", and "Comments"
     findCountColumnWidth = (columnIndices[ColumnID::FIND_COUNT] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::FIND_COUNT]) : findCountColumnWidth;
@@ -10183,31 +9905,31 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     replaceColumnWidth = (columnIndices[ColumnID::REPLACE_TEXT] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::REPLACE_TEXT]) : replaceColumnWidth;
     commentsColumnWidth = (columnIndices[ColumnID::COMMENTS] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::COMMENTS]) : commentsColumnWidth;
 
-    outFile << wstringToUtf8(L"[ListColumns]\n");
-    outFile << wstringToUtf8(L"FindCountWidth=" + std::to_wstring(findCountColumnWidth) + L"\n");
-    outFile << wstringToUtf8(L"ReplaceCountWidth=" + std::to_wstring(replaceCountColumnWidth) + L"\n");
-    outFile << wstringToUtf8(L"FindWidth=" + std::to_wstring(findColumnWidth) + L"\n");
-    outFile << wstringToUtf8(L"ReplaceWidth=" + std::to_wstring(replaceColumnWidth) + L"\n");
-    outFile << wstringToUtf8(L"CommentsWidth=" + std::to_wstring(commentsColumnWidth) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"[ListColumns]\n");
+    outFile << Encoding::wstringToUtf8(L"FindCountWidth=" + std::to_wstring(findCountColumnWidth) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ReplaceCountWidth=" + std::to_wstring(replaceCountColumnWidth) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"FindWidth=" + std::to_wstring(findColumnWidth) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ReplaceWidth=" + std::to_wstring(replaceColumnWidth) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"CommentsWidth=" + std::to_wstring(commentsColumnWidth) + L"\n");
 
     // Save column visibility states
-    outFile << wstringToUtf8(L"FindCountVisible=" + std::to_wstring(isFindCountVisible) + L"\n");
-    outFile << wstringToUtf8(L"ReplaceCountVisible=" + std::to_wstring(isReplaceCountVisible) + L"\n");
-    outFile << wstringToUtf8(L"CommentsVisible=" + std::to_wstring(isCommentsColumnVisible) + L"\n");
-    outFile << wstringToUtf8(L"DeleteButtonVisible=" + std::to_wstring(isDeleteButtonVisible ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"FindCountVisible=" + std::to_wstring(isFindCountVisible) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ReplaceCountVisible=" + std::to_wstring(isReplaceCountVisible) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"CommentsVisible=" + std::to_wstring(isCommentsColumnVisible) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"DeleteButtonVisible=" + std::to_wstring(isDeleteButtonVisible ? 1 : 0) + L"\n");
 
     // Save column lock states
-    outFile << wstringToUtf8(L"FindColumnLocked=" + std::to_wstring(findColumnLockedEnabled ? 1 : 0) + L"\n");
-    outFile << wstringToUtf8(L"ReplaceColumnLocked=" + std::to_wstring(replaceColumnLockedEnabled ? 1 : 0) + L"\n");
-    outFile << wstringToUtf8(L"CommentsColumnLocked=" + std::to_wstring(commentsColumnLockedEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"FindColumnLocked=" + std::to_wstring(findColumnLockedEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ReplaceColumnLocked=" + std::to_wstring(replaceColumnLockedEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"CommentsColumnLocked=" + std::to_wstring(commentsColumnLockedEnabled ? 1 : 0) + L"\n");
 
     // Convert and Store the current "Find what" and "Replace with" texts
     std::wstring currentFindTextData = escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
     std::wstring currentReplaceTextData = escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT));
 
-    outFile << wstringToUtf8(L"[Current]\n");
-    outFile << wstringToUtf8(L"FindText=" + currentFindTextData + L"\n");
-    outFile << wstringToUtf8(L"ReplaceText=" + currentReplaceTextData + L"\n");
+    outFile << Encoding::wstringToUtf8(L"[Current]\n");
+    outFile << Encoding::wstringToUtf8(L"FindText=" + currentFindTextData + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ReplaceText=" + currentReplaceTextData + L"\n");
 
     // Prepare and Store the current options
     int wholeWord = IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? 1 : 0;
@@ -10221,26 +9943,26 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int ButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
     int useList = useListEnabled ? 1 : 0;
 
-    outFile << wstringToUtf8(L"[Options]\n");
-    outFile << wstringToUtf8(L"WholeWord=" + std::to_wstring(wholeWord) + L"\n");
-    outFile << wstringToUtf8(L"MatchCase=" + std::to_wstring(matchCase) + L"\n");
-    outFile << wstringToUtf8(L"Extended=" + std::to_wstring(extended) + L"\n");
-    outFile << wstringToUtf8(L"Regex=" + std::to_wstring(regex) + L"\n");
-    outFile << wstringToUtf8(L"ReplaceAtMatches=" + std::to_wstring(replaceAtMatches) + L"\n");
-    outFile << wstringToUtf8(L"EditAtMatches=" + editAtMatchesText + L"\n");
-    outFile << wstringToUtf8(L"WrapAround=" + std::to_wstring(wrapAround) + L"\n");
-    outFile << wstringToUtf8(L"UseVariables=" + std::to_wstring(useVariables) + L"\n");
-    outFile << wstringToUtf8(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
-    outFile << wstringToUtf8(L"UseList=" + std::to_wstring(useList) + L"\n");
-    outFile << wstringToUtf8(L"HighlightMatch=" + std::to_wstring(highlightMatchEnabled ? 1 : 0) + L"\n");
-    outFile << wstringToUtf8(L"Tooltips=" + std::to_wstring(tooltipsEnabled ? 1 : 0) + L"\n");
-    outFile << wstringToUtf8(L"AlertNotFound=" + std::to_wstring(alertNotFoundEnabled ? 1 : 0) + L"\n");
-    outFile << wstringToUtf8(L"DoubleClickEdits=" + std::to_wstring(doubleClickEditsEnabled ? 1 : 0) + L"\n");
-    outFile << wstringToUtf8(L"HoverText=" + std::to_wstring(isHoverTextEnabled ? 1 : 0) + L"\n");
-    outFile << wstringToUtf8(L"EditFieldSize=" + std::to_wstring(editFieldSize) + L"\n");
-    outFile << wstringToUtf8(L"ListStatistics=" + std::to_wstring(listStatisticsEnabled ? 1 : 0) + L"\n");
-    outFile << wstringToUtf8(L"StayAfterReplace=" + std::to_wstring(stayAfterReplaceEnabled ? 1 : 0) + L"\n");
-    outFile << wstringToUtf8(L"ExportToBash=" + std::to_wstring(exportToBashEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"[Options]\n");
+    outFile << Encoding::wstringToUtf8(L"WholeWord=" + std::to_wstring(wholeWord) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"MatchCase=" + std::to_wstring(matchCase) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"Extended=" + std::to_wstring(extended) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"Regex=" + std::to_wstring(regex) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ReplaceAtMatches=" + std::to_wstring(replaceAtMatches) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"EditAtMatches=" + editAtMatchesText + L"\n");
+    outFile << Encoding::wstringToUtf8(L"WrapAround=" + std::to_wstring(wrapAround) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"UseVariables=" + std::to_wstring(useVariables) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"UseList=" + std::to_wstring(useList) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"HighlightMatch=" + std::to_wstring(highlightMatchEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"Tooltips=" + std::to_wstring(tooltipsEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"AlertNotFound=" + std::to_wstring(alertNotFoundEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"DoubleClickEdits=" + std::to_wstring(doubleClickEditsEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"HoverText=" + std::to_wstring(isHoverTextEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"EditFieldSize=" + std::to_wstring(editFieldSize) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ListStatistics=" + std::to_wstring(listStatisticsEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"StayAfterReplace=" + std::to_wstring(stayAfterReplaceEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ExportToBash=" + std::to_wstring(exportToBashEnabled ? 1 : 0) + L"\n");
 
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
@@ -10250,35 +9972,35 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     std::wstring quoteChar = L"\"" + getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT) + L"\"";
     std::wstring headerLines = std::to_wstring(CSVheaderLinesCount);
 
-    outFile << wstringToUtf8(L"[Scope]\n");
-    outFile << wstringToUtf8(L"Selection=" + std::to_wstring(selection) + L"\n");
-    outFile << wstringToUtf8(L"ColumnMode=" + std::to_wstring(columnMode) + L"\n");
-    outFile << wstringToUtf8(L"ColumnNum=" + columnNum + L"\n");
-    outFile << wstringToUtf8(L"Delimiter=" + delimiter + L"\n");
-    outFile << wstringToUtf8(L"QuoteChar=" + quoteChar + L"\n");
-    outFile << wstringToUtf8(L"HeaderLines=" + headerLines + L"\n");
+    outFile << Encoding::wstringToUtf8(L"[Scope]\n");
+    outFile << Encoding::wstringToUtf8(L"Selection=" + std::to_wstring(selection) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ColumnMode=" + std::to_wstring(columnMode) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ColumnNum=" + columnNum + L"\n");
+    outFile << Encoding::wstringToUtf8(L"Delimiter=" + delimiter + L"\n");
+    outFile << Encoding::wstringToUtf8(L"QuoteChar=" + quoteChar + L"\n");
+    outFile << Encoding::wstringToUtf8(L"HeaderLines=" + headerLines + L"\n");
 
     // Save “Replace in Files” settings
     std::wstring filterText = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
     std::wstring dirText = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
     int inSub = IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int inHidden = IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED ? 1 : 0;
-    outFile << wstringToUtf8(L"[ReplaceInFiles]\n");
-    outFile << wstringToUtf8(L"Filter=\"" + filterText + L"\"\n");
-    outFile << wstringToUtf8(L"Directory=\"" + dirText + L"\"\n");
-    outFile << wstringToUtf8(L"InSubfolders=" + std::to_wstring(inSub) + L"\n");
-    outFile << wstringToUtf8(L"InHiddenFolders=" + std::to_wstring(inHidden) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"[ReplaceInFiles]\n");
+    outFile << Encoding::wstringToUtf8(L"Filter=\"" + filterText + L"\"\n");
+    outFile << Encoding::wstringToUtf8(L"Directory=\"" + dirText + L"\"\n");
+    outFile << Encoding::wstringToUtf8(L"InSubfolders=" + std::to_wstring(inSub) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"InHiddenFolders=" + std::to_wstring(inHidden) + L"\n");
 
     // Save the list file path and original hash
-    outFile << wstringToUtf8(L"[File]\n");
-    outFile << wstringToUtf8(L"ListFilePath=" + escapeCsvValue(listFilePath) + L"\n");
-    outFile << wstringToUtf8(L"OriginalListHash=" + std::to_wstring(originalListHash) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"[File]\n");
+    outFile << Encoding::wstringToUtf8(L"ListFilePath=" + escapeCsvValue(listFilePath) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"OriginalListHash=" + std::to_wstring(originalListHash) + L"\n");
 
     // Save the "Find what" history
     LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
     int itemsToSave = std::min(static_cast<int>(findWhatCount), maxHistoryItems);
-    outFile << wstringToUtf8(L"[History]\n");
-    outFile << wstringToUtf8(L"FindTextHistoryCount=" + std::to_wstring(itemsToSave) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"[History]\n");
+    outFile << Encoding::wstringToUtf8(L"FindTextHistoryCount=" + std::to_wstring(itemsToSave) + L"\n");
 
     // Save only the newest maxHistoryItems entries (starting from index 0)
     for (LRESULT i = 0; i < itemsToSave; ++i) {
@@ -10286,13 +10008,13 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
         SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
         std::wstring findTextData = escapeCsvValue(std::wstring(buffer.data()));
-        outFile << wstringToUtf8(L"FindTextHistory" + std::to_wstring(i) + L"=" + findTextData + L"\n");
+        outFile << Encoding::wstringToUtf8(L"FindTextHistory" + std::to_wstring(i) + L"=" + findTextData + L"\n");
     }
 
     // Save the "Replace with" history
     LRESULT replaceWithCount = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETCOUNT, 0, 0);
     int replaceItemsToSave = std::min(static_cast<int>(replaceWithCount), maxHistoryItems);
-    outFile << wstringToUtf8(L"ReplaceTextHistoryCount=" + std::to_wstring(replaceItemsToSave) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ReplaceTextHistoryCount=" + std::to_wstring(replaceItemsToSave) + L"\n");
 
     // Save only the newest maxHistoryItems entries (starting from index 0)
     for (LRESULT i = 0; i < replaceItemsToSave; ++i) {
@@ -10300,29 +10022,29 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
         SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
         std::wstring replaceTextData = escapeCsvValue(std::wstring(buffer.data()));
-        outFile << wstringToUtf8(L"ReplaceTextHistory" + std::to_wstring(i) + L"=" + replaceTextData + L"\n");
+        outFile << Encoding::wstringToUtf8(L"ReplaceTextHistory" + std::to_wstring(i) + L"=" + replaceTextData + L"\n");
     }
 
     // Save Filter history
     LRESULT filterCount = SendMessage(GetDlgItem(_hSelf, IDC_FILTER_EDIT), CB_GETCOUNT, 0, 0);
     int filterItemsToSave = std::min(static_cast<int>(filterCount), maxHistoryItems);
-    outFile << wstringToUtf8(L"FilterHistoryCount=" + std::to_wstring(filterItemsToSave) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"FilterHistoryCount=" + std::to_wstring(filterItemsToSave) + L"\n");
     for (int i = 0; i < filterItemsToSave; ++i) {
         LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_FILTER_EDIT), CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buf(len + 1);
         SendMessage(GetDlgItem(_hSelf, IDC_FILTER_EDIT), CB_GETLBTEXT, i, (LPARAM)buf.data());
-        outFile << wstringToUtf8(L"FilterHistory" + std::to_wstring(i) + L"=" + escapeCsvValue(buf.data()) + L"\n");
+        outFile << Encoding::wstringToUtf8(L"FilterHistory" + std::to_wstring(i) + L"=" + escapeCsvValue(buf.data()) + L"\n");
     }
 
     //  Save Dir history
     LRESULT dirCount = SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_GETCOUNT, 0, 0);
     int dirItemsToSave = std::min(static_cast<int>(dirCount), maxHistoryItems);
-    outFile << wstringToUtf8(L"DirHistoryCount=" + std::to_wstring(dirItemsToSave) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"DirHistoryCount=" + std::to_wstring(dirItemsToSave) + L"\n");
     for (int i = 0; i < dirItemsToSave; ++i) {
         LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buf(len + 1);
         SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_GETLBTEXT, i, (LPARAM)buf.data());
-        outFile << wstringToUtf8(L"DirHistory" + std::to_wstring(i) + L"=" + escapeCsvValue(buf.data()) + L"\n");
+        outFile << Encoding::wstringToUtf8(L"DirHistory" + std::to_wstring(i) + L"=" + escapeCsvValue(buf.data()) + L"\n");
     }
 
     outFile.close();
@@ -10609,7 +10331,7 @@ bool MultiReplace::parseIniFile(const std::wstring& iniFilePath)
     {
         offset = 3;                                       // skip BOM
     }
-    else if (!isValidUtf8(raw)) {
+    else if (!Encoding::isValidUtf8(raw)) {
         cp = CP_ACP;                                      // fallback to ANSI if not valid UTF-8
     }
     // ==== end detection ====
@@ -10625,7 +10347,7 @@ bool MultiReplace::parseIniFile(const std::wstring& iniFilePath)
     std::wstring currentSection;
 
     while (std::getline(contentStream, line)) {
-        line = trim(line); // remove leading/trailing whitespace
+        line = Encoding::trim(line); // remove leading/trailing whitespace
         if (line.empty()) {
             // Skip empty lines
             continue;
@@ -10643,7 +10365,7 @@ bool MultiReplace::parseIniFile(const std::wstring& iniFilePath)
             size_t closingBracketPos = line.find(L']');
             if (closingBracketPos != std::wstring::npos) {
                 currentSection = line.substr(1, closingBracketPos - 1);
-                currentSection = trim(currentSection);
+                currentSection = Encoding::trim(currentSection);
             }
             continue;
         }
@@ -10651,8 +10373,8 @@ bool MultiReplace::parseIniFile(const std::wstring& iniFilePath)
         // Otherwise, look for key=value
         size_t equalPos = line.find(L'=');
         if (equalPos != std::wstring::npos) {
-            std::wstring key = trim(line.substr(0, equalPos));
-            std::wstring value = trim(line.substr(equalPos + 1));
+            std::wstring key = Encoding::trim(line.substr(0, equalPos));
+            std::wstring value = Encoding::trim(line.substr(equalPos + 1));
 
             // Unescape if needed
             std::wstring unescapedVal = unescapeCsvValue(value);

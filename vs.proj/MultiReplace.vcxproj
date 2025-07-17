@@ -31,6 +31,7 @@
     <ClInclude Include="..\src\DockingDlgInterface.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
+    <ClInclude Include="..\src\Encoding.h" />
     <ClInclude Include="..\src\HiddenSciGuard.h" />
     <ClInclude Include="..\src\image_data.h" />
     <ClInclude Include="..\src\luaEmbedded.h" />
@@ -69,10 +70,12 @@
     <ClInclude Include="..\src\StaticDialog\Docking.h" />
     <ClInclude Include="..\src\StaticDialog\resource.h" />
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
+    <ClInclude Include="Header.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\DPIManager.cpp" />
     <ClCompile Include="..\src\DropTarget.cpp" />
+    <ClCompile Include="..\src\Encoding.cpp" />
     <ClCompile Include="..\src\language_mapping.cpp" />
     <ClCompile Include="..\src\lua\lapi.c">
       <AdditionalOptions>/w %(AdditionalOptions)</AdditionalOptions>
@@ -148,6 +151,7 @@
     <ClCompile Include="..\src\PluginDefinition.cpp" />
     <ClCompile Include="..\src\ResultDock.cpp" />
     <ClCompile Include="..\src\StaticDialog\StaticDialog.cpp" />
+    <ClCompile Include="Source.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

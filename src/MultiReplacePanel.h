@@ -23,6 +23,7 @@
 #include "DropTarget.h"
 #include "DPIManager.h"
 #include "ResultDock.h"
+#include "Encoding.h"
 
 #include <string>
 #include <vector>
@@ -841,16 +842,6 @@ private:
     int getCharacterWidth(int elementID, const wchar_t* character);
     int getFontHeight(HWND hwnd, HFONT hFont);
     std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
-
-    //StringHandling
-    std::wstring utf8ToWString(const std::string& utf8) const;
-    std::wstring ansiToWString(const std::string& input, UINT codePage) const;
-    std::string wstringToUtf8(const std::wstring& input) const;
-    std::string wstringToString(const std::wstring& input) const;
-    std::string wstringToString(const std::wstring& ws, UINT cp) const;
-    std::wstring stringToWString(const std::string& input) const;
-    std::wstring trim(const std::wstring& str);
-    static bool MultiReplace::isValidUtf8(const std::string& data);
 
     //FileOperations
     std::wstring promptSaveListToCsv();

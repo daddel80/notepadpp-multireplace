@@ -1,93 +1,94 @@
 ﻿#pragma once
-// ResultDock – manages the dockable “Search results” pane.
-// Implemented as a singleton, accessed via ResultDock::instance().
+/* ------------------------------------------------------------------
+ * ResultDock – dockable Scintilla view that shows search results
+ * ------------------------------------------------------------------ */
 
-#include "PluginInterface.h"
-#include <string>
 #include <windows.h>
+#include <string>
+#include <vector>
+#include <functional>
+#include "Encoding.h"        // UTF‑16/UTF‑8 helpers
+#include "Sci_Position.h"
+#include "PluginDefinition.h"
 
-class ResultDock
+ /* ------------------------------------------------------------------
+  *  Helper types
+  * ------------------------------------------------------------------ */
+using SciSendFn = std::function<LRESULT(UINT, WPARAM, LPARAM)>;
+
+/* ------------------------------------------------------------------
+ *  ResultDock  (singleton)
+ * ------------------------------------------------------------------ */
+class ResultDock final
 {
+public:
+    /* === public data ================================================= */
+
+    struct Hit          // one visible “Line N:” entry in the dock
+    {
+        /* navigation */
+        std::string  fullPathUtf8;     // UTF‑8 file path
+        Sci_Position pos{};            // match start in source buffer
+        Sci_Position length{};         // match length
+
+        /* styling offsets (within dock buffer) */
+        int displayLineStart{ -1 };    // absolute char pos of "Line N:"
+        int numberStart{ 0 };          // offset of digits
+        int numberLen{ 0 };            // length of digits
+        std::vector<int> matchStarts;  // offsets of each match substring
+        std::vector<int> matchLens;    // lengths of each match substring
+    };
+
+    /* === singleton =================================================== */
+    static ResultDock& instance();
+
+    /* === public API ================================================== */
+    void ensureCreatedAndVisible(const NppData& npp);
+
+    void setText(const std::wstring& text);
+    void prependText(const std::wstring& text);
+    void appendText(const std::wstring& text);
+
+    void prependHits(const std::vector<Hit>& newHits, const std::wstring& dockText);
+    void recordHit(const std::string& fullPathUtf8, Sci_Position pos, Sci_Position length);
+
+    void clear();                           // Clears all hits and text
+    void rebuildFolding()      const;       // refresh folding markers
+    void applyStyling()        const;       // colour indicators
+    void onThemeChanged();                  // react to N++ dark‑mode switch
+
+    const std::vector<Hit>& hits() const { return _hits; }
+
+    /* build dock text for exactly one file                               */
+    void formatHitsForFile(const std::wstring& wFilePath,
+        const SciSendFn& sciSend,
+        std::vector<Hit>& hitsInOut,
+        std::wstring& outBlock,
+        size_t& ioUtf8Len) const;
+
 private:
-    
-
-    // The subclass procedure is still needed to handle the close button.
-    static LRESULT CALLBACK sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
-    static inline WNDPROC s_prevSciProc = nullptr;
-
-    // Construction is private for the singleton pattern.
-    explicit ResultDock(HINSTANCE hInst) : _hInst(hInst) {}
+    /* === construction ================================================= */
+    explicit ResultDock(HINSTANCE hInst);
     ResultDock(const ResultDock&) = delete;
     ResultDock& operator=(const ResultDock&) = delete;
 
-    // Internal implementation functions
-    void _create(const NppData& npp);
-    void _initFolding() const;
-    void _rebuildFolding() const;
+    /* === private helpers ============================================= */
+    void create(const NppData& npp);
+    void initFolding() const;   
+    void applyTheme();
 
-    // Member variables
-    HINSTANCE _hInst = nullptr;   // DLL instance handle for resources.
-    HWND      _hSci = nullptr;    // Handle to the Scintilla control inside the dock.
-    HWND      _hDock = nullptr;   // Handle to the dockable container window returned by Notepad++.
+    static LRESULT CALLBACK sciSubclassProc(HWND, UINT, WPARAM, LPARAM);
+    static inline WNDPROC   s_prevSciProc = nullptr;
 
-    static constexpr int INDIC_LINE_BACKGROUND = 8;   // line background highlight
-    static constexpr int INDIC_LINENUMBER_FORE = 9;   // line‑number foreground
-    static constexpr int INDIC_MATCH_FORE = 10;  // match‑text foreground
+    /* === data members ================================================= */
+    HINSTANCE   _hInst{ nullptr };         // DLL instance
+    HWND        _hSci{ nullptr };         // Scintilla handle (client)
+    HWND        _hDock{ nullptr };         // N++ dock container
 
-public:
-    struct Hit {
-        // Navigation data
-        std::string  fullPathUtf8;  // UTF‑8 file path
-        Sci_Position pos;           // match start in source buffer
-        Sci_Position length;        // match length
+    std::vector<Hit> _hits;                 // visible hits
 
-        // Styling data (in‐dock positions)
-        int displayLineStart;       // absolute char position where this "Line N:" begins
-        int numberStart;            // offset within that line where the digits start
-        int numberLen;              // length of the digits
-
-        // Support multiple matches per line
-        std::vector<int> matchStarts; // offsets of each match substring
-        std::vector<int> matchLens;   // lengths of each match substring
-    };
-    std::vector<Hit> _hits;        // one entry per visible “Line N: …” in the dock
-
-    // Singleton accessor
-    static ResultDock& instance();
-
-    // --- Public Interface ---
-
-    // This is the only function needed to interact with the dock.
-    // It creates the window on the first call, and ensures it's visible on every call.
-    void ensureCreatedAndVisible(const NppData& npp);
-
-    // Overwrites the entire buffer with new text.
-    void setText(const std::wstring& wText);
-
-    // propagate N++ dark-mode change
-    void onThemeChanged();
-
-    void prependText(const std::wstring& wText);
-
-    void appendText(const std::wstring& wText);
-
-    void _applyTheme();
-
-    // Replace recordHit with a straight push_back if you ever need it:
-    void recordHit(const std::string& fullPathUtf8, Sci_Position pos, Sci_Position length);
-
-    // New prependHits: insert _and_ update the view in one go.
-    void prependHits(const std::vector<Hit>& newHits, const std::wstring& text);
-
-    // Clear everything (if you ever need a full reset):
-    void clearAll();
-
-    void rebuildFolding() const { _rebuildFolding(); }
-
-    void applyStyling() const;
-
-    // Expose hits for your double-click handler
-    const std::vector<Hit>& hits() const { return _hits; }
-
+    /* indicator IDs (Scintilla) */
+    static constexpr int INDIC_LINE_BACKGROUND = 8;
+    static constexpr int INDIC_LINENUMBER_FORE = 9;
+    static constexpr int INDIC_MATCH_FORE = 10;
 };
-
