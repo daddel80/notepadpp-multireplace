@@ -6030,24 +6030,26 @@ void MultiReplace::handleFindAllButton()
     /* 1) delimiter sanity ---------------------------------------------- */
     if (!validateDelimiterData()) return;
 
-    /* 2) show / create result dock -------------------------------------- */
+    /* 2) show / create result dock ------------------------------------- */
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
 
-    /* 3) short lambda for Scintilla ------------------------------------- */
-    auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT { return ::SendMessage(_hScintilla, m, w, l); };
+    /* 3) short lambda for Scintilla ------------------------------------ */
+    auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
+        { return ::SendMessage(_hScintilla, m, w, l); };
 
     /* 4) active file path ---------------------------------------------- */
     wchar_t wPathBuf[MAX_PATH] = {};
-    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, (LPARAM)wPathBuf);
+    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH,
+        (LPARAM)wPathBuf);
     std::wstring wFilePath = *wPathBuf ? wPathBuf : L"<untitled>";
     std::string  utf8FilePath = wstringToUtf8(wFilePath);
 
-    /* 5) search context ------------------------------------------------- */
+    /* 5) search context ------------------------------------------------ */
     SearchContext ctx{}; ctx.docLength = sciSend(SCI_GETLENGTH);
 
-    /* 6) containers ----------------------------------------------------- */
-    std::vector<ResultDock::Hit> allHits;
+    /* 6) containers ---------------------------------------------------- */
+    std::vector<ResultDock::Hit> allHits;      // raw list (incl. duplicates)
     std::vector<size_t> startIndices; std::vector<int> hitsPerItem;
     std::wstringstream displayText;   size_t dockUtf8Len = 0;
     int totalHits = 0;
@@ -6059,25 +6061,28 @@ void MultiReplace::handleFindAllButton()
     {
         if (replaceListData.empty())
         {
-            showStatusMessage(getLangStr(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            showStatusMessage(getLangStr(L"status_add_values_or_uncheck"),
+                MessageStatus::Error);
             return;
         }
 
-        /* first pass – gather hits ------------------------------------- */
+        /* first pass – gather hits ------------------------------------ */
         for (auto const& item : replaceListData)
         {
             if (!item.isEnabled || item.findText.empty())
             {
-                startIndices.push_back(allHits.size()); hitsPerItem.push_back(0); continue;
+                startIndices.push_back(allHits.size());
+                hitsPerItem.push_back(0);
+                continue;
             }
 
             startIndices.push_back(allHits.size());
 
             ctx.findText = convertAndExtendW(item.findText, item.extended);
             ctx.searchFlags =
-                (item.wholeWord ? SCFIND_WHOLEWORD : 0)
-                | (item.matchCase ? SCFIND_MATCHCASE : 0)
-                | (item.regex ? SCFIND_REGEXP : 0);
+                (item.wholeWord ? SCFIND_WHOLEWORD : 0) |
+                (item.matchCase ? SCFIND_MATCHCASE : 0) |
+                (item.regex ? SCFIND_REGEXP : 0);
             sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
 
             int hitsHere = 0; LRESULT pos = 0;
@@ -6091,107 +6096,141 @@ void MultiReplace::handleFindAllButton()
                 h.fullPathUtf8 = utf8FilePath;
                 h.pos = static_cast<Sci_Position>(r.pos);
                 h.length = static_cast<Sci_Position>(r.length);
+                h.displayLineStart = -1;              // *** NEW ***
                 allHits.push_back(std::move(h));
                 ++hitsHere; ++totalHits;
             }
             hitsPerItem.push_back(hitsHere);
         }
 
-        /* header -------------------------------------------------------- */
+        /* header ------------------------------------------------------- */
         {
-            std::wstring h = L"Search in List (" + std::to_wstring(totalHits) + L" total hits in 1 file)\r\n";
-            displayText << h;  dockUtf8Len += wstringToUtf8(h).size();
+            std::wstring h = L"Search in List (" +
+                std::to_wstring(totalHits) +
+                L" total hits in 1 file)\r\n";
+            displayText << h;
+            dockUtf8Len += wstringToUtf8(h).size();
         }
 
-        /* second pass – build result text ------------------------------ */
+        /* second pass – build result text ----------------------------- */
         for (size_t idx = 0; idx < replaceListData.size(); ++idx)
         {
             int hitsCount = hitsPerItem[idx]; if (hitsCount == 0) continue;
-            const auto& item = replaceListData[idx]; size_t base = startIndices[idx];
+            const auto& item = replaceListData[idx];
+            size_t base = startIndices[idx];
 
-            std::wstring crit = L"    Search \"" + item.findText + L"\" (" + std::to_wstring(hitsCount) + L" hits in 1 file)\r\n";
-            displayText << crit; dockUtf8Len += wstringToUtf8(crit).size();
+            std::wstring crit = L"    Search \"" + item.findText + L"\" (" +
+                std::to_wstring(hitsCount) +
+                L" hits in 1 file)\r\n";
+            displayText << crit;
+            dockUtf8Len += wstringToUtf8(crit).size();
 
-            std::wstring file = L"        " + wFilePath + L" (" + std::to_wstring(hitsCount) + L" hits)\r\n";
-            displayText << file; dockUtf8Len += wstringToUtf8(file).size();
+            std::wstring file = L"        " + wFilePath + L" (" +
+                std::to_wstring(hitsCount) + L" hits)\r\n";
+            displayText << file;
+            dockUtf8Len += wstringToUtf8(file).size();
 
-            int     lastPrintedLine = -1;
+            int lastPrintedLine = -1;
             ResultDock::Hit* lastHit = nullptr;
 
             for (int j = 0; j < hitsCount; ++j)
             {
                 auto& hit = allHits[base + j];
                 int   lineN = (int)sciSend(SCI_LINEFROMPOSITION, hit.pos) + 1;
-                Sci_Position lineStartPos = sciSend(SCI_POSITIONFROMLINE, lineN - 1);
+                Sci_Position lineStartPos =
+                    sciSend(SCI_POSITIONFROMLINE, lineN - 1);
 
                 /* fetch raw line -------------------------------------- */
                 LRESULT rawLen = sciSend(SCI_LINELENGTH, lineN - 1);
                 std::string raw(rawLen, '\0');
                 sciSend(SCI_GETLINE, lineN - 1, (LPARAM)&raw[0]);
                 raw.resize(strnlen(raw.c_str(), rawLen));
-
                 size_t lead = raw.find_first_not_of(" \t");
                 if (lead == std::string::npos) lead = 0;
                 std::string trim = raw.substr(lead);
-
-                while (!trim.empty() && (trim.back() == '\r' || trim.back() == '\n'))  // STRIP EOL
+                while (!trim.empty() &&
+                    (trim.back() == '\r' || trim.back() == '\n'))
                     trim.pop_back();
 
-                Sci_Position absLineStart = lineStartPos + (Sci_Position)lead;
+                Sci_Position absLineStart =
+                    lineStartPos + static_cast<Sci_Position>(lead);
 
-                /* ------------------------------------------------------ */
-                /* MERGE same line: only first hit prints the line text  */
-                /* ------------------------------------------------------ */
+                /* MERGE same line: only first hit prints the line text */
                 if (lineN == lastPrintedLine && lastHit)
                 {
                     int rel = (int)(hit.pos - absLineStart);
-                    lastHit->matchStarts.push_back(lastHit->numberStart + lastHit->numberLen + 2 + rel);
+                    lastHit->matchStarts.push_back(
+                        lastHit->numberStart + lastHit->numberLen + 2 + rel);
                     lastHit->matchLens.push_back((int)hit.length);
-                    continue;   // skip extra visual line
+
+                    // *** NEW *** mark this hit as "visual only"
+                    hit.matchStarts.clear();
+                    hit.displayLineStart = -1;
+
+                    continue;       // skip extra visual line
                 }
                 lastPrintedLine = lineN;
                 lastHit = &hit;
 
                 /* offsets for styling (first hit in this line) -------- */
-                hit.displayLineStart = (int)dockUtf8Len;
-                hit.numberStart = (int)std::string("            Line ").size();
-                hit.numberLen = (int)std::to_string(lineN).size();
+                hit.displayLineStart = (int)dockUtf8Len;            // *** CHANGED ***
+                hit.numberStart = (int)std::string(
+                    "            Line ").size();
+                hit.numberLen =
+                    (int)std::to_string(lineN).size();
                 hit.matchStarts.clear(); hit.matchLens.clear();
 
                 int rel = (int)(hit.pos - absLineStart);
-                hit.matchStarts.push_back(hit.numberStart + hit.numberLen + 2 + rel);
+                hit.matchStarts.push_back(
+                    hit.numberStart + hit.numberLen + 2 + rel);
                 hit.matchLens.push_back((int)hit.length);
 
                 /* output ---------------------------------------------- */
-                std::wstring prefixW = L"            Line " + std::to_wstring(lineN) + L": ";
+                std::wstring prefixW = L"            Line " +
+                    std::to_wstring(lineN) + L": ";
                 std::wstring wLine = stringToWString(trim);
                 displayText << prefixW << wLine << L"\r\n";
-                dockUtf8Len += wstringToUtf8(prefixW).size() + trim.size() + 2;
+                dockUtf8Len +=
+                    wstringToUtf8(prefixW).size() + trim.size() + 2;
             }
         }
     }
     /* ------------------------------------------------------------------ */
-    /* SINGLE MODE                                                        */
-    /* ------------------------------------------------------------------ */
+    /* SINGLE MODE ------------------------------------------------------- */
     else
     {
-        std::wstring findTextW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        std::wstring findTextW =
+            getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         if (findTextW.empty())
         {
-            showStatusMessage(getLangStr(L"status_no_search_string"), MessageStatus::Error);
+            showStatusMessage(getLangStr(L"status_no_search_string"),
+                MessageStatus::Error);
             return;
         }
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findTextW);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT),
+            findTextW);
 
-        ctx.findText = convertAndExtendW(findTextW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+        ctx.findText =
+            convertAndExtendW(findTextW,
+                IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO)
+                == BST_CHECKED);
         ctx.searchFlags =
-            (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
-            | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
-            | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+            (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX)
+                == BST_CHECKED
+                ? SCFIND_WHOLEWORD
+                : 0) |
+            (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX)
+                == BST_CHECKED
+                ? SCFIND_MATCHCASE
+                : 0) |
+            (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED
+                ? SCFIND_REGEXP
+                : 0);
         sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
 
         /* header ------------------------------------------------------- */
-        std::wstring hdr1 = L"Search \"" + findTextW + L"\" ("; displayText << hdr1;
+        std::wstring hdr1 = L"Search \"" + findTextW + L"\" (";
+        displayText << hdr1;
         dockUtf8Len += wstringToUtf8(hdr1).size();
 
         int hitsFile = 0; LRESULT pos = 0;
@@ -6202,22 +6241,31 @@ void MultiReplace::handleFindAllButton()
             pos = r.pos + r.length;
 
             ResultDock::Hit h{};
-            h.fullPathUtf8 = utf8FilePath; h.pos = r.pos; h.length = r.length;
-            allHits.push_back(std::move(h)); ++hitsFile; ++totalHits;
+            h.fullPathUtf8 = utf8FilePath;
+            h.pos = r.pos;
+            h.length = r.length;
+            h.displayLineStart = -1;                  // *** NEW ***
+            allHits.push_back(std::move(h));
+            ++hitsFile; ++totalHits;
         }
         if (hitsFile == 0)
         {
-            showStatusMessage(getLangStr(L"status_no_matches_found"), MessageStatus::Error, true);
+            showStatusMessage(getLangStr(L"status_no_matches_found"),
+                MessageStatus::Error, true);
             return;
         }
 
-        std::wstring hdr2 = std::to_wstring(hitsFile) + L" hits in 1 file)\r\n";
-        displayText << hdr2; dockUtf8Len += wstringToUtf8(hdr2).size();
+        std::wstring hdr2 = std::to_wstring(hitsFile) +
+            L" hits in 1 file)\r\n";
+        displayText << hdr2;
+        dockUtf8Len += wstringToUtf8(hdr2).size();
 
-        std::wstring file = L"\t" + wFilePath + L" (" + std::to_wstring(hitsFile) + L" hits)\r\n";
-        displayText << file; dockUtf8Len += wstringToUtf8(file).size();
+        std::wstring file = L"\t" + wFilePath + L" (" +
+            std::to_wstring(hitsFile) + L" hits)\r\n";
+        displayText << file;
+        dockUtf8Len += wstringToUtf8(file).size();
 
-        int     lastPrintedLine = -1;
+        int lastPrintedLine = -1;
         ResultDock::Hit* lastHit = nullptr;
 
         size_t base = allHits.size() - hitsFile;
@@ -6225,57 +6273,78 @@ void MultiReplace::handleFindAllButton()
         {
             auto& hit = allHits[i];
             int   lineN = (int)sciSend(SCI_LINEFROMPOSITION, hit.pos) + 1;
-            Sci_Position lineStartPos = sciSend(SCI_POSITIONFROMLINE, lineN - 1);
+            Sci_Position lineStartPos =
+                sciSend(SCI_POSITIONFROMLINE, lineN - 1);
 
             LRESULT rawLen = sciSend(SCI_LINELENGTH, lineN - 1);
             std::string raw(rawLen, '\0');
             sciSend(SCI_GETLINE, lineN - 1, (LPARAM)&raw[0]);
             raw.resize(strnlen(raw.c_str(), rawLen));
-
             size_t lead = raw.find_first_not_of(" \t");
             if (lead == std::string::npos) lead = 0;
             std::string trim = raw.substr(lead);
-
-            while (!trim.empty() && (trim.back() == '\r' || trim.back() == '\n')) // STRIP EOL
+            while (!trim.empty() &&
+                (trim.back() == '\r' || trim.back() == '\n'))
                 trim.pop_back();
 
-            Sci_Position absLineStart = lineStartPos + (Sci_Position)lead;
+            Sci_Position absLineStart =
+                lineStartPos + static_cast<Sci_Position>(lead);
 
             /* MERGE same line ---------------------------------------- */
             if (lineN == lastPrintedLine && lastHit)
             {
                 int rel = (int)(hit.pos - absLineStart);
-                lastHit->matchStarts.push_back(lastHit->numberStart + lastHit->numberLen + 2 + rel);
+                lastHit->matchStarts.push_back(
+                    lastHit->numberStart + lastHit->numberLen + 2 + rel);
                 lastHit->matchLens.push_back((int)hit.length);
+
+                // *** NEW *** mark this hit as "visual only"
+                hit.matchStarts.clear();
+                hit.displayLineStart = -1;
+
                 continue;
             }
             lastPrintedLine = lineN;
             lastHit = &hit;
 
-            hit.displayLineStart = (int)dockUtf8Len;
-            hit.numberStart = (int)std::string("\t\tLine ").size();
-            hit.numberLen = (int)std::to_string(lineN).size();
+            hit.displayLineStart = (int)dockUtf8Len;        // *** CHANGED ***
+            hit.numberStart =
+                (int)std::string("\t\tLine ").size();
+            hit.numberLen =
+                (int)std::to_string(lineN).size();
             hit.matchStarts.clear(); hit.matchLens.clear();
 
             int rel = (int)(hit.pos - absLineStart);
-            hit.matchStarts.push_back(hit.numberStart + hit.numberLen + 2 + rel);
+            hit.matchStarts.push_back(
+                hit.numberStart + hit.numberLen + 2 + rel);
             hit.matchLens.push_back((int)hit.length);
 
-            std::wstring prefixW = L"\t\tLine " + std::to_wstring(lineN) + L": ";
+            std::wstring prefixW = L"\t\tLine " +
+                std::to_wstring(lineN) + L": ";
             std::wstring wLine = stringToWString(trim);
             displayText << prefixW << wLine << L"\r\n";
-            dockUtf8Len += wstringToUtf8(prefixW).size() + trim.size() + 2;
+            dockUtf8Len +=
+                wstringToUtf8(prefixW).size() + trim.size() + 2;
         }
     }
 
-    /* 7) commit + style ------------------------------------------------- */
-    dock.prependHits(allHits, displayText.str());
+    /* 7) commit + style ------------------------------------------------ */
+
+    // *** NEW *** keep only hits that have their own display line
+    std::vector<ResultDock::Hit> visibleHits;
+    visibleHits.reserve(allHits.size());
+    for (auto& h : allHits)
+        if (h.displayLineStart != -1)
+            visibleHits.push_back(std::move(h));
+
+    dock.prependHits(visibleHits, displayText.str());   // *** CHANGED ***
     dock.rebuildFolding();
-    dock.applyStyling();                // uses new offsets
+    dock.applyStyling();        // uses new offsets
 
-    showStatusMessage(getLangStr(L"status_occurrences_found", { std::to_wstring(totalHits) }), MessageStatus::Success);
+    showStatusMessage(getLangStr(L"status_occurrences_found",
+        { std::to_wstring(totalHits) }),
+        MessageStatus::Success);
 }
-
 HWND MultiReplace::createResultSci()
 {
     return ::CreateWindowExW(0, L"Scintilla", nullptr,
