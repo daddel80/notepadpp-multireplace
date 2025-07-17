@@ -1,5 +1,5 @@
-#pragma once
-// ResultDock ñ manages the dockable ìSearch resultsî pane.
+Ôªø#pragma once
+// ResultDock ‚Äì manages the dockable ‚ÄúSearch results‚Äù pane.
 // Implemented as a singleton, accessed via ResultDock::instance().
 
 #include "PluginInterface.h"
@@ -30,13 +30,27 @@ private:
     HWND      _hSci = nullptr;    // Handle to the Scintilla control inside the dock.
     HWND      _hDock = nullptr;   // Handle to the dockable container window returned by Notepad++.
 
+    static constexpr int INDIC_LINE_BACKGROUND = 8;   // line background highlight
+    static constexpr int INDIC_LINENUMBER_FORE = 9;   // line‚Äënumber foreground
+    static constexpr int INDIC_MATCH_FORE = 10;  // match‚Äëtext foreground
+
 public:
     struct Hit {
-        std::string fullPathUtf8;
-        Sci_Position pos;
-        Sci_Position length;
+        // Navigation data
+        std::string  fullPathUtf8;  // UTF‚Äë8 file path
+        Sci_Position pos;           // match start in source buffer
+        Sci_Position length;        // match length
+
+        // Styling data (in‚Äêdock positions)
+        int displayLineStart;       // absolute char position where this "Line N:" begins
+        int numberStart;            // offset within that line where the digits start
+        int numberLen;              // length of the digits
+
+        // Support multiple matches per line
+        std::vector<int> matchStarts; // offsets of each match substring
+        std::vector<int> matchLens;   // lengths of each match substring
     };
-    std::vector<Hit> _hits;        // one entry per visible ìLine N: Öî in the dock
+    std::vector<Hit> _hits;        // one entry per visible ‚ÄúLine N: ‚Ä¶‚Äù in the dock
 
     // Singleton accessor
     static ResultDock& instance();
@@ -69,6 +83,8 @@ public:
     void clearAll();
 
     void rebuildFolding() const { _rebuildFolding(); }
+
+    void applyStyling() const;
 
     // Expose hits for your double-click handler
     const std::vector<Hit>& hits() const { return _hits; }

@@ -116,19 +116,17 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         }
 
         // 7) Switch file
-        HWND hEd = nppData._scintillaMainHandle;
-        int targetLine = (int)::SendMessage(hEd, SCI_LINEFROMPOSITION, hit.pos, 0);
+        ::SendMessage(nppData._nppHandle,
+            NPPM_SWITCHTOFILE, 0,
+            (LPARAM)wpath.c_str());
 
         // 8) Jump + select in the editor
-        int visible = (int)::SendMessage(hEd, SCI_LINESONSCREEN, 0, 0);
-        int topLine = targetLine - visible / 2;
-        if (topLine < 0)                          topLine = 0;
-        int totalLines = (int)::SendMessage(hEd, SCI_GETLINECOUNT, 0, 0);
-        if (topLine > totalLines - visible)       topLine = totalLines - visible;
-        ::SendMessage(hEd, SCI_SETFIRSTVISIBLELINE, topLine, 0);
-
-        ::SendMessage(hEd, SCI_GOTOPOS, hit.pos, 0);
+        HWND hEd = nppData._scintillaMainHandle;
+        int targetLine = (int)::SendMessage(hEd, SCI_LINEFROMPOSITION, hit.pos, 0);
+        ::SendMessage(hEd, SCI_GOTOLINE, targetLine, 0);
+        ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY, targetLine, 0);
         ::SendMessage(hEd, SCI_SETSEL, hit.pos, hit.pos + hit.length);
+        // no SetFocus(hEd)
 
         // 9) Restore dock scroll
         ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
@@ -173,11 +171,12 @@ void ResultDock::_applyTheme()
 {
     if (!_hSci) return;
 
+    // Determine if Dark Mode is active
     const bool dark = ::SendMessage(nppData._nppHandle,
         NPPM_ISDARKMODEENABLED,
         0, 0) != 0;
 
-    // Editor default colours
+    // Fetch editor default colors
     COLORREF bg = (COLORREF)::SendMessage(
         nppData._nppHandle,
         NPPM_GETEDITORDEFAULTBACKGROUNDCOLOR,
@@ -187,74 +186,92 @@ void ResultDock::_applyTheme()
         NPPM_GETEDITORDEFAULTFOREGROUNDCOLOR,
         0, 0);
 
-    // Margin colours (unchanged) …
+    // Margin (line‑number) colors
     COLORREF lnBg = dark ? RGB(0, 0, 0) : RGB(255, 255, 255);
     COLORREF lnFg = dark ? RGB(200, 200, 200) : RGB(80, 80, 80);
 
-    // **Use your selection background** here for the caret‐line
+    // Selection colors (caret line)
     COLORREF selBg = dark ? RGB(96, 96, 96)
         : ::GetSysColor(COLOR_HIGHLIGHT);
     COLORREF selFg = dark ? RGB(255, 255, 255)
         : ::GetSysColor(COLOR_HIGHLIGHTTEXT);
 
-    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0)
-        { ::SendMessage(_hSci, m, w, l); };
+    // Theme colors for our custom indicators
+    COLORREF lineBgColor = dark ? RGB(0x3A, 0x3D, 0x33) : RGB(0xE7, 0xF2, 0xFF);
+    COLORREF lineNumberClr = dark ? RGB(0xAE, 0x81, 0xFF) : RGB(0xFD, 0x97, 0x1F);
+    COLORREF matchClr = dark ? RGB(0xE6, 0xDB, 0x74) : RGB(0xFF, 0x00, 0x00);
 
-    // 2) Base styles
+    // Helper to send Scintilla messages to the dock
+    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) {
+        ::SendMessage(_hSci, m, w, l);
+        };
+
+    // 1) Reset all styles to editor defaults
     S(SCI_STYLESETBACK, STYLE_DEFAULT, bg);
     S(SCI_STYLESETFORE, STYLE_DEFAULT, fg);
     S(SCI_STYLECLEARALL);
 
-    // 3) Margins and fold margin
+    // 2) Line‑number margin + fold margin
     S(SCI_SETMARGINBACKN, 0, lnBg);
     S(SCI_STYLESETBACK, STYLE_LINENUMBER, lnBg);
     S(SCI_STYLESETFORE, STYLE_LINENUMBER, lnFg);
     S(SCI_SETMARGINBACKN, 1, bg);
+    S(SCI_SETMARGINBACKN, 2, lnBg);
+    S(SCI_SETFOLDMARGINCOLOUR, 1, lnBg);
+    S(SCI_SETFOLDMARGINHICOLOUR, 1, lnBg);
 
-    const COLORREF foldBg = RGB(0, 0, 0);
-    S(SCI_SETMARGINBACKN, 2, foldBg);
-    S(SCI_SETFOLDMARGINCOLOUR, 1, foldBg);
-    S(SCI_SETFOLDMARGINHICOLOUR, 1, foldBg);
-
-    // 4) Selection colors
+    // 3) Selection & caret‑line colors
     S(SCI_SETSELFORE, 1, selFg);
     S(SCI_SETSELBACK, 1, selBg);
     S(SCI_SETSELALPHA, 256, 0);
-    S(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_BACK,
-        argb(0xFF, selBg));
-    S(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_TEXT,
-        argb(0xFF, selFg));
+    S(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_BACK, argb(0xFF, selBg));
+    S(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_TEXT, argb(0xFF, selFg));
     S(SCI_SETADDITIONALSELFORE, selFg);
     S(SCI_SETADDITIONALSELBACK, selBg);
     S(SCI_SETADDITIONALSELALPHA, 256, 0);
 
-    // 5) Fold‐marker colors
-    const COLORREF boxFill = foldBg;
-    const COLORREF lineClr = RGB(230, 230, 210);
-
+    // 4) Fold‑marker colors
+    const COLORREF foldBg = lnBg;
+    const COLORREF foldFg = dark ? RGB(230, 230, 210) : RGB(80, 80, 80);
     for (int id : { SC_MARKNUM_FOLDER, SC_MARKNUM_FOLDEROPEN })
     {
-        S(SCI_MARKERSETFORE, id, lineClr);
-        S(SCI_MARKERSETBACK, id, boxFill);
+        S(SCI_MARKERSETFORE, id, foldFg);
+        S(SCI_MARKERSETBACK, id, foldBg);
     }
     for (int id : { SC_MARKNUM_FOLDERSUB,
         SC_MARKNUM_FOLDERMIDTAIL,
         SC_MARKNUM_FOLDERTAIL,
         SC_MARKNUM_FOLDEREND })
     {
-        S(SCI_MARKERSETFORE, id, lineClr);
-        S(SCI_MARKERSETBACK, id, lineClr);
+        S(SCI_MARKERSETFORE, id, foldFg);
+        S(SCI_MARKERSETBACK, id, foldFg);
     }
 
-    // 6) Configure indicator #0 as a full‐line highlight
+    // 5) Default full‑line highlight (indicator #0)
     S(SCI_INDICSETSTYLE, 0, INDIC_ROUNDBOX);
     S(SCI_INDICSETFORE, 0, selBg);
-    S(SCI_INDICSETUNDER, 0, true);
+    S(SCI_INDICSETUNDER, 0, TRUE);
     S(SCI_INDICSETALPHA, 0, 128);
 
-    // 7) Give focus so the indicator (caret) shows immediately
-    S(SCI_SETCARETLINEVISIBLE, 1, 0);       // enable current‐line highlight
-    S(SCI_SETCARETLINEBACK, selBg, 0);   // paint with your selection BG
+    // 6) Our custom indicators for result‑dock styling:
+
+    //   6a) Line‑background (semi‑transparent box under each result line)
+    S(SCI_INDICSETSTYLE, INDIC_LINE_BACKGROUND, INDIC_STRAIGHTBOX);
+    S(SCI_INDICSETFORE, INDIC_LINE_BACKGROUND, lineBgColor);
+    S(SCI_INDICSETALPHA, INDIC_LINE_BACKGROUND, 100);
+    S(SCI_INDICSETUNDER, INDIC_LINE_BACKGROUND, TRUE);
+
+    //   6b) Line‑number digits styling
+    S(SCI_INDICSETSTYLE, INDIC_LINENUMBER_FORE, INDIC_TEXTFORE);
+    S(SCI_INDICSETFORE, INDIC_LINENUMBER_FORE, lineNumberClr);
+
+    //   6c) Actual match text styling
+    S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
+    S(SCI_INDICSETFORE, INDIC_MATCH_FORE, matchClr);
+
+    // 7) Ensure caret‑line highlight remains visible
+    S(SCI_SETCARETLINEVISIBLE, 1, 0);
+    S(SCI_SETCARETLINEBACK, selBg, 0);
 }
 
 // --- Public Methods ---
@@ -525,54 +542,103 @@ void ResultDock::clearAll() {
     }
 }
 
-void ResultDock::prependHits(const std::vector<Hit>& newHits, const std::wstring& text)
+// ResultDock.cpp
+void ResultDock::prependHits(const std::vector<Hit>& newHits,
+    const std::wstring& text)
 {
-    // 1) Prepend the new data to the internal data model.
+    /* 1) prepend data objects ---------------------------------------- */
     _hits.insert(_hits.begin(), newHits.begin(), newHits.end());
 
-    if (!_hSci || text.empty()) {
+    if (!_hSci || text.empty())
         return;
-    }
 
-    // 2) Convert the incoming wstring (UTF-16) to a UTF-8 encoded std::string.
+    /* 2) convert wide → UTF‑8 ---------------------------------------- */
     std::string utf8PrependedText;
-    int len = ::WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (len > 1) {
-        utf8PrependedText.resize(len - 1);
-        ::WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, &utf8PrependedText[0], len, nullptr, nullptr);
-    }
-    else {
-        return; // Nothing to insert.
-    }
+    int len = ::WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1,
+        nullptr, 0, nullptr, nullptr);
+    if (len <= 1)
+        return;                       // nothing to insert
+
+    utf8PrependedText.resize(len - 1);
+    ::WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1,
+        &utf8PrependedText[0], len, nullptr, nullptr);
+
+    LRESULT currentLen = ::SendMessage(_hSci, SCI_GETLENGTH, 0, 0);
+
+    // bytes that will be inserted at position 0 (text + optional “\r\n”)
+    const int delta = static_cast<int>(utf8PrependedText.length()) +
+        (currentLen > 0 ? 2 /* “\r\n” */ : 0);
+
+    // shift every *existing* hit so its dock offset stays valid
+    const size_t startOld = newHits.size();          // first “old” hit
+    for (size_t i = startOld; i < _hits.size(); ++i)
+        _hits[i].displayLineStart += delta;
+    // numberStart & matchStarts are relative to displayLineStart,
+    // so no update needed for them
 
     ::SendMessage(_hSci, SCI_SETREADONLY, FALSE, 0);
     ::SendMessage(_hSci, SCI_BEGINUNDOACTION, 0, 0);
 
-    // --- START OF FIX ---
-
-    // 3) Get the current document length BEFORE any insertion.
-    LRESULT currentLength = ::SendMessage(_hSci, SCI_GETLENGTH, 0, 0);
-
-    // 4) Insert the new text block at the very beginning.
-    ::SendMessage(_hSci, SCI_INSERTTEXT, 0, reinterpret_cast<LPARAM>(utf8PrependedText.c_str()));
-
-    // 5) If the document was NOT empty before, insert a newline separator AFTER the new block.
-    if (currentLength > 0) {
-        const char* separator = "\r\n";
-        ::SendMessage(_hSci, SCI_INSERTTEXT, utf8PrependedText.length(), reinterpret_cast<LPARAM>(separator));
-    }
-
-    // --- END OF FIX ---
+    /* 3) remember old length, insert new block + optional separator -- */
+    LRESULT oldLen = ::SendMessage(_hSci, SCI_GETLENGTH, 0, 0);
+    ::SendMessage(_hSci, SCI_INSERTTEXT, 0,
+        reinterpret_cast<LPARAM>(utf8PrependedText.c_str()));
+    if (oldLen > 0)                                    /* ★ CHANGED ★ */
+        ::SendMessage(_hSci, SCI_INSERTTEXT, utf8PrependedText.length(),
+            reinterpret_cast<LPARAM>("\r\n"));
 
     ::SendMessage(_hSci, SCI_ENDUNDOACTION, 0, 0);
     ::SendMessage(_hSci, SCI_SETREADONLY, TRUE, 0);
 
-    // 6) After prepending, rebuild folding and apply themes.
     _rebuildFolding();
     _applyTheme();
+    applyStyling();
 
-    // 7) Explicitly set the scroll position and caret to the top of the document.
-    // This prevents the view from jumping and keeps the caret at a predictable location.
     ::SendMessage(_hSci, SCI_SETFIRSTVISIBLELINE, 0, 0);
     ::SendMessage(_hSci, SCI_GOTOPOS, 0, 0);
+}
+
+void ResultDock::applyStyling() const
+{
+    if (!_hSci) return;
+    auto S = [this](UINT msg, WPARAM w = 0, LPARAM l = 0) {
+        return ::SendMessage(_hSci, msg, w, l);
+        };
+
+    // Clear all three indicators over the entire doc
+    S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
+    S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
+    S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
+    S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
+    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
+    S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
+
+    // 1) Fill full‑line background on each hit line
+    S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
+    for (const auto& hit : _hits) {
+        // compute end of line
+        int dispLine = (int)S(SCI_LINEFROMPOSITION, hit.displayLineStart, 0);
+        int lineEnd = (int)S(SCI_GETLINEENDPOSITION, dispLine, 0);
+        int length = lineEnd - hit.displayLineStart;
+        if (length > 0)
+            S(SCI_INDICATORFILLRANGE, hit.displayLineStart, length);
+    }
+
+    // 2) Fill digits of the line number
+    S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
+    for (const auto& hit : _hits) {
+        S(SCI_INDICATORFILLRANGE,
+            hit.displayLineStart + hit.numberStart,
+            hit.numberLen);
+    }
+
+    // 3) Fill each match substring
+    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
+    for (const auto& hit : _hits) {
+        for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
+            S(SCI_INDICATORFILLRANGE,
+                hit.displayLineStart + hit.matchStarts[i],
+                hit.matchLens[i]);
+        }
+    }
 }
