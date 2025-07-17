@@ -116,17 +116,19 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         }
 
         // 7) Switch file
-        ::SendMessage(nppData._nppHandle,
-            NPPM_SWITCHTOFILE, 0,
-            (LPARAM)wpath.c_str());
-
-        // 8) Jump + select in the editor
         HWND hEd = nppData._scintillaMainHandle;
         int targetLine = (int)::SendMessage(hEd, SCI_LINEFROMPOSITION, hit.pos, 0);
-        ::SendMessage(hEd, SCI_GOTOLINE, targetLine, 0);
-        ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY, targetLine, 0);
+
+        // 8) Jump + select in the editor
+        int visible = (int)::SendMessage(hEd, SCI_LINESONSCREEN, 0, 0);
+        int topLine = targetLine - visible / 2;
+        if (topLine < 0)                          topLine = 0;
+        int totalLines = (int)::SendMessage(hEd, SCI_GETLINECOUNT, 0, 0);
+        if (topLine > totalLines - visible)       topLine = totalLines - visible;
+        ::SendMessage(hEd, SCI_SETFIRSTVISIBLELINE, topLine, 0);
+
+        ::SendMessage(hEd, SCI_GOTOPOS, hit.pos, 0);
         ::SendMessage(hEd, SCI_SETSEL, hit.pos, hit.pos + hit.length);
-        // no SetFocus(hEd)
 
         // 9) Restore dock scroll
         ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
