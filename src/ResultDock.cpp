@@ -301,6 +301,7 @@ void ResultDock::rebuildFolding()
         }
     }
 }
+
 void ResultDock::applyStyling() const
 {
     if (!_hSci) return;
@@ -361,8 +362,9 @@ void ResultDock::formatHitsForFile(const std::wstring& wFilePath,
     if (hitsHere == 0) return;
 
     /* 1) file header -------------------------------------------------- */
-    std::wstring fileHdr = L"        " + wFilePath + L" (" +
-        std::to_wstring(hitsHere) + L" hits)\r\n";
+    std::wstring fileHdr = L"    " + wFilePath                // ★ 4 blanks
+        + L" (" + std::to_wstring(hitsHere)
+        + L" hits)\r\n";
     outBlock += fileHdr;
     ioUtf8Len += Encoding::wstringToUtf8(fileHdr).size();
 
