@@ -66,6 +66,12 @@ public:
         std::wstring& outBlock,
         size_t& ioUtf8Len) const;
 
+    void formatHitsLines(const SciSendFn& sciSend,
+        std::vector<Hit>& hitsInOut,
+        std::wstring& outBlock,
+        size_t& ioUtf8Len) const;
+
+
 private:
     /* === construction ================================================= */
     explicit ResultDock(HINSTANCE hInst);
@@ -78,6 +84,7 @@ private:
     void applyTheme();
 
     static LRESULT CALLBACK sciSubclassProc(HWND, UINT, WPARAM, LPARAM);
+
     static inline WNDPROC   s_prevSciProc = nullptr;
 
     /* === data members ================================================= */

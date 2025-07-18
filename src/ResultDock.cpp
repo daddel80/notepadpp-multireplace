@@ -11,6 +11,7 @@
 #include <commctrl.h>
 #include <functional>
 #include "Encoding.h"
+#include <unordered_set>
 
 // --- Public Methods ---
 
@@ -226,24 +227,31 @@ void ResultDock::rebuildFolding() const
 
     const int lines = (int)S(SCI_GETLINECOUNT);
     std::string txt;
-    for (int i = 0; i < lines; ++i) {
-        // get raw line
+
+    for (int i = 0; i < lines; ++i)
+    {
         int len = (int)S(SCI_LINELENGTH, i, 0);
         txt.resize(len);
-        if (len > 0) S(SCI_GETLINE, i, reinterpret_cast<LPARAM>(&txt[0]));
+        if (len > 0)
+            S(SCI_GETLINE, i, reinterpret_cast<LPARAM>(&txt[0]));
 
         bool blank = (len == 0);
-        // match either no indent or 4-space indent
-        bool header =
-            !blank
-            && (txt.rfind("Search ", 0) == 0
-                || txt.rfind("    Search ", 0) == 0);
+        int indent = 0; while (indent < len && txt[indent] == ' ') ++indent;
 
-        // header → BASE+HEADERFLAG, others → BASE+1
+        bool header = false;
+        if (!blank)
+        {
+            if (indent == 0 && txt.rfind("Search ", 0) == 0)
+                header = true;                                // top header
+            else if (indent == 4)                             // file header OR old crit header
+                header = true;
+            else if (indent == 8 && txt.find("Search ") == 8)// new criteria header
+                header = true;
+        }
+
         int level = header
             ? (SC_FOLDLEVELBASE | SC_FOLDLEVELHEADERFLAG)
             : (SC_FOLDLEVELBASE + 1);
-
         if (blank) level |= SC_FOLDLEVELWHITEFLAG;
         S(SCI_SETFOLDLEVEL, i, level);
     }
@@ -730,3 +738,63 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         ? ::CallWindowProc(s_prevSciProc, hwnd, msg, wp, lp)
         : ::DefWindowProc(hwnd, msg, wp, lp);
 }
+
+void ResultDock::formatHitsLines(const SciSendFn& sciSend,
+    std::vector<Hit>& hitsInOut,
+    std::wstring& outBlock,
+    size_t& ioUtf8Len) const
+{
+    if (hitsInOut.empty()) return;
+
+    int lastLine = -1;
+    Hit* last = nullptr;
+
+    for (auto& hit : hitsInOut)
+    {
+        int lineN = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, hit.pos, 0)) + 1;
+        Sci_Position lineStartPos = sciSend(SCI_POSITIONFROMLINE, lineN - 1, 0);
+        LRESULT rawLen = sciSend(SCI_LINELENGTH, lineN - 1, 0);
+
+        std::string raw(static_cast<size_t>(rawLen), '\0');
+        sciSend(SCI_GETLINE, lineN - 1, reinterpret_cast<LPARAM>(raw.data()));
+        raw.resize(strnlen(raw.c_str(), rawLen));
+
+        size_t lead = raw.find_first_not_of(" \t");
+        if (lead == std::string::npos) lead = 0;
+        std::string trim = raw.substr(lead);
+        while (!trim.empty() && (trim.back() == '\r' || trim.back() == '\n'))
+            trim.pop_back();
+
+        Sci_Position absLineStart = lineStartPos + (Sci_Position)lead;
+
+        /* merge duplicates on same line ---------------------------- */
+        if (lineN == lastLine && last)
+        {
+            int rel = static_cast<int>(hit.pos - absLineStart);
+            last->matchStarts.push_back(last->numberStart + last->numberLen + 2 + rel);
+            last->matchLens.push_back(static_cast<int>(hit.length));
+            hit.displayLineStart = -1;                // mark hidden
+            continue;
+        }
+        lastLine = lineN;
+        last = &hit;
+
+        /* set indicator offsets ----------------------------------- */
+        hit.displayLineStart = (int)ioUtf8Len;
+        hit.numberStart = (int)std::string("            Line ").size();  // 12‑sp indent
+        hit.numberLen = (int)std::to_string(lineN).size();
+        int rel = (int)(hit.pos - absLineStart);
+        hit.matchStarts = { hit.numberStart + hit.numberLen + 2 + rel };
+        hit.matchLens = { (int)hit.length };
+
+        std::wstring prefix = L"            Line " + std::to_wstring(lineN) + L": ";
+        outBlock += prefix + Encoding::stringToWString(trim) + L"\r\n";
+        ioUtf8Len += Encoding::wstringToUtf8(prefix).size() + trim.size() + 2;
+    }
+
+    /* purge hidden duplicates -------------------------------------- */
+    hitsInOut.erase(std::remove_if(hitsInOut.begin(), hitsInOut.end(),
+        [](const Hit& h) { return h.displayLineStart == -1; }),
+        hitsInOut.end());
+}
+

@@ -6049,18 +6049,22 @@ void MultiReplace::handleFindAllButton()
     SearchContext ctx{}; ctx.docLength = sciSend(SCI_GETLENGTH);
 
     /* 6) containers -------------------------------------------------- */
-    std::vector<ResultDock::Hit> allHits;     // only visible hits
-    std::wstring                 bodyText;    // everything except header
-    size_t                       utf8Len = 0; // running length for styling
-    int                          totalHits = 0;
+    struct CritAgg { std::wstring text; std::vector<ResultDock::Hit> hits; };
+    struct FileAgg { std::wstring wPath; int hitCount = 0; std::vector<CritAgg> crits; };
+
+    using FileMap = std::unordered_map<std::string, FileAgg>; // UTF‑8 path → data
+    FileMap fileMap;
+
+    std::vector<ResultDock::Hit> allHits;
+    int   totalHits = 0;
+    size_t utf8Len = 0;   // <‑‑ running UTF‑8 length for styling (visible everywhere)
 
     /* ----------------------------------------------------------------
-     * LIST MODE
+     * LIST MODE  (aggregate per‑file, then per‑criterion)
      * ---------------------------------------------------------------- */
     if (useListEnabled)
     {
-        if (replaceListData.empty())
-        {
+        if (replaceListData.empty()) {
             showStatusMessage(getLangStr(L"status_add_values_or_uncheck"), MessageStatus::Error);
             return;
         }
@@ -6069,8 +6073,7 @@ void MultiReplace::handleFindAllButton()
         {
             if (!item.isEnabled || item.findText.empty()) continue;
 
-            /* --- collect raw hits ---------------------------------- */
-            std::vector<ResultDock::Hit> rawHits;
+            /* (a) Set up search flags & pattern ------------------- */
             ctx.findText = convertAndExtendW(item.findText, item.extended);
             ctx.searchFlags =
                 (item.wholeWord ? SCFIND_WHOLEWORD : 0)
@@ -6078,6 +6081,8 @@ void MultiReplace::handleFindAllButton()
                 | (item.regex ? SCFIND_REGEXP : 0);
             sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
 
+            /* (b) Collect hits ------------------------------------ */
+            std::vector<ResultDock::Hit> rawHits;
             LRESULT pos = 0;
             while (true)
             {
@@ -6093,46 +6098,50 @@ void MultiReplace::handleFindAllButton()
             }
             if (rawHits.empty()) continue;
 
-            /* criterion header -------------------------------------- */
-            std::wstring critHdr = L"    Search \"" + item.findText + L"\" ("
-                + std::to_wstring(rawHits.size())
-                + L" hits in 1 file)\r\n";
-            bodyText += critHdr;
-            utf8Len += Encoding::wstringToUtf8(critHdr).size();
-
-            /* format this file’s hits -------------------------------- */
-            std::wstring block;
-            dock.formatHitsForFile(wFilePath, sciSend, rawHits, block, utf8Len);
-            bodyText += block;
-
-            totalHits += static_cast<int>(rawHits.size());
-            allHits.insert(allHits.end(), rawHits.begin(), rawHits.end());
+            /* (c) Aggregate per‑file ------------------------------ */
+            auto& agg = fileMap[utf8FilePath];
+            agg.wPath = wFilePath;
+            agg.hitCount += static_cast<int>(rawHits.size());
+            agg.crits.push_back({ item.findText, std::move(rawHits) });
+            totalHits += (int)agg.crits.back().hits.size();
         }
 
-        /* --- build header now that totalHits is known -------------- */
-        std::wstring header =
-            L"Search in List (" + std::to_wstring(totalHits) +
-            L" total hits in 1 file)\r\n";
+        if (totalHits == 0) {
+            showStatusMessage(getLangStr(L"status_no_matches_found"), MessageStatus::Error, true);
+            return;
+        }
 
-        const int delta =
-            static_cast<int>(Encoding::wstringToUtf8(header).size());
+        /* (d) Build dock text ------------------------------------ */
+        std::wstring header = L"Search in List (" + std::to_wstring(totalHits) + L" total hits in 1 file)\r\n";
+        utf8Len = Encoding::wstringToUtf8(header).size();
+        std::wstring body;
 
-        /* shift ALL offsets because header is prepended ------------- */
-        for (auto& h : allHits)
-            h.displayLineStart += delta;
+        for (auto& [utf8Path, f] : fileMap)
+        {
+            std::wstring fileHdr = L"    " + f.wPath + L" (" + std::to_wstring(f.hitCount) + L" hits)\r\n";
+            body += fileHdr;
+            utf8Len += Encoding::wstringToUtf8(fileHdr).size();
 
-        /* final dock text ------------------------------------------- */
-        std::wstring finalText = header + bodyText;
-        dock.prependHits(allHits, finalText);
+            for (auto& c : f.crits)
+            {
+                std::wstring critHdr = L"        Search \"" + c.text + L"\" (" + std::to_wstring(c.hits.size()) + L" hits)\r\n";
+                body += critHdr;
+                utf8Len += Encoding::wstringToUtf8(critHdr).size();
+
+                dock.formatHitsLines(sciSend, c.hits, body, utf8Len);
+                allHits.insert(allHits.end(), c.hits.begin(), c.hits.end());
+            }
+        }
+
+        dock.prependHits(allHits, header + body);
     }
     /* ----------------------------------------------------------------
-     * SINGLE MODE
+     * SINGLE MODE  (original implementation – only utf8Len adjusted)
      * ---------------------------------------------------------------- */
     else
     {
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-        if (findW.empty())
-        {
+        if (findW.empty()) {
             showStatusMessage(getLangStr(L"status_no_search_string"), MessageStatus::Error);
             return;
         }
@@ -6146,7 +6155,7 @@ void MultiReplace::handleFindAllButton()
             | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
         sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
 
-        /* collect raw hits ----------------------------------------- */
+        /* collect hits ----------------------------------------- */
         std::vector<ResultDock::Hit> rawHits;
         LRESULT pos = 0;
         while (true)
@@ -6161,24 +6170,19 @@ void MultiReplace::handleFindAllButton()
             h.length = r.length;
             rawHits.push_back(std::move(h));
         }
-        if (rawHits.empty())
-        {
+        if (rawHits.empty()) {
             showStatusMessage(getLangStr(L"status_no_matches_found"), MessageStatus::Error, true);
             return;
         }
 
         /* header ---------------------------------------------------- */
-        std::wstring header = L"Search \"" + findW + L"\" ("
-            + std::to_wstring(rawHits.size())
-            + L" hits in 1 file)\r\n";
-
-        utf8Len += Encoding::wstringToUtf8(header).size();
+        std::wstring header = L"Search \"" + findW + L"\" (" + std::to_wstring(rawHits.size()) + L" hits in 1 file)\r\n";
+        utf8Len = Encoding::wstringToUtf8(header).size();
 
         std::wstring block;
         dock.formatHitsForFile(wFilePath, sciSend, rawHits, block, utf8Len);
 
         allHits = std::move(rawHits);
-
         dock.prependHits(allHits, header + block);
         totalHits = (int)allHits.size();
     }
@@ -6188,6 +6192,7 @@ void MultiReplace::handleFindAllButton()
 
     showStatusMessage(getLangStr(L"status_occurrences_found", { std::to_wstring(totalHits) }), MessageStatus::Success);
 }
+
 
 HWND MultiReplace::createResultSci()
 {
