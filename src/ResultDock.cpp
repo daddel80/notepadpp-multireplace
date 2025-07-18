@@ -218,45 +218,89 @@ void ResultDock::clear() {
     }
 }
 
-void ResultDock::rebuildFolding() const
+int ResultDock::leadingSpaces(const char* line, int len)
 {
-    if (!_hSci) return;
-    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) {
-        return ::SendMessage(_hSci, m, w, l);
-        };
-
-    const int lines = (int)S(SCI_GETLINECOUNT);
-    std::string txt;
-
-    for (int i = 0; i < lines; ++i)
-    {
-        int len = (int)S(SCI_LINELENGTH, i, 0);
-        txt.resize(len);
-        if (len > 0)
-            S(SCI_GETLINE, i, reinterpret_cast<LPARAM>(&txt[0]));
-
-        bool blank = (len == 0);
-        int indent = 0; while (indent < len && txt[indent] == ' ') ++indent;
-
-        bool header = false;
-        if (!blank)
-        {
-            if (indent == 0 && txt.rfind("Search ", 0) == 0)
-                header = true;                                // top header
-            else if (indent == 4)                             // file header OR old crit header
-                header = true;
-            else if (indent == 8 && txt.find("Search ") == 8)// new criteria header
-                header = true;
-        }
-
-        int level = header
-            ? (SC_FOLDLEVELBASE | SC_FOLDLEVELHEADERFLAG)
-            : (SC_FOLDLEVELBASE + 1);
-        if (blank) level |= SC_FOLDLEVELWHITEFLAG;
-        S(SCI_SETFOLDLEVEL, i, level);
-    }
+    int s = 0;
+    while (s < len && line[s] == ' ') ++s;
+    return s;
 }
 
+void ResultDock::rebuildFolding()
+{
+    if (!_hSci) return;
+
+    auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
+        { return ::SendMessage(_hSci, m, w, l); };
+
+    const int lineCount = static_cast<int>(sciSend(SCI_GETLINECOUNT));
+
+    // Enable folding (redundant if already set)
+    sciSend(SCI_SETPROPERTY, (WPARAM)"fold", (LPARAM)"1");
+    sciSend(SCI_SETPROPERTY, (WPARAM)"fold.compact", (LPARAM)"1");
+
+    const int BASE = SC_FOLDLEVELBASE;
+
+    // Pass 1: mark every line as plain content
+    for (int l = 0; l < lineCount; ++l)
+        sciSend(SCI_SETFOLDLEVEL, l, BASE);
+
+    // Pass 2: detect headers via leading spaces & keywords
+    auto isSearchHeader = [](const std::string& s) -> bool
+        {
+            return s.rfind("Search ", 0) == 0; // starts with "Search "
+        };
+
+    for (int l = 0; l < lineCount; ++l)
+    {
+        const int rawLen = static_cast<int>(sciSend(SCI_LINELENGTH, l, 0));
+        if (rawLen <= 1) continue; // blank line
+
+        std::string buf(rawLen + 1, '\0');
+        sciSend(SCI_GETLINE, l, (LPARAM)buf.data());
+        buf.erase(std::find_if(buf.begin(), buf.end(), [](char c)
+            { return c == '\r' || c == '\n' || c == '\0'; }), buf.end());
+
+        // Count leading spaces
+        int spaces = 0;
+        while (spaces < (int)buf.size() && buf[spaces] == ' ') ++spaces;
+
+        // Remove indent for easier tests
+        const std::string_view trimmed(buf.data() + spaces, buf.size() - spaces);
+
+        bool header = false;
+        int  level = BASE;
+
+        if (spaces == 0 && (trimmed.rfind("Search in List", 0) == 0 || isSearchHeader(std::string(trimmed))))
+        {
+            header = true;
+            level = BASE;               // 0
+        }
+        else if (spaces == 4)
+        {
+            if (isSearchHeader(std::string(trimmed))) { header = true; level = BASE + 2; } // Old list entry (rare)
+            else { header = true; level = BASE + 1; } // File path
+        }
+        else if (spaces == 8 && isSearchHeader(std::string(trimmed)))
+        {
+            header = true;
+            level = BASE + 2;           // Criteria
+        }
+        else {
+            // Content line → level = BASE + 3 (or deeper) handled later
+        }
+
+        if (header)
+        {
+            sciSend(SCI_SETFOLDLEVEL, l, level | SC_FOLDLEVELHEADERFLAG);
+        }
+        else
+        {
+            int contentLevel = BASE + (spaces / 4);
+            if (contentLevel < BASE) contentLevel = BASE;
+            sciSend(SCI_SETFOLDLEVEL, l, contentLevel);
+        }
+    }
+}
 void ResultDock::applyStyling() const
 {
     if (!_hSci) return;
@@ -468,49 +512,50 @@ void ResultDock::initFolding() const
     if (!_hSci) return;
 
     auto S = [this](UINT msg, WPARAM w = 0, LPARAM l = 0)
-             { ::SendMessage(_hSci, msg, w, l); };
+        { return ::SendMessage(_hSci, msg, w, l); };
 
-    // ── 1) Set up fold margin (#2) as symbol margin ────────────────────────
+    // 1) Configure margin #2 as the folding symbol margin
     constexpr int M_FOLD = 2;
-    S(SCI_SETMARGINTYPEN,      M_FOLD, SC_MARGIN_SYMBOL);
-    S(SCI_SETMARGINMASKN,      M_FOLD, SC_MASK_FOLDERS);
+    S(SCI_SETMARGINTYPEN, M_FOLD, SC_MARGIN_SYMBOL);
+    S(SCI_SETMARGINMASKN, M_FOLD, SC_MASK_FOLDERS);
 
-    // ── 2) Compute a width that fits a 16px box plus its little stem ───────
-    //    (vector shapes are 16px wide, but the connected versions need a bit more)
+    // 2) Make the margin wide enough for a 16‑px box plus the vertical stem
     LRESULT lr = ::SendMessage(_hSci, SCI_TEXTHEIGHT, 0, 0);
-    int     h  = static_cast<int>(lr);
-    int     w  = h + 4;    // give 4px extra so the stem is never clipped
-    S(SCI_SETMARGINWIDTHN,   M_FOLD, w);
+    int h = static_cast<int>(lr);
+    int w = h + 4;               // add 4 px so the connected stem is never clipped
+    S(SCI_SETMARGINWIDTHN, M_FOLD, w);
 
+    // Enable mouse interaction and automatic folding updates
     S(SCI_SETMARGINSENSITIVEN, M_FOLD, TRUE);
     S(SCI_SETAUTOMATICFOLD,
-        SC_AUTOMATICFOLD_SHOW  |
+        SC_AUTOMATICFOLD_SHOW |
         SC_AUTOMATICFOLD_CLICK |
         SC_AUTOMATICFOLD_CHANGE, 0);
 
-    // ── 3) Hide margins 0 & 1 ───────────────────────────────────────────────
+    // 3) Hide the first two margins (line numbers / bookmarks)
     S(SCI_SETMARGINWIDTHN, 0, 0);
     S(SCI_SETMARGINWIDTHN, 1, 0);
 
-    // ── 4) Define **connected** box shapes for closed/open headers ──────────
-    //    so the vertical guide-line runs through the box edge
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDER,     SC_MARK_ARROW);   // closed box with upward stem
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPEN, SC_MARK_ARROWDOWN);  // open   box with downward stem
+    // 4) Define header markers (plus/minus boxes, connected style)
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDER, SC_MARK_BOXPLUSCONNECTED);    // closed block
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPEN, SC_MARK_BOXMINUSCONNECTED);   // open block
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPENMID, SC_MARK_BOXMINUSCONNECTED);   // open (nested)
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEREND, SC_MARK_BOXPLUSCONNECTED);    // closed (last child)
 
-    // ── 5) Define the guide-line and corner shapes ─────────────────────────
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERSUB,     SC_MARK_VLINE);    // │
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERMIDTAIL, SC_MARK_TCORNER);  // ├
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERTAIL,    SC_MARK_LCORNER);  // └
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEREND,     SC_MARK_LCORNER);  // └ (end)
+    // 5) Define guide‑line and corner markers
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERSUB, SC_MARK_VLINE);    // │ vertical guide
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERMIDTAIL, SC_MARK_TCORNER);  // ├ tee junction
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERTAIL, SC_MARK_LCORNER);  // └ corner
+    // Do NOT redefine SC_MARKNUM_FOLDEREND here – keeps the “+” glyph intact
 
-    // ── 6) Give them a neutral placeholder colour (real colours in _applyTheme) ─
-    const COLORREF placeholder = RGB(200,200,200);
+    // 6) Apply a neutral placeholder colour; themed colours are set later in _applyTheme()
+    const COLORREF placeholder = RGB(200, 200, 200);
     for (int id : { SC_MARKNUM_FOLDER,
-                    SC_MARKNUM_FOLDEROPEN,
-                    SC_MARKNUM_FOLDERSUB,
-                    SC_MARKNUM_FOLDERMIDTAIL,
-                    SC_MARKNUM_FOLDERTAIL,
-                    SC_MARKNUM_FOLDEREND })
+        SC_MARKNUM_FOLDEROPEN,
+        SC_MARKNUM_FOLDERSUB,
+        SC_MARKNUM_FOLDERMIDTAIL,
+        SC_MARKNUM_FOLDERTAIL,
+        SC_MARKNUM_FOLDEREND })
     {
         S(SCI_MARKERSETFORE, id, placeholder);
         S(SCI_MARKERSETBACK, id, placeholder);
@@ -521,105 +566,101 @@ void ResultDock::applyTheme()
 {
     if (!_hSci) return;
 
-    // Determine if Dark Mode is active
-    const bool dark = ::SendMessage(nppData._nppHandle,
-        NPPM_ISDARKMODEENABLED,
-        0, 0) != 0;
+    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0)
+        { ::SendMessage(_hSci, m, w, l); };
 
-    // Fetch editor default colors
+    /* 0) Base colours ---------------------------------------------------- */
+    const bool dark = ::SendMessage(
+        nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0;
+
     COLORREF bg = (COLORREF)::SendMessage(
-        nppData._nppHandle,
-        NPPM_GETEDITORDEFAULTBACKGROUNDCOLOR,
-        0, 0);
+        nppData._nppHandle, NPPM_GETEDITORDEFAULTBACKGROUNDCOLOR, 0, 0);
     COLORREF fg = (COLORREF)::SendMessage(
-        nppData._nppHandle,
-        NPPM_GETEDITORDEFAULTFOREGROUNDCOLOR,
-        0, 0);
+        nppData._nppHandle, NPPM_GETEDITORDEFAULTFOREGROUNDCOLOR, 0, 0);
 
-    // Margin (line‑number) colors
-    COLORREF lnBg = dark ? RGB(0, 0, 0) : RGB(255, 255, 255);
-    COLORREF lnFg = dark ? RGB(200, 200, 200) : RGB(80, 80, 80);
+    COLORREF lnBg = dark ? RGB(0, 0, 0) : RGB(255, 255, 255);   // margin fill
+    COLORREF lnFg = dark ? RGB(200, 200, 200) : RGB(80, 80, 80);   // margin text
 
-    // Selection colors (caret line)
     COLORREF selBg = dark ? RGB(96, 96, 96)
         : ::GetSysColor(COLOR_HIGHLIGHT);
     COLORREF selFg = dark ? RGB(255, 255, 255)
         : ::GetSysColor(COLOR_HIGHLIGHTTEXT);
 
-    // Theme colors for our custom indicators
-    COLORREF lineBgColor = dark ? RGB(0x3A, 0x3D, 0x33) : RGB(0xE7, 0xF2, 0xFF);
-    COLORREF lineNumberClr = dark ? RGB(0xAE, 0x81, 0xFF) : RGB(0xFD, 0x97, 0x1F);
-    COLORREF matchClr = dark ? RGB(0xE6, 0xDB, 0x74) : RGB(0xFF, 0x00, 0x00);
-
-    // Helper to send Scintilla messages to the dock
-    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) {
-        ::SendMessage(_hSci, m, w, l);
-        };
-
-    // 1) Reset all styles to editor defaults
+    /* 1) Reset Scintilla styles ----------------------------------------- */
     S(SCI_STYLESETBACK, STYLE_DEFAULT, bg);
     S(SCI_STYLESETFORE, STYLE_DEFAULT, fg);
     S(SCI_STYLECLEARALL);
 
-    // 2) Line‑number margin + fold margin
+    /* 2) Margin colours -------------------------------------------------- */
     S(SCI_SETMARGINBACKN, 0, lnBg);
     S(SCI_STYLESETBACK, STYLE_LINENUMBER, lnBg);
     S(SCI_STYLESETFORE, STYLE_LINENUMBER, lnFg);
-    S(SCI_SETMARGINBACKN, 1, bg);
-    S(SCI_SETMARGINBACKN, 2, lnBg);
+
+    S(SCI_SETMARGINBACKN, 1, bg);     // spacer margin
+    S(SCI_SETMARGINBACKN, 2, lnBg);   // fold margin
+
     S(SCI_SETFOLDMARGINCOLOUR, 1, lnBg);
     S(SCI_SETFOLDMARGINHICOLOUR, 1, lnBg);
 
-    // 3) Selection & caret‑line colors
+    /* 3) Selection / caret‑line ----------------------------------------- */
     S(SCI_SETSELFORE, 1, selFg);
     S(SCI_SETSELBACK, 1, selBg);
     S(SCI_SETSELALPHA, 256, 0);
+
     S(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_BACK, argb(0xFF, selBg));
     S(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_TEXT, argb(0xFF, selFg));
+
     S(SCI_SETADDITIONALSELFORE, selFg);
     S(SCI_SETADDITIONALSELBACK, selBg);
     S(SCI_SETADDITIONALSELALPHA, 256, 0);
 
-    // 4) Fold‑marker colors
-    const COLORREF foldBg = lnBg;
-    const COLORREF foldFg = dark ? RGB(230, 230, 210) : RGB(80, 80, 80);
-    for (int id : { SC_MARKNUM_FOLDER, SC_MARKNUM_FOLDEROPEN })
+    /* 4) Fold‑marker colours (dark theme → black box, white glyph) -------- */
+    const COLORREF markerFill = lnBg;                        // box outline / frame
+    const COLORREF markerGlyph = dark ? RGB(255, 255, 255)      // glyph + guide lines
+        : RGB(80, 80, 80);    // light theme: dark grey
+
+    // Header markers: +  −
+    for (int id : { SC_MARKNUM_FOLDER,          // +
+        SC_MARKNUM_FOLDEREND,       // + (last child)
+        SC_MARKNUM_FOLDEROPEN,      // −
+        SC_MARKNUM_FOLDEROPENMID }) // − (nested)
     {
-        S(SCI_MARKERSETFORE, id, foldFg);
-        S(SCI_MARKERSETBACK, id, foldBg);
-    }
-    for (int id : { SC_MARKNUM_FOLDERSUB,
-        SC_MARKNUM_FOLDERMIDTAIL,
-        SC_MARKNUM_FOLDERTAIL,
-        SC_MARKNUM_FOLDEREND })
-    {
-        S(SCI_MARKERSETFORE, id, foldFg);
-        S(SCI_MARKERSETBACK, id, foldFg);
+        S(SCI_MARKERSETBACK, id, markerGlyph);  // glyph colour  (plus/minus)
+        S(SCI_MARKERSETFORE, id, markerFill);   // box outline   (frame)
     }
 
-    // 5) Default full‑line highlight (indicator #0)
+    // Guide‑line markers: │ ├ └   → durchgehender Strich
+    for (int id : { SC_MARKNUM_FOLDERSUB,
+        SC_MARKNUM_FOLDERMIDTAIL,
+        SC_MARKNUM_FOLDERTAIL })
+    {
+        S(SCI_MARKERSETBACK, id, markerGlyph);  // solid line
+        S(SCI_MARKERSETFORE, id, markerGlyph);
+    }
+
+    /* 5) Caret‑line highlight (indicator 0) ----------------------------- */
     S(SCI_INDICSETSTYLE, 0, INDIC_ROUNDBOX);
     S(SCI_INDICSETFORE, 0, selBg);
     S(SCI_INDICSETUNDER, 0, TRUE);
     S(SCI_INDICSETALPHA, 0, 128);
 
-    // 6) Our custom indicators for result‑dock styling:
+    /* 6) Custom indicators ---------------------------------------------- */
+    COLORREF lineBgColor = dark ? RGB(0x3A, 0x3D, 0x33) : RGB(0xE7, 0xF2, 0xFF);
+    COLORREF lineNumberClr = dark ? RGB(0xAE, 0x81, 0xFF) : RGB(0xFD, 0x97, 0x1F);
+    COLORREF matchClr = dark ? RGB(0xE6, 0xDB, 0x74) : RGB(0xFF, 0x00, 0x00);
 
-    //   6a) Line‑background (semi‑transparent box under each result line)
     S(SCI_INDICSETSTYLE, INDIC_LINE_BACKGROUND, INDIC_STRAIGHTBOX);
     S(SCI_INDICSETFORE, INDIC_LINE_BACKGROUND, lineBgColor);
     S(SCI_INDICSETALPHA, INDIC_LINE_BACKGROUND, 100);
     S(SCI_INDICSETUNDER, INDIC_LINE_BACKGROUND, TRUE);
 
-    //   6b) Line‑number digits styling
     S(SCI_INDICSETSTYLE, INDIC_LINENUMBER_FORE, INDIC_TEXTFORE);
     S(SCI_INDICSETFORE, INDIC_LINENUMBER_FORE, lineNumberClr);
 
-    //   6c) Actual match text styling
     S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
     S(SCI_INDICSETFORE, INDIC_MATCH_FORE, matchClr);
 
-    // 7) Ensure caret‑line highlight remains visible
+    /* 7) Caret‑line visibility ----------------------------------------- */
     S(SCI_SETCARETLINEVISIBLE, 1, 0);
     S(SCI_SETCARETLINEBACK, selBg, 0);
 }
@@ -739,62 +780,73 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         : ::DefWindowProc(hwnd, msg, wp, lp);
 }
 
-void ResultDock::formatHitsLines(const SciSendFn& sciSend,
-    std::vector<Hit>& hitsInOut,
-    std::wstring& outBlock,
-    size_t& ioUtf8Len) const
+void ResultDock::formatHitsLines(
+    const SciSendFn& sciSend,
+    std::vector<Hit>& hits,
+    std::wstring& out,
+    size_t& utf8Pos) const
 {
-    if (hitsInOut.empty()) return;
+    constexpr wchar_t INDENT_W[] = L"            "; // 12 spaces
+    constexpr char   INDENT_A[] = "            "; // 12 spaces (ASCII)
+    const size_t indentUtf8Len = sizeof(INDENT_A) - 1;            // 12
 
-    int lastLine = -1;
-    Hit* last = nullptr;
+    int  lastPrintedLine = -1;
+    Hit* lastHit = nullptr;
 
-    for (auto& hit : hitsInOut)
+    for (auto& h : hits)
     {
-        int lineN = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, hit.pos, 0)) + 1;
-        Sci_Position lineStartPos = sciSend(SCI_POSITIONFROMLINE, lineN - 1, 0);
-        LRESULT rawLen = sciSend(SCI_LINELENGTH, lineN - 1, 0);
+        const int lineZero = static_cast<int>(
+            sciSend(SCI_LINEFROMPOSITION, (WPARAM)h.pos, 0));
+        const int lineOne = lineZero + 1;
 
-        std::string raw(static_cast<size_t>(rawLen), '\0');
-        sciSend(SCI_GETLINE, lineN - 1, reinterpret_cast<LPARAM>(raw.data()));
-        raw.resize(strnlen(raw.c_str(), rawLen));
-
-        size_t lead = raw.find_first_not_of(" \t");
-        if (lead == std::string::npos) lead = 0;
-        std::string trim = raw.substr(lead);
-        while (!trim.empty() && (trim.back() == '\r' || trim.back() == '\n'))
-            trim.pop_back();
-
-        Sci_Position absLineStart = lineStartPos + (Sci_Position)lead;
-
-        /* merge duplicates on same line ---------------------------- */
-        if (lineN == lastLine && last)
+        // ─── Merge multiple hits on the same physical line ────────────────
+        if (lineZero == lastPrintedLine && lastHit)
         {
-            int rel = static_cast<int>(hit.pos - absLineStart);
-            last->matchStarts.push_back(last->numberStart + last->numberLen + 2 + rel);
-            last->matchLens.push_back(static_cast<int>(hit.length));
-            hit.displayLineStart = -1;                // mark hidden
+            Sci_Position lineStartPos = sciSend(SCI_POSITIONFROMLINE, lineZero, 0);
+            int rel = static_cast<int>(h.pos - lineStartPos);
+            lastHit->matchStarts.push_back(
+                lastHit->numberStart + lastHit->numberLen + 2 + rel);
+            lastHit->matchLens.push_back(static_cast<int>(h.length));
+            h.displayLineStart = -1; // placeholder, not styled
             continue;
         }
-        lastLine = lineN;
-        last = &hit;
+        lastPrintedLine = lineZero;
+        lastHit = &h;
 
-        /* set indicator offsets ----------------------------------- */
-        hit.displayLineStart = (int)ioUtf8Len;
-        hit.numberStart = (int)std::string("            Line ").size();  // 12‑sp indent
-        hit.numberLen = (int)std::to_string(lineN).size();
-        int rel = (int)(hit.pos - absLineStart);
-        hit.matchStarts = { hit.numberStart + hit.numberLen + 2 + rel };
-        hit.matchLens = { (int)hit.length };
+        // ─── Read line text (UTF‑8) and trim leading WS ─────────────────––
+        const int bufLen = static_cast<int>(
+            sciSend(SCI_LINELENGTH, (WPARAM)lineZero, 0)) + 1; // incl. NUL
+        std::string utf8(bufLen, '\0');
+        sciSend(SCI_GETLINE, (WPARAM)lineZero, (LPARAM)utf8.data());
 
-        std::wstring prefix = L"            Line " + std::to_wstring(lineN) + L": ";
-        outBlock += prefix + Encoding::stringToWString(trim) + L"\r\n";
-        ioUtf8Len += Encoding::wstringToUtf8(prefix).size() + trim.size() + 2;
+        utf8.erase(std::find_if(utf8.begin(), utf8.end(), [](char c)
+            { return c == '\r' || c == '\n' || c == '\0'; }), utf8.end());
+
+        size_t lead = utf8.find_first_not_of(" \t");
+        if (lead == std::string::npos) lead = 0;
+        std::string trim = utf8.substr(lead);
+        Sci_Position absLineStart = sciSend(SCI_POSITIONFROMLINE, lineZero, 0) + static_cast<Sci_Position>(lead);
+
+        // ─── Record styling offsets for this primary hit ─────────────────––
+        h.displayLineStart = static_cast<int>(utf8Pos);
+        h.numberStart = static_cast<int>(indentUtf8Len + 5);   // after "Line "
+        h.numberLen = static_cast<int>(std::to_string(lineOne).size());
+        int rel = static_cast<int>(h.pos - absLineStart);
+        h.matchStarts = { h.numberStart + h.numberLen + 2 + rel };
+        h.matchLens = { static_cast<int>(h.length) };
+
+        // ─── Compose output line ─────────────────────────────────────────––
+        std::wstring prefix = INDENT_W;
+        prefix += L"Line " + std::to_wstring(lineOne) + L": ";
+
+        out += prefix + Encoding::stringToWString(trim) + L"\r\n";
+        utf8Pos += Encoding::wstringToUtf8(prefix).size() + trim.size() + 2; // +CRLF
     }
 
-    /* purge hidden duplicates -------------------------------------- */
-    hitsInOut.erase(std::remove_if(hitsInOut.begin(), hitsInOut.end(),
-        [](const Hit& h) { return h.displayLineStart == -1; }),
-        hitsInOut.end());
+    // Remove placeholder hits created by duplicate‑merge
+    hits.erase(std::remove_if(hits.begin(), hits.end(), [](const Hit& h)
+        { return h.displayLineStart < 0; }), hits.end());
 }
+
+
 

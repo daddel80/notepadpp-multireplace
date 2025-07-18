@@ -53,7 +53,7 @@ public:
     void recordHit(const std::string& fullPathUtf8, Sci_Position pos, Sci_Position length);
 
     void clear();                           // Clears all hits and text
-    void rebuildFolding()      const;       // refresh folding markers
+    void rebuildFolding();       // refresh folding markers
     void applyStyling()        const;       // colour indicators
     void onThemeChanged();                  // react to N++ dark‑mode switch
 
@@ -82,6 +82,12 @@ private:
     void create(const NppData& npp);
     void initFolding() const;   
     void applyTheme();
+
+    HWND                 _hScintilla = nullptr;
+    std::wstring         _content;          // full display text
+    std::vector<int>     _foldHeaders;      // line numbers that start a fold block
+
+    static int  leadingSpaces(const char* line, int len);
 
     static LRESULT CALLBACK sciSubclassProc(HWND, UINT, WPARAM, LPARAM);
 

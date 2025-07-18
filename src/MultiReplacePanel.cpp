@@ -6025,6 +6025,7 @@ void MultiReplace::CloseDebugWindow() {
 
 
 #pragma region Find All
+
 void MultiReplace::handleFindAllButton()
 {
     /* 1) sanity ------------------------------------------------------ */
@@ -6191,44 +6192,6 @@ void MultiReplace::handleFindAllButton()
     dock.applyStyling();
 
     showStatusMessage(getLangStr(L"status_occurrences_found", { std::to_wstring(totalHits) }), MessageStatus::Success);
-}
-
-
-HWND MultiReplace::createResultSci()
-{
-    return ::CreateWindowExW(0, L"Scintilla", nullptr,
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-        0, 0, 100, 100,
-        _hSelf, nullptr,
-        _hInst, nullptr);
-}
-
-void MultiReplace::initResultFolding(HWND hSci)
-{
-    auto S = [&](UINT m, WPARAM w = 0, sptr_t l = 0) { ::SendMessage(hSci, m, w, l); };
-
-    // margin #2 shows folding symbols
-    constexpr int M_FOLD = 2;
-    S(SCI_SETMARGINTYPEN, M_FOLD, SC_MARGIN_SYMBOL);
-    S(SCI_SETMARGINMASKN, M_FOLD, SC_MASK_FOLDERS);
-    S(SCI_SETMARGINWIDTHN, M_FOLD, 16);
-
-    // standard markers (N++ uses the same set)
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDER, SC_MARK_BOXPLUS);
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPEN, SC_MARK_BOXMINUS);
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERSUB, SC_MARK_EMPTY);
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEREND, SC_MARK_BOXPLUSCONNECTED);
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPENMID, SC_MARK_BOXMINUSCONNECTED);
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERMIDTAIL, SC_MARK_TCORNER);
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERTAIL, SC_MARK_LCORNER);
-
-    S(SCI_SETPROPERTY, (sptr_t)"fold", (sptr_t)"1");
-    S(SCI_SETPROPERTY, (sptr_t)"fold.compact", (sptr_t)"1");
-}
-
-void MultiReplace::populateResultDockText(const std::wstring& wtxt)
-{
-    ResultDock::instance().prependText(wtxt);
 }
 
 #pragma endregion
