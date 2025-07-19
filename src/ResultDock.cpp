@@ -524,7 +524,7 @@ void ResultDock::applyTheme()
     /* ----------------------------------------------------------------
      * 4)  Fold markers
      * ---------------------------------------------------------------- */
-    COLORREF markerGlyph = dark ? RGB(255, 255, 255) : RGB(80, 80, 80);
+    const COLORREF markerGlyph = dark ? RDColors::FoldGlyphDark : RDColors::FoldGlyphLight;
 
     for (int id : { SC_MARKNUM_FOLDER,
         SC_MARKNUM_FOLDEREND,
@@ -560,7 +560,7 @@ void ResultDock::applyTheme()
     COLORREF hitLineBg = dark ? RDColors::LineBgDark : RDColors::LineBgLight;
     COLORREF lineNrFg = dark ? RDColors::LineNrDark : RDColors::LineNrLight;
     COLORREF matchFg = dark ? RDColors::MatchDark : RDColors::MatchLight;
-    COLORREF headerBg = dark ? RDColors::HeaderBgDark : RDColors::HeaderBgLight;
+    COLORREF headerBg = dark ? RDColors::HeaderBgLight : RDColors::HeaderBgLight;
     COLORREF filePathFg = dark ? RDColors::FilePathFgDark : RDColors::FilePathFgLight;
 
     /* 6‑a) Grey background for entire hit line -------------------- */
@@ -586,6 +586,15 @@ void ResultDock::applyTheme()
     /* 6‑e) Khaki / Sand file‑path foreground ---------------------- */
     S(SCI_INDICSETSTYLE, INDIC_FILEPATH_FORE, INDIC_TEXTFORE);
     S(SCI_INDICSETFORE, INDIC_FILEPATH_FORE, filePathFg);
+
+    /* 6‑f) Full‑width header background (marker, not indicator) */
+    S(SCI_MARKERDEFINE, MARKER_HEADER_BACKGROUND, SC_MARK_BACKGROUND);
+    S(SCI_MARKERSETBACK, MARKER_HEADER_BACKGROUND, headerBg);
+    S(SCI_MARKERSETFORE, MARKER_HEADER_BACKGROUND, headerBg);
+
+    /* 6‑g) Header foreground (pure black text) ------------------- */
+    S(SCI_INDICSETSTYLE, INDIC_HEADER_FORE, INDIC_TEXTFORE);
+    S(SCI_INDICSETFORE, INDIC_HEADER_FORE, RDColors::HeaderFg);
 }
 
 void ResultDock::applyStyling() const
@@ -601,7 +610,7 @@ void ResultDock::applyStyling() const
     for (int ind : { INDIC_LINE_BACKGROUND,
         INDIC_LINENUMBER_FORE,
         INDIC_MATCH_FORE,
-        INDIC_HEADER_BACKGROUND,
+        INDIC_HEADER_FORE,
         INDIC_FILEPATH_FORE })
     {
         S(SCI_SETINDICATORCURRENT, ind);
@@ -609,36 +618,38 @@ void ResultDock::applyStyling() const
     }
 
     /* --------------------------------------------------------------
-     * 1)  Header lines  (“Search …”)
-     * -------------------------------------------------------------- */
-    S(SCI_SETINDICATORCURRENT, INDIC_HEADER_BACKGROUND);
+     * 1) Header lines (“Search …”) via full‑width marker
+     * ------------------------------------------------------------ */
 
-    const int lineCount = (int)S(SCI_GETLINECOUNT, 0, 0);
+    const int lineCount = static_cast<int>(S(SCI_GETLINECOUNT));
     for (int ln = 0; ln < lineCount; ++ln)
     {
-        // read raw line (UTF‑8) ------------------------------------
-        const int rawLen = (int)S(SCI_LINELENGTH, ln, 0);
+        // read raw line into buf (UTF‑8)
+        const int rawLen = static_cast<int>(S(SCI_LINELENGTH, ln, 0));
         if (rawLen <= 1) continue;
-
         std::string buf(rawLen + 1, '\0');
         S(SCI_GETLINE, ln, (LPARAM)buf.data());
         buf.erase(std::find_if(buf.begin(), buf.end(),
             [](char c) { return c == '\r' || c == '\n' || c == '\0'; }), buf.end());
 
-        // trim leading spaces --------------------------------------
+        // trim leading blanks
         size_t lead = buf.find_first_not_of(' ');
         if (lead == std::string::npos) lead = 0;
-        const std::string_view trimmed(buf.data() + lead, buf.size() - lead);
+        std::string_view trimmed(buf.data() + lead, buf.size() - lead);
 
-        // is this a header?  (starts with "Search ")
-        if (trimmed.rfind("Search ", 0) != 0)
-            continue;
+        if (trimmed.rfind("Search ", 0) == 0)
+        {
+            // 1) full‑width green background
+            S(SCI_MARKERADD, ln, MARKER_HEADER_BACKGROUND);
 
-        Sci_Position start = S(SCI_POSITIONFROMLINE, ln, 0);
-        Sci_Position len = S(SCI_LINELENGTH, ln, 0);
-        if (len > 0)
-            S(SCI_INDICATORFILLRANGE, start, len);
+            // 2) black text across the whole line
+            Sci_Position start = S(SCI_POSITIONFROMLINE, ln, 0);
+            Sci_Position end = S(SCI_GETLINEENDPOSITION, ln, 0);
+            S(SCI_SETINDICATORCURRENT, INDIC_HEADER_FORE);
+            S(SCI_INDICATORFILLRANGE, start, end - start);
+        }
     }
+
 
     /* --------------------------------------------------------------
      * 2)  File‑path foreground  (indent = 4 spaces)

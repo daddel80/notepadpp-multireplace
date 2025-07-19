@@ -82,12 +82,12 @@ private:
         static constexpr COLORREF LineBgDark = RGB(0x3A, 0x3D, 0x33);
 
         /* Line‑number digits (already used) */
-        static constexpr COLORREF LineNrLight = RGB(0xFD, 0x97, 0x1F);
-        static constexpr COLORREF LineNrDark = RGB(0xAE, 0x81, 0xFF);
+        static constexpr COLORREF LineNrLight = RGB(0x80, 0xC0, 0xFF);
+        static constexpr COLORREF LineNrDark = RGB(0x80, 0xC0, 0xFF);
 
         /* Match substring (already used) */
-        static constexpr COLORREF MatchLight = RGB(0xFF, 0x00, 0x00);
-        static constexpr COLORREF MatchDark = RGB(0xE6, 0xDB, 0x74);
+        static constexpr COLORREF MatchLight = RGB(0xA6, 0xE2, 0x2E);
+        static constexpr COLORREF MatchDark = RGB(0xA6, 0xE2, 0x2E);
 
         /* NEW – first headline:  Search "..." (…) */
         static constexpr COLORREF HeaderBgLight = RGB(0x79, 0x94, 0x86);   // pale teal
@@ -96,6 +96,15 @@ private:
         /* NEW – file path line (4‑space indent) */
         static constexpr COLORREF FilePathFgLight = RGB(0xC8, 0xAE, 0x6F); // khaki
         static constexpr COLORREF FilePathFgDark = RGB(0xEB, 0xCB, 0x8B); // sand
+
+        static constexpr COLORREF HeaderFg = RGB(0, 0, 0); //black
+
+        /* Fold markers: glyph (“+”/“-”/lines) */
+        static constexpr COLORREF FoldGlyphLight = RGB(80, 80, 80);
+        static constexpr COLORREF FoldGlyphDark = RGB(128, 128, 128);    // dark‑mode glyph
+
+        static constexpr COLORREF FoldBoxLight = FoldGlyphLight;      // light theme
+        static constexpr COLORREF FoldBoxDark = FoldGlyphDark;
     };
 
     /* === construction ================================================= */
@@ -133,4 +142,7 @@ private:
     static constexpr int INDIC_MATCH_FORE = 10;
     static constexpr int INDIC_HEADER_BACKGROUND = 11;   // headline back‑colour
     static constexpr int INDIC_FILEPATH_FORE = 12;   // file‑path foreground
+    static constexpr int INDIC_HEADER_FORE = 13;        // NEW – text colour
+    static constexpr int MARKER_HEADER_BACKGROUND = 24;
+
 };
