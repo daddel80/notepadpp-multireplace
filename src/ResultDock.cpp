@@ -463,6 +463,8 @@ void ResultDock::initFolding() const
         SC_AUTOMATICFOLD_CHANGE);
 
     S(SCI_SETFOLDFLAGS, SC_FOLDFLAG_LINEAFTER_CONTRACTED);
+
+    S(SCI_MARKERENABLEHIGHLIGHT, TRUE);
 }
 
 void ResultDock::applyTheme()
@@ -538,6 +540,8 @@ void ResultDock::applyTheme()
     {
         S(SCI_MARKERSETBACK, id, markerGlyph);
         S(SCI_MARKERSETFORE, id, marginBg);
+
+        S(SCI_MARKERSETBACKSELECTED, id, RDColors::FoldHiMint);
     }
     for (int id : { SC_MARKNUM_FOLDERSUB,
         SC_MARKNUM_FOLDERMIDTAIL,
@@ -545,6 +549,8 @@ void ResultDock::applyTheme()
     {
         S(SCI_MARKERSETBACK, id, markerGlyph);
         S(SCI_MARKERSETFORE, id, markerGlyph);
+
+        S(SCI_MARKERSETBACKSELECTED, id, RDColors::FoldHiMint);
     }
 
     /* ----------------------------------------------------------------
