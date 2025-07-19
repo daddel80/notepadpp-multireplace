@@ -461,6 +461,8 @@ void ResultDock::initFolding() const
         SC_AUTOMATICFOLD_SHOW |
         SC_AUTOMATICFOLD_CLICK |
         SC_AUTOMATICFOLD_CHANGE);
+
+    S(SCI_SETFOLDFLAGS, SC_FOLDFLAG_LINEAFTER_CONTRACTED);
 }
 
 void ResultDock::applyTheme()

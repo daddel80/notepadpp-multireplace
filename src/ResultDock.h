@@ -105,6 +105,8 @@ private:
 
         static constexpr COLORREF FoldBoxLight = FoldGlyphLight;      // light theme
         static constexpr COLORREF FoldBoxDark = FoldGlyphDark;
+
+        static constexpr COLORREF FoldHiMint = RGB(121, 148, 134);
     };
 
     /* === construction ================================================= */
