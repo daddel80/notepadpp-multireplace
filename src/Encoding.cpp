@@ -5,6 +5,45 @@
 #include "Encoding.h"
 
 //
+// raw bytes (document code page) → UTF‑8 std::string
+//
+std::string Encoding::bytesToUtf8(const std::string_view src, UINT codePage)
+{
+    // 1) If the document is already UTF‑8, simply copy the bytes
+    if (codePage == CP_UTF8)
+        return std::string(src);
+
+    // 2) Convert raw bytes → UTF‑16 using the document’s code page
+    int wlen = ::MultiByteToWideChar(
+        codePage ? codePage : CP_ACP, 0,
+        src.data(), static_cast<int>(src.size()),
+        nullptr, 0);
+
+    std::wstring w(wlen, L'\0');
+    ::MultiByteToWideChar(
+        codePage ? codePage : CP_ACP, 0,
+        src.data(), static_cast<int>(src.size()),
+        w.data(), wlen);
+
+    // 3) Convert UTF‑16 → UTF‑8
+    int u8len = ::WideCharToMultiByte(
+        CP_UTF8, 0,
+        w.data(), wlen,
+        nullptr, 0,
+        nullptr, nullptr);
+
+    std::string u8(u8len, '\0');
+    ::WideCharToMultiByte(
+        CP_UTF8, 0,
+        w.data(), wlen,
+        u8.data(), u8len,
+        nullptr, nullptr);
+
+    return u8;
+}
+
+
+//
 // UTF‑8 → std::wstring
 //
 std::wstring Encoding::utf8ToWString(const std::string& utf8) {

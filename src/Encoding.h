@@ -7,6 +7,9 @@
 class Encoding final
 {
 public:
+    // raw bytes(document code page) → UTF‑8 std::string
+    static std::string bytesToUtf8(const std::string_view src, UINT codePage);
+
     // UTF‑8 ⇄ std::wstring
     static std::wstring utf8ToWString(const std::string& utf8);
     static std::string  wstringToUtf8(const std::wstring& ws);

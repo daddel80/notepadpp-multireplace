@@ -307,93 +307,21 @@ void ResultDock::onThemeChanged()
     applyTheme();
 }
 
-void ResultDock::formatHitsForFile(const std::wstring& wFilePath,
+void ResultDock::formatHitsForFile(const std::wstring& wPath,
     const SciSendFn& sciSend,
-    std::vector<Hit>& hitsInOut,
-    std::wstring& outBlock,
-    size_t& ioUtf8Len) const
+    std::vector<Hit>& hits,
+    std::wstring& out,
+    size_t& utf8Pos) const
 {
-    const int hitsHere = static_cast<int>(hitsInOut.size());
-    if (hitsHere == 0) return;
+    std::wstring hdr = L"    " + wPath +
+        L" (" + std::to_wstring(hits.size()) + L" hits)\r\n";
+    out += hdr;
+    utf8Pos += Encoding::wstringToUtf8(hdr).size();
 
-    /* 1) file header -------------------------------------------------- */
-    std::wstring fileHdr = L"    " + wFilePath                // ★ 4 blanks
-        + L" (" + std::to_wstring(hitsHere)
-        + L" hits)\r\n";
-    outBlock += fileHdr;
-    ioUtf8Len += Encoding::wstringToUtf8(fileHdr).size();
-
-    /* 2) loop over matches ------------------------------------------- */
-    int  lastPrintedLine = -1;
-    Hit* lastHit = nullptr;
-
-    for (auto& hit : hitsInOut)
-    {
-        const int lineN = static_cast<int>(
-            sciSend(SCI_LINEFROMPOSITION,
-                static_cast<WPARAM>(hit.pos), 0)) + 1;
-
-        const Sci_Position lineStartPos =
-            sciSend(SCI_POSITIONFROMLINE,
-                static_cast<WPARAM>(lineN - 1), 0);
-
-        LRESULT rawLen = sciSend(SCI_LINELENGTH,
-            static_cast<WPARAM>(lineN - 1), 0);
-
-        std::string raw(static_cast<size_t>(rawLen), '\0');
-        sciSend(SCI_GETLINE,
-            static_cast<WPARAM>(lineN - 1),
-            reinterpret_cast<LPARAM>(raw.data()));
-        raw.resize(strnlen(raw.c_str(), rawLen));
-
-        size_t lead = raw.find_first_not_of(" \t");
-        if (lead == std::string::npos) lead = 0;
-        std::string trim = raw.substr(lead);
-        while (!trim.empty() &&
-            (trim.back() == '\r' || trim.back() == '\n'))
-            trim.pop_back();
-
-        const Sci_Position absLineStart =
-            lineStartPos + static_cast<Sci_Position>(lead);
-
-        /* merge duplicates ------------------------------------------ */
-        if (lineN == lastPrintedLine && lastHit)
-        {
-            int rel = static_cast<int>(hit.pos - absLineStart);
-            lastHit->matchStarts.push_back(
-                lastHit->numberStart + lastHit->numberLen + 2 + rel);
-            lastHit->matchLens.push_back(static_cast<int>(hit.length));
-
-            hit.matchStarts.clear();
-            hit.displayLineStart = -1;
-            continue;
-        }
-        lastPrintedLine = lineN;
-        lastHit = &hit;
-
-        hit.displayLineStart = static_cast<int>(ioUtf8Len);
-        hit.numberStart =
-            static_cast<int>(std::string("            Line ").size());
-        hit.numberLen =
-            static_cast<int>(std::to_string(lineN).size());
-
-        int rel = static_cast<int>(hit.pos - absLineStart);
-        hit.matchStarts = { hit.numberStart + hit.numberLen + 2 + rel };
-        hit.matchLens = { static_cast<int>(hit.length) };
-
-        std::wstring prefixW = L"            Line " +
-            std::to_wstring(lineN) + L": ";
-        outBlock += prefixW + Encoding::stringToWString(trim) + L"\r\n";
-        ioUtf8Len += Encoding::wstringToUtf8(prefixW).size()
-            + trim.size() + 2;
-    }
-
-    /* 3) remove hidden duplicates ----------------------------------- */
-    hitsInOut.erase(
-        std::remove_if(hitsInOut.begin(), hitsInOut.end(),
-            [](const Hit& h) { return h.displayLineStart == -1; }),
-        hitsInOut.end());
+    // per‑line formatting (handles encoding, styling offsets, merging)
+    formatHitsLines(sciSend, hits, out, utf8Pos);
 }
+
 
 
 // --- Private Methods ---
@@ -842,13 +770,28 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             NPPM_SWITCHTOFILE, 0,
             (LPARAM)wpath.c_str());
 
-        // 8) Jump + select in the editor
+        // 8) Jump, select and *centre* the hit line in the editor
         HWND hEd = nppData._scintillaMainHandle;
         int targetLine = (int)::SendMessage(hEd, SCI_LINEFROMPOSITION, hit.pos, 0);
+
+        // 8‑a) Move cursor to line
         ::SendMessage(hEd, SCI_GOTOLINE, targetLine, 0);
-        ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY, targetLine, 0);
+
+        // 8‑b) Compute centre scroll and set first visible line
+        
+        int totalLines = (int)::SendMessage(hEd, SCI_GETLINECOUNT, 0, 0);
+        int linesOnScreen = (int)::SendMessage(hEd, SCI_LINESONSCREEN, 0, 0);
+        int firstWanted = targetLine - linesOnScreen / 2;
+
+        if (firstWanted < 0)
+            firstWanted = 0;
+        else if (firstWanted > totalLines - linesOnScreen)
+            firstWanted = totalLines - linesOnScreen;
+
+        ::SendMessage(hEd, SCI_SETFIRSTVISIBLELINE, firstWanted, 0);
+
+        // 8‑c) Select the hit
         ::SendMessage(hEd, SCI_SETSEL, hit.pos, hit.pos + hit.length);
-        // no SetFocus(hEd)
 
         // 9) Restore dock scroll
         ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
@@ -876,73 +819,86 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         : ::DefWindowProc(hwnd, msg, wp, lp);
 }
 
-void ResultDock::formatHitsLines(
-    const SciSendFn& sciSend,
+void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     std::vector<Hit>& hits,
     std::wstring& out,
     size_t& utf8Pos) const
 {
-    constexpr wchar_t INDENT_W[] = L"            "; // 12 spaces
-    constexpr char   INDENT_A[] = "            "; // 12 spaces (ASCII)
-    const size_t indentUtf8Len = sizeof(INDENT_A) - 1;            // 12
+    constexpr wchar_t INDENT_W[] = L"            ";
+    constexpr size_t  INDENT_U8 = 12;
 
-    int  lastPrintedLine = -1;
-    Hit* lastHit = nullptr;
+    const UINT docCp = static_cast<UINT>(sciSend(SCI_GETCODEPAGE, 0, 0));
 
-    for (auto& h : hits)
+    int  prevLine = -1;
+    Hit* firstHitOnLine = nullptr;
+
+    for (Hit& h : hits)
     {
-        const int lineZero = static_cast<int>(
-            sciSend(SCI_LINEFROMPOSITION, (WPARAM)h.pos, 0));
-        const int lineOne = lineZero + 1;
+        int lineZero = (int)sciSend(SCI_LINEFROMPOSITION, h.pos, 0);
+        int lineOne = lineZero + 1;
 
-        // ─── Merge multiple hits on the same physical line ────────────────
-        if (lineZero == lastPrintedLine && lastHit)
+        /* --- read raw bytes ------------------------------------ */
+        int rawLen = (int)sciSend(SCI_LINELENGTH, lineZero, 0);
+        std::string raw(rawLen, '\0');
+        sciSend(SCI_GETLINE, lineZero, (LPARAM)raw.data());
+        raw.resize(strnlen(raw.c_str(), rawLen));
+        while (!raw.empty() && (raw.back() == '\r' || raw.back() == '\n'))
+            raw.pop_back();
+
+        /* --- trim leading blanks ------------------------------- */
+        size_t lead = raw.find_first_not_of(" \t");
+        std::string_view sliceBytes =
+            (lead == std::string::npos) ? std::string_view{}
+        : std::string_view(raw).substr(lead);
+
+        /* --- FULL slice as UTF‑8 (★) --------------------------- */
+        const std::string sliceU8 = Encoding::bytesToUtf8(sliceBytes, docCp);
+        const std::wstring sliceW = Encoding::utf8ToWString(sliceU8);
+
+        /* --- prefix -------------------------------------------- */
+        std::wstring prefixW = std::wstring(INDENT_W)
+            + L"Line " + std::to_wstring(lineOne) + L": ";
+        size_t prefixU8Len = Encoding::wstringToUtf8(prefixW).size();
+
+        /* --- byte offset of hit inside slice ------------------- */
+        Sci_Position absTrimmed = sciSend(SCI_POSITIONFROMLINE, lineZero, 0) + (Sci_Position)lead;
+        size_t relBytes = (size_t)(h.pos - absTrimmed);
+
+        /* --- locate hit in UTF‑8 text  (★) --------------------- */
+        size_t hitStartInSlice = Encoding::bytesToUtf8(
+            sliceBytes.substr(0, relBytes), docCp).size();
+        size_t hitLenU8 = Encoding::bytesToUtf8(
+            sliceBytes.substr(relBytes, h.length), docCp).size();
+
+        /* --- first hit on this visual line? -------------------- */
+        if (lineZero != prevLine)
         {
-            Sci_Position lineStartPos = sciSend(SCI_POSITIONFROMLINE, lineZero, 0);
-            int rel = static_cast<int>(h.pos - lineStartPos);
-            lastHit->matchStarts.push_back(
-                lastHit->numberStart + lastHit->numberLen + 2 + rel);
-            lastHit->matchLens.push_back(static_cast<int>(h.length));
-            h.displayLineStart = -1; // placeholder, not styled
-            continue;
+            out += prefixW + sliceW + L"\r\n";
+
+            h.displayLineStart = (int)utf8Pos;
+            h.numberStart = (int)(INDENT_U8 + 5);
+            h.numberLen = (int)std::to_string(lineOne).size();
+            h.matchStarts = { (int)(prefixU8Len + hitStartInSlice) };
+            h.matchLens = { (int)hitLenU8 };
+
+            utf8Pos += prefixU8Len + sliceU8.size() + 2;
+            firstHitOnLine = &h;
+            prevLine = lineZero;
         }
-        lastPrintedLine = lineZero;
-        lastHit = &h;
-
-        // ─── Read line text (UTF‑8) and trim leading WS ─────────────────––
-        const int bufLen = static_cast<int>(
-            sciSend(SCI_LINELENGTH, (WPARAM)lineZero, 0)) + 1; // incl. NUL
-        std::string utf8(bufLen, '\0');
-        sciSend(SCI_GETLINE, (WPARAM)lineZero, (LPARAM)utf8.data());
-
-        utf8.erase(std::find_if(utf8.begin(), utf8.end(), [](char c)
-            { return c == '\r' || c == '\n' || c == '\0'; }), utf8.end());
-
-        size_t lead = utf8.find_first_not_of(" \t");
-        if (lead == std::string::npos) lead = 0;
-        std::string trim = utf8.substr(lead);
-        Sci_Position absLineStart = sciSend(SCI_POSITIONFROMLINE, lineZero, 0) + static_cast<Sci_Position>(lead);
-
-        // ─── Record styling offsets for this primary hit ─────────────────––
-        h.displayLineStart = static_cast<int>(utf8Pos);
-        h.numberStart = static_cast<int>(indentUtf8Len + 5);   // after "Line "
-        h.numberLen = static_cast<int>(std::to_string(lineOne).size());
-        int rel = static_cast<int>(h.pos - absLineStart);
-        h.matchStarts = { h.numberStart + h.numberLen + 2 + rel };
-        h.matchLens = { static_cast<int>(h.length) };
-
-        // ─── Compose output line ─────────────────────────────────────────––
-        std::wstring prefix = INDENT_W;
-        prefix += L"Line " + std::to_wstring(lineOne) + L": ";
-
-        out += prefix + Encoding::stringToWString(trim) + L"\r\n";
-        utf8Pos += Encoding::wstringToUtf8(prefix).size() + trim.size() + 2; // +CRLF
+        else /* additional hit on same line */
+        {
+            firstHitOnLine->matchStarts.push_back(
+                (int)(prefixU8Len + hitStartInSlice));
+            firstHitOnLine->matchLens.push_back((int)hitLenU8);
+            h.displayLineStart = -1;       // dummy
+        }
     }
 
-    // Remove placeholder hits created by duplicate‑merge
-    hits.erase(std::remove_if(hits.begin(), hits.end(), [](const Hit& h)
-        { return h.displayLineStart < 0; }), hits.end());
+    hits.erase(std::remove_if(hits.begin(), hits.end(),
+        [](const Hit& h) { return h.displayLineStart < 0; }),
+        hits.end());
 }
+
 
 
 
