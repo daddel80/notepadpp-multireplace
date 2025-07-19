@@ -412,52 +412,55 @@ void ResultDock::initFolding() const
     auto S = [this](UINT msg, WPARAM w = 0, LPARAM l = 0)
         { return ::SendMessage(_hSci, msg, w, l); };
 
-    // 1) Configure margin #2 as the folding symbol margin
+    /* 1) configure margin #2 for folding symbols ----------------- */
     constexpr int M_FOLD = 2;
     S(SCI_SETMARGINTYPEN, M_FOLD, SC_MARGIN_SYMBOL);
     S(SCI_SETMARGINMASKN, M_FOLD, SC_MASK_FOLDERS);
 
-    // 2) Make the margin wide enough for a 16‑px box plus the vertical stem
-    LRESULT lr = ::SendMessage(_hSci, SCI_TEXTHEIGHT, 0, 0);
-    int h = static_cast<int>(lr);
-    int w = h + 4;               // add 4 px so the connected stem is never clipped
-    S(SCI_SETMARGINWIDTHN, M_FOLD, w);
+    /* 2) width: 16‑px box + 4 px stem so nothing is clipped ------ */
+    const int h = static_cast<int>(S(SCI_TEXTHEIGHT));
+    S(SCI_SETMARGINWIDTHN, M_FOLD, h + 4);
 
-    // Enable mouse interaction and automatic folding updates
-    S(SCI_SETMARGINSENSITIVEN, M_FOLD, TRUE);
-    S(SCI_SETAUTOMATICFOLD,
-        SC_AUTOMATICFOLD_SHOW |
-        SC_AUTOMATICFOLD_CLICK |
-        SC_AUTOMATICFOLD_CHANGE, 0);
-
-    // 3) Hide the first two margins (line numbers / bookmarks)
+    /* 3) hide margins 0/1 (line‑numbers & bookmarks) ------------- */
     S(SCI_SETMARGINWIDTHN, 0, 0);
     S(SCI_SETMARGINWIDTHN, 1, 0);
 
-    // 4) Define header markers (plus/minus boxes, connected style)
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDER, SC_MARK_BOXPLUSCONNECTED);    // closed block
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPEN, SC_MARK_BOXMINUSCONNECTED);   // open block
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPENMID, SC_MARK_BOXMINUSCONNECTED);   // open (nested)
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEREND, SC_MARK_BOXPLUSCONNECTED);    // closed (last child)
+    /* -------------------------------------------------------------
+     * 4) header markers
+     *    – root header boxes:  BOXPLUS / BOXMINUS          (no top stem)
+     *    – nested headers:     BOXPLUSCONNECTED / …MINUS…  (with stem)
+     * ---------------------------------------------------------- */
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDER, SC_MARK_BOXPLUS);
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPEN, SC_MARK_BOXMINUS);
 
-    // 5) Define guide‑line and corner markers
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERSUB, SC_MARK_VLINE);    // │ vertical guide
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERMIDTAIL, SC_MARK_TCORNER);  // ├ tee junction
-    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERTAIL, SC_MARK_LCORNER);  // └ corner
-    // Do NOT redefine SC_MARKNUM_FOLDEREND here – keeps the “+” glyph intact
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPENMID, SC_MARK_BOXMINUSCONNECTED);
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEREND, SC_MARK_BOXPLUSCONNECTED);
 
-    // 6) Apply a neutral placeholder colour; themed colours are set later in _applyTheme()
-    const COLORREF placeholder = RGB(200, 200, 200);
-    for (int id : { SC_MARKNUM_FOLDER,
-        SC_MARKNUM_FOLDEROPEN,
-        SC_MARKNUM_FOLDERSUB,
-        SC_MARKNUM_FOLDERMIDTAIL,
-        SC_MARKNUM_FOLDERTAIL,
-        SC_MARKNUM_FOLDEREND })
+    /* 5) guide‑line markers (│ ├ └) ------------------------------ */
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERSUB, SC_MARK_VLINE);
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERMIDTAIL, SC_MARK_TCORNER);
+    S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERTAIL, SC_MARK_LCORNER);
+
+    /* 6) placeholder colour – themed colours set in applyTheme() */
+    constexpr COLORREF placeholder = RGB(200, 200, 200);
+    for (int id : {
+        SC_MARKNUM_FOLDER,
+            SC_MARKNUM_FOLDEROPEN,
+            SC_MARKNUM_FOLDERSUB,
+            SC_MARKNUM_FOLDERMIDTAIL,
+            SC_MARKNUM_FOLDERTAIL,
+            SC_MARKNUM_FOLDEREND })
     {
         S(SCI_MARKERSETFORE, id, placeholder);
         S(SCI_MARKERSETBACK, id, placeholder);
     }
+
+    /* 7) enable mouse interaction & auto‑fold updates ------------ */
+    S(SCI_SETMARGINSENSITIVEN, M_FOLD, TRUE);
+    S(SCI_SETAUTOMATICFOLD,
+        SC_AUTOMATICFOLD_SHOW |
+        SC_AUTOMATICFOLD_CLICK |
+        SC_AUTOMATICFOLD_CHANGE);
 }
 
 void ResultDock::applyTheme()
