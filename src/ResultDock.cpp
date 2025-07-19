@@ -302,51 +302,6 @@ void ResultDock::rebuildFolding()
     }
 }
 
-void ResultDock::applyStyling() const
-{
-    if (!_hSci) return;
-    auto S = [this](UINT msg, WPARAM w = 0, LPARAM l = 0) {
-        return ::SendMessage(_hSci, msg, w, l);
-        };
-
-    // Clear all three indicators over the entire doc
-    S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
-    S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
-    S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
-    S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
-    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
-    S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
-
-    // 1) Fill full‑line background on each hit line
-    S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
-    for (const auto& hit : _hits) {
-        // compute end of line
-        int dispLine = (int)S(SCI_LINEFROMPOSITION, hit.displayLineStart, 0);
-        int lineEnd = (int)S(SCI_GETLINEENDPOSITION, dispLine, 0);
-        int length = lineEnd - hit.displayLineStart;
-        if (length > 0)
-            S(SCI_INDICATORFILLRANGE, hit.displayLineStart, length);
-    }
-
-    // 2) Fill digits of the line number
-    S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
-    for (const auto& hit : _hits) {
-        S(SCI_INDICATORFILLRANGE,
-            hit.displayLineStart + hit.numberStart,
-            hit.numberLen);
-    }
-
-    // 3) Fill each match substring
-    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
-    for (const auto& hit : _hits) {
-        for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
-            S(SCI_INDICATORFILLRANGE,
-                hit.displayLineStart + hit.matchStarts[i],
-                hit.matchLens[i]);
-        }
-    }
-}
-
 void ResultDock::onThemeChanged()
 {
     applyTheme();
@@ -453,46 +408,71 @@ static constexpr uint32_t argb(BYTE a, COLORREF c)
 
 void ResultDock::create(const NppData& npp)
 {
-    // 1) Create the Scintilla window as the client control
-    _hSci = ::CreateWindowExW(WS_EX_CLIENTEDGE, L"Scintilla", L"", WS_CHILD,
-        0, 0, 100, 100,
-        npp._nppHandle, nullptr, _hInst, nullptr);
+    // 1) Create the Scintilla window that will become our dock client
+    _hSci = ::CreateWindowExW(
+        WS_EX_CLIENTEDGE,           // extended style (adds a thin 3‑D border)
+        L"Scintilla",               // window class
+        L"",                        // caption – not shown
+        WS_CHILD | WS_CLIPSIBLINGS, // style – child because N++ owns the dock
+        0, 0, 100, 100,             // initial size – N++ resizes later
+        npp._nppHandle,             // parent – the N++ main frame
+        nullptr,                    // no menu
+        _hInst,                     // our DLL instance
+        nullptr);                   // no creation data
+
     if (!_hSci)
     {
-        MessageBoxW(npp._nppHandle, L"FATAL: Failed to create Scintilla window!",
-            L"ResultDock Error", MB_OK | MB_ICONERROR);
+        ::MessageBoxW(npp._nppHandle,
+            L"FATAL: Failed to create Scintilla window!",
+            L"ResultDock Error",
+            MB_OK | MB_ICONERROR);
         return;
     }
 
-    // 2) Prepare the docking descriptor (persistent!)
-    auto& dock = _dockData;
-    ZeroMemory(&dock, sizeof(dock)); // Ensure all fields are cleared
+    // 2) Subclass Scintilla so we receive double‑clicks and other messages
+    s_prevSciProc = reinterpret_cast<WNDPROC>(
+        ::SetWindowLongPtrW(_hSci,
+            GWLP_WNDPROC,
+            reinterpret_cast<LONG_PTR>(sciSubclassProc)));
 
-    dock.hClient = _hSci;
-    dock.pszName = L"MultiReplace – Search results";
-    dock.dlgID = IDD_MULTIREPLACE_RESULT_DOCK;
-    dock.pszModuleName = NPP_PLUGIN_NAME;
-    dock.uMask = DWS_DF_CONT_BOTTOM | DWS_ICONTAB;
+    // 3) Make Scintilla use UTF‑8 internally (matches our Hit list)
+    ::SendMessageW(_hSci, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
 
-    dock.iPrevCont = -1; // No previous container — standard value
-    dock.rcFloat = { 200, 200, 800, 600 }; // Avoid 0×0 size when undocking!
+    // 4) Fill docking descriptor (persists in _dockData)
+    ::ZeroMemory(&_dockData, sizeof(_dockData));
+    _dockData.hClient = _hSci;
+    _dockData.pszName = L"MultiReplace – Search results";
+    _dockData.dlgID = IDD_MULTIREPLACE_RESULT_DOCK;
+    _dockData.uMask = DWS_DF_CONT_BOTTOM | DWS_ICONTAB;
+    _dockData.hIconTab = nullptr;
+    _dockData.pszAddInfo = L"";
+    _dockData.pszModuleName = NPP_PLUGIN_NAME;
+    _dockData.iPrevCont = -1;                        // no previous container
+    _dockData.rcFloat = { 200, 200, 800, 600 };    // sensible default when undocked
 
-    // 3) Register the dock window
-    _hDock = (HWND)::SendMessage(npp._nppHandle, NPPM_DMMREGASDCKDLG,
-        0, reinterpret_cast<LPARAM>(&dock));
+    // 5) Register the dock window with Notepad++
+    _hDock = reinterpret_cast<HWND>(
+        ::SendMessageW(npp._nppHandle,
+            NPPM_DMMREGASDCKDLG,
+            0,
+            reinterpret_cast<LPARAM>(&_dockData)));
 
     if (!_hDock)
     {
-        MessageBoxW(npp._nppHandle, L"ERROR: Docking registration failed.",
-            L"ResultDock Error", MB_OK | MB_ICONERROR);
+        ::MessageBoxW(npp._nppHandle,
+            L"ERROR: Docking registration failed.",
+            L"ResultDock Error",
+            MB_OK | MB_ICONERROR);
         return;
     }
 
-    // 4) Apply Notepad++ dark theme to both dock and Scintilla control
-    ::SendMessage(npp._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
-        NppDarkMode::dmfInit, reinterpret_cast<LPARAM>(_hDock));
+    // 6) Let Notepad++ apply its current light/dark theme to dock and Scintilla
+    ::SendMessageW(npp._nppHandle,
+        NPPM_DARKMODESUBCLASSANDTHEME,
+        static_cast<WPARAM>(NppDarkMode::dmfInit),
+        reinterpret_cast<LPARAM>(_hDock));
 
-    // 5) Configure folding behavior and visual theme
+    // 7) Initialise folding and apply syntax colours that match current N++ theme
     initFolding();
     applyTheme();
 }
@@ -554,47 +534,56 @@ void ResultDock::initFolding() const
 
 void ResultDock::applyTheme()
 {
-    if (!_hSci) return;
+    if (!_hSci)
+        return;
 
-    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0)
-        { ::SendMessage(_hSci, m, w, l); };
+    /* helper: send message to the dock Scintilla -------------------- */
+    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
+        { return ::SendMessage(_hSci, m, w, l); };
 
-    /* 0) Base colours ---------------------------------------------------- */
+    /* ----------------------------------------------------------------
+     * 0)  Base editor colours from Notepad++
+     * ---------------------------------------------------------------- */
     const bool dark = ::SendMessage(
         nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0;
 
-    COLORREF bg = (COLORREF)::SendMessage(
+    COLORREF editorBg = (COLORREF)::SendMessage(
         nppData._nppHandle, NPPM_GETEDITORDEFAULTBACKGROUNDCOLOR, 0, 0);
-    COLORREF fg = (COLORREF)::SendMessage(
+    COLORREF editorFg = (COLORREF)::SendMessage(
         nppData._nppHandle, NPPM_GETEDITORDEFAULTFOREGROUNDCOLOR, 0, 0);
 
-    COLORREF lnBg = dark ? RGB(0, 0, 0) : RGB(255, 255, 255);   // margin fill
-    COLORREF lnFg = dark ? RGB(200, 200, 200) : RGB(80, 80, 80);   // margin text
+    /* ----------------------------------------------------------------
+     * 1)  Reset Scintilla styles
+     * ---------------------------------------------------------------- */
+    S(SCI_STYLESETBACK, STYLE_DEFAULT, editorBg);
+    S(SCI_STYLESETFORE, STYLE_DEFAULT, editorFg);
+    S(SCI_STYLECLEARALL);
 
+    /* ----------------------------------------------------------------
+     * 2)  Margin (0=line #, 1=symbol, 2=fold) – always pitch‑black
+     * ---------------------------------------------------------------- */
+    COLORREF marginBg = RGB(0, 0, 0);
+    COLORREF marginFg = dark ? RGB(200, 200, 200) : RGB(80, 80, 80);
+
+    for (int m = 0; m <= 2; ++m)
+        S(SCI_SETMARGINBACKN, m, marginBg);
+
+    S(SCI_STYLESETBACK, STYLE_LINENUMBER, marginBg);
+    S(SCI_STYLESETFORE, STYLE_LINENUMBER, marginFg);
+
+    S(SCI_SETFOLDMARGINCOLOUR, TRUE, marginBg);
+    S(SCI_SETFOLDMARGINHICOLOUR, TRUE, marginBg);
+
+    /* ----------------------------------------------------------------
+     * 3)  Selection & additional selection colours
+     * ---------------------------------------------------------------- */
     COLORREF selBg = dark ? RGB(96, 96, 96)
         : ::GetSysColor(COLOR_HIGHLIGHT);
     COLORREF selFg = dark ? RGB(255, 255, 255)
         : ::GetSysColor(COLOR_HIGHLIGHTTEXT);
 
-    /* 1) Reset Scintilla styles ----------------------------------------- */
-    S(SCI_STYLESETBACK, STYLE_DEFAULT, bg);
-    S(SCI_STYLESETFORE, STYLE_DEFAULT, fg);
-    S(SCI_STYLECLEARALL);
-
-    /* 2) Margin colours -------------------------------------------------- */
-    S(SCI_SETMARGINBACKN, 0, lnBg);
-    S(SCI_STYLESETBACK, STYLE_LINENUMBER, lnBg);
-    S(SCI_STYLESETFORE, STYLE_LINENUMBER, lnFg);
-
-    S(SCI_SETMARGINBACKN, 1, bg);     // spacer margin
-    S(SCI_SETMARGINBACKN, 2, lnBg);   // fold margin
-
-    S(SCI_SETFOLDMARGINCOLOUR, 1, lnBg);
-    S(SCI_SETFOLDMARGINHICOLOUR, 1, lnBg);
-
-    /* 3) Selection / caret‑line ----------------------------------------- */
-    S(SCI_SETSELFORE, 1, selFg);
-    S(SCI_SETSELBACK, 1, selBg);
+    S(SCI_SETSELFORE, TRUE, selFg);
+    S(SCI_SETSELBACK, TRUE, selBg);
     S(SCI_SETSELALPHA, 256, 0);
 
     S(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_BACK, argb(0xFF, selBg));
@@ -604,56 +593,173 @@ void ResultDock::applyTheme()
     S(SCI_SETADDITIONALSELBACK, selBg);
     S(SCI_SETADDITIONALSELALPHA, 256, 0);
 
-    /* 4) Fold‑marker colours (dark theme → black box, white glyph) -------- */
-    const COLORREF markerFill = lnBg;                        // box outline / frame
-    const COLORREF markerGlyph = dark ? RGB(255, 255, 255)      // glyph + guide lines
-        : RGB(80, 80, 80);    // light theme: dark grey
+    /* ----------------------------------------------------------------
+     * 4)  Fold markers
+     * ---------------------------------------------------------------- */
+    COLORREF markerGlyph = dark ? RGB(255, 255, 255) : RGB(80, 80, 80);
 
-    // Header markers: +  −
-    for (int id : { SC_MARKNUM_FOLDER,          // +
-        SC_MARKNUM_FOLDEREND,       // + (last child)
-        SC_MARKNUM_FOLDEROPEN,      // −
-        SC_MARKNUM_FOLDEROPENMID }) // − (nested)
+    for (int id : { SC_MARKNUM_FOLDER,
+        SC_MARKNUM_FOLDEREND,
+        SC_MARKNUM_FOLDEROPEN,
+        SC_MARKNUM_FOLDEROPENMID })
     {
-        S(SCI_MARKERSETBACK, id, markerGlyph);  // glyph colour  (plus/minus)
-        S(SCI_MARKERSETFORE, id, markerFill);   // box outline   (frame)
+        S(SCI_MARKERSETBACK, id, markerGlyph);
+        S(SCI_MARKERSETFORE, id, marginBg);
     }
-
-    // Guide‑line markers: │ ├ └   → durchgehender Strich
     for (int id : { SC_MARKNUM_FOLDERSUB,
         SC_MARKNUM_FOLDERMIDTAIL,
         SC_MARKNUM_FOLDERTAIL })
     {
-        S(SCI_MARKERSETBACK, id, markerGlyph);  // solid line
+        S(SCI_MARKERSETBACK, id, markerGlyph);
         S(SCI_MARKERSETFORE, id, markerGlyph);
     }
 
-    /* 5) Caret‑line highlight (indicator 0) ----------------------------- */
+    /* ----------------------------------------------------------------
+     * 5)  Caret‑line highlight (indicator 0)  –  grey stripe
+     * ---------------------------------------------------------------- */
     S(SCI_INDICSETSTYLE, 0, INDIC_ROUNDBOX);
     S(SCI_INDICSETFORE, 0, selBg);
-    S(SCI_INDICSETUNDER, 0, TRUE);
     S(SCI_INDICSETALPHA, 0, 128);
+    S(SCI_INDICSETUNDER, 0, TRUE);
 
-    /* 6) Custom indicators ---------------------------------------------- */
-    COLORREF lineBgColor = dark ? RGB(0x3A, 0x3D, 0x33) : RGB(0xE7, 0xF2, 0xFF);
-    COLORREF lineNumberClr = dark ? RGB(0xAE, 0x81, 0xFF) : RGB(0xFD, 0x97, 0x1F);
-    COLORREF matchClr = dark ? RGB(0xE6, 0xDB, 0x74) : RGB(0xFF, 0x00, 0x00);
+    // keep visible (was missing in earlier patch)
+    S(SCI_SETCARETLINEVISIBLE, TRUE, 0);
+    S(SCI_SETCARETLINEBACK, selBg, 0);
 
+    /* ----------------------------------------------------------------
+     * 6)  Custom indicators (colours from RDColors)
+     * ---------------------------------------------------------------- */
+    COLORREF hitLineBg = dark ? RDColors::LineBgDark : RDColors::LineBgLight;
+    COLORREF lineNrFg = dark ? RDColors::LineNrDark : RDColors::LineNrLight;
+    COLORREF matchFg = dark ? RDColors::MatchDark : RDColors::MatchLight;
+    COLORREF headerBg = dark ? RDColors::HeaderBgDark : RDColors::HeaderBgLight;
+    COLORREF filePathFg = dark ? RDColors::FilePathFgDark : RDColors::FilePathFgLight;
+
+    /* 6‑a) Grey background for entire hit line -------------------- */
     S(SCI_INDICSETSTYLE, INDIC_LINE_BACKGROUND, INDIC_STRAIGHTBOX);
-    S(SCI_INDICSETFORE, INDIC_LINE_BACKGROUND, lineBgColor);
+    S(SCI_INDICSETFORE, INDIC_LINE_BACKGROUND, hitLineBg);
     S(SCI_INDICSETALPHA, INDIC_LINE_BACKGROUND, 100);
     S(SCI_INDICSETUNDER, INDIC_LINE_BACKGROUND, TRUE);
 
+    /* 6‑b) Coloured digits (line number) -------------------------- */
     S(SCI_INDICSETSTYLE, INDIC_LINENUMBER_FORE, INDIC_TEXTFORE);
-    S(SCI_INDICSETFORE, INDIC_LINENUMBER_FORE, lineNumberClr);
+    S(SCI_INDICSETFORE, INDIC_LINENUMBER_FORE, lineNrFg);
 
+    /* 6‑c) Match substrings --------------------------------------- */
     S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
-    S(SCI_INDICSETFORE, INDIC_MATCH_FORE, matchClr);
+    S(SCI_INDICSETFORE, INDIC_MATCH_FORE, matchFg);
 
-    /* 7) Caret‑line visibility ----------------------------------------- */
-    S(SCI_SETCARETLINEVISIBLE, 1, 0);
-    S(SCI_SETCARETLINEBACK, selBg, 0);
+    /* 6‑d) Full‑width green header background --------------------- */
+    S(SCI_INDICSETSTYLE, INDIC_HEADER_BACKGROUND, INDIC_FULLBOX);
+    S(SCI_INDICSETFORE, INDIC_HEADER_BACKGROUND, headerBg);
+    S(SCI_INDICSETALPHA, INDIC_HEADER_BACKGROUND, 255);
+    S(SCI_INDICSETUNDER, INDIC_HEADER_BACKGROUND, TRUE);
+
+    /* 6‑e) Khaki / Sand file‑path foreground ---------------------- */
+    S(SCI_INDICSETSTYLE, INDIC_FILEPATH_FORE, INDIC_TEXTFORE);
+    S(SCI_INDICSETFORE, INDIC_FILEPATH_FORE, filePathFg);
 }
+
+void ResultDock::applyStyling() const
+{
+    if (!_hSci) return;
+
+    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0)
+        { return ::SendMessage(_hSci, m, w, l); };
+
+    /* --------------------------------------------------------------
+     * 0)  Clear all custom indicators
+     * -------------------------------------------------------------- */
+    for (int ind : { INDIC_LINE_BACKGROUND,
+        INDIC_LINENUMBER_FORE,
+        INDIC_MATCH_FORE,
+        INDIC_HEADER_BACKGROUND,
+        INDIC_FILEPATH_FORE })
+    {
+        S(SCI_SETINDICATORCURRENT, ind);
+        S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
+    }
+
+    /* --------------------------------------------------------------
+     * 1)  Header lines  (“Search …”)
+     * -------------------------------------------------------------- */
+    S(SCI_SETINDICATORCURRENT, INDIC_HEADER_BACKGROUND);
+
+    const int lineCount = (int)S(SCI_GETLINECOUNT, 0, 0);
+    for (int ln = 0; ln < lineCount; ++ln)
+    {
+        // read raw line (UTF‑8) ------------------------------------
+        const int rawLen = (int)S(SCI_LINELENGTH, ln, 0);
+        if (rawLen <= 1) continue;
+
+        std::string buf(rawLen + 1, '\0');
+        S(SCI_GETLINE, ln, (LPARAM)buf.data());
+        buf.erase(std::find_if(buf.begin(), buf.end(),
+            [](char c) { return c == '\r' || c == '\n' || c == '\0'; }), buf.end());
+
+        // trim leading spaces --------------------------------------
+        size_t lead = buf.find_first_not_of(' ');
+        if (lead == std::string::npos) lead = 0;
+        const std::string_view trimmed(buf.data() + lead, buf.size() - lead);
+
+        // is this a header?  (starts with "Search ")
+        if (trimmed.rfind("Search ", 0) != 0)
+            continue;
+
+        Sci_Position start = S(SCI_POSITIONFROMLINE, ln, 0);
+        Sci_Position len = S(SCI_LINELENGTH, ln, 0);
+        if (len > 0)
+            S(SCI_INDICATORFILLRANGE, start, len);
+    }
+
+    /* --------------------------------------------------------------
+     * 2)  File‑path foreground  (indent = 4 spaces)
+     * -------------------------------------------------------------- */
+    S(SCI_SETINDICATORCURRENT, INDIC_FILEPATH_FORE);
+    for (int ln = 0; ln < lineCount; ++ln)
+    {
+        Sci_Position pos = S(SCI_POSITIONFROMLINE, ln, 0);
+        if (S(SCI_GETCHARAT, pos + 0, 0) == ' '
+            && S(SCI_GETCHARAT, pos + 1, 0) == ' '
+            && S(SCI_GETCHARAT, pos + 2, 0) == ' '
+            && S(SCI_GETCHARAT, pos + 3, 0) == ' '
+            && S(SCI_GETCHARAT, pos + 4, 0) != ' ')
+        {
+            Sci_Position len = S(SCI_LINELENGTH, ln, 0);
+            if (len > 0)
+                S(SCI_INDICATORFILLRANGE, pos, len);
+        }
+    }
+
+    /* --------------------------------------------------------------
+     * 3)  Full‑line background for each hit
+     * -------------------------------------------------------------- */
+    S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
+    for (const auto& h : _hits)
+    {
+        int ln = (int)S(SCI_LINEFROMPOSITION, h.displayLineStart, 0);
+        Sci_Position end = S(SCI_GETLINEENDPOSITION, ln, 0);
+        Sci_Position len = end - h.displayLineStart;
+        if (len > 0)
+            S(SCI_INDICATORFILLRANGE, h.displayLineStart, len);
+    }
+
+    /* 4) Line‑number digits ---------------------------------------- */
+    S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
+    for (const auto& h : _hits)
+        S(SCI_INDICATORFILLRANGE,
+            h.displayLineStart + h.numberStart,
+            h.numberLen);
+
+    /* 5) Match substrings ------------------------------------------ */
+    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
+    for (const auto& h : _hits)
+        for (size_t i = 0; i < h.matchStarts.size(); ++i)
+            S(SCI_INDICATORFILLRANGE,
+                h.displayLineStart + h.matchStarts[i],
+                h.matchLens[i]);
+}
+
 
 LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {

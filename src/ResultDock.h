@@ -74,6 +74,30 @@ public:
 
 
 private:
+    /* Central colour palette for ResultDock*/
+    struct RDColors
+    {
+        /* Hit‑line background (already used) */
+        static constexpr COLORREF LineBgLight = RGB(0xE7, 0xF2, 0xFF);
+        static constexpr COLORREF LineBgDark = RGB(0x3A, 0x3D, 0x33);
+
+        /* Line‑number digits (already used) */
+        static constexpr COLORREF LineNrLight = RGB(0xFD, 0x97, 0x1F);
+        static constexpr COLORREF LineNrDark = RGB(0xAE, 0x81, 0xFF);
+
+        /* Match substring (already used) */
+        static constexpr COLORREF MatchLight = RGB(0xFF, 0x00, 0x00);
+        static constexpr COLORREF MatchDark = RGB(0xE6, 0xDB, 0x74);
+
+        /* NEW – first headline:  Search "..." (…) */
+        static constexpr COLORREF HeaderBgLight = RGB(0x79, 0x94, 0x86);   // pale teal
+        static constexpr COLORREF HeaderBgDark = RGB(0x2E, 0x3D, 0x36);   // deep teal
+
+        /* NEW – file path line (4‑space indent) */
+        static constexpr COLORREF FilePathFgLight = RGB(0xC8, 0xAE, 0x6F); // khaki
+        static constexpr COLORREF FilePathFgDark = RGB(0xEB, 0xCB, 0x8B); // sand
+    };
+
     /* === construction ================================================= */
     explicit ResultDock(HINSTANCE hInst);
     ResultDock(const ResultDock&) = delete;
@@ -107,4 +131,6 @@ private:
     static constexpr int INDIC_LINE_BACKGROUND = 8;
     static constexpr int INDIC_LINENUMBER_FORE = 9;
     static constexpr int INDIC_MATCH_FORE = 10;
+    static constexpr int INDIC_HEADER_BACKGROUND = 11;   // headline back‑colour
+    static constexpr int INDIC_FILEPATH_FORE = 12;   // file‑path foreground
 };
