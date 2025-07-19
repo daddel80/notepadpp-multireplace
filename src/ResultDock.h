@@ -10,6 +10,7 @@
 #include "Encoding.h"        // UTF‑16/UTF‑8 helpers
 #include "Sci_Position.h"
 #include "PluginDefinition.h"
+#include "StaticDialog/DockingDlgInterface.h"
 
  /* ------------------------------------------------------------------
   *  Helper types
@@ -92,6 +93,8 @@ private:
     static LRESULT CALLBACK sciSubclassProc(HWND, UINT, WPARAM, LPARAM);
 
     static inline WNDPROC   s_prevSciProc = nullptr;
+
+    tTbData _dockData{}; // Holds docking info persistently
 
     /* === data members ================================================= */
     HINSTANCE   _hInst{ nullptr };         // DLL instance

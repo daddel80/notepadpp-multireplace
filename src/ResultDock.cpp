@@ -453,59 +453,47 @@ static constexpr uint32_t argb(BYTE a, COLORREF c)
 
 void ResultDock::create(const NppData& npp)
 {
-    // 1) Create the Scintilla control.
-    _hSci = ::CreateWindowExW(0, L"Scintilla", L"", WS_CHILD,
+    // 1) Create the Scintilla window as the client control
+    _hSci = ::CreateWindowExW(WS_EX_CLIENTEDGE, L"Scintilla", L"", WS_CHILD,
         0, 0, 100, 100,
         npp._nppHandle, nullptr, _hInst, nullptr);
-
     if (!_hSci)
     {
-        MessageBoxW(npp._nppHandle, L"FATAL: CreateWindowExW for Scintilla failed!", L"ResultDock Error", MB_OK | MB_ICONERROR);
+        MessageBoxW(npp._nppHandle, L"FATAL: Failed to create Scintilla window!",
+            L"ResultDock Error", MB_OK | MB_ICONERROR);
         return;
     }
 
-    // Subclass the Scintilla window to intercept its messages.
-    s_prevSciProc = reinterpret_cast<WNDPROC>(
-        ::SetWindowLongPtr(_hSci, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(sciSubclassProc))
-        );
+    // 2) Prepare the docking descriptor (persistent!)
+    auto& dock = _dockData;
+    ZeroMemory(&dock, sizeof(dock)); // Ensure all fields are cleared
 
-    ::SendMessage(_hSci, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
-
-    // 2) Prepare the docking descriptor.
-    static tTbData dock{};
     dock.hClient = _hSci;
     dock.pszName = L"MultiReplace – Search results";
     dock.dlgID = IDD_MULTIREPLACE_RESULT_DOCK;
-    dock.uMask = DWS_DF_CONT_BOTTOM | DWS_ICONTAB;
-    dock.hIconTab = nullptr;
-    dock.pszAddInfo = L"";
     dock.pszModuleName = NPP_PLUGIN_NAME;
+    dock.uMask = DWS_DF_CONT_BOTTOM | DWS_ICONTAB;
 
-    dock.iPrevCont = -1;          // *** critical ***
-    dock.rcFloat = { 0,0,0,0 };   // optional
+    dock.iPrevCont = -1; // No previous container — standard value
+    dock.rcFloat = { 200, 200, 800, 600 }; // Avoid 0×0 size when undocking!
 
-    // Register the dock and capture the container handle.
-    _hDock = (HWND)::SendMessage(npp._nppHandle, NPPM_DMMREGASDCKDLG, 0, reinterpret_cast<LPARAM>(&dock));
+    // 3) Register the dock window
+    _hDock = (HWND)::SendMessage(npp._nppHandle, NPPM_DMMREGASDCKDLG,
+        0, reinterpret_cast<LPARAM>(&dock));
 
     if (!_hDock)
     {
-        MessageBoxW(npp._nppHandle, L"ERROR: NPPM_DMMREGASDCKDLG failed. Docking was rejected by Notepad++.", L"ResultDock Error", MB_OK | MB_ICONERROR);
+        MessageBoxW(npp._nppHandle, L"ERROR: Docking registration failed.",
+            L"ResultDock Error", MB_OK | MB_ICONERROR);
+        return;
     }
 
-    // Ask Notepad++ to theme the newly created dock container and the Scintilla control
+    // 4) Apply Notepad++ dark theme to both dock and Scintilla control
     ::SendMessage(npp._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
-        static_cast<WPARAM>(NppDarkMode::dmfInit),
-        reinterpret_cast<LPARAM>(_hDock));
+        NppDarkMode::dmfInit, reinterpret_cast<LPARAM>(_hDock));
 
-    // Ask Notepad++ to theme the newly created dock container
-    ::SendMessage(npp._nppHandle,
-        NPPM_DARKMODESUBCLASSANDTHEME,
-        static_cast<WPARAM>(NppDarkMode::dmfInit),
-        reinterpret_cast<LPARAM>(_hDock));
-
+    // 5) Configure folding behavior and visual theme
     initFolding();
-
-    // Set the initial styles to match the current N++ theme upon creation.
     applyTheme();
 }
 
