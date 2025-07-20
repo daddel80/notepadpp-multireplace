@@ -103,11 +103,11 @@ private:
 
         static constexpr COLORREF MatchBgLight = RGB(0xFF, 0xFF, 0xBF);
 
-        /* NEW – first headline:  Search "..." (…) */
+        /*first headline:  Search "..." (…) */
         static constexpr COLORREF HeaderBgLight = RGB(0xD5, 0xFF, 0xD5);
-        static constexpr COLORREF HeaderBgDark = RGB(0x2E, 0x3D, 0x36);
+        static constexpr COLORREF HeaderBgDark = RGB(0x8F, 0xAF, 0x9F);
 
-        /* NEW – file path line (4‑space indent) */
+        /* file path line (4‑space indent) */
         static constexpr COLORREF FilePathFgLight = RGB(0xA0, 0x80, 0x50);
         static constexpr COLORREF FilePathFgDark = RGB(0xEB, 0xCB, 0x8B);
 
@@ -120,7 +120,9 @@ private:
         static constexpr COLORREF FoldBoxLight = FoldGlyphLight;
         static constexpr COLORREF FoldBoxDark = FoldGlyphDark;
 
-        static constexpr COLORREF FoldHiMint = RGB(121, 148, 134);
+        /* Marker background when selected */
+        static constexpr COLORREF FoldHiDark = RGB(0x79, 0x94, 0x86);
+        static constexpr COLORREF FoldHiLight = RGB(0xFF, 0x00, 0x00);
 
         // transparency for the caret‑line indicator (0)
         static constexpr int CaretLineAlphaLight = 64;  

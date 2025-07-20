@@ -427,7 +427,6 @@ public:
     static bool isLoggingEnabled;
     static bool isCaretPositionEnabled;
     static bool isLuaErrorDialogEnabled;
-    bool flatListEnabled = true;
 
     static std::vector<size_t> originalLineOrder; // Stores the order of lines before sorting
     static SortDirection currentSortState; // Status of column sort
@@ -595,18 +594,27 @@ private:
     int checkMarkWidth_scaled;
     int crossWidth_scaled;
     int boxWidth_scaled;
-    bool highlightMatchEnabled;  // HighlightMatch during Find in List
+
     std::map<ColumnID, int> columnIndices;  // Mapping of ColumnID to ColumnIndex due to dynamic Columns
     int lastTooltipRow;
     int lastTooltipSubItem;
     int lastMouseX;
     int lastMouseY;
-    bool exportToBashEnabled = false; // shows/hides the "Export to Bash" button
-    bool isHoverTextEnabled = false; // Important to set on false as TIMER will be triggered at startup.
-    bool isHoverTextSuppressed = false; // Temporarily supress HoverText to avoid flickering wehn Edit in list is open
-    int editFieldSize;
-    bool listStatisticsEnabled;
-    bool stayAfterReplaceEnabled;
+
+    inline static bool tooltipsEnabled = true;            // Status for showing Tooltips on Panel
+    inline static bool alertNotFoundEnabled = true;       // Status for Bell if String hasn't been found
+    inline static bool doubleClickEditsEnabled = true;    // Double click to Edit List entries
+    inline static bool highlightMatchEnabled = true;      // HighlightMatch during Find in List
+    inline static bool exportToBashEnabled = false;      // shows/hides the "Export to Bash" button
+    inline static bool isHoverTextEnabled = true;        // Important to set on false as TIMER will be triggered at startup.
+    inline static int  editFieldSize = 5;                // Size of the edit field for find/replace input
+    inline static bool listStatisticsEnabled = false;    // Status for showing list statistics
+    inline static bool stayAfterReplaceEnabled = false; // Status for keeping panel open after replace
+    inline static bool flatListEnabled = false;          // Status for flat list view
+
+    bool isHoverTextSuppressed = false;    // Temporarily suppress HoverText to avoid flickering when Edit in list is open
+
+
     bool _isCancelRequested = false; // Flag to signal cancellation in Replace Files
     static bool _isShuttingDown; // Flag to signal app shutdown
     HBRUSH _hDlgBrush = nullptr; // Handle for the dialog's background brush
@@ -631,9 +639,6 @@ private:
     bool findColumnLockedEnabled;    // Indicates if the "Find what" column is locked
     bool replaceColumnLockedEnabled; // Indicates if the "Replace" column is locked
     bool commentsColumnLockedEnabled;// Indicates if the "Comments" column is locked
-    bool tooltipsEnabled;            // Status for showing Tooltips on Panel
-    bool alertNotFoundEnabled;       // Status for Bell if String hasn't be found
-    bool doubleClickEditsEnabled;    // Double click to Edit List entries
 
     // Window DPI scaled size 
     int MIN_WIDTH_scaled;

@@ -393,8 +393,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         }
         else /* additional hit on same line */
         {
-            firstHitOnLine->matchStarts.push_back(
-                (int)(prefixU8Len + hitStartInSlice));
+            assert(firstHitOnLine != nullptr);
+            firstHitOnLine->matchStarts.push_back((int)(prefixU8Len + hitStartInSlice));
             firstHitOnLine->matchLens.push_back((int)hitLenU8);
             h.displayLineStart = -1;       // dummy
         }
@@ -638,7 +638,7 @@ void ResultDock::applyTheme()
     /* ----------------------------------------------------------------
      * 2)  Margin (0=line #, 1=symbol, 2=fold) – always pitch‑black
      * ---------------------------------------------------------------- */
-    COLORREF marginBg = RGB(0, 0, 0);
+    COLORREF marginBg = dark ? RGB(0, 0, 0) : editorBg;
     COLORREF marginFg = dark ? RGB(200, 200, 200) : RGB(80, 80, 80);
 
     for (int m = 0; m <= 2; ++m)
@@ -674,24 +674,19 @@ void ResultDock::applyTheme()
      * ---------------------------------------------------------------- */
     const COLORREF markerGlyph = dark ? RDColors::FoldGlyphDark : RDColors::FoldGlyphLight;
 
-    for (int id : { SC_MARKNUM_FOLDER,
-        SC_MARKNUM_FOLDEREND,
-        SC_MARKNUM_FOLDEROPEN,
-        SC_MARKNUM_FOLDEROPENMID })
+    for (int id : {
+        SC_MARKNUM_FOLDER,
+            SC_MARKNUM_FOLDEREND,
+            SC_MARKNUM_FOLDEROPEN,
+            SC_MARKNUM_FOLDEROPENMID,
+            SC_MARKNUM_FOLDERSUB,
+            SC_MARKNUM_FOLDERMIDTAIL,
+            SC_MARKNUM_FOLDERTAIL
+    })
     {
         S(SCI_MARKERSETBACK, id, markerGlyph);
         S(SCI_MARKERSETFORE, id, marginBg);
-
-        S(SCI_MARKERSETBACKSELECTED, id, RDColors::FoldHiMint);
-    }
-    for (int id : { SC_MARKNUM_FOLDERSUB,
-        SC_MARKNUM_FOLDERMIDTAIL,
-        SC_MARKNUM_FOLDERTAIL })
-    {
-        S(SCI_MARKERSETBACK, id, markerGlyph);
-        S(SCI_MARKERSETFORE, id, markerGlyph);
-
-        S(SCI_MARKERSETBACKSELECTED, id, RDColors::FoldHiMint);
+        S( SCI_MARKERSETBACKSELECTED, id, dark ? RDColors::FoldHiDark : RDColors::FoldHiLight );
     }
 
     /* ----------------------------------------------------------------
@@ -700,22 +695,14 @@ void ResultDock::applyTheme()
     S(SCI_INDICSETSTYLE, 0, INDIC_ROUNDBOX);
     S(SCI_INDICSETFORE, 0, selBg);
     // use per‑mode alpha from RDColors
-    S(SCI_INDICSETALPHA, 0,
-        dark ? RDColors::CaretLineAlphaDark
-        : RDColors::CaretLineAlphaLight);
-    S(SCI_INDICSETALPHA, 0,
-        dark ? RDColors::CaretLineAlphaDark
-        : RDColors::CaretLineAlphaLight);
+    S(SCI_INDICSETALPHA, 0, dark ? RDColors::CaretLineAlphaDark : RDColors::CaretLineAlphaLight);
     S(SCI_INDICSETUNDER, 0, TRUE);
 
     // keep visible (was missing in earlier patch)
     S(SCI_SETCARETLINEVISIBLE, TRUE, 0);
     S(SCI_SETCARETLINEBACK, selBg, 0);
     S(SCI_SETCARETLINEVISIBLE, TRUE, 0);
-    S(SCI_SETCARETLINEBACK,
-        dark ? selBg
-        : RDColors::CaretLineBackLight,
-        0);
+    S(SCI_SETCARETLINEBACK, dark ? selBg : RDColors::CaretLineBackLight, 0);
 
     /* ----------------------------------------------------------------
      * 6)  Custom indicators (colours from RDColors)
@@ -724,7 +711,7 @@ void ResultDock::applyTheme()
     COLORREF lineNrFg = dark ? RDColors::LineNrDark : RDColors::LineNrLight;
     COLORREF matchFg = dark ? RDColors::MatchDark : RDColors::MatchLight;
     COLORREF matchBg = RDColors::MatchBgLight;
-    COLORREF headerBg = dark ? RDColors::HeaderBgLight : RDColors::HeaderBgLight;
+    COLORREF headerBg = dark ? RDColors::HeaderBgDark : RDColors::HeaderBgLight;
     COLORREF filePathFg = dark ? RDColors::FilePathFgDark : RDColors::FilePathFgLight;
 
     /* 6‑a) Grey background for entire hit line -------------------- */

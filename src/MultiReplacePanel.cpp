@@ -9921,6 +9921,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << Encoding::wstringToUtf8(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
     outFile << Encoding::wstringToUtf8(L"UseList=" + std::to_wstring(useList) + L"\n");
     outFile << Encoding::wstringToUtf8(L"HighlightMatch=" + std::to_wstring(highlightMatchEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ExportToBash=" + std::to_wstring(exportToBashEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"Tooltips=" + std::to_wstring(tooltipsEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"AlertNotFound=" + std::to_wstring(alertNotFoundEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"DoubleClickEdits=" + std::to_wstring(doubleClickEditsEnabled ? 1 : 0) + L"\n");
@@ -9928,7 +9929,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << Encoding::wstringToUtf8(L"EditFieldSize=" + std::to_wstring(editFieldSize) + L"\n");
     outFile << Encoding::wstringToUtf8(L"ListStatistics=" + std::to_wstring(listStatisticsEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"StayAfterReplace=" + std::to_wstring(stayAfterReplaceEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ExportToBash=" + std::to_wstring(exportToBashEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"FlatList=" + std::to_wstring(flatListEnabled) + L"\n");
 
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
@@ -10114,6 +10115,7 @@ void MultiReplace::loadSettingsFromIni() {
     updateUseListState(false);
 
     highlightMatchEnabled = readBoolFromIniCache(L"Options", L"HighlightMatch", true);
+    exportToBashEnabled = readBoolFromIniCache(L"Options", L"ExportToBash", false);
     alertNotFoundEnabled = readBoolFromIniCache(L"Options", L"AlertNotFound", true);
     doubleClickEditsEnabled = readBoolFromIniCache(L"Options", L"DoubleClickEdits", true);
     isHoverTextEnabled = readBoolFromIniCache(L"Options", L"HoverText", true);
@@ -10124,7 +10126,7 @@ void MultiReplace::loadSettingsFromIni() {
 
     listStatisticsEnabled = readBoolFromIniCache(L"Options", L"ListStatistics", false);
     stayAfterReplaceEnabled = readBoolFromIniCache(L"Options", L"StayAfterReplace", false);
-    exportToBashEnabled = readBoolFromIniCache(L"Options", L"ExportToBash", false);
+    flatListEnabled = readBoolFromIniCache(L"Options", L"FlatList", false);
 
     // Loading and setting the scope
     int selection = readIntFromIniCache(L"Scope", L"Selection", 0);
