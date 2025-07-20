@@ -6047,14 +6047,22 @@ void MultiReplace::handleFindAllButton()
     std::string  utf8FilePath = Encoding::wstringToUtf8(wFilePath);
 
     /* 5) search context --------------------------------------------- */
-    SearchContext ctx{}; ctx.docLength = sciSend(SCI_GETLENGTH);
+    SearchContext context;
+    context.docLength = sciSend(SCI_GETLENGTH);
+    context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+    context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    context.retrieveFoundText = false;
+    context.highlightMatch = false;
+
+    /* starting position for selection‑mode scans -------------------- */ 
+    SelectionInfo selInfo = getSelectionInfo(false);
+    Sci_Position  scanStart = context.isSelectionMode ? selInfo.startPos : 0;
 
     /* 6) containers -------------------------------------------------- */
     ResultDock::FileMap fileMap;
 
     std::vector<ResultDock::Hit> allHits;
     int   totalHits = 0;
-    size_t utf8Len = 0;   // <‑‑ running UTF‑8 length for styling (visible everywhere)
 
     /* ----------------------------------------------------------------
      * LIST MODE  (aggregate per‑file, then per‑criterion)
@@ -6071,19 +6079,19 @@ void MultiReplace::handleFindAllButton()
             if (!item.isEnabled || item.findText.empty()) continue;
 
             /* (a) Set up search flags & pattern ------------------- */
-            ctx.findText = convertAndExtendW(item.findText, item.extended);
-            ctx.searchFlags =
+            context.findText = convertAndExtendW(item.findText, item.extended);
+            context.searchFlags =
                 (item.wholeWord ? SCFIND_WHOLEWORD : 0)
                 | (item.matchCase ? SCFIND_MATCHCASE : 0)
                 | (item.regex ? SCFIND_REGEXP : 0);
-            sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+            sciSend(SCI_SETSEARCHFLAGS, context.searchFlags);
 
             /* (b) Collect hits ------------------------------------ */
             std::vector<ResultDock::Hit> rawHits;
-            LRESULT pos = 0;
+            LRESULT pos = scanStart;
             while (true)
             {
-                SearchResult r = performSearchForward(ctx, pos);
+                SearchResult r = performSearchForward(context, pos);
                 if (r.pos < 0) break;
                 pos = r.pos + r.length;
 
@@ -6127,7 +6135,7 @@ void MultiReplace::handleFindAllButton()
         dock.prependHits(allHits, dockText);
     }
     /* ----------------------------------------------------------------
-     * SINGLE MODE  (original implementation – only utf8Len adjusted)
+     * SINGLE MODE
      * ---------------------------------------------------------------- */
     else
     {
@@ -6138,20 +6146,20 @@ void MultiReplace::handleFindAllButton()
         }
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
 
-        ctx.findText = convertAndExtendW(findW,
+        context.findText = convertAndExtendW(findW,
             IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-        ctx.searchFlags =
+        context.searchFlags =
             (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
             | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
             | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
-        sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+        sciSend(SCI_SETSEARCHFLAGS, context.searchFlags);
 
         /* collect hits ----------------------------------------- */
         std::vector<ResultDock::Hit> rawHits;
-        LRESULT pos = 0;
+        LRESULT pos = context.isSelectionMode ? selInfo.startPos : 0;
         while (true)
         {
-            SearchResult r = performSearchForward(ctx, pos);
+            SearchResult r = performSearchForward(context, pos);
             if (r.pos < 0) break;
             pos = r.pos + r.length;
 
@@ -6168,7 +6176,7 @@ void MultiReplace::handleFindAllButton()
 
         /* header ---------------------------------------------------- */
         std::wstring header = L"Search \"" + findW + L"\" (" + std::to_wstring(rawHits.size()) + L" hits in 1 file)\r\n";
-        utf8Len = Encoding::wstringToUtf8(header).size();
+        size_t utf8Len = Encoding::wstringToUtf8(header).size();
 
         std::wstring block;
         dock.formatHitsForFile(wFilePath, sciSend, rawHits, block, utf8Len);
