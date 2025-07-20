@@ -6050,9 +6050,8 @@ void MultiReplace::handleFindAllButton()
     SearchContext ctx{}; ctx.docLength = sciSend(SCI_GETLENGTH);
 
     /* 6) containers -------------------------------------------------- */
-    struct CritAgg { std::wstring text; std::vector<ResultDock::Hit> hits; };
-    struct FileAgg { std::wstring wPath; int hitCount = 0; std::vector<CritAgg> crits; };
-
+    using CritAgg = ResultDock::CritAgg;
+    using FileAgg = ResultDock::FileAgg;
     using FileMap = std::unordered_map<std::string, FileAgg>; // UTF‑8 path → data
     FileMap fileMap;
 
@@ -6113,48 +6112,25 @@ void MultiReplace::handleFindAllButton()
         }
 
         /* (d) Build dock text ------------------------------------ */
+        // *** NEW: Header berechnen wie bisher
         std::wstring header =
             flatListEnabled
             ? L"Search in List – flat (" + std::to_wstring(totalHits) + L" hits in 1 file)\r\n"
             : L"Search in List (" + std::to_wstring(totalHits) + L" hits in 1 file)\r\n";
-        utf8Len = Encoding::wstringToUtf8(header).size();
-        std::wstring body;
 
-        for (auto& [utf8Path, f] : fileMap)
-        {
-            std::wstring fileHdr = L"    " + f.wPath + L" (" + std::to_wstring(f.hitCount) + L" hits)\r\n";
-            body += fileHdr;
-            utf8Len += Encoding::wstringToUtf8(fileHdr).size();
+        // *** NEW: buildListText kapselt nun den bisherigen Loop‑Code
+        std::wstring dockText;
+        dock.buildListText(
+            /* files: */    fileMap,
+            /* flatView: */ flatListEnabled,
+            /* header: */   header,
+            /* sciSend: */  sciSend,
+            /* outText: */  dockText,
+            /* outHits: */  allHits
+        );
 
-            if (!flatListEnabled)
-            {
-                for (auto& c : f.crits)
-                {
-                    std::wstring critHdr = L"        Search \"" + c.text + L"\" (" +
-                        std::to_wstring(c.hits.size()) + L" hits)\r\n";
-                    body += critHdr;
-                    utf8Len += Encoding::wstringToUtf8(critHdr).size();
-
-                    dock.formatHitsLines(sciSend, c.hits, body, utf8Len);
-                    allHits.insert(allHits.end(), c.hits.begin(), c.hits.end());
-                }
-                continue;
-            }
-
-            std::vector<ResultDock::Hit> merged;
-            for (auto& c : f.crits)
-                merged.insert(merged.end(),
-                    std::make_move_iterator(c.hits.begin()),
-                    std::make_move_iterator(c.hits.end()));
-
-            std::sort(merged.begin(), merged.end(),
-                [](const auto& a, const auto& b) { return a.pos < b.pos; });
-
-            dock.formatHitsLines(sciSend, merged, body, utf8Len);
-            allHits.insert(allHits.end(), merged.begin(), merged.end());
-        }
-
-        dock.prependHits(allHits, header + body);
+        // *** NEW: das replace des alten prependHits(header+body)
+        dock.prependHits(allHits, dockText);
     }
     /* ----------------------------------------------------------------
      * SINGLE MODE  (original implementation – only utf8Len adjusted)

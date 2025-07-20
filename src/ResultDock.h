@@ -72,6 +72,17 @@ public:
         std::wstring& outBlock,
         size_t& ioUtf8Len) const;
 
+    // ─── for buildListText() ───────────────────────────────────────
+    struct CritAgg { std::wstring text; std::vector<Hit> hits; };
+    struct FileAgg { std::wstring wPath; int hitCount = 0; std::vector<CritAgg> crits; };
+
+    /// Build list‑view text (grouped OR flat) from pre‑aggregated files
+    void buildListText(const std::unordered_map<std::string, FileAgg>& files,
+        bool flatView,
+        const std::wstring& header,
+        const SciSendFn& sciSend,
+        std::wstring& outText,
+        std::vector<Hit>& outHits) const;
 
 private:
     /* Central colour palette for ResultDock*/

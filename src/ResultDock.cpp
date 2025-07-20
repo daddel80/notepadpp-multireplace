@@ -402,6 +402,67 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         hits.end());
 }
 
+void ResultDock::buildListText(
+    const std::unordered_map<std::string, FileAgg>& files,
+    bool flatView,
+    const std::wstring& header,
+    const SciSendFn& sciSend,
+    std::wstring& outText,
+    std::vector<Hit>& outHits) const
+{
+    size_t utf8Len = Encoding::wstringToUtf8(header).size();
+    std::wstring body;
+
+    for (auto& [path, f] : files)
+    {
+        std::wstring fileHdr = L"    " + f.wPath + L" (" +
+            std::to_wstring(f.hitCount) + L" hits)\r\n";
+        body += fileHdr;
+        utf8Len += Encoding::wstringToUtf8(fileHdr).size();
+
+        if (flatView)
+        {
+            // flat: alle Hits pro Datei sammeln & nach pos sortieren
+            std::vector<Hit> merged;
+            for (auto& c : f.crits)
+                merged.insert(merged.end(),
+                    std::make_move_iterator(c.hits.begin()),
+                    std::make_move_iterator(c.hits.end()));
+            std::sort(merged.begin(), merged.end(),
+                [](auto const& a, auto const& b) { return a.pos < b.pos; });
+
+            formatHitsLines(sciSend, merged, body, utf8Len);
+            outHits.insert(outHits.end(),
+                std::make_move_iterator(merged.begin()),
+                std::make_move_iterator(merged.end()));
+        }
+        else
+        {
+            // grouped: zuerst Header, dann jeden Crit‑Block
+            for (auto& c : f.crits)
+            {
+                std::wstring critHdr = L"        Search \"" + c.text + L"\" (" +
+                    std::to_wstring(c.hits.size()) + L" hits)\r\n";
+                body += critHdr;
+                utf8Len += Encoding::wstringToUtf8(critHdr).size();
+
+                /* REPAIR: mutable Kopie von c.hits anlegen */
+                auto hitsCopy = c.hits;  // <-- repariert
+                /* REPAIR: Kopie an formatHitsLines übergeben statt const c.hits */
+                formatHitsLines(sciSend, hitsCopy, body, utf8Len);  // <-- repariert
+                /* REPAIR: Ergebnisse aus hitsCopy ins outHits übernehmen */
+                outHits.insert(outHits.end(),
+                    std::make_move_iterator(hitsCopy.begin()),
+                    std::make_move_iterator(hitsCopy.end()));  // <-- repariert
+            }
+        }
+    }
+
+    outText = header + body;
+}
+
+
+
 // --- Private Methods ---
 
 static constexpr uint32_t argb(BYTE a, COLORREF c)
