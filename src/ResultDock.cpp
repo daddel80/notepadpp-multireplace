@@ -322,7 +322,85 @@ void ResultDock::formatHitsForFile(const std::wstring& wPath,
     formatHitsLines(sciSend, hits, out, utf8Pos);
 }
 
+void ResultDock::formatHitsLines(const SciSendFn& sciSend,
+    std::vector<Hit>& hits,
+    std::wstring& out,
+    size_t& utf8Pos) const
+{
+    constexpr wchar_t INDENT_W[] = L"            ";
+    constexpr size_t  INDENT_U8 = 12;
 
+    const UINT docCp = static_cast<UINT>(sciSend(SCI_GETCODEPAGE, 0, 0));
+
+    int  prevLine = -1;
+    Hit* firstHitOnLine = nullptr;
+
+    for (Hit& h : hits)
+    {
+        int lineZero = (int)sciSend(SCI_LINEFROMPOSITION, h.pos, 0);
+        int lineOne = lineZero + 1;
+
+        /* --- read raw bytes ------------------------------------ */
+        int rawLen = (int)sciSend(SCI_LINELENGTH, lineZero, 0);
+        std::string raw(rawLen, '\0');
+        sciSend(SCI_GETLINE, lineZero, (LPARAM)raw.data());
+        raw.resize(strnlen(raw.c_str(), rawLen));
+        while (!raw.empty() && (raw.back() == '\r' || raw.back() == '\n'))
+            raw.pop_back();
+
+        /* --- trim leading blanks ------------------------------- */
+        size_t lead = raw.find_first_not_of(" \t");
+        std::string_view sliceBytes =
+            (lead == std::string::npos) ? std::string_view{}
+        : std::string_view(raw).substr(lead);
+
+        /* --- FULL slice as UTF‑8 (★) --------------------------- */
+        const std::string sliceU8 = Encoding::bytesToUtf8(sliceBytes, docCp);
+        const std::wstring sliceW = Encoding::utf8ToWString(sliceU8);
+
+        /* --- prefix -------------------------------------------- */
+        std::wstring prefixW = std::wstring(INDENT_W)
+            + L"Line " + std::to_wstring(lineOne) + L": ";
+        size_t prefixU8Len = Encoding::wstringToUtf8(prefixW).size();
+
+        /* --- byte offset of hit inside slice ------------------- */
+        Sci_Position absTrimmed = sciSend(SCI_POSITIONFROMLINE, lineZero, 0) + (Sci_Position)lead;
+        size_t relBytes = (size_t)(h.pos - absTrimmed);
+
+        /* --- locate hit in UTF‑8 text  (★) --------------------- */
+        size_t hitStartInSlice = Encoding::bytesToUtf8(
+            sliceBytes.substr(0, relBytes), docCp).size();
+        size_t hitLenU8 = Encoding::bytesToUtf8(
+            sliceBytes.substr(relBytes, h.length), docCp).size();
+
+        /* --- first hit on this visual line? -------------------- */
+        if (lineZero != prevLine)
+        {
+            out += prefixW + sliceW + L"\r\n";
+
+            h.displayLineStart = (int)utf8Pos;
+            h.numberStart = (int)(INDENT_U8 + 5);
+            h.numberLen = (int)std::to_string(lineOne).size();
+            h.matchStarts = { (int)(prefixU8Len + hitStartInSlice) };
+            h.matchLens = { (int)hitLenU8 };
+
+            utf8Pos += prefixU8Len + sliceU8.size() + 2;
+            firstHitOnLine = &h;
+            prevLine = lineZero;
+        }
+        else /* additional hit on same line */
+        {
+            firstHitOnLine->matchStarts.push_back(
+                (int)(prefixU8Len + hitStartInSlice));
+            firstHitOnLine->matchLens.push_back((int)hitLenU8);
+            h.displayLineStart = -1;       // dummy
+        }
+    }
+
+    hits.erase(std::remove_if(hits.begin(), hits.end(),
+        [](const Hit& h) { return h.displayLineStart < 0; }),
+        hits.end());
+}
 
 // --- Private Methods ---
 
@@ -710,7 +788,6 @@ void ResultDock::applyStyling() const
                 h.matchLens[i]);
 }
 
-
 LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     extern NppData nppData;
@@ -743,9 +820,26 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         LRESULT firstVisible = ::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0);
 
         // 2) Which display‐line was clicked?
-        int x = (short)LOWORD(lp), y = (short)HIWORD(lp);
+        int x = LOWORD(lp);
+        int y = HIWORD(lp);
         Sci_Position pos = ::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y);
+        if (pos < 0)                         // guard for empty area
+            return 0;
         int dispLine = (int)::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0);
+
+        // --- Toggle fold if the clicked line is a header ----------
+        int level = (int)::SendMessage(hwnd, SCI_GETFOLDLEVEL, dispLine, 0);
+        if (level & SC_FOLDLEVELHEADERFLAG)
+        {
+            ::SendMessage(hwnd, SCI_TOGGLEFOLD, dispLine, 0);
+            // --- remove double‑click word selection & keep scroll ----------
+            Sci_Position linePos = (Sci_Position)::SendMessage(
+                hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
+            ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, linePos, 0);
+            ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
+
+            return 0;
+        }
 
         // 3) Read the raw text of that line
         int lineLen = (int)::SendMessage(hwnd, SCI_LINELENGTH, dispLine, 0);
@@ -841,85 +935,6 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         : ::DefWindowProc(hwnd, msg, wp, lp);
 }
 
-void ResultDock::formatHitsLines(const SciSendFn& sciSend,
-    std::vector<Hit>& hits,
-    std::wstring& out,
-    size_t& utf8Pos) const
-{
-    constexpr wchar_t INDENT_W[] = L"            ";
-    constexpr size_t  INDENT_U8 = 12;
-
-    const UINT docCp = static_cast<UINT>(sciSend(SCI_GETCODEPAGE, 0, 0));
-
-    int  prevLine = -1;
-    Hit* firstHitOnLine = nullptr;
-
-    for (Hit& h : hits)
-    {
-        int lineZero = (int)sciSend(SCI_LINEFROMPOSITION, h.pos, 0);
-        int lineOne = lineZero + 1;
-
-        /* --- read raw bytes ------------------------------------ */
-        int rawLen = (int)sciSend(SCI_LINELENGTH, lineZero, 0);
-        std::string raw(rawLen, '\0');
-        sciSend(SCI_GETLINE, lineZero, (LPARAM)raw.data());
-        raw.resize(strnlen(raw.c_str(), rawLen));
-        while (!raw.empty() && (raw.back() == '\r' || raw.back() == '\n'))
-            raw.pop_back();
-
-        /* --- trim leading blanks ------------------------------- */
-        size_t lead = raw.find_first_not_of(" \t");
-        std::string_view sliceBytes =
-            (lead == std::string::npos) ? std::string_view{}
-        : std::string_view(raw).substr(lead);
-
-        /* --- FULL slice as UTF‑8 (★) --------------------------- */
-        const std::string sliceU8 = Encoding::bytesToUtf8(sliceBytes, docCp);
-        const std::wstring sliceW = Encoding::utf8ToWString(sliceU8);
-
-        /* --- prefix -------------------------------------------- */
-        std::wstring prefixW = std::wstring(INDENT_W)
-            + L"Line " + std::to_wstring(lineOne) + L": ";
-        size_t prefixU8Len = Encoding::wstringToUtf8(prefixW).size();
-
-        /* --- byte offset of hit inside slice ------------------- */
-        Sci_Position absTrimmed = sciSend(SCI_POSITIONFROMLINE, lineZero, 0) + (Sci_Position)lead;
-        size_t relBytes = (size_t)(h.pos - absTrimmed);
-
-        /* --- locate hit in UTF‑8 text  (★) --------------------- */
-        size_t hitStartInSlice = Encoding::bytesToUtf8(
-            sliceBytes.substr(0, relBytes), docCp).size();
-        size_t hitLenU8 = Encoding::bytesToUtf8(
-            sliceBytes.substr(relBytes, h.length), docCp).size();
-
-        /* --- first hit on this visual line? -------------------- */
-        if (lineZero != prevLine)
-        {
-            out += prefixW + sliceW + L"\r\n";
-
-            h.displayLineStart = (int)utf8Pos;
-            h.numberStart = (int)(INDENT_U8 + 5);
-            h.numberLen = (int)std::to_string(lineOne).size();
-            h.matchStarts = { (int)(prefixU8Len + hitStartInSlice) };
-            h.matchLens = { (int)hitLenU8 };
-
-            utf8Pos += prefixU8Len + sliceU8.size() + 2;
-            firstHitOnLine = &h;
-            prevLine = lineZero;
-        }
-        else /* additional hit on same line */
-        {
-            firstHitOnLine->matchStarts.push_back(
-                (int)(prefixU8Len + hitStartInSlice));
-            firstHitOnLine->matchLens.push_back((int)hitLenU8);
-            h.displayLineStart = -1;       // dummy
-        }
-    }
-
-    hits.erase(std::remove_if(hits.begin(), hits.end(),
-        [](const Hit& h) { return h.displayLineStart < 0; }),
-        hits.end());
-}
 
 
 
