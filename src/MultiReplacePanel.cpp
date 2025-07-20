@@ -6050,10 +6050,7 @@ void MultiReplace::handleFindAllButton()
     SearchContext ctx{}; ctx.docLength = sciSend(SCI_GETLENGTH);
 
     /* 6) containers -------------------------------------------------- */
-    using CritAgg = ResultDock::CritAgg;
-    using FileAgg = ResultDock::FileAgg;
-    using FileMap = std::unordered_map<std::string, FileAgg>; // UTF‑8 path → data
-    FileMap fileMap;
+    ResultDock::FileMap fileMap;
 
     std::vector<ResultDock::Hit> allHits;
     int   totalHits = 0;
@@ -6112,13 +6109,11 @@ void MultiReplace::handleFindAllButton()
         }
 
         /* (d) Build dock text ------------------------------------ */
-        // *** NEW: Header berechnen wie bisher
         std::wstring header =
             flatListEnabled
             ? L"Search in List – flat (" + std::to_wstring(totalHits) + L" hits in 1 file)\r\n"
             : L"Search in List (" + std::to_wstring(totalHits) + L" hits in 1 file)\r\n";
 
-        // *** NEW: buildListText kapselt nun den bisherigen Loop‑Code
         std::wstring dockText;
         dock.buildListText(
             /* files: */    fileMap,
@@ -6129,7 +6124,6 @@ void MultiReplace::handleFindAllButton()
             /* outHits: */  allHits
         );
 
-        // *** NEW: das replace des alten prependHits(header+body)
         dock.prependHits(allHits, dockText);
     }
     /* ----------------------------------------------------------------

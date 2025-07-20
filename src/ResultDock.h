@@ -75,9 +75,10 @@ public:
     // ─── for buildListText() ───────────────────────────────────────
     struct CritAgg { std::wstring text; std::vector<Hit> hits; };
     struct FileAgg { std::wstring wPath; int hitCount = 0; std::vector<CritAgg> crits; };
+    using FileMap = std::unordered_map<std::string, FileAgg>;
 
     /// Build list‑view text (grouped OR flat) from pre‑aggregated files
-    void buildListText(const std::unordered_map<std::string, FileAgg>& files,
+    void buildListText(const FileMap& files,
         bool flatView,
         const std::wstring& header,
         const SciSendFn& sciSend,

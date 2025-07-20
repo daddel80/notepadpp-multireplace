@@ -15,7 +15,10 @@
 
 // --- Public Methods ---
 
-// Make the global NppData object available to this file.
+#ifndef SC_LINEACTION_JOIN
+#define SC_LINEACTION_JOIN 0x1000000
+#endif
+
 extern NppData nppData;
 
 ResultDock::ResultDock(HINSTANCE hInst)
@@ -403,7 +406,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 }
 
 void ResultDock::buildListText(
-    const std::unordered_map<std::string, FileAgg>& files,
+    const FileMap& files,
     bool flatView,
     const std::wstring& header,
     const SciSendFn& sciSend,
@@ -460,7 +463,6 @@ void ResultDock::buildListText(
 
     outText = header + body;
 }
-
 
 
 // --- Private Methods ---
@@ -947,28 +949,41 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             NPPM_SWITCHTOFILE, 0,
             (LPARAM)wpath.c_str());
 
-        // 8) Jump, select and *centre* the hit line in the editor
+        // 8) Jump, select and centre the hit in the visible editor area
         HWND hEd = nppData._scintillaMainHandle;
-        int targetLine = (int)::SendMessage(hEd, SCI_LINEFROMPOSITION, hit.pos, 0);
+        Sci_Position targetPos = hit.pos;
 
-        // 8‑a) Move cursor to line
-        ::SendMessage(hEd, SCI_GOTOLINE, targetLine, 0);
+        // 8‑a) ensure target is unfolded and visible
+        ::SendMessage(hEd, SCI_ENSUREVISIBLE,
+            ::SendMessage(hEd, SCI_LINEFROMPOSITION, targetPos, 0),
+            0);
 
-        // 8‑b) Compute centre scroll and set first visible line
-        
-        int totalLines = (int)::SendMessage(hEd, SCI_GETLINECOUNT, 0, 0);
-        int linesOnScreen = (int)::SendMessage(hEd, SCI_LINESONSCREEN, 0, 0);
-        int firstWanted = targetLine - linesOnScreen / 2;
+        // 8‑b) move caret to target position and select the range
+        ::SendMessage(hEd, SCI_GOTOPOS, targetPos, 0);
+        ::SendMessage(hEd, SCI_SETSEL, targetPos, targetPos + hit.length);
 
-        if (firstWanted < 0)
-            firstWanted = 0;
-        else if (firstWanted > totalLines - linesOnScreen)
-            firstWanted = totalLines - linesOnScreen;
+        // 8‑c) re‑query display geometry
+        size_t firstVisibleDocLine =
+            (size_t)::SendMessage(hEd, SCI_DOCLINEFROMVISIBLE,
+                (WPARAM)::SendMessage(hEd, SCI_GETFIRSTVISIBLELINE, 0, 0),
+                0);
+        size_t linesOnScreen =
+            (size_t)::SendMessage(hEd, SCI_LINESONSCREEN,
+                (WPARAM)firstVisibleDocLine, 0);
+        if (linesOnScreen == 0) linesOnScreen = 1;
 
-        ::SendMessage(hEd, SCI_SETFIRSTVISIBLELINE, firstWanted, 0);
+        // 8‑d) compute centred target visible line
+        size_t caretLine =
+            (size_t)::SendMessage(hEd, SCI_LINEFROMPOSITION, targetPos, 0);
+        size_t midDisplay = firstVisibleDocLine + linesOnScreen / 2;
+        ptrdiff_t deltaLines = (ptrdiff_t)caretLine - (ptrdiff_t)midDisplay;
 
-        // 8‑c) Select the hit
-        ::SendMessage(hEd, SCI_SETSEL, hit.pos, hit.pos + hit.length);
+        // 8‑e) scroll by delta without further auto‑scroll
+        ::SendMessage(hEd, SCI_LINESCROLL, 0, deltaLines);
+        ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY,
+            (WPARAM)::SendMessage(hEd, SCI_LINEFROMPOSITION, targetPos, 0),
+            0);                                             // *** NEW ***
+
 
         // 9) Restore dock scroll
         ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
