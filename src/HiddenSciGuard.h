@@ -35,6 +35,10 @@ public:
         fn = reinterpret_cast<SciFnDirect>(
             ::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0));
         pData = ::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0);
+        
+        if (fn && pData)
+            fn(pData, SCI_SETCODEPAGE, SC_CP_UTF8, 0);     // set safe default
+
         return fn && pData;
     }
 

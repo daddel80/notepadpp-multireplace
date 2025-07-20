@@ -427,6 +427,7 @@ public:
     static bool isLoggingEnabled;
     static bool isCaretPositionEnabled;
     static bool isLuaErrorDialogEnabled;
+    bool flatListEnabled = true;
 
     static std::vector<size_t> originalLineOrder; // Stores the order of lines before sorting
     static SortDirection currentSortState; // Status of column sort
@@ -762,9 +763,6 @@ private:
 
     //Find All
     void handleFindAllButton();
-    HWND createResultSci();
-    void initResultFolding(HWND hSci);
-    void populateResultDockText(const std::wstring& wtxt);
 
     //Find
     void handleFindNextButton();
