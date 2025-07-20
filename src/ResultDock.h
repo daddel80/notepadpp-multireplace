@@ -94,31 +94,40 @@ private:
         static constexpr COLORREF LineBgDark = RGB(0x3A, 0x3D, 0x33);
 
         /* Line‑number digits (already used) */
-        static constexpr COLORREF LineNrLight = RGB(0x80, 0xC0, 0xFF);
+        static constexpr COLORREF LineNrLight = RGB(0x40, 0x80, 0xBF);
         static constexpr COLORREF LineNrDark = RGB(0x80, 0xC0, 0xFF);
 
         /* Match substring (already used) */
-        static constexpr COLORREF MatchLight = RGB(0xA6, 0xE2, 0x2E);
+        static constexpr COLORREF MatchLight = RGB(0xFA, 0x3F, 0x34);
         static constexpr COLORREF MatchDark = RGB(0xA6, 0xE2, 0x2E);
 
+        static constexpr COLORREF MatchBgLight = RGB(0xFF, 0xFF, 0xBF);
+
         /* NEW – first headline:  Search "..." (…) */
-        static constexpr COLORREF HeaderBgLight = RGB(0x79, 0x94, 0x86);   // pale teal
-        static constexpr COLORREF HeaderBgDark = RGB(0x2E, 0x3D, 0x36);   // deep teal
+        static constexpr COLORREF HeaderBgLight = RGB(0xD5, 0xFF, 0xD5);
+        static constexpr COLORREF HeaderBgDark = RGB(0x2E, 0x3D, 0x36);
 
         /* NEW – file path line (4‑space indent) */
-        static constexpr COLORREF FilePathFgLight = RGB(0xC8, 0xAE, 0x6F); // khaki
-        static constexpr COLORREF FilePathFgDark = RGB(0xEB, 0xCB, 0x8B); // sand
+        static constexpr COLORREF FilePathFgLight = RGB(0xA0, 0x80, 0x50);
+        static constexpr COLORREF FilePathFgDark = RGB(0xEB, 0xCB, 0x8B);
 
-        static constexpr COLORREF HeaderFg = RGB(0, 0, 0); //black
+        static constexpr COLORREF HeaderFg = RGB(0, 0, 0);
 
         /* Fold markers: glyph (“+”/“-”/lines) */
         static constexpr COLORREF FoldGlyphLight = RGB(80, 80, 80);
-        static constexpr COLORREF FoldGlyphDark = RGB(128, 128, 128);    // dark‑mode glyph
+        static constexpr COLORREF FoldGlyphDark = RGB(128, 128, 128);
 
-        static constexpr COLORREF FoldBoxLight = FoldGlyphLight;      // light theme
+        static constexpr COLORREF FoldBoxLight = FoldGlyphLight;
         static constexpr COLORREF FoldBoxDark = FoldGlyphDark;
 
         static constexpr COLORREF FoldHiMint = RGB(121, 148, 134);
+
+        // transparency for the caret‑line indicator (0)
+        static constexpr int CaretLineAlphaLight = 64;  
+        static constexpr int CaretLineAlphaDark = 128;
+
+        static constexpr COLORREF CaretLineBackLight = RGB(0xE0, 0xE0, 0xFF);
+        static constexpr COLORREF CaretLineBackDark = RGB(0x20, 0x20, 0x20);
     };
 
     /* === construction ================================================= */
@@ -154,6 +163,7 @@ private:
     static constexpr int INDIC_LINE_BACKGROUND = 8;
     static constexpr int INDIC_LINENUMBER_FORE = 9;
     static constexpr int INDIC_MATCH_FORE = 10;
+    static constexpr int INDIC_MATCH_BG = 14;
     static constexpr int INDIC_HEADER_BACKGROUND = 11;   // headline back‑colour
     static constexpr int INDIC_FILEPATH_FORE = 12;   // file‑path foreground
     static constexpr int INDIC_HEADER_FORE = 13;        // NEW – text colour

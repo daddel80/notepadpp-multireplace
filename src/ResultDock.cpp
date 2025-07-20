@@ -699,12 +699,23 @@ void ResultDock::applyTheme()
      * ---------------------------------------------------------------- */
     S(SCI_INDICSETSTYLE, 0, INDIC_ROUNDBOX);
     S(SCI_INDICSETFORE, 0, selBg);
-    S(SCI_INDICSETALPHA, 0, 128);
+    // use per‑mode alpha from RDColors
+    S(SCI_INDICSETALPHA, 0,
+        dark ? RDColors::CaretLineAlphaDark
+        : RDColors::CaretLineAlphaLight);
+    S(SCI_INDICSETALPHA, 0,
+        dark ? RDColors::CaretLineAlphaDark
+        : RDColors::CaretLineAlphaLight);
     S(SCI_INDICSETUNDER, 0, TRUE);
 
     // keep visible (was missing in earlier patch)
     S(SCI_SETCARETLINEVISIBLE, TRUE, 0);
     S(SCI_SETCARETLINEBACK, selBg, 0);
+    S(SCI_SETCARETLINEVISIBLE, TRUE, 0);
+    S(SCI_SETCARETLINEBACK,
+        dark ? selBg
+        : RDColors::CaretLineBackLight,
+        0);
 
     /* ----------------------------------------------------------------
      * 6)  Custom indicators (colours from RDColors)
@@ -712,6 +723,7 @@ void ResultDock::applyTheme()
     COLORREF hitLineBg = dark ? RDColors::LineBgDark : RDColors::LineBgLight;
     COLORREF lineNrFg = dark ? RDColors::LineNrDark : RDColors::LineNrLight;
     COLORREF matchFg = dark ? RDColors::MatchDark : RDColors::MatchLight;
+    COLORREF matchBg = RDColors::MatchBgLight;
     COLORREF headerBg = dark ? RDColors::HeaderBgLight : RDColors::HeaderBgLight;
     COLORREF filePathFg = dark ? RDColors::FilePathFgDark : RDColors::FilePathFgLight;
 
@@ -726,8 +738,24 @@ void ResultDock::applyTheme()
     S(SCI_INDICSETFORE, INDIC_LINENUMBER_FORE, lineNrFg);
 
     /* 6‑c) Match substrings --------------------------------------- */
-    S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
-    S(SCI_INDICSETFORE, INDIC_MATCH_FORE, matchFg);
+    if (!dark) {
+        // configure yellow‑box indicator under the text
+        S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_FULLBOX);
+        S(SCI_INDICSETFORE, INDIC_MATCH_BG, matchBg);
+        S(SCI_INDICSETALPHA, INDIC_MATCH_BG, 255);
+        S(SCI_INDICSETUNDER, INDIC_MATCH_BG, TRUE);
+
+        // configure red‑text indicator
+        S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
+        S(SCI_INDICSETFORE, INDIC_MATCH_FORE, matchFg);
+    }
+    else {
+        // in Dark‑mode: disable the BG indicator explicitly
+        S(SCI_INDICSETALPHA, INDIC_MATCH_BG, 0);
+        // still draw the text in the dark‑mode color
+        S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
+        S(SCI_INDICSETFORE, INDIC_MATCH_FORE, matchFg);
+    }
 
     /* 6‑d) Full‑width green header background --------------------- */
     S(SCI_INDICSETSTYLE, INDIC_HEADER_BACKGROUND, INDIC_FULLBOX);
@@ -843,6 +871,14 @@ void ResultDock::applyStyling() const
             h.numberLen);
 
     /* 5) Match substrings ------------------------------------------ */
+    // first draw the yellow box under each match
+    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_BG);
+    for (const auto& h : _hits)
+        for (size_t i = 0; i < h.matchStarts.size(); ++i)
+            S(SCI_INDICATORFILLRANGE,
+                h.displayLineStart + h.matchStarts[i],
+                h.matchLens[i]);
+
     S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
     for (const auto& h : _hits)
         for (size_t i = 0; i < h.matchStarts.size(); ++i)
