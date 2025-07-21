@@ -170,5 +170,7 @@ private:
     static constexpr int INDIC_FILEPATH_FORE = 12;   // file‑path foreground
     static constexpr int INDIC_HEADER_FORE = 13;        // NEW – text colour
     static constexpr int MARKER_HEADER_BACKGROUND = 24;
+    static constexpr int STYLE_HEADER = 33;
+    static constexpr int STYLE_FILEPATH = 34;
 
 };

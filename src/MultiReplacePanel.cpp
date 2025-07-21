@@ -6026,6 +6026,61 @@ void MultiReplace::CloseDebugWindow() {
 
 #pragma region Find All
 
+// Escape CR and LF in the search pattern for single-line header display
+std::wstring MultiReplace::sanitizeSearchPattern(const std::wstring& raw) {
+    // Only escape CR and LF sequences, leave other characters unchanged
+    std::string utf8 = Encoding::wstringToUtf8(raw);
+    std::string escaped = replaceNewline(utf8, MultiReplace::ReplaceMode::Regex);
+    return Encoding::stringToWString(escaped);
+}
+
+
+/// Helper to trim a Hit to its first visual document line, preserving highlight offsets
+void MultiReplace::trimHitToFirstLine(
+    const std::function<LRESULT(UINT, WPARAM, LPARAM)>& sciSend,
+    ResultDock::Hit& h)
+{
+    // Determine EOL sequence based on document setting
+    int eolMode = (int)sciSend(SCI_GETEOLMODE, 0, 0);
+    std::string eolSeq =
+        eolMode == SC_EOL_CRLF ? "\r\n" :
+        (eolMode == SC_EOL_CR ? "\r" : "\n");
+
+    // Get line index and start position
+    int lineZero = (int)sciSend(SCI_LINEFROMPOSITION, h.pos, 0);
+    Sci_Position lineStart = sciSend(SCI_POSITIONFROMLINE, lineZero, 0);
+
+    // Read raw line including EOL
+    int rawLen = (int)sciSend(SCI_LINELENGTH, lineZero, 0);
+    std::string raw;
+    raw.resize(rawLen);
+    sciSend(SCI_GETLINE, lineZero, (LPARAM)raw.data());
+    raw.resize(strnlen(raw.c_str(), rawLen));
+
+    // Find EOL position
+    size_t eolPos = raw.find(eolSeq);
+    if (eolPos == std::string::npos) {
+        size_t posCR = raw.find('\r');
+        size_t posLF = raw.find('\n');
+        if (posCR != std::string::npos && posLF != std::string::npos)
+            eolPos = std::min(posCR, posLF);
+        else
+            eolPos = (posCR != std::string::npos ? posCR : posLF);
+    }
+
+    // Trim match length to not exceed first line
+    if (eolPos != std::string::npos) {
+        Sci_Position matchOffset = h.pos - lineStart;
+        Sci_Position maxLen = (Sci_Position)eolPos - matchOffset;
+        if (matchOffset < (Sci_Position)eolPos) {
+            h.length = std::max<Sci_Position>(0, std::min(h.length, maxLen));
+        }
+        else {
+            h.length = 0;
+        }
+    }
+}
+
 void MultiReplace::handleFindAllButton()
 {
     /* 1) sanity ------------------------------------------------------ */
@@ -6054,7 +6109,7 @@ void MultiReplace::handleFindAllButton()
     context.retrieveFoundText = false;
     context.highlightMatch = false;
 
-    /* starting position for selection‑mode scans -------------------- */ 
+    /* starting position for selection‑mode scans -------------------- */
     SelectionInfo selInfo = getSelectionInfo(false);
     Sci_Position  scanStart = context.isSelectionMode ? selInfo.startPos : 0;
 
@@ -6078,6 +6133,9 @@ void MultiReplace::handleFindAllButton()
         {
             if (!item.isEnabled || item.findText.empty()) continue;
 
+            // +++ ADDED: Sanitize pattern for this criterion's header +++
+            std::wstring sanitizedPattern = this->sanitizeSearchPattern(item.findText);
+
             /* (a) Set up search flags & pattern ------------------- */
             context.findText = convertAndExtendW(item.findText, item.extended);
             context.searchFlags =
@@ -6099,7 +6157,11 @@ void MultiReplace::handleFindAllButton()
                 h.fullPathUtf8 = utf8FilePath;
                 h.pos = (Sci_Position)r.pos;
                 h.length = (Sci_Position)r.length;
-                rawHits.push_back(std::move(h));
+
+                // +++ ADDED: Trim hit to first line for display +++
+                this->trimHitToFirstLine(sciSend, h);
+                if (h.length > 0)
+                    rawHits.push_back(std::move(h));
             }
             if (rawHits.empty()) continue;
 
@@ -6107,7 +6169,8 @@ void MultiReplace::handleFindAllButton()
             auto& agg = fileMap[utf8FilePath];
             agg.wPath = wFilePath;
             agg.hitCount += static_cast<int>(rawHits.size());
-            agg.crits.push_back({ item.findText, std::move(rawHits) });
+            // +++ CHANGED: Use sanitized pattern for the criteria text +++
+            agg.crits.push_back({ sanitizedPattern, std::move(rawHits) });
             totalHits += (int)agg.crits.back().hits.size();
         }
 
@@ -6146,6 +6209,9 @@ void MultiReplace::handleFindAllButton()
         }
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
 
+        // +++ ADDED: Sanitize pattern for the header +++
+        std::wstring headerPattern = this->sanitizeSearchPattern(findW);
+
         context.findText = convertAndExtendW(findW,
             IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
         context.searchFlags =
@@ -6167,7 +6233,11 @@ void MultiReplace::handleFindAllButton()
             h.fullPathUtf8 = utf8FilePath;
             h.pos = r.pos;
             h.length = r.length;
-            rawHits.push_back(std::move(h));
+
+            // +++ ADDED: Trim hit to first line for display +++
+            this->trimHitToFirstLine(sciSend, h);
+            if (h.length > 0)
+                rawHits.push_back(std::move(h));
         }
         if (rawHits.empty()) {
             showStatusMessage(getLangStr(L"status_no_matches_found"), MessageStatus::Error, true);
@@ -6175,7 +6245,8 @@ void MultiReplace::handleFindAllButton()
         }
 
         /* header ---------------------------------------------------- */
-        std::wstring header = L"Search \"" + findW + L"\" (" + std::to_wstring(rawHits.size()) + L" hits in 1 file)\r\n";
+        // +++ CHANGED: Use sanitized pattern for the header +++
+        std::wstring header = L"Search \"" + headerPattern + L"\" (" + std::to_wstring(rawHits.size()) + L" hits in 1 file)\r\n";
         size_t utf8Len = Encoding::wstringToUtf8(header).size();
 
         std::wstring block;
@@ -6191,7 +6262,6 @@ void MultiReplace::handleFindAllButton()
 
     showStatusMessage(getLangStr(L"status_occurrences_found", { std::to_wstring(totalHits) }), MessageStatus::Success);
 }
-
 #pragma endregion
 
 

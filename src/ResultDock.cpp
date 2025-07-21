@@ -629,11 +629,14 @@ void ResultDock::applyTheme()
         nppData._nppHandle, NPPM_GETEDITORDEFAULTFOREGROUNDCOLOR, 0, 0);
 
     /* ----------------------------------------------------------------
-     * 1)  Reset Scintilla styles
+     * 1)  Reset Scintilla styles and set global font
      * ---------------------------------------------------------------- */
     S(SCI_STYLESETBACK, STYLE_DEFAULT, editorBg);
     S(SCI_STYLESETFORE, STYLE_DEFAULT, editorFg);
     S(SCI_STYLECLEARALL);
+
+    S(SCI_STYLESETFONT, STYLE_DEFAULT, (LPARAM)"Consolas");
+    S(SCI_STYLESETSIZE, STYLE_DEFAULT, 10);
 
     /* ----------------------------------------------------------------
      * 2)  Margin (0=line #, 1=symbol, 2=fold) – always pitch‑black
@@ -705,7 +708,7 @@ void ResultDock::applyTheme()
     S(SCI_SETCARETLINEBACK, dark ? selBg : RDColors::CaretLineBackLight, 0);
 
     /* ----------------------------------------------------------------
-     * 6)  Custom indicators (colours from RDColors)
+     * 6)  Custom indicators and styles
      * ---------------------------------------------------------------- */
     COLORREF hitLineBg = dark ? RDColors::LineBgDark : RDColors::LineBgLight;
     COLORREF lineNrFg = dark ? RDColors::LineNrDark : RDColors::LineNrLight;
@@ -744,24 +747,19 @@ void ResultDock::applyTheme()
         S(SCI_INDICSETFORE, INDIC_MATCH_FORE, matchFg);
     }
 
-    /* 6‑d) Full‑width green header background --------------------- */
-    S(SCI_INDICSETSTYLE, INDIC_HEADER_BACKGROUND, INDIC_FULLBOX);
-    S(SCI_INDICSETFORE, INDIC_HEADER_BACKGROUND, headerBg);
-    S(SCI_INDICSETALPHA, INDIC_HEADER_BACKGROUND, 255);
-    S(SCI_INDICSETUNDER, INDIC_HEADER_BACKGROUND, TRUE);
+    // 6-d) Style for header lines ("Search ...")
+    // Inherits font name and size from STYLE_DEFAULT. We just change color and weight.
+    S(SCI_STYLESETFORE, STYLE_HEADER, RDColors::HeaderFg);
+    S(SCI_STYLESETBACK, STYLE_HEADER, headerBg);
+    S(SCI_STYLESETBOLD, STYLE_HEADER, TRUE);
+    S(SCI_STYLESETEOLFILLED, STYLE_HEADER, TRUE);
 
-    /* 6‑e) Khaki / Sand file‑path foreground ---------------------- */
-    S(SCI_INDICSETSTYLE, INDIC_FILEPATH_FORE, INDIC_TEXTFORE);
-    S(SCI_INDICSETFORE, INDIC_FILEPATH_FORE, filePathFg);
-
-    /* 6‑f) Full‑width header background (marker, not indicator) */
-    S(SCI_MARKERDEFINE, MARKER_HEADER_BACKGROUND, SC_MARK_BACKGROUND);
-    S(SCI_MARKERSETBACK, MARKER_HEADER_BACKGROUND, headerBg);
-    S(SCI_MARKERSETFORE, MARKER_HEADER_BACKGROUND, headerBg);
-
-    /* 6‑g) Header foreground (pure black text) ------------------- */
-    S(SCI_INDICSETSTYLE, INDIC_HEADER_FORE, INDIC_TEXTFORE);
-    S(SCI_INDICSETFORE, INDIC_HEADER_FORE, RDColors::HeaderFg);
+    // 6-e) Style for file path lines (4-space indent)
+    // Inherits font, size, and background from STYLE_DEFAULT. We change foreground and weight.
+    S(SCI_STYLESETFORE, STYLE_FILEPATH, filePathFg);
+    S(SCI_STYLESETBACK, STYLE_FILEPATH, editorBg); // Use default editor background
+    S(SCI_STYLESETBOLD, STYLE_FILEPATH, TRUE);
+    S(SCI_STYLESETITALIC, STYLE_FILEPATH, TRUE);
 }
 
 void ResultDock::applyStyling() const
@@ -772,106 +770,110 @@ void ResultDock::applyStyling() const
         { return ::SendMessage(_hSci, m, w, l); };
 
     /* --------------------------------------------------------------
-     * 0)  Clear all custom indicators
+     * 0)  Clear all previous styling indicators
      * -------------------------------------------------------------- */
     for (int ind : { INDIC_LINE_BACKGROUND,
         INDIC_LINENUMBER_FORE,
         INDIC_MATCH_FORE,
-        INDIC_HEADER_FORE,
-        INDIC_FILEPATH_FORE })
+        INDIC_MATCH_BG}) // Note: Header/FilePath indicators are no longer needed here
     {
         S(SCI_SETINDICATORCURRENT, ind);
         S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
     }
 
+
     /* --------------------------------------------------------------
-     * 1) Header lines (“Search …”) via full‑width marker
-     * ------------------------------------------------------------ */
+     * 1)  Apply base style for each line (Header, File Path, or Default)
+     * This sets the font (bold/regular) and base colors.
+     * -------------------------------------------------------------- */
+    S(SCI_STARTSTYLING, 0, 0);
 
     const int lineCount = static_cast<int>(S(SCI_GETLINECOUNT));
     for (int ln = 0; ln < lineCount; ++ln)
     {
-        // read raw line into buf (UTF‑8)
-        const int rawLen = static_cast<int>(S(SCI_LINELENGTH, ln, 0));
-        if (rawLen <= 1) continue;
-        std::string buf(rawLen + 1, '\0');
-        S(SCI_GETLINE, ln, (LPARAM)buf.data());
-        buf.erase(std::find_if(buf.begin(), buf.end(),
-            [](char c) { return c == '\r' || c == '\n' || c == '\0'; }), buf.end());
+        const Sci_Position lineStartPos = S(SCI_POSITIONFROMLINE, ln, 0);
+        const int lineRawLen = static_cast<int>(S(SCI_LINELENGTH, ln, 0));
 
-        // trim leading blanks
-        size_t lead = buf.find_first_not_of(' ');
-        if (lead == std::string::npos) lead = 0;
-        std::string_view trimmed(buf.data() + lead, buf.size() - lead);
-
-        if (trimmed.rfind("Search ", 0) == 0)
+        // Determine the style for the current line
+        int lineStyle = STYLE_DEFAULT;
+        if (lineRawLen > 0)
         {
-            // 1) full‑width green background
-            S(SCI_MARKERADD, ln, MARKER_HEADER_BACKGROUND);
+            std::string buf(lineRawLen, '\0');
+            S(SCI_GETLINE, ln, (LPARAM)buf.data());
 
-            // 2) black text across the whole line
-            Sci_Position start = S(SCI_POSITIONFROMLINE, ln, 0);
-            Sci_Position end = S(SCI_GETLINEENDPOSITION, ln, 0);
-            S(SCI_SETINDICATORCURRENT, INDIC_HEADER_FORE);
-            S(SCI_INDICATORFILLRANGE, start, end - start);
+            size_t lead = buf.find_first_not_of(' ');
+            if (lead == std::string::npos) lead = 0; // line is all spaces
+
+            std::string_view trimmed(buf.data() + lead, buf.size() - lead);
+
+            if (trimmed.rfind("Search ", 0) == 0)
+            {
+                lineStyle = STYLE_HEADER;
+            }
+            // A file path has exactly 4 leading spaces and is not empty.
+            else if (lead == 4 && !trimmed.empty())
+            {
+                lineStyle = STYLE_FILEPATH;
+            }
         }
-    }
 
+        // Apply styling for the line content
+        if (lineRawLen > 0) {
+            S(SCI_SETSTYLING, lineRawLen, lineStyle);
+        }
 
-    /* --------------------------------------------------------------
-     * 2)  File‑path foreground  (indent = 4 spaces)
-     * -------------------------------------------------------------- */
-    S(SCI_SETINDICATORCURRENT, INDIC_FILEPATH_FORE);
-    for (int ln = 0; ln < lineCount; ++ln)
-    {
-        Sci_Position pos = S(SCI_POSITIONFROMLINE, ln, 0);
-        if (S(SCI_GETCHARAT, pos + 0, 0) == ' '
-            && S(SCI_GETCHARAT, pos + 1, 0) == ' '
-            && S(SCI_GETCHARAT, pos + 2, 0) == ' '
-            && S(SCI_GETCHARAT, pos + 3, 0) == ' '
-            && S(SCI_GETCHARAT, pos + 4, 0) != ' ')
-        {
-            Sci_Position len = S(SCI_LINELENGTH, ln, 0);
-            if (len > 0)
-                S(SCI_INDICATORFILLRANGE, pos, len);
+        // Apply default style to the EOL characters (\r\n)
+        const Sci_Position lineEndPos = S(SCI_GETLINEENDPOSITION, ln, 0);
+        const int eolLen = static_cast<int>(lineEndPos - (lineStartPos + lineRawLen));
+        if (eolLen > 0) {
+            S(SCI_SETSTYLING, eolLen, STYLE_DEFAULT);
         }
     }
 
     /* --------------------------------------------------------------
-     * 3)  Full‑line background for each hit
+     * 2)  Apply overlay indicators for hit details.
+     * These are drawn on top of the base styles set above.
      * -------------------------------------------------------------- */
+
+    /* 2-a) Full-line background for each hit */
     S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
     for (const auto& h : _hits)
     {
+        if (h.displayLineStart < 0) continue; // Skip merged hits
         int ln = (int)S(SCI_LINEFROMPOSITION, h.displayLineStart, 0);
-        Sci_Position end = S(SCI_GETLINEENDPOSITION, ln, 0);
-        Sci_Position len = end - h.displayLineStart;
+        Sci_Position start = S(SCI_POSITIONFROMLINE, ln, 0);
+        Sci_Position len = S(SCI_LINELENGTH, ln, 0);
         if (len > 0)
-            S(SCI_INDICATORFILLRANGE, h.displayLineStart, len);
+            S(SCI_INDICATORFILLRANGE, start, len);
     }
 
-    /* 4) Line‑number digits ---------------------------------------- */
+    /* 2-b) Line-number digits */
     S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
-    for (const auto& h : _hits)
-        S(SCI_INDICATORFILLRANGE,
-            h.displayLineStart + h.numberStart,
-            h.numberLen);
+    for (const auto& h : _hits) {
+        if (h.displayLineStart >= 0) // Ensure hit is valid
+            S(SCI_INDICATORFILLRANGE,
+                h.displayLineStart + h.numberStart,
+                h.numberLen);
+    }
 
-    /* 5) Match substrings ------------------------------------------ */
-    // first draw the yellow box under each match
+    /* 2-c) Match substrings (background and foreground) */
     S(SCI_SETINDICATORCURRENT, INDIC_MATCH_BG);
-    for (const auto& h : _hits)
+    for (const auto& h : _hits) {
+        if (h.displayLineStart < 0) continue;
         for (size_t i = 0; i < h.matchStarts.size(); ++i)
             S(SCI_INDICATORFILLRANGE,
                 h.displayLineStart + h.matchStarts[i],
                 h.matchLens[i]);
+    }
 
     S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
-    for (const auto& h : _hits)
+    for (const auto& h : _hits) {
+        if (h.displayLineStart < 0) continue;
         for (size_t i = 0; i < h.matchStarts.size(); ++i)
             S(SCI_INDICATORFILLRANGE,
                 h.displayLineStart + h.matchStarts[i],
                 h.matchLens[i]);
+    }
 }
 
 LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)

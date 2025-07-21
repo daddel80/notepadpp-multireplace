@@ -767,6 +767,8 @@ private:
     static void CloseDebugWindow();
 
     //Find All
+    std::wstring sanitizeSearchPattern(const std::wstring& raw);
+    void trimHitToFirstLine(const std::function<LRESULT(UINT, WPARAM, LPARAM)>& sciSend, ResultDock::Hit& h);
     void handleFindAllButton();
 
     //Find
