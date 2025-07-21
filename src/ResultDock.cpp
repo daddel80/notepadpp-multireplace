@@ -520,7 +520,7 @@ void ResultDock::create(const NppData& npp)
     _dockData.pszAddInfo = L"";
     _dockData.pszModuleName = NPP_PLUGIN_NAME;
     _dockData.iPrevCont = -1;                        // no previous container
-    _dockData.rcFloat = { 200, 200, 800, 600 };    // sensible default when undocked
+    _dockData.rcFloat = { 0, 0, 0, 0 };    // sensible default when undocked
 
     // 6) Register the dock window with Notepad++
     _hDock = reinterpret_cast<HWND>(
@@ -654,10 +654,8 @@ void ResultDock::applyTheme()
     S(SCI_SETFOLDMARGINHICOLOUR, TRUE, marginBg);
 
     // 3)  Selection & additional selection colours
-    COLORREF selBg = dark ? RGB(96, 96, 96)
-        : ::GetSysColor(COLOR_HIGHLIGHT);
-    COLORREF selFg = dark ? RGB(255, 255, 255)
-        : ::GetSysColor(COLOR_HIGHLIGHTTEXT);
+    COLORREF selBg = dark ? RGB(96, 96, 96) : RGB(0xE0, 0xE0, 0xE0);
+    COLORREF selFg = dark ? RGB(255, 255, 255) : editorFg;
 
     S(SCI_SETSELFORE, TRUE, selFg);
     S(SCI_SETSELBACK, TRUE, selBg);

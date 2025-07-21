@@ -90,7 +90,7 @@ private:
     struct RDColors
     {
         /* Hit‑line background (already used) */
-        static constexpr COLORREF LineBgLight = RGB(0xE7, 0xF2, 0xFF);
+        static constexpr COLORREF LineBgLight = RGB(0xEE, 0xEE, 0xEE);
         static constexpr COLORREF LineBgDark = RGB(0x3A, 0x3D, 0x33);
 
         /* Line‑number digits (already used) */
