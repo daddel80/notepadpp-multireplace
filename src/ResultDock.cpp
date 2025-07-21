@@ -17,6 +17,7 @@
 
 #ifndef SC_LINEACTION_JOIN
 #define SC_LINEACTION_JOIN 0x1000000
+#define SC_LINEACTION_JOIN 0x1000000
 #endif
 
 extern NppData nppData;
@@ -26,7 +27,7 @@ ResultDock::ResultDock(HINSTANCE hInst)
     , _hSci(nullptr)
     , _hDock(nullptr)
 {
-    // hier kein weiterer Code nötig – alles andere geschieht in create()
+    // no further code needed here – everything else happens in create()
 }
 
 ResultDock& ResultDock::instance()
@@ -40,7 +41,7 @@ ResultDock& ResultDock::instance()
 void ResultDock::ensureCreatedAndVisible(const NppData& npp)
 {
     // 1) first-time creation
-    if (!_hSci)                // _hSci wird im _create() gesetzt
+    if (!_hSci)                // _hSci is initialized in create()
         create(npp);
 
     // 2) show again – MUST use the client handle!
@@ -89,13 +90,12 @@ void ResultDock::prependText(const std::wstring& wText)
         return; // Nothing to insert.
     }
 
-    // --- FIX: Add a separating newline if the dock is not empty ---
+    // Add a separating newline if the dock is not empty
     LRESULT currentLength = ::SendMessage(_hSci, SCI_GETLENGTH, 0, 0);
     if (currentLength > 0) {
         // Prepend a newline to separate this block from the previous one.
         utf8Text.insert(0, "\r\n");
     }
-    // --- End of FIX ---
 
     // Temporarily make the control writable if it's in read-only mode.
     bool isReadOnly = (::SendMessage(_hSci, SCI_GETREADONLY, 0, 0) != 0);
@@ -158,13 +158,13 @@ void ResultDock::appendText(const std::wstring& wText)
 
 void ResultDock::prependHits(const std::vector<Hit>& newHits, const std::wstring& text)
 {
-    /* 1) prepend data objects ---------------------------------------- */
+    // 1) prepend data objects
     _hits.insert(_hits.begin(), newHits.begin(), newHits.end());
 
     if (!_hSci || text.empty())
         return;
 
-    /* 2) convert wide → UTF‑8 ---------------------------------------- */
+    // 2) convert wide → UTF‑8 7
     std::string utf8PrependedText;
     int len = ::WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1,
         nullptr, 0, nullptr, nullptr);
@@ -191,11 +191,11 @@ void ResultDock::prependHits(const std::vector<Hit>& newHits, const std::wstring
     ::SendMessage(_hSci, SCI_SETREADONLY, FALSE, 0);
     ::SendMessage(_hSci, SCI_BEGINUNDOACTION, 0, 0);
 
-    /* 3) remember old length, insert new block + optional separator -- */
+    // 3) remember old length, insert new block + optional separator
     LRESULT oldLen = ::SendMessage(_hSci, SCI_GETLENGTH, 0, 0);
     ::SendMessage(_hSci, SCI_INSERTTEXT, 0,
         reinterpret_cast<LPARAM>(utf8PrependedText.c_str()));
-    if (oldLen > 0)                                    /* ★ CHANGED ★ */
+    if (oldLen > 0)
         ::SendMessage(_hSci, SCI_INSERTTEXT, utf8PrependedText.length(),
             reinterpret_cast<LPARAM>("\r\n"));
 
@@ -343,7 +343,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         int lineZero = (int)sciSend(SCI_LINEFROMPOSITION, h.pos, 0);
         int lineOne = lineZero + 1;
 
-        /* --- read raw bytes ------------------------------------ */
+        // --- read raw bytes ------------------------------------
         int rawLen = (int)sciSend(SCI_LINELENGTH, lineZero, 0);
         std::string raw(rawLen, '\0');
         sciSend(SCI_GETLINE, lineZero, (LPARAM)raw.data());
@@ -351,32 +351,32 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         while (!raw.empty() && (raw.back() == '\r' || raw.back() == '\n'))
             raw.pop_back();
 
-        /* --- trim leading blanks ------------------------------- */
+        // --- trim leading blanks -------------------------------
         size_t lead = raw.find_first_not_of(" \t");
         std::string_view sliceBytes =
             (lead == std::string::npos) ? std::string_view{}
         : std::string_view(raw).substr(lead);
 
-        /* --- FULL slice as UTF‑8 (★) --------------------------- */
+        // --- FULL slice as UTF‑8 (★) ---------------------------
         const std::string sliceU8 = Encoding::bytesToUtf8(sliceBytes, docCp);
         const std::wstring sliceW = Encoding::utf8ToWString(sliceU8);
 
-        /* --- prefix -------------------------------------------- */
+        // --- prefix --------------------------------------------
         std::wstring prefixW = std::wstring(INDENT_W)
             + L"Line " + std::to_wstring(lineOne) + L": ";
         size_t prefixU8Len = Encoding::wstringToUtf8(prefixW).size();
 
-        /* --- byte offset of hit inside slice ------------------- */
+        // --- byte offset of hit inside slice -------------------
         Sci_Position absTrimmed = sciSend(SCI_POSITIONFROMLINE, lineZero, 0) + (Sci_Position)lead;
         size_t relBytes = (size_t)(h.pos - absTrimmed);
 
-        /* --- locate hit in UTF‑8 text  (★) --------------------- */
+        // --- locate hit in UTF‑8 text  (★) ---------------------
         size_t hitStartInSlice = Encoding::bytesToUtf8(
             sliceBytes.substr(0, relBytes), docCp).size();
         size_t hitLenU8 = Encoding::bytesToUtf8(
             sliceBytes.substr(relBytes, h.length), docCp).size();
 
-        /* --- first hit on this visual line? -------------------- */
+        // --- first hit on this visual line? --------------------
         if (lineZero != prevLine)
         {
             out += prefixW + sliceW + L"\r\n";
@@ -391,7 +391,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             firstHitOnLine = &h;
             prevLine = lineZero;
         }
-        else /* additional hit on same line */
+        else // additional hit on same line
         {
             assert(firstHitOnLine != nullptr);
             firstHitOnLine->matchStarts.push_back((int)(prefixU8Len + hitStartInSlice));
@@ -425,7 +425,7 @@ void ResultDock::buildListText(
 
         if (flatView)
         {
-            // flat: alle Hits pro Datei sammeln & nach pos sortieren
+            // flat: collect all hits per file and sort by position
             std::vector<Hit> merged;
             for (auto& c : f.crits)
                 merged.insert(merged.end(),
@@ -441,7 +441,7 @@ void ResultDock::buildListText(
         }
         else
         {
-            // grouped: zuerst Header, dann jeden Crit‑Block
+            // grouped: first the file header, then each criterion block
             for (auto& c : f.crits)
             {
                 std::wstring critHdr = L"        Search \"" + c.text + L"\" (" +
@@ -449,14 +449,14 @@ void ResultDock::buildListText(
                 body += critHdr;
                 utf8Len += Encoding::wstringToUtf8(critHdr).size();
 
-                /* REPAIR: mutable Kopie von c.hits anlegen */
-                auto hitsCopy = c.hits;  // <-- repariert
-                /* REPAIR: Kopie an formatHitsLines übergeben statt const c.hits */
-                formatHitsLines(sciSend, hitsCopy, body, utf8Len);  // <-- repariert
-                /* REPAIR: Ergebnisse aus hitsCopy ins outHits übernehmen */
+                // make a mutable copy of c.hits
+                auto hitsCopy = c.hits;
+                // pass the copy to formatHitsLines instead of const c.hits
+                formatHitsLines(sciSend, hitsCopy, body, utf8Len);
+                // move results from hitsCopy into outHits
                 outHits.insert(outHits.end(),
                     std::make_move_iterator(hitsCopy.begin()),
-                    std::make_move_iterator(hitsCopy.end()));  // <-- repariert
+                    std::make_move_iterator(hitsCopy.end()));
             }
         }
     }
@@ -507,7 +507,10 @@ void ResultDock::create(const NppData& npp)
     // 3) Make Scintilla use UTF‑8 internally (matches our Hit list)
     ::SendMessageW(_hSci, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
 
-    // 4) Fill docking descriptor (persists in _dockData)
+    // 4) Define size of horizontal scrollbar
+    ::SendMessageW(_hSci, SCI_SETSCROLLWIDTHTRACKING, TRUE, 0);
+
+    // 5) Fill docking descriptor (persists in _dockData)
     ::ZeroMemory(&_dockData, sizeof(_dockData));
     _dockData.hClient = _hSci;
     _dockData.pszName = L"MultiReplace – Search results";
@@ -519,7 +522,7 @@ void ResultDock::create(const NppData& npp)
     _dockData.iPrevCont = -1;                        // no previous container
     _dockData.rcFloat = { 200, 200, 800, 600 };    // sensible default when undocked
 
-    // 5) Register the dock window with Notepad++
+    // 6) Register the dock window with Notepad++
     _hDock = reinterpret_cast<HWND>(
         ::SendMessageW(npp._nppHandle,
             NPPM_DMMREGASDCKDLG,
@@ -535,13 +538,13 @@ void ResultDock::create(const NppData& npp)
         return;
     }
 
-    // 6) Let Notepad++ apply its current light/dark theme to dock and Scintilla
+    // 7) Let Notepad++ apply its current light/dark theme to dock and Scintilla
     ::SendMessageW(npp._nppHandle,
         NPPM_DARKMODESUBCLASSANDTHEME,
         static_cast<WPARAM>(NppDarkMode::dmfInit),
         reinterpret_cast<LPARAM>(_hDock));
 
-    // 7) Initialise folding and apply syntax colours that match current N++ theme
+    // 8) Initialise folding and apply syntax colours that match current N++ theme
     initFolding();
     applyTheme();
 }
@@ -613,7 +616,7 @@ void ResultDock::applyTheme()
     if (!_hSci)
         return;
 
-    /* helper: send message to the dock Scintilla -------------------- */
+    // helper: send message to the dock Scintilla --------------------
     auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
         { return ::SendMessage(_hSci, m, w, l); };
 
@@ -628,9 +631,8 @@ void ResultDock::applyTheme()
     COLORREF editorFg = (COLORREF)::SendMessage(
         nppData._nppHandle, NPPM_GETEDITORDEFAULTFOREGROUNDCOLOR, 0, 0);
 
-    /* ----------------------------------------------------------------
-     * 1)  Reset Scintilla styles and set global font
-     * ---------------------------------------------------------------- */
+
+    // 1)  Reset Scintilla styles and set global font
     S(SCI_STYLESETBACK, STYLE_DEFAULT, editorBg);
     S(SCI_STYLESETFORE, STYLE_DEFAULT, editorFg);
     S(SCI_STYLECLEARALL);
@@ -638,9 +640,7 @@ void ResultDock::applyTheme()
     S(SCI_STYLESETFONT, STYLE_DEFAULT, (LPARAM)"Consolas");
     S(SCI_STYLESETSIZE, STYLE_DEFAULT, 10);
 
-    /* ----------------------------------------------------------------
-     * 2)  Margin (0=line #, 1=symbol, 2=fold) – always pitch‑black
-     * ---------------------------------------------------------------- */
+    // 2)  Margin (0=line #, 1=symbol, 2=fold) – always pitch‑black
     COLORREF marginBg = dark ? RGB(0, 0, 0) : editorBg;
     COLORREF marginFg = dark ? RGB(200, 200, 200) : RGB(80, 80, 80);
 
@@ -653,9 +653,7 @@ void ResultDock::applyTheme()
     S(SCI_SETFOLDMARGINCOLOUR, TRUE, marginBg);
     S(SCI_SETFOLDMARGINHICOLOUR, TRUE, marginBg);
 
-    /* ----------------------------------------------------------------
-     * 3)  Selection & additional selection colours
-     * ---------------------------------------------------------------- */
+    // 3)  Selection & additional selection colours
     COLORREF selBg = dark ? RGB(96, 96, 96)
         : ::GetSysColor(COLOR_HIGHLIGHT);
     COLORREF selFg = dark ? RGB(255, 255, 255)
@@ -672,9 +670,7 @@ void ResultDock::applyTheme()
     S(SCI_SETADDITIONALSELBACK, selBg);
     S(SCI_SETADDITIONALSELALPHA, 256, 0);
 
-    /* ----------------------------------------------------------------
-     * 4)  Fold markers
-     * ---------------------------------------------------------------- */
+    // 4)  Fold markers
     const COLORREF markerGlyph = dark ? RDColors::FoldGlyphDark : RDColors::FoldGlyphLight;
 
     for (int id : {
@@ -703,13 +699,9 @@ void ResultDock::applyTheme()
 
     // keep visible (was missing in earlier patch)
     S(SCI_SETCARETLINEVISIBLE, TRUE, 0);
-    S(SCI_SETCARETLINEBACK, selBg, 0);
-    S(SCI_SETCARETLINEVISIBLE, TRUE, 0);
     S(SCI_SETCARETLINEBACK, dark ? selBg : RDColors::CaretLineBackLight, 0);
 
-    /* ----------------------------------------------------------------
-     * 6)  Custom indicators and styles
-     * ---------------------------------------------------------------- */
+    // 6)  Custom indicators and styles
     COLORREF hitLineBg = dark ? RDColors::LineBgDark : RDColors::LineBgLight;
     COLORREF lineNrFg = dark ? RDColors::LineNrDark : RDColors::LineNrLight;
     COLORREF matchFg = dark ? RDColors::MatchDark : RDColors::MatchLight;
@@ -717,17 +709,17 @@ void ResultDock::applyTheme()
     COLORREF headerBg = dark ? RDColors::HeaderBgDark : RDColors::HeaderBgLight;
     COLORREF filePathFg = dark ? RDColors::FilePathFgDark : RDColors::FilePathFgLight;
 
-    /* 6‑a) Grey background for entire hit line -------------------- */
+    // 6‑a) Grey background for entire hit line 
     S(SCI_INDICSETSTYLE, INDIC_LINE_BACKGROUND, INDIC_STRAIGHTBOX);
     S(SCI_INDICSETFORE, INDIC_LINE_BACKGROUND, hitLineBg);
     S(SCI_INDICSETALPHA, INDIC_LINE_BACKGROUND, 100);
     S(SCI_INDICSETUNDER, INDIC_LINE_BACKGROUND, TRUE);
 
-    /* 6‑b) Coloured digits (line number) -------------------------- */
+    // 6‑b) Coloured digits (line number)
     S(SCI_INDICSETSTYLE, INDIC_LINENUMBER_FORE, INDIC_TEXTFORE);
     S(SCI_INDICSETFORE, INDIC_LINENUMBER_FORE, lineNrFg);
 
-    /* 6‑c) Match substrings --------------------------------------- */
+    // 6‑c) Match substrings
     if (!dark) {
         // configure yellow‑box indicator under the text
         S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_FULLBOX);
@@ -769,9 +761,8 @@ void ResultDock::applyStyling() const
     auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0)
         { return ::SendMessage(_hSci, m, w, l); };
 
-    /* --------------------------------------------------------------
-     * 0)  Clear all previous styling indicators
-     * -------------------------------------------------------------- */
+
+    // 0)  Clear all previous styling indicators
     for (int ind : { INDIC_LINE_BACKGROUND,
         INDIC_LINENUMBER_FORE,
         INDIC_MATCH_FORE,
@@ -782,10 +773,9 @@ void ResultDock::applyStyling() const
     }
 
 
-    /* --------------------------------------------------------------
-     * 1)  Apply base style for each line (Header, File Path, or Default)
-     * This sets the font (bold/regular) and base colors.
-     * -------------------------------------------------------------- */
+
+    // 1)  Apply base style for each line (Header, File Path, or Default)
+    // This sets the font (bold/regular) and base colors.
     S(SCI_STARTSTYLING, 0, 0);
 
     const int lineCount = static_cast<int>(S(SCI_GETLINECOUNT));
@@ -830,12 +820,10 @@ void ResultDock::applyStyling() const
         }
     }
 
-    /* --------------------------------------------------------------
-     * 2)  Apply overlay indicators for hit details.
-     * These are drawn on top of the base styles set above.
-     * -------------------------------------------------------------- */
+    // 2)  Apply overlay indicators for hit details.
+    // These are drawn on top of the base styles set above.
 
-    /* 2-a) Full-line background for each hit */
+    // 2-a) Full-line background for each hit
     S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
     for (const auto& h : _hits)
     {
@@ -847,7 +835,7 @@ void ResultDock::applyStyling() const
             S(SCI_INDICATORFILLRANGE, start, len);
     }
 
-    /* 2-b) Line-number digits */
+    // 2-b) Line-number digits
     S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
     for (const auto& h : _hits) {
         if (h.displayLineStart >= 0) // Ensure hit is valid
@@ -856,7 +844,7 @@ void ResultDock::applyStyling() const
                 h.numberLen);
     }
 
-    /* 2-c) Match substrings (background and foreground) */
+    // 2-c) Match substrings (background and foreground)
     S(SCI_SETINDICATORCURRENT, INDIC_MATCH_BG);
     for (const auto& h : _hits) {
         if (h.displayLineStart < 0) continue;
@@ -964,15 +952,11 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         if (wlen > 0)
         {
             wpath.resize(wlen - 1);
-            ::MultiByteToWideChar(CP_UTF8, 0,
-                hit.fullPathUtf8.c_str(), -1,
-                &wpath[0], wlen);
+            ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, &wpath[0], wlen);
         }
 
         // 7) Switch file
-        ::SendMessage(nppData._nppHandle,
-            NPPM_SWITCHTOFILE, 0,
-            (LPARAM)wpath.c_str());
+        ::SendMessage(nppData._nppHandle, NPPM_SWITCHTOFILE, 0, (LPARAM)wpath.c_str());
 
         // 8) Jump, select and centre the hit in the visible editor area
         HWND hEd = nppData._scintillaMainHandle;
@@ -980,8 +964,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
         // 8‑a) ensure target is unfolded and visible
         ::SendMessage(hEd, SCI_ENSUREVISIBLE,
-            ::SendMessage(hEd, SCI_LINEFROMPOSITION, targetPos, 0),
-            0);
+            ::SendMessage(hEd, SCI_LINEFROMPOSITION, targetPos, 0), 0);
 
         // 8‑b) move caret to target position and select the range
         ::SendMessage(hEd, SCI_GOTOPOS, targetPos, 0);
@@ -989,12 +972,9 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
         // 8‑c) re‑query display geometry
         size_t firstVisibleDocLine =
-            (size_t)::SendMessage(hEd, SCI_DOCLINEFROMVISIBLE,
-                (WPARAM)::SendMessage(hEd, SCI_GETFIRSTVISIBLELINE, 0, 0),
-                0);
+            (size_t)::SendMessage(hEd, SCI_DOCLINEFROMVISIBLE, (WPARAM)::SendMessage(hEd, SCI_GETFIRSTVISIBLELINE, 0, 0), 0);
         size_t linesOnScreen =
-            (size_t)::SendMessage(hEd, SCI_LINESONSCREEN,
-                (WPARAM)firstVisibleDocLine, 0);
+            (size_t)::SendMessage(hEd, SCI_LINESONSCREEN, (WPARAM)firstVisibleDocLine, 0);
         if (linesOnScreen == 0) linesOnScreen = 1;
 
         // 8‑d) compute centred target visible line
@@ -1005,9 +985,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
         // 8‑e) scroll by delta without further auto‑scroll
         ::SendMessage(hEd, SCI_LINESCROLL, 0, deltaLines);
-        ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY,
-            (WPARAM)::SendMessage(hEd, SCI_LINEFROMPOSITION, targetPos, 0),
-            0);                                             // *** NEW ***
+        ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY, (WPARAM)::SendMessage(hEd, SCI_LINEFROMPOSITION, targetPos, 0), 0);
 
 
         // 9) Restore dock scroll

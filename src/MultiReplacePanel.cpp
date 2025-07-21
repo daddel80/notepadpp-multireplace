@@ -6026,7 +6026,6 @@ void MultiReplace::CloseDebugWindow() {
 
 #pragma region Find All
 
-// Escape CR and LF in the search pattern for single-line header display
 std::wstring MultiReplace::sanitizeSearchPattern(const std::wstring& raw) {
     // Only escape CR and LF sequences, leave other characters unchanged
     std::string utf8 = Encoding::wstringToUtf8(raw);
@@ -6035,7 +6034,6 @@ std::wstring MultiReplace::sanitizeSearchPattern(const std::wstring& raw) {
 }
 
 
-/// Helper to trim a Hit to its first visual document line, preserving highlight offsets
 void MultiReplace::trimHitToFirstLine(
     const std::function<LRESULT(UINT, WPARAM, LPARAM)>& sciSend,
     ResultDock::Hit& h)
@@ -6083,25 +6081,25 @@ void MultiReplace::trimHitToFirstLine(
 
 void MultiReplace::handleFindAllButton()
 {
-    /* 1) sanity ------------------------------------------------------ */
+    // 1) sanity 
     if (!validateDelimiterData())
         return;
 
-    /* 2) result dock ------------------------------------------------- */
+    // 2) result dock 
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
 
-    /* 3) helper lambdas --------------------------------------------- */
+    // 3) helper lambdas 
     auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
         { return ::SendMessage(_hScintilla, m, w, l); };
 
-    /* 4) current file path ------------------------------------------ */
+    // 4) current file path 
     wchar_t buf[MAX_PATH] = {};
     ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, (LPARAM)buf);
     std::wstring wFilePath = *buf ? buf : L"<untitled>";
     std::string  utf8FilePath = Encoding::wstringToUtf8(wFilePath);
 
-    /* 5) search context --------------------------------------------- */
+    // 5) search context 
     SearchContext context;
     context.docLength = sciSend(SCI_GETLENGTH);
     context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
@@ -6109,19 +6107,17 @@ void MultiReplace::handleFindAllButton()
     context.retrieveFoundText = false;
     context.highlightMatch = false;
 
-    /* starting position for selection‑mode scans -------------------- */
+    // starting position for selection‑mode scans
     SelectionInfo selInfo = getSelectionInfo(false);
     Sci_Position  scanStart = context.isSelectionMode ? selInfo.startPos : 0;
 
-    /* 6) containers -------------------------------------------------- */
+    // 6) containers 
     ResultDock::FileMap fileMap;
 
     std::vector<ResultDock::Hit> allHits;
     int   totalHits = 0;
 
-    /* ----------------------------------------------------------------
-     * LIST MODE  (aggregate per‑file, then per‑criterion)
-     * ---------------------------------------------------------------- */
+    // LIST MODE  (aggregate per‑file, then per‑criterion)
     if (useListEnabled)
     {
         if (replaceListData.empty()) {
@@ -6133,10 +6129,10 @@ void MultiReplace::handleFindAllButton()
         {
             if (!item.isEnabled || item.findText.empty()) continue;
 
-            // +++ ADDED: Sanitize pattern for this criterion's header +++
+            // Sanitize pattern for this criterion's header +++
             std::wstring sanitizedPattern = this->sanitizeSearchPattern(item.findText);
 
-            /* (a) Set up search flags & pattern ------------------- */
+            // (a) Set up search flags & pattern 
             context.findText = convertAndExtendW(item.findText, item.extended);
             context.searchFlags =
                 (item.wholeWord ? SCFIND_WHOLEWORD : 0)
@@ -6144,7 +6140,7 @@ void MultiReplace::handleFindAllButton()
                 | (item.regex ? SCFIND_REGEXP : 0);
             sciSend(SCI_SETSEARCHFLAGS, context.searchFlags);
 
-            /* (b) Collect hits ------------------------------------ */
+            // (b) Collect hits
             std::vector<ResultDock::Hit> rawHits;
             LRESULT pos = scanStart;
             while (true)
@@ -6158,18 +6154,18 @@ void MultiReplace::handleFindAllButton()
                 h.pos = (Sci_Position)r.pos;
                 h.length = (Sci_Position)r.length;
 
-                // +++ ADDED: Trim hit to first line for display +++
+                // Trim hit to first line for display +++
                 this->trimHitToFirstLine(sciSend, h);
                 if (h.length > 0)
                     rawHits.push_back(std::move(h));
             }
             if (rawHits.empty()) continue;
 
-            /* (c) Aggregate per‑file ------------------------------ */
+            // (c) Aggregate per‑file
             auto& agg = fileMap[utf8FilePath];
             agg.wPath = wFilePath;
             agg.hitCount += static_cast<int>(rawHits.size());
-            // +++ CHANGED: Use sanitized pattern for the criteria text +++
+
             agg.crits.push_back({ sanitizedPattern, std::move(rawHits) });
             totalHits += (int)agg.crits.back().hits.size();
         }
@@ -6179,7 +6175,7 @@ void MultiReplace::handleFindAllButton()
             return;
         }
 
-        /* (d) Build dock text ------------------------------------ */
+        // (d) Build dock text
         std::wstring header =
             flatListEnabled
             ? L"Search in List – flat (" + std::to_wstring(totalHits) + L" hits in 1 file)\r\n"
@@ -6197,9 +6193,7 @@ void MultiReplace::handleFindAllButton()
 
         dock.prependHits(allHits, dockText);
     }
-    /* ----------------------------------------------------------------
-     * SINGLE MODE
-     * ---------------------------------------------------------------- */
+    // SINGLE MODE
     else
     {
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
@@ -6209,7 +6203,7 @@ void MultiReplace::handleFindAllButton()
         }
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
 
-        // +++ ADDED: Sanitize pattern for the header +++
+        // Sanitize pattern for the header
         std::wstring headerPattern = this->sanitizeSearchPattern(findW);
 
         context.findText = convertAndExtendW(findW,
@@ -6220,7 +6214,7 @@ void MultiReplace::handleFindAllButton()
             | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
         sciSend(SCI_SETSEARCHFLAGS, context.searchFlags);
 
-        /* collect hits ----------------------------------------- */
+        // collect hits
         std::vector<ResultDock::Hit> rawHits;
         LRESULT pos = context.isSelectionMode ? selInfo.startPos : 0;
         while (true)
@@ -6234,7 +6228,7 @@ void MultiReplace::handleFindAllButton()
             h.pos = r.pos;
             h.length = r.length;
 
-            // +++ ADDED: Trim hit to first line for display +++
+            // Trim hit to first line for display
             this->trimHitToFirstLine(sciSend, h);
             if (h.length > 0)
                 rawHits.push_back(std::move(h));
@@ -6244,8 +6238,7 @@ void MultiReplace::handleFindAllButton()
             return;
         }
 
-        /* header ---------------------------------------------------- */
-        // +++ CHANGED: Use sanitized pattern for the header +++
+        // header
         std::wstring header = L"Search \"" + headerPattern + L"\" (" + std::to_wstring(rawHits.size()) + L" hits in 1 file)\r\n";
         size_t utf8Len = Encoding::wstringToUtf8(header).size();
 
