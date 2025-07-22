@@ -616,31 +616,24 @@ void ResultDock::applyTheme()
     if (!_hSci)
         return;
 
-    // helper: send message to the dock Scintilla --------------------
+    // Helper: send message to the Scintilla dock
     auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
         { return ::SendMessage(_hSci, m, w, l); };
 
-    /* ----------------------------------------------------------------
-     * 0)  Base editor colours from Notepad++
-     * ---------------------------------------------------------------- */
-    const bool dark = ::SendMessage(
-        nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0;
+    // 0. Retrieve base editor colors from Notepad++
+    const bool dark = ::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0;
 
-    COLORREF editorBg = (COLORREF)::SendMessage(
-        nppData._nppHandle, NPPM_GETEDITORDEFAULTBACKGROUNDCOLOR, 0, 0);
-    COLORREF editorFg = (COLORREF)::SendMessage(
-        nppData._nppHandle, NPPM_GETEDITORDEFAULTFOREGROUNDCOLOR, 0, 0);
+    COLORREF editorBg = (COLORREF)::SendMessage(nppData._nppHandle, NPPM_GETEDITORDEFAULTBACKGROUNDCOLOR, 0, 0);
+    COLORREF editorFg = (COLORREF)::SendMessage(nppData._nppHandle, NPPM_GETEDITORDEFAULTFOREGROUNDCOLOR, 0, 0);
 
-
-    // 1)  Reset Scintilla styles and set global font
+    // 1. Reset styles and set global font
     S(SCI_STYLESETBACK, STYLE_DEFAULT, editorBg);
     S(SCI_STYLESETFORE, STYLE_DEFAULT, editorFg);
     S(SCI_STYLECLEARALL);
-
     S(SCI_STYLESETFONT, STYLE_DEFAULT, (LPARAM)"Consolas");
     S(SCI_STYLESETSIZE, STYLE_DEFAULT, 10);
 
-    // 2)  Margin (0=line #, 1=symbol, 2=fold) – always pitch‑black
+    // 2. Configure margins (0=line number, 1=symbol, 2=fold)
     COLORREF marginBg = dark ? RGB(0, 0, 0) : editorBg;
     COLORREF marginFg = dark ? RGB(200, 200, 200) : RGB(80, 80, 80);
 
@@ -653,7 +646,7 @@ void ResultDock::applyTheme()
     S(SCI_SETFOLDMARGINCOLOUR, TRUE, marginBg);
     S(SCI_SETFOLDMARGINHICOLOUR, TRUE, marginBg);
 
-    // 3)  Selection & additional selection colours
+    // 3. Selection colors
     COLORREF selBg = dark ? RGB(96, 96, 96) : RGB(0xE0, 0xE0, 0xE0);
     COLORREF selFg = dark ? RGB(255, 255, 255) : editorFg;
 
@@ -668,38 +661,29 @@ void ResultDock::applyTheme()
     S(SCI_SETADDITIONALSELBACK, selBg);
     S(SCI_SETADDITIONALSELALPHA, 256, 0);
 
-    // 4)  Fold markers
+    // 4. Fold marker colors
     const COLORREF markerGlyph = dark ? RDColors::FoldGlyphDark : RDColors::FoldGlyphLight;
 
-    for (int id : {
-        SC_MARKNUM_FOLDER,
-            SC_MARKNUM_FOLDEREND,
-            SC_MARKNUM_FOLDEROPEN,
-            SC_MARKNUM_FOLDEROPENMID,
-            SC_MARKNUM_FOLDERSUB,
-            SC_MARKNUM_FOLDERMIDTAIL,
-            SC_MARKNUM_FOLDERTAIL
-    })
+    for (int id : {SC_MARKNUM_FOLDER, SC_MARKNUM_FOLDEREND, SC_MARKNUM_FOLDEROPEN,
+        SC_MARKNUM_FOLDEROPENMID, SC_MARKNUM_FOLDERSUB,
+        SC_MARKNUM_FOLDERMIDTAIL, SC_MARKNUM_FOLDERTAIL})
     {
         S(SCI_MARKERSETBACK, id, markerGlyph);
         S(SCI_MARKERSETFORE, id, marginBg);
-        S( SCI_MARKERSETBACKSELECTED, id, dark ? RDColors::FoldHiDark : RDColors::FoldHiLight );
+        S(SCI_MARKERSETBACKSELECTED, id, dark ? RDColors::FoldHiDark : RDColors::FoldHiLight);
     }
 
-    /* ----------------------------------------------------------------
-     * 5)  Caret‑line highlight (indicator 0)  –  grey stripe
-     * ---------------------------------------------------------------- */
+    // 5. Caret line indicator (indicator 0)
     S(SCI_INDICSETSTYLE, 0, INDIC_ROUNDBOX);
     S(SCI_INDICSETFORE, 0, selBg);
-    // use per‑mode alpha from RDColors
     S(SCI_INDICSETALPHA, 0, dark ? RDColors::CaretLineAlphaDark : RDColors::CaretLineAlphaLight);
     S(SCI_INDICSETUNDER, 0, TRUE);
 
-    // keep visible (was missing in earlier patch)
     S(SCI_SETCARETLINEVISIBLE, TRUE, 0);
     S(SCI_SETCARETLINEBACK, dark ? selBg : RDColors::CaretLineBackLight, 0);
+    S(SCI_SETCARETLINEBACKALPHA, dark ? RDColors::CaretLineAlphaDark : RDColors::CaretLineAlphaLight);
 
-    // 6)  Custom indicators and styles
+    // 6. Custom indicators and styles
     COLORREF hitLineBg = dark ? RDColors::LineBgDark : RDColors::LineBgLight;
     COLORREF lineNrFg = dark ? RDColors::LineNrDark : RDColors::LineNrLight;
     COLORREF matchFg = dark ? RDColors::MatchDark : RDColors::MatchLight;
@@ -707,50 +691,39 @@ void ResultDock::applyTheme()
     COLORREF headerBg = dark ? RDColors::HeaderBgDark : RDColors::HeaderBgLight;
     COLORREF filePathFg = dark ? RDColors::FilePathFgDark : RDColors::FilePathFgLight;
 
-    // 6‑a) Grey background for entire hit line 
+    // 6-a Hit line background
     S(SCI_INDICSETSTYLE, INDIC_LINE_BACKGROUND, INDIC_STRAIGHTBOX);
     S(SCI_INDICSETFORE, INDIC_LINE_BACKGROUND, hitLineBg);
     S(SCI_INDICSETALPHA, INDIC_LINE_BACKGROUND, 100);
     S(SCI_INDICSETUNDER, INDIC_LINE_BACKGROUND, TRUE);
 
-    // 6‑b) Coloured digits (line number)
+    // 6-b Line number color
     S(SCI_INDICSETSTYLE, INDIC_LINENUMBER_FORE, INDIC_TEXTFORE);
     S(SCI_INDICSETFORE, INDIC_LINENUMBER_FORE, lineNrFg);
 
-    // 6‑c) Match substrings
-    if (!dark) {
-        // configure yellow‑box indicator under the text
-        S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_FULLBOX);
-        S(SCI_INDICSETFORE, INDIC_MATCH_BG, matchBg);
-        S(SCI_INDICSETALPHA, INDIC_MATCH_BG, 255);
-        S(SCI_INDICSETUNDER, INDIC_MATCH_BG, TRUE);
+    // 6-c Match indicators
+    S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_FULLBOX);
+    S(SCI_INDICSETFORE, INDIC_MATCH_BG, matchBg);
+    S(SCI_INDICSETALPHA, INDIC_MATCH_BG, dark ? 0 : 255);
+    S(SCI_INDICSETUNDER, INDIC_MATCH_BG, TRUE);
 
-        // configure red‑text indicator
-        S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
-        S(SCI_INDICSETFORE, INDIC_MATCH_FORE, matchFg);
-    }
-    else {
-        // in Dark‑mode: disable the BG indicator explicitly
-        S(SCI_INDICSETALPHA, INDIC_MATCH_BG, 0);
-        // still draw the text in the dark‑mode color
-        S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
-        S(SCI_INDICSETFORE, INDIC_MATCH_FORE, matchFg);
-    }
+    S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
+    S(SCI_INDICSETFORE, INDIC_MATCH_FORE, matchFg);
 
-    // 6-d) Style for header lines ("Search ...")
-    // Inherits font name and size from STYLE_DEFAULT. We just change color and weight.
+    // 6-d Header line style
     S(SCI_STYLESETFORE, STYLE_HEADER, RDColors::HeaderFg);
     S(SCI_STYLESETBACK, STYLE_HEADER, headerBg);
     S(SCI_STYLESETBOLD, STYLE_HEADER, TRUE);
     S(SCI_STYLESETEOLFILLED, STYLE_HEADER, TRUE);
 
-    // 6-e) Style for file path lines (4-space indent)
-    // Inherits font, size, and background from STYLE_DEFAULT. We change foreground and weight.
+    // 6-e File path style
     S(SCI_STYLESETFORE, STYLE_FILEPATH, filePathFg);
-    S(SCI_STYLESETBACK, STYLE_FILEPATH, editorBg); // Use default editor background
+    S(SCI_STYLESETBACK, STYLE_FILEPATH, -1);
     S(SCI_STYLESETBOLD, STYLE_FILEPATH, TRUE);
     S(SCI_STYLESETITALIC, STYLE_FILEPATH, TRUE);
+    S(SCI_STYLESETEOLFILLED, STYLE_FILEPATH, TRUE);
 }
+
 
 void ResultDock::applyStyling() const
 {
