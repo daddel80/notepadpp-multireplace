@@ -374,13 +374,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         // Trim any CR/LF at end
         while (!raw.empty() && (raw.back() == '\r' || raw.back() == '\n'))
             raw.pop_back();
-
-        // Trim leading spaces/tabs
-        size_t lead = raw.find_first_not_of(" \t");
-        std::string_view sliceBytes =
-            (lead == std::string::npos)
-            ? std::string_view{}
-        : std::string_view(raw).substr(lead);
+       
+        std::string_view sliceBytes(raw);
 
         // --- IMPORTANT: produce two representations ---
         // 1) UTF-8 bytes for accurate byte‑offset highlighting
@@ -395,8 +390,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         size_t prefixU8Len = Encoding::wstringToUtf8(prefixW).size();
 
         // Compute byte‑offset of match start within sliceU8
-        Sci_Position absTrimmed = sciSend(SCI_POSITIONFROMLINE, lineZero, 0)
-            + static_cast<Sci_Position>(lead);
+        Sci_Position absTrimmed = sciSend(SCI_POSITIONFROMLINE, lineZero, 0);
         size_t relBytes = static_cast<size_t>(h.pos - absTrimmed);
 
         // Compute byte‑lengths for the match portion
