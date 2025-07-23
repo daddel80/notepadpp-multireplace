@@ -4446,8 +4446,7 @@ void MultiReplace::handleReplaceButton() {
 bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context)
 {
     // Get the document's codepage once at the beginning.
-    int documentCodepage = static_cast<int>(send(SCI_GETCODEPAGE, 0, 0));
-    if (documentCodepage == 0) documentCodepage = CP_ACP;
+    int documentCodepage = getCurrentDocCodePage();
 
     searchResult = performSearchForward(context, selection.startPos);
 
@@ -4534,7 +4533,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     }
 
     // Get the document's codepage once at the beginning.
-    const int documentCodepage = static_cast<int>(send(SCI_GETCODEPAGE, 0, 0));
+    const int documentCodepage = getCurrentDocCodePage();
 
     // --- Search bytes MUST match document codepage---
     SearchContext context;
@@ -4680,7 +4679,7 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                     if (highlight) {
                         selectListItem(i);  // Highlight the list entry
                     }
-                    std::string localReplaceTextUtf8 = Encoding::wstringToString(replaceListData[i].replaceText);
+                    std::string localReplaceTextUtf8 = Encoding::wstringToUtf8(replaceListData[i].replaceText);
 
                     // Compile the Lua code once and cache it
                     if (!compileLuaReplaceCode(localReplaceTextUtf8)) {
@@ -7040,7 +7039,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
     }
 
     // Convert encoding to wide string
-    std::wstring wstr = Encoding::stringToWString(markedText);
+    std::wstring wstr = Encoding::bytesToWString(markedText, getCurrentDocCodePage());;
 
     copyTextToClipboard(wstr, static_cast<int>(markedTextCount));
 }
@@ -7299,7 +7298,7 @@ void MultiReplace::handleCopyColumnsToClipboard()
     }
 
     // Convert to Wide String and copy to clipboard
-    std::wstring wstr = Encoding::stringToWString(combinedText);
+    std::wstring wstr = Encoding::bytesToWString(combinedText, getCurrentDocCodePage());
     copyTextToClipboard(wstr, copiedFieldsCount);
 }
 
@@ -7720,7 +7719,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
 
     // Convert delimiter and quote character to standard strings
     std::string extendedDelimiter = convertAndExtendW(delimiterData, true);
-    std::string quoteCharConverted = Encoding::wstringToString(quoteCharString);
+    std::string quoteCharConverted = Encoding::wstringToUtf8(quoteCharString);
 
     // Check for changes BEFORE modifying existing values
     // Cannot be used in LUA as it is Scintilla encoded and not UTF8
@@ -8548,9 +8547,7 @@ std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool exte
 
 std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool extended)
 {
-    UINT cp = static_cast<UINT>(SendMessage(_hScintilla, SCI_GETCODEPAGE, 0, 0));
-    if (cp == 0) cp = CP_ACP;               // Scintilla returns 0 for ANSI
-
+    UINT cp = getCurrentDocCodePage();
     return convertAndExtendW(input, extended, cp);
 }
 
@@ -9039,10 +9036,9 @@ std::wstring MultiReplace::getSelectedText() {
     SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, (LPARAM)&buffer[0]);
     buffer.resize(strnlen(buffer.c_str(), length));
 
-    UINT sciCp = static_cast<UINT>(SendMessage(nppData._scintillaMainHandle, SCI_GETCODEPAGE, 0, 0));
-    UINT cp = (sciCp == SC_CP_UTF8 ? CP_UTF8 : (sciCp ? sciCp : CP_ACP));
+    UINT sciCp = getCurrentDocCodePage();
 
-    return Encoding::bytesToWString(buffer, cp);
+    return Encoding::bytesToWString(buffer, sciCp);
 }
 
 LRESULT MultiReplace::getEOLLengthForLine(LRESULT line) {
@@ -9228,6 +9224,15 @@ std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, cons
 
     result.assign(uniqueNumbers.begin(), uniqueNumbers.end());
     return result;
+}
+
+UINT MultiReplace::getCurrentDocCodePage()
+{
+    // Ask Scintilla for the current code page (always non‑negative)
+    LRESULT cp = send(SCI_GETCODEPAGE, 0, 0);
+
+    // If Scintilla ever returned 0 (undefined), fall back to ANSI
+    return static_cast<UINT>(cp != 0 ? cp : CP_ACP);
 }
 
 #pragma endregion

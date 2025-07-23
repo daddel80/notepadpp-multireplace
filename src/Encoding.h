@@ -16,11 +16,8 @@ public:
     static std::string  wstringToUtf8(const std::wstring& ws);
 
     // ANSI code page ⇄ std::wstring
-    static std::wstring ansiToWString(const std::string& input, UINT codePage = CP_ACP);
-    static std::string  wstringToString(const std::wstring& ws, UINT codePage = CP_ACP);
-
-    // multibyte (generic) ⇄ std::wstring
-    static std::wstring stringToWString(const std::string& input, UINT codePage = CP_ACP);
+    static std::wstring ansiToWString(const std::string& input, UINT codePage);
+    static std::string  wstringToString(const std::wstring& ws, UINT codePage);
 
     // utilities
     static std::wstring trim(const std::wstring& str);

@@ -847,6 +847,7 @@ private:
     int getCharacterWidth(int elementID, const wchar_t* character);
     int getFontHeight(HWND hwnd, HFONT hFont);
     std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
+    UINT getCurrentDocCodePage();
 
     //FileOperations
     std::wstring promptSaveListToCsv();

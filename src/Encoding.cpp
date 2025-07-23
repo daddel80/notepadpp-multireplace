@@ -131,21 +131,6 @@ std::string Encoding::wstringToString(const std::wstring& ws, UINT codePage)
     return result;
 }
 
-//
-// multibyte (chosen code page) → std::wstring
-//
-std::wstring Encoding::stringToWString(const std::string& input, UINT codePage)
-{
-    if (input.empty())
-        return {};
-
-    if (codePage == 0)
-        codePage = CP_ACP;
-
-    return (codePage == CP_UTF8)
-        ? utf8ToWString(input)
-        : ansiToWString(input, codePage);
-}
 
 //
 // trim leading/trailing whitespace & line breaks
