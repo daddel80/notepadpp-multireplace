@@ -90,7 +90,6 @@ private:
         COLORREF lineBg;
         COLORREF lineNr;
         COLORREF matchFg;
-        COLORREF matchBg;
         COLORREF headerBg;
         COLORREF headerFg;
         COLORREF filePathFg;
@@ -104,28 +103,26 @@ private:
         RGB(0xEE, 0xEE, 0xEE), // lineBg
         RGB(0x40, 0x80, 0xBF), // lineNr
         RGB(0xFA, 0x3F, 0x34), // matchFg
-        RGB(0xFF, 0xFF, 0xBF), // matchBg
         RGB(0xD5, 0xFF, 0xD5), // headerBg
         RGB(0x00, 0x00, 0x00), // headerFg
         RGB(0xA0, 0x80, 0x50), // filePathFg
         RGB(0x50, 0x50, 0x50), // foldGlyph
         RGB(0xFF, 0x00, 0x00), // foldHighlight
-        RGB(0xEE, 0xEE, 0xFF), // caretLineBg
-        64                     // caretLineAlpha
+        RGB(0x87, 0x78, 0xCD), // caretLineBg
+        45                     // caretLineAlpha
     };
 
     static constexpr DockThemeColors DarkDockTheme = {
         RGB(0x3A, 0x3D, 0x33), // lineBg
         RGB(0x80, 0xC0, 0xFF), // lineNr
         RGB(0xA6, 0xE2, 0x2E), // matchFg
-        RGB(0x00, 0x00, 0x00), // matchBg (unused in dark mode)
         RGB(0x8F, 0xAF, 0x9F), // headerBg
         RGB(0x00, 0x00, 0x00), // headerFg
         RGB(0xEB, 0xCB, 0x8B), // filePathFg
         RGB(0x80, 0x80, 0x80), // foldGlyph
         RGB(0x79, 0x94, 0x86), // foldHighlight
-        RGB(0x44, 0x44, 0x44), // caretLineBg
-        64                    // caretLineAlpha
+        RGB(0xAA, 0xAA, 0xAA), // caretLineBg
+        64                     // caretLineAlpha
     };
 
     static constexpr const DockThemeColors& currentColors(bool darkMode) {

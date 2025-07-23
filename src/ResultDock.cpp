@@ -677,19 +677,17 @@ void ResultDock::applyTheme()
     }
 
     // Caret line
-    S(SCI_INDICSETSTYLE, 0, INDIC_ROUNDBOX);
-    S(SCI_INDICSETFORE, 0, selBg);
-    S(SCI_INDICSETALPHA, 0, theme.caretLineAlpha);
-    S(SCI_INDICSETUNDER, 0, TRUE);
+    //S(SCI_INDICSETSTYLE, 0, INDIC_ROUNDBOX);
+    //S(SCI_INDICSETFORE, 0, selBg);
+    //S(SCI_INDICSETALPHA, 0, theme.caretLineAlpha);
+    //S(SCI_INDICSETUNDER, 0, TRUE);
     S(SCI_SETCARETLINEVISIBLE, TRUE, 0);
     S(SCI_SETCARETLINEBACK, theme.caretLineBg, 0);
     S(SCI_SETCARETLINEBACKALPHA, theme.caretLineAlpha);
+    
 
     // Line background indicator
-    S(SCI_INDICSETSTYLE, INDIC_LINE_BACKGROUND, INDIC_STRAIGHTBOX);
-    S(SCI_INDICSETFORE, INDIC_LINE_BACKGROUND, theme.lineBg);
-    S(SCI_INDICSETALPHA, INDIC_LINE_BACKGROUND, 100);
-    S(SCI_INDICSETUNDER, INDIC_LINE_BACKGROUND, TRUE);
+    S(SCI_INDICSETSTYLE, INDIC_LINE_BACKGROUND, INDIC_HIDDEN);
 
     // Line number indicator
     S(SCI_INDICSETSTYLE, INDIC_LINENUMBER_FORE, INDIC_TEXTFORE);
@@ -697,12 +695,12 @@ void ResultDock::applyTheme()
 
     // Match background and foreground indicators
     if (dark) {
-        // Dark Mode: Nur Textfarbe (kein Hintergrund)
+        // Dark Mode: Just Textcolor
         S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_HIDDEN);
     }
     else {
-        // Light Mode: Gelber Hintergrund sichtbar
-        COLORREF matchBg = RGB(255, 255, 160); // hellgelb
+        // Light Mode: Yellow BAckground
+        COLORREF matchBg = RGB(255, 255, 160);
         S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_STRAIGHTBOX);
         S(SCI_INDICSETFORE, INDIC_MATCH_BG, matchBg);
         S(SCI_INDICSETALPHA, INDIC_MATCH_BG, 100);
@@ -711,7 +709,7 @@ void ResultDock::applyTheme()
 
     // Rote Match-Farbe
     S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
-    S(SCI_INDICSETFORE, INDIC_MATCH_FORE, theme.matchFg); // z. B. RGB(255, 0, 0)
+    S(SCI_INDICSETFORE, INDIC_MATCH_FORE, theme.matchFg);
     S(SCI_INDICSETUNDER, INDIC_MATCH_FORE, TRUE);
 
     // Header style
@@ -722,7 +720,7 @@ void ResultDock::applyTheme()
 
     // File path style
     S(SCI_STYLESETFORE, STYLE_FILEPATH, theme.filePathFg);
-    S(SCI_STYLESETBACK, STYLE_FILEPATH, editorBg); // statt -1 für sauberen Hintergrund
+    S(SCI_STYLESETBACK, STYLE_FILEPATH, editorBg);
     S(SCI_STYLESETBOLD, STYLE_FILEPATH, TRUE);
     S(SCI_STYLESETITALIC, STYLE_FILEPATH, TRUE);
     S(SCI_STYLESETEOLFILLED, STYLE_FILEPATH, TRUE);
