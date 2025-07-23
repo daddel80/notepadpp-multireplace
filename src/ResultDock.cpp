@@ -754,16 +754,15 @@ void ResultDock::applyTheme()
     S(SCI_INDICSETSTYLE, INDIC_LINENUMBER_FORE, INDIC_TEXTFORE);
     S(SCI_INDICSETFORE, INDIC_LINENUMBER_FORE, theme.lineNr);
 
-    // Match background and foreground indicators
+    // Match background indicator
     if (dark) {
-        // Dark Mode: Just Textcolor
+        // Dark Mode: hide background highlight
         S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_HIDDEN);
     }
     else {
-        // Light Mode: Yellow BAckground
-        COLORREF matchBg = RGB(255, 255, 160);
+        // Light Mode: use theme.matchBg for background
         S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_STRAIGHTBOX);
-        S(SCI_INDICSETFORE, INDIC_MATCH_BG, matchBg);
+        S(SCI_INDICSETFORE, INDIC_MATCH_BG, theme.matchBg);
         S(SCI_INDICSETALPHA, INDIC_MATCH_BG, 100);
         S(SCI_INDICSETUNDER, INDIC_MATCH_BG, TRUE);
     }

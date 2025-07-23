@@ -85,6 +85,7 @@ private:
         COLORREF lineBg;        // Background for result line
         COLORREF lineNr;        // Line number color
         COLORREF matchFg;       // Match text color
+        COLORREF matchBg;       // Match background color
         COLORREF headerBg;      // Header line background
         COLORREF headerFg;      // Header text color
         COLORREF filePathFg;    // File path color
@@ -98,6 +99,7 @@ private:
         RGB(0xEE, 0xEE, 0xEE), // lineBg
         RGB(0x40, 0x80, 0xBF), // lineNr
         RGB(0xFA, 0x3F, 0x34), // matchFg
+        RGB(0xFF, 0xEB, 0x5A), // matchBg
         RGB(0xD5, 0xFF, 0xD5), // headerBg
         RGB(0x00, 0x00, 0x00), // headerFg
         RGB(0xA0, 0x80, 0x50), // filePathFg
@@ -111,6 +113,7 @@ private:
         RGB(0x3A, 0x3D, 0x33), // lineBg
         RGB(0x80, 0xC0, 0xFF), // lineNr
         RGB(0xA6, 0xE2, 0x2E), // matchFg
+        RGB(0x3A, 0x3D, 0x33), // matchBg
         RGB(0x8F, 0xAF, 0x9F), // headerBg
         RGB(0x00, 0x00, 0x00), // headerFg
         RGB(0xEB, 0xCB, 0x8B), // filePathFg
