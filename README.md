@@ -554,6 +554,10 @@ The MultiReplace plugin provides several configuration options, including transp
 - **StayAfterReplace**: Controls whether it jumps to the next match after pressing Replace.
   - **Default**: `StayAfterReplace=0` (disabled).
   - **Description**: When enabled (`1`), pressing the **Replace** button replaces the current match without jumping to the next one. When disabled (`0`), it automatically jumps to the next match after replacing.
+ 
+- **FlatList**: Controls how 'Find All' search results are displayed.
+  - **Default**: `FlatList=0` (disabled).
+  - **Description**: This option changes how 'Find All' results are presented. When disabled (`0`), results are grouped by their source list entry, creating a categorized view. When enabled (`1`), all results are displayed as a single, flat list, sorted by their position in the document, without any categorization.
 
 
 ### Multilingual UI Support
