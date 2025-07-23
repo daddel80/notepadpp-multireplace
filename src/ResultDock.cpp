@@ -6,6 +6,7 @@
 #include "StaticDialog/Docking.h"
 #include "StaticDialog/DockingDlgInterface.h"
 #include "ResultDock.h"
+#include "image_data.h"
 #include <algorithm>
 #include <string>
 #include <commctrl.h>
@@ -489,8 +490,7 @@ void ResultDock::create(const NppData& npp)
         _hInst,                     // our DLL instance
         nullptr);                   // no creation data
 
-    if (!_hSci)
-    {
+    if (!_hSci) {
         ::MessageBoxW(npp._nppHandle,
             L"FATAL: Failed to create Scintilla window!",
             L"ResultDock Error",
@@ -511,26 +511,63 @@ void ResultDock::create(const NppData& npp)
     ::SendMessageW(_hSci, SCI_SETSCROLLWIDTHTRACKING, TRUE, 0);
 
     // 5) Fill docking descriptor (persists in _dockData)
+    static UINT  s_cachedDpi = 0;
+    static HICON s_cachedLightIcon = nullptr;
+
     ::ZeroMemory(&_dockData, sizeof(_dockData));
     _dockData.hClient = _hSci;
     _dockData.pszName = L"MultiReplace – Search results";
     _dockData.dlgID = IDD_MULTIREPLACE_RESULT_DOCK;
     _dockData.uMask = DWS_DF_CONT_BOTTOM | DWS_ICONTAB;
-    _dockData.hIconTab = nullptr;
     _dockData.pszAddInfo = L"";
     _dockData.pszModuleName = NPP_PLUGIN_NAME;
-    _dockData.iPrevCont = -1;                        // no previous container
+    _dockData.iPrevCont = -1;              // no previous container
     _dockData.rcFloat = { 0, 0, 0, 0 };    // sensible default when undocked
+    const bool darkMode = ::SendMessage(npp._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0;
+
+    if (!darkMode) {
+        // Light mode: generate or reuse colored icon
+        UINT dpi = 96;
+        HDC hdc = ::GetDC(npp._nppHandle);
+        if (hdc) {
+            dpi = ::GetDeviceCaps(hdc, LOGPIXELSX);
+            ::ReleaseDC(npp._nppHandle, hdc);
+        }
+
+        if (dpi != s_cachedDpi) {
+            // cleanup old icon
+            if (s_cachedLightIcon)::DestroyIcon(s_cachedLightIcon);
+
+            // create new bitmap & icon
+            extern HBITMAP CreateBitmapFromArray(UINT dpi);
+            HBITMAP bmp = CreateBitmapFromArray(dpi);
+            if (bmp) {
+                ICONINFO ii = {};
+                ii.fIcon = TRUE;
+                ii.hbmMask = bmp;
+                ii.hbmColor = bmp;
+                s_cachedLightIcon = ::CreateIconIndirect(&ii);
+                ::DeleteObject(bmp);
+            }
+            s_cachedDpi = dpi;
+        }
+
+        // assign icon or fallback
+        if (s_cachedLightIcon)
+            _dockData.hIconTab = s_cachedLightIcon;
+        else
+            _dockData.hIconTab = static_cast<HICON>(::LoadImage(_hInst, MAKEINTRESOURCE(IDI_MR_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
+    }
+    else {
+        // Dark mode: fallback to monochrome resource icon
+        _dockData.hIconTab = static_cast<HICON>( ::LoadImage(_hInst,  MAKEINTRESOURCE(IDI_MR_DM_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
+    }
+
 
     // 6) Register the dock window with Notepad++
-    _hDock = reinterpret_cast<HWND>(
-        ::SendMessageW(npp._nppHandle,
-            NPPM_DMMREGASDCKDLG,
-            0,
-            reinterpret_cast<LPARAM>(&_dockData)));
+    _hDock = reinterpret_cast<HWND>( ::SendMessageW(npp._nppHandle, NPPM_DMMREGASDCKDLG, 0, reinterpret_cast<LPARAM>(&_dockData)));
 
-    if (!_hDock)
-    {
+    if (!_hDock) {
         ::MessageBoxW(npp._nppHandle,
             L"ERROR: Docking registration failed.",
             L"ResultDock Error",
@@ -677,10 +714,6 @@ void ResultDock::applyTheme()
     }
 
     // Caret line
-    //S(SCI_INDICSETSTYLE, 0, INDIC_ROUNDBOX);
-    //S(SCI_INDICSETFORE, 0, selBg);
-    //S(SCI_INDICSETALPHA, 0, theme.caretLineAlpha);
-    //S(SCI_INDICSETUNDER, 0, TRUE);
     S(SCI_SETCARETLINEVISIBLE, TRUE, 0);
     S(SCI_SETCARETLINEBACK, theme.caretLineBg, 0);
     S(SCI_SETCARETLINEBACKALPHA, theme.caretLineAlpha);

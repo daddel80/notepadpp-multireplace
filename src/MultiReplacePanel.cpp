@@ -6197,10 +6197,7 @@ void MultiReplace::handleFindAllButton()
     else
     {
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-        if (findW.empty()) {
-            showStatusMessage(getLangStr(L"status_no_search_string"), MessageStatus::Error);
-            return;
-        }
+
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
 
         // Sanitize pattern for the header

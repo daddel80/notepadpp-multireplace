@@ -1,49 +1,44 @@
 ﻿#pragma once
-/* ------------------------------------------------------------------
- * ResultDock – dockable Scintilla view that shows search results
- * ------------------------------------------------------------------ */
+
+// ResultDock: dockable Scintilla view that shows search results
 
 #include <windows.h>
 #include <string>
 #include <vector>
 #include <functional>
-#include "Encoding.h"        // UTF‑16/UTF‑8 helpers
+#include "Encoding.h"
 #include "Sci_Position.h"
 #include "PluginDefinition.h"
 #include "StaticDialog/DockingDlgInterface.h"
 
- /* ------------------------------------------------------------------
-  *  Helper types
-  * ------------------------------------------------------------------ */
+// Helper for Scintilla message calls
 using SciSendFn = std::function<LRESULT(UINT, WPARAM, LPARAM)>;
 
-/* ------------------------------------------------------------------
- *  ResultDock  (singleton)
- * ------------------------------------------------------------------ */
+// -------------------------------------------------------------
+// ResultDock (singleton)
+// -------------------------------------------------------------
 class ResultDock final
 {
 public:
-    /* === public data ================================================= */
-
-    struct Hit          // one visible “Line N:” entry in the dock
+    // --------------------- Hit definition ---------------------
+    // Represents one visible "Line N:" entry in the dock
+    struct Hit
     {
-        /* navigation */
-        std::string  fullPathUtf8;     // UTF‑8 file path
-        Sci_Position pos{};            // match start in source buffer
-        Sci_Position length{};         // match length
+        std::string  fullPathUtf8;  // File path (UTF-8)
+        Sci_Position pos{};         // Match start in original file
+        Sci_Position length{};      // Match length
 
-        /* styling offsets (within dock buffer) */
-        int displayLineStart{ -1 };    // absolute char pos of "Line N:"
-        int numberStart{ 0 };          // offset of digits
-        int numberLen{ 0 };            // length of digits
-        std::vector<int> matchStarts;  // offsets of each match substring
-        std::vector<int> matchLens;    // lengths of each match substring
+        // Styling offsets in dock buffer
+        int displayLineStart{ -1 }; // Absolute char pos of "Line N:"
+        int numberStart{ 0 };       // Offset of digits
+        int numberLen{ 0 };         // Length of digits
+        std::vector<int> matchStarts; // Offsets of match substrings
+        std::vector<int> matchLens;   // Lengths of match substrings
     };
 
-    /* === singleton =================================================== */
+    // --------------- Singleton & API methods ------------------
     static ResultDock& instance();
 
-    /* === public API ================================================== */
     void ensureCreatedAndVisible(const NppData& npp);
 
     void setText(const std::wstring& text);
@@ -53,14 +48,13 @@ public:
     void prependHits(const std::vector<Hit>& newHits, const std::wstring& dockText);
     void recordHit(const std::string& fullPathUtf8, Sci_Position pos, Sci_Position length);
 
-    void clear();                           // Clears all hits and text
-    void rebuildFolding();       // refresh folding markers
-    void applyStyling()        const;       // colour indicators
-    void onThemeChanged();                  // react to N++ dark‑mode switch
+    void clear();              // Remove all text and hits
+    void rebuildFolding();     // Re-calculate folding markers
+    void applyStyling() const; // Update indicators/colors
+    void onThemeChanged();     // Called on N++ dark mode toggle
 
     const std::vector<Hit>& hits() const { return _hits; }
 
-    /* build dock text for exactly one file                               */
     void formatHitsForFile(const std::wstring& wFilePath,
         const SciSendFn& sciSend,
         std::vector<Hit>& hitsInOut,
@@ -72,12 +66,11 @@ public:
         std::wstring& outBlock,
         size_t& ioUtf8Len) const;
 
-    // ─── for buildListText() ───────────────────────────────────────
+    // Used for buildListText() (multi-file/grouped display)
     struct CritAgg { std::wstring text; std::vector<Hit> hits; };
     struct FileAgg { std::wstring wPath; int hitCount = 0; std::vector<CritAgg> crits; };
     using FileMap = std::unordered_map<std::string, FileAgg>;
 
-    /// Build list‑view text (grouped OR flat) from pre‑aggregated files
     void buildListText(const FileMap& files,
         bool flatView,
         const std::wstring& header,
@@ -86,17 +79,19 @@ public:
         std::vector<Hit>& outHits) const;
 
 private:
+    // --------------------- Theme Colors ------------------------
+    // Holds all relevant colors for the dock panel (light/dark)
     struct DockThemeColors {
-        COLORREF lineBg;
-        COLORREF lineNr;
-        COLORREF matchFg;
-        COLORREF headerBg;
-        COLORREF headerFg;
-        COLORREF filePathFg;
-        COLORREF foldGlyph;
-        COLORREF foldHighlight;
-        COLORREF caretLineBg;
-        int caretLineAlpha;
+        COLORREF lineBg;        // Background for result line
+        COLORREF lineNr;        // Line number color
+        COLORREF matchFg;       // Match text color
+        COLORREF headerBg;      // Header line background
+        COLORREF headerFg;      // Header text color
+        COLORREF filePathFg;    // File path color
+        COLORREF foldGlyph;     // Fold glyph color
+        COLORREF foldHighlight; // Fold marker highlight
+        COLORREF caretLineBg;   // Caret line background
+        int caretLineAlpha;     // Caret line transparency
     };
 
     static constexpr DockThemeColors LightDockTheme = {
@@ -125,49 +120,44 @@ private:
         64                     // caretLineAlpha
     };
 
+    // Returns theme colors for current dark/light mode
     static constexpr const DockThemeColors& currentColors(bool darkMode) {
         return darkMode ? DarkDockTheme : LightDockTheme;
     }
 
-    /* === construction ================================================= */
+    // ------------------- Construction & State -----------------
     explicit ResultDock(HINSTANCE hInst);
     ResultDock(const ResultDock&) = delete;
     ResultDock& operator=(const ResultDock&) = delete;
 
-    /* === private helpers ============================================= */
     void create(const NppData& npp);
-    void initFolding() const;   
+    void initFolding() const;
     void applyTheme();
 
-    HWND                 _hScintilla = nullptr;
-    std::wstring         _content;          // full display text
-    std::vector<int>     _foldHeaders;      // line numbers that start a fold block
+    HWND                 _hScintilla = nullptr; // handle for Scintilla control
+    std::wstring         _content;              // dock display text
+    std::vector<int>     _foldHeaders;          // lines with folding headers
 
     static int  leadingSpaces(const char* line, int len);
-
     static LRESULT CALLBACK sciSubclassProc(HWND, UINT, WPARAM, LPARAM);
-
     static inline WNDPROC   s_prevSciProc = nullptr;
 
-    tTbData _dockData{}; // Holds docking info persistently
+    tTbData _dockData{}; // Persistent docking info
 
-    /* === data members ================================================= */
-    HINSTANCE   _hInst{ nullptr };         // DLL instance
-    HWND        _hSci{ nullptr };         // Scintilla handle (client)
-    HWND        _hDock{ nullptr };         // N++ dock container
+    HINSTANCE   _hInst{ nullptr };     // DLL instance
+    HWND        _hSci{ nullptr };      // Scintilla handle (client)
+    HWND        _hDock{ nullptr };     // N++ dock container
+    std::vector<Hit> _hits;            // all visible hits
 
-    std::vector<Hit> _hits;                 // visible hits
-
-    /* indicator IDs (Scintilla) */
-    static constexpr int INDIC_LINE_BACKGROUND = 8;
-    static constexpr int INDIC_LINENUMBER_FORE = 9;
-    static constexpr int INDIC_MATCH_FORE = 10;
-    static constexpr int INDIC_MATCH_BG = 14;
-    static constexpr int INDIC_HEADER_BACKGROUND = 11;   // headline back‑colour
-    static constexpr int INDIC_FILEPATH_FORE = 12;   // file‑path foreground
-    static constexpr int INDIC_HEADER_FORE = 13;        // NEW – text colour
+    // ----------------- Scintilla Style/Indicator IDs ----------
+    static constexpr int INDIC_LINE_BACKGROUND   = 8;   // grey hit background
+    static constexpr int INDIC_LINENUMBER_FORE   = 9;   // colored line number
+    static constexpr int INDIC_MATCH_FORE        = 10;  // match text color
+    static constexpr int INDIC_MATCH_BG          = 14;  // (not used in dark)
+    static constexpr int INDIC_HEADER_BACKGROUND = 11;  // header bg
+    static constexpr int INDIC_FILEPATH_FORE     = 12;  // file path color
+    static constexpr int INDIC_HEADER_FORE       = 13;  // header fg
     static constexpr int MARKER_HEADER_BACKGROUND = 24;
-    static constexpr int STYLE_HEADER = 33;
-    static constexpr int STYLE_FILEPATH = 34;
-
+    static constexpr int STYLE_HEADER            = 33;
+    static constexpr int STYLE_FILEPATH          = 34;
 };

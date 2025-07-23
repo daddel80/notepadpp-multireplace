@@ -177,6 +177,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_unable_to_open_file", L"Failed to open the file: $REPLACE_STRING" },
 { L"status_operation_cancelled", L"Replacement cancelled." },
 { L"status_replace_summary", L"Replace in files : $REPLACE_STRING1 of $REPLACE_STRING2 file(s) modified." },
+{ L"status_occurrences_found", L"$REPLACE_STRING occurrences found." },
 
 // MessageBox Titles
 { L"msgbox_title_error", L"Error" },
