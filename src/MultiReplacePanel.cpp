@@ -6027,12 +6027,17 @@ void MultiReplace::CloseDebugWindow() {
 #pragma region Find All
 
 std::wstring MultiReplace::sanitizeSearchPattern(const std::wstring& raw) {
-    // Only escape CR and LF sequences, leave other characters unchanged
-    std::string utf8 = Encoding::wstringToUtf8(raw);
-    std::string escaped = replaceNewline(utf8, MultiReplace::ReplaceMode::Regex);
-    return Encoding::stringToWString(escaped);
+    // Escape newlines directly in the wstring (no encoding conversion needed)
+    std::wstring escaped = raw;
+    // Replace CR/LF as before, but for wstring
+    size_t pos = 0;
+    while ((pos = escaped.find(L"\r", pos)) != std::wstring::npos)
+        escaped.replace(pos, 1, L"\\r"), pos += 2;
+    pos = 0;
+    while ((pos = escaped.find(L"\n", pos)) != std::wstring::npos)
+        escaped.replace(pos, 1, L"\\n"), pos += 2;
+    return escaped;
 }
-
 
 void MultiReplace::trimHitToFirstLine(
     const std::function<LRESULT(UINT, WPARAM, LPARAM)>& sciSend,
@@ -6252,6 +6257,7 @@ void MultiReplace::handleFindAllButton()
 
     showStatusMessage(getLangStr(L"status_occurrences_found", { std::to_wstring(totalHits) }), MessageStatus::Success);
 }
+
 #pragma endregion
 
 
@@ -9026,22 +9032,17 @@ void MultiReplace::showListFilePath()
 }
 
 std::wstring MultiReplace::getSelectedText() {
-    SIZE_T length = SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, 0);
+    Sci_Position length = static_cast<Sci_Position>(SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, 0));
+    if (length <= 0 || length > MAX_TEXT_LENGTH) return L"";
 
-    if (length > MAX_TEXT_LENGTH) {
-        return L"";
-    }
+    std::string buffer(length, '\0');
+    SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, (LPARAM)&buffer[0]);
+    buffer.resize(strnlen(buffer.c_str(), length));
 
-    char* buffer = new char[length + 1];  // Add 1 for null terminator
-    SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, (LPARAM)buffer);
-    buffer[length] = '\0';
+    UINT sciCp = static_cast<UINT>(SendMessage(nppData._scintillaMainHandle, SCI_GETCODEPAGE, 0, 0));
+    UINT cp = (sciCp == SC_CP_UTF8 ? CP_UTF8 : (sciCp ? sciCp : CP_ACP));
 
-    std::string str(buffer);
-    std::wstring wstr = Encoding::stringToWString(str);
-
-    delete[] buffer;
-
-    return wstr;
+    return Encoding::bytesToWString(buffer, cp);
 }
 
 LRESULT MultiReplace::getEOLLengthForLine(LRESULT line) {

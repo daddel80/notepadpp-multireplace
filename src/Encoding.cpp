@@ -42,6 +42,20 @@ std::string Encoding::bytesToUtf8(const std::string_view src, UINT codePage)
     return u8;
 }
 
+//
+// multibyte (raw bytes, given code page) → std::wstring
+//
+std::wstring Encoding::bytesToWString(const std::string& raw, UINT cp)
+{
+    if (cp == CP_UTF8)
+        return Encoding::utf8ToWString(raw);
+    // ANSI/andere Codepage
+    int wlen = MultiByteToWideChar(cp, 0, raw.data(), (int)raw.size(), nullptr, 0);
+    std::wstring wstr(wlen, 0);
+    MultiByteToWideChar(cp, 0, raw.data(), (int)raw.size(), wstr.data(), wlen);
+    return wstr;
+}
+
 
 //
 // UTF‑8 → std::wstring

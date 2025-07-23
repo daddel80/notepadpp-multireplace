@@ -334,73 +334,107 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     constexpr wchar_t INDENT_W[] = L"            ";
     constexpr size_t  INDENT_U8 = 12;
 
+    // Get the document code page (ANSI, UTF-8, etc.)
     const UINT docCp = static_cast<UINT>(sciSend(SCI_GETCODEPAGE, 0, 0));
+
+    // STEP 1: Determine line numbers and max digit width for right alignment
+    std::vector<int> lineNumbers;
+    lineNumbers.reserve(hits.size());
+    size_t maxDigits = 0;
+    for (const auto& h : hits) {
+        int lineZero = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, h.pos, 0));
+        int lineOne = lineZero + 1;
+        lineNumbers.push_back(lineOne);
+        size_t digits = std::to_wstring(lineOne).size();
+        maxDigits = (std::max)(maxDigits, digits);
+    }
+
+    // Helper: pad a line number to given width (right‑aligned)
+    auto padLineNumber = [](int number, size_t width) -> std::wstring {
+        std::wstring numStr = std::to_wstring(number);
+        size_t pad = (width > numStr.size() ? width - numStr.size() : 0);
+        return std::wstring(pad, L' ') + numStr;
+        };
 
     int  prevLine = -1;
     Hit* firstHitOnLine = nullptr;
 
+    // STEP 2: Iterate hits and build output lines
+    size_t hitIdx = 0;
     for (Hit& h : hits)
     {
-        int lineZero = (int)sciSend(SCI_LINEFROMPOSITION, h.pos, 0);
-        int lineOne = lineZero + 1;
+        int lineOne = lineNumbers[hitIdx++];
+        int lineZero = lineOne - 1;
 
-        // --- read raw bytes ------------------------------------
-        int rawLen = (int)sciSend(SCI_LINELENGTH, lineZero, 0);
+        // Read raw bytes of this line from Scintilla
+        int rawLen = static_cast<int>(sciSend(SCI_LINELENGTH, lineZero, 0));
         std::string raw(rawLen, '\0');
         sciSend(SCI_GETLINE, lineZero, (LPARAM)raw.data());
         raw.resize(strnlen(raw.c_str(), rawLen));
+        // Trim any CR/LF at end
         while (!raw.empty() && (raw.back() == '\r' || raw.back() == '\n'))
             raw.pop_back();
 
-        // --- trim leading blanks -------------------------------
+        // Trim leading spaces/tabs
         size_t lead = raw.find_first_not_of(" \t");
         std::string_view sliceBytes =
-            (lead == std::string::npos) ? std::string_view{}
+            (lead == std::string::npos)
+            ? std::string_view{}
         : std::string_view(raw).substr(lead);
 
-        // --- FULL slice as UTF‑8 (★) ---------------------------
-        const std::string sliceU8 = Encoding::bytesToUtf8(sliceBytes, docCp);
+        // --- IMPORTANT: produce two representations ---
+        // 1) UTF-8 bytes for accurate byte‑offset highlighting
+        const std::string sliceU8 = Encoding::bytesToUtf8(std::string(sliceBytes), docCp);
+        // 2) Wide‑string for display in the dock
         const std::wstring sliceW = Encoding::utf8ToWString(sliceU8);
 
-        // --- prefix --------------------------------------------
+        // Build the line‑number prefix (with right alignment)
+        std::wstring paddedNum = padLineNumber(lineOne, maxDigits);
         std::wstring prefixW = std::wstring(INDENT_W)
-            + L"Line " + std::to_wstring(lineOne) + L": ";
+            + L"Line " + paddedNum + L": ";
         size_t prefixU8Len = Encoding::wstringToUtf8(prefixW).size();
 
-        // --- byte offset of hit inside slice -------------------
-        Sci_Position absTrimmed = sciSend(SCI_POSITIONFROMLINE, lineZero, 0) + (Sci_Position)lead;
-        size_t relBytes = (size_t)(h.pos - absTrimmed);
+        // Compute byte‑offset of match start within sliceU8
+        Sci_Position absTrimmed = sciSend(SCI_POSITIONFROMLINE, lineZero, 0)
+            + static_cast<Sci_Position>(lead);
+        size_t relBytes = static_cast<size_t>(h.pos - absTrimmed);
 
-        // --- locate hit in UTF‑8 text  (★) ---------------------
-        size_t hitStartInSlice = Encoding::bytesToUtf8(
-            sliceBytes.substr(0, relBytes), docCp).size();
+        // Compute byte‑lengths for the match portion
+        size_t hitStartInSliceU8 = Encoding::bytesToUtf8(
+            std::string(sliceBytes.substr(0, relBytes)), docCp).size();
         size_t hitLenU8 = Encoding::bytesToUtf8(
-            sliceBytes.substr(relBytes, h.length), docCp).size();
+            std::string(sliceBytes.substr(relBytes, h.length)), docCp).size();
 
-        // --- first hit on this visual line? --------------------
+        // If this is the first hit on a new line, output the full line
         if (lineZero != prevLine)
         {
             out += prefixW + sliceW + L"\r\n";
 
-            h.displayLineStart = (int)utf8Pos;
-            h.numberStart = (int)(INDENT_U8 + 5);
-            h.numberLen = (int)std::to_string(lineOne).size();
-            h.matchStarts = { (int)(prefixU8Len + hitStartInSlice) };
-            h.matchLens = { (int)hitLenU8 };
+            h.displayLineStart = static_cast<int>(utf8Pos);
+            h.numberStart = static_cast<int>(INDENT_U8 + 5 + paddedNum.size() - std::to_wstring(lineOne).size());
+            h.numberLen = static_cast<int>(std::to_wstring(lineOne).size());
 
+            // ** Use byte‑based offsets for highlighting **
+            h.matchStarts = { static_cast<int>(prefixU8Len + hitStartInSliceU8) };
+            h.matchLens = { static_cast<int>(hitLenU8) };
+
+            // Advance utf8Pos by the number of bytes inserted (prefix + content + CRLF)
             utf8Pos += prefixU8Len + sliceU8.size() + 2;
+
             firstHitOnLine = &h;
             prevLine = lineZero;
         }
-        else // additional hit on same line
+        else
         {
-            assert(firstHitOnLine != nullptr);
-            firstHitOnLine->matchStarts.push_back((int)(prefixU8Len + hitStartInSlice));
-            firstHitOnLine->matchLens.push_back((int)hitLenU8);
-            h.displayLineStart = -1;       // dummy
+            // Additional hit on the same visual line: append to firstHitOnLine
+            assert(firstHitOnLine);
+            firstHitOnLine->matchStarts.push_back(static_cast<int>(prefixU8Len + hitStartInSliceU8));
+            firstHitOnLine->matchLens.push_back(static_cast<int>(hitLenU8));
+            h.displayLineStart = -1;  // mark as dummy so it's removed later
         }
     }
 
+    // Remove dummy entries (all but the first hit per visual line)
     hits.erase(std::remove_if(hits.begin(), hits.end(),
         [](const Hit& h) { return h.displayLineStart < 0; }),
         hits.end());
