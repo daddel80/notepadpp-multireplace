@@ -616,222 +616,215 @@ void ResultDock::applyTheme()
     if (!_hSci)
         return;
 
-    // Helper: send message to the Scintilla dock
-    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
-        { return ::SendMessage(_hSci, m, w, l); };
+    // Helper lambda for Scintilla calls
+    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
+        return ::SendMessage(_hSci, m, w, l);
+        };
 
-    // 0. Retrieve base editor colors from Notepad++
+    // Determine if dark mode is active
     const bool dark = ::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0;
+    const DockThemeColors& theme = currentColors(dark);
 
-    COLORREF editorBg = (COLORREF)::SendMessage(nppData._nppHandle, NPPM_GETEDITORDEFAULTBACKGROUNDCOLOR, 0, 0);
-    COLORREF editorFg = (COLORREF)::SendMessage(nppData._nppHandle, NPPM_GETEDITORDEFAULTFOREGROUNDCOLOR, 0, 0);
+    // Base editor colors from Notepad++
+    const COLORREF editorBg = (COLORREF)::SendMessage(nppData._nppHandle, NPPM_GETEDITORDEFAULTBACKGROUNDCOLOR, 0, 0);
+    const COLORREF editorFg = (COLORREF)::SendMessage(nppData._nppHandle, NPPM_GETEDITORDEFAULTFOREGROUNDCOLOR, 0, 0);
 
-    // 1. Reset styles and set global font
-    S(SCI_STYLESETBACK, STYLE_DEFAULT, editorBg);
+    // Reset styles and set default font
     S(SCI_STYLESETFORE, STYLE_DEFAULT, editorFg);
+    S(SCI_STYLESETBACK, STYLE_DEFAULT, editorBg);
     S(SCI_STYLECLEARALL);
     S(SCI_STYLESETFONT, STYLE_DEFAULT, (LPARAM)"Consolas");
     S(SCI_STYLESETSIZE, STYLE_DEFAULT, 10);
 
-    // 2. Configure margins (0=line number, 1=symbol, 2=fold)
-    COLORREF marginBg = dark ? RGB(0, 0, 0) : editorBg;
-    COLORREF marginFg = dark ? RGB(200, 200, 200) : RGB(80, 80, 80);
+    // Margin colors
+    const COLORREF marginBg = dark ? RGB(0, 0, 0) : editorBg;
+    const COLORREF marginFg = dark ? RGB(200, 200, 200) : RGB(80, 80, 80);
 
     for (int m = 0; m <= 2; ++m)
         S(SCI_SETMARGINBACKN, m, marginBg);
 
     S(SCI_STYLESETBACK, STYLE_LINENUMBER, marginBg);
     S(SCI_STYLESETFORE, STYLE_LINENUMBER, marginFg);
-
     S(SCI_SETFOLDMARGINCOLOUR, TRUE, marginBg);
     S(SCI_SETFOLDMARGINHICOLOUR, TRUE, marginBg);
 
-    // 3. Selection colors
-    COLORREF selBg = dark ? RGB(96, 96, 96) : RGB(0xE0, 0xE0, 0xE0);
-    COLORREF selFg = dark ? RGB(255, 255, 255) : editorFg;
+    // Selection colors
+    const COLORREF selBg = dark ? RGB(96, 96, 96) : RGB(224, 224, 224);
+    const COLORREF selFg = dark ? RGB(255, 255, 255) : editorFg;
 
     S(SCI_SETSELFORE, TRUE, selFg);
     S(SCI_SETSELBACK, TRUE, selBg);
     S(SCI_SETSELALPHA, 256, 0);
-
     S(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_BACK, argb(0xFF, selBg));
     S(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_TEXT, argb(0xFF, selFg));
-
     S(SCI_SETADDITIONALSELFORE, selFg);
     S(SCI_SETADDITIONALSELBACK, selBg);
     S(SCI_SETADDITIONALSELALPHA, 256, 0);
 
-    // 4. Fold marker colors
-    const COLORREF markerGlyph = dark ? RDColors::FoldGlyphDark : RDColors::FoldGlyphLight;
-
-    for (int id : {SC_MARKNUM_FOLDER, SC_MARKNUM_FOLDEREND, SC_MARKNUM_FOLDEROPEN,
-        SC_MARKNUM_FOLDEROPENMID, SC_MARKNUM_FOLDERSUB,
-        SC_MARKNUM_FOLDERMIDTAIL, SC_MARKNUM_FOLDERTAIL})
-    {
-        S(SCI_MARKERSETBACK, id, markerGlyph);
+    // Fold markers
+    for (int id : {
+        SC_MARKNUM_FOLDER,
+            SC_MARKNUM_FOLDEREND,
+            SC_MARKNUM_FOLDEROPEN,
+            SC_MARKNUM_FOLDEROPENMID,
+            SC_MARKNUM_FOLDERSUB,
+            SC_MARKNUM_FOLDERMIDTAIL,
+            SC_MARKNUM_FOLDERTAIL
+    }) {
+        S(SCI_MARKERSETBACK, id, theme.foldGlyph);
         S(SCI_MARKERSETFORE, id, marginBg);
-        S(SCI_MARKERSETBACKSELECTED, id, dark ? RDColors::FoldHiDark : RDColors::FoldHiLight);
+        S(SCI_MARKERSETBACKSELECTED, id, theme.foldHighlight);
     }
 
-    // 5. Caret line indicator (indicator 0)
+    // Caret line
     S(SCI_INDICSETSTYLE, 0, INDIC_ROUNDBOX);
     S(SCI_INDICSETFORE, 0, selBg);
-    S(SCI_INDICSETALPHA, 0, dark ? RDColors::CaretLineAlphaDark : RDColors::CaretLineAlphaLight);
+    S(SCI_INDICSETALPHA, 0, theme.caretLineAlpha);
     S(SCI_INDICSETUNDER, 0, TRUE);
-
     S(SCI_SETCARETLINEVISIBLE, TRUE, 0);
-    S(SCI_SETCARETLINEBACK, dark ? selBg : RDColors::CaretLineBackLight, 0);
-    S(SCI_SETCARETLINEBACKALPHA, dark ? RDColors::CaretLineAlphaDark : RDColors::CaretLineAlphaLight);
+    S(SCI_SETCARETLINEBACK, theme.caretLineBg, 0);
+    S(SCI_SETCARETLINEBACKALPHA, theme.caretLineAlpha);
 
-    // 6. Custom indicators and styles
-    COLORREF hitLineBg = dark ? RDColors::LineBgDark : RDColors::LineBgLight;
-    COLORREF lineNrFg = dark ? RDColors::LineNrDark : RDColors::LineNrLight;
-    COLORREF matchFg = dark ? RDColors::MatchDark : RDColors::MatchLight;
-    COLORREF matchBg = RDColors::MatchBgLight;
-    COLORREF headerBg = dark ? RDColors::HeaderBgDark : RDColors::HeaderBgLight;
-    COLORREF filePathFg = dark ? RDColors::FilePathFgDark : RDColors::FilePathFgLight;
-
-    // 6-a Hit line background
+    // Line background indicator
     S(SCI_INDICSETSTYLE, INDIC_LINE_BACKGROUND, INDIC_STRAIGHTBOX);
-    S(SCI_INDICSETFORE, INDIC_LINE_BACKGROUND, hitLineBg);
+    S(SCI_INDICSETFORE, INDIC_LINE_BACKGROUND, theme.lineBg);
     S(SCI_INDICSETALPHA, INDIC_LINE_BACKGROUND, 100);
     S(SCI_INDICSETUNDER, INDIC_LINE_BACKGROUND, TRUE);
 
-    // 6-b Line number color
+    // Line number indicator
     S(SCI_INDICSETSTYLE, INDIC_LINENUMBER_FORE, INDIC_TEXTFORE);
-    S(SCI_INDICSETFORE, INDIC_LINENUMBER_FORE, lineNrFg);
+    S(SCI_INDICSETFORE, INDIC_LINENUMBER_FORE, theme.lineNr);
 
-    // 6-c Match indicators
-    S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_FULLBOX);
-    S(SCI_INDICSETFORE, INDIC_MATCH_BG, matchBg);
-    S(SCI_INDICSETALPHA, INDIC_MATCH_BG, dark ? 0 : 255);
-    S(SCI_INDICSETUNDER, INDIC_MATCH_BG, TRUE);
+    // Match background and foreground indicators
+    if (dark) {
+        // Dark Mode: Nur Textfarbe (kein Hintergrund)
+        S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_HIDDEN);
+    }
+    else {
+        // Light Mode: Gelber Hintergrund sichtbar
+        COLORREF matchBg = RGB(255, 255, 160); // hellgelb
+        S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_STRAIGHTBOX);
+        S(SCI_INDICSETFORE, INDIC_MATCH_BG, matchBg);
+        S(SCI_INDICSETALPHA, INDIC_MATCH_BG, 100);
+        S(SCI_INDICSETUNDER, INDIC_MATCH_BG, TRUE);
+    }
 
+    // Rote Match-Farbe
     S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
-    S(SCI_INDICSETFORE, INDIC_MATCH_FORE, matchFg);
+    S(SCI_INDICSETFORE, INDIC_MATCH_FORE, theme.matchFg); // z. B. RGB(255, 0, 0)
+    S(SCI_INDICSETUNDER, INDIC_MATCH_FORE, TRUE);
 
-    // 6-d Header line style
-    S(SCI_STYLESETFORE, STYLE_HEADER, RDColors::HeaderFg);
-    S(SCI_STYLESETBACK, STYLE_HEADER, headerBg);
+    // Header style
+    S(SCI_STYLESETFORE, STYLE_HEADER, theme.headerFg);
+    S(SCI_STYLESETBACK, STYLE_HEADER, theme.headerBg);
     S(SCI_STYLESETBOLD, STYLE_HEADER, TRUE);
     S(SCI_STYLESETEOLFILLED, STYLE_HEADER, TRUE);
 
-    // 6-e File path style
-    S(SCI_STYLESETFORE, STYLE_FILEPATH, filePathFg);
-    S(SCI_STYLESETBACK, STYLE_FILEPATH, -1);
+    // File path style
+    S(SCI_STYLESETFORE, STYLE_FILEPATH, theme.filePathFg);
+    S(SCI_STYLESETBACK, STYLE_FILEPATH, editorBg); // statt -1 für sauberen Hintergrund
     S(SCI_STYLESETBOLD, STYLE_FILEPATH, TRUE);
     S(SCI_STYLESETITALIC, STYLE_FILEPATH, TRUE);
     S(SCI_STYLESETEOLFILLED, STYLE_FILEPATH, TRUE);
 }
 
-
 void ResultDock::applyStyling() const
 {
-    if (!_hSci) return;
+    if (!_hSci)
+        return;
 
-    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0)
+    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
         { return ::SendMessage(_hSci, m, w, l); };
 
-
-    // 0)  Clear all previous styling indicators
-    for (int ind : { INDIC_LINE_BACKGROUND,
-        INDIC_LINENUMBER_FORE,
-        INDIC_MATCH_FORE,
-        INDIC_MATCH_BG}) // Note: Header/FilePath indicators are no longer needed here
-    {
-        S(SCI_SETINDICATORCURRENT, ind);
+    // Step 1: Clear previous styling indicators
+    const std::vector<int> indicatorsToClear = { INDIC_LINE_BACKGROUND, INDIC_LINENUMBER_FORE, INDIC_MATCH_FORE, INDIC_MATCH_BG };
+    for (int indicator : indicatorsToClear) {
+        S(SCI_SETINDICATORCURRENT, indicator);
         S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
     }
 
-
-
-    // 1)  Apply base style for each line (Header, File Path, or Default)
-    // This sets the font (bold/regular) and base colors.
+    // Step 2: Apply base style for each line (Header, File Path, Default)
     S(SCI_STARTSTYLING, 0, 0);
 
     const int lineCount = static_cast<int>(S(SCI_GETLINECOUNT));
-    for (int ln = 0; ln < lineCount; ++ln)
-    {
-        const Sci_Position lineStartPos = S(SCI_POSITIONFROMLINE, ln, 0);
-        const int lineRawLen = static_cast<int>(S(SCI_LINELENGTH, ln, 0));
+    for (int line = 0; line < lineCount; ++line) {
+        const Sci_Position lineStart = S(SCI_POSITIONFROMLINE, line, 0);
+        const int lineLength = static_cast<int>(S(SCI_LINELENGTH, line, 0));
 
-        // Determine the style for the current line
-        int lineStyle = STYLE_DEFAULT;
-        if (lineRawLen > 0)
-        {
-            std::string buf(lineRawLen, '\0');
-            S(SCI_GETLINE, ln, (LPARAM)buf.data());
+        int style = STYLE_DEFAULT;
+        if (lineLength > 0) {
+            std::string buffer(lineLength, '\0');
+            S(SCI_GETLINE, line, reinterpret_cast<LPARAM>(buffer.data()));
 
-            size_t lead = buf.find_first_not_of(' ');
-            if (lead == std::string::npos) lead = 0; // line is all spaces
+            size_t firstChar = buffer.find_first_not_of(' ');
+            if (firstChar == std::string::npos)
+                firstChar = 0;
 
-            std::string_view trimmed(buf.data() + lead, buf.size() - lead);
+            std::string_view trimmedLine(buffer.data() + firstChar, buffer.size() - firstChar);
 
-            if (trimmed.rfind("Search ", 0) == 0)
-            {
-                lineStyle = STYLE_HEADER;
+            if (trimmedLine.rfind("Search ", 0) == 0) {
+                style = STYLE_HEADER;
             }
-            // A file path has exactly 4 leading spaces and is not empty.
-            else if (lead == 4 && !trimmed.empty())
-            {
-                lineStyle = STYLE_FILEPATH;
+            else if (firstChar == 4 && !trimmedLine.empty()) {
+                style = STYLE_FILEPATH;
             }
         }
 
-        // Apply styling for the line content
-        if (lineRawLen > 0) {
-            S(SCI_SETSTYLING, lineRawLen, lineStyle);
+        // Apply determined style to line content
+        if (lineLength > 0) {
+            S(SCI_SETSTYLING, lineLength, style);
         }
 
-        // Apply default style to the EOL characters (\r\n)
-        const Sci_Position lineEndPos = S(SCI_GETLINEENDPOSITION, ln, 0);
-        const int eolLen = static_cast<int>(lineEndPos - (lineStartPos + lineRawLen));
-        if (eolLen > 0) {
-            S(SCI_SETSTYLING, eolLen, STYLE_DEFAULT);
+        // Apply default style to EOL characters
+        const Sci_Position lineEnd = S(SCI_GETLINEENDPOSITION, line, 0);
+        const int eolLength = static_cast<int>(lineEnd - (lineStart + lineLength));
+        if (eolLength > 0) {
+            S(SCI_SETSTYLING, eolLength, STYLE_DEFAULT);
         }
     }
 
-    // 2)  Apply overlay indicators for hit details.
-    // These are drawn on top of the base styles set above.
+    // Step 3: Overlay indicators for hits
 
-    // 2-a) Full-line background for each hit
+    // 3a. Background for hit lines
     S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
-    for (const auto& h : _hits)
-    {
-        if (h.displayLineStart < 0) continue; // Skip merged hits
-        int ln = (int)S(SCI_LINEFROMPOSITION, h.displayLineStart, 0);
-        Sci_Position start = S(SCI_POSITIONFROMLINE, ln, 0);
-        Sci_Position len = S(SCI_LINELENGTH, ln, 0);
-        if (len > 0)
-            S(SCI_INDICATORFILLRANGE, start, len);
+    for (const auto& hit : _hits) {
+        if (hit.displayLineStart < 0)
+            continue;
+
+        int line = static_cast<int>(S(SCI_LINEFROMPOSITION, hit.displayLineStart, 0));
+        Sci_Position startPos = S(SCI_POSITIONFROMLINE, line, 0);
+        Sci_Position length = S(SCI_LINELENGTH, line, 0);
+
+        if (length > 0)
+            S(SCI_INDICATORFILLRANGE, startPos, length);
     }
 
-    // 2-b) Line-number digits
+    // 3b. Line-number digits
     S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
-    for (const auto& h : _hits) {
-        if (h.displayLineStart >= 0) // Ensure hit is valid
-            S(SCI_INDICATORFILLRANGE,
-                h.displayLineStart + h.numberStart,
-                h.numberLen);
+    for (const auto& hit : _hits) {
+        if (hit.displayLineStart >= 0)
+            S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.numberStart, hit.numberLen);
     }
 
-    // 2-c) Match substrings (background and foreground)
+    // 3c. Match substrings (background and foreground)
     S(SCI_SETINDICATORCURRENT, INDIC_MATCH_BG);
-    for (const auto& h : _hits) {
-        if (h.displayLineStart < 0) continue;
-        for (size_t i = 0; i < h.matchStarts.size(); ++i)
-            S(SCI_INDICATORFILLRANGE,
-                h.displayLineStart + h.matchStarts[i],
-                h.matchLens[i]);
+    for (const auto& hit : _hits) {
+        if (hit.displayLineStart < 0)
+            continue;
+
+        for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
+            S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
+        }
     }
 
     S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
-    for (const auto& h : _hits) {
-        if (h.displayLineStart < 0) continue;
-        for (size_t i = 0; i < h.matchStarts.size(); ++i)
-            S(SCI_INDICATORFILLRANGE,
-                h.displayLineStart + h.matchStarts[i],
-                h.matchLens[i]);
+    for (const auto& hit : _hits) {
+        if (hit.displayLineStart < 0)
+            continue;
+
+        for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
+            S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
+        }
     }
 }
 

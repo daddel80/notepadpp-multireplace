@@ -86,51 +86,51 @@ public:
         std::vector<Hit>& outHits) const;
 
 private:
-    /* Central colour palette for ResultDock*/
-    struct RDColors
-    {
-        /* Hit‑line background (already used) */
-        static constexpr COLORREF LineBgLight = RGB(0xEE, 0xEE, 0xEE);
-        static constexpr COLORREF LineBgDark = RGB(0x3A, 0x3D, 0x33);
-
-        /* Line‑number digits (already used) */
-        static constexpr COLORREF LineNrLight = RGB(0x40, 0x80, 0xBF);
-        static constexpr COLORREF LineNrDark = RGB(0x80, 0xC0, 0xFF);
-
-        /* Match substring (already used) */
-        static constexpr COLORREF MatchLight = RGB(0xFA, 0x3F, 0x34);
-        static constexpr COLORREF MatchDark = RGB(0xA6, 0xE2, 0x2E);
-
-        static constexpr COLORREF MatchBgLight = RGB(0xFF, 0xFF, 0xBF);
-
-        /*first headline:  Search "..." (…) */
-        static constexpr COLORREF HeaderBgLight = RGB(0xD5, 0xFF, 0xD5);
-        static constexpr COLORREF HeaderBgDark = RGB(0x8F, 0xAF, 0x9F);
-
-        /* file path line (4‑space indent) */
-        static constexpr COLORREF FilePathFgLight = RGB(0xA0, 0x80, 0x50);
-        static constexpr COLORREF FilePathFgDark = RGB(0xEB, 0xCB, 0x8B);
-
-        static constexpr COLORREF HeaderFg = RGB(0, 0, 0);
-
-        /* Fold markers: glyph (“+”/“-”/lines) */
-        static constexpr COLORREF FoldGlyphLight = RGB(80, 80, 80);
-        static constexpr COLORREF FoldGlyphDark = RGB(128, 128, 128);
-
-        static constexpr COLORREF FoldBoxLight = FoldGlyphLight;
-        static constexpr COLORREF FoldBoxDark = FoldGlyphDark;
-
-        /* Marker background when selected */
-        static constexpr COLORREF FoldHiDark = RGB(0x79, 0x94, 0x86);
-        static constexpr COLORREF FoldHiLight = RGB(0xFF, 0x00, 0x00);
-
-        // transparency for the caret‑line indicator (0)
-        static constexpr int CaretLineAlphaLight = 64;  
-        static constexpr int CaretLineAlphaDark = 128;
-
-        static constexpr COLORREF CaretLineBackLight = RGB(0xE0, 0xE0, 0xFF);
-        static constexpr COLORREF CaretLineBackDark = RGB(0x20, 0x20, 0x20);
+    struct DockThemeColors {
+        COLORREF lineBg;
+        COLORREF lineNr;
+        COLORREF matchFg;
+        COLORREF matchBg;
+        COLORREF headerBg;
+        COLORREF headerFg;
+        COLORREF filePathFg;
+        COLORREF foldGlyph;
+        COLORREF foldHighlight;
+        COLORREF caretLineBg;
+        int caretLineAlpha;
     };
+
+    static constexpr DockThemeColors LightDockTheme = {
+        RGB(0xEE, 0xEE, 0xEE), // lineBg
+        RGB(0x40, 0x80, 0xBF), // lineNr
+        RGB(0xFA, 0x3F, 0x34), // matchFg
+        RGB(0xFF, 0xFF, 0xBF), // matchBg
+        RGB(0xD5, 0xFF, 0xD5), // headerBg
+        RGB(0x00, 0x00, 0x00), // headerFg
+        RGB(0xA0, 0x80, 0x50), // filePathFg
+        RGB(0x50, 0x50, 0x50), // foldGlyph
+        RGB(0xFF, 0x00, 0x00), // foldHighlight
+        RGB(0xEE, 0xEE, 0xFF), // caretLineBg
+        64                     // caretLineAlpha
+    };
+
+    static constexpr DockThemeColors DarkDockTheme = {
+        RGB(0x3A, 0x3D, 0x33), // lineBg
+        RGB(0x80, 0xC0, 0xFF), // lineNr
+        RGB(0xA6, 0xE2, 0x2E), // matchFg
+        RGB(0x00, 0x00, 0x00), // matchBg (unused in dark mode)
+        RGB(0x8F, 0xAF, 0x9F), // headerBg
+        RGB(0x00, 0x00, 0x00), // headerFg
+        RGB(0xEB, 0xCB, 0x8B), // filePathFg
+        RGB(0x80, 0x80, 0x80), // foldGlyph
+        RGB(0x79, 0x94, 0x86), // foldHighlight
+        RGB(0x44, 0x44, 0x44), // caretLineBg
+        64                    // caretLineAlpha
+    };
+
+    static constexpr const DockThemeColors& currentColors(bool darkMode) {
+        return darkMode ? DarkDockTheme : LightDockTheme;
+    }
 
     /* === construction ================================================= */
     explicit ResultDock(HINSTANCE hInst);
