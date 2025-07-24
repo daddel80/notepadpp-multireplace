@@ -15,11 +15,11 @@ class HiddenSciGuard {
 public:
     HiddenSciGuard() = default;
     ~HiddenSciGuard() {
+        ::DestroyWindow(hSci);
         if (hSci) {
-            ::SendMessage(nppData._nppHandle,
-                NPPM_DESTROYSCINTILLAHANDLE,
-                0,
-                reinterpret_cast<LPARAM>(hSci));
+            hSci = nullptr;
+            fn = nullptr;
+            pData = 0;
         }
     }
     HiddenSciGuard(const HiddenSciGuard&) = delete;
@@ -27,6 +27,7 @@ public:
 
     // 0) Create the hidden Scintilla buffer
     bool create() {
+        ::DestroyWindow(hSci);
         hSci = reinterpret_cast<HWND>(
             ::SendMessage(nppData._nppHandle,
                 NPPM_CREATESCINTILLAHANDLE,
