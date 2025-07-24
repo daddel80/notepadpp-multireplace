@@ -1,10 +1,10 @@
-// This file is part of the MultiReplace plugin for Notepad++.
-// Copyright (C) 2023 Thomas Knoefel
-//
+// This file is part of Notepad++ project
+// Copyright (C)2022 Don HO <don.h@free.fr>
+
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// at your option any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +12,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <stdio.h>
 #include <string>
@@ -56,12 +56,12 @@ void StaticDialog::goToCenter()
 	RECT rc;
 	::GetClientRect(_hParent, &rc);
 	POINT center;
-	center.x = rc.left + (rc.right - rc.left)/2;
-	center.y = rc.top + (rc.bottom - rc.top)/2;
+	center.x = rc.left + (rc.right - rc.left) / 2;
+	center.y = rc.top + (rc.bottom - rc.top) / 2;
 	::ClientToScreen(_hParent, &center);
 
-	int x = center.x - (_rc.right - _rc.left)/2;
-	int y = center.y - (_rc.bottom - _rc.top)/2;
+	int x = center.x - (_rc.right - _rc.left) / 2;
+	int y = center.y - (_rc.bottom - _rc.top) / 2;
 
 	::SetWindowPos(_hSelf, HWND_TOP, x, y, _rc.right - _rc.left, _rc.bottom - _rc.top, SWP_SHOWWINDOW);
 }
@@ -80,7 +80,7 @@ void StaticDialog::display(bool toShow, bool enhancedPositioningCheckWhenShowing
 
 			if ((testPositionRc.left != candidateRc.left) || (testPositionRc.top != candidateRc.top))
 			{
-				::MoveWindow(_hSelf, candidateRc.left, candidateRc.top, 
+				::MoveWindow(_hSelf, candidateRc.left, candidateRc.top,
 					candidateRc.right - candidateRc.left, candidateRc.bottom - candidateRc.top, TRUE);
 			}
 		}
@@ -128,7 +128,7 @@ RECT StaticDialog::getViewablePositionRect(RECT testPositionRc) const
 		// rect would be at least partially visible on a monitor
 
 		::GetMonitorInfo(hMon, &mi);
-		
+
 		int margin = ::GetSystemMetrics(SM_CYBORDER) + ::GetSystemMetrics(SM_CYSIZEFRAME) + ::GetSystemMetrics(SM_CYCAPTION);
 
 		// require that the title bar of the window be in a viewable place so the user can see it to grab it with the mouse
@@ -153,7 +153,7 @@ RECT StaticDialog::getViewablePositionRect(RECT testPositionRc) const
 	if (!rectPosViewableWithoutChange)
 	{
 		// reposition rect so that it would be viewable on current/nearest monitor, centering if reasonable
-		
+
 		LONG testRectWidth = testPositionRc.right - testPositionRc.left;
 		LONG testRectHeight = testPositionRc.bottom - testPositionRc.top;
 		LONG monWidth = mi.rcWork.right - mi.rcWork.left;
@@ -171,7 +171,7 @@ RECT StaticDialog::getViewablePositionRect(RECT testPositionRc) const
 	return returnRc;
 }
 
-HGLOBAL StaticDialog::makeRTLResource(int dialogID, DLGTEMPLATE **ppMyDlgTemplate)
+HGLOBAL StaticDialog::makeRTLResource(int dialogID, DLGTEMPLATE** ppMyDlgTemplate)
 {
 	// Get Dlg Template resource
 	HRSRC  hDialogRC = ::FindResource(_hInst, MAKEINTRESOURCE(dialogID), RT_DIALOG);
@@ -182,18 +182,18 @@ HGLOBAL StaticDialog::makeRTLResource(int dialogID, DLGTEMPLATE **ppMyDlgTemplat
 	if (!hDlgTemplate)
 		return NULL;
 
-	DLGTEMPLATE *pDlgTemplate = static_cast<DLGTEMPLATE *>(::LockResource(hDlgTemplate));
+	DLGTEMPLATE* pDlgTemplate = static_cast<DLGTEMPLATE*>(::LockResource(hDlgTemplate));
 	if (!pDlgTemplate)
 		return NULL;
 
 	// Duplicate Dlg Template resource
 	unsigned long sizeDlg = ::SizeofResource(_hInst, hDialogRC);
 	HGLOBAL hMyDlgTemplate = ::GlobalAlloc(GPTR, sizeDlg);
-	*ppMyDlgTemplate = static_cast<DLGTEMPLATE *>(::GlobalLock(hMyDlgTemplate));
+	*ppMyDlgTemplate = static_cast<DLGTEMPLATE*>(::GlobalLock(hMyDlgTemplate));
 
 	::memcpy(*ppMyDlgTemplate, pDlgTemplate, sizeDlg);
 
-	DLGTEMPLATEEX *pMyDlgTemplateEx = reinterpret_cast<DLGTEMPLATEEX *>(*ppMyDlgTemplate);
+	DLGTEMPLATEEX* pMyDlgTemplateEx = reinterpret_cast<DLGTEMPLATEEX*>(*ppMyDlgTemplate);
 	if (pMyDlgTemplateEx->signature == 0xFFFF)
 		pMyDlgTemplateEx->exStyle |= WS_EX_LAYOUTRTL;
 	else
@@ -228,7 +228,7 @@ void StaticDialog::create(int dialogID, bool isRTL, bool msgDestParent)
 {
 	if (isRTL)
 	{
-		DLGTEMPLATE *pMyDlgTemplate = NULL;
+		DLGTEMPLATE* pMyDlgTemplate = NULL;
 		HGLOBAL hMyDlgTemplate = makeRTLResource(dialogID, &pMyDlgTemplate);
 		_hSelf = ::CreateDialogIndirectParam(_hInst, pMyDlgTemplate, _hParent, dlgProc, reinterpret_cast<LPARAM>(this));
 		::GlobalFree(hMyDlgTemplate);
@@ -252,28 +252,28 @@ INT_PTR CALLBACK StaticDialog::dlgProc(HWND hwnd, UINT message, WPARAM wParam, L
 {
 	switch (message)
 	{
-		case WM_INITDIALOG:
-		{
-			StaticDialog *pStaticDlg = reinterpret_cast<StaticDialog *>(lParam);
-			pStaticDlg->_hSelf = hwnd;
-			::SetWindowLongPtr(hwnd, GWLP_USERDATA, static_cast<LONG_PTR>(lParam));
-			::GetWindowRect(hwnd, &(pStaticDlg->_rc));
-			pStaticDlg->run_dlgProc(message, wParam, lParam);
+	case WM_INITDIALOG:
+	{
+		StaticDialog* pStaticDlg = reinterpret_cast<StaticDialog*>(lParam);
+		pStaticDlg->_hSelf = hwnd;
+		::SetWindowLongPtr(hwnd, GWLP_USERDATA, static_cast<LONG_PTR>(lParam));
+		::GetWindowRect(hwnd, &(pStaticDlg->_rc));
+		pStaticDlg->run_dlgProc(message, wParam, lParam);
 
-			return TRUE;
-		}
+		return TRUE;
+	}
 
-		default:
-		{
-			StaticDialog *pStaticDlg = reinterpret_cast<StaticDialog *>(::GetWindowLongPtr(hwnd, GWLP_USERDATA));
-			if (!pStaticDlg)
-				return FALSE;
-			return pStaticDlg->run_dlgProc(message, wParam, lParam);
-		}
+	default:
+	{
+		StaticDialog* pStaticDlg = reinterpret_cast<StaticDialog*>(::GetWindowLongPtr(hwnd, GWLP_USERDATA));
+		if (!pStaticDlg)
+			return FALSE;
+		return pStaticDlg->run_dlgProc(message, wParam, lParam);
+	}
 	}
 }
 
-void StaticDialog::alignWith(HWND handle, HWND handle2Align, PosAlign pos, POINT & point)
+void StaticDialog::alignWith(HWND handle, HWND handle2Align, PosAlign pos, POINT& point)
 {
 	RECT rc, rc2;
 	::GetWindowRect(handle, &rc);
@@ -283,30 +283,30 @@ void StaticDialog::alignWith(HWND handle, HWND handle2Align, PosAlign pos, POINT
 
 	switch (pos)
 	{
-		case PosAlign::left:
-		{
-			::GetWindowRect(handle2Align, &rc2);
-			point.x -= rc2.right - rc2.left;
-			break;
-		}
-		case PosAlign::right:
-		{
-			::GetWindowRect(handle, &rc2);
-			point.x += rc2.right - rc2.left;
-			break;
-		}
-		case PosAlign::top:
-		{
-			::GetWindowRect(handle2Align, &rc2);
-			point.y -= rc2.bottom - rc2.top;
-			break;
-		}
-		case PosAlign::bottom:
-		{
-			::GetWindowRect(handle, &rc2);
-			point.y += rc2.bottom - rc2.top;
-			break;
-		}
+	case PosAlign::left:
+	{
+		::GetWindowRect(handle2Align, &rc2);
+		point.x -= rc2.right - rc2.left;
+		break;
+	}
+	case PosAlign::right:
+	{
+		::GetWindowRect(handle, &rc2);
+		point.x += rc2.right - rc2.left;
+		break;
+	}
+	case PosAlign::top:
+	{
+		::GetWindowRect(handle2Align, &rc2);
+		point.y -= rc2.bottom - rc2.top;
+		break;
+	}
+	case PosAlign::bottom:
+	{
+		::GetWindowRect(handle, &rc2);
+		point.y += rc2.bottom - rc2.top;
+		break;
+	}
 	}
 
 	::ScreenToClient(_hSelf, &point);
