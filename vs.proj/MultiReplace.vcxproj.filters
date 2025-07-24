@@ -112,6 +112,7 @@
     <ClCompile Include="..\src\DropTarget.cpp" />
     <ClCompile Include="..\src\DPIManager.cpp" />
     <ClCompile Include="..\src\ResultDock.cpp" />
+    <ClCompile Include="..\src\Encoding.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -212,6 +213,7 @@
     <ClInclude Include="..\src\DockingDlgInterface.h" />
     <ClInclude Include="..\src\StaticDialog\Docking.h" />
     <ClInclude Include="..\src\ResultDock.h" />
+    <ClInclude Include="..\src\Encoding.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />
@@ -226,5 +228,6 @@
     <None Include="..\help_use_variables_light.html" />
     <None Include="..\languages.ini" />
     <None Include="..\help_use_variables_dark.html" />
+    <None Include="..\README.md" />
   </ItemGroup>
 </Project>

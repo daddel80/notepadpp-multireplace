@@ -1,6 +1,6 @@
 # MultiReplace for Notepad++
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-4.4.0.29-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.4.0.29)
+[![Latest Stable Version](https://img.shields.io/badge/version-4.5.0.30-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.5.0.30)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
 MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, perfect for use across different sessions or projects. It increases efficiency by enabling multiple replacements at once, supports sorting and applying operations to specific columns in CSV files, and offers flexible options for replacing text, including conditional and mathematical operations, as well as the use of external hash tables for dynamic data lookups.
@@ -487,7 +487,7 @@ You can manage the visibility of the additional columns via the **Header Column 
  
 ### Bash Script Export (optional)
 -   You can export your search and replace list as a standalone bash script for use outside of Notepad++.
--   **Note:** This feature is disabled by default for most users. To enable it, set `BashExport=1` in the INI file.
+-   **Note:** This feature is disabled by default for most users. To enable it, set `BashExport=1` in the [`INI file`](#configuration-settings).
 -   List entries using the "Use Variables" option are skipped, as variables are not supported in bash scripts.
 -   The bash export does not support the value `\0` in Extended mode.
 -   The script aims to reproduce the replacement logic as closely as possible, but some limitations exist due to differences in scripting environments.

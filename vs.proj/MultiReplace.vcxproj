@@ -70,7 +70,6 @@
     <ClInclude Include="..\src\StaticDialog\Docking.h" />
     <ClInclude Include="..\src\StaticDialog\resource.h" />
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
-    <ClInclude Include="Header.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\DPIManager.cpp" />
@@ -151,7 +150,6 @@
     <ClCompile Include="..\src\PluginDefinition.cpp" />
     <ClCompile Include="..\src\ResultDock.cpp" />
     <ClCompile Include="..\src\StaticDialog\StaticDialog.cpp" />
-    <ClCompile Include="Source.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />
@@ -161,6 +159,7 @@
     <None Include="..\help_use_variables_dark.html" />
     <None Include="..\help_use_variables_light.html" />
     <None Include="..\languages.ini" />
+    <None Include="..\README.md" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{9D04DBD5-E12E-44E0-A683-6F43F21D533B}</ProjectGuid>
