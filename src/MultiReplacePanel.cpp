@@ -7719,7 +7719,7 @@ bool MultiReplace::parseColumnAndDelimiterData() {
 
     // Convert delimiter and quote character to standard strings
     std::string extendedDelimiter = convertAndExtendW(delimiterData, true);
-    std::string quoteCharConverted = Encoding::wstringToUtf8(quoteCharString);
+    std::string quoteCharConverted = convertAndExtendW(quoteCharString, false);
 
     // Check for changes BEFORE modifying existing values
     // Cannot be used in LUA as it is Scintilla encoded and not UTF8
