@@ -36,8 +36,8 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
   - [List Columns](#list-columns)
   - [List Toggling](#list-toggling)
 - [Data Handling](#data-handling)
-  - [Import/Export](#importexport)
-  - [Bash Script Export](#bash-script-export)
+  - [List Saving and Loading](#list-saving-and-loading)
+  - [Bash Script Export (optional)](#bash-script-export-optional)
 - [UI and Behavior Settings](#ui-and-behavior-settings)
   - [Column Locking](#column-locking)
   - [Configuration Settings](#configuration-settings)
@@ -479,17 +479,18 @@ You can manage the visibility of the additional columns via the **Header Column 
 
 ## Data Handling
 
-### Import/Export
--   Supports import/export of search and replace strings with their options in CSV format, including selection states.
--   Allows loading list files via drag and drop into the Search and Replace list.
--   Adherence to RFC 4180 standards for CSV, enabling compatibility and easy interaction with other CSV handling tools.
--   Enables reuse of search and replace operations across sessions and projects.
-
-### Bash Script Export
-- Exports find-and-replace strings into a runnable script, aiming to encapsulate the full functionality of the plugin in the script. However, due to differences in tooling, complete compatibility cannot be guaranteed.
-- Entries flagged with "Use Variables" are skipped as they are not supported in the exported script.
-- This feature intentionally does not support the value `\0` in the Extended Option to avoid escalating environment tooling requirements.
-
+### List Saving and Loading
+-   **Save List** and **Load List** buttons allow you to store and reload your current list of search and replace entries (including all options and states) as a CSV file.
+-   List files can also be loaded by dragging and dropping them onto the list area.
+-   The CSV files follow RFC 4180 standards for compatibility with other tools.
+-   Saved lists make it easy to reuse and share search/replace workflows across sessions and projects.
+ 
+### Bash Script Export (optional)
+-   You can export your search and replace list as a standalone bash script for use outside of Notepad++.
+-   **Note:** This feature is disabled by default for most users. To enable it, set `BashExport=1` in the INI file.
+-   List entries using the "Use Variables" option are skipped, as variables are not supported in bash scripts.
+-   The bash export does not support the value `\0` in Extended mode.
+-   The script aims to reproduce the replacement logic as closely as possible, but some limitations exist due to differences in scripting environments.
 
 <br>
 
