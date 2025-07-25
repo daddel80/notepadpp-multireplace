@@ -203,7 +203,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_no_files", L"No files matched the specified filter." },
 { L"msgbox_confirm_replace_in_files", L"Do you want to perform replacements in $REPLACE_STRING1 files?<br/><br/>In the directory:<br/>  $REPLACE_STRING2<br/><br/>For file type:<br/>  $REPLACE_STRING3" },
 
-// Context Menu Strings
+// Context Menu List
 { L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },
 { L"ctxmenu_search_in_list", L"&Search in List\tCtrl+F" },
 { L"ctxmenu_cut", L"Cu&t\tCtrl+X" },
@@ -216,5 +216,17 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"ctxmenu_disable", L"D&isable\tAlt+D" },
 { L"ctxmenu_undo", L"U&ndo\tCtrl+Z" },
 { L"ctxmenu_redo", L"R&edo\tCtrl+Y" },
-{ L"ctxmenu_add_new_line", L"&Add New Line\tCtrl+I" }
+{ L"ctxmenu_add_new_line", L"&Add New Line\tCtrl+I" },
+
+// Result Dock Menu
+{ L"rdmenu_fold_all",            L"Fold all" },
+{ L"rdmenu_unfold_all",          L"Unfold all" },
+{ L"rdmenu_copy_lines",          L"Copy selected line(s)" },
+{ L"rdmenu_copy_paths",          L"Copy selected pathname(s)" },
+{ L"rdmenu_select_all",          L"Select all" },
+{ L"rdmenu_clear_all",           L"Clear all" },
+{ L"rdmenu_open_paths",          L"Open selected pathname(s)" },
+{ L"rdmenu_word_wrap",           L"Word wrap long lines" },
+{ L"rdmenu_purge_each_search",   L"Purge for every search" }
+
 };

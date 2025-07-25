@@ -22,12 +22,15 @@
 #include "StaticDialog/DockingDlgInterface.h"
 #include "ResultDock.h"
 #include "image_data.h"
+#include "MultiReplacePanel.h"
 #include <algorithm>
 #include <string>
 #include <commctrl.h>
 #include <functional>
 #include "Encoding.h"
 #include <unordered_set>
+#include <sstream>
+#include <windowsx.h> 
 
 // --- Public Methods ---
 
@@ -53,6 +56,30 @@ ResultDock& ResultDock::instance()
     static ResultDock s{ g_inst };
     return s;
 }
+
+
+std::vector<std::wstring> ResultDock::extractPaths(const std::wstring& sel)
+{
+    std::vector<std::wstring> out;
+    std::wstringstream ss(sel);
+    std::wstring line;
+    while (std::getline(ss, line))
+    {
+        // path‑lines start with 4 spaces and NOT “Line ”
+        if (line.rfind(L"    ", 0) == 0 &&
+            line.find(L"Line ") == std::wstring::npos)
+        {
+            // trim leading spaces
+            line.erase(0, line.find_first_not_of(L' '));
+            if (!line.empty())
+                out.push_back(line);
+        }
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
 
 void ResultDock::ensureCreatedAndVisible(const NppData& npp)
 {
@@ -230,11 +257,43 @@ void ResultDock::recordHit(const std::string& fullPathUtf8, Sci_Position pos, Sc
     _hits.push_back({ fullPathUtf8, pos, length });
 }
 
-void ResultDock::clear() {
+void ResultDock::clear()
+{
+    // ----- Data structures -------------------------------------------------
     _hits.clear();
-    if (_hSci) {
-        ::SendMessage(_hSci, SCI_CLEARALL, 0, 0);
+    _content.clear();
+    _foldHeaders.clear();
+
+    if (!_hSci)
+        return;
+
+    // ----- reset Scintilla‑Puffer completly --------------------------
+    ::SendMessage(_hSci, SCI_SETREADONLY, FALSE, 0);
+    ::SendMessage(_hSci, SCI_CLEARALL, 0, 0);             // Text & styles
+    ::SendMessage(_hSci, SCI_SETREADONLY, TRUE, 0);
+
+    // remove all folding levels → BASE
+    const int lineCount = (int)::SendMessage(_hSci,
+        SCI_GETLINECOUNT, 0, 0);
+    for (int l = 0; l < lineCount; ++l)
+        ::SendMessage(_hSci, SCI_SETFOLDLEVEL, l, SC_FOLDLEVELBASE);
+
+    // Clear every indicator used by the dock
+    for (int ind : { INDIC_LINE_BACKGROUND, INDIC_LINENUMBER_FORE,
+        INDIC_MATCH_BG, INDIC_MATCH_FORE })
+    {
+        ::SendMessage(_hSci, SCI_SETINDICATORCURRENT, ind, 0);
+        ::SendMessage(_hSci, SCI_INDICATORCLEARRANGE, 0,
+            ::SendMessage(_hSci, SCI_GETLENGTH, 0, 0));
     }
+
+    // reset caret/scroll position
+    ::SendMessage(_hSci, SCI_GOTOPOS, 0, 0);
+    ::SendMessage(_hSci, SCI_SETFIRSTVISIBLELINE, 0, 0);
+
+    // ----- Styles & Folding neu aufbauen -----------------------------------
+    rebuildFolding();
+    applyStyling();
 }
 
 int ResultDock::leadingSpaces(const char* line, int len)
@@ -321,8 +380,7 @@ void ResultDock::rebuildFolding()
     }
 }
 
-void ResultDock::onThemeChanged()
-{
+void ResultDock::onThemeChanged() {
     applyTheme();
 }
 
@@ -510,6 +568,7 @@ void ResultDock::buildListText(
 
 
 // --- Private Methods ---
+
 
 static constexpr uint32_t argb(BYTE a, COLORREF c)
 {
@@ -1044,6 +1103,93 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
     case WM_NCDESTROY:
         s_prevSciProc = nullptr;
         break;
+    
+    case WM_CONTEXTMENU: {
+        // ignore clicks on Scintilla margins
+        if (wp != (WPARAM)hwnd) return 0;
+
+        HMENU hMenu = ::CreatePopupMenu();
+        if (!hMenu) return 0;
+
+        // helper: append menu entry with localisation
+        auto add = [&](UINT id, const wchar_t* langId, UINT flags = MF_STRING) {
+            std::wstring txt = (MultiReplace::instance)
+                ? MultiReplace::instance->getLangStr(langId)
+                : std::wstring(langId);
+            ::AppendMenuW(hMenu, flags, id, txt.c_str());
+            };
+
+        // -------- exact order & separators (matches screenshot) ----------------
+
+        add(IDM_RD_FOLD_ALL, L"rdmenu_fold_all");
+        add(IDM_RD_UNFOLD_ALL, L"rdmenu_unfold_all");
+        ::AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
+
+        add(IDM_RD_COPY_LINES, L"rdmenu_copy_lines");
+        add(IDM_RD_COPY_PATHS, L"rdmenu_copy_paths");
+        add(IDM_RD_SELECT_ALL, L"rdmenu_select_all");
+        add(IDM_RD_CLEAR_ALL, L"rdmenu_clear_all");
+        ::AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
+
+        add(IDM_RD_OPEN_PATHS, L"rdmenu_open_paths");
+        ::AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
+
+        add(IDM_RD_TOGGLE_WRAP, L"rdmenu_wrap",
+            MF_STRING | (ResultDock::_wrapEnabled ? MF_CHECKED : 0));
+        add(IDM_RD_TOGGLE_PURGE, L"rdmenu_purge",
+            MF_STRING | (ResultDock::_purgeOnNextSearch ? MF_CHECKED : 0));
+
+        // show the popup
+        POINT pt{ LOWORD(lp), HIWORD(lp) };
+        ::TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, nullptr);
+        ::DestroyMenu(hMenu);
+        return 0;
+    }
+
+    case WM_COMMAND:
+    {
+        switch (LOWORD(wp))
+        {
+            // ── fold / unfold ─────────────────────────────
+        case IDM_RD_FOLD_ALL:
+            ::SendMessage(hwnd, SCI_FOLDALL, SC_FOLDACTION_CONTRACT, 0);
+            break;
+
+        case IDM_RD_UNFOLD_ALL:
+            ::SendMessage(hwnd, SCI_FOLDALL, SC_FOLDACTION_EXPAND, 0);
+            break;
+
+            // ── select / clear ────────────────────────────
+        case IDM_RD_SELECT_ALL:
+            ::SendMessage(hwnd, SCI_SELECTALL, 0, 0);
+            break;
+
+        case IDM_RD_CLEAR_ALL:
+            ResultDock::instance().clear();
+            break;
+
+            // ── clipboard actions ─────────────────────────
+        case IDM_RD_COPY_LINES:  copySelectedLines(hwnd);  break;
+        case IDM_RD_COPY_PATHS:  copySelectedPaths(hwnd);  break;
+
+            // ── open paths in N++ ─────────────────────────
+        case IDM_RD_OPEN_PATHS:  openSelectedPaths(hwnd);  break;
+
+            // ── toggle word‑wrap ──────────────────────────
+        case IDM_RD_TOGGLE_WRAP:
+            ResultDock::_wrapEnabled = !ResultDock::_wrapEnabled;
+            ::SendMessage(hwnd, SCI_SETWRAPMODE,
+                ResultDock::_wrapEnabled ? SC_WRAP_WORD : SC_WRAP_NONE, 0);
+            break;
+
+            // ── toggle purge‑flag ─────────────────────────
+        case IDM_RD_TOGGLE_PURGE:
+            ResultDock::_purgeOnNextSearch = !ResultDock::_purgeOnNextSearch;
+            break;
+        }
+        return 0;          // WM_COMMAND handled
+    }
+
     }
 
     return s_prevSciProc
@@ -1051,7 +1197,292 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         : ::DefWindowProc(hwnd, msg, wp, lp);
 }
 
+// ==========================================================================
+//  ResultDock – Menu actions (copy / open lines & paths) – C++17
+// ==========================================================================
+
+bool ResultDock::_wrapEnabled = false;
+bool ResultDock::_purgeOnNextSearch = false;
+
+namespace {
+
+    // --------------------------------------------------------------------------
+    //  Line‑classification helper
+    // --------------------------------------------------------------------------
+    enum class LineKind { Blank, SearchHdr, FileHdr, CritHdr, HitLine };
+
+    LineKind classify(const std::string& raw) {
+        size_t spaces = 0;
+        while (spaces < raw.size() && raw[spaces] == ' ') ++spaces;
+
+        std::string_view trim(raw.data() + spaces, raw.size() - spaces);
+        if (trim.empty())                              return LineKind::Blank;
+        if (spaces == 0)                               return LineKind::SearchHdr;
+        if (spaces == 4 && trim.rfind("Search ", 0) != 0) return LineKind::FileHdr;
+        if (spaces == 8 && trim.rfind("Search ", 0) == 0) return LineKind::CritHdr;
+        if (spaces >= 12 && trim.rfind("Line ", 0) == 0) return LineKind::HitLine;
+        return LineKind::Blank;
+    }
+
+    // --------------------------------------------------------------------------
+    //  Remove "Line 123: " prefix from hit line (UTF‑16)
+    // --------------------------------------------------------------------------
+    std::wstring stripHitPrefix(const std::wstring& w) {
+        size_t pos = w.find(L"Line ");
+        if (pos == std::wstring::npos) return w;
+        pos += 5;                                   // skip "Line "
+        while (pos < w.size() && iswdigit(w[pos])) ++pos;
+        if (pos < w.size() && w[pos] == L':') ++pos;
+        while (pos < w.size() && iswspace(w[pos])) ++pos;
+        return w.substr(pos);
+    }
+
+    // --------------------------------------------------------------------------
+    //  Extract absolute path from a file‑header line
+    // --------------------------------------------------------------------------
+    std::wstring pathFromFileHdr(const std::wstring& w) {
+        std::wstring s = w;
+        if (s.rfind(L"    ", 0) == 0) s.erase(0, 4);   // remove indent
+        size_t p = s.rfind(L" (");
+        if (p != std::wstring::npos) s.erase(p);       // drop " (n hits)"
+        return s;
+    }
+
+    // --------------------------------------------------------------------------
+    //  Find the nearest ancestor file‑header line
+    // --------------------------------------------------------------------------
+    int ancestorFileLine(HWND hSci, int startLine) {
+        for (int l = startLine; l >= 0; --l) {
+            int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
+            std::string raw(len, '\0');
+            ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
+            raw.resize(strnlen(raw.c_str(), len));
+            if (classify(raw) == LineKind::FileHdr) return l;
+        }
+        return -1;
+    }
+
+    // --------------------------------------------------------------------------
+    //  Read one physical Scintilla line as UTF‑16
+    // --------------------------------------------------------------------------
+    std::wstring getLineW(HWND hSci, int line) {
+        int len = (int)::SendMessage(hSci, SCI_LINELENGTH, line, 0);
+        std::string raw(len, '\0');
+        ::SendMessage(hSci, SCI_GETLINE, line, (LPARAM)raw.data());
+        raw.resize(strnlen(raw.c_str(), len));
+        return Encoding::utf8ToWString(raw);
+    }
+
+} // anonymous namespace
 
 
 
+// ==========================================================================
+//  copySelectedLines   (IDM_RD_COPY_LINES)
+// ==========================================================================
+void ResultDock::copySelectedLines(HWND hSci) {
+    // determine selection range
+    Sci_Position a = ::SendMessage(hSci, SCI_GETSELECTIONNANCHOR, 0, 0);
+    Sci_Position c = ::SendMessage(hSci, SCI_GETCURRENTPOS, 0, 0);
+    if (a > c) std::swap(a, c);
+    int lineStart = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, a, 0);
+    int lineEnd = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, c, 0);
+    bool hasSel = (a != c);
 
+    std::vector<std::wstring> out;
+
+    if (hasSel) {                               // ----- selection mode
+        for (int l = lineStart; l <= lineEnd; ++l) {
+            int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
+            std::string raw(len, '\0');
+            ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
+            raw.resize(strnlen(raw.c_str(), len));
+            if (classify(raw) == LineKind::HitLine)
+                out.emplace_back(stripHitPrefix(Encoding::utf8ToWString(raw)));
+        }
+    }
+    else {                                    // ----- caret hierarchy walk
+        int caretLine = lineStart;
+        int len = (int)::SendMessage(hSci, SCI_LINELENGTH, caretLine, 0);
+        std::string rawCaret(len, '\0');
+        ::SendMessage(hSci, SCI_GETLINE, caretLine, (LPARAM)rawCaret.data());
+        rawCaret.resize(strnlen(rawCaret.c_str(), len));
+        LineKind kind = classify(rawCaret);
+
+        auto pushHitsBelow = [&](int fromLine, int minIndent) {
+            int total = (int)::SendMessage(hSci, SCI_GETLINECOUNT, 0, 0);
+            for (int l = fromLine; l < total; ++l) {
+                int lLen = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
+                std::string raw(lLen, '\0');
+                ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
+                raw.resize(strnlen(raw.c_str(), lLen));
+
+                // stop when leaving the subtree
+                if ((int)ResultDock::leadingSpaces(raw.c_str(), (int)raw.size()) <= minIndent &&
+                    classify(raw) != LineKind::HitLine) break;
+
+                if (classify(raw) == LineKind::HitLine)
+                    out.emplace_back(stripHitPrefix(Encoding::utf8ToWString(raw)));
+            }
+            };
+
+        switch (kind) {
+        case LineKind::HitLine:
+            out.emplace_back(stripHitPrefix(Encoding::utf8ToWString(rawCaret)));
+            break;
+        case LineKind::CritHdr:   pushHitsBelow(caretLine + 1, 8); break;
+        case LineKind::FileHdr:   pushHitsBelow(caretLine + 1, 4); break;
+        case LineKind::SearchHdr: pushHitsBelow(caretLine + 1, 0); break;
+        default: break;
+        }
+    }
+
+    if (!out.empty()) {
+        std::wstring joined;
+        for (size_t i = 0; i < out.size(); ++i) {
+            joined += out[i];                   // << keeps original behaviour
+        }
+        copyTextToClipboard(hSci, joined);
+    }
+}
+
+
+// --------------------------------------------------------------------------
+//  Clipboard helper (UTF‑16)
+// --------------------------------------------------------------------------
+void ResultDock::copyTextToClipboard(HWND owner, const std::wstring& wText) {
+    if (!::OpenClipboard(owner)) return;
+    ::EmptyClipboard();
+    HGLOBAL hMem = ::GlobalAlloc(GMEM_MOVEABLE, (wText.size() + 1) * sizeof(wchar_t));
+    if (hMem) {
+        auto* buf = static_cast<wchar_t*>(::GlobalLock(hMem));
+        std::copy(wText.c_str(), wText.c_str() + wText.size() + 1, buf);
+        ::GlobalUnlock(hMem);
+        ::SetClipboardData(CF_UNICODETEXT, hMem);
+    }
+    ::CloseClipboard();
+}
+
+
+// ==========================================================================
+//  copySelectedPaths   (IDM_RD_COPY_PATHS)  +  openSelectedPaths
+// ==========================================================================
+void ResultDock::copySelectedPaths(HWND hSci) {
+    Sci_Position a = ::SendMessage(hSci, SCI_GETSELECTIONNANCHOR, 0, 0);
+    Sci_Position c = ::SendMessage(hSci, SCI_GETCURRENTPOS, 0, 0);
+    if (a > c) std::swap(a, c);
+    int lineStart = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, a, 0);
+    int lineEnd = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, c, 0);
+    bool hasSel = (a != c);
+
+    std::vector<std::wstring> paths;
+    std::unordered_set<std::wstring> seen;
+    auto addUnique = [&](const std::wstring& p) { if (seen.insert(p).second) paths.push_back(p); };
+
+    auto pushFileHdrsBelow = [&](int fromLine, int minIndent) {
+        int total = (int)::SendMessage(hSci, SCI_GETLINECOUNT, 0, 0);
+        for (int l = fromLine; l < total; ++l) {
+            int lLen = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
+            std::string raw(lLen, '\0');
+            ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
+            raw.resize(strnlen(raw.c_str(), lLen));
+
+            int indent = ResultDock::leadingSpaces(raw.c_str(), (int)raw.size());
+            if (indent <= minIndent && classify(raw) != LineKind::HitLine) break;
+
+            if (classify(raw) == LineKind::FileHdr)
+                addUnique(pathFromFileHdr(Encoding::utf8ToWString(raw)));
+        }
+        };
+
+    if (hasSel) {
+        for (int l = lineStart; l <= lineEnd; ++l) {
+            int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
+            std::string raw(len, '\0');
+            ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
+            raw.resize(strnlen(raw.c_str(), len));
+            LineKind k = classify(raw);
+
+            if (k == LineKind::FileHdr)
+                addUnique(pathFromFileHdr(Encoding::utf8ToWString(raw)));
+            else if (k == LineKind::HitLine || k == LineKind::CritHdr) {
+                int fLine = ancestorFileLine(hSci, l);
+                if (fLine != -1)
+                    addUnique(pathFromFileHdr(getLineW(hSci, fLine)));
+            }
+        }
+    }
+    else {
+        int caretLine = lineStart;
+        int len = (int)::SendMessage(hSci, SCI_LINELENGTH, caretLine, 0);
+        std::string raw(len, '\0');
+        ::SendMessage(hSci, SCI_GETLINE, caretLine, (LPARAM)raw.data());
+        raw.resize(strnlen(raw.c_str(), len));
+        LineKind kind = classify(raw);
+
+        switch (kind) {
+        case LineKind::HitLine:
+        case LineKind::CritHdr: {
+            int fLine = ancestorFileLine(hSci, caretLine);
+            if (fLine != -1)
+                addUnique(pathFromFileHdr(getLineW(hSci, fLine)));
+            break;
+        }
+        case LineKind::FileHdr:
+            addUnique(pathFromFileHdr(Encoding::utf8ToWString(raw)));
+            break;
+        case LineKind::SearchHdr:
+            pushFileHdrsBelow(caretLine + 1, 0);
+            break;
+        default: break;
+        }
+    }
+
+    if (!paths.empty()) {
+        std::wstring joined;
+        for (size_t i = 0; i < paths.size(); ++i) {
+            if (i) joined += L"\r\n";
+            joined += paths[i];
+        }
+        copyTextToClipboard(hSci, joined);
+    }
+}
+
+
+
+// --------------------------------------------------------------------------
+//  openSelectedPaths – helper for IDM_RD_OPEN_PATHS
+// --------------------------------------------------------------------------
+void ResultDock::openSelectedPaths(HWND hSci) {
+    copySelectedPaths(hSci);   // copy first (UX)
+
+    Sci_Position a = ::SendMessage(hSci, SCI_GETSELECTIONNANCHOR, 0, 0);
+    Sci_Position c = ::SendMessage(hSci, SCI_GETCURRENTPOS, 0, 0);
+    if (a > c) std::swap(a, c);
+    int lineStart = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, a, 0);
+    int lineEnd = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, c, 0);
+
+    std::unordered_set<std::wstring> opened;
+
+    for (int l = lineStart; l <= lineEnd; ++l) {
+        int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
+        std::string raw(len, '\0');
+        ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
+        raw.resize(strnlen(raw.c_str(), len));
+        LineKind k = classify(raw);
+
+        if (k == LineKind::FileHdr) {
+            std::wstring p = pathFromFileHdr(Encoding::utf8ToWString(raw));
+            if (opened.insert(p).second)
+                ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)p.c_str());
+        }
+        else if (k == LineKind::HitLine || k == LineKind::CritHdr) {
+            int fLine = ancestorFileLine(hSci, l);
+            if (fLine != -1) {
+                std::wstring p = pathFromFileHdr(getLineW(hSci, fLine));
+                if (opened.insert(p).second)
+                    ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)p.c_str());
+            }
+        }
+    }
+}

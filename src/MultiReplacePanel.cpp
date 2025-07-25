@@ -6093,6 +6093,9 @@ void MultiReplace::handleFindAllButton()
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
 
+    // 2a) clear DochWindow
+    if (dock.isPurgeEnabled()) dock.clear();
+
     // 3) helper lambdas 
     auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
         { return ::SendMessage(_hScintilla, m, w, l); };

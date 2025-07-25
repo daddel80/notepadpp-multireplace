@@ -459,6 +459,7 @@ public:
     void loadListFromCsv(const std::wstring& filePath); // used in DropTarget.cpp
     void showListFilePath();
     void initializeDragAndDrop();
+    std::wstring getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements = {});
 
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
@@ -888,7 +889,7 @@ private:
     void loadLanguage();
     void loadLanguageFromIni(const std::wstring& iniFilePath, const std::wstring& languageCode);
     std::wstring getLanguageFromNativeLangXML();
-    std::wstring getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements = {});
+    
     LPCWSTR getLangStrLPCWSTR(const std::wstring& id);
     LPWSTR getLangStrLPWSTR(const std::wstring& id);
 

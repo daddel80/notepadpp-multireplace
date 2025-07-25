@@ -52,6 +52,8 @@ public:
         std::vector<int> matchLens;   // Lengths of match substrings
     };
 
+    bool isPurgeEnabled() const { return _purgeOnNextSearch; }
+
     // --------------- Singleton & API methods ------------------
     static ResultDock& instance();
 
@@ -144,6 +146,19 @@ private:
         return darkMode ? DarkDockTheme : LightDockTheme;
     }
 
+    // Context‑menu command IDs (reserve a private range) ‑‑‑
+    enum : UINT {
+        IDM_RD_FOLD_ALL = 60001,
+        IDM_RD_UNFOLD_ALL = 60002,
+        IDM_RD_SELECT_ALL = 60003,
+        IDM_RD_CLEAR_ALL = 60004,
+        IDM_RD_COPY_LINES = 60005,
+        IDM_RD_COPY_PATHS = 60006,
+        IDM_RD_OPEN_PATHS = 60007,
+        IDM_RD_TOGGLE_WRAP = 60008,
+        IDM_RD_TOGGLE_PURGE = 60009
+    };
+
     // ------------------- Construction & State -----------------
     explicit ResultDock(HINSTANCE hInst);
     ResultDock(const ResultDock&) = delete;
@@ -152,6 +167,16 @@ private:
     void create(const NppData& npp);
     void initFolding() const;
     void applyTheme();
+
+    std::vector<std::wstring> extractPaths(const std::wstring& sel);
+    static void copySelectedLines(HWND hSci);
+    static void copySelectedPaths(HWND hSci);
+    static void openSelectedPaths(HWND hSci);
+    static void copyTextToClipboard(HWND owner, const std::wstring& w);
+
+    // ‑‑‑ persistent UI flags ‑‑‑
+    static bool _wrapEnabled;
+    static bool _purgeOnNextSearch;
 
     HWND                 _hScintilla = nullptr; // handle for Scintilla control
     std::wstring         _content;              // dock display text
