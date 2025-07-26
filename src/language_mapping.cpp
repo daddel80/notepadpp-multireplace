@@ -226,7 +226,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"rdmenu_select_all",          L"Select all" },
 { L"rdmenu_clear_all",           L"Clear all" },
 { L"rdmenu_open_paths",          L"Open selected pathname(s)" },
-{ L"rdmenu_word_wrap",           L"Word wrap long lines" },
-{ L"rdmenu_purge_each_search",   L"Purge for every search" }
+{ L"rdmenu_wrap",                L"Word wrap long lines" },
+{ L"rdmenu_purge",               L"Purge for every search" }
 
 };

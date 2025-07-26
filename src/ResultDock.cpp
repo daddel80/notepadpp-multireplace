@@ -22,7 +22,7 @@
 #include "StaticDialog/DockingDlgInterface.h"
 #include "ResultDock.h"
 #include "image_data.h"
-#include "MultiReplacePanel.h"
+#include "LanguageManager.h"
 #include <algorithm>
 #include <string>
 #include <commctrl.h>
@@ -1112,11 +1112,13 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         if (!hMenu) return 0;
 
         // helper: append menu entry with localisation
-        auto add = [&](UINT id, const wchar_t* langId, UINT flags = MF_STRING) {
-            std::wstring txt = (MultiReplace::instance)
-                ? MultiReplace::instance->getLangStr(langId)
-                : std::wstring(langId);
-            ::AppendMenuW(hMenu, flags, id, txt.c_str());
+        auto add = [&](UINT id, const wchar_t* langId, UINT flags = MF_STRING)
+            {
+                auto& LM = LanguageManager::instance();
+                std::wstring txt = LM.get(langId).empty()
+                    ? std::wstring(langId)
+                    : LM.get(langId);
+                ::AppendMenuW(hMenu, flags, id, txt.c_str());
             };
 
         // -------- exact order & separators (matches screenshot) ----------------

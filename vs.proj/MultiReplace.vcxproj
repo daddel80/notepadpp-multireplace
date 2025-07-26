@@ -28,12 +28,16 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
+    <ClInclude Include="..\src\ConfigManager.h" />
     <ClInclude Include="..\src\DockingDlgInterface.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
     <ClInclude Include="..\src\Encoding.h" />
     <ClInclude Include="..\src\HiddenSciGuard.h" />
     <ClInclude Include="..\src\image_data.h" />
+    <ClInclude Include="..\src\IniFileCache.h" />
+    <ClInclude Include="..\src\LanguageManager.h" />
+    <ClInclude Include="..\src\language_mapping.h" />
     <ClInclude Include="..\src\luaEmbedded.h" />
     <ClInclude Include="..\src\lua\lapi.h" />
     <ClInclude Include="..\src\lua\lauxlib.h" />
@@ -72,9 +76,12 @@
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\ConfigManager.cpp" />
     <ClCompile Include="..\src\DPIManager.cpp" />
     <ClCompile Include="..\src\DropTarget.cpp" />
     <ClCompile Include="..\src\Encoding.cpp" />
+    <ClCompile Include="..\src\IniFileCache.cpp" />
+    <ClCompile Include="..\src\LanguageManager.cpp" />
     <ClCompile Include="..\src\language_mapping.cpp" />
     <ClCompile Include="..\src\lua\lapi.c">
       <AdditionalOptions>/w %(AdditionalOptions)</AdditionalOptions>

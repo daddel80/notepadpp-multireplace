@@ -26,6 +26,8 @@
 #include "HiddenSciGuard.h"
 #include "ResultDock.h"
 #include "Encoding.h"
+#include "LanguageManager.h"
+#include "ConfigManager.h"
 
 #include <algorithm>
 #include <bitset>
@@ -82,6 +84,8 @@ SIZE MultiReplace::debugWindowSize = { 400, 250 };
 bool MultiReplace::debugWindowSizeSet = false;
 HWND MultiReplace::hDebugWnd = NULL;
 bool MultiReplace::_isShuttingDown = false;
+static LanguageManager& LM = LanguageManager::instance();
+static ConfigManager& CFG = ConfigManager::instance();
 
 #pragma warning(disable: 6262)
 
@@ -275,89 +279,89 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int useListButtonY = windowHeight - sy(34);
 
     // Apply scaling only when assigning to ctrlMap
-    ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_find_what"), SS_RIGHT, NULL };
-    ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_replace_with"), SS_RIGHT };
+    ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_find_what"), SS_RIGHT, NULL };
+    ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_replace_with"), SS_RIGHT };
 
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, getLangStrLPCWSTR(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(112), checkboxHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(176), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,  getLangStrLPCWSTR(L"tooltip_replace_at_matches") };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(112), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(176), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,  LM.getLPCW(L"tooltip_replace_at_matches") };
 
-    ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(173), sy(104), WC_BUTTON, getLangStrLPCWSTR(L"panel_search_mode"), BS_GROUPBOX, NULL };
-    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(162), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(162), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(162), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(173), sy(104), WC_BUTTON, LM.getLPCW(L"panel_search_mode"), BS_GROUPBOX, NULL };
+    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SCOPE_GROUP] = { sx(367), sy(79), sx(203), sy(125), WC_BUTTON, getLangStrLPCWSTR(L"panel_scope"), BS_GROUPBOX, NULL };
-    ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(375), sy(101), sx(189), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SELECTION_RADIO] = { sx(375), sy(126), sx(189), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(375), sy(150), sx(45), radioButtonHeight, WC_BUTTON, getLangStrLPCWSTR(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SCOPE_GROUP] = { sx(367), sy(79), sx(203), sy(125), WC_BUTTON, LM.getLPCW(L"panel_scope"), BS_GROUPBOX, NULL };
+    ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(375), sy(101), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SELECTION_RADIO] = { sx(375), sy(126), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(375), sy(150), sx(45), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(369), sy(181), sx(30), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_cols"), SS_RIGHT, NULL };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(400), sy(181), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_columns") };
-    ctrlMap[IDC_DELIMITER_STATIC] = { sx(442), sy(181), sx(38), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_delim"), SS_RIGHT, NULL };
-    ctrlMap[IDC_DELIMITER_EDIT] = { sx(481), sy(181), sx(25), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_delimiter") };
-    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(506), sy(181), sx(37), sy(20), WC_STATIC, getLangStrLPCWSTR(L"panel_quote"), SS_RIGHT, NULL };
-    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(544), sy(181), sx(15), sy(16), WC_EDIT, NULL, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, getLangStrLPCWSTR(L"tooltip_quote") };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(369), sy(181), sx(30), sy(20), WC_STATIC, LM.getLPCW(L"panel_cols"), SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(400), sy(181), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_columns") };
+    ctrlMap[IDC_DELIMITER_STATIC] = { sx(442), sy(181), sx(38), sy(20), WC_STATIC, LM.getLPCW(L"panel_delim"), SS_RIGHT, NULL };
+    ctrlMap[IDC_DELIMITER_EDIT] = { sx(481), sy(181), sx(25), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_delimiter") };
+    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(506), sy(181), sx(37), sy(20), WC_STATIC, LM.getLPCW(L"panel_quote"), SS_RIGHT, NULL };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(544), sy(181), sx(15), sy(16), WC_EDIT, NULL, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_quote") };
 
-    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(418), sy(149), sx(19), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_descending") };
-    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(437), sy(149), sx(19), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_sort_ascending") };
-    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(459), sy(149), sx(25), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_drop_columns") };
-    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(487), sy(149), sx(25), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_columns") }; // 
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(515), sy(149), sx(45), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_column_highlight") };
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(418), sy(149), sx(19), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_descending") };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(437), sy(149), sx(19), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_ascending") };
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(459), sy(149), sx(25), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_drop_columns") };
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(487), sy(149), sx(25), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_columns") }; // 
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(515), sy(149), sx(45), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_highlight") };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(44), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(14), sx(128), sy(52), WC_BUTTON, getLangStrLPCWSTR(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(91), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_replace_all") };
-    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_2_buttons_mode") };
-    ctrlMap[IDC_FIND_ALL_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_find_all"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(14), sx(128), sy(52), WC_BUTTON, LM.getLPCW(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(91), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_replace_all") };
+    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, LM.getLPCW(L"tooltip_2_buttons_mode") };
+    ctrlMap[IDC_FIND_ALL_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_find_all"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
-    findNextButtonText = L"▼ " + getLangStr(L"panel_find_next_small");
+    findNextButtonText = L"▼ " + LM.get(L"panel_find_next_small");
     ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
     ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_copy_marked_text") }; // 
-    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_marked_text") }; // 
+    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(205) + filesOffsetY, listWidth - sx(5), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, NULL };
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_new_list") };
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, getLangStrLPCWSTR(L"tooltip_save") };
-    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255) + filesOffsetY, sx(96), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283) + filesOffsetY, sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_new_list") };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save") };
+    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(4), sy(323) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
     ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11) + filesOffsetY, sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16) + filesOffsetY, sx(96), sy(16), WC_STATIC, getLangStrLPCWSTR(L"panel_move_lines"), SS_LEFT, NULL };
+    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16) + filesOffsetY, sx(96), sy(16), WC_STATIC, LM.getLPCW(L"panel_move_lines"), SS_LEFT, NULL };
     ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227) + filesOffsetY, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
     ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5) + filesOffsetY, listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
     ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, sy(225) + listHeight + sy(5) + filesOffsetY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
     ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY , sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, getLangStrLPCWSTR(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_REPLACE_IN_FILES_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,getLangStrLPCWSTR(L"panel_replace_in_files"), BS_GROUPBOX, NULL };
+    ctrlMap[IDC_REPLACE_IN_FILES_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, NULL };
 
-    ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_filter"), SS_RIGHT, NULL };
+    ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_filter"), SS_RIGHT, NULL };
     ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
-    ctrlMap[IDC_FILTER_HELP] = { sx(96) + comboWidth - sx(170) + sx(5), sy(228), sx(20), sy(20), WC_STATIC, L"(?)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, getLangStrLPCWSTR(L"tooltip_filter_help") };
-    ctrlMap[IDC_DIR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, getLangStrLPCWSTR(L"panel_directory"), SS_RIGHT, NULL };
+    ctrlMap[IDC_FILTER_HELP] = { sx(96) + comboWidth - sx(170) + sx(5), sy(228), sx(20), sy(20), WC_STATIC, L"(?)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_filter_help") };
+    ctrlMap[IDC_DIR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_directory"), SS_RIGHT, NULL };
     ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(20), sy(230), sx(120), sy(13), WC_BUTTON, getLangStrLPCWSTR(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(20), sy(257), sx(120), sy(13), WC_BUTTON, getLangStrLPCWSTR(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(20), sy(230), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(20), sy(257), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 }
 
 void MultiReplace::initializeCtrlMap() {
@@ -422,8 +426,8 @@ bool MultiReplace::createAndShowWindows() {
         if (hwndControl == NULL)
         {
             DWORD dwError = GetLastError();
-            std::wstring errorMsg = getLangStr(L"msgbox_failed_create_control", { std::to_wstring(pair.first), std::to_wstring(dwError) });
-            MessageBox(nppData._nppHandle, errorMsg.c_str(), getLangStr(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+            std::wstring errorMsg = LM.get(L"msgbox_failed_create_control", { std::to_wstring(pair.first), std::to_wstring(dwError) });
+            MessageBox(nppData._nppHandle, errorMsg.c_str(), LM.get(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
             return false;
         }
 
@@ -760,7 +764,7 @@ void MultiReplace::updateUseListState(bool isUpdate)
     SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"˄" : L"˅");
 
     // Set the status message based on the list state
-    showStatusMessage(useListEnabled ? getLangStr(L"status_enable_list") : getLangStr(L"status_disable_list"), MessageStatus::Info);
+    showStatusMessage(useListEnabled ? LM.get(L"status_enable_list") : LM.get(L"status_disable_list"), MessageStatus::Info);
 
     // Return early if tooltips are disabled
     if (!tooltipsEnabled) {
@@ -794,7 +798,7 @@ void MultiReplace::updateUseListState(bool isUpdate)
     ti.uId = (UINT_PTR)GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON);  // Associate with the specific control
 
     // Get tooltip text based on the list state
-    LPCWSTR tooltipText = useListEnabled ? getLangStrLPCWSTR(L"tooltip_disable_list") : getLangStrLPCWSTR(L"tooltip_enable_list");
+    LPCWSTR tooltipText = useListEnabled ? LM.getLPCW(L"tooltip_disable_list") : LM.getLPCW(L"tooltip_enable_list");
     ti.lpszText = const_cast<LPWSTR>(tooltipText);  // Assign the tooltip text
 
     // If it's an update, delete the old tooltip first
@@ -1343,7 +1347,7 @@ void MultiReplace::createListViewColumns() {
     // Column 1: Find Count
     if (isFindCountVisible) {
         lvc.iSubItem = currentIndex;
-        lvc.pszText = getLangStrLPWSTR(L"header_find_count");
+        lvc.pszText = LM.getLPW(L"header_find_count");
         lvc.cx = findCountColumnWidth;
         lvc.fmt = LVCFMT_RIGHT;
         ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -1357,7 +1361,7 @@ void MultiReplace::createListViewColumns() {
     // Column 2: Replace Count
     if (isReplaceCountVisible) {
         lvc.iSubItem = currentIndex;
-        lvc.pszText = getLangStrLPWSTR(L"header_replace_count");
+        lvc.pszText = LM.getLPW(L"header_replace_count");
         lvc.cx = replaceCountColumnWidth;
         lvc.fmt = LVCFMT_RIGHT;
         ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -1379,7 +1383,7 @@ void MultiReplace::createListViewColumns() {
 
     // Column 4: Find Text (dynamic width)
     lvc.iSubItem = currentIndex;
-    lvc.pszText = getLangStrLPWSTR(L"header_find");
+    lvc.pszText = LM.getLPW(L"header_find");
     lvc.cx = (findColumnLockedEnabled ? findColumnWidth : perColumnWidth);
     lvc.fmt = LVCFMT_LEFT;
     ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -1388,7 +1392,7 @@ void MultiReplace::createListViewColumns() {
 
     // Column 5: Replace Text (dynamic width)
     lvc.iSubItem = currentIndex;
-    lvc.pszText = getLangStrLPWSTR(L"header_replace");
+    lvc.pszText = LM.getLPW(L"header_replace");
     lvc.cx = (replaceColumnLockedEnabled ? replaceColumnWidth : perColumnWidth);
     lvc.fmt = LVCFMT_LEFT;
     ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -1405,7 +1409,7 @@ void MultiReplace::createListViewColumns() {
     };
     for (int i = 0; i < 5; ++i) {
         lvc.iSubItem = currentIndex;
-        lvc.pszText = getLangStrLPWSTR(options[i]);
+        lvc.pszText = LM.getLPW(options[i]);
         lvc.cx = checkMarkWidth_scaled;
         lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
         ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -1416,7 +1420,7 @@ void MultiReplace::createListViewColumns() {
     // Column 11: Comments (dynamic width)
     if (isCommentsColumnVisible) {
         lvc.iSubItem = currentIndex;
-        lvc.pszText = getLangStrLPWSTR(L"header_comments");
+        lvc.pszText = LM.getLPW(L"header_comments");
         lvc.cx = (commentsColumnLockedEnabled ? commentsColumnWidth : perColumnWidth);
         lvc.fmt = LVCFMT_LEFT;
         ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -1451,7 +1455,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
 
     // Return early if findText is empty and "Use Variables" is not enabled
     if (itemData.findText.empty() && useVariables == 0) {
-        showStatusMessage(getLangStr(L"status_no_find_string"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_no_find_string"), MessageStatus::Error);
         return;
     }
 
@@ -1472,10 +1476,10 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     // Show a status message indicating the value added to the list
     std::wstring message;
     if (isDuplicate) {
-        message = getLangStr(L"status_duplicate_entry") + itemData.findText;
+        message = LM.get(L"status_duplicate_entry") + itemData.findText;
     }
     else {
-        message = getLangStr(L"status_value_added");
+        message = LM.get(L"status_value_added");
     }
     showStatusMessage(message, MessageStatus::Success);
 
@@ -1722,11 +1726,11 @@ void MultiReplace::updateListViewTooltips() {
     _hHeaderTooltip = CreateHeaderTooltip(hwndHeader);
 
     // Re-add tooltips for columns 6 to 10
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::WHOLE_WORD], getLangStrLPWSTR(L"tooltip_header_whole_word"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::MATCH_CASE], getLangStrLPWSTR(L"tooltip_header_match_case"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::USE_VARIABLES], getLangStrLPWSTR(L"tooltip_header_use_variables"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::EXTENDED], getLangStrLPWSTR(L"tooltip_header_extended"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::REGEX], getLangStrLPWSTR(L"tooltip_header_regex"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::WHOLE_WORD], LM.getLPW(L"tooltip_header_whole_word"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::MATCH_CASE], LM.getLPW(L"tooltip_header_match_case"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::USE_VARIABLES], LM.getLPW(L"tooltip_header_use_variables"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::EXTENDED], LM.getLPW(L"tooltip_header_extended"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::REGEX], LM.getLPW(L"tooltip_header_regex"));
 }
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
@@ -1759,7 +1763,7 @@ void MultiReplace::shiftListItem(const Direction& direction) {
     }
 
     if (selectedIndices.empty()) {
-        showStatusMessage(getLangStr(L"status_no_rows_selected_to_shift"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_no_rows_selected_to_shift"), MessageStatus::Error);
         return;
     }
 
@@ -1779,7 +1783,7 @@ void MultiReplace::shiftListItem(const Direction& direction) {
     }
 
     // Show status message when rows are successfully shifted
-    showStatusMessage(getLangStr(L"status_rows_shifted", { std::to_wstring(selectedIndices.size()) }), MessageStatus::Success);
+    showStatusMessage(LM.get(L"status_rows_shifted", { std::to_wstring(selectedIndices.size()) }), MessageStatus::Success);
 
     // Show Statistics
     showListFilePath();
@@ -1804,7 +1808,7 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 
     InvalidateRect(_replaceListView, NULL, TRUE);
 
-    showStatusMessage(getLangStr(L"status_one_line_deleted"), MessageStatus::Success);
+    showStatusMessage(LM.get(L"status_one_line_deleted"), MessageStatus::Success);
 }
 
 void MultiReplace::deleteSelectedLines() {
@@ -1816,14 +1820,14 @@ void MultiReplace::deleteSelectedLines() {
     }
 
     if (selectedIndices.empty()) {
-        showStatusMessage(getLangStr(L"status_no_rows_selected_to_delete"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_no_rows_selected_to_delete"), MessageStatus::Error);
         return;
     }
 
     // Ensure indices are valid before calling removeItemsFromReplaceList
     for (size_t index : selectedIndices) {
         if (index >= replaceListData.size()) {
-            showStatusMessage(getLangStr(L"status_invalid_indices"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_invalid_indices"), MessageStatus::Error);
             return;
         }
     }
@@ -1846,7 +1850,7 @@ void MultiReplace::deleteSelectedLines() {
     updateHeaderSelection();
 
     // Show status message
-    showStatusMessage(getLangStr(L"status_lines_deleted", { std::to_wstring(selectedIndices.size()) }), MessageStatus::Success);
+    showStatusMessage(LM.get(L"status_lines_deleted", { std::to_wstring(selectedIndices.size()) }), MessageStatus::Success);
 }
 
 void MultiReplace::sortReplaceListData(int columnID) {
@@ -2121,10 +2125,10 @@ void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
     HMENU hMenu = CreatePopupMenu();
 
     // Add menu items with checkmarks based on current visibility
-    AppendMenu(hMenu, MF_STRING | (isFindCountVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_FIND_COUNT, getLangStrLPCWSTR(L"header_find_count"));
-    AppendMenu(hMenu, MF_STRING | (isReplaceCountVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_REPLACE_COUNT, getLangStrLPCWSTR(L"header_replace_count"));
-    AppendMenu(hMenu, MF_STRING | (isCommentsColumnVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_COMMENTS, getLangStrLPCWSTR(L"header_comments"));
-    AppendMenu(hMenu, MF_STRING | (isDeleteButtonVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_DELETE, getLangStrLPCWSTR(L"header_delete_button"));
+    AppendMenu(hMenu, MF_STRING | (isFindCountVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_FIND_COUNT, LM.getLPCW(L"header_find_count"));
+    AppendMenu(hMenu, MF_STRING | (isReplaceCountVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_REPLACE_COUNT, LM.getLPCW(L"header_replace_count"));
+    AppendMenu(hMenu, MF_STRING | (isCommentsColumnVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_COMMENTS, LM.getLPCW(L"header_comments"));
+    AppendMenu(hMenu, MF_STRING | (isDeleteButtonVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_DELETE, LM.getLPCW(L"header_delete_button"));
 
     // Display the menu at the specified location
     TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, hWnd, NULL);
@@ -2598,23 +2602,23 @@ void MultiReplace::toggleEditExpand()
 void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state) {
     HMENU hMenu = CreatePopupMenu();
     if (hMenu) {
-        AppendMenu(hMenu, MF_STRING | (state.canUndo ? MF_ENABLED : MF_GRAYED), IDM_UNDO, getLangStr(L"ctxmenu_undo").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.canRedo ? MF_ENABLED : MF_GRAYED), IDM_REDO, getLangStr(L"ctxmenu_redo").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.canUndo ? MF_ENABLED : MF_GRAYED), IDM_UNDO, LM.get(L"ctxmenu_undo").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.canRedo ? MF_ENABLED : MF_GRAYED), IDM_REDO, LM.get(L"ctxmenu_redo").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_CUT_LINES_TO_CLIPBOARD, getLangStr(L"ctxmenu_cut").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, getLangStr(L"ctxmenu_copy").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_LINES_FROM_CLIPBOARD, getLangStr(L"ctxmenu_paste").c_str());
-        AppendMenu(hMenu, MF_STRING, IDM_SELECT_ALL, getLangStr(L"ctxmenu_select_all").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_CUT_LINES_TO_CLIPBOARD, LM.get(L"ctxmenu_cut").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, LM.get(L"ctxmenu_copy").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_LINES_FROM_CLIPBOARD, LM.get(L"ctxmenu_paste").c_str());
+        AppendMenu(hMenu, MF_STRING, IDM_SELECT_ALL, LM.get(L"ctxmenu_select_all").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, getLangStr(L"ctxmenu_edit").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, getLangStr(L"ctxmenu_delete").c_str());
-        AppendMenu(hMenu, MF_STRING, IDM_ADD_NEW_LINE, getLangStr(L"ctxmenu_add_new_line").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, LM.get(L"ctxmenu_edit").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, LM.get(L"ctxmenu_delete").c_str());
+        AppendMenu(hMenu, MF_STRING, IDM_ADD_NEW_LINE, LM.get(L"ctxmenu_add_new_line").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, getLangStr(L"ctxmenu_transfer_to_input_fields").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_SEARCH_IN_LIST, getLangStr(L"ctxmenu_search_in_list").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, LM.get(L"ctxmenu_transfer_to_input_fields").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_SEARCH_IN_LIST, LM.get(L"ctxmenu_search_in_list").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, getLangStr(L"ctxmenu_enable").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allDisabled ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_LINES, getLangStr(L"ctxmenu_disable").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, LM.get(L"ctxmenu_enable").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allDisabled ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_LINES, LM.get(L"ctxmenu_disable").c_str());
         TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, ptScreen.x, ptScreen.y, 0, hwnd, NULL);
         DestroyMenu(hMenu); // Clean up
     }
@@ -2769,13 +2773,13 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         std::wstring confirmationMessage;
 
         if (selectedCount == 1) {
-            confirmationMessage = getLangStr(L"msgbox_confirm_delete_single");
+            confirmationMessage = LM.get(L"msgbox_confirm_delete_single");
         }
         else if (selectedCount > 1) {
-            confirmationMessage = getLangStr(L"msgbox_confirm_delete_multiple", { std::to_wstring(selectedCount) });
+            confirmationMessage = LM.get(L"msgbox_confirm_delete_multiple", { std::to_wstring(selectedCount) });
         }
 
-        int msgBoxID = MessageBox(nppData._nppHandle, confirmationMessage.c_str(), getLangStr(L"msgbox_title_confirm").c_str(), MB_ICONWARNING | MB_YESNO);
+        int msgBoxID = MessageBox(nppData._nppHandle, confirmationMessage.c_str(), LM.get(L"msgbox_title_confirm").c_str(), MB_ICONWARNING | MB_YESNO);
         if (msgBoxID == IDYES) {
             deleteSelectedLines();
             showListFilePath();
@@ -2959,7 +2963,7 @@ void MultiReplace::performSearchInList() {
 
     // Exit if both fields are empty
     if (findText.empty() && replaceText.empty()) {
-        showStatusMessage(getLangStr(L"status_no_find_replace_list_input"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_no_find_replace_list_input"), MessageStatus::Error);
         return;
     }
 
@@ -2976,11 +2980,11 @@ void MultiReplace::performSearchInList() {
         // Highlight the matched item
         ListView_SetItemState(_replaceListView, matchIdx, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
         ListView_EnsureVisible(_replaceListView, matchIdx, FALSE);
-        showStatusMessage(getLangStr(L"status_found_in_list"), MessageStatus::Success);
+        showStatusMessage(LM.get(L"status_found_in_list"), MessageStatus::Success);
     }
     else {
         // Show failure status message if no match found
-        showStatusMessage(getLangStr(L"status_not_found_in_list"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_not_found_in_list"), MessageStatus::Error);
     }
 }
 
@@ -3050,7 +3054,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         // checkFullStackInfo();
         dpiMgr = new DPIManager(_hSelf);
-        loadLanguage();
+        //loadLanguage();
+
+        //  a) extract paths
+        wchar_t pluginDir[MAX_PATH] = {};
+        SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, MAX_PATH,
+            reinterpret_cast<LPARAM>(pluginDir));
+
+        wchar_t langXml[MAX_PATH] = {};
+        SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH,
+            reinterpret_cast<LPARAM>(langXml));
+        wcscat_s(langXml, L"\\..\\..\\nativeLang.xml");
+
+        LanguageManager::instance().load(pluginDir, langXml);
         initializeWindowSize();
         pointerToScintilla();
         initializeMarkerStyle();
@@ -3242,9 +3258,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             ::GetWindowRect(pnmh->hwndFrom, &rc);  // Get screen coordinates of the button
 
             HMENU hMenu = CreatePopupMenu();
-            AppendMenu(hMenu, MF_STRING, ID_REPLACE_ALL_OPTION, getLangStrLPWSTR(L"split_menu_replace_all"));
-            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_ALL_DOCS_OPTION, getLangStrLPWSTR(L"split_menu_replace_all_in_docs"));
-            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_FILES_OPTION, getLangStrLPWSTR(L"split_menu_replace_all_in_files"));
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_ALL_OPTION, LM.getLPW(L"split_menu_replace_all"));
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_ALL_DOCS_OPTION, LM.getLPW(L"split_menu_replace_all_in_docs"));
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_FILES_OPTION, LM.getLPW(L"split_menu_replace_all_in_files"));
 
             // Display the menu directly below the button
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, NULL);
@@ -3257,11 +3273,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             HMENU hMenu = CreatePopupMenu();
             AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_DOC_OPTION,
-                getLangStrLPWSTR(L"split_menu_find_all"));
+                LM.getLPW(L"split_menu_find_all"));
             AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_ALL_DOCS_OPTION,
-                getLangStrLPWSTR(L"split_menu_find_all_in_docs"));
+                LM.getLPW(L"split_menu_find_all_in_docs"));
             AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_FILES_OPTION,
-                getLangStrLPWSTR(L"split_menu_find_all_in_files"));
+                LM.getLPW(L"split_menu_find_all_in_files"));
 
             RECT rc{};  GetWindowRect(pnmh->hwndFrom, &rc);
             int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_LEFTALIGN,
@@ -3738,7 +3754,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             }
             else {
                 handleClearColumnMarks();
-                showStatusMessage(getLangStr(L"status_column_marks_cleared"), MessageStatus::Success);
+                showStatusMessage(LanguageManager::instance().get(L"status_column_marks_cleared"), MessageStatus::Success);
             }
             return TRUE;
         }
@@ -3820,8 +3836,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 CloseDebugWindow(); // Close the Lua debug window if it is open
                 int msgboxID = MessageBox(
                     nppData._nppHandle,
-                    getLangStr(L"msgbox_confirm_replace_all").c_str(),
-                    getLangStr(L"msgbox_title_confirm").c_str(),
+                    LM.get(L"msgbox_confirm_replace_all").c_str(),
+                    LM.get(L"msgbox_title_confirm").c_str(),
                     MB_ICONWARNING | MB_OKCANCEL
                 );
 
@@ -3910,7 +3926,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             resetCountColumns();
             handleClearTextMarksButton();
-            showStatusMessage(getLangStr(L"status_all_marks_cleared"), MessageStatus::Success);
+            showStatusMessage(LM.get(L"status_all_marks_cleared"), MessageStatus::Success);
             return TRUE;
         }
 
@@ -3963,15 +3979,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 return TRUE;
             }
 
-            std::wstring csvDescription = getLangStr(L"filetype_csv");  // "CSV Files (*.csv)"
-            std::wstring allFilesDescription = getLangStr(L"filetype_all_files");  // "All Files (*.*)"
+            std::wstring csvDescription = LM.get(L"filetype_csv");  // "CSV Files (*.csv)"
+            std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
 
             std::vector<std::pair<std::wstring, std::wstring>> filters = {
                 {csvDescription, L"*.csv"},
                 {allFilesDescription, L"*.*"}
             };
 
-            std::wstring dialogTitle = getLangStr(L"panel_load_list");
+            std::wstring dialogTitle = LM.get(L"panel_load_list");
             std::wstring filePath = openFileDialog(false, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST, L"csv", L"");
 
             if (!filePath.empty()) {
@@ -3983,7 +3999,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_NEW_LIST_BUTTON:
         {
             clearList();
-            showStatusMessage(getLangStr(L"status_new_list_created"), MessageStatus::Success);
+            showStatusMessage(LM.get(L"status_new_list_created"), MessageStatus::Success);
             return TRUE;
         }
 
@@ -4001,15 +4017,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_EXPORT_BASH_BUTTON:
         {
-            std::wstring bashDescription = getLangStr(L"filetype_bash");  // "Bash Scripts (*.sh)"
-            std::wstring allFilesDescription = getLangStr(L"filetype_all_files");  // "All Files (*.*)"
+            std::wstring bashDescription = LM.get(L"filetype_bash");  // "Bash Scripts (*.sh)"
+            std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
 
             std::vector<std::pair<std::wstring, std::wstring>> filters = {
                 {bashDescription, L"*.sh"},
                 {allFilesDescription, L"*.*"}
             };
 
-            std::wstring dialogTitle = getLangStr(L"panel_export_to_bash");
+            std::wstring dialogTitle = LM.get(L"panel_export_to_bash");
 
             // Set a default filename if none is provided
             static int scriptCounter = 1;
@@ -4026,7 +4042,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case ID_REPLACE_ALL_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, getLangStrLPWSTR(L"split_button_replace_all"));
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getLPW(L"split_button_replace_all"));
             isReplaceAllInDocs = false;
             isReplaceInFiles = false;
             updateReplaceInFilesVisibility();
@@ -4035,7 +4051,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case ID_REPLACE_IN_ALL_DOCS_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, getLangStrLPWSTR(L"split_button_replace_all_in_docs"));
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getLPW(L"split_button_replace_all_in_docs"));
             isReplaceAllInDocs = true;
             isReplaceInFiles = false;
             updateReplaceInFilesVisibility();
@@ -4044,7 +4060,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case ID_REPLACE_IN_FILES_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, getLangStrLPWSTR(L"split_button_replace_all_in_files"));
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getLPW(L"split_button_replace_all_in_files"));
             isReplaceAllInDocs = false;
             isReplaceInFiles = true;
             updateReplaceInFilesVisibility();
@@ -4177,7 +4193,7 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
     // First check if the document is read-only
     LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
-        showStatusMessage(getLangStr(L"status_cannot_replace_read_only"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_cannot_replace_read_only"), MessageStatus::Error);
         return false;
     }
 
@@ -4197,7 +4213,7 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
     {
         // Check if the replaceListData is empty and warn the user if so
         if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_add_values_instructions"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_add_values_instructions"), MessageStatus::Error);
             return false;
         }
 
@@ -4252,7 +4268,7 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
     }
     // Display status message
     if (replaceSuccess && showCompletionMessage) {
-        showStatusMessage(getLangStr(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), MessageStatus::Success);
+        showStatusMessage(LM.get(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), MessageStatus::Success);
     }
 
     // Only reset the scope radio buttons for a single-document "Replace All"
@@ -4281,7 +4297,7 @@ void MultiReplace::handleReplaceButton() {
     // First check if the document is read-only
     LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
-        showStatusMessage(getLangStrLPWSTR(L"status_cannot_replace_read_only"), MessageStatus::Error);
+        showStatusMessage(LM.getLPW(L"status_cannot_replace_read_only"), MessageStatus::Error);
         return;
     }
 
@@ -4315,7 +4331,7 @@ void MultiReplace::handleReplaceButton() {
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
             return;
         }
 
@@ -4355,27 +4371,27 @@ void MultiReplace::handleReplaceButton() {
         if (wasReplaced) {
             if (stayAfterReplaceEnabled) {
                 refreshUIListView();
-                showStatusMessage(getLangStr(L"status_replace_one"), MessageStatus::Success);
+                showStatusMessage(LM.get(L"status_replace_one"), MessageStatus::Success);
             }
             else if (searchResult.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView();
-                showStatusMessage(getLangStr(L"status_replace_one_next_found"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_replace_one_next_found"), MessageStatus::Info);
             }
             else {
-                showStatusMessage(getLangStr(L"status_replace_one_none_left"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_replace_one_none_left"), MessageStatus::Info);
             }
         }
 
         else {
             if (searchResult.pos < 0) {
-                showStatusMessage(getLangStr(L"status_no_occurrence_found"), MessageStatus::Error, true);
+                showStatusMessage(LM.get(L"status_no_occurrence_found"), MessageStatus::Error, true);
             }
             else {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView();
                 selectListItem(matchIndex);
-                showStatusMessage(getLangStr(L"status_found_text_not_replaced"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_found_text_not_replaced"), MessageStatus::Info);
             }
         }
     }
@@ -4414,21 +4430,21 @@ void MultiReplace::handleReplaceButton() {
 
         if (wasReplaced) {
             if (stayAfterReplaceEnabled) {
-                showStatusMessage(getLangStr(L"status_replace_one"), MessageStatus::Success);
+                showStatusMessage(LM.get(L"status_replace_one"), MessageStatus::Success);
             }
             else if (searchResult.pos >= 0) {
-                showStatusMessage(getLangStr(L"status_replace_one_next_found"), MessageStatus::Success);
+                showStatusMessage(LM.get(L"status_replace_one_next_found"), MessageStatus::Success);
             }
             else {
-                showStatusMessage(getLangStr(L"status_replace_one_none_left"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_replace_one_none_left"), MessageStatus::Info);
             }
         }
         else {
             if (searchResult.pos < 0) {
-                showStatusMessage(getLangStr(L"status_no_occurrence_found"), MessageStatus::Error, true);
+                showStatusMessage(LM.get(L"status_no_occurrence_found"), MessageStatus::Error, true);
             }
             else {
-                showStatusMessage(getLangStr(L"status_found_text_not_replaced"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_found_text_not_replaced"), MessageStatus::Info);
             }
         }
     }
@@ -4554,10 +4570,10 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     if (useMatchList) {
         std::wstring sel = getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT);
         if (sel.empty()) {
-            showStatusMessage(getLangStr(L"status_missing_match_selection"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_missing_match_selection"), MessageStatus::Error);
             return false;
         }
-        matchList = parseNumberRanges(sel, getLangStr(L"status_invalid_range_in_match_data"));
+        matchList = parseNumberRanges(sel, LM.get(L"status_invalid_range_in_match_data"));
         if (matchList.empty()) return false;
     }
 
@@ -4920,7 +4936,7 @@ bool MultiReplace::compileLuaReplaceCode(const std::string& luaCode)
                 std::wstring error_message = Encoding::utf8ToWString(errMsg);
                 MessageBox(nppData._nppHandle,
                     error_message.c_str(),
-                    getLangStr(L"msgbox_title_use_variables_syntax_error").c_str(),
+                    LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
                     MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
             }
         }
@@ -5013,7 +5029,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
                 std::wstring error_message = Encoding::utf8ToWString(errMsg);
                 MessageBox(nppData._nppHandle,
                     error_message.c_str(),
-                    getLangStr(L"msgbox_title_use_variables_syntax_error").c_str(),
+                    LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
                     MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
             }
         }
@@ -5029,9 +5045,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         lua_pop(_luaState, 1);
         if (isLuaErrorDialogEnabled)
         {
-            std::wstring errorMsg = getLangStr(L"msgbox_use_variables_execution_error",
+            std::wstring errorMsg = LM.get(L"msgbox_use_variables_execution_error",
                 { Encoding::utf8ToWString(inputString.c_str()) });
-            std::wstring errorTitle = getLangStr(L"msgbox_title_use_variables_execution_error");
+            std::wstring errorTitle = LM.get(L"msgbox_title_use_variables_execution_error");
             MessageBox(nppData._nppHandle, errorMsg.c_str(), errorTitle.c_str(), MB_OK);
         }
         return false;
@@ -5286,7 +5302,7 @@ bool MultiReplace::handleBrowseDirectoryButton()
 void MultiReplace::handleReplaceInFiles() {
     HiddenSciGuard guard;
     if (!guard.create()) {
-        showStatusMessage(getLangStr(L"status_error_hidden_buffer"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_error_hidden_buffer"), MessageStatus::Error);
         return;
     }
 
@@ -5305,7 +5321,7 @@ void MultiReplace::handleReplaceInFiles() {
     guard.parseFilter(wFilter);
 
     if (wDir.empty() || !std::filesystem::exists(wDir)) {
-        showStatusMessage(getLangStr(L"status_error_invalid_directory"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_error_invalid_directory"), MessageStatus::Error);
         return;
     }
 
@@ -5328,12 +5344,12 @@ void MultiReplace::handleReplaceInFiles() {
     catch (const std::exception& ex) {
         std::string narrowReason = ex.what();
         std::wstring wideReason(narrowReason.begin(), narrowReason.end());
-        showStatusMessage(getLangStr(L"status_error_scanning_directory", { wideReason }), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_error_scanning_directory", { wideReason }), MessageStatus::Error);
         return;
     }
 
     if (files.empty()) {
-        MessageBox(_hSelf, getLangStrLPWSTR(L"msgbox_no_files"), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OK);
+        MessageBox(_hSelf, LM.getLPW(L"msgbox_no_files"), LM.getLPW(L"msgbox_title_confirm"), MB_OK);
         return;
     }
 
@@ -5346,11 +5362,11 @@ void MultiReplace::handleReplaceInFiles() {
     ReleaseDC(_hSelf, dialogHdc);
 
     // Build the structured message using the variables from the top of the function.
-    std::wstring message = getLangStr(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()), shortenedDirectory, wFilter });
+    std::wstring message = LM.get(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()), shortenedDirectory, wFilter });
 
     // Show the MessageBox.
     // FIX 1: Removed MB_ICONWARNING to prevent the system sound.
-    if (MessageBox(_hSelf, message.c_str(), getLangStrLPWSTR(L"msgbox_title_confirm"), MB_OKCANCEL | MB_SETFOREGROUND) != IDOK)
+    if (MessageBox(_hSelf, message.c_str(), LM.getLPW(L"msgbox_title_confirm"), MB_OKCANCEL | MB_SETFOREGROUND) != IDOK)
     {
         return;
     }
@@ -5482,7 +5498,7 @@ void MultiReplace::handleReplaceInFiles() {
 
     // Display a simple, universal summary message unless the plugin is shutting down.
     if (!_isShuttingDown) {
-        std::wstring summaryMsg = getLangStr(L"status_replace_summary", { std::to_wstring(changed), std::to_wstring(total) });
+        std::wstring summaryMsg = LM.get(L"status_replace_summary", { std::to_wstring(changed), std::to_wstring(total) });
         showStatusMessage(summaryMsg, _isCancelRequested ? MessageStatus::Info : MessageStatus::Success);
     }
 
@@ -6128,7 +6144,7 @@ void MultiReplace::handleFindAllButton()
     if (useListEnabled)
     {
         if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
             return;
         }
 
@@ -6178,7 +6194,7 @@ void MultiReplace::handleFindAllButton()
         }
 
         if (totalHits == 0) {
-            showStatusMessage(getLangStr(L"status_no_matches_found"), MessageStatus::Error, true);
+            showStatusMessage(LM.get(L"status_no_matches_found"), MessageStatus::Error, true);
             return;
         }
 
@@ -6238,7 +6254,7 @@ void MultiReplace::handleFindAllButton()
                 rawHits.push_back(std::move(h));
         }
         if (rawHits.empty()) {
-            showStatusMessage(getLangStr(L"status_no_matches_found"), MessageStatus::Error, true);
+            showStatusMessage(LM.get(L"status_no_matches_found"), MessageStatus::Error, true);
             return;
         }
 
@@ -6257,7 +6273,7 @@ void MultiReplace::handleFindAllButton()
     dock.rebuildFolding();
     dock.applyStyling();
 
-    showStatusMessage(getLangStr(L"status_occurrences_found", { std::to_wstring(totalHits) }), MessageStatus::Success);
+    showStatusMessage(LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), MessageStatus::Success);
 }
 
 #pragma endregion
@@ -6292,7 +6308,7 @@ void MultiReplace::handleFindNextButton() {
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_add_values_or_find_directly"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_add_values_or_find_directly"), MessageStatus::Error);
             return;
         }
 
@@ -6304,7 +6320,7 @@ void MultiReplace::handleFindNextButton() {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView();
                 selectListItem(matchIndex);
-                showStatusMessage(getLangStr(L"status_wrapped"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_wrapped"), MessageStatus::Info);
                 return;
             }
         }
@@ -6320,7 +6336,7 @@ void MultiReplace::handleFindNextButton() {
             }
         }
         else {
-            showStatusMessage(getLangStr(L"status_no_matches_found"), MessageStatus::Error, true);
+            showStatusMessage(LM.get(L"status_no_matches_found"), MessageStatus::Error, true);
         }
     }
     else {
@@ -6346,7 +6362,7 @@ void MultiReplace::handleFindNextButton() {
         if (result.pos < 0 && wrapAroundEnabled) {
             result = performSearchForward(context, 0);
             if (result.pos >= 0) {
-                showStatusMessage(getLangStr(L"status_wrapped"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_wrapped"), MessageStatus::Info);
                 return;
             }
         }
@@ -6359,7 +6375,7 @@ void MultiReplace::handleFindNextButton() {
             }
         }
         else {
-            showStatusMessage(getLangStr(L"status_no_matches_found_for", { findText }), MessageStatus::Error, true);
+            showStatusMessage(LM.get(L"status_no_matches_found_for", { findText }), MessageStatus::Error, true);
         }
     }
 }
@@ -6403,7 +6419,7 @@ void MultiReplace::handleFindPrevButton() {
     if (useListEnabled) {
         size_t matchIndex = std::numeric_limits<size_t>::max();
         if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_add_values_or_find_directly"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_add_values_or_find_directly"), MessageStatus::Error);
             return;
         }
         SearchResult result = performListSearchBackward(replaceListData, searchPos, matchIndex, context);
@@ -6414,7 +6430,7 @@ void MultiReplace::handleFindPrevButton() {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView();
                 selectListItem(matchIndex);
-                showStatusMessage(getLangStr(L"status_wrapped"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_wrapped"), MessageStatus::Info);
                 if (context.isSelectionMode) {
                     ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
                     ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
@@ -6435,7 +6451,7 @@ void MultiReplace::handleFindPrevButton() {
             }
         }
         else {
-            showStatusMessage(getLangStr(L"status_no_matches_found"), MessageStatus::Error, true);
+            showStatusMessage(LM.get(L"status_no_matches_found"), MessageStatus::Error, true);
         }
     }
     else {
@@ -6448,7 +6464,7 @@ void MultiReplace::handleFindPrevButton() {
             searchPos = context.isSelectionMode ? selection.endPos : send(SCI_GETLENGTH, 0, 0);
             result = performSearchBackward(context, searchPos);
             if (result.pos >= 0) {
-                showStatusMessage(getLangStr(L"status_wrapped"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_wrapped"), MessageStatus::Info);
                 if (context.isSelectionMode) {
                     ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
                     ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
@@ -6466,7 +6482,7 @@ void MultiReplace::handleFindPrevButton() {
             }
         }
         else {
-            showStatusMessage(getLangStr(L"status_no_matches_found_for", { getTextFromDialogItem(_hSelf, IDC_FIND_EDIT) }),
+            showStatusMessage(LM.get(L"status_no_matches_found_for", { getTextFromDialogItem(_hSelf, IDC_FIND_EDIT) }),
                 MessageStatus::Error, true);
         }
     }
@@ -6838,7 +6854,7 @@ void MultiReplace::handleMarkMatchesButton() {
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_add_values_or_mark_directly"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_add_values_or_mark_directly"), MessageStatus::Error);
             return;
         }
 
@@ -6893,7 +6909,7 @@ void MultiReplace::handleMarkMatchesButton() {
     }
 
     // Display total number of marked occurrences
-    showStatusMessage(getLangStr(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), MessageStatus::Info);
+    showStatusMessage(LM.get(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), MessageStatus::Info);
 }
 
 int MultiReplace::markString(const SearchContext& context) {
@@ -7050,7 +7066,7 @@ void MultiReplace::handleCopyMarkedTextToClipboardButton()
 void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
 {
     if (text.empty()) {
-        showStatusMessage(getLangStr(L"status_no_text_to_copy"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_no_text_to_copy"), MessageStatus::Error);
         return;
     }
 
@@ -7062,7 +7078,7 @@ void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
     HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, byteSize);
     if (!hMem) {
         CloseClipboard();
-        showStatusMessage(getLangStr(L"status_failed_allocate_memory"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_failed_allocate_memory"), MessageStatus::Error);
         return;
     }
 
@@ -7070,7 +7086,7 @@ void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
     if (!p) {
         GlobalFree(hMem);
         CloseClipboard();
-        showStatusMessage(getLangStr(L"status_failed_allocate_memory"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_failed_allocate_memory"), MessageStatus::Error);
         return;
     }
 
@@ -7080,12 +7096,12 @@ void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
     if (SetClipboardData(CF_UNICODETEXT, hMem) == nullptr) {
         GlobalFree(hMem);
         CloseClipboard();
-        showStatusMessage(getLangStr(L"status_failed_to_copy"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_failed_to_copy"), MessageStatus::Error);
         return;
     }
 
     CloseClipboard();
-    showStatusMessage(getLangStr(L"status_items_copied_to_clipboard", { std::to_wstring(textCount) }), MessageStatus::Success);
+    showStatusMessage(LM.get(L"status_items_copied_to_clipboard", { std::to_wstring(textCount) }), MessageStatus::Success);
 }
 
 #pragma endregion
@@ -7101,13 +7117,13 @@ bool MultiReplace::confirmColumnDeletion() {
 
     // Now columnDelimiterData should be populated with the parsed column data
     size_t columnCount = columnDelimiterData.columns.size();
-    std::wstring confirmMessage = getLangStr(L"msgbox_confirm_delete_columns", { std::to_wstring(columnCount) });
+    std::wstring confirmMessage = LM.get(L"msgbox_confirm_delete_columns", { std::to_wstring(columnCount) });
 
     // Display a message box with Yes/No options and a question mark icon
     int msgboxID = MessageBox(
         nppData._nppHandle,
         confirmMessage.c_str(),
-        getLangStr(L"msgbox_title_confirm").c_str(),
+        LM.get(L"msgbox_title_confirm").c_str(),
         MB_ICONWARNING | MB_YESNO
     );
 
@@ -7219,7 +7235,7 @@ void MultiReplace::handleDeleteColumns()
     send(SCI_ENDUNDOACTION, 0, 0);
 
     // Display a status message with the number of deleted fields.
-    showStatusMessage(getLangStr(L"status_deleted_fields_count", { std::to_wstring(deletedFieldsCount) }), MessageStatus::Success);
+    showStatusMessage(LM.get(L"status_deleted_fields_count", { std::to_wstring(deletedFieldsCount) }), MessageStatus::Success);
 }
 
 void MultiReplace::handleCopyColumnsToClipboard()
@@ -7408,7 +7424,7 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
 {
     // Validate delimiters before sorting
     if (!columnDelimiterData.isValid()) {
-        showStatusMessage(getLangStr(L"status_invalid_column_or_delimiter"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_invalid_column_or_delimiter"), MessageStatus::Error);
         return;
     }
 
@@ -7735,12 +7751,12 @@ bool MultiReplace::parseColumnAndDelimiterData() {
 
     // Ensure that columnDataString and delimiter are not empty
     if (columnDataString.empty() || delimiterData.empty()) {
-        showStatusMessage(getLangStr(L"status_missing_column_or_delimiter_data"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_missing_column_or_delimiter_data"), MessageStatus::Error);
         return false;
     }
 
     // Use parseNumberRanges() to process column data
-    std::vector<int> parsedColumns = parseNumberRanges(columnDataString, getLangStr(L"status_invalid_range_in_column_data"));
+    std::vector<int> parsedColumns = parseNumberRanges(columnDataString, LM.get(L"status_invalid_range_in_column_data"));
     if (parsedColumns.empty()) return false; // Abort if parsing failed
 
     // Convert parsedColumns to set for uniqueness
@@ -7748,14 +7764,14 @@ bool MultiReplace::parseColumnAndDelimiterData() {
 
     // Validate delimiter
     if (extendedDelimiter.empty()) {
-        showStatusMessage(getLangStr(L"status_extended_delimiter_empty"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_extended_delimiter_empty"), MessageStatus::Error);
         return false;
     }
 
     // Validate quote character
     if (!quoteCharString.empty() && (quoteCharString.length() != 1 ||
         !(quoteCharString[0] == L'"' || quoteCharString[0] == L'\''))) {
-        showStatusMessage(getLangStr(L"status_invalid_quote_character"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_invalid_quote_character"), MessageStatus::Error);
         return false;
     }
 
@@ -7994,7 +8010,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
 
     if (!lineDelimiterPositions.empty()) {
         LRESULT startPosition = send(SCI_GETCURRENTPOS, 0, 0);
-        showStatusMessage(getLangStr(L"status_actual_position", { addLineAndColumnMessage(startPosition) }), MessageStatus::Success);
+        showStatusMessage(LM.get(L"status_actual_position", { addLineAndColumnMessage(startPosition) }), MessageStatus::Success);
     }
 
     isColumnHighlighted = true;
@@ -8094,7 +8110,7 @@ std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {
         return L"";
     }
     ColumnInfo startInfo = getColumnInfo(pos);
-    std::wstring lineAndColumnMessage = getLangStr(L"status_line_and_column_position",
+    std::wstring lineAndColumnMessage = LM.get(L"status_line_and_column_position",
         { std::to_wstring(startInfo.startLine + 1),
           std::to_wstring(startInfo.startColumnIndex) });
 
@@ -8717,27 +8733,27 @@ void MultiReplace::updateHeaderSortDirection() {
         std::wstring headerText;
         switch (columnID) {
         case ColumnID::FIND_COUNT:
-            headerText = getLangStr(L"header_find_count");
+            headerText = LM.get(L"header_find_count");
             break;
         case ColumnID::REPLACE_COUNT:
-            headerText = getLangStr(L"header_replace_count");
+            headerText = LM.get(L"header_replace_count");
             break;
         case ColumnID::FIND_TEXT:
-            headerText = getLangStr(L"header_find");
+            headerText = LM.get(L"header_find");
             // Append lock symbol if the FIND_TEXT column is locked
             if (findColumnLockedEnabled) {
                 headerText += lockedSymbol;
             }
             break;
         case ColumnID::REPLACE_TEXT:
-            headerText = getLangStr(L"header_replace");
+            headerText = LM.get(L"header_replace");
             // Append lock symbol if the REPLACE_TEXT column is locked
             if (replaceColumnLockedEnabled) {
                 headerText += lockedSymbol;
             }
             break;
         case ColumnID::COMMENTS:
-            headerText = getLangStr(L"header_comments");
+            headerText = LM.get(L"header_comments");
             if (commentsColumnLockedEnabled) {
                 headerText += lockedSymbol;
             }
@@ -9285,15 +9301,15 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::
 }
 
 std::wstring MultiReplace::promptSaveListToCsv() {
-    std::wstring csvDescription = getLangStr(L"filetype_csv");  // "CSV Files (*.csv)"
-    std::wstring allFilesDescription = getLangStr(L"filetype_all_files");  // "All Files (*.*)"
+    std::wstring csvDescription = LM.get(L"filetype_csv");  // "CSV Files (*.csv)"
+    std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
 
     std::vector<std::pair<std::wstring, std::wstring>> filters = {
         {csvDescription, L"*.csv"},
         {allFilesDescription, L"*.*"}
     };
 
-    std::wstring dialogTitle = getLangStr(L"panel_save_list");
+    std::wstring dialogTitle = LM.get(L"panel_save_list");
     std::wstring defaultFileName;
 
     if (!listFilePath.empty()) {
@@ -9355,11 +9371,11 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
 
 void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
     if (!saveListToCsvSilent(filePath, list)) {
-        showStatusMessage(getLangStr(L"status_unable_to_save_file"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
         return;
     }
 
-    showStatusMessage(getLangStr(L"status_saved_items_to_csv", { std::to_wstring(list.size()) }), MessageStatus::Success);
+    showStatusMessage(LM.get(L"status_saved_items_to_csv", { std::to_wstring(list.size()) }), MessageStatus::Success);
 
     // Update the file path and original hash after a successful save
     listFilePath = filePath;
@@ -9378,18 +9394,18 @@ int MultiReplace::checkForUnsavedChanges() {
         if (!listFilePath.empty()) {
             // Get the shortened file path and build the message
             std::wstring shortenedFilePath = getShortenedFilePath(listFilePath, 500);
-            message = getLangStr(L"msgbox_unsaved_changes_file", { shortenedFilePath });
+            message = LM.get(L"msgbox_unsaved_changes_file", { shortenedFilePath });
         }
         else {
             // If no file is associated, use the alternative message
-            message = getLangStr(L"msgbox_unsaved_changes");
+            message = LM.get(L"msgbox_unsaved_changes");
         }
 
         // Show the MessageBox with the appropriate message
         int result = MessageBox(
             nppData._nppHandle,
             message.c_str(),
-            getLangStr(L"msgbox_title_save_list").c_str(),
+            LM.get(L"msgbox_title_save_list").c_str(),
             MB_ICONWARNING | MB_YESNOCANCEL
         );
 
@@ -9426,7 +9442,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     std::ifstream inFile(filePath, std::ios::binary);
     if (!inFile.is_open()) {
         std::wstring shortenedFilePathW = getShortenedFilePath(filePath, 500);
-        throw CsvLoadException(Encoding::wstringToUtf8(getLangStr(L"status_unable_to_open_file", { shortenedFilePathW })));
+        throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_unable_to_open_file", { shortenedFilePathW })));
     }
 
     // Read raw bytes
@@ -9457,7 +9473,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     // Read the header line
     std::wstring headerLine;
     if (!std::getline(contentStream, headerLine)) {
-        throw CsvLoadException(Encoding::wstringToUtf8(getLangStr(L"status_invalid_column_count")));
+        throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_invalid_column_count")));
     }
 
     // Temporary list to hold parsed items
@@ -9470,7 +9486,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
         // Check if column count is valid
         if (columns.size() < 8 || columns.size() > 9) {
-            throw CsvLoadException(Encoding::wstringToUtf8(getLangStr(L"status_invalid_column_count")));
+            throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_invalid_column_count")));
         }
 
         try {
@@ -9487,13 +9503,13 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
             tempList.push_back(item);
         }
         catch (const std::exception&) {
-            throw CsvLoadException(Encoding::wstringToUtf8(getLangStr(L"status_invalid_data_in_columns")));
+            throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_invalid_data_in_columns")));
         }
     }
 
     // Check if the file contains valid data rows
     if (tempList.empty()) {
-        throw CsvLoadException(Encoding::wstringToUtf8(getLangStr(L"status_no_valid_items_in_csv")));
+        throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_no_valid_items_in_csv")));
     }
 
     // Transfer parsed data to the target list
@@ -9521,10 +9537,10 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
 
         // Display success or error message based on the loaded data
         if (replaceListData.empty()) {
-            showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_no_valid_items_in_csv"), MessageStatus::Error);
         }
         else {
-            showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), MessageStatus::Success);
+            showStatusMessage(LM.get(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), MessageStatus::Success);
         }
     }
     catch (const CsvLoadException& ex) {
@@ -9544,9 +9560,9 @@ void MultiReplace::checkForFileChangesAtStartup() {
         std::size_t newFileHash = computeListHash(tempListFromFile);
         if (newFileHash != originalListHash) {
             std::wstring shortenedFilePath = getShortenedFilePath(listFilePath, 500);
-            std::wstring message = getLangStr(L"msgbox_file_modified_prompt", { shortenedFilePath });
+            std::wstring message = LM.get(L"msgbox_file_modified_prompt", { shortenedFilePath });
 
-            int response = MessageBox(nppData._nppHandle, message.c_str(), getLangStr(L"msgbox_title_reload").c_str(), MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND);
+            int response = MessageBox(nppData._nppHandle, message.c_str(), LM.get(L"msgbox_title_reload").c_str(), MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND);
             if (response == IDYES) {
                 replaceListData = tempListFromFile;
                 originalListHash = newFileHash;
@@ -9558,10 +9574,10 @@ void MultiReplace::checkForFileChangesAtStartup() {
     }
 
     if (replaceListData.empty()) {
-        showStatusMessage(getLangStr(L"status_no_valid_items_in_csv"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_no_valid_items_in_csv"), MessageStatus::Error);
     }
     else {
-        showStatusMessage(getLangStr(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), MessageStatus::Success);
+        showStatusMessage(LM.get(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), MessageStatus::Success);
         ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, NULL, TRUE);
     }
@@ -9664,7 +9680,7 @@ std::vector<std::wstring> MultiReplace::parseCsvLine(const std::wstring& line) {
 void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     std::ofstream file(fileName);
     if (!file.is_open()) {
-        showStatusMessage(getLangStr(L"status_unable_to_save_file"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
         return;
     }
 
@@ -9752,17 +9768,17 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     file.close();
 
     if (file.fail()) {
-        showStatusMessage(getLangStr(L"status_unable_to_save_file"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
         return;
     }
 
-    showStatusMessage(getLangStr(L"status_list_exported_to_bash"), MessageStatus::Success);
+    showStatusMessage(LM.get(L"status_list_exported_to_bash"), MessageStatus::Success);
 
     // Show message box if excluded items were found
     if (hasExcludedItems) {
         MessageBox(_hSelf,
-            getLangStr(L"msgbox_use_variables_not_exported").c_str(),
-            getLangStr(L"msgbox_title_warning").c_str(),
+            LM.get(L"msgbox_use_variables_not_exported").c_str(),
+            LM.get(L"msgbox_title_warning").c_str(),
             MB_OK | MB_ICONWARNING);
     }
 
@@ -10102,8 +10118,8 @@ void MultiReplace::saveSettings() {
     }
     catch (const std::exception& ex) {
         // If an error occurs while writing to the INI file, we show an error message
-        std::wstring errorMessage = getLangStr(L"msgbox_error_saving_settings", { std::wstring(ex.what(), ex.what() + strlen(ex.what())) });
-        MessageBox(nppData._nppHandle, errorMessage.c_str(), getLangStr(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+        std::wstring errorMessage = LM.get(L"msgbox_error_saving_settings", { std::wstring(ex.what(), ex.what() + strlen(ex.what())) });
+        MessageBox(nppData._nppHandle, errorMessage.c_str(), LM.get(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
     }
     settingsSaved = true;
 }
@@ -10111,52 +10127,52 @@ void MultiReplace::saveSettings() {
 void MultiReplace::loadSettingsFromIni() {
 
     // Loading the history for the Find text field in reverse order
-    int findHistoryCount = readIntFromIniCache(L"History", L"FindTextHistoryCount", 0);
+    int findHistoryCount = CFG.readInt(L"History", L"FindTextHistoryCount", 0);
     for (int i = findHistoryCount - 1; i >= 0; --i) {
-        std::wstring findHistoryItem = readStringFromIniCache(L"History", L"FindTextHistory" + std::to_wstring(i), L"");
+        std::wstring findHistoryItem = CFG.readString(L"History", L"FindTextHistory" + std::to_wstring(i), L"");
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findHistoryItem);
     }
 
     // Loading the history for the Replace text field in reverse order
-    int replaceHistoryCount = readIntFromIniCache(L"History", L"ReplaceTextHistoryCount", 0);
+    int replaceHistoryCount = CFG.readInt(L"History", L"ReplaceTextHistoryCount", 0);
     for (int i = replaceHistoryCount - 1; i >= 0; --i) {
-        std::wstring replaceHistoryItem = readStringFromIniCache(L"History", L"ReplaceTextHistory" + std::to_wstring(i), L"");
+        std::wstring replaceHistoryItem = CFG.readString(L"History", L"ReplaceTextHistory" + std::to_wstring(i), L"");
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceHistoryItem);
     }
 
     // Load Filter history
-    int filterHistoryCount = readIntFromIniCache(L"History", L"FilterHistoryCount", 0);
+    int filterHistoryCount = CFG.readInt(L"History", L"FilterHistoryCount", 0);
     for (int i = filterHistoryCount - 1; i >= 0; --i) {
-        std::wstring item = readStringFromIniCache(L"History", L"FilterHistory" + std::to_wstring(i), L"");
+        std::wstring item = CFG.readString(L"History", L"FilterHistory" + std::to_wstring(i), L"");
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FILTER_EDIT), item);
     }
 
     // Load Dir history
-    int dirHistoryCount = readIntFromIniCache(L"History", L"DirHistoryCount", 0);
+    int dirHistoryCount = CFG.readInt(L"History", L"DirHistoryCount", 0);
     for (int i = dirHistoryCount - 1; i >= 0; --i) {
-        std::wstring item = readStringFromIniCache(L"History", L"DirHistory" + std::to_wstring(i), L"");
+        std::wstring item = CFG.readString(L"History", L"DirHistory" + std::to_wstring(i), L"");
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), item);
     }
 
     // Reading and setting current "Find what" and "Replace with" texts
-    std::wstring findText = readStringFromIniCache(L"Current", L"FindText", L"");
-    std::wstring replaceText = readStringFromIniCache(L"Current", L"ReplaceText", L"");
+    std::wstring findText = CFG.readString(L"Current", L"FindText", L"");
+    std::wstring replaceText = CFG.readString(L"Current", L"ReplaceText", L"");
     setTextInDialogItem(_hSelf, IDC_FIND_EDIT, findText);
     setTextInDialogItem(_hSelf, IDC_REPLACE_EDIT, replaceText);
 
     // Setting options based on the INI file
-    bool wholeWord = readBoolFromIniCache(L"Options", L"WholeWord", false);
+    bool wholeWord = CFG.readBool(L"Options", L"WholeWord", false);
     SendMessage(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), BM_SETCHECK, wholeWord ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    bool matchCase = readBoolFromIniCache(L"Options", L"MatchCase", false);
+    bool matchCase = CFG.readBool(L"Options", L"MatchCase", false);
     SendMessage(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), BM_SETCHECK, matchCase ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    bool useVariables = readBoolFromIniCache(L"Options", L"UseVariables", false);
+    bool useVariables = CFG.readBool(L"Options", L"UseVariables", false);
     SendMessage(GetDlgItem(_hSelf, IDC_USE_VARIABLES_CHECKBOX), BM_SETCHECK, useVariables ? BST_CHECKED : BST_UNCHECKED, 0);
 
     // Selecting the appropriate search mode radio button based on the settings
-    bool extended = readBoolFromIniCache(L"Options", L"Extended", false);
-    bool regex = readBoolFromIniCache(L"Options", L"Regex", false);
+    bool extended = CFG.readBool(L"Options", L"Extended", false);
+    bool regex = CFG.readBool(L"Options", L"Regex", false);
     if (regex) {
         CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, IDC_REGEX_RADIO);
     }
@@ -10168,68 +10184,68 @@ void MultiReplace::loadSettingsFromIni() {
     }
 
     // Setting additional options
-    bool wrapAround = readBoolFromIniCache(L"Options", L"WrapAround", false);
+    bool wrapAround = CFG.readBool(L"Options", L"WrapAround", false);
     SendMessage(GetDlgItem(_hSelf, IDC_WRAP_AROUND_CHECKBOX), BM_SETCHECK, wrapAround ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    bool replaceAtMatches = readBoolFromIniCache(L"Options", L"ReplaceAtMatches", false);
+    bool replaceAtMatches = CFG.readBool(L"Options", L"ReplaceAtMatches", false);
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX), BM_SETCHECK, replaceAtMatches ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    std::wstring editAtMatchesText = readStringFromIniCache(L"Options", L"EditAtMatches", L"1");
+    std::wstring editAtMatchesText = CFG.readString(L"Options", L"EditAtMatches", L"1");
     setTextInDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT, editAtMatchesText);
 
-    bool replaceButtonsMode = readBoolFromIniCache(L"Options", L"ButtonsMode", false);
+    bool replaceButtonsMode = CFG.readBool(L"Options", L"ButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    useListEnabled = readBoolFromIniCache(L"Options", L"UseList", true);
+    useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     updateUseListState(false);
 
-    highlightMatchEnabled = readBoolFromIniCache(L"Options", L"HighlightMatch", true);
-    exportToBashEnabled = readBoolFromIniCache(L"Options", L"ExportToBash", false);
-    alertNotFoundEnabled = readBoolFromIniCache(L"Options", L"AlertNotFound", true);
-    doubleClickEditsEnabled = readBoolFromIniCache(L"Options", L"DoubleClickEdits", true);
-    isHoverTextEnabled = readBoolFromIniCache(L"Options", L"HoverText", true);
+    highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);
+    exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
+    alertNotFoundEnabled = CFG.readBool(L"Options", L"AlertNotFound", true);
+    doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);
+    isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
 
-    // readIntFromIniCache for editFieldSize
-    editFieldSize = readIntFromIniCache(L"Options", L"EditFieldSize", 5);
+    // CFG.readInt for editFieldSize
+    editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
     editFieldSize = std::clamp(editFieldSize, MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
 
-    listStatisticsEnabled = readBoolFromIniCache(L"Options", L"ListStatistics", false);
-    stayAfterReplaceEnabled = readBoolFromIniCache(L"Options", L"StayAfterReplace", false);
-    flatListEnabled = readBoolFromIniCache(L"Options", L"FlatList", false);
+    listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
+    stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
+    flatListEnabled = CFG.readBool(L"Options", L"FlatList", false);
 
     // Loading and setting the scope
-    int selection = readIntFromIniCache(L"Scope", L"Selection", 0);
-    int columnMode = readIntFromIniCache(L"Scope", L"ColumnMode", 0);
+    int selection = CFG.readInt(L"Scope", L"Selection", 0);
+    int columnMode = CFG.readInt(L"Scope", L"ColumnMode", 0);
 
     // Reading and setting specific scope settings
-    std::wstring columnNum = readStringFromIniCache(L"Scope", L"ColumnNum", L"1-50");
+    std::wstring columnNum = CFG.readString(L"Scope", L"ColumnNum", L"1-50");
     setTextInDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT, columnNum);
 
-    std::wstring delimiter = readStringFromIniCache(L"Scope", L"Delimiter", L",");
+    std::wstring delimiter = CFG.readString(L"Scope", L"Delimiter", L",");
     setTextInDialogItem(_hSelf, IDC_DELIMITER_EDIT, delimiter);
 
-    std::wstring quoteChar = readStringFromIniCache(L"Scope", L"QuoteChar", L"\"");
+    std::wstring quoteChar = CFG.readString(L"Scope", L"QuoteChar", L"\"");
     setTextInDialogItem(_hSelf, IDC_QUOTECHAR_EDIT, quoteChar);
 
-    CSVheaderLinesCount = readIntFromIniCache(L"Scope", L"HeaderLines", 1);
+    CSVheaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
 
     // --- Load “Replace in Files” settings --------------------------
-    std::wstring filter = readStringFromIniCache(L"ReplaceInFiles", L"Filter", L"");
+    std::wstring filter = CFG.readString(L"ReplaceInFiles", L"Filter", L"");
     setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, filter);
 
-    std::wstring dir = readStringFromIniCache(L"ReplaceInFiles", L"Directory", L"");
+    std::wstring dir = CFG.readString(L"ReplaceInFiles", L"Directory", L"");
     setTextInDialogItem(_hSelf, IDC_DIR_EDIT, dir);
 
-    bool inSub = readBoolFromIniCache(L"ReplaceInFiles", L"InSubfolders", false);
+    bool inSub = CFG.readBool(L"ReplaceInFiles", L"InSubfolders", false);
     SendMessage(GetDlgItem(_hSelf, IDC_SUBFOLDERS_CHECKBOX), BM_SETCHECK, inSub ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    bool inHidden = readBoolFromIniCache(L"ReplaceInFiles", L"InHiddenFolders", false);
+    bool inHidden = CFG.readBool(L"ReplaceInFiles", L"InHiddenFolders", false);
     SendMessage(GetDlgItem(_hSelf, IDC_HIDDENFILES_CHECKBOX), BM_SETCHECK, inHidden ? BST_CHECKED : BST_UNCHECKED, 0);
 
 
     // Load file path and original hash
-    listFilePath = readStringFromIniCache(L"File", L"ListFilePath", L"");
-    originalListHash = readSizeTFromIniCache(L"File", L"OriginalListHash", 0);
+    listFilePath = CFG.readString(L"File", L"ListFilePath", L"");
+    originalListHash = CFG.readSizeT(L"File", L"OriginalListHash", 0);
 
     if (selection) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_SELECTION_RADIO);
@@ -10251,9 +10267,6 @@ void MultiReplace::loadSettings() {
     // Read all settings from the cache
     loadSettingsFromIni();
 
-    // Clear the cache to free memory
-    iniCache.clear();
-
     try {
         loadListFromCsvSilent(csvFilePath, replaceListData);
     }
@@ -10271,10 +10284,10 @@ void MultiReplace::loadSettings() {
 
 void MultiReplace::loadUIConfigFromIni() {
     auto [iniFilePath, _] = generateConfigFilePaths(); // Generating config file paths
-    parseIniFile(iniFilePath);
+    CFG.load(iniFilePath); (iniFilePath);
 
     // Load DPI Scaling factor from INI file
-    float customScaleFactor = readFloatFromIniCache(L"Window", L"ScaleFactor", 1.0f);
+    float customScaleFactor = CFG.readFloat(L"Window", L"ScaleFactor", 1.0f);
     dpiMgr->setCustomScaleFactor(customScaleFactor);
 
     // Scale Window and List Size after loading ScaleFactor
@@ -10288,20 +10301,20 @@ void MultiReplace::loadUIConfigFromIni() {
     DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled = sx(DEFAULT_COLUMN_WIDTH_REPLACE_COUNT);
     MIN_GENERAL_WIDTH_scaled = sx(MIN_GENERAL_WIDTH);
 
-    // Load window position (using readIntFromIniCache)
-    windowRect.left = readIntFromIniCache(L"Window", L"PosX", POS_X);
-    windowRect.top = readIntFromIniCache(L"Window", L"PosY", POS_Y);
+    // Load window position (using CFG.readInt)
+    windowRect.left = CFG.readInt(L"Window", L"PosX", POS_X);
+    windowRect.top = CFG.readInt(L"Window", L"PosY", POS_Y);
 
     // Load the state of UseList
-    useListEnabled = readBoolFromIniCache(L"Options", L"UseList", true);
+    useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     updateUseListState(false);
 
     // Load window width
-    int savedWidth = readIntFromIniCache(L"Window", L"Width", MIN_WIDTH_scaled);
+    int savedWidth = CFG.readInt(L"Window", L"Width", MIN_WIDTH_scaled);
     int width = std::max(savedWidth, MIN_WIDTH_scaled);
 
     // Load useListOnHeight
-    useListOnHeight = readIntFromIniCache(L"Window", L"Height", MIN_HEIGHT_scaled);
+    useListOnHeight = CFG.readInt(L"Window", L"Height", MIN_HEIGHT_scaled);
     useListOnHeight = std::max(useListOnHeight, MIN_HEIGHT_scaled);
 
     int height = useListEnabled ? useListOnHeight : useListOffHeight;
@@ -10309,334 +10322,33 @@ void MultiReplace::loadUIConfigFromIni() {
     windowRect.bottom = windowRect.top + height;
 
     // Read column widths
-    findColumnWidth = std::max(readIntFromIniCache(L"ListColumns", L"FindWidth", DEFAULT_COLUMN_WIDTH_FIND_scaled), MIN_GENERAL_WIDTH_scaled);
-    replaceColumnWidth = std::max(readIntFromIniCache(L"ListColumns", L"ReplaceWidth", DEFAULT_COLUMN_WIDTH_REPLACE_scaled), MIN_GENERAL_WIDTH_scaled);
-    commentsColumnWidth = std::max(readIntFromIniCache(L"ListColumns", L"CommentsWidth", DEFAULT_COLUMN_WIDTH_COMMENTS_scaled), MIN_GENERAL_WIDTH_scaled);
-    findCountColumnWidth = std::max(readIntFromIniCache(L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
-    replaceCountColumnWidth = std::max(readIntFromIniCache(L"ListColumns", L"ReplaceCountWidth", DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
+    findColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindWidth", DEFAULT_COLUMN_WIDTH_FIND_scaled), MIN_GENERAL_WIDTH_scaled);
+    replaceColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceWidth", DEFAULT_COLUMN_WIDTH_REPLACE_scaled), MIN_GENERAL_WIDTH_scaled);
+    commentsColumnWidth = std::max(CFG.readInt(L"ListColumns", L"CommentsWidth", DEFAULT_COLUMN_WIDTH_COMMENTS_scaled), MIN_GENERAL_WIDTH_scaled);
+    findCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
+    replaceCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceCountWidth", DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
 
     // Load column visibility states
-    isFindCountVisible = readBoolFromIniCache(L"ListColumns", L"FindCountVisible", false);
-    isReplaceCountVisible = readBoolFromIniCache(L"ListColumns", L"ReplaceCountVisible", false);
-    isCommentsColumnVisible = readBoolFromIniCache(L"ListColumns", L"CommentsVisible", false);
-    isDeleteButtonVisible = readBoolFromIniCache(L"ListColumns", L"DeleteButtonVisible", true);
+    isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
+    isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
+    isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
+    isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
 
     // Load column lock states
-    findColumnLockedEnabled = readBoolFromIniCache(L"ListColumns", L"FindColumnLocked", true);
-    replaceColumnLockedEnabled = readBoolFromIniCache(L"ListColumns", L"ReplaceColumnLocked", false);
-    commentsColumnLockedEnabled = readBoolFromIniCache(L"ListColumns", L"CommentsColumnLocked", true);
+    findColumnLockedEnabled = CFG.readBool(L"ListColumns", L"FindColumnLocked", true);
+    replaceColumnLockedEnabled = CFG.readBool(L"ListColumns", L"ReplaceColumnLocked", false);
+    commentsColumnLockedEnabled = CFG.readBool(L"ListColumns", L"CommentsColumnLocked", true);
 
     // Load transparency settings (readByteFromIniCache)
-    foregroundTransparency = std::clamp(readByteFromIniCache(L"Window", L"ForegroundTransparency", DEFAULT_FOREGROUND_TRANSPARENCY), MIN_TRANSPARENCY, MAX_TRANSPARENCY);
-    backgroundTransparency = std::clamp(readByteFromIniCache(L"Window", L"BackgroundTransparency", DEFAULT_BACKGROUND_TRANSPARENCY), MIN_TRANSPARENCY, MAX_TRANSPARENCY);
+    foregroundTransparency = std::clamp(CFG.readByte(L"Window", L"ForegroundTransparency", DEFAULT_FOREGROUND_TRANSPARENCY), MIN_TRANSPARENCY, MAX_TRANSPARENCY);
+    backgroundTransparency = std::clamp(CFG.readByte(L"Window", L"BackgroundTransparency", DEFAULT_BACKGROUND_TRANSPARENCY), MIN_TRANSPARENCY, MAX_TRANSPARENCY);
 
     // Load Tooltip setting
-    tooltipsEnabled = readBoolFromIniCache(L"Options", L"Tooltips", true);
+    tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
 }
 
 void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {
     ::SetDlgItemTextW(hDlg, itemID, text.c_str());
-}
-
-bool MultiReplace::parseIniFile(const std::wstring& iniFilePath)
-{
-    // Clear any old data
-    iniCache.clear();
-
-    // Convert iniFilePath from wide string to UTF-8
-    int size_needed = WideCharToMultiByte(CP_UTF8, 0, iniFilePath.c_str(), (int)iniFilePath.size(), nullptr, 0, nullptr, nullptr);
-    std::string filePath(size_needed, 0);
-    WideCharToMultiByte(CP_UTF8, 0, iniFilePath.c_str(), (int)iniFilePath.size(), &filePath[0], size_needed, nullptr, nullptr);
-
-    // Open file in binary mode to read UTF-8 data
-    std::ifstream iniFile(filePath, std::ios::binary);
-    if (!iniFile.is_open()) {
-        // Could not open the file
-        return false;
-    }
-
-    std::string raw((std::istreambuf_iterator<char>(iniFile)), std::istreambuf_iterator<char>());
-    iniFile.close();
-
-    // ==== begin UTF-8 / ANSI detection ====
-    size_t offset = 0;
-    UINT cp = CP_UTF8;                                    // always read as UTF-8
-    if (raw.size() >= 3
-        && static_cast<unsigned char>(raw[0]) == 0xEF
-        && static_cast<unsigned char>(raw[1]) == 0xBB
-        && static_cast<unsigned char>(raw[2]) == 0xBF)
-    {
-        offset = 3;                                       // skip BOM
-    }
-    else if (!Encoding::isValidUtf8(raw)) {
-        cp = CP_ACP;                                      // fallback to ANSI if not valid UTF-8
-    }
-    // ==== end detection ====
-
-    // Convert that UTF-8 or ANSI string to std::wstring
-    int len = MultiByteToWideChar(cp, 0, raw.c_str() + offset, (int)raw.size() - (int)offset, nullptr, 0);
-    std::wstring wContent(len, 0);
-    MultiByteToWideChar(cp, 0, raw.c_str() + offset, (int)raw.size() - (int)offset, &wContent[0], len);
-
-    // We'll parse it line by line
-    std::wstringstream contentStream(wContent);
-    std::wstring line;
-    std::wstring currentSection;
-
-    while (std::getline(contentStream, line)) {
-        line = Encoding::trim(line); // remove leading/trailing whitespace
-        if (line.empty()) {
-            // Skip empty lines
-            continue;
-        }
-
-        // If the first character is ';' or '#', treat the entire line as a comment
-        wchar_t firstChar = line[0];
-        if (firstChar == L';' || firstChar == L'#') {
-            // Skip commented line
-            continue;
-        }
-
-        // Check if this is a [Section]
-        if (firstChar == L'[') {
-            size_t closingBracketPos = line.find(L']');
-            if (closingBracketPos != std::wstring::npos) {
-                currentSection = line.substr(1, closingBracketPos - 1);
-                currentSection = Encoding::trim(currentSection);
-            }
-            continue;
-        }
-
-        // Otherwise, look for key=value
-        size_t equalPos = line.find(L'=');
-        if (equalPos != std::wstring::npos) {
-            std::wstring key = Encoding::trim(line.substr(0, equalPos));
-            std::wstring value = Encoding::trim(line.substr(equalPos + 1));
-
-            // Unescape if needed
-            std::wstring unescapedVal = unescapeCsvValue(value);
-
-            // Save to the iniCache
-            iniCache[currentSection][key] = unescapedVal;
-        }
-    }
-
-    return true;
-}
-
-std::wstring MultiReplace::readStringFromIniCache(const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue)
-{
-    auto sectIt = iniCache.find(section);
-    if (sectIt == iniCache.end()) {
-        return defaultValue;
-    }
-    const auto& keyMap = sectIt->second;
-    auto keyIt = keyMap.find(key);
-    if (keyIt == keyMap.end()) {
-        return defaultValue;
-    }
-    return keyIt->second;
-}
-
-bool MultiReplace::readBoolFromIniCache(const std::wstring& section, const std::wstring& key, bool defaultValue)
-{
-    std::wstring def = defaultValue ? L"1" : L"0";
-    std::wstring val = readStringFromIniCache(section, key, def);
-    // You can interpret "true"/"false" or "1"/"0" etc.
-    if (val == L"1" || _wcsicmp(val.c_str(), L"true") == 0) {
-        return true;
-    }
-    else if (val == L"0" || _wcsicmp(val.c_str(), L"false") == 0) {
-        return false;
-    }
-    return defaultValue;
-}
-
-int MultiReplace::readIntFromIniCache(const std::wstring& section, const std::wstring& key, int defaultValue)
-{
-    std::wstring val = readStringFromIniCache(section, key, std::to_wstring(defaultValue));
-    try {
-        return std::stoi(val);
-    }
-    catch (...) {
-        return defaultValue;
-    }
-}
-
-std::size_t MultiReplace::readSizeTFromIniCache(const std::wstring& section, const std::wstring& key, std::size_t defaultValue)
-{
-    std::wstring val = readStringFromIniCache(section, key, std::to_wstring(defaultValue));
-
-    try {
-        unsigned long long result = std::stoull(val);
-
-        if (result > static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) {
-            return defaultValue;
-        }
-
-        return static_cast<std::size_t>(result);
-    }
-    catch (...) {
-        return defaultValue;
-    }
-}
-
-BYTE MultiReplace::readByteFromIniCache(const std::wstring& section, const std::wstring& key, BYTE defaultValue)
-{
-    // Convert the defaultValue to string
-    std::wstring defaultStr = std::to_wstring(defaultValue);
-
-    // Get the string from the cache
-    std::wstring val = readStringFromIniCache(section, key, defaultStr);
-
-    try {
-        int parsedValue = std::stoi(val);
-        // Clamp to 0..255 if necessary
-        if (parsedValue < 0) parsedValue = 0;
-        if (parsedValue > 255) parsedValue = 255;
-
-        return static_cast<BYTE>(parsedValue);
-    }
-    catch (...) {
-        return defaultValue;
-    }
-}
-
-float MultiReplace::readFloatFromIniCache(const std::wstring& section, const std::wstring& key, float defaultValue)
-{
-    // Convert defaultValue to string for fallback
-    std::wstring defaultStr = std::to_wstring(defaultValue);
-
-    // Get the string from the cache
-    std::wstring val = readStringFromIniCache(section, key, defaultStr);
-
-    try {
-        return std::stof(val);
-    }
-    catch (...) {
-        return defaultValue;
-    }
-}
-
-#pragma endregion
-
-
-#pragma region Language
-
-std::wstring MultiReplace::getLanguageFromNativeLangXML() {
-    wchar_t configDir[MAX_PATH] = { 0 };
-    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, reinterpret_cast<LPARAM>(configDir));
-    configDir[MAX_PATH - 1] = L'\0';
-
-    std::wstring nativeLangFilePath = std::wstring(configDir) + L"\\..\\..\\nativeLang.xml";
-    std::wifstream file(nativeLangFilePath);
-    std::wstring line;
-    std::wstring language = L"english"; // default to English
-
-    try {
-        if (file.is_open()) {
-            std::wregex languagePattern(L"<Native-Langue .*? filename=\"(.*?)\\.xml\"");
-            std::wsmatch matches;
-
-            while (std::getline(file, line)) {
-                if (std::regex_search(line, matches, languagePattern) && matches.size() > 1) {
-                    language = matches[1];
-                    break; // Language found
-                }
-            }
-        }
-    }
-    catch (const std::exception&) {
-        // Error handling
-    }
-
-    file.close();
-    return language; // Return the language code as a wide string
-}
-
-void MultiReplace::loadLanguage() {
-    try {
-        wchar_t pluginHomePath[MAX_PATH];
-        ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, MAX_PATH, reinterpret_cast<LPARAM>(pluginHomePath));
-        pluginHomePath[MAX_PATH - 1] = '\0';
-
-        std::wstring languageIniFilePath = std::wstring(pluginHomePath) + L"\\MultiReplace\\languages.ini";
-        std::wstring languageCode = getLanguageFromNativeLangXML();
-
-        loadLanguageFromIni(languageIniFilePath, languageCode);
-    }
-    catch (const std::exception&) {
-        // Error handling
-    }
-}
-
-void MultiReplace::loadLanguageFromIni(const std::wstring& iniFilePath, const std::wstring& languageCode)
-{
-    // Parse the entire file once
-    if (!parseIniFile(iniFilePath)) {
-        // If file not found or can't open, handle if needed
-        return;
-    }
-
-    // Lookup in iniCache for each key
-    for (auto& entry : languageMap) {
-        std::wstring translated = readStringFromIniCache(languageCode, entry.first, entry.second);
-        entry.second = translated;
-    }
-}
-
-std::wstring MultiReplace::getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements) {
-    auto it = languageMap.find(id);
-    if (it != languageMap.end()) {
-        std::wstring result = it->second;
-        std::wstring basePlaceholder = L"$REPLACE_STRING";
-
-        // Replace all occurrences of "<br/>" with "\r\n" for line breaks in MessageBox
-        size_t breakPos = result.find(L"<br/>");
-        while (breakPos != std::wstring::npos) {
-            result.replace(breakPos, 5, L"\r\n");  // 5 is the length of "<br/>"
-            breakPos = result.find(L"<br/>");
-        }
-
-        // Replace placeholders with numbers from highest to lowest
-        for (size_t i = replacements.size(); i > 0; --i) {
-            std::wstring placeholder = basePlaceholder + std::to_wstring(i);
-            size_t pos = result.find(placeholder);
-            while (pos != std::wstring::npos) {
-                result.replace(pos, placeholder.size(), replacements[i - 1]);
-                pos = result.find(placeholder, pos + replacements[i - 1].size());
-            }
-        }
-
-        // Finally, handle the case for $REPLACE_STRING
-        size_t pos = result.find(basePlaceholder);
-        while (pos != std::wstring::npos) {
-            result.replace(pos, basePlaceholder.size(), replacements.empty() ? L"" : replacements[0]);
-            pos = result.find(basePlaceholder, pos + replacements[0].size());
-        }
-
-        return result;
-    }
-    else {
-        return L"Text not found"; // Return a default message if ID not found
-    }
-}
-
-LPCWSTR MultiReplace::getLangStrLPCWSTR(const std::wstring& id) {
-    static std::map<std::wstring, std::wstring> cache; // Static cache to hold strings and extend their lifetimes
-    auto& cachedString = cache[id]; // Reference to the possibly existing entry in the cache
-
-    if (cachedString.empty()) { // If not already cached, retrieve and store it
-        cachedString = getLangStr(id);
-    }
-
-    return cachedString.c_str(); // Return a pointer to the cached string
-}
-
-LPWSTR MultiReplace::getLangStrLPWSTR(const std::wstring& id) {
-    static std::wstring localStr;        // Static variable to extend the lifetime of the returned string
-    localStr = getLangStr(id);           // Copy the result of getLangStr to the static variable
-    return &localStr[0];                 // Return a modifiable pointer to the static string's buffer
 }
 
 #pragma endregion
@@ -10796,7 +10508,7 @@ void MultiReplace::onCaretPositionChanged()
 
     LRESULT startPosition = ::SendMessage(getScintillaHandle(), SCI_GETCURRENTPOS, 0, 0);
     if (instance != nullptr) {
-        instance->showStatusMessage(instance->getLangStr(L"status_actual_position", { instance->addLineAndColumnMessage(startPosition) }), MessageStatus::Success);
+        instance->showStatusMessage(LanguageManager::instance().get(L"status_actual_position", { instance->addLineAndColumnMessage(startPosition) }), MessageStatus::Success);
     }
 
 }

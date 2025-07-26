@@ -113,6 +113,9 @@
     <ClCompile Include="..\src\DPIManager.cpp" />
     <ClCompile Include="..\src\ResultDock.cpp" />
     <ClCompile Include="..\src\Encoding.cpp" />
+    <ClCompile Include="..\src\LanguageManager.cpp" />
+    <ClCompile Include="..\src\ConfigManager.cpp" />
+    <ClCompile Include="..\src\IniFileCache.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -214,6 +217,10 @@
     <ClInclude Include="..\src\StaticDialog\Docking.h" />
     <ClInclude Include="..\src\ResultDock.h" />
     <ClInclude Include="..\src\Encoding.h" />
+    <ClInclude Include="..\src\LanguageManager.h" />
+    <ClInclude Include="..\src\ConfigManager.h" />
+    <ClInclude Include="..\src\IniFileCache.h" />
+    <ClInclude Include="..\src\language_mapping.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

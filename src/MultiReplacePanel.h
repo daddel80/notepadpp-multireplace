@@ -24,6 +24,8 @@
 #include "DPIManager.h"
 #include "ResultDock.h"
 #include "Encoding.h"
+#include "LanguageManager.h"
+#include "ConfigManager.h"
 
 #include <string>
 #include <vector>
@@ -341,7 +343,7 @@ inline lua_State* _luaState = nullptr;    // Reused Lua state
 
 inline bool _editIsExpanded = false; // track expand state
 using IniData = std::map<std::wstring, std::map<std::wstring, std::wstring>>;
-inline IniData iniCache;
+//inline IniData iniCache;
 
 class MultiReplace : public StaticDialog
 {
@@ -459,7 +461,7 @@ public:
     void loadListFromCsv(const std::wstring& filePath); // used in DropTarget.cpp
     void showListFilePath();
     void initializeDragAndDrop();
-    std::wstring getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements = {});
+   // std::wstring getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements = {});
 
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
@@ -877,28 +879,13 @@ private:
     void loadSettings();
     void loadUIConfigFromIni();
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
-    bool parseIniFile(const std::wstring& iniFilePath);
-    std::wstring readStringFromIniCache(const std::wstring& section, const std::wstring& key, const std::wstring& defaultValue);
-    bool readBoolFromIniCache(const std::wstring& section, const std::wstring& key, bool defaultValue);
-    int readIntFromIniCache(const std::wstring& section, const std::wstring& key, int defaultValue);
-    BYTE readByteFromIniCache(const std::wstring& section, const std::wstring& key, BYTE defaultValue);
-    float readFloatFromIniCache(const std::wstring& section, const std::wstring& key, float defaultValue);
-    std::size_t readSizeTFromIniCache(const std::wstring& section, const std::wstring& key, std::size_t defaultValue);
-
-    // Language
-    void loadLanguage();
-    void loadLanguageFromIni(const std::wstring& iniFilePath, const std::wstring& languageCode);
-    std::wstring getLanguageFromNativeLangXML();
-    
-    LPCWSTR getLangStrLPCWSTR(const std::wstring& id);
-    LPWSTR getLangStrLPWSTR(const std::wstring& id);
 
     // Debug DPI Information
     void showDPIAndFontInfo();
 
 };
 
-extern std::unordered_map<std::wstring, std::wstring> languageMap;
+//extern std::unordered_map<std::wstring, std::wstring> languageMap;
 
 extern MultiReplace _MultiReplace;
 
