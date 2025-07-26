@@ -116,6 +116,7 @@
     <ClCompile Include="..\src\LanguageManager.cpp" />
     <ClCompile Include="..\src\ConfigManager.cpp" />
     <ClCompile Include="..\src\IniFileCache.cpp" />
+    <ClCompile Include="..\src\UndoRedoManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -221,6 +222,7 @@
     <ClInclude Include="..\src\ConfigManager.h" />
     <ClInclude Include="..\src\IniFileCache.h" />
     <ClInclude Include="..\src\language_mapping.h" />
+    <ClInclude Include="..\src\UndoRedoManager.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

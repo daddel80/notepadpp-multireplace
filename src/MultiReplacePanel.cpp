@@ -28,6 +28,7 @@
 #include "Encoding.h"
 #include "LanguageManager.h"
 #include "ConfigManager.h"
+#include "UndoRedoManager.h"
 
 #include <algorithm>
 #include <bitset>
@@ -86,6 +87,7 @@ HWND MultiReplace::hDebugWnd = NULL;
 bool MultiReplace::_isShuttingDown = false;
 static LanguageManager& LM = LanguageManager::instance();
 static ConfigManager& CFG = ConfigManager::instance();
+static UndoRedoManager& URM = UndoRedoManager::instance();
 
 #pragma warning(disable: 6262)
 
@@ -816,34 +818,6 @@ void MultiReplace::updateUseListState(bool isUpdate)
 
 #pragma region Undo stack
 
-void MultiReplace::undo() {
-    if (!undoStack.empty()) {
-        // Get the last action
-        UndoRedoAction action = undoStack.back();
-        undoStack.pop_back();
-
-        // Execute the undo action
-        action.undoAction();
-
-        // Push the action onto the redoStack
-        redoStack.push_back(action);
-    }
-}
-
-void MultiReplace::redo() {
-    if (!redoStack.empty()) {
-        // Get the last action
-        UndoRedoAction action = redoStack.back();
-        redoStack.pop_back();
-
-        // Execute the redo action
-        action.redoAction();
-
-        // Push the action back onto the undoStack
-        undoStack.push_back(action);
-    }
-}
-
 void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& items, size_t insertPosition = std::numeric_limits<size_t>::max()) {
     // Determine the insert position
     if (insertPosition > replaceListData.size()) {
@@ -859,9 +833,6 @@ void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& ite
     // Update the ListView
     ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
-
-    // Clear the redoStack since a new action invalidates the redo history
-    redoStack.clear();
 
     // Create undo and redo actions
     UndoRedoAction action;
@@ -904,7 +875,7 @@ void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& ite
         };
 
     // Push the action onto the undoStack
-    undoStack.push_back(action);
+    URM.push(action.undoAction, action.redoAction, L"Add items");
 }
 
 void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove) {
@@ -924,9 +895,6 @@ void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indices
     // Update the ListView to reflect changes
     ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
-
-    // Clear redoStack since a new action invalidates redo history
-    redoStack.clear();
 
     // Create undo and redo actions
     UndoRedoAction action;
@@ -994,7 +962,7 @@ void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indices
         };
 
     // Push the action to the undoStack
-    undoStack.push_back(action);
+    URM.push(action.undoAction, action.redoAction, L"Remove items");
 }
 
 void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& newData) {
@@ -1006,9 +974,6 @@ void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& 
 
     // Update the ListView item
     updateListViewItem(index);
-
-    // Clear the redoStack
-    redoStack.clear();
 
     // Create Undo/Redo actions
     UndoRedoAction action;
@@ -1046,7 +1011,7 @@ void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& 
         };
 
     // Push the action onto the undoStack
-    undoStack.push_back(action);
+    URM.push(action.undoAction, action.redoAction, L"Modify item");
 }
 
 bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Direction direction) {
@@ -1083,9 +1048,6 @@ bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Directio
     // Update the ListView
     ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, NULL, TRUE);
-
-    // Clear the redoStack to invalidate future actions
-    redoStack.clear();
 
     // Create Undo/Redo actions
     UndoRedoAction action;
@@ -1139,7 +1101,7 @@ bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Directio
         };
 
     // Push the action onto the undoStack
-    undoStack.push_back(action);
+    URM.push(action.undoAction, action.redoAction, L"Move items");
 
     // Deselect all items
     ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
@@ -1206,7 +1168,7 @@ void MultiReplace::sortItemsInReplaceList(const std::vector<size_t>& originalOrd
         };
 
     // Push the action onto the undo stack
-    undoStack.push_back(action);
+    URM.push(action.undoAction, action.redoAction, L"Sort items");
 }
 
 void MultiReplace::scrollToIndices(size_t firstIndex, size_t lastIndex) {
@@ -2689,8 +2651,8 @@ MenuState MultiReplace::checkMenuConditions(POINT ptScreen) {
     state.allEnabled = (enabledCount == ListView_GetSelectedCount(_replaceListView));
     state.allDisabled = (disabledCount == ListView_GetSelectedCount(_replaceListView));
 
-    state.canUndo = !undoStack.empty();
-    state.canRedo = !redoStack.empty();
+    state.canUndo = URM.canUndo();
+    state.canRedo = URM.canRedo();
 
     return state;
 }
@@ -2730,11 +2692,11 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
 
     switch (action) {
     case ItemAction::Undo:
-        undo();
+        URM.undo();
         showListFilePath();
         break;
     case ItemAction::Redo:
-        redo();
+        URM.redo();
         showListFilePath();
         break;
     case ItemAction::Search:
@@ -3451,10 +3413,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 if (GetKeyState(VK_CONTROL) & 0x8000) { // If Ctrl is pressed
                     switch (pnkd->wVKey) {
                     case 'Z': // Ctrl+Z for Undo
-                        undo();
+                        URM.undo();
                         break;
                     case 'Y': // Ctrl+Y for Redo
-                        redo();
+                        URM.redo();
                         break;
                     case 'F': // Ctrl+F for Search in List
                         performItemAction(_contextMenuClickPoint, ItemAction::Search);
@@ -8641,9 +8603,6 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
         updateListViewItem(index);
     }
 
-    // Clear the redoStack
-    redoStack.clear();
-
     // Create Undo/Redo actions
     UndoRedoAction action;
 
@@ -8666,7 +8625,7 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
         };
 
     // Push the action onto the undoStack
-    undoStack.push_back(action);
+    URM.push(action.undoAction, action.redoAction, L"Set enabled");
 
     // Show Select Statisics
     showListFilePath();
@@ -9528,8 +9487,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         originalListHash = computeListHash(replaceListData);
 
         // Clear Undo and Redo stacks
-        undoStack.clear();
-        redoStack.clear();
+        URM.clear();
 
         // Update the ListView
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);

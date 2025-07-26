@@ -335,8 +335,6 @@ struct EditControlContext
 
 // each new Vector has to be delared outside of the class due to unresolved memory behaviours, 
 // possible initial limited stack size in N++ for Plugins
-inline std::vector<UndoRedoAction> undoStack;
-inline std::vector<UndoRedoAction> redoStack;
 inline HWND hwndExpandBtn = nullptr;
 inline HFONT _hBoldFont2;
 inline lua_State* _luaState = nullptr;    // Reused Lua state
@@ -678,8 +676,6 @@ private:
     void updateUseListState(bool isUpdate);
 
     // Undo
-    void undo();
-    void redo();
     void addItemsToReplaceList(const std::vector<ReplaceItemData>& items, size_t insertPosition);
     void removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove);
     void modifyItemInReplaceList(size_t index, const ReplaceItemData& newData);
