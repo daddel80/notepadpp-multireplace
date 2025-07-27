@@ -834,7 +834,6 @@ private:
     void updateHeaderSelection();
     void updateHeaderSortDirection();
     void showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound = false);
-    //void updateThemeAndColors();
     void applyThemePalette();
     void refreshColumnStylesIfNeeded();
     std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);

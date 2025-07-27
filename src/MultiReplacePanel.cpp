@@ -8800,51 +8800,6 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageSta
     }
 }
 
-/*
-void MultiReplace::updateThemeAndColors() {
-    // Check if Notepad++ is currently in dark mode
-    BOOL isDarkMode = (SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0);
-
-    // Assign colors from the predefined palettes in the header file
-    if (isDarkMode) {
-        COLOR_SUCCESS = DMODE_SUCCESS;
-        COLOR_ERROR = DMODE_ERROR;
-        COLOR_INFO = DMODE_INFO;
-        _filterHelpColor = DMODE_FILTER_HELP;
-    } else {
-        COLOR_SUCCESS = LMODE_SUCCESS;
-        COLOR_ERROR = LMODE_ERROR;
-        COLOR_INFO = LMODE_INFO;
-        _filterHelpColor = LMODE_FILTER_HELP;
-    }
-
-    // Update the active color based on the type of the last message shown.
-    // This ensures the color changes instantly on theme switch.
-    switch (_lastMessageStatus) {
-    case MessageStatus::Success:
-        _statusMessageColor = COLOR_SUCCESS;
-        break;
-    case MessageStatus::Error:
-        _statusMessageColor = COLOR_ERROR;
-        break;
-    case MessageStatus::Info:
-    default:
-        _statusMessageColor = COLOR_INFO;
-        break;
-    }
-
-    // This ensures column colors are also updated on theme change.
-    if (isColumnHighlighted)
-        initializeColumnStyles();
-
-    // Force the owner-drawn status control to repaint with the new colors
-    InvalidateRect(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), NULL, TRUE);
-
-    // draws the (?) Find Tooltip
-    InvalidateRect(GetDlgItem(_hSelf, IDC_FILTER_HELP), NULL, TRUE);
-}
-*/
-
 void MultiReplace::applyThemePalette()
 {
     // Check if Notepad++ is currently in dark mode
