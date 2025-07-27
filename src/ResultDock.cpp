@@ -1229,14 +1229,40 @@ namespace {
     // --------------------------------------------------------------------------
     //  Remove "Line 123: " prefix from hit line (UTF‑16)
     // --------------------------------------------------------------------------
-    std::wstring stripHitPrefix(const std::wstring& w) {
-        size_t pos = w.find(L"Line ");
-        if (pos == std::wstring::npos) return w;
-        pos += 5;                                   // skip "Line "
-        while (pos < w.size() && iswdigit(w[pos])) ++pos;
-        if (pos < w.size() && w[pos] == L':') ++pos;
-        while (pos < w.size() && iswspace(w[pos])) ++pos;
-        return w.substr(pos);
+    std::wstring stripHitPrefix(const std::wstring& w)
+    {
+        size_t i = 0;
+
+        // 1. Skip leading whitespace (indentation).
+        while (i < w.size() && iswspace(w[i]))
+            ++i;
+
+        // 2. Skip an optional alphabetic word such as "Line", "Zeile", etc.
+        while (i < w.size() && iswalpha(w[i]))
+            ++i;
+
+        // 3. Skip one single space after that word, if present.
+        if (i < w.size() && w[i] == L' ')
+            ++i;
+
+        // 4. Consume at least one digit (line number).
+        size_t digitStart = i;
+        while (i < w.size() && iswdigit(w[i]))
+            ++i;
+        if (i == digitStart || i >= w.size())
+            return w;            // Not our format – return unchanged.
+
+        // 5. Expect exactly one colon.
+        if (w[i] != L':')
+            return w;            // Not our format – return unchanged.
+        ++i;
+
+        // 6. Skip whitespace after the colon.
+        while (i < w.size() && iswspace(w[i]))
+            ++i;
+
+        // 7. Return the remainder: the actual hit text.
+        return w.substr(i);
     }
 
     // --------------------------------------------------------------------------
