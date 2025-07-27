@@ -509,7 +509,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 
 void ResultDock::buildListText(
     const FileMap& files,
-    bool flatView,
+    bool groupView,
     const std::wstring& header,
     const SciSendFn& sciSend,
     std::wstring& outText,
@@ -525,23 +525,7 @@ void ResultDock::buildListText(
         body += fileHdr;
         utf8Len += Encoding::wstringToUtf8(fileHdr).size();
 
-        if (flatView)
-        {
-            // flat: collect all hits per file and sort by position
-            std::vector<Hit> merged;
-            for (auto& c : f.crits)
-                merged.insert(merged.end(),
-                    std::make_move_iterator(c.hits.begin()),
-                    std::make_move_iterator(c.hits.end()));
-            std::sort(merged.begin(), merged.end(),
-                [](auto const& a, auto const& b) { return a.pos < b.pos; });
-
-            formatHitsLines(sciSend, merged, body, utf8Len);
-            outHits.insert(outHits.end(),
-                std::make_move_iterator(merged.begin()),
-                std::make_move_iterator(merged.end()));
-        }
-        else
+        if (groupView)
         {
             // grouped: first the file header, then each criterion block
             for (auto& c : f.crits)
@@ -560,6 +544,22 @@ void ResultDock::buildListText(
                     std::make_move_iterator(hitsCopy.begin()),
                     std::make_move_iterator(hitsCopy.end()));
             }
+        }
+        else
+        {
+            // flat: collect all hits per file and sort by position
+            std::vector<Hit> merged;
+            for (auto& c : f.crits)
+                merged.insert(merged.end(),
+                    std::make_move_iterator(c.hits.begin()),
+                    std::make_move_iterator(c.hits.end()));
+            std::sort(merged.begin(), merged.end(),
+                [](auto const& a, auto const& b) { return a.pos < b.pos; });
+
+            formatHitsLines(sciSend, merged, body, utf8Len);
+            outHits.insert(outHits.end(),
+                std::make_move_iterator(merged.begin()),
+                std::make_move_iterator(merged.end()));
         }
     }
 

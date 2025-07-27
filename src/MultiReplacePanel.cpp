@@ -6161,15 +6161,12 @@ void MultiReplace::handleFindAllButton()
         }
 
         // (d) Build dock text
-        std::wstring header =
-            flatListEnabled
-            ? L"Search in List – flat (" + std::to_wstring(totalHits) + L" hits in 1 file)\r\n"
-            : L"Search in List (" + std::to_wstring(totalHits) + L" hits in 1 file)\r\n";
+        std::wstring header = L"Search in List (" + std::to_wstring(totalHits) + L" hits in 1 file)\r\n";
 
         std::wstring dockText;
         dock.buildListText(
             /* files: */    fileMap,
-            /* flatView: */ flatListEnabled,
+            /* groupView:*/ groupResultsEnabled,
             /* header: */   header,
             /* sciSend: */  sciSend,
             /* outText: */  dockText,
@@ -9968,7 +9965,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << Encoding::wstringToUtf8(L"EditFieldSize=" + std::to_wstring(editFieldSize) + L"\n");
     outFile << Encoding::wstringToUtf8(L"ListStatistics=" + std::to_wstring(listStatisticsEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"StayAfterReplace=" + std::to_wstring(stayAfterReplaceEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"FlatList=" + std::to_wstring(flatListEnabled) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"GroupResults=" + std::to_wstring(groupResultsEnabled) + L"\n");
 
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
@@ -10165,7 +10162,7 @@ void MultiReplace::loadSettingsFromIni() {
 
     listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
     stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
-    flatListEnabled = CFG.readBool(L"Options", L"FlatList", false);
+    groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
 
     // Loading and setting the scope
     int selection = CFG.readInt(L"Scope", L"Selection", 0);

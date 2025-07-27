@@ -611,7 +611,7 @@ private:
     inline static int  editFieldSize = 5;                // Size of the edit field for find/replace input
     inline static bool listStatisticsEnabled = false;    // Status for showing list statistics
     inline static bool stayAfterReplaceEnabled = false; // Status for keeping panel open after replace
-    inline static bool flatListEnabled = false;          // Status for flat list view
+    inline static bool groupResultsEnabled = false;          // Status for flat list view
 
     bool isHoverTextSuppressed = false;    // Temporarily suppress HoverText to avoid flickering when Edit in list is open
 

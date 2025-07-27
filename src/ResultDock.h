@@ -90,7 +90,7 @@ public:
     using FileMap = std::unordered_map<std::string, FileAgg>;
 
     void buildListText(const FileMap& files,
-        bool flatView,
+        bool groupView,
         const std::wstring& header,
         const SciSendFn& sciSend,
         std::wstring& outText,
