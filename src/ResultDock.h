@@ -175,6 +175,7 @@ private:
     static void openSelectedPaths(HWND hSci);
     static void copyTextToClipboard(HWND owner, const std::wstring& w);
     static void deleteSelectedItems(HWND hSci);
+    void collapseOldSearches();
 
     // ‑‑‑ persistent UI flags ‑‑‑
     static bool _wrapEnabled;

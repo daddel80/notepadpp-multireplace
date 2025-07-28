@@ -161,6 +161,7 @@ void ResultDock::prependText(const std::wstring& wText)
     // After prepending, the entire view needs to be restyled and folded again.
     rebuildFolding();
     applyTheme();
+    collapseOldSearches();
 }
 
 void ResultDock::appendText(const std::wstring& wText)
@@ -248,6 +249,7 @@ void ResultDock::prependHits(const std::vector<Hit>& newHits, const std::wstring
     rebuildFolding();
     applyTheme();
     applyStyling();
+    collapseOldSearches();
 
     ::SendMessage(_hSci, SCI_SETFIRSTVISIBLELINE, 0, 0);
     ::SendMessage(_hSci, SCI_GOTOPOS, 0, 0);
@@ -741,9 +743,7 @@ void ResultDock::initFolding() const
     /* 7) enable mouse interaction & auto‑fold updates ------------ */
     S(SCI_SETMARGINSENSITIVEN, M_FOLD, TRUE);
     S(SCI_SETAUTOMATICFOLD,
-        SC_AUTOMATICFOLD_SHOW |
-        SC_AUTOMATICFOLD_CLICK |
-        SC_AUTOMATICFOLD_CHANGE);
+        SC_AUTOMATICFOLD_CLICK );
 
     S(SCI_SETFOLDFLAGS, SC_FOLDFLAG_LINEAFTER_CONTRACTED);
 
@@ -1170,7 +1170,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             break;
 
         case IDM_RD_UNFOLD_ALL:
-            ::SendMessage(hwnd, SCI_FOLDALL, SC_FOLDACTION_EXPAND, 0);
+            ::SendMessage(hwnd, SCI_FOLDALL, SC_FOLDACTION_EXPAND, 0);  
             break;
 
         case IDM_RD_COPY_STD:   
@@ -1563,8 +1563,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     // ------------------------------------------------------------------
     //  Selection mode: collect every header / hit and expand hierarchy
     // ------------------------------------------------------------------
-    if (hasSel)
-    {
+    if (hasSel) {
         for (int l = firstLine; l <= lastLine; ++l)
         {
             // skip lines already included by previous pushRange
@@ -1589,8 +1588,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
             pushRange(l, endLine);
         }
     }
-    else
-    {
+    else {
         // ------------------------------------------------------------------
         //  Caret‑only mode: single logical block
         // ------------------------------------------------------------------
@@ -1621,8 +1619,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     // ------------------------------------------------------------------
     ::SendMessage(hSci, SCI_SETREADONLY, FALSE, 0);
 
-    for (auto it = ranges.rbegin(); it != ranges.rend(); ++it)
-    {
+    for (auto it = ranges.rbegin(); it != ranges.rend(); ++it) {
         int fLine = it->first;
         int lLine = it->last;
 
@@ -1660,4 +1657,39 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     // ------------------------------------------------------------------
     dock.rebuildFolding();
     dock.applyStyling();
+}
+
+// --------------------------------------------------------------------------
+//  Collapse each *root* “Search …” header except the newest one
+// --------------------------------------------------------------------------
+void ResultDock::collapseOldSearches()
+{
+    if (!_hSci) return;
+
+    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0)
+        { return ::SendMessage(_hSci, m, w, l); };
+
+    bool newestSeen = false;
+    const int lines = (int)S(SCI_GETLINECOUNT);
+
+    for (int l = 0; l < lines; ++l) {
+        const int lvl = (int)S(SCI_GETFOLDLEVEL, l);
+
+        // root header?  (= Level 0 + Header‑Flag)
+        const bool isRootHeader =
+            (lvl & SC_FOLDLEVELHEADERFLAG) &&
+            ((lvl & SC_FOLDLEVELNUMBERMASK) == SC_FOLDLEVELBASE);
+
+        if (!isRootHeader)
+            continue;
+
+        if (!newestSeen) {
+            newestSeen = true;               // keep newest block open
+        }
+        else {
+            // only collapse when it’s still expanded
+            if (S(SCI_GETFOLDEXPANDED, l))
+                S(SCI_FOLDLINE, l, SC_FOLDACTION_CONTRACT);
+        }
+    }
 }
