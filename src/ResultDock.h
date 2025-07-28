@@ -150,13 +150,14 @@ private:
     enum : UINT {
         IDM_RD_FOLD_ALL = 60001,
         IDM_RD_UNFOLD_ALL = 60002,
-        IDM_RD_SELECT_ALL = 60003,
-        IDM_RD_CLEAR_ALL = 60004,
-        IDM_RD_COPY_LINES = 60005,
-        IDM_RD_COPY_PATHS = 60006,
-        IDM_RD_OPEN_PATHS = 60007,
-        IDM_RD_TOGGLE_WRAP = 60008,
-        IDM_RD_TOGGLE_PURGE = 60009
+        IDM_RD_COPY_STD = 60003,
+        IDM_RD_SELECT_ALL = 60004,
+        IDM_RD_CLEAR_ALL = 60005,
+        IDM_RD_COPY_LINES = 60006,
+        IDM_RD_COPY_PATHS = 60007,
+        IDM_RD_OPEN_PATHS = 60008,
+        IDM_RD_TOGGLE_WRAP = 60009,
+        IDM_RD_TOGGLE_PURGE = 60010
     };
 
     // ------------------- Construction & State -----------------
@@ -173,6 +174,7 @@ private:
     static void copySelectedPaths(HWND hSci);
     static void openSelectedPaths(HWND hSci);
     static void copyTextToClipboard(HWND owner, const std::wstring& w);
+    static void deleteSelectedItems(HWND hSci);
 
     // ‑‑‑ persistent UI flags ‑‑‑
     static bool _wrapEnabled;

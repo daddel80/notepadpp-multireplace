@@ -1100,6 +1100,13 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         ::SendMessage(nppData._nppHandle, NPPM_DMMHIDE, 0, (LPARAM)ResultDock::instance()._hDock);
         return TRUE;
 
+    case WM_KEYDOWN:
+        if (wp == VK_DELETE) {
+            deleteSelectedItems(hwnd);
+            return 0;                               // eat the key
+        }
+        break;
+
     case WM_NCDESTROY:
         s_prevSciProc = nullptr;
         break;
@@ -1121,12 +1128,17 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
                 ::AppendMenuW(hMenu, flags, id, txt.c_str());
             };
 
+        const bool hasSel =
+            ::SendMessage(hwnd, SCI_GETSELECTIONSTART, 0, 0) !=
+            ::SendMessage(hwnd, SCI_GETSELECTIONEND, 0, 0);
+
         // -------- exact order & separators (matches screenshot) ----------------
 
         add(IDM_RD_FOLD_ALL, L"rdmenu_fold_all");
         add(IDM_RD_UNFOLD_ALL, L"rdmenu_unfold_all");
         ::AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-
+        UINT copyFlags = MF_STRING | (hasSel ? 0 : MF_GRAYED);
+        add(IDM_RD_COPY_STD, L"rdmenu_copy_std", copyFlags);
         add(IDM_RD_COPY_LINES, L"rdmenu_copy_lines");
         add(IDM_RD_COPY_PATHS, L"rdmenu_copy_paths");
         add(IDM_RD_SELECT_ALL, L"rdmenu_select_all");
@@ -1159,6 +1171,10 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
         case IDM_RD_UNFOLD_ALL:
             ::SendMessage(hwnd, SCI_FOLDALL, SC_FOLDACTION_EXPAND, 0);
+            break;
+
+        case IDM_RD_COPY_STD:   
+            ::SendMessage(hwnd, SCI_COPY, 0, 0); 
             break;
 
             // ── select / clear ────────────────────────────
@@ -1284,7 +1300,6 @@ namespace {
     }
 
 } // anonymous namespace
-
 
 
 // ==========================================================================
@@ -1459,7 +1474,6 @@ void ResultDock::copySelectedPaths(HWND hSci) {
 }
 
 
-
 // --------------------------------------------------------------------------
 //  openSelectedPaths – helper for IDM_RD_OPEN_PATHS
 // --------------------------------------------------------------------------
@@ -1495,4 +1509,155 @@ void ResultDock::openSelectedPaths(HWND hSci) {
             }
         }
     }
+}
+
+// --------------------------------------------------------------------------
+//  deleteSelectedItems – remove selected lines incl. subordinate hierarchy
+// --------------------------------------------------------------------------
+void ResultDock::deleteSelectedItems(HWND hSci)
+{
+    auto& dock = ResultDock::instance();
+
+    // ------------------------------------------------------------------
+    //  Determine anchor / caret lines
+    // ------------------------------------------------------------------
+    Sci_Position a = ::SendMessage(hSci, SCI_GETSELECTIONNANCHOR, 0, 0);
+    Sci_Position c = ::SendMessage(hSci, SCI_GETCURRENTPOS, 0, 0);
+    if (a > c) std::swap(a, c);
+
+    int firstLine = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, a, 0);
+    int lastLine = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, c, 0);
+    bool hasSel = (a != c);
+
+    // ------------------------------------------------------------------
+    //  Build list of display‑line ranges that must be deleted
+    // ------------------------------------------------------------------
+    struct DelRange { int first; int last; };
+    std::vector<DelRange> ranges;
+
+    auto subtreeEnd = [&](int fromLine, int minIndent) -> int
+        {
+            int total = (int)::SendMessage(hSci, SCI_GETLINECOUNT, 0, 0);
+            for (int l = fromLine; l < total; ++l)
+            {
+                int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
+                std::string raw(len, '\0');
+                ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
+                raw.resize(strnlen(raw.c_str(), len));
+
+                int indent = ResultDock::leadingSpaces(raw.c_str(), (int)raw.size());
+                if (indent <= minIndent && classify(raw) != LineKind::HitLine)
+                    return l - 1;                           // previous line ends subtree
+            }
+            return (int)::SendMessage(hSci, SCI_GETLINECOUNT, 0, 0) - 1; // EOF
+        };
+
+    auto pushRange = [&](int first, int last)
+        {
+            if (ranges.empty() || first > ranges.back().last + 1)
+                ranges.push_back({ first, last });
+            else
+                ranges.back().last = (std::max)(ranges.back().last, last);
+        };
+
+    // ------------------------------------------------------------------
+    //  Selection mode: collect every header / hit and expand hierarchy
+    // ------------------------------------------------------------------
+    if (hasSel)
+    {
+        for (int l = firstLine; l <= lastLine; ++l)
+        {
+            // skip lines already included by previous pushRange
+            if (!ranges.empty() && l <= ranges.back().last) continue;
+
+            int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
+            std::string raw(len, '\0');
+            ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
+            raw.resize(strnlen(raw.c_str(), len));
+
+            LineKind kind = classify(raw);
+            int endLine = l;   // default: only this line
+
+            switch (kind)
+            {
+            case LineKind::HitLine:   endLine = l; break;
+            case LineKind::CritHdr:   endLine = subtreeEnd(l + 1, 8); break;
+            case LineKind::FileHdr:   endLine = subtreeEnd(l + 1, 4); break;
+            case LineKind::SearchHdr: endLine = subtreeEnd(l + 1, 0); break;
+            default:                  continue;                       // ignore blanks
+            }
+            pushRange(l, endLine);
+        }
+    }
+    else
+    {
+        // ------------------------------------------------------------------
+        //  Caret‑only mode: single logical block
+        // ------------------------------------------------------------------
+        int len = (int)::SendMessage(hSci, SCI_LINELENGTH, firstLine, 0);
+        std::string raw(len, '\0');
+        ::SendMessage(hSci, SCI_GETLINE, firstLine, (LPARAM)raw.data());
+        raw.resize(strnlen(raw.c_str(), len));
+
+        LineKind kind = classify(raw);
+        int endLine = firstLine;
+
+        switch (kind)
+        {
+        case LineKind::HitLine:   endLine = firstLine; break;
+        case LineKind::CritHdr:   endLine = subtreeEnd(firstLine + 1, 8); break;
+        case LineKind::FileHdr:   endLine = subtreeEnd(firstLine + 1, 4); break;
+        case LineKind::SearchHdr: endLine = subtreeEnd(firstLine + 1, 0); break;
+        default: return; // nothing deletable on this line
+        }
+        ranges.push_back({ firstLine, endLine });
+    }
+
+    if (ranges.empty())
+        return;
+
+    // ------------------------------------------------------------------
+    //  Delete ranges bottom‑up and update _hits offsets
+    // ------------------------------------------------------------------
+    ::SendMessage(hSci, SCI_SETREADONLY, FALSE, 0);
+
+    for (auto it = ranges.rbegin(); it != ranges.rend(); ++it)
+    {
+        int fLine = it->first;
+        int lLine = it->last;
+
+        Sci_Position start = ::SendMessage(hSci, SCI_POSITIONFROMLINE, fLine, 0);
+        Sci_Position end = (lLine + 1 < ::SendMessage(hSci, SCI_GETLINECOUNT, 0, 0))
+            ? ::SendMessage(hSci, SCI_POSITIONFROMLINE, lLine + 1, 0)
+            : ::SendMessage(hSci, SCI_GETLENGTH, 0, 0);
+
+        Sci_Position delta = end - start;
+        if (delta <= 0) continue;
+
+        // ---- remove from Scintilla buffer
+        ::SendMessage(hSci, SCI_DELETERANGE, start, delta);
+
+        // ---- sync internal hit list
+        for (auto h = dock._hits.begin(); h != dock._hits.end(); )
+        {
+            if (h->displayLineStart >= start && h->displayLineStart < end)
+            {
+                h = dock._hits.erase(h);                  // entry deleted
+            }
+            else
+            {
+                if (h->displayLineStart >= end)
+                    h->displayLineStart -= (int)delta;    // shift left
+                ++h;
+            }
+        }
+    }
+
+    ::SendMessage(hSci, SCI_SETREADONLY, TRUE, 0);
+
+    // ------------------------------------------------------------------
+    //  Re‑fold and re‑style remaining lines
+    // ------------------------------------------------------------------
+    dock.rebuildFolding();
+    dock.applyStyling();
 }
