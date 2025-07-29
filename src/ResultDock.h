@@ -96,6 +96,11 @@ public:
         std::wstring& outText,
         std::vector<Hit>& outHits) const;
 
+    static bool  wrapEnabled() { return _wrapEnabled; }
+    static bool  purgeEnabled() { return _purgeOnNextSearch; }
+    static void  setWrapEnabled(bool v) { _wrapEnabled = v; }
+    static void  setPurgeEnabled(bool v) { _purgeOnNextSearch = v; }
+
 private:
     // --------------------- Theme Colors ------------------------
     // Holds all relevant colors for the dock panel (light/dark)
@@ -178,8 +183,9 @@ private:
     void collapseOldSearches();
 
     // ‑‑‑ persistent UI flags ‑‑‑
-    static bool _wrapEnabled;
-    static bool _purgeOnNextSearch;
+
+    inline static bool _wrapEnabled = false;
+    inline static bool _purgeOnNextSearch = false;
 
     HWND                 _hScintilla = nullptr; // handle for Scintilla control
     std::wstring         _content;              // dock display text

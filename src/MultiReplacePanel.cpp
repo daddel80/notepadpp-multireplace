@@ -9956,6 +9956,8 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << Encoding::wstringToUtf8(L"UseVariables=" + std::to_wstring(useVariables) + L"\n");
     outFile << Encoding::wstringToUtf8(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
     outFile << Encoding::wstringToUtf8(L"UseList=" + std::to_wstring(useList) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"DockWrap=" + std::to_wstring(ResultDock::wrapEnabled()) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"DockPurge=" + std::to_wstring(ResultDock::purgeEnabled()) + L"\n");
     outFile << Encoding::wstringToUtf8(L"HighlightMatch=" + std::to_wstring(highlightMatchEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"ExportToBash=" + std::to_wstring(exportToBashEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"Tooltips=" + std::to_wstring(tooltipsEnabled ? 1 : 0) + L"\n");
@@ -10149,6 +10151,9 @@ void MultiReplace::loadSettingsFromIni() {
 
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     updateUseListState(false);
+
+    ResultDock::setWrapEnabled(CFG.readBool(L"Options", L"DockWrap", false));
+    ResultDock::setPurgeEnabled(CFG.readBool(L"Options", L"DockPurge", false));
 
     highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);
     exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);

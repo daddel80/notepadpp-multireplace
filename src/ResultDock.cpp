@@ -57,7 +57,6 @@ ResultDock& ResultDock::instance()
     return s;
 }
 
-
 std::vector<std::wstring> ResultDock::extractPaths(const std::wstring& sel)
 {
     std::vector<std::wstring> out;
@@ -79,7 +78,6 @@ std::vector<std::wstring> ResultDock::extractPaths(const std::wstring& sel)
     out.erase(std::unique(out.begin(), out.end()), out.end());
     return out;
 }
-
 
 void ResultDock::ensureCreatedAndVisible(const NppData& npp)
 {
@@ -685,6 +683,8 @@ void ResultDock::create(const NppData& npp)
         static_cast<WPARAM>(NppDarkMode::dmfInit),
         reinterpret_cast<LPARAM>(_hDock));
 
+    ::SendMessage(_hSci, SCI_SETWRAPMODE, wrapEnabled() ? SC_WRAP_WORD : SC_WRAP_NONE, 0);
+
     // 8) Initialise folding and apply syntax colours that match current N++ theme
     initFolding();
     applyTheme();
@@ -697,36 +697,32 @@ void ResultDock::initFolding() const
     auto S = [this](UINT msg, WPARAM w = 0, LPARAM l = 0)
         { return ::SendMessage(_hSci, msg, w, l); };
 
-    /* 1) configure margin #2 for folding symbols ----------------- */
+    // 1) configure margin #2 for folding symbols -----------------
     constexpr int M_FOLD = 2;
     S(SCI_SETMARGINTYPEN, M_FOLD, SC_MARGIN_SYMBOL);
     S(SCI_SETMARGINMASKN, M_FOLD, SC_MASK_FOLDERS);
 
-    /* 2) width: 16‑px box + 4 px stem so nothing is clipped ------ */
+    // 2) width: 16‑px box + 4 px stem so nothing is clipped ------
     const int h = static_cast<int>(S(SCI_TEXTHEIGHT));
     S(SCI_SETMARGINWIDTHN, M_FOLD, h + 4);
 
-    /* 3) hide margins 0/1 (line‑numbers & bookmarks) ------------- */
+    // 3) hide margins 0/1 (line‑numbers & bookmarks) -------------
     S(SCI_SETMARGINWIDTHN, 0, 0);
     S(SCI_SETMARGINWIDTHN, 1, 0);
 
-    /* -------------------------------------------------------------
-     * 4) header markers
-     *    – root header boxes:  BOXPLUS / BOXMINUS          (no top stem)
-     *    – nested headers:     BOXPLUSCONNECTED / …MINUS…  (with stem)
-     * ---------------------------------------------------------- */
+    // 4) header markers
     S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDER, SC_MARK_BOXPLUS);
     S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPEN, SC_MARK_BOXMINUS);
 
     S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPENMID, SC_MARK_BOXMINUSCONNECTED);
     S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEREND, SC_MARK_BOXPLUSCONNECTED);
 
-    /* 5) guide‑line markers (│ ├ └) ------------------------------ */
+    // 5) guide‑line markers (│ ├ └) ------------------------------
     S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERSUB, SC_MARK_VLINE);
     S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERMIDTAIL, SC_MARK_TCORNER);
     S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERTAIL, SC_MARK_LCORNER);
 
-    /* 6) placeholder colour – themed colours set in applyTheme() */
+    // 6) placeholder colour – themed colours set in applyTheme()
     constexpr COLORREF placeholder = RGB(200, 200, 200);
     for (int id : {
         SC_MARKNUM_FOLDER,
@@ -740,10 +736,9 @@ void ResultDock::initFolding() const
         S(SCI_MARKERSETBACK, id, placeholder);
     }
 
-    /* 7) enable mouse interaction & auto‑fold updates ------------ */
+    // 7) enable mouse interaction & auto‑fold updates ------------
     S(SCI_SETMARGINSENSITIVEN, M_FOLD, TRUE);
-    S(SCI_SETAUTOMATICFOLD,
-        SC_AUTOMATICFOLD_CLICK );
+    S(SCI_SETAUTOMATICFOLD, SC_AUTOMATICFOLD_CLICK );
 
     S(SCI_SETFOLDFLAGS, SC_FOLDFLAG_LINEAFTER_CONTRACTED);
 
@@ -965,20 +960,16 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
     extern NppData nppData;
     const std::string marker = "Line ";
 
-    switch (msg)
-    {
-    case WM_NOTIFY:
-    {
+    switch (msg) {
+    case WM_NOTIFY: {
         NMHDR* hdr = reinterpret_cast<NMHDR*>(lp);
-        if (hdr->code == DMN_CLOSE)
-        {
+        if (hdr->code == DMN_CLOSE) {
             ::SendMessage(nppData._nppHandle, NPPM_DMMHIDE, 0, reinterpret_cast<LPARAM>(hwnd));
             return TRUE;
         }
 
         SCNotification* scn = reinterpret_cast<SCNotification*>(lp);
-        if (scn->nmhdr.code == SCN_MARGINCLICK && scn->margin == 2)
-        {
+        if (scn->nmhdr.code == SCN_MARGINCLICK && scn->margin == 2) {
             int line = (int)::SendMessage(hwnd, SCI_LINEFROMPOSITION, scn->position, 0);
             ::SendMessage(hwnd, SCI_TOGGLEFOLD, line, 0);
             return 0;
@@ -1001,8 +992,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
         // --- Toggle fold if the clicked line is a header ----------
         int level = (int)::SendMessage(hwnd, SCI_GETFOLDLEVEL, dispLine, 0);
-        if (level & SC_FOLDLEVELHEADERFLAG)
-        {
+        if (level & SC_FOLDLEVELHEADERFLAG) {
             ::SendMessage(hwnd, SCI_TOGGLEFOLD, dispLine, 0);
             // --- remove double‑click word selection & keep scroll ----------
             Sci_Position linePos = (Sci_Position)::SendMessage(
@@ -1025,8 +1015,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
         // 5) Count *all* previous "Line " occurrences to get our hitIndex
         int hitIndex = -1;
-        for (int i = 0; i <= dispLine; ++i)
-        {
+        for (int i = 0; i <= dispLine; ++i) {
             int len = (int)::SendMessage(hwnd, SCI_LINELENGTH, i, 0);
             std::string buf(len, '\0');
             ::SendMessage(hwnd, SCI_GETLINE, i, (LPARAM)&buf[0]);
@@ -1045,8 +1034,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         int wlen = ::MultiByteToWideChar(CP_UTF8, 0,
             hit.fullPathUtf8.c_str(), -1,
             nullptr, 0);
-        if (wlen > 0)
-        {
+        if (wlen > 0) {
             wpath.resize(wlen - 1);
             ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, &wpath[0], wlen);
         }
@@ -1228,9 +1216,6 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 // ==========================================================================
 //  ResultDock – Menu actions (copy / open lines & paths) – C++17
 // ==========================================================================
-
-bool ResultDock::_wrapEnabled = false;
-bool ResultDock::_purgeOnNextSearch = false;
 
 namespace {
 
