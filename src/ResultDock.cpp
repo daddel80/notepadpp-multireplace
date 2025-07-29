@@ -1100,12 +1100,22 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         ::SendMessage(nppData._nppHandle, NPPM_DMMHIDE, 0, (LPARAM)ResultDock::instance()._hDock);
         return TRUE;
 
-    case WM_KEYDOWN:
+    case WM_KEYDOWN: {
         if (wp == VK_DELETE) {
             deleteSelectedItems(hwnd);
-            return 0;                               // eat the key
+            return 0;
+        }
+        if (wp == VK_SPACE || wp == VK_RETURN) {
+            Sci_Position pos = ::SendMessage(hwnd, SCI_GETCURRENTPOS, 0, 0);
+            int line = (int)::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0);
+            int level = (int)::SendMessage(hwnd, SCI_GETFOLDLEVEL, line, 0);
+            if (level & SC_FOLDLEVELHEADERFLAG) {
+                ::SendMessage(hwnd, SCI_TOGGLEFOLD, line, 0);
+                return 0;
+            }
         }
         break;
+    }
 
     case WM_NCDESTROY:
         s_prevSciProc = nullptr;
@@ -1693,3 +1703,4 @@ void ResultDock::collapseOldSearches()
         }
     }
 }
+
