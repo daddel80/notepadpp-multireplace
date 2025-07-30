@@ -101,6 +101,22 @@ public:
     static void  setWrapEnabled(bool v) { _wrapEnabled = v; }
     static void  setPurgeEnabled(bool v) { _purgeOnNextSearch = v; }
 
+    /// Semantic levels in the result dock
+    enum class LineLevel : int {
+        SearchHdr = 0,  // top‑level search header
+        FileHdr = 1,  // file header (only in grouped view)
+        CritHdr = 2,  // criterion header (only in grouped view)
+        HitLine = 3   // actual hit line
+    };
+
+    /// Number of spaces to indent for each LineLevel
+    static constexpr int INDENT_SPACES[] = {
+        /* SearchHdr */ 0,
+        /* FileHdr   */ 4,
+        /* CritHdr   */ 8,
+        /* HitLine   */ 12
+    };
+
 private:
     // --------------------- Theme Colors ------------------------
     // Holds all relevant colors for the dock panel (light/dark)

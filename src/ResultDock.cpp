@@ -41,6 +41,97 @@
 
 extern NppData nppData;
 
+// ==========================================================================
+//  ResultDock – Menu actions (copy / open lines & paths) – C++17
+// ==========================================================================
+
+namespace {
+
+    // --------------------------------------------------------------------------
+    //  Line‑classification helper
+    // --------------------------------------------------------------------------
+    enum class LineKind { Blank, SearchHdr, FileHdr, CritHdr, HitLine };
+
+    LineKind classify(const std::string& raw) {
+        size_t spaces = 0;
+        while (spaces < raw.size() && raw[spaces] == ' ') ++spaces;
+
+        std::string_view trimmed(raw.data() + spaces, raw.size() - spaces);
+        if (trimmed.empty()) return LineKind::Blank;
+
+        // Hier vollqualifizieren:
+        for (int lvl = 0; lvl <= static_cast<int>(ResultDock::LineLevel::HitLine); ++lvl) {
+            if ((int)spaces == ResultDock::INDENT_SPACES[lvl]) {
+                switch (static_cast<ResultDock::LineLevel>(lvl)) {
+                case ResultDock::LineLevel::SearchHdr: return LineKind::SearchHdr;
+                case ResultDock::LineLevel::FileHdr:   return LineKind::FileHdr;
+                case ResultDock::LineLevel::CritHdr:   return LineKind::CritHdr;
+                case ResultDock::LineLevel::HitLine:   return LineKind::HitLine;
+                }
+            }
+        }
+        return LineKind::Blank;
+    }
+
+    // --------------------------------------------------------------------------
+    //  Remove "Line 123: " prefix from hit line (UTF‑16)
+    // --------------------------------------------------------------------------
+    std::wstring stripHitPrefix(const std::wstring& w) {
+        size_t i = 0;
+
+        while (i < w.size() && iswspace(w[i])) ++i;            // leading WS
+        while (i < w.size() && iswalpha(w[i])) ++i;            // "Line", "Zeile", …
+        if (i < w.size() && w[i] == L' ') ++i;                 // single space
+
+        size_t digitStart = i;
+        while (i < w.size() && iswdigit(w[i])) ++i;            // digits
+        if (i == digitStart || i >= w.size()) return w;        // no digits → bail
+
+        if (w[i] != L':') return w;                            // must be ':'
+        ++i;
+
+        while (i < w.size() && iswspace(w[i])) ++i;            // WS after ':'
+        return w.substr(i);                                    // remainder = hit
+    }
+
+    // --------------------------------------------------------------------------
+    //  Extract absolute path from a file‑header line
+    // --------------------------------------------------------------------------
+    std::wstring pathFromFileHdr(const std::wstring& w) {
+        std::wstring s = w;
+        if (s.rfind(L"    ", 0) == 0) s.erase(0, 4);   // remove indent
+        size_t p = s.rfind(L" (");
+        if (p != std::wstring::npos) s.erase(p);       // drop " (n hits)"
+        return s;
+    }
+
+    // --------------------------------------------------------------------------
+    //  Find the nearest ancestor file‑header line
+    // --------------------------------------------------------------------------
+    int ancestorFileLine(HWND hSci, int startLine) {
+        for (int l = startLine; l >= 0; --l) {
+            int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
+            std::string raw(len, '\0');
+            ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
+            raw.resize(strnlen(raw.c_str(), len));
+            if (classify(raw) == LineKind::FileHdr) return l;
+        }
+        return -1;
+    }
+
+    // --------------------------------------------------------------------------
+    //  Read one physical Scintilla line as UTF‑16
+    // --------------------------------------------------------------------------
+    std::wstring getLineW(HWND hSci, int line) {
+        int len = (int)::SendMessage(hSci, SCI_LINELENGTH, line, 0);
+        std::string raw(len, '\0');
+        ::SendMessage(hSci, SCI_GETLINE, line, (LPARAM)raw.data());
+        raw.resize(strnlen(raw.c_str(), len));
+        return Encoding::utf8ToWString(raw);
+    }
+
+} // anonymous namespace
+
 ResultDock::ResultDock(HINSTANCE hInst)
     : _hInst(hInst)      // member‑initialiser‑list
     , _hSci(nullptr)
@@ -322,59 +413,66 @@ void ResultDock::rebuildFolding()
     for (int l = 0; l < lineCount; ++l)
         sciSend(SCI_SETFOLDLEVEL, l, BASE);
 
-    // Pass 2: detect headers via leading spaces & keywords
-    auto isSearchHeader = [](const std::string& s) -> bool
-        {
-            return s.rfind("Search ", 0) == 0; // starts with "Search "
-        };
-
+    // Pass 2: detect semantic levels purely by leading spaces via classify()
     for (int l = 0; l < lineCount; ++l)
     {
-        const int rawLen = static_cast<int>(sciSend(SCI_LINELENGTH, l, 0));
-        if (rawLen <= 1) continue; // blank line
+        const int rawLen = static_cast<int>(sciSend(SCI_LINELENGTH, l));
+        if (rawLen <= 1) continue; // skip blank or extremely short lines
 
-        std::string buf(rawLen + 1, '\0');
+        // Read the raw line text (without CR/LF)
+        std::string buf(rawLen, '\0');
         sciSend(SCI_GETLINE, l, (LPARAM)buf.data());
-        buf.erase(std::find_if(buf.begin(), buf.end(), [](char c)
-            { return c == '\r' || c == '\n' || c == '\0'; }), buf.end());
+        buf.resize(strnlen(buf.c_str(), rawLen));
 
         // Count leading spaces
         int spaces = 0;
         while (spaces < (int)buf.size() && buf[spaces] == ' ') ++spaces;
 
-        // Remove indent for easier tests
-        const std::string_view trimmed(buf.data() + spaces, buf.size() - spaces);
-
-        bool header = false;
+        // Classify into one of our semantic levels
+        auto kind = classify(buf);
+        bool isHeader = false;
         int  level = BASE;
 
-        if (spaces == 0 && (trimmed.rfind("Search in List", 0) == 0 || isSearchHeader(std::string(trimmed))))
+        switch (kind)
         {
-            header = true;
-            level = BASE;               // 0
-        }
-        else if (spaces == 4)
-        {
-            if (isSearchHeader(std::string(trimmed))) { header = true; level = BASE + 2; } // Old list entry (rare)
-            else { header = true; level = BASE + 1; } // File path
-        }
-        else if (spaces == 8 && isSearchHeader(std::string(trimmed)))
-        {
-            header = true;
-            level = BASE + 2;           // Criteria
-        }
-        else {
-            // Content line → level = BASE + 3 (or deeper) handled later
+        case LineKind::SearchHdr:
+            // top‑level search header at indent 0
+            isHeader = true;
+            level = BASE + static_cast<int>(ResultDock::LineLevel::SearchHdr);
+            break;
+
+        case LineKind::FileHdr:
+            // file header at indent 4
+            isHeader = true;
+            level = BASE + static_cast<int>(ResultDock::LineLevel::FileHdr);
+            break;
+
+        case LineKind::CritHdr:
+            // criterion header at indent 8 (grouped view only)
+            isHeader = true;
+            level = BASE + static_cast<int>(ResultDock::LineLevel::CritHdr);
+            break;
+
+        case LineKind::HitLine:
+            // hits are folded as content, see below
+            break;
+
+        default:
+            // Blank or unknown indent → treat as content
+            break;
         }
 
-        if (header)
+        if (isHeader)
         {
+            // set fold header for SearchHdr, FileHdr, CritHdr
             sciSend(SCI_SETFOLDLEVEL, l, level | SC_FOLDLEVELHEADERFLAG);
         }
         else
         {
-            int contentLevel = BASE + (spaces / 4);
-            if (contentLevel < BASE) contentLevel = BASE;
+            // all other lines (including hits) get a content level
+            // depth = spaces / indent for FileHdr (4 spaces)
+            int depth = spaces / INDENT_SPACES[static_cast<int>(ResultDock::LineLevel::FileHdr)];
+            int contentLevel = BASE + (std::max)(depth, 1);
             sciSend(SCI_SETFOLDLEVEL, l, contentLevel);
         }
     }
@@ -390,8 +488,10 @@ void ResultDock::formatHitsForFile(const std::wstring& wPath,
     std::wstring& out,
     size_t& utf8Pos) const
 {
-    std::wstring hdr = L"    " + wPath +
-        L" (" + std::to_wstring(hits.size()) + L" hits)\r\n";
+    // compute indent for FileHdr from matrix
+    std::wstring indentFile = std::wstring(ResultDock::INDENT_SPACES[static_cast<int>(ResultDock::LineLevel::FileHdr)], L' ');
+
+    std::wstring hdr = indentFile + wPath + L" (" + std::to_wstring(hits.size()) + L" hits)\r\n";
     out += hdr;
     utf8Pos += Encoding::wstringToUtf8(hdr).size();
 
@@ -1010,7 +1110,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         raw.resize(strnlen(raw.c_str(), lineLen));
 
         // 4) Bail if this line does *not* contain "Line "
-        if (raw.find(marker) == std::string::npos)
+        if (classify(raw) != LineKind::HitLine)
             return 0;
 
         // 5) Count *all* previous "Line " occurrences to get our hitIndex
@@ -1020,7 +1120,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             std::string buf(len, '\0');
             ::SendMessage(hwnd, SCI_GETLINE, i, (LPARAM)&buf[0]);
             buf.resize(strnlen(buf.c_str(), len));
-            if (buf.find(marker) != std::string::npos)
+            if (classify(buf) == LineKind::HitLine)
                 ++hitIndex;
         }
 
@@ -1212,89 +1312,6 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         ? ::CallWindowProc(s_prevSciProc, hwnd, msg, wp, lp)
         : ::DefWindowProc(hwnd, msg, wp, lp);
 }
-
-// ==========================================================================
-//  ResultDock – Menu actions (copy / open lines & paths) – C++17
-// ==========================================================================
-
-namespace {
-
-    // --------------------------------------------------------------------------
-    //  Line‑classification helper
-    // --------------------------------------------------------------------------
-    enum class LineKind { Blank, SearchHdr, FileHdr, CritHdr, HitLine };
-
-    LineKind classify(const std::string& raw) {
-        size_t spaces = 0;
-        while (spaces < raw.size() && raw[spaces] == ' ') ++spaces;
-
-        std::string_view trim(raw.data() + spaces, raw.size() - spaces);
-        if (trim.empty())                              return LineKind::Blank;
-        if (spaces == 0)                               return LineKind::SearchHdr;
-        if (spaces == 4 && trim.rfind("Search ", 0) != 0) return LineKind::FileHdr;
-        if (spaces == 8 && trim.rfind("Search ", 0) == 0) return LineKind::CritHdr;
-        if (spaces >= 12 && trim.rfind("Line ", 0) == 0) return LineKind::HitLine;
-        return LineKind::Blank;
-    }
-
-    // --------------------------------------------------------------------------
-    //  Remove "Line 123: " prefix from hit line (UTF‑16)
-    // --------------------------------------------------------------------------
-    std::wstring stripHitPrefix(const std::wstring& w) {
-        size_t i = 0;
-
-        while (i < w.size() && iswspace(w[i])) ++i;            // leading WS
-        while (i < w.size() && iswalpha(w[i])) ++i;            // "Line", "Zeile", …
-        if (i < w.size() && w[i] == L' ') ++i;                 // single space
-
-        size_t digitStart = i;
-        while (i < w.size() && iswdigit(w[i])) ++i;            // digits
-        if (i == digitStart || i >= w.size()) return w;        // no digits → bail
-
-        if (w[i] != L':') return w;                            // must be ':'
-        ++i;
-
-        while (i < w.size() && iswspace(w[i])) ++i;            // WS after ':'
-        return w.substr(i);                                    // remainder = hit
-    }
-
-    // --------------------------------------------------------------------------
-    //  Extract absolute path from a file‑header line
-    // --------------------------------------------------------------------------
-    std::wstring pathFromFileHdr(const std::wstring& w) {
-        std::wstring s = w;
-        if (s.rfind(L"    ", 0) == 0) s.erase(0, 4);   // remove indent
-        size_t p = s.rfind(L" (");
-        if (p != std::wstring::npos) s.erase(p);       // drop " (n hits)"
-        return s;
-    }
-
-    // --------------------------------------------------------------------------
-    //  Find the nearest ancestor file‑header line
-    // --------------------------------------------------------------------------
-    int ancestorFileLine(HWND hSci, int startLine) {
-        for (int l = startLine; l >= 0; --l) {
-            int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
-            std::string raw(len, '\0');
-            ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
-            raw.resize(strnlen(raw.c_str(), len));
-            if (classify(raw) == LineKind::FileHdr) return l;
-        }
-        return -1;
-    }
-
-    // --------------------------------------------------------------------------
-    //  Read one physical Scintilla line as UTF‑16
-    // --------------------------------------------------------------------------
-    std::wstring getLineW(HWND hSci, int line) {
-        int len = (int)::SendMessage(hSci, SCI_LINELENGTH, line, 0);
-        std::string raw(len, '\0');
-        ::SendMessage(hSci, SCI_GETLINE, line, (LPARAM)raw.data());
-        raw.resize(strnlen(raw.c_str(), len));
-        return Encoding::utf8ToWString(raw);
-    }
-
-} // anonymous namespace
 
 
 // ==========================================================================

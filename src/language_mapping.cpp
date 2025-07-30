@@ -227,6 +227,11 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"rdmenu_clear_all",           L"Clear all" },
 { L"rdmenu_open_paths",          L"Open selected pathname(s)" },
 { L"rdmenu_wrap",                L"Word wrap long lines" },
-{ L"rdmenu_purge",               L"Purge for every search" }
+{ L"rdmenu_purge",               L"Purge for every search" },
+
+{ L"dock_list_header", L"Search in List ($REPLACE_STRING1 hits)" },
+{ L"dock_single_header", L"Search \"$REPLACE_STRING1\" ($REPLACE_STRING2 hits)" },
+{ L"dock_line",          L"line" },
+
 
 };
