@@ -36,7 +36,6 @@
 
 #ifndef SC_LINEACTION_JOIN
 #define SC_LINEACTION_JOIN 0x1000000
-#define SC_LINEACTION_JOIN 0x1000000
 #endif
 
 extern NppData nppData;
@@ -46,6 +45,16 @@ extern NppData nppData;
 // ==========================================================================
 
 namespace {
+
+    /// Return a string of spaces for the given semantic level
+    std::wstring getIndentString(ResultDock::LineLevel lvl) {
+        return std::wstring( ResultDock::INDENT_SPACES[static_cast<int>(lvl)], L' ' );
+    }
+
+    /// Return the length in UTF-8 bytes of the indent for the given level
+    size_t getIndentUtf8Length(ResultDock::LineLevel lvl) {
+        return Encoding::wstringToUtf8(getIndentString(lvl)).size();
+    }
 
     // --------------------------------------------------------------------------
     //  Line‑classification helper
@@ -416,66 +425,45 @@ void ResultDock::rebuildFolding()
     // Pass 2: detect semantic levels purely by leading spaces via classify()
     for (int l = 0; l < lineCount; ++l)
     {
+        // read raw line
         const int rawLen = static_cast<int>(sciSend(SCI_LINELENGTH, l));
-        if (rawLen <= 1) continue; // skip blank or extremely short lines
-
-        // Read the raw line text (without CR/LF)
         std::string buf(rawLen, '\0');
-        sciSend(SCI_GETLINE, l, (LPARAM)buf.data());
+        sciSend(SCI_GETLINE, l, reinterpret_cast<LPARAM>(buf.data()));
         buf.resize(strnlen(buf.c_str(), rawLen));
 
-        // Count leading spaces
-        int spaces = 0;
-        while (spaces < (int)buf.size() && buf[spaces] == ' ') ++spaces;
+        LineKind kind = classify(buf);
+        if (kind == LineKind::Blank) {                     // blank → plain content
+            sciSend(SCI_SETFOLDLEVEL, l, BASE);
+            continue;
+        }
 
-        // Classify into one of our semantic levels
-        auto kind = classify(buf);
+        // count leading spaces
+        int spaces = 0;
+        while (spaces < static_cast<int>(buf.size()) && buf[spaces] == ' ')
+            ++spaces;
+
         bool isHeader = false;
         int  level = BASE;
 
-        switch (kind)
-        {
+        switch (kind) {
         case LineKind::SearchHdr:
-            // top‑level search header at indent 0
-            isHeader = true;
-            level = BASE + static_cast<int>(ResultDock::LineLevel::SearchHdr);
-            break;
-
+            isHeader = true;  level = BASE + static_cast<int>(LineLevel::SearchHdr); break;
         case LineKind::FileHdr:
-            // file header at indent 4
-            isHeader = true;
-            level = BASE + static_cast<int>(ResultDock::LineLevel::FileHdr);
-            break;
-
+            isHeader = true;  level = BASE + static_cast<int>(LineLevel::FileHdr);   break;
         case LineKind::CritHdr:
-            // criterion header at indent 8 (grouped view only)
-            isHeader = true;
-            level = BASE + static_cast<int>(ResultDock::LineLevel::CritHdr);
-            break;
-
-        case LineKind::HitLine:
-            // hits are folded as content, see below
-            break;
-
-        default:
-            // Blank or unknown indent → treat as content
-            break;
+            isHeader = true;  level = BASE + static_cast<int>(LineLevel::CritHdr);   break;
+        default: break;       // HitLine or unknown stays content
         }
 
-        if (isHeader)
-        {
-            // set fold header for SearchHdr, FileHdr, CritHdr
+        if (isHeader) {
             sciSend(SCI_SETFOLDLEVEL, l, level | SC_FOLDLEVELHEADERFLAG);
         }
-        else
-        {
-            // all other lines (including hits) get a content level
-            // depth = spaces / indent for FileHdr (4 spaces)
-            int depth = spaces / INDENT_SPACES[static_cast<int>(ResultDock::LineLevel::FileHdr)];
-            int contentLevel = BASE + (std::max)(depth, 1);
-            sciSend(SCI_SETFOLDLEVEL, l, contentLevel);
+        else {
+            int depth = spaces / INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)];
+            sciSend(SCI_SETFOLDLEVEL, l, BASE + (std::max)(depth, 1));
         }
     }
+
 }
 
 void ResultDock::onThemeChanged() {
@@ -504,106 +492,104 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     std::wstring& out,
     size_t& utf8Pos) const
 {
-    constexpr wchar_t INDENT_W[] = L"            ";
-    constexpr size_t  INDENT_U8 = 12;
-
     // Get the document code page (ANSI, UTF-8, etc.)
     const UINT docCp = static_cast<UINT>(sciSend(SCI_GETCODEPAGE, 0, 0));
 
-    // STEP 1: Determine line numbers and max digit width for right alignment
+    // Cache indentation for hit lines once
+    const std::wstring indentHitW = getIndentString(LineLevel::HitLine);
+    const size_t       indentHitU8 = getIndentUtf8Length(LineLevel::HitLine);
+
+    // Pre-converted constant pieces of the prefix
+    static const std::wstring kLineW = L"Line ";
+    static const size_t       kLineU8 = Encoding::wstringToUtf8(kLineW).size();
+    constexpr size_t          kColonSpaceU8 = 2;    // ": "
+
+    // STEP 1: determine line numbers and max digit width for right alignment
     std::vector<int> lineNumbers;
     lineNumbers.reserve(hits.size());
+
     size_t maxDigits = 0;
-    for (const auto& h : hits) {
-        int lineZero = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, h.pos, 0));
-        int lineOne = lineZero + 1;
-        lineNumbers.push_back(lineOne);
-        size_t digits = std::to_wstring(lineOne).size();
-        maxDigits = (std::max)(maxDigits, digits);
+    for (const Hit& h : hits) {
+        int line1 = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, h.pos, 0)) + 1;
+        lineNumbers.push_back(line1);
+        maxDigits = (std::max)(maxDigits, std::to_wstring(line1).size());
     }
 
-    // Helper: pad a line number to given width (right‑aligned)
-    auto padLineNumber = [](int number, size_t width) -> std::wstring {
+    // Helper: pad a line number to given width (right-aligned)
+    auto padNumber = [](int number, size_t width) -> std::wstring {
         std::wstring numStr = std::to_wstring(number);
         size_t pad = (width > numStr.size() ? width - numStr.size() : 0);
         return std::wstring(pad, L' ') + numStr;
         };
 
-    int  prevLine = -1;
-    Hit* firstHitOnLine = nullptr;
-
-    // STEP 2: Iterate hits and build output lines
+    int   prevDocLine = -1;
+    Hit* firstHitOnRow = nullptr;
     size_t hitIdx = 0;
-    for (Hit& h : hits)
-    {
-        int lineOne = lineNumbers[hitIdx++];
-        int lineZero = lineOne - 1;
+
+    // STEP 2: iterate hits and build output lines
+    for (Hit& h : hits) {
+        int line1 = lineNumbers[hitIdx++];
+        int line0 = line1 - 1;
 
         // Read raw bytes of this line from Scintilla
-        int rawLen = static_cast<int>(sciSend(SCI_LINELENGTH, lineZero, 0));
+        int rawLen = static_cast<int>(sciSend(SCI_LINELENGTH, line0, 0));
         std::string raw(rawLen, '\0');
-        sciSend(SCI_GETLINE, lineZero, (LPARAM)raw.data());
-        raw.resize(strnlen(raw.c_str(), rawLen));
-        // Trim any CR/LF at end
+        sciSend(SCI_GETLINE, line0, reinterpret_cast<LPARAM>(raw.data()));
         while (!raw.empty() && (raw.back() == '\r' || raw.back() == '\n'))
             raw.pop_back();
-       
-        std::string_view sliceBytes(raw);
 
-        // --- IMPORTANT: produce two representations ---
-        // 1) UTF-8 bytes for accurate byte‑offset highlighting
+        const std::string_view sliceBytes(raw);
+
+        // 1) UTF-8 bytes for accurate byte-offset highlighting
         const std::string sliceU8 = Encoding::bytesToUtf8(std::string(sliceBytes), docCp);
-        // 2) Wide‑string for display in the dock
+        // 2) Wide string for display in the dock
         const std::wstring sliceW = Encoding::utf8ToWString(sliceU8);
 
-        // Build the line‑number prefix (with right alignment)
-        std::wstring paddedNum = padLineNumber(lineOne, maxDigits);
-        std::wstring prefixW = std::wstring(INDENT_W)
-            + L"Line " + paddedNum + L": ";
-        size_t prefixU8Len = Encoding::wstringToUtf8(prefixW).size();
+        // Build the line-number prefix (with right alignment)
+        std::wstring paddedNumW = padNumber(line1, maxDigits);
+        std::wstring prefixW = indentHitW + kLineW + paddedNumW + L": ";
 
-        // Compute byte‑offset of match start within sliceU8
-        Sci_Position absTrimmed = sciSend(SCI_POSITIONFROMLINE, lineZero, 0);
-        size_t relBytes = static_cast<size_t>(h.pos - absTrimmed);
+        // Prefix length in UTF-8 (computed arithmetically)
+        const size_t prefixU8Len = indentHitU8 + kLineU8 + paddedNumW.size() + kColonSpaceU8;
 
-        // Compute byte‑lengths for the match portion
-        size_t hitStartInSliceU8 = Encoding::bytesToUtf8(
+        // Compute byte-offsets for the match start within sliceU8
+        Sci_Position absLineStart = sciSend(SCI_POSITIONFROMLINE, line0, 0);
+        size_t relBytes = static_cast<size_t>(h.pos - absLineStart);
+
+        size_t hitStartU8 = Encoding::bytesToUtf8(
             std::string(sliceBytes.substr(0, relBytes)), docCp).size();
         size_t hitLenU8 = Encoding::bytesToUtf8(
             std::string(sliceBytes.substr(relBytes, h.length)), docCp).size();
 
-        // If this is the first hit on a new line, output the full line
-        if (lineZero != prevLine)
-        {
+        if (line0 != prevDocLine) {
+            // First hit on this visible row
             out += prefixW + sliceW + L"\r\n";
 
             h.displayLineStart = static_cast<int>(utf8Pos);
-            h.numberStart = static_cast<int>(INDENT_U8 + 5 + paddedNum.size() - std::to_wstring(lineOne).size());
-            h.numberLen = static_cast<int>(std::to_wstring(lineOne).size());
+            h.numberStart = static_cast<int>(indentHitU8 + kLineU8 +
+                paddedNumW.size() - std::to_wstring(line1).size());
+            h.numberLen = static_cast<int>(std::to_wstring(line1).size());
 
-            // ** Use byte‑based offsets for highlighting **
-            h.matchStarts = { static_cast<int>(prefixU8Len + hitStartInSliceU8) };
+            h.matchStarts = { static_cast<int>(prefixU8Len + hitStartU8) };
             h.matchLens = { static_cast<int>(hitLenU8) };
 
-            // Advance utf8Pos by the number of bytes inserted (prefix + content + CRLF)
-            utf8Pos += prefixU8Len + sliceU8.size() + 2;
+            utf8Pos += prefixU8Len + sliceU8.size() + 2;   // include CR/LF
 
-            firstHitOnLine = &h;
-            prevLine = lineZero;
+            firstHitOnRow = &h;
+            prevDocLine = line0;
         }
-        else
-        {
-            // Additional hit on the same visual line: append to firstHitOnLine
-            assert(firstHitOnLine);
-            firstHitOnLine->matchStarts.push_back(static_cast<int>(prefixU8Len + hitStartInSliceU8));
-            firstHitOnLine->matchLens.push_back(static_cast<int>(hitLenU8));
-            h.displayLineStart = -1;  // mark as dummy so it's removed later
+        else {
+            // Additional hit on the same visual row
+            assert(firstHitOnRow);
+            firstHitOnRow->matchStarts.push_back(static_cast<int>(prefixU8Len + hitStartU8));
+            firstHitOnRow->matchLens.push_back(static_cast<int>(hitLenU8));
+            h.displayLineStart = -1;   // mark as dummy
         }
     }
 
     // Remove dummy entries (all but the first hit per visual line)
     hits.erase(std::remove_if(hits.begin(), hits.end(),
-        [](const Hit& h) { return h.displayLineStart < 0; }),
+        [](const Hit& e) { return e.displayLineStart < 0; }),
         hits.end());
 }
 
@@ -615,25 +601,32 @@ void ResultDock::buildListText(
     std::wstring& outText,
     std::vector<Hit>& outHits) const
 {
-    size_t utf8Len = Encoding::wstringToUtf8(header).size();
     std::wstring body;
+    size_t utf8Len = 0;
+
+    auto appendIndented = [&](LineLevel lvl, const std::wstring& txt)
+        {
+            std::wstring line = getIndentString(lvl) + txt + L"\r\n";
+            body += line;
+            utf8Len += getIndentUtf8Length(lvl)
+                + Encoding::wstringToUtf8(txt + L"\r\n").size();
+        };
+
+    appendIndented(LineLevel::SearchHdr, header);
 
     for (auto& [path, f] : files)
     {
-        std::wstring fileHdr = L"    " + f.wPath + L" (" +
-            std::to_wstring(f.hitCount) + L" hits)\r\n";
-        body += fileHdr;
-        utf8Len += Encoding::wstringToUtf8(fileHdr).size();
+        appendIndented(LineLevel::FileHdr,
+            f.wPath + L" (" + std::to_wstring(f.hitCount) + L" hits)");
 
         if (groupView)
         {
             // grouped: first the file header, then each criterion block
             for (auto& c : f.crits)
             {
-                std::wstring critHdr = L"        Search \"" + c.text + L"\" (" +
-                    std::to_wstring(c.hits.size()) + L" hits)\r\n";
-                body += critHdr;
-                utf8Len += Encoding::wstringToUtf8(critHdr).size();
+                appendIndented(LineLevel::CritHdr,
+                    L"Search \"" + c.text + L"\" (" +
+                    std::to_wstring(c.hits.size()) + L" hits)");
 
                 // make a mutable copy of c.hits
                 auto hitsCopy = c.hits;
@@ -663,7 +656,8 @@ void ResultDock::buildListText(
         }
     }
 
-    outText = header + body;
+    outText = body;
+
 }
 
 
@@ -979,21 +973,19 @@ void ResultDock::applyStyling() const
         const int lineLength = static_cast<int>(S(SCI_LINELENGTH, line, 0));
 
         int style = STYLE_DEFAULT;
-        if (lineLength > 0) {
-            std::string buffer(lineLength, '\0');
-            S(SCI_GETLINE, line, reinterpret_cast<LPARAM>(buffer.data()));
+        if (lineLength > 0)
+        {
+            std::string buf(lineLength, '\0');
+            S(SCI_GETLINE, line, reinterpret_cast<LPARAM>(buf.data()));
+            buf.resize(strnlen(buf.c_str(), lineLength));   // trim trailing NULs
 
-            size_t firstChar = buffer.find_first_not_of(' ');
-            if (firstChar == std::string::npos)
-                firstChar = 0;
-
-            std::string_view trimmedLine(buffer.data() + firstChar, buffer.size() - firstChar);
-
-            if (trimmedLine.rfind("Search ", 0) == 0) {
-                style = STYLE_HEADER;
-            }
-            else if (firstChar == 4 && !trimmedLine.empty()) {
-                style = STYLE_FILEPATH;
+            switch (classify(buf))
+            {
+            case LineKind::SearchHdr:
+            case LineKind::CritHdr:     style = STYLE_HEADER;     break;
+            case LineKind::FileHdr:     style = STYLE_FILEPATH;   break;
+            case LineKind::HitLine:     /* keep default */        break;
+            case LineKind::Blank:       /* keep default */        break;
             }
         }
 
@@ -1318,6 +1310,11 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 //  copySelectedLines   (IDM_RD_COPY_LINES)
 // ==========================================================================
 void ResultDock::copySelectedLines(HWND hSci) {
+
+    auto indentOf = [](ResultDock::LineLevel lvl) -> int {                                                                  // NEW
+        return ResultDock::INDENT_SPACES[static_cast<int>(lvl)];
+        };
+
     // determine selection range
     Sci_Position a = ::SendMessage(hSci, SCI_GETSELECTIONNANCHOR, 0, 0);
     Sci_Position c = ::SendMessage(hSci, SCI_GETCURRENTPOS, 0, 0);
@@ -1365,11 +1362,20 @@ void ResultDock::copySelectedLines(HWND hSci) {
 
         switch (kind) {
         case LineKind::HitLine:
-            out.emplace_back(stripHitPrefix(Encoding::utf8ToWString(rawCaret)));
+            out.emplace_back(stripHitPrefix( Encoding::utf8ToWString(rawCaret)));
             break;
-        case LineKind::CritHdr:   pushHitsBelow(caretLine + 1, 8); break;
-        case LineKind::FileHdr:   pushHitsBelow(caretLine + 1, 4); break;
-        case LineKind::SearchHdr: pushHitsBelow(caretLine + 1, 0); break;
+
+        case LineKind::CritHdr:
+            pushHitsBelow(caretLine + 1, indentOf(LineLevel::CritHdr));
+            break;
+
+        case LineKind::FileHdr:
+            pushHitsBelow(caretLine + 1, indentOf(LineLevel::FileHdr));
+            break;
+
+        case LineKind::SearchHdr:
+            pushHitsBelow(caretLine + 1, indentOf(LineLevel::SearchHdr));
+            break;
         default: break;
         }
     }
@@ -1589,12 +1595,18 @@ void ResultDock::deleteSelectedItems(HWND hSci)
             LineKind kind = classify(raw);
             int endLine = l;   // default: only this line
 
-            switch (kind)
-            {
-            case LineKind::HitLine:   endLine = l; break;
-            case LineKind::CritHdr:   endLine = subtreeEnd(l + 1, 8); break;
-            case LineKind::FileHdr:   endLine = subtreeEnd(l + 1, 4); break;
-            case LineKind::SearchHdr: endLine = subtreeEnd(l + 1, 0); break;
+            switch (kind) {
+            case LineKind::HitLine: endLine = l;
+                break;
+            case LineKind::CritHdr:
+                endLine = subtreeEnd( l + 1, INDENT_SPACES[static_cast<int>(LineLevel::CritHdr)]);
+                break;
+            case LineKind::FileHdr:
+                endLine = subtreeEnd( l + 1, INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)]);
+                break;
+            case LineKind::SearchHdr:
+                endLine = subtreeEnd( l + 1, INDENT_SPACES[static_cast<int>(LineLevel::SearchHdr)]);
+                break;
             default:                  continue;                       // ignore blanks
             }
             pushRange(l, endLine);
@@ -1614,10 +1626,13 @@ void ResultDock::deleteSelectedItems(HWND hSci)
 
         switch (kind)
         {
-        case LineKind::HitLine:   endLine = firstLine; break;
-        case LineKind::CritHdr:   endLine = subtreeEnd(firstLine + 1, 8); break;
-        case LineKind::FileHdr:   endLine = subtreeEnd(firstLine + 1, 4); break;
-        case LineKind::SearchHdr: endLine = subtreeEnd(firstLine + 1, 0); break;
+        case LineKind::HitLine: endLine = firstLine; break;
+        case LineKind::CritHdr: endLine = subtreeEnd( firstLine + 1, INDENT_SPACES[static_cast<int>(LineLevel::CritHdr)]);
+            break;
+        case LineKind::FileHdr: endLine = subtreeEnd( firstLine + 1, INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)]); 
+            break;
+        case LineKind::SearchHdr: endLine = subtreeEnd( firstLine + 1, INDENT_SPACES[static_cast<int>(LineLevel::SearchHdr)]); 
+            break;
         default: return; // nothing deletable on this line
         }
         ranges.push_back({ firstLine, endLine });

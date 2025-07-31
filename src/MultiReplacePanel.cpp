@@ -6161,7 +6161,7 @@ void MultiReplace::handleFindAllButton()
         }
 
         // (d) Build dock text
-        std::wstring header = L"Search in List (" + std::to_wstring(totalHits) + L" hits in 1 file)\r\n";
+        std::wstring header = L"Search in List (" + std::to_wstring(totalHits) + L" hits in 1 file)";
 
         std::wstring dockText;
         dock.buildListText(
@@ -6218,15 +6218,29 @@ void MultiReplace::handleFindAllButton()
         }
 
         // header
-        std::wstring header = L"Search \"" + headerPattern + L"\" (" + std::to_wstring(rawHits.size()) + L" hits in 1 file)\r\n";
-        size_t utf8Len = Encoding::wstringToUtf8(header).size();
+        std::wstring header = L"Search \"" + headerPattern + L"\" (" +
+            std::to_wstring(rawHits.size()) + L" hits in 1 file)";
 
-        std::wstring block;
-        dock.formatHitsForFile(wFilePath, sciSend, rawHits, block, utf8Len);
+        fileMap.clear();                      // reuse the existing map declared at // 6)
 
-        allHits = std::move(rawHits);
-        dock.prependHits(allHits, header + block);
-        totalHits = (int)allHits.size();
+        {
+            auto& agg = fileMap[utf8FilePath];
+            agg.wPath = wFilePath;
+            agg.hitCount = static_cast<int>(rawHits.size());
+            agg.crits.push_back({ headerPattern, std::move(rawHits) });
+        }
+
+        std::wstring dockText;
+        dock.buildListText(
+            /* files     */ fileMap,
+            /* groupView */ false,            // flat list output
+            /* header    */ header,
+            /* sciSend   */ sciSend,
+            /* outText   */ dockText,
+            /* outHits   */ allHits);
+
+        dock.prependHits(allHits, dockText);
+        totalHits = static_cast<int>(allHits.size());
     }
 
     dock.rebuildFolding();
