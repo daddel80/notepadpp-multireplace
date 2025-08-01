@@ -113,8 +113,8 @@ public:
     static constexpr int INDENT_SPACES[] = {
         /* SearchHdr */ 1,
         /* FileHdr   */ 3,
-        /* CritHdr   */ 7,
-        /* HitLine   */ 11
+        /* CritHdr   */ 5,
+        /* HitLine   */ 8
     };
 
 private:

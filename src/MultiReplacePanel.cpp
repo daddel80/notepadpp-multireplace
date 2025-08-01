@@ -6161,7 +6161,12 @@ void MultiReplace::handleFindAllButton()
         }
 
         // (d) Build dock text
-        std::wstring header = L"Search in List (" + std::to_wstring(totalHits) + L" hits in 1 file)";
+        size_t fileCount = fileMap.size();
+        std::wstring header = LM.get(
+            L"dock_list_header",
+            { std::to_wstring(totalHits),
+              std::to_wstring(fileCount) }
+        );
 
         std::wstring dockText;
         dock.buildListText(
@@ -6218,8 +6223,13 @@ void MultiReplace::handleFindAllButton()
         }
 
         // header
-        std::wstring header = L"Search \"" + headerPattern + L"\" (" +
-            std::to_wstring(rawHits.size()) + L" hits in 1 file)";
+        size_t fileCount = fileMap.size();
+        std::wstring header = LM.get(
+            L"dock_single_header",
+            { headerPattern,
+              std::to_wstring(rawHits.size()),
+              std::to_wstring(fileCount) }
+        );
 
         fileMap.clear();                      // reuse the existing map declared at // 6)
 

@@ -40,11 +40,10 @@
 
 extern NppData nppData;
 
-// ==========================================================================
-//  ResultDock – Menu actions (copy / open lines & paths) – C++17
-// ==========================================================================
 
 namespace {
+
+    LanguageManager& LM = LanguageManager::instance();
 
     /// Return a string of spaces for the given semantic level
     std::wstring getIndentString(ResultDock::LineLevel lvl) {
@@ -85,32 +84,47 @@ namespace {
     // --------------------------------------------------------------------------
     //  Remove "Line 123: " prefix from hit line (UTF‑16)
     // --------------------------------------------------------------------------
-    std::wstring stripHitPrefix(const std::wstring& w) {
-        size_t i = 0;
+    // remove indent + “Line … : ” prefix from a HitLine
+    static std::wstring stripHitPrefix(const std::wstring& w)
+    {
+        const int indentLen = ResultDock::INDENT_SPACES[static_cast<int>(ResultDock::LineLevel::HitLine)];
+        size_t i = (std::min)(static_cast<size_t>(indentLen), w.size()); // skip indent
 
-        while (i < w.size() && iswspace(w[i])) ++i;            // leading WS
-        while (i < w.size() && iswalpha(w[i])) ++i;            // "Line", "Zeile", …
-        if (i < w.size() && w[i] == L' ') ++i;                 // single space
+        while (i < w.size() && iswspace(w[i])) ++i;   // extra padding
+        while (i < w.size() && iswalpha(w[i])) ++i;   // “Line”, “Zeile”, …
+        if (i < w.size() && w[i] == L' ') ++i;        // single space
 
         size_t digitStart = i;
-        while (i < w.size() && iswdigit(w[i])) ++i;            // digits
-        if (i == digitStart || i >= w.size()) return w;        // no digits → bail
+        while (i < w.size() && iswdigit(w[i])) ++i;   // line number
+        if (i == digitStart || i >= w.size() || w[i] != L':') return w;
+        ++i;                                          // skip ':'
 
-        if (w[i] != L':') return w;                            // must be ':'
-        ++i;
-
-        while (i < w.size() && iswspace(w[i])) ++i;            // WS after ':'
-        return w.substr(i);                                    // remainder = hit
+        while (i < w.size() && iswspace(w[i])) ++i;   // space after ':'
+        return w.substr(i);                           // pure hit text
     }
 
     // --------------------------------------------------------------------------
     //  Extract absolute path from a file‑header line
     // --------------------------------------------------------------------------
-    std::wstring pathFromFileHdr(const std::wstring& w) {
-        std::wstring s = w;
-        if (s.rfind(L"    ", 0) == 0) s.erase(0, 4);   // remove indent
-        size_t p = s.rfind(L" (");
-        if (p != std::wstring::npos) s.erase(p);       // drop " (n hits)"
+    std::wstring pathFromFileHdr(const std::wstring& w)
+    {
+        const int indentLen = ResultDock::INDENT_SPACES[static_cast<int>(ResultDock::LineLevel::FileHdr)];
+
+        // skip exact FileHdr indent
+        size_t pos = 0;
+        while (pos < w.size() && pos < static_cast<size_t>(indentLen) && w[pos] == L' ')
+            ++pos;
+
+        std::wstring s = w.substr(pos);           // path + " (…)"
+
+        // remove trailing " (…)"
+        size_t r = s.find_last_of(L')');
+        if (r != std::wstring::npos)
+        {
+            size_t l = s.rfind(L'(', r);
+            if (l != std::wstring::npos && l > 0 && s[l - 1] == L' ')
+                s.erase(l - 1);                   // also drop preceding space
+        }
         return s;
     }
 
@@ -155,28 +169,6 @@ ResultDock& ResultDock::instance()
     extern HINSTANCE g_inst;
     static ResultDock s{ g_inst };
     return s;
-}
-
-std::vector<std::wstring> ResultDock::extractPaths(const std::wstring& sel)
-{
-    std::vector<std::wstring> out;
-    std::wstringstream ss(sel);
-    std::wstring line;
-    while (std::getline(ss, line))
-    {
-        // path‑lines start with 4 spaces and NOT “Line ”
-        if (line.rfind(L"    ", 0) == 0 &&
-            line.find(L"Line ") == std::wstring::npos)
-        {
-            // trim leading spaces
-            line.erase(0, line.find_first_not_of(L' '));
-            if (!line.empty())
-                out.push_back(line);
-        }
-    }
-    std::sort(out.begin(), out.end());
-    out.erase(std::unique(out.begin(), out.end()), out.end());
-    return out;
 }
 
 void ResultDock::ensureCreatedAndVisible(const NppData& npp)
@@ -479,7 +471,7 @@ void ResultDock::formatHitsForFile(const std::wstring& wPath,
     // compute indent for FileHdr from matrix
     std::wstring indentFile = std::wstring(ResultDock::INDENT_SPACES[static_cast<int>(ResultDock::LineLevel::FileHdr)], L' ');
 
-    std::wstring hdr = indentFile + wPath + L" (" + std::to_wstring(hits.size()) + L" hits)\r\n";
+    std::wstring hdr = indentFile + wPath + L" " + LM.get(L"dock_hits_suffix", { std::to_wstring(hits.size()) }) + L"\r\n";
     out += hdr;
     utf8Pos += Encoding::wstringToUtf8(hdr).size();
 
@@ -500,7 +492,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     const size_t       indentHitU8 = getIndentUtf8Length(LineLevel::HitLine);
 
     // Pre-converted constant pieces of the prefix
-    static const std::wstring kLineW = L"Line ";
+    const std::wstring kLineW = LM.get(L"dock_line") + L" ";
     static const size_t       kLineU8 = Encoding::wstringToUtf8(kLineW).size();
     constexpr size_t          kColonSpaceU8 = 2;    // ": "
 
@@ -616,17 +608,14 @@ void ResultDock::buildListText(
 
     for (auto& [path, f] : files)
     {
-        appendIndented(LineLevel::FileHdr,
-            f.wPath + L" (" + std::to_wstring(f.hitCount) + L" hits)");
+        appendIndented(LineLevel::FileHdr, f.wPath + L" " + LM.get(L"dock_hits_suffix", {std::to_wstring(f.hitCount)}));
 
         if (groupView)
         {
             // grouped: first the file header, then each criterion block
             for (auto& c : f.crits)
             {
-                appendIndented(LineLevel::CritHdr,
-                    L"Search \"" + c.text + L"\" (" +
-                    std::to_wstring(c.hits.size()) + L" hits)");
+                appendIndented(LineLevel::CritHdr, LM.get(L"dock_crit_header", { c.text, std::to_wstring(c.hits.size()) }));
 
                 // make a mutable copy of c.hits
                 auto hitsCopy = c.hits;
@@ -1050,7 +1039,6 @@ void ResultDock::applyStyling() const
 LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     extern NppData nppData;
-    const std::string marker = "Line ";
 
     switch (msg) {
     case WM_NOTIFY: {
@@ -1209,9 +1197,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         if (!hMenu) return 0;
 
         // helper: append menu entry with localisation
-        auto add = [&](UINT id, const wchar_t* langId, UINT flags = MF_STRING)
-            {
-                auto& LM = LanguageManager::instance();
+        auto add = [&](UINT id, const wchar_t* langId, UINT flags = MF_STRING){
                 std::wstring txt = LM.get(langId).empty()
                     ? std::wstring(langId)
                     : LM.get(langId);
