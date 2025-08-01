@@ -6223,6 +6223,14 @@ void MultiReplace::handleFindAllButton()
         }
 
         // header
+        fileMap.clear();
+        {
+            auto& agg = fileMap[utf8FilePath];
+            agg.wPath = wFilePath;
+            agg.hitCount = static_cast<int>(rawHits.size());
+            agg.crits.push_back({ headerPattern, std::move(rawHits) });
+        }
+
         size_t fileCount = fileMap.size();
         std::wstring header = LM.get(
             L"dock_single_header",
@@ -6230,15 +6238,6 @@ void MultiReplace::handleFindAllButton()
               std::to_wstring(rawHits.size()),
               std::to_wstring(fileCount) }
         );
-
-        fileMap.clear();                      // reuse the existing map declared at // 6)
-
-        {
-            auto& agg = fileMap[utf8FilePath];
-            agg.wPath = wFilePath;
-            agg.hitCount = static_cast<int>(rawHits.size());
-            agg.crits.push_back({ headerPattern, std::move(rawHits) });
-        }
 
         std::wstring dockText;
         dock.buildListText(

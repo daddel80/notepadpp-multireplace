@@ -112,9 +112,9 @@ public:
     /// Number of spaces to indent for each LineLevel
     static constexpr int INDENT_SPACES[] = {
         /* SearchHdr */ 1,
-        /* FileHdr   */ 3,
-        /* CritHdr   */ 5,
-        /* HitLine   */ 8
+        /* FileHdr   */ 2,
+        /* CritHdr   */ 3,
+        /* HitLine   */ 4
     };
 
 private:

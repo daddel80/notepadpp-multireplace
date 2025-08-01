@@ -451,8 +451,15 @@ void ResultDock::rebuildFolding()
             sciSend(SCI_SETFOLDLEVEL, l, level | SC_FOLDLEVELHEADERFLAG);
         }
         else {
-            int depth = spaces / INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)];
-            sciSend(SCI_SETFOLDLEVEL, l, BASE + (std::max)(depth, 1));
+            int depth = 1;  // min 1 Level
+            if (spaces >= INDENT_SPACES[static_cast<int>(LineLevel::HitLine)])
+                depth = static_cast<int>(LineLevel::HitLine);   // 3
+            else if (spaces >= INDENT_SPACES[static_cast<int>(LineLevel::CritHdr)])
+                depth = static_cast<int>(LineLevel::CritHdr);   // 2
+            else if (spaces >= INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)])
+                depth = static_cast<int>(LineLevel::FileHdr);   // 1
+
+            sciSend(SCI_SETFOLDLEVEL, l, BASE + depth);
         }
     }
 
