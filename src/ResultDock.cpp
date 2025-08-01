@@ -937,6 +937,12 @@ void ResultDock::applyTheme()
     S(SCI_STYLESETBOLD, STYLE_HEADER, TRUE);
     S(SCI_STYLESETEOLFILLED, STYLE_HEADER, TRUE);
 
+    // CritHdr style
+    S(SCI_STYLESETFORE, STYLE_CRITHDR, theme.critHdrFg);
+    S(SCI_STYLESETBACK, STYLE_CRITHDR, theme.critHdrBg);
+    S(SCI_STYLESETBOLD, STYLE_CRITHDR, TRUE);
+    S(SCI_STYLESETEOLFILLED, STYLE_CRITHDR, TRUE);
+
     // File path style
     S(SCI_STYLESETFORE, STYLE_FILEPATH, theme.filePathFg);
     S(SCI_STYLESETBACK, STYLE_FILEPATH, editorBg);
@@ -977,8 +983,8 @@ void ResultDock::applyStyling() const
 
             switch (classify(buf))
             {
-            case LineKind::SearchHdr:
-            case LineKind::CritHdr:     style = STYLE_HEADER;     break;
+            case LineKind::SearchHdr:   style = STYLE_HEADER;     break;
+            case LineKind::CritHdr:     style = STYLE_CRITHDR;    break;
             case LineKind::FileHdr:     style = STYLE_FILEPATH;   break;
             case LineKind::HitLine:     /* keep default */        break;
             case LineKind::Blank:       /* keep default */        break;

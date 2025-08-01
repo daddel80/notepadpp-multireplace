@@ -125,8 +125,10 @@ private:
         COLORREF lineNr;        // Line number color
         COLORREF matchFg;       // Match text color
         COLORREF matchBg;       // Match background color
-        COLORREF headerBg;      // Header line background
-        COLORREF headerFg;      // Header text color
+        COLORREF headerBg;      // Header line background (SearchHdr)
+        COLORREF headerFg;      // Header text color (SearchHdr)
+        COLORREF critHdrBg;     // Header line background (CritHdr)
+        COLORREF critHdrFg;     // Header text color (CritHdr)
         COLORREF filePathFg;    // File path color
         COLORREF foldGlyph;     // Fold glyph color
         COLORREF foldHighlight; // Fold marker highlight
@@ -141,6 +143,8 @@ private:
         RGB(0xFF, 0xEB, 0x5A), // matchBg
         RGB(0xD5, 0xFF, 0xD5), // headerBg
         RGB(0x00, 0x00, 0x00), // headerFg
+        RGB(0xC4, 0xEB, 0xC4), // critHdrBg
+        RGB(0x00, 0x00, 0x00), // critHdrFg
         RGB(0xA0, 0x80, 0x50), // filePathFg
         RGB(0x50, 0x50, 0x50), // foldGlyph
         RGB(0xFF, 0x00, 0x00), // foldHighlight
@@ -155,6 +159,8 @@ private:
         RGB(0x3A, 0x3D, 0x33), // matchBg
         RGB(0x8F, 0xAF, 0x9F), // headerBg
         RGB(0x00, 0x00, 0x00), // headerFg
+        RGB(0x78, 0x94, 0x84), // critHdrBg
+        RGB(0x00, 0x00, 0x00), // critHdrFg
         RGB(0xEB, 0xCB, 0x8B), // filePathFg
         RGB(0x80, 0x80, 0x80), // foldGlyph
         RGB(0x79, 0x94, 0x86), // foldHighlight
@@ -190,7 +196,6 @@ private:
     void initFolding() const;
     void applyTheme();
 
-    std::vector<std::wstring> extractPaths(const std::wstring& sel);
     static void copySelectedLines(HWND hSci);
     static void copySelectedPaths(HWND hSci);
     static void openSelectedPaths(HWND hSci);
@@ -228,5 +233,6 @@ private:
     static constexpr int INDIC_HEADER_FORE       = 13;  // header fg
     static constexpr int MARKER_HEADER_BACKGROUND = 24;
     static constexpr int STYLE_HEADER            = 33;
-    static constexpr int STYLE_FILEPATH          = 34;
+    static constexpr int STYLE_CRITHDR = 34;
+    static constexpr int STYLE_FILEPATH          = 35;
 };
