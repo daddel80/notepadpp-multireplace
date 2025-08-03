@@ -324,7 +324,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_replace_all") };
     ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, LM.getLPCW(L"tooltip_2_buttons_mode") };
-    ctrlMap[IDC_FIND_ALL_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_find_all"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_ALL_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_find_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
 
     findNextButtonText = L"▼ " + LM.get(L"panel_find_next_small");
     ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
@@ -3231,37 +3231,16 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        if (pnmh->idFrom == IDC_FIND_ALL_BUTTON && pnmh->code == BCN_DROPDOWN)
+        if (pnmh->code == BCN_DROPDOWN && pnmh->hwndFrom == GetDlgItem(_hSelf, IDC_FIND_ALL_BUTTON))
         {
+            RECT rc;  ::GetWindowRect(pnmh->hwndFrom, &rc);
+
             HMENU hMenu = CreatePopupMenu();
-            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_DOC_OPTION,
-                LM.getLPW(L"split_menu_find_all"));
-            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_ALL_DOCS_OPTION,
-                LM.getLPW(L"split_menu_find_all_in_docs"));
-            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_FILES_OPTION,
-                LM.getLPW(L"split_menu_find_all_in_files"));
+            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_OPTION, LM.getLPW(L"split_menu_find_all"));
+            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_ALL_DOCS_OPTION, LM.getLPW(L"split_menu_find_all_in_docs"));
 
-            RECT rc{};  GetWindowRect(pnmh->hwndFrom, &rc);
-            int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_LEFTALIGN,
-                rc.left, rc.bottom, 0, _hSelf, nullptr);
+            TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, nullptr);
             DestroyMenu(hMenu);
-
-            switch (cmd)
-            {
-            case ID_FIND_ALL_IN_DOC_OPTION:
-                handleFindAllButton();                       // current doc
-                break;
-/*
-            case ID_FIND_ALL_IN_ALL_DOCS_OPTION:
-                handleFindAllInDocs();                       // stub, next step
-                break;
-
-            case ID_FIND_ALL_IN_FILES_OPTION:
-                handleFindAllInFiles();                      // stub, next step
-                break;
-*/
-            }
-
             return TRUE;
         }
 
@@ -3751,9 +3730,24 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             CloseDebugWindow();
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
-            handleFindAllButton();
+
+            if (isFindAllInDocs)
+                handleFindAllInDocsButton();
+            else
+                handleFindAllButton();
+
             return TRUE;
         }
+
+        case ID_FIND_ALL_OPTION:
+            SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getLPW(L"split_button_find_all"));
+            isFindAllInDocs = false;
+            break;
+
+        case ID_FIND_ALL_IN_ALL_DOCS_OPTION:
+            SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getLPW(L"split_button_find_all_in_docs"));
+            isFindAllInDocs = true;
+            break;
 
         case IDC_FIND_NEXT_BUTTON:
         {
@@ -6061,6 +6055,8 @@ void MultiReplace::trimHitToFirstLine(
     }
 }
 
+
+
 void MultiReplace::handleFindAllButton()
 {
     // 1) sanity 
@@ -6071,12 +6067,10 @@ void MultiReplace::handleFindAllButton()
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
 
-    // 2a) clear DochWindow
-    if (dock.isPurgeEnabled()) dock.clear();
-
     // 3) helper lambdas 
-    auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
-        { return ::SendMessage(_hScintilla, m, w, l); };
+    auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
+        return ::SendMessage(_hScintilla, m, w, l);
+        };
 
     // 4) current file path 
     wchar_t buf[MAX_PATH] = {};
@@ -6092,20 +6086,19 @@ void MultiReplace::handleFindAllButton()
     context.retrieveFoundText = false;
     context.highlightMatch = false;
 
-    // starting position for selection‑mode scans
+    // starting position for selection-mode scans
     SelectionInfo selInfo = getSelectionInfo(false);
-    Sci_Position  scanStart = context.isSelectionMode ? selInfo.startPos : 0;
+    Sci_Position scanStart = context.isSelectionMode ? selInfo.startPos : 0;
 
     // 6) containers 
     ResultDock::FileMap fileMap;
+    int totalHits = 0;
 
-    std::vector<ResultDock::Hit> allHits;
-    int   totalHits = 0;
-
-    // LIST MODE  (aggregate per‑file, then per‑criterion)
+    // LIST MODE  (aggregate per-file, then per-criterion)
     if (useListEnabled)
     {
-        if (replaceListData.empty()) {
+        if (replaceListData.empty())
+        {
             showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
             return;
         }
@@ -6114,7 +6107,7 @@ void MultiReplace::handleFindAllButton()
         {
             if (!item.isEnabled || item.findText.empty()) continue;
 
-            // Sanitize pattern for this criterion's header +++
+            // Sanitize pattern for this criterion's header
             std::wstring sanitizedPattern = this->sanitizeSearchPattern(item.findText);
 
             // (a) Set up search flags & pattern 
@@ -6138,67 +6131,39 @@ void MultiReplace::handleFindAllButton()
                 h.fullPathUtf8 = utf8FilePath;
                 h.pos = (Sci_Position)r.pos;
                 h.length = (Sci_Position)r.length;
-
-                // Trim hit to first line for display +++
                 this->trimHitToFirstLine(sciSend, h);
                 if (h.length > 0)
                     rawHits.push_back(std::move(h));
             }
             if (rawHits.empty()) continue;
 
-            // (c) Aggregate per‑file
+            // (c) Aggregate per-file
             auto& agg = fileMap[utf8FilePath];
             agg.wPath = wFilePath;
             agg.hitCount += static_cast<int>(rawHits.size());
-
             agg.crits.push_back({ sanitizedPattern, std::move(rawHits) });
-            totalHits += (int)agg.crits.back().hits.size();
+            totalHits += static_cast<int>(agg.crits.back().hits.size());
         }
-
-        if (totalHits == 0) {
-            showStatusMessage(LM.get(L"status_no_matches_found"), MessageStatus::Error, true);
-            return;
-        }
-
-        // (d) Build dock text
-        size_t fileCount = fileMap.size();
-        std::wstring header = LM.get(
-            L"dock_list_header",
-            { std::to_wstring(totalHits),
-              std::to_wstring(fileCount) }
-        );
-
-        std::wstring dockText;
-        dock.buildListText(
-            /* files: */    fileMap,
-            /* groupView:*/ groupResultsEnabled,
-            /* header: */   header,
-            /* sciSend: */  sciSend,
-            /* outText: */  dockText,
-            /* outHits: */  allHits
-        );
-
-        dock.prependHits(allHits, dockText);
     }
     // SINGLE MODE
     else
     {
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
 
-        // Sanitize pattern for the header
+        // Prepare header pattern & flags
         std::wstring headerPattern = this->sanitizeSearchPattern(findW);
-
-        context.findText = convertAndExtendW(findW,
-            IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+        context.findText = convertAndExtendW(
+            findW,
+            IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED
+        );
         context.searchFlags =
             (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
             | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
             | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
         sciSend(SCI_SETSEARCHFLAGS, context.searchFlags);
 
-        // collect hits
+        // Collect hits
         std::vector<ResultDock::Hit> rawHits;
         LRESULT pos = context.isSelectionMode ? selInfo.startPos : 0;
         while (true)
@@ -6211,51 +6176,222 @@ void MultiReplace::handleFindAllButton()
             h.fullPathUtf8 = utf8FilePath;
             h.pos = r.pos;
             h.length = r.length;
-
-            // Trim hit to first line for display
             this->trimHitToFirstLine(sciSend, h);
             if (h.length > 0)
                 rawHits.push_back(std::move(h));
         }
-        if (rawHits.empty()) {
-            showStatusMessage(LM.get(L"status_no_matches_found"), MessageStatus::Error, true);
+        if (rawHits.empty())
+        {
+            showStatusMessage(LM.get(L"status_no_matches_found"),
+                MessageStatus::Error, true);
             return;
         }
 
-        // header
+        // Aggregate into one file entry
         fileMap.clear();
         {
             auto& agg = fileMap[utf8FilePath];
             agg.wPath = wFilePath;
             agg.hitCount = static_cast<int>(rawHits.size());
             agg.crits.push_back({ headerPattern, std::move(rawHits) });
+            totalHits += static_cast<int>(agg.crits.back().hits.size());
         }
-
-        size_t fileCount = fileMap.size();
-        std::wstring header = LM.get(
-            L"dock_single_header",
-            { headerPattern,
-              std::to_wstring(rawHits.size()),
-              std::to_wstring(fileCount) }
-        );
-
-        std::wstring dockText;
-        dock.buildListText(
-            /* files     */ fileMap,
-            /* groupView */ false,            // flat list output
-            /* header    */ header,
-            /* sciSend   */ sciSend,
-            /* outText   */ dockText,
-            /* outHits   */ allHits);
-
-        dock.prependHits(allHits, dockText);
-        totalHits = static_cast<int>(allHits.size());
     }
 
-    dock.rebuildFolding();
-    dock.applyStyling();
+    if (totalHits == 0)
+    {
+        showStatusMessage(LM.get(L"status_no_matches_found"),
+            MessageStatus::Error, true);
+        return;
+    }
 
-    showStatusMessage(LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), MessageStatus::Success);
+    // --- NEW unified API calls ---
+    size_t fileCount = fileMap.size();
+    std::wstring header = useListEnabled
+        ? LM.get(L"dock_list_header", { std::to_wstring(totalHits), std::to_wstring(fileCount) })
+        : LM.get(L"dock_single_header", { this->sanitizeSearchPattern(
+                                             getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
+                                           std::to_wstring(totalHits),
+                                           std::to_wstring(fileCount) });
+
+    dock.startSearchBlock(header,
+        useListEnabled ? groupResultsEnabled : false,
+        dock.purgeEnabled());
+
+    // exactly ONE file block in single-file search
+    dock.appendFileBlock(fileMap, sciSend);
+
+    dock.closeSearchBlock(totalHits,
+        static_cast<int>(fileCount));
+    // ------------------------------
+
+    showStatusMessage(LM.get(L"status_occurrences_found",
+        { std::to_wstring(totalHits) }),
+        MessageStatus::Success);
+}
+
+void MultiReplace::handleFindAllInDocsButton()
+{
+    // 1) sanity + dock setup
+    if (!validateDelimiterData())
+        return;
+
+    ResultDock& dock = ResultDock::instance();
+    dock.ensureCreatedAndVisible(nppData);
+
+    // 2) counters
+    int totalHits = 0;
+    std::unordered_set<std::string> uniqueFiles;
+
+    // 3) placeholder header
+    std::wstring placeholder = useListEnabled
+        ? LM.get(L"dock_list_header", { L"0", L"0" })
+        : LM.get(L"dock_single_header", {
+              sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
+              L"0", L"0" });
+
+    // --- NEW unified API call to open block ---
+    dock.startSearchBlock(placeholder,
+        groupResultsEnabled,
+        dock.purgeEnabled());
+    // ------------------------------------------
+
+    // 4) scan each tab
+    auto processCurrentBuffer = [&]()
+        {
+            pointerToScintilla();
+            auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT {
+                return ::SendMessage(_hScintilla, m, w, l);
+                };
+
+            wchar_t wBuf[MAX_PATH] = {};
+            ::SendMessage(nppData._nppHandle,
+                NPPM_GETFULLCURRENTPATH,
+                MAX_PATH, (LPARAM)wBuf);
+            std::wstring wPath = *wBuf ? wBuf : L"<untitled>";
+            std::string  u8Path = Encoding::wstringToUtf8(wPath);
+            uniqueFiles.insert(u8Path);
+
+            const bool selMode =
+                IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED;
+            SelectionInfo sel = getSelectionInfo(false);
+            if (selMode && sel.length == 0) return;
+
+            Sci_Position scanStart = selMode ? sel.startPos : 0;
+            bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+
+            ResultDock::FileMap fileMap;
+            int hitsInFile = 0;
+
+            auto collect = [&](const std::wstring& patt, SearchContext& ctx) {
+                std::vector<ResultDock::Hit> raw;
+                LRESULT pos = scanStart;
+                while (true)
+                {
+                    SearchResult r = performSearchForward(ctx, pos);
+                    if (r.pos < 0) break;
+                    pos = r.pos + r.length;
+                    ResultDock::Hit h{};
+                    h.fullPathUtf8 = u8Path;
+                    h.pos = r.pos;
+                    h.length = r.length;
+                    this->trimHitToFirstLine(sciSend, h);
+                    if (h.length > 0) raw.push_back(std::move(h));
+                }
+                if (raw.empty()) return;
+                auto& agg = fileMap[u8Path];
+                agg.wPath = wPath;
+                agg.hitCount += static_cast<int>(raw.size());
+                agg.crits.push_back({ patt, std::move(raw) });
+                hitsInFile += static_cast<int>(agg.crits.back().hits.size());
+                };
+
+            if (useListEnabled)
+            {
+                for (auto& it : replaceListData)
+                {
+                    if (!it.isEnabled || it.findText.empty()) continue;
+                    SearchContext ctx;
+                    ctx.docLength = sciSend(SCI_GETLENGTH);
+                    ctx.isColumnMode = columnMode;
+                    ctx.isSelectionMode = selMode;
+                    ctx.findText = convertAndExtendW(it.findText, it.extended);
+                    ctx.searchFlags = (it.wholeWord ? SCFIND_WHOLEWORD : 0)
+                        | (it.matchCase ? SCFIND_MATCHCASE : 0)
+                        | (it.regex ? SCFIND_REGEXP : 0);
+                    sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+                    collect(sanitizeSearchPattern(it.findText), ctx);
+                }
+            }
+            else
+            {
+                std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+                if (findW.empty()) return;
+                SearchContext ctx;
+                ctx.docLength = sciSend(SCI_GETLENGTH);
+                ctx.isColumnMode = columnMode;
+                ctx.isSelectionMode = selMode;
+                ctx.findText = convertAndExtendW(findW,
+                    IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+                ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
+                    | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
+                    | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+                sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+                collect(sanitizeSearchPattern(findW), ctx);
+            }
+
+            if (hitsInFile > 0)
+            {
+                // --- NEW unified API call per file ---
+                dock.appendFileBlock(fileMap, sciSend);
+                // --------------------------------------
+                totalHits += hitsInFile;
+            }
+        };
+
+    // iterate tabs (unchanged)
+    LRESULT savedIdx = ::SendMessage(nppData._nppHandle,
+        NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
+    const bool mainVis = !!::IsWindowVisible(nppData._scintillaMainHandle);
+    const bool subVis = !!::IsWindowVisible(nppData._scintillaSecondHandle);
+    LRESULT nbMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
+    LRESULT nbSub = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
+
+    if (mainVis)
+        for (LRESULT i = 0; i < nbMain; ++i)
+        {
+            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            processCurrentBuffer();
+        }
+    if (subVis)
+        for (LRESULT i = 0; i < nbSub; ++i)
+        {
+            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, i);
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            processCurrentBuffer();
+        }
+    ::SendMessage(nppData._nppHandle,
+        NPPM_ACTIVATEDOC,
+        mainVis ? MAIN_VIEW : SUB_VIEW,
+        savedIdx);
+
+    // 6) finalise or error
+    if (totalHits == 0)
+    {
+        showStatusMessage(LM.get(L"status_no_matches_found"),
+            MessageStatus::Error, true);
+        return;
+    }
+
+    // --- NEW unified API close call ---
+    dock.closeSearchBlock(totalHits,
+        static_cast<int>(uniqueFiles.size()));
+    // ------------------------------
+
+    showStatusMessage(LM.get(L"status_occurrences_found",
+        { std::to_wstring(totalHits) }),
+        MessageStatus::Success);
 }
 
 #pragma endregion

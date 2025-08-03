@@ -112,6 +112,13 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"split_button_replace_all_in_docs", L"Replace All in Docs" },
 { L"split_button_replace_all_in_files", L"Replace in Files" },
 
+{ L"split_menu_find_all", L"Find All" },
+{ L"split_menu_find_all_in_docs", L"Find All in All opened Documents" },
+{ L"split_menu_find_all_in_files", L"Find All in Files" },
+{ L"split_button_find_all", L"Find All" },
+{ L"split_button_find_all_in_docs", L"Find All in Docs" },
+{ L"split_button_find_all_in_files", L"Find in Files" },
+
 // Static Status message entries
 { L"status_duplicate_entry", L"Duplicate entry: " },
 { L"status_value_added", L"Value added to the list." },

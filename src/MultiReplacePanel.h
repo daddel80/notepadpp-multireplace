@@ -471,6 +471,7 @@ private:
     static constexpr int REPLACE_FILES_PANEL_HEIGHT = 88;
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
     bool isReplaceInFiles = false;   // True if replacing in files, false for current document only.
+    bool isFindAllInDocs = false;
 
     static constexpr int MIN_GENERAL_WIDTH = 40;
     static constexpr int DEFAULT_COLUMN_WIDTH_FIND = 150;   // Default size for Find Column
@@ -769,6 +770,7 @@ private:
     std::wstring sanitizeSearchPattern(const std::wstring& raw);
     void trimHitToFirstLine(const std::function<LRESULT(UINT, WPARAM, LPARAM)>& sciSend, ResultDock::Hit& h);
     void handleFindAllButton();
+    void handleFindAllInDocsButton();
 
     //Find
     void handleFindNextButton();

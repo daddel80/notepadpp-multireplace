@@ -226,7 +226,7 @@
 #define IDD_MULTIREPLACE_RESULT_DOCK    6100    // dock panel template
                                                 //     (no dialog resource needed)
 #define IDC_FINDALL_BUTTON              6105    // big split-button
-#define ID_FIND_ALL_IN_DOC_OPTION       6110
+#define ID_FIND_ALL_OPTION              6110
 #define ID_FIND_ALL_IN_ALL_DOCS_OPTION  6115
 #define ID_FIND_ALL_IN_FILES_OPTION     6120
 
