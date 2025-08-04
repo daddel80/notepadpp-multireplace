@@ -3742,12 +3742,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case ID_FIND_ALL_OPTION:
             SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getLPW(L"split_button_find_all"));
             isFindAllInDocs = false;
-            break;
+            return TRUE;
 
         case ID_FIND_ALL_IN_ALL_DOCS_OPTION:
             SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getLPW(L"split_button_find_all_in_docs"));
             isFindAllInDocs = true;
-            break;
+            return TRUE;
 
         case IDC_FIND_NEXT_BUTTON:
         {
@@ -4123,7 +4123,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     }
 
     default:
-        return TRUE;
+        return FALSE;
     }
 }
 
