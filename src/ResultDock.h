@@ -79,12 +79,6 @@ public:
     void appendFileBlock(const FileMap& fm, const SciSendFn& sciSend);
     void closeSearchBlock(int totalHits, int totalFiles);
 
-    void beginUpdate();
-
-    void endUpdate();
-
-    HWND ResultDock::getHWND() const;
-
 private:
     // --- Construction & Core State ---
     explicit ResultDock(HINSTANCE hInst);

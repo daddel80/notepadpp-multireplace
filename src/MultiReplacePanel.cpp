@@ -4123,7 +4123,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     }
 
     default:
-        return FALSE;
+        return TRUE;
     }
 }
 
@@ -6055,8 +6055,6 @@ void MultiReplace::trimHitToFirstLine(
     }
 }
 
-
-
 void MultiReplace::handleFindAllButton()
 {
     // 1) sanity 
@@ -6103,9 +6101,18 @@ void MultiReplace::handleFindAllButton()
             return;
         }
 
-        for (const auto& item : replaceListData)
+        resetCountColumns();
+
+        for (size_t idx = 0; idx < replaceListData.size(); ++idx)
         {
-            if (!item.isEnabled || item.findText.empty()) continue;
+            auto& item = replaceListData[idx];
+
+            if (!item.isEnabled || item.findText.empty())
+            {
+                item.findCount = L"0";
+                updateCountColumns(idx, 0);
+                continue;
+            }
 
             // Sanitize pattern for this criterion's header
             std::wstring sanitizedPattern = this->sanitizeSearchPattern(item.findText);
@@ -6135,15 +6142,19 @@ void MultiReplace::handleFindAllButton()
                 if (h.length > 0)
                     rawHits.push_back(std::move(h));
             }
-            if (rawHits.empty()) continue;
+            int hitCnt = static_cast<int>(rawHits.size());
+            item.findCount = std::to_wstring(hitCnt);
+            updateCountColumns(idx, hitCnt);
+            if (hitCnt == 0) continue;
 
             // (c) Aggregate per-file
             auto& agg = fileMap[utf8FilePath];
             agg.wPath = wFilePath;
-            agg.hitCount += static_cast<int>(rawHits.size());
+            agg.hitCount += hitCnt;
             agg.crits.push_back({ sanitizedPattern, std::move(rawHits) });
-            totalHits += static_cast<int>(agg.crits.back().hits.size());
+            totalHits += hitCnt;
         }
+        refreshUIListView();
     }
     // SINGLE MODE
     else
@@ -6205,7 +6216,7 @@ void MultiReplace::handleFindAllButton()
         return;
     }
 
-    // --- NEW unified API calls ---
+    // unified Search Result API calls
     size_t fileCount = fileMap.size();
     std::wstring header = useListEnabled
         ? LM.get(L"dock_list_header", { std::to_wstring(totalHits), std::to_wstring(fileCount) })
@@ -6223,7 +6234,6 @@ void MultiReplace::handleFindAllButton()
 
     dock.closeSearchBlock(totalHits,
         static_cast<int>(fileCount));
-    // ------------------------------
 
     showStatusMessage(LM.get(L"status_occurrences_found",
         { std::to_wstring(totalHits) }),
@@ -6243,6 +6253,9 @@ void MultiReplace::handleFindAllInDocsButton()
     int totalHits = 0;
     std::unordered_set<std::string> uniqueFiles;
 
+    if (useListEnabled) resetCountColumns();
+    std::vector<int> listHitTotals(useListEnabled ? replaceListData.size() : 0, 0);
+
     // 3) placeholder header
     std::wstring placeholder = useListEnabled
         ? LM.get(L"dock_list_header", { L"0", L"0" })
@@ -6250,11 +6263,10 @@ void MultiReplace::handleFindAllInDocsButton()
               sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
               L"0", L"0" });
 
-    // --- NEW unified API call to open block ---
+    // Search Result API call to open block
     dock.startSearchBlock(placeholder,
         groupResultsEnabled,
         dock.purgeEnabled());
-    // ------------------------------------------
 
     // 4) scan each tab
     auto processCurrentBuffer = [&]()
@@ -6283,7 +6295,7 @@ void MultiReplace::handleFindAllInDocsButton()
             ResultDock::FileMap fileMap;
             int hitsInFile = 0;
 
-            auto collect = [&](const std::wstring& patt, SearchContext& ctx) {
+            auto collect = [&](size_t critIdx, const std::wstring& patt, SearchContext& ctx) {
                 std::vector<ResultDock::Hit> raw;
                 LRESULT pos = scanStart;
                 while (true)
@@ -6298,18 +6310,23 @@ void MultiReplace::handleFindAllInDocsButton()
                     this->trimHitToFirstLine(sciSend, h);
                     if (h.length > 0) raw.push_back(std::move(h));
                 }
-                if (raw.empty()) return;
+                int hitCnt = static_cast<int>(raw.size());
+                if (useListEnabled) listHitTotals[critIdx] += hitCnt;
+                if (hitCnt == 0) return;
+
                 auto& agg = fileMap[u8Path];
                 agg.wPath = wPath;
-                agg.hitCount += static_cast<int>(raw.size());
+                agg.hitCount += hitCnt;
                 agg.crits.push_back({ patt, std::move(raw) });
-                hitsInFile += static_cast<int>(agg.crits.back().hits.size());
+                hitsInFile += hitCnt;
                 };
 
             if (useListEnabled)
             {
-                for (auto& it : replaceListData)
+                for (size_t idx = 0; idx < replaceListData.size(); ++idx)
                 {
+                    auto& it = replaceListData[idx];
+
                     if (!it.isEnabled || it.findText.empty()) continue;
                     SearchContext ctx;
                     ctx.docLength = sciSend(SCI_GETLENGTH);
@@ -6320,7 +6337,7 @@ void MultiReplace::handleFindAllInDocsButton()
                         | (it.matchCase ? SCFIND_MATCHCASE : 0)
                         | (it.regex ? SCFIND_REGEXP : 0);
                     sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
-                    collect(sanitizeSearchPattern(it.findText), ctx);
+                    collect(idx, sanitizeSearchPattern(it.findText), ctx);
                 }
             }
             else
@@ -6337,14 +6354,13 @@ void MultiReplace::handleFindAllInDocsButton()
                     | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
                     | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
                 sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
-                collect(sanitizeSearchPattern(findW), ctx);
+                collect(0, sanitizeSearchPattern(findW), ctx);
             }
 
             if (hitsInFile > 0)
             {
-                // --- NEW unified API call per file ---
+                // Search Result API call per file 
                 dock.appendFileBlock(fileMap, sciSend);
-                // --------------------------------------
                 totalHits += hitsInFile;
             }
         };
@@ -6376,6 +6392,17 @@ void MultiReplace::handleFindAllInDocsButton()
         mainVis ? MAIN_VIEW : SUB_VIEW,
         savedIdx);
 
+    // write per-criterion totals back to list and repaint
+    if (useListEnabled)
+    {
+        for (size_t i = 0; i < listHitTotals.size(); ++i)
+        {
+            replaceListData[i].findCount = std::to_wstring(listHitTotals[i]);
+            updateCountColumns(i, listHitTotals[i]);
+        }
+        refreshUIListView();
+    }
+
     // 6) finalise or error
     if (totalHits == 0)
     {
@@ -6384,10 +6411,9 @@ void MultiReplace::handleFindAllInDocsButton()
         return;
     }
 
-    // --- NEW unified API close call ---
+    //  Search Result API close call
     dock.closeSearchBlock(totalHits,
         static_cast<int>(uniqueFiles.size()));
-    // ------------------------------
 
     showStatusMessage(LM.get(L"status_occurrences_found",
         { std::to_wstring(totalHits) }),
