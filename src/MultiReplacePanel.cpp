@@ -5947,44 +5947,23 @@ void MultiReplace::CopyListViewToClipboard(HWND hListView) {
     }
 }
 
-void MultiReplace::CloseDebugWindow() {
-    // Triggers the WM_CLOSE message for the debug window, handled in DebugWindowProc
-    if (hDebugWnd != NULL) {
-        // Save the window position and size before closing
-        RECT rect;
-        if (GetWindowRect(hDebugWnd, &rect)) {
-            debugWindowPosition.x = rect.left;
-            debugWindowPosition.y = rect.top;
-            debugWindowPositionSet = true;
-
-            debugWindowSize.cx = rect.right - rect.left;
-            debugWindowSize.cy = rect.bottom - rect.top;
-            debugWindowSizeSet = true;
-        }
-
-        PostMessage(hDebugWnd, WM_CLOSE, 0, 0);
-    }
-}
-/*
 void MultiReplace::CloseDebugWindow()
 {
-    if (!hDebugWnd) return;                       // nothing to do
+    // Triggers the WM_CLOSE message for the debug window, handled in DebugWindowProc
+    if (!IsWindow(hDebugWnd)) {
+        return;
+    }
 
-    // save last pos/size (unchanged) ...
+    // Save the window position and size before closing
     RECT rc;
-    if (GetWindowRect(hDebugWnd, &rc))
-    {
+    if (GetWindowRect(hDebugWnd, &rc)) {
         debugWindowPosition = { rc.left, rc.top };
         debugWindowSize = { rc.right - rc.left, rc.bottom - rc.top };
         debugWindowPositionSet = debugWindowSizeSet = true;
     }
 
-    HWND hwnd = hDebugWnd;
-    hDebugWnd = NULL;                             // mark as closed *before* sending
-
-    SendMessage(hwnd, WM_CLOSE, 0, 0);            // synchronous → window really gone
+    SendMessage(hDebugWnd, WM_CLOSE, 0, 0);  // synchronous → window really gone
 }
-*/
 
 #pragma endregion
 
