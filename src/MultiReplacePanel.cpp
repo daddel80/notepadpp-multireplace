@@ -4934,216 +4934,151 @@ bool MultiReplace::compileLuaReplaceCode(const std::string& luaCode)
     return true;
 }
 
-bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
+bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex) 
 {
-    // 1) Ensure the Lua environment is initialized
-    if (!_luaState) {
-        return false;
-    }
+    // 1) Stack-checkpoint
+    const int stackBase = lua_gettop(_luaState);
+    auto restoreStack = [this, stackBase]() { lua_settop(_luaState, stackBase); };
 
-    // 2) Push numeric globals
-    lua_pushinteger(_luaState, vars.CNT);
-    lua_setglobal(_luaState, "CNT");
+    // 2) Ensure Lua state exists
+    if (!_luaState) { return false; }
 
-    lua_pushinteger(_luaState, vars.LCNT);
-    lua_setglobal(_luaState, "LCNT");
+    // 3) Numeric globals
+    lua_pushinteger(_luaState, vars.CNT);  lua_setglobal(_luaState, "CNT");
+    lua_pushinteger(_luaState, vars.LCNT); lua_setglobal(_luaState, "LCNT");
+    lua_pushinteger(_luaState, vars.LINE); lua_setglobal(_luaState, "LINE");
+    lua_pushinteger(_luaState, vars.LPOS); lua_setglobal(_luaState, "LPOS");
+    lua_pushinteger(_luaState, vars.APOS); lua_setglobal(_luaState, "APOS");
+    lua_pushinteger(_luaState, vars.COL);  lua_setglobal(_luaState, "COL");
 
-    lua_pushinteger(_luaState, vars.LINE);
-    lua_setglobal(_luaState, "LINE");
-
-    lua_pushinteger(_luaState, vars.LPOS);
-    lua_setglobal(_luaState, "LPOS");
-
-    lua_pushinteger(_luaState, vars.APOS);
-    lua_setglobal(_luaState, "APOS");
-
-    lua_pushinteger(_luaState, vars.COL);
-    lua_setglobal(_luaState, "COL");
-
-    // 3) Push string globals
+    // 4) String globals
     setLuaVariable(_luaState, "FPATH", vars.FPATH);
     setLuaVariable(_luaState, "FNAME", vars.FNAME);
     setLuaVariable(_luaState, "MATCH", vars.MATCH);
 
-    // 4) Set REGEX flag
+    // 5) REGEX flag
     lua_pushboolean(_luaState, regex);
     lua_setglobal(_luaState, "REGEX");
 
-    // 5) If regex is enabled, push CAP variables
+    // 6) CAP# globals (regex only)
     std::vector<std::string> capNames;
-    if (regex)
-    {
-        for (int i = 1; i <= MAX_CAP_GROUPS; ++i)
-        {
-            sptr_t length = send(SCI_GETTAG, i, 0, true);
-            if (length < 0) {
-                // No more captures
-                break;
-            }
+    if (regex) {
+        for (int i = 1; i <= MAX_CAP_GROUPS; ++i) {
+            sptr_t len = send(SCI_GETTAG, i, 0, true);
+            if (len < 0) { break; }
 
-            std::string capValue;
-            if (length > 0) {
-                std::vector<char> buffer(length + 1, '\0');
-                sptr_t result = send(SCI_GETTAG, i, reinterpret_cast<sptr_t>(buffer.data()), false);
-                if (result >= 0) {
-                    capValue.assign(buffer.data());
-                }
+            std::string capVal;
+            if (len > 0) {
+                std::vector<char> buf(len + 1, '\0');
+                if (send(SCI_GETTAG, i,
+                         reinterpret_cast<sptr_t>(buf.data()), false) >= 0)
+                    capVal.assign(buf.data());
             }
-
-            // Set CAP# in Lua
             std::string capName = "CAP" + std::to_string(i);
-            setLuaVariable(_luaState, capName, capValue);
+            setLuaVariable(_luaState, capName, capVal);
             capNames.push_back(capName);
         }
     }
 
-    // 6) Execute pre-compiled Lua chunk
+    // 7) Run pre-compiled chunk
     lua_rawgeti(_luaState, LUA_REGISTRYINDEX, _luaCompiledReplaceRef);
-    if (lua_pcall(_luaState, 0, LUA_MULTRET, 0) != LUA_OK)
-    {
-        const char* errMsg = lua_tostring(_luaState, -1);
-        if (errMsg)
-        {
-            // Optional console log
-            std::cerr << "[Lua Error] " << errMsg << std::endl;
-
-            // Show a message box if user enabled it
-            if (isLuaErrorDialogEnabled)
-            {
-                std::wstring error_message = Encoding::utf8ToWString(errMsg);
-                MessageBox(nppData._nppHandle,
-                    error_message.c_str(),
-                    LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
-                    MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
-            }
+    if (lua_pcall(_luaState, 0, LUA_MULTRET, 0) != LUA_OK) {
+        const char* err = lua_tostring(_luaState, -1);
+        if (err && isLuaErrorDialogEnabled) {
+            MessageBox(nppData._nppHandle,
+                       Encoding::utf8ToWString(err).c_str(),
+                       LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
+                       MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
         }
-        lua_pop(_luaState, 1); // pop the error message
+        restoreStack();
         return false;
     }
 
-    // 7) Retrieve resultTable
+    // 8) resultTable
     lua_getglobal(_luaState, "resultTable");
-    if (!lua_istable(_luaState, -1))
-    {
-        // If missing or not a table
-        lua_pop(_luaState, 1);
-        if (isLuaErrorDialogEnabled)
-        {
-            std::wstring errorMsg = LM.get(L"msgbox_use_variables_execution_error",
-                { Encoding::utf8ToWString(inputString.c_str()) });
-            std::wstring errorTitle = LM.get(L"msgbox_title_use_variables_execution_error");
-            MessageBox(nppData._nppHandle, errorMsg.c_str(), errorTitle.c_str(), MB_OK);
+    if (!lua_istable(_luaState, -1)) {
+        if (isLuaErrorDialogEnabled) {
+            std::wstring msg =
+                LM.get(L"msgbox_use_variables_execution_error",
+                       { Encoding::utf8ToWString(inputString.c_str()) });
+            MessageBox(nppData._nppHandle, msg.c_str(),
+                       LM.get(L"msgbox_title_use_variables_execution_error").c_str(),
+                       MB_OK);
         }
+        restoreStack();
         return false;
     }
 
-    // 8) Extract 'result'
-    lua_getfield(_luaState, -1, "result");
+    // 9) result & skip
+    lua_getfield(_luaState, -1, "result");                 // push result
     if (lua_isnil(_luaState, -1)) {
         inputString.clear();
+    } else if (lua_isstring(_luaState, -1) || lua_isnumber(_luaState, -1)) {
+        std::string res = lua_tostring(_luaState, -1);
+        if (regex) { res = escapeForRegex(res); }
+        inputString = res;
     }
-    else if (lua_isstring(_luaState, -1) || lua_isnumber(_luaState, -1))
-    {
-        std::string result = lua_tostring(_luaState, -1);
-        if (regex) {
-            result = escapeForRegex(result);
-        }
-        inputString = result;
-    }
-    lua_pop(_luaState, 1); // pop "result"
+    lua_pop(_luaState, 1);                                 // pop result
 
-    // 9) Extract 'skip'
-    lua_getfield(_luaState, -1, "skip");
-    if (lua_isboolean(_luaState, -1)) {
-        skip = (lua_toboolean(_luaState, -1) != 0);
-    }
-    else {
-        skip = false;
-    }
-    lua_pop(_luaState, 1); // pop "skip"
+    lua_getfield(_luaState, -1, "skip");                   // push skip
+    skip = lua_isboolean(_luaState, -1) && lua_toboolean(_luaState, -1);
+    lua_pop(_luaState, 1);                                 // pop skip
 
-    // 10) Pop resultTable
-    lua_pop(_luaState, 1);
+    // (resultTable left on stack until the very end, then dropped by restoreStack)
 
-    // 11) Gather CAP variable info, then remove them from Lua
+    // 10) CAP variable dump & cleanup
     std::string capVariablesStr;
-
-    for (const auto& capName : capNames)
-    {
-        lua_getglobal(_luaState, capName.c_str());
+    for (const auto& capName : capNames) {
+        lua_getglobal(_luaState, capName.c_str());         // push CAP value
 
         if (lua_isnumber(_luaState, -1)) {
-            double numVal = lua_tonumber(_luaState, -1);
-            //capVariablesStr += capName + "\tNumber\t" + std::to_string(numVal) + "\n\n";
-
-            std::ostringstream numStream;
-            numStream << std::fixed << std::setprecision(8) << numVal;
-            capVariablesStr += capName + "\tNumber\t" + numStream.str() + "\n\n";
-
-        }
-        else if (lua_isboolean(_luaState, -1)) {
-            bool boolVal = (lua_toboolean(_luaState, -1) != 0);
-            capVariablesStr += capName + "\tBoolean\t" + (boolVal ? "true" : "false") + "\n\n";
-        }
-        else if (lua_isstring(_luaState, -1)) {
+            double n = lua_tonumber(_luaState, -1);
+            std::ostringstream os; os << std::fixed << std::setprecision(8) << n;
+            capVariablesStr += capName + "\tNumber\t" + os.str() + "\n\n";
+        } else if (lua_isboolean(_luaState, -1)) {
+            bool b = lua_toboolean(_luaState, -1);
+            capVariablesStr += capName + "\tBoolean\t" + (b ? "true" : "false") + "\n\n";
+        } else if (lua_isstring(_luaState, -1)) {
             capVariablesStr += capName + "\tString\t" + lua_tostring(_luaState, -1) + "\n\n";
-        }
-        else {
+        } else {
             capVariablesStr += capName + "\t<nil>\n\n";
         }
+        lua_pop(_luaState, 1);                             // pop CAP value
 
-        lua_pop(_luaState, 1);
-        // Remove the global
-        lua_pushnil(_luaState);
+        lua_pushnil(_luaState);                            // clear global
         lua_setglobal(_luaState, capName.c_str());
     }
 
-    // 12) Check if DEBUG == true
-    lua_getglobal(_luaState, "DEBUG");
-    if (lua_isboolean(_luaState, -1) && lua_toboolean(_luaState, -1))
-    {
-        // For performance, only capture globals if DEBUG is on
+    // 11) DEBUG flag & window
+    lua_getglobal(_luaState, "DEBUG");                     // push DEBUG
+    bool debugOn = lua_isboolean(_luaState, -1) && lua_toboolean(_luaState, -1);
+    lua_pop(_luaState, 1);                                 // pop DEBUG
+
+    if (debugOn) {
         globalLuaVariablesMap.clear();
         captureLuaGlobals(_luaState);
 
-        // Build debug string for captured globals
-        std::string luaGlobalsStr;
-        luaGlobalsStr += "Global Lua variables:\n\n";
-        for (const auto& pair : globalLuaVariablesMap) {
-            const LuaVariable& var = pair.second;
-            if (var.type == LuaVariableType::String) {
-                luaGlobalsStr += var.name + "\tString\t" + var.stringValue + "\n\n";
-            }
-            else if (var.type == LuaVariableType::Number) {
-                // luaGlobalsStr += var.name + "\tNumber\t" + std::to_string(var.numberValue) + "\n\n";
-                std::ostringstream oss;
-                oss << std::fixed << std::setprecision(8) << var.numberValue;
-                luaGlobalsStr += var.name + "\tNumber\t" + oss.str() + "\n\n";
-
-            }
-            else if (var.type == LuaVariableType::Boolean) {
-                luaGlobalsStr += var.name + "\tBoolean\t" + (var.booleanValue ? "true" : "false") + "\n\n";
+        std::string globalsStr = "Global Lua variables:\n\n";
+        for (const auto& p : globalLuaVariablesMap) {
+            const LuaVariable& v = p.second;
+            if (v.type == LuaVariableType::String) {
+                globalsStr += v.name + "\tString\t" + v.stringValue + "\n\n";
+            } else if (v.type == LuaVariableType::Number) {
+                std::ostringstream os; os << std::fixed << std::setprecision(8) << v.numberValue;
+                globalsStr += v.name + "\tNumber\t" + os.str() + "\n\n";
+            } else if (v.type == LuaVariableType::Boolean) {
+                globalsStr += v.name + "\tBoolean\t" + (v.booleanValue ? "true" : "false") + "\n\n";
             }
         }
 
-        // Combine CAP variables and captured globals
-        std::string combinedVariablesStr = capVariablesStr + luaGlobalsStr;
-
-        // Refresh UI as in original code
         refreshUIListView();
-
-        // Show debug window
-        int response = ShowDebugWindow(combinedVariablesStr);
-        if (response == 3) { // "Stop" pressed
-            lua_pop(_luaState, 1); // pop DEBUG
-            return false;
-        }
+        int resp = ShowDebugWindow(capVariablesStr + globalsStr);
+        if (resp == 3) { restoreStack(); return false; }   // “Stop”
+        if (resp == -1) { restoreStack(); return false; }  // window closed
     }
 
-    // pop DEBUG or non-boolean
-    lua_pop(_luaState, 1);
-
-    // 13) Return success
+    // 12) Success
+    restoreStack();
     return true;
 }
 
@@ -5925,8 +5860,11 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         break;
 
     case WM_CLOSE:
-        // Handle the window close button (X)
-        debugWindowResponse = 3; // Set to the value that indicates the "Stop" button was pressed
+        // Only set debugWindowResponse to -1 if not already set by a button
+        if (debugWindowResponse == -1) {
+            // Closed by X, Alt+F4, or CloseDebugWindow()
+            debugWindowResponse = -1;
+        }
 
         // Save the window position and size before closing
         RECT rect;
@@ -6009,7 +5947,6 @@ void MultiReplace::CopyListViewToClipboard(HWND hListView) {
     }
 }
 
-/*
 void MultiReplace::CloseDebugWindow() {
     // Triggers the WM_CLOSE message for the debug window, handled in DebugWindowProc
     if (hDebugWnd != NULL) {
@@ -6028,8 +5965,7 @@ void MultiReplace::CloseDebugWindow() {
         PostMessage(hDebugWnd, WM_CLOSE, 0, 0);
     }
 }
-*/
-
+/*
 void MultiReplace::CloseDebugWindow()
 {
     if (!hDebugWnd) return;                       // nothing to do
@@ -6048,7 +5984,7 @@ void MultiReplace::CloseDebugWindow()
 
     SendMessage(hwnd, WM_CLOSE, 0, 0);            // synchronous → window really gone
 }
-
+*/
 
 #pragma endregion
 
