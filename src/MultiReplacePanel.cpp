@@ -5372,6 +5372,13 @@ void MultiReplace::handleReplaceInFiles() {
 
     resetCountColumns();
 
+    std::vector<int> listFindTotals;
+    std::vector<int> listReplaceTotals;
+    if (useListEnabled) {
+        listFindTotals.assign(replaceListData.size(), 0);
+        listReplaceTotals.assign(replaceListData.size(), 0);
+    }
+
     int total = static_cast<int>(files.size()), idx = 0, changed = 0;
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
 
@@ -5425,43 +5432,45 @@ void MultiReplace::handleReplaceInFiles() {
         send(SCI_ADDTEXT, utf8_input_buf.length(), reinterpret_cast<sptr_t>(utf8_input_buf.data()));
 
         handleDelimiterPositions(DelimiterOperation::LoadAll);
-        bool fileProcessedSuccessfully = handleReplaceAllButton(false, &fp);
 
-        if (fileProcessedSuccessfully) {
-            // write the modified text back to the file.
-            std::string utf8_out = guard.getText();
+        if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; break; }
 
-            // Restore original Scintilla context before writing
-            _hScintilla = oldSci;
-            pSciMsg = oldFn;
-            pSciWndData = oldData;
-
-            if (utf8_out != utf8_input_buf) {
-                std::string final_write_buf;
-                if (convertUtf8ToOriginal(utf8_out, enc_info, original_buf, final_write_buf)) {
-                    if (guard.writeFile(fp, final_write_buf)) {
-                        ++changed; // Only increment if the file was successfully written.
-                    }
-                }
+        if (useListEnabled) {
+            for (size_t i = 0; i < replaceListData.size(); ++i) {
+                int f = replaceListData[i].findCount.empty()
+                    ? 0 : std::stoi(replaceListData[i].findCount);
+                int r = replaceListData[i].replaceCount.empty()
+                    ? 0 : std::stoi(replaceListData[i].replaceCount);
+                listFindTotals[i] += f; 
+                listReplaceTotals[i] += r;
             }
         }
-        else {
-            // The user clicked "Stop" (e.g., from the Debug Window).
-            // The changes for THIS file will be discarded as it's never written to disk.
-            _isCancelRequested = true;
-            break;
+
+        std::string utf8_out = guard.getText();
+        _hScintilla = oldSci; pSciMsg = oldFn; pSciWndData = oldData;
+
+        if (utf8_out != utf8_input_buf) {
+            std::string final_write_buf;
+            if (convertUtf8ToOriginal(utf8_out, enc_info, original_buf, final_write_buf))
+                if (guard.writeFile(fp, final_write_buf)) ++changed;
         }
-
     }
 
-    // The UiStateGuard destructor automatically restores the UI here.
+    if (useListEnabled) {
+        for (size_t i = 0; i < replaceListData.size(); ++i) {
+            replaceListData[i].findCount = std::to_wstring(listFindTotals[i]);
+            replaceListData[i].replaceCount = std::to_wstring(listReplaceTotals[i]);
+            updateCountColumns(i, listFindTotals[i], listReplaceTotals[i]);
+        }
+        refreshUIListView();
+    }
 
-    // Display a simple, universal summary message unless the plugin is shutting down.
     if (!_isShuttingDown) {
-        std::wstring summaryMsg = LM.get(L"status_replace_summary", { std::to_wstring(changed), std::to_wstring(total) });
-        showStatusMessage(summaryMsg, _isCancelRequested ? MessageStatus::Info : MessageStatus::Success);
+        std::wstring summaryMsg = LM.get(L"status_replace_summary",
+            { std::to_wstring(changed), std::to_wstring(files.size()) });
+        showStatusMessage(summaryMsg, _isCancelRequested ? MessageStatus::Info
+            : MessageStatus::Success);
     }
-
     _isCancelRequested = false;
 }
 
