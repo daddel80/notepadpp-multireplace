@@ -3791,93 +3791,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_BUTTON:
         {
+            CloseDebugWindow();
+
             if (isReplaceAllInDocs)
             {
-                CloseDebugWindow(); // Close the Lua debug window if it is open
-                if (MessageBox(
-                    nppData._nppHandle,
-                    LM.get(L"msgbox_confirm_replace_all").c_str(),
-                    LM.get(L"msgbox_title_confirm").c_str(),
-                    MB_ICONWARNING | MB_OKCANCEL
-                ) != IDOK)
-                {
-                    break;
-                }
-
-                // Reset Count Columns once before processing multiple documents
-                resetCountColumns();
-                std::vector<int> listFindTotals(replaceListData.size(), 0);
-                std::vector<int> listReplaceTotals(replaceListData.size(), 0);
-
-                // Get the number of opened documents in each view
-                LRESULT docCountMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
-                LRESULT docCountSecondary = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
-
-                // Check the visibility of each view
-                bool visibleMain = IsWindowVisible(nppData._scintillaMainHandle);
-                bool visibleSecond = IsWindowVisible(nppData._scintillaSecondHandle);
-
-                // Save focused Document
-                LRESULT currentDocIndex = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
-
-                // Process documents in the main view if it's visible
-                if (visibleMain) {
-                    for (LRESULT i = 0; i < docCountMain; ++i) {
-                        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
-                        handleDelimiterPositions(DelimiterOperation::LoadAll);
-                        if (!handleReplaceAllButton()) break;
-
-                        for (size_t j = 0; j < replaceListData.size(); ++j) {
-                            int f = replaceListData[j].findCount.empty()
-                                ? 0 : std::stoi(replaceListData[j].findCount);
-                            int r = replaceListData[j].replaceCount.empty()
-                                ? 0 : std::stoi(replaceListData[j].replaceCount);
-                            listFindTotals[j] += f;
-                            listReplaceTotals[j] += r;
-                        }
-                        resetCountColumns();
-                    }
-                }
-
-                // Process documents in the secondary view if it's visible
-                if (visibleSecond) {
-                    for (LRESULT i = 0; i < docCountSecondary; ++i) {
-                        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, i);
-                        handleDelimiterPositions(DelimiterOperation::LoadAll);
-                        if (!handleReplaceAllButton()) break;
-
-                        for (size_t j = 0; j < replaceListData.size(); ++j) {
-                            if (!replaceListData[i].isEnabled) continue;
-                            int f = replaceListData[j].findCount.empty()
-                                ? 0 : std::stoi(replaceListData[j].findCount);
-                            int r = replaceListData[j].replaceCount.empty()
-                                ? 0 : std::stoi(replaceListData[j].replaceCount);
-                            listFindTotals[j] += f;
-                            listReplaceTotals[j] += r;
-                        }
-                        resetCountColumns();
-                    }
-                }
-
-                // Restore opened Document
-                ::SendMessage(
-                    nppData._nppHandle,
-                    NPPM_ACTIVATEDOC,
-                    visibleMain ? MAIN_VIEW : SUB_VIEW,
-                    currentDocIndex
-                );
-
-                // Display the total per-list-entry
-                for (size_t j = 0; j < replaceListData.size(); ++j) {
-                    if (!replaceListData[j].isEnabled) continue;
-                    updateCountColumns(j, listFindTotals[j], listReplaceTotals[j]);
-                }
-                refreshUIListView();
-
-                // After the multi-document operation, reset the scope UI to a consistent state.
-                ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-                ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-                ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+                replaceAllInOpenedDocs();
             }
             else if (isReplaceInFiles) {
                 std::wstring filter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
@@ -3889,7 +3807,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             }
             else
             {
-                CloseDebugWindow(); // Close the Lua debug window if it is open
                 resetCountColumns();
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
                 handleReplaceAllButton();
@@ -4166,6 +4083,82 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
 
 #pragma region Replace
+
+void MultiReplace::replaceAllInOpenedDocs()
+{
+    if (MessageBox(
+        nppData._nppHandle,
+        LM.get(L"msgbox_confirm_replace_all").c_str(),
+        LM.get(L"msgbox_title_confirm").c_str(),
+        MB_ICONWARNING | MB_OKCANCEL
+    ) != IDOK)
+    {
+        return;
+    }
+
+    // Reset the UI counters before starting
+    resetCountColumns();
+    std::vector<int> listFindTotals(replaceListData.size(), 0);
+    std::vector<int> listReplaceTotals(replaceListData.size(), 0);
+
+    // How many docs are open in each view?
+    LRESULT docCountMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
+    LRESULT docCountSecondary = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
+
+    bool visibleMain = IsWindowVisible(nppData._scintillaMainHandle);
+    bool visibleSecond = IsWindowVisible(nppData._scintillaSecondHandle);
+
+    // Remember which doc was active
+    LRESULT currentDocIndex = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
+
+    // Local lambda to process one document
+    auto processOneDoc = [&](int view, LRESULT idx) -> bool {
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, view, idx);
+        handleDelimiterPositions(DelimiterOperation::LoadAll);
+        if (!handleReplaceAllButton()) return false; // aborted via Stop/Error
+
+        // Accumulate the per-list-entry counters from the UI
+        for (size_t j = 0; j < replaceListData.size(); ++j) {
+            int f = replaceListData[j].findCount.empty() ? 0 : std::stoi(replaceListData[j].findCount);
+            int r = replaceListData[j].replaceCount.empty() ? 0 : std::stoi(replaceListData[j].replaceCount);
+            listFindTotals[j] += f;
+            listReplaceTotals[j] += r;
+        }
+        resetCountColumns();
+        return true;
+        };
+
+    // Iterate main view
+    if (visibleMain) {
+        for (LRESULT i = 0; i < docCountMain; ++i) {
+            if (!processOneDoc(PRIMARY_VIEW, i)) break;
+        }
+    }
+    // Iterate secondary view
+    if (visibleSecond) {
+        for (LRESULT i = 0; i < docCountSecondary; ++i) {
+            if (!processOneDoc(SECOND_VIEW, i)) break;
+        }
+    }
+
+    // Restore the originally active document
+    ::SendMessage(nppData._nppHandle,
+        NPPM_ACTIVATEDOC,
+        visibleMain ? PRIMARY_VIEW : SECOND_VIEW,
+        currentDocIndex);
+
+    // Write back only the enabled entries
+    for (size_t j = 0; j < replaceListData.size(); ++j) {
+        if (!replaceListData[j].isEnabled) continue;
+        updateCountColumns(j, listFindTotals[j], listReplaceTotals[j]);
+    }
+    refreshUIListView();
+
+    // Reset the scope radios to a consistent default
+    ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+    ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+    ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+}
 
 bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std::filesystem::path* explicitPath) {
 
@@ -6016,6 +6009,7 @@ void MultiReplace::CopyListViewToClipboard(HWND hListView) {
     }
 }
 
+/*
 void MultiReplace::CloseDebugWindow() {
     // Triggers the WM_CLOSE message for the debug window, handled in DebugWindowProc
     if (hDebugWnd != NULL) {
@@ -6034,6 +6028,27 @@ void MultiReplace::CloseDebugWindow() {
         PostMessage(hDebugWnd, WM_CLOSE, 0, 0);
     }
 }
+*/
+
+void MultiReplace::CloseDebugWindow()
+{
+    if (!hDebugWnd) return;                       // nothing to do
+
+    // save last pos/size (unchanged) ...
+    RECT rc;
+    if (GetWindowRect(hDebugWnd, &rc))
+    {
+        debugWindowPosition = { rc.left, rc.top };
+        debugWindowSize = { rc.right - rc.left, rc.bottom - rc.top };
+        debugWindowPositionSet = debugWindowSizeSet = true;
+    }
+
+    HWND hwnd = hDebugWnd;
+    hDebugWnd = NULL;                             // mark as closed *before* sending
+
+    SendMessage(hwnd, WM_CLOSE, 0, 0);            // synchronous → window really gone
+}
+
 
 #pragma endregion
 

@@ -734,6 +734,7 @@ private:
     void handleEditOnDoubleClick(int itemIndex, ColumnID columnID);
 
     //Replace
+    void MultiReplace::replaceAllInOpenedDocs();
     bool handleReplaceAllButton(bool showCompletionMessage = true, const std::filesystem::path* explicitPath = nullptr);
     void handleReplaceButton();
     bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX);
