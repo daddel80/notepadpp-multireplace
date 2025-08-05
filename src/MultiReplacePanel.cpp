@@ -3794,65 +3794,96 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (isReplaceAllInDocs)
             {
                 CloseDebugWindow(); // Close the Lua debug window if it is open
-                int msgboxID = MessageBox(
+                if (MessageBox(
                     nppData._nppHandle,
                     LM.get(L"msgbox_confirm_replace_all").c_str(),
                     LM.get(L"msgbox_title_confirm").c_str(),
                     MB_ICONWARNING | MB_OKCANCEL
+                ) != IDOK)
+                {
+                    break;
+                }
+
+                // Reset Count Columns once before processing multiple documents
+                resetCountColumns();
+                std::vector<int> listFindTotals(replaceListData.size(), 0);
+                std::vector<int> listReplaceTotals(replaceListData.size(), 0);
+
+                // Get the number of opened documents in each view
+                LRESULT docCountMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
+                LRESULT docCountSecondary = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
+
+                // Check the visibility of each view
+                bool visibleMain = IsWindowVisible(nppData._scintillaMainHandle);
+                bool visibleSecond = IsWindowVisible(nppData._scintillaSecondHandle);
+
+                // Save focused Document
+                LRESULT currentDocIndex = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
+
+                // Process documents in the main view if it's visible
+                if (visibleMain) {
+                    for (LRESULT i = 0; i < docCountMain; ++i) {
+                        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
+                        handleDelimiterPositions(DelimiterOperation::LoadAll);
+                        if (!handleReplaceAllButton()) break;
+
+                        for (size_t j = 0; j < replaceListData.size(); ++j) {
+                            int f = replaceListData[j].findCount.empty()
+                                ? 0 : std::stoi(replaceListData[j].findCount);
+                            int r = replaceListData[j].replaceCount.empty()
+                                ? 0 : std::stoi(replaceListData[j].replaceCount);
+                            listFindTotals[j] += f;
+                            listReplaceTotals[j] += r;
+                        }
+                        resetCountColumns();
+                    }
+                }
+
+                // Process documents in the secondary view if it's visible
+                if (visibleSecond) {
+                    for (LRESULT i = 0; i < docCountSecondary; ++i) {
+                        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, i);
+                        handleDelimiterPositions(DelimiterOperation::LoadAll);
+                        if (!handleReplaceAllButton()) break;
+
+                        for (size_t j = 0; j < replaceListData.size(); ++j) {
+                            if (!replaceListData[i].isEnabled) continue;
+                            int f = replaceListData[j].findCount.empty()
+                                ? 0 : std::stoi(replaceListData[j].findCount);
+                            int r = replaceListData[j].replaceCount.empty()
+                                ? 0 : std::stoi(replaceListData[j].replaceCount);
+                            listFindTotals[j] += f;
+                            listReplaceTotals[j] += r;
+                        }
+                        resetCountColumns();
+                    }
+                }
+
+                // Restore opened Document
+                ::SendMessage(
+                    nppData._nppHandle,
+                    NPPM_ACTIVATEDOC,
+                    visibleMain ? MAIN_VIEW : SUB_VIEW,
+                    currentDocIndex
                 );
 
-                if (msgboxID == IDOK)
-                {
-                    // Reset Count Columns once before processing multiple documents
-                    resetCountColumns();
-
-                    // Get the number of opened documents in each view
-                    LRESULT docCountMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
-                    LRESULT docCountSecondary = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
-
-                    // Check the visibility of each view
-                    bool visibleMain = IsWindowVisible(nppData._scintillaMainHandle);
-                    bool visibleSecond = IsWindowVisible(nppData._scintillaSecondHandle);
-
-                    // Save focused Document
-                    LRESULT currentDocIndex = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
-
-                    // Process documents in the main view if it's visible
-                    if (visibleMain) {
-                        for (LRESULT i = 0; i < docCountMain; ++i) {
-                            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
-                            handleDelimiterPositions(DelimiterOperation::LoadAll);
-                            if (!handleReplaceAllButton()) {
-                                break;
-                            }
-                        }
-                    }
-
-                    // Process documents in the secondary view if it's visible
-                    if (visibleSecond) {
-                        for (LRESULT i = 0; i < docCountSecondary; ++i) {
-                            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, i);
-                            handleDelimiterPositions(DelimiterOperation::LoadAll);
-                            if (!handleReplaceAllButton()) {
-                                break;
-                            }
-                        }
-                    }
-
-                    // Restore opened Document
-                    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, visibleMain ? MAIN_VIEW : SUB_VIEW, currentDocIndex);
-
-                    // After the multi-document operation, reset the scope UI to a consistent state.
-                    ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-                    ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-                    ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
+                // Display the total per-list-entry
+                for (size_t j = 0; j < replaceListData.size(); ++j) {
+                    if (!replaceListData[j].isEnabled) continue;
+                    updateCountColumns(j, listFindTotals[j], listReplaceTotals[j]);
                 }
+                refreshUIListView();
+
+                // After the multi-document operation, reset the scope UI to a consistent state.
+                ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
+                ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
+                ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
             }
             else if (isReplaceInFiles) {
                 std::wstring filter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
                 std::wstring dir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
 
-                addStringToComboBoxHistory( GetDlgItem(_hSelf, IDC_FILTER_EDIT), filter);
+                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FILTER_EDIT), filter);
                 addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), dir);
                 handleReplaceInFiles();
             }
@@ -5458,8 +5489,7 @@ void MultiReplace::handleReplaceInFiles() {
 
     if (useListEnabled) {
         for (size_t i = 0; i < replaceListData.size(); ++i) {
-            replaceListData[i].findCount = std::to_wstring(listFindTotals[i]);
-            replaceListData[i].replaceCount = std::to_wstring(listReplaceTotals[i]);
+            if (!replaceListData[i].isEnabled) continue;
             updateCountColumns(i, listFindTotals[i], listReplaceTotals[i]);
         }
         refreshUIListView();
