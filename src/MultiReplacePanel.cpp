@@ -6356,7 +6356,7 @@ void MultiReplace::handleFindAllInDocsButton()
     {
         for (size_t i = 0; i < listHitTotals.size(); ++i)
         {
-            if (!replaceListData[i].isEnabled)
+            if (!replaceListData[i].isEnabled || replaceListData[i].findText.empty())
                 continue;
             replaceListData[i].findCount = std::to_wstring(listHitTotals[i]);
             updateCountColumns(i, listHitTotals[i]);
