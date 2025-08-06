@@ -6070,8 +6070,6 @@ void MultiReplace::handleFindAllButton()
 
             if (!item.isEnabled || item.findText.empty())
             {
-                item.findCount = L"0";
-                updateCountColumns(idx, 0);
                 continue;
             }
 
@@ -6358,6 +6356,8 @@ void MultiReplace::handleFindAllInDocsButton()
     {
         for (size_t i = 0; i < listHitTotals.size(); ++i)
         {
+            if (!replaceListData[i].isEnabled)
+                continue;
             replaceListData[i].findCount = std::to_wstring(listHitTotals[i]);
             updateCountColumns(i, listHitTotals[i]);
         }
