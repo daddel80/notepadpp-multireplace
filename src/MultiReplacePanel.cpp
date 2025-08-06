@@ -648,20 +648,8 @@ void MultiReplace::updateReplaceInFilesVisibility()
 
     moveAndResizeControls();               // actually MoveWindow()/SetWindowPos() all controls
     adjustWindowSize();                    // shrink/grow the dialog to fit
-
-    // Keep the Scope-radio buttons consistent with current mode
-    if (isReplaceInFiles)
-    {
-        // Selection scope is meaningless while replacing in files – disable it.
-        ::EnableWindow(GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-        ::SendMessage(GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
-        ::SendMessage(GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-    }
-    else
-    {
-        // Back to normal replace modes – let selection logic decide.
-        onSelectionChanged();   // re-evaluate current text selection
-    }
+   
+    onSelectionChanged();                  // disable Selection Radio Button if Text Selection
 
     InvalidateRect(_hSelf, NULL, TRUE);    // repaint client
     UpdateWindow(_hSelf);
@@ -10573,41 +10561,66 @@ void MultiReplace::pointerToScintilla() {
     }
 }
 
-void MultiReplace::onSelectionChanged() {
+void MultiReplace::onSelectionChanged()
+{
+    static bool wasTextSelected = false;   // remember previous selection state
 
-    static bool wasTextSelected = false;  // This stores the previous state
+    HWND hDlg = getDialogHandle();         // dialog handle once for reuse
 
-    // Always force “All Text”, disable the Selection radio, and leave early.
-    if (instance->isReplaceInFiles) {
-        HWND hSel = ::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO);
-        HWND hAll = ::GetDlgItem(getDialogHandle(), IDC_ALL_TEXT_RADIO);
+    // -----------------------------------------------------------------------
+    // 1) “Replace in Files” mode:
+    //    - Selection-Radio ist dort nutzlos → immer deaktivieren
+    //    - Nur wenn er noch angehakt ist, auf All Text umschalten
+    //    - Dann sofort zurückkehren, damit er nicht erneut aktiviert wird
+    // -----------------------------------------------------------------------
+    if (instance && instance->isReplaceInFiles)
+    {
+        HWND hSel = ::GetDlgItem(hDlg, IDC_SELECTION_RADIO);
         ::EnableWindow(hSel, FALSE);
-        ::SendMessage(hSel, BM_SETCHECK, BST_UNCHECKED, 0);
-        ::SendMessage(hAll, BM_SETCHECK, BST_CHECKED, 0);
-        return;
-    }
 
-    // Get the start and end of the selection
-    Sci_Position start = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
-    Sci_Position end = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
-
-    // Enable or disable IDC_SELECTION_RADIO depending on whether text is selected
-    bool isTextSelected = (start != end);
-    ::EnableWindow(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), isTextSelected);
-
-    // If no text is selected and IDC_SELECTION_RADIO is checked, check IDC_ALL_TEXT_RADIO instead
-    if (!isTextSelected && (::SendMessage(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED)) {
-        ::SendMessage(::GetDlgItem(getDialogHandle(), IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-        ::SendMessage(::GetDlgItem(getDialogHandle(), IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
-    }
-
-    // Check if there was a switch from selected to not selected
-    if (wasTextSelected && !isTextSelected) {
-        if (instance != nullptr) {
-            instance->setUIElementVisibility();
+        if (::SendMessage(hSel, BM_GETCHECK, 0, 0) == BST_CHECKED)
+        {
+            ::CheckRadioButton(
+                hDlg,
+                IDC_ALL_TEXT_RADIO,     // first in radio group
+                IDC_COLUMN_MODE_RADIO,  // last  in radio group
+                IDC_ALL_TEXT_RADIO      // button to check
+            );
         }
+        return;    // nothing else must re-enable Selection in this mode
     }
-    wasTextSelected = isTextSelected;  // Update the previous state
+
+    // -----------------------------------------------------------------------
+    // 2) Normal Replace-All / Replace-in-Opened-Docs modes
+    // -----------------------------------------------------------------------
+    Sci_Position start = ::SendMessage(getScintillaHandle(),
+        SCI_GETSELECTIONSTART, 0, 0);
+    Sci_Position end = ::SendMessage(getScintillaHandle(),
+        SCI_GETSELECTIONEND, 0, 0);
+    bool isTextSelected = (start != end);
+
+    HWND hSel = ::GetDlgItem(hDlg, IDC_SELECTION_RADIO);
+    ::EnableWindow(hSel, isTextSelected);
+
+    // If no text is selected but Selection is still checked → switch to All Text
+    if (!isTextSelected &&
+        ::SendMessage(hSel, BM_GETCHECK, 0, 0) == BST_CHECKED)
+    {
+        ::CheckRadioButton(
+            hDlg,
+            IDC_ALL_TEXT_RADIO,
+            IDC_COLUMN_MODE_RADIO,
+            IDC_ALL_TEXT_RADIO
+        );
+    }
+
+    // Inform other UI parts when we just lost a selection
+    if (wasTextSelected && !isTextSelected)
+    {
+        if (instance)
+            instance->setUIElementVisibility();
+    }
+    wasTextSelected = isTextSelected;
 }
 
 void MultiReplace::onTextChanged() {
