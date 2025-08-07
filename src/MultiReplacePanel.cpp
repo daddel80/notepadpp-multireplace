@@ -2366,6 +2366,126 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         }
         // Allow the default list view procedure to handle standard scrolling
         break;
+    case WM_KEYDOWN:
+    {
+        // update focus like before when navigating with arrows/PageUp/PageDown
+        if (wParam == VK_UP || wParam == VK_DOWN || wParam == VK_PRIOR || wParam == VK_NEXT) {
+            PostMessage(hwnd, WM_UPDATE_FOCUS, 0, 0);
+            return 0;
+        }
+
+        // Ctrl-based shortcuts
+        if (GetKeyState(VK_CONTROL) & 0x8000) {
+            switch (wParam) {
+            case 'Z': URM.undo(); return 0;
+            case 'Y': URM.redo(); return 0;
+            case 'F': pThis->performItemAction(pThis->_contextMenuClickPoint, ItemAction::Search); return 0;
+            case 'X': pThis->performItemAction(pThis->_contextMenuClickPoint, ItemAction::Cut);    return 0;
+            case 'C': pThis->performItemAction(pThis->_contextMenuClickPoint, ItemAction::Copy);   return 0;
+            case 'V': pThis->performItemAction(pThis->_contextMenuClickPoint, ItemAction::Paste);  return 0;
+            case 'A': ListView_SetItemState(hwnd, -1, LVIS_SELECTED, LVIS_SELECTED); pThis->showListFilePath(); return 0;
+            case 'I': pThis->performItemAction(pThis->_contextMenuClickPoint, ItemAction::Add);    return 0;
+            }
+        }
+        else {
+            switch (wParam) {
+            case VK_DELETE:
+                pThis->performItemAction(pThis->_contextMenuClickPoint, ItemAction::Delete);
+                return 0;
+            case VK_F12:
+                pThis->showDPIAndFontInfo();
+                return 0;
+            case VK_SPACE:
+            {
+                int iItem = ListView_GetNextItem(hwnd, -1, LVNI_SELECTED);
+                if (iItem >= 0) {
+                    bool cur = pThis->replaceListData[iItem].isEnabled;
+                    pThis->setSelections(!cur, true);
+                }
+                return 0;
+            }
+            }
+        }
+        break;
+    }
+
+    case WM_SYSKEYDOWN:
+    {
+        if ((GetKeyState(VK_MENU) & 0x8000) && wParam == VK_UP) {
+            int iItem = ListView_GetNextItem(hwnd, -1, LVNI_SELECTED);
+            if (iItem >= 0) { NMITEMACTIVATE nmia{}; nmia.iItem = iItem; pThis->handleCopyBack(&nmia); }
+            return 0;
+        }
+        // Optional fallback for Alt+E / Alt+D
+        if (GetKeyState(VK_MENU) & 0x8000) {
+            if (wParam == 'E') { pThis->setSelections(true, ListView_GetSelectedCount(hwnd) > 0);  return 0; }
+            if (wParam == 'D') { pThis->setSelections(false, ListView_GetSelectedCount(hwnd) > 0);  return 0; }
+        }
+        break;
+    }
+
+    case WM_LBUTTONDOWN:
+    {
+        // extract client coords from lParam (sign-extended)
+        POINT pt;
+        pt.x = static_cast<SHORT>(LOWORD(lParam)); // LOWORD = X, cast to SHORT to sign-extend
+        pt.y = static_cast<SHORT>(HIWORD(lParam)); // HIWORD = Y, cast to SHORT to sign-extend
+
+        LVHITTESTINFO ht{};
+        ht.pt = pt;
+        int hit = ListView_SubItemHitTest(hwnd, &ht);
+        if (hit != -1) {
+            int itemIndex = ht.iItem;
+            int subItem = ht.iSubItem;
+            ColumnID columnID = pThis->getColumnIDFromIndex(subItem);
+
+            if (itemIndex >= 0 && itemIndex < static_cast<int>(pThis->replaceListData.size())) {
+                switch (columnID) {
+                case ColumnID::DELETE_BUTTON:
+                {
+                    NMITEMACTIVATE nmia{};
+                    nmia.iItem = itemIndex;
+                    pThis->handleDeletion(&nmia);
+                    break;
+                }
+                case ColumnID::SELECTION:
+                {
+                    bool cur = pThis->replaceListData[itemIndex].isEnabled;
+                    pThis->setSelections(!cur, true);
+                    break;
+                }
+                default: break;
+                }
+                pThis->showListFilePath();
+            }
+        }
+        break;
+    }
+
+    case WM_LBUTTONDBLCLK:
+    {
+        // extract client coords from lParam (sign-extended)
+        POINT pt;
+        pt.x = static_cast<SHORT>(LOWORD(lParam));
+        pt.y = static_cast<SHORT>(HIWORD(lParam));
+
+        LVHITTESTINFO ht{};
+        ht.pt = pt;
+        int hit = ListView_SubItemHitTest(hwnd, &ht);
+        if (hit != -1 && ht.iItem != -1 && ht.iSubItem != -1) {
+            ColumnID columnID = pThis->getColumnIDFromIndex(ht.iSubItem);
+            if (pThis->doubleClickEditsEnabled) {
+                pThis->handleEditOnDoubleClick(ht.iItem, columnID);
+            }
+            else {
+                NMITEMACTIVATE nmia{};
+                nmia.iItem = ht.iItem;
+                pThis->handleCopyBack(&nmia);
+            }
+            return 0;
+        }
+        break;
+    }
 
     case WM_NOTIFY: {
         NMHDR* pnmhdr = reinterpret_cast<NMHDR*>(lParam);
@@ -3200,251 +3320,56 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         NMHDR* pnmh = reinterpret_cast<NMHDR*>(lParam);
 
-#pragma warning(push)
-#pragma warning(disable:26454)  // Suppress the overflow warning due to BCN_DROPDOWN and NM_RDBLCLK definition
         if (pnmh->code == BCN_DROPDOWN && pnmh->hwndFrom == GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON))
         {
-            RECT rc;
-            ::GetWindowRect(pnmh->hwndFrom, &rc);  // Get screen coordinates of the button
-
+            // split-button menu for Replace All
+            RECT rc; ::GetWindowRect(pnmh->hwndFrom, &rc);
             HMENU hMenu = CreatePopupMenu();
             AppendMenu(hMenu, MF_STRING, ID_REPLACE_ALL_OPTION, LM.getLPW(L"split_menu_replace_all"));
             AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_ALL_DOCS_OPTION, LM.getLPW(L"split_menu_replace_all_in_docs"));
             AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_FILES_OPTION, LM.getLPW(L"split_menu_replace_all_in_files"));
-
-            // Display the menu directly below the button
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, NULL);
-            DestroyMenu(hMenu);  // Clean up after displaying menu
-
+            DestroyMenu(hMenu);
             return TRUE;
         }
 
         if (pnmh->code == BCN_DROPDOWN && pnmh->hwndFrom == GetDlgItem(_hSelf, IDC_FIND_ALL_BUTTON))
         {
-            RECT rc;  ::GetWindowRect(pnmh->hwndFrom, &rc);
-
+            // split-button menu for Find All
+            RECT rc; ::GetWindowRect(pnmh->hwndFrom, &rc);
             HMENU hMenu = CreatePopupMenu();
             AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_OPTION, LM.getLPW(L"split_menu_find_all"));
             AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_ALL_DOCS_OPTION, LM.getLPW(L"split_menu_find_all_in_docs"));
-
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, nullptr);
             DestroyMenu(hMenu);
             return TRUE;
         }
 
-#pragma warning(pop)  // Restore the original warning settings
-
         if (pnmh->idFrom == IDC_REPLACE_LIST) {
             switch (pnmh->code) {
-            case NM_CLICK:
-            {
-                NMITEMACTIVATE* pnmia = reinterpret_cast<NMITEMACTIVATE*>(lParam);
-                int subItem = pnmia->iSubItem;
-                int itemIndex = pnmia->iItem;
-
-                // Ensure valid item index, as subItem 0 could refer to the first column or an invalid click area.
-                // This prevents accidental actions when clicking outside valid list items.
-                if (itemIndex >= 0 && itemIndex < static_cast<int>(replaceListData.size())) {
-                    ColumnID columnID = getColumnIDFromIndex(subItem);
-
-                    switch (columnID) {
-                    case ColumnID::DELETE_BUTTON:
-                        handleDeletion(pnmia);
-                        break;
-
-                    case ColumnID::SELECTION:
-                    {
-                        bool currentSelectionStatus = replaceListData[itemIndex].isEnabled;
-                        setSelections(!currentSelectionStatus, true);
-                    }
-                    break;
-
-                    default:
-                        break;
-                    }
-
-                    showListFilePath();
-                }
-                return TRUE;
-            }
-
-            case NM_DBLCLK:
-            {
-                NMITEMACTIVATE* pnmia = reinterpret_cast<NMITEMACTIVATE*>(lParam);
-                int itemIndex = pnmia->iItem;
-                int clickedColumn = pnmia->iSubItem;
-
-                if (itemIndex != -1 && clickedColumn != -1) {
-                    if (doubleClickEditsEnabled) {
-                        ColumnID columnID = getColumnIDFromIndex(clickedColumn);
-                        handleEditOnDoubleClick(itemIndex, columnID);
-                    }
-                    else {
-                        handleCopyBack(pnmia);
-                    }
-                }
-                return TRUE;
-            }
 
             case LVN_GETDISPINFO:
             {
+                // parent provides item text (owner data)
                 NMLVDISPINFO* plvdi = reinterpret_cast<NMLVDISPINFO*>(lParam);
                 int itemIndex = plvdi->item.iItem;
                 int subItem = plvdi->item.iSubItem;
 
-                // Check if the item index is valid
                 if (itemIndex >= 0 && itemIndex < static_cast<int>(replaceListData.size())) {
                     ReplaceItemData& itemData = replaceListData[itemIndex];
 
-                    // Display the data based on the subitem
-                    if (columnIndices[ColumnID::FIND_COUNT] != -1 && subItem == columnIndices[ColumnID::FIND_COUNT]) {
-                        plvdi->item.pszText = const_cast<LPWSTR>(itemData.findCount.c_str());
-                    }
-                    else if (columnIndices[ColumnID::REPLACE_COUNT] != -1 && subItem == columnIndices[ColumnID::REPLACE_COUNT]) {
-                        plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceCount.c_str());
-                    }
-                    else if (columnIndices[ColumnID::SELECTION] != -1 && subItem == columnIndices[ColumnID::SELECTION]) {
-                        plvdi->item.pszText = itemData.isEnabled ? L"\u25A0" : L"\u2610";  // Square or checkbox
-                    }
-                    else if (columnIndices[ColumnID::FIND_TEXT] != -1 && subItem == columnIndices[ColumnID::FIND_TEXT]) {
-                        plvdi->item.pszText = const_cast<LPWSTR>(itemData.findText.c_str());
-                    }
-                    else if (columnIndices[ColumnID::REPLACE_TEXT] != -1 && subItem == columnIndices[ColumnID::REPLACE_TEXT]) {
-                        plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceText.c_str());
-                    }
-                    else if (columnIndices[ColumnID::WHOLE_WORD] != -1 && subItem == columnIndices[ColumnID::WHOLE_WORD]) {
-                        plvdi->item.pszText = itemData.wholeWord ? L"\u2714" : L"";
-                    }
-                    else if (columnIndices[ColumnID::MATCH_CASE] != -1 && subItem == columnIndices[ColumnID::MATCH_CASE]) {
-                        plvdi->item.pszText = itemData.matchCase ? L"\u2714" : L"";
-                    }
-                    else if (columnIndices[ColumnID::USE_VARIABLES] != -1 && subItem == columnIndices[ColumnID::USE_VARIABLES]) {
-                        plvdi->item.pszText = itemData.useVariables ? L"\u2714" : L"";
-                    }
-                    else if (columnIndices[ColumnID::EXTENDED] != -1 && subItem == columnIndices[ColumnID::EXTENDED]) {
-                        plvdi->item.pszText = itemData.extended ? L"\u2714" : L"";
-                    }
-                    else if (columnIndices[ColumnID::REGEX] != -1 && subItem == columnIndices[ColumnID::REGEX]) {
-                        plvdi->item.pszText = itemData.regex ? L"\u2714" : L"";
-                    }
-                    else if (columnIndices[ColumnID::COMMENTS] != -1 && subItem == columnIndices[ColumnID::COMMENTS]) {
-                        plvdi->item.pszText = const_cast<LPWSTR>(itemData.comments.c_str());
-                    }
-                    else if (columnIndices[ColumnID::DELETE_BUTTON] != -1 && subItem == columnIndices[ColumnID::DELETE_BUTTON]) {
-                        plvdi->item.pszText = L"\u2716";  // Cross mark for delete
-                    }
-                }
-                return TRUE;
-            }
-
-            case LVN_COLUMNCLICK:
-            {
-                NMLISTVIEW* pnmv = reinterpret_cast<NMLISTVIEW*>(lParam);
-
-                int clickedColumn = pnmv->iSubItem;
-
-                // Map the clicked column index to ColumnID
-                int columnID = getColumnIDFromIndex(clickedColumn);
-
-                if (columnID == ColumnID::INVALID) {
-                    // If no valid column is found, ignore the click
-                    return TRUE;
-                }
-
-                if (columnID == ColumnID::SELECTION) {
-                    setSelections(!allSelected);
-                }
-                else {
-                    sortReplaceListData(columnID);
-                }
-                return TRUE;
-            }
-
-            case LVN_KEYDOWN:
-            {
-                LPNMLVKEYDOWN pnkd = reinterpret_cast<LPNMLVKEYDOWN>(pnmh);
-                int iItem = -1;
-
-                // For arrow keys and Page Up/Page Down, post a custom message to update the focus
-                if (pnkd->wVKey == VK_UP || pnkd->wVKey == VK_DOWN ||
-                    pnkd->wVKey == VK_PRIOR || pnkd->wVKey == VK_NEXT)
-                {
-                    PostMessage(_replaceListView, WM_UPDATE_FOCUS, 0, 0);
-                    return TRUE;
-                }
-
-                // For non-arrow keys, proceed with existing focus update.
-                PostMessage(_replaceListView, WM_SETFOCUS, 0, 0);
-
-                // Handling keyboard shortcuts for menu actions
-                if (GetKeyState(VK_CONTROL) & 0x8000) { // If Ctrl is pressed
-                    switch (pnkd->wVKey) {
-                    case 'Z': // Ctrl+Z for Undo
-                        URM.undo();
-                        break;
-                    case 'Y': // Ctrl+Y for Redo
-                        URM.redo();
-                        break;
-                    case 'F': // Ctrl+F for Search in List
-                        performItemAction(_contextMenuClickPoint, ItemAction::Search);
-                        break;
-                    case 'X': // Ctrl+X for Cut
-                        performItemAction(_contextMenuClickPoint, ItemAction::Cut);
-                        break;
-                    case 'C': // Ctrl+C for Copy
-                        performItemAction(_contextMenuClickPoint, ItemAction::Copy);
-                        break;
-                    case 'V': // Ctrl+V for Paste
-                        performItemAction(_contextMenuClickPoint, ItemAction::Paste);
-                        break;
-                    case 'A': // Ctrl+A for Select All
-                        ListView_SetItemState(_replaceListView, -1, LVIS_SELECTED, LVIS_SELECTED);
-                        showListFilePath();
-                        break;
-                    case 'I': // Ctrl+I for Adding new Line
-                        performItemAction(_contextMenuClickPoint, ItemAction::Add);
-                        break;
-                    }
-                }
-                else if (GetKeyState(VK_MENU) & 0x8000) { // If Alt is pressed
-                    switch (pnkd->wVKey) {
-                    case 'E': // Alt+E for Enable Line
-                        setSelections(true, ListView_GetSelectedCount(_replaceListView) > 0);
-                        break;
-                    case 'D': // Alt+D for Disable Line
-                        setSelections(false, ListView_GetSelectedCount(_replaceListView) > 0);
-                        break;
-                    case VK_UP: // Alt+ UP for Push Back
-                        iItem = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED);
-                        if (iItem >= 0) {
-                            NMITEMACTIVATE nmia;
-                            ZeroMemory(&nmia, sizeof(nmia));
-                            nmia.iItem = iItem;
-                            handleCopyBack(&nmia);
-                        }
-                        break;
-                    }
-                }
-                else {
-                    switch (pnkd->wVKey) {
-                    case VK_DELETE: // Delete key for deleting selected lines
-                        performItemAction(_contextMenuClickPoint, ItemAction::Delete);
-                        break;
-                    case VK_F12: // F12 key
-                    {
-                        showDPIAndFontInfo();  // Show the DPI and font information
-                        break;
-                    }
-                    case VK_SPACE: // Spacebar key
-                        iItem = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED);
-                        if (iItem >= 0) {
-                            // Get current selection status of the item
-                            bool currentSelectionStatus = replaceListData[iItem].isEnabled;
-                            // Set the selection status to its opposite
-                            setSelections(!currentSelectionStatus, true);
-                        }
-                        break;
-                    }
+                    if (columnIndices[ColumnID::FIND_COUNT] != -1 && subItem == columnIndices[ColumnID::FIND_COUNT])    plvdi->item.pszText = const_cast<LPWSTR>(itemData.findCount.c_str());
+                    else if (columnIndices[ColumnID::REPLACE_COUNT] != -1 && subItem == columnIndices[ColumnID::REPLACE_COUNT]) plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceCount.c_str());
+                    else if (columnIndices[ColumnID::SELECTION] != -1 && subItem == columnIndices[ColumnID::SELECTION])     plvdi->item.pszText = itemData.isEnabled ? L"\u25A0" : L"\u2610";
+                    else if (columnIndices[ColumnID::FIND_TEXT] != -1 && subItem == columnIndices[ColumnID::FIND_TEXT])     plvdi->item.pszText = const_cast<LPWSTR>(itemData.findText.c_str());
+                    else if (columnIndices[ColumnID::REPLACE_TEXT] != -1 && subItem == columnIndices[ColumnID::REPLACE_TEXT])plvdi->item.pszText = const_cast<LPWSTR>(itemData.replaceText.c_str());
+                    else if (columnIndices[ColumnID::WHOLE_WORD] != -1 && subItem == columnIndices[ColumnID::WHOLE_WORD])   plvdi->item.pszText = itemData.wholeWord ? L"\u2714" : L"";
+                    else if (columnIndices[ColumnID::MATCH_CASE] != -1 && subItem == columnIndices[ColumnID::MATCH_CASE])   plvdi->item.pszText = itemData.matchCase ? L"\u2714" : L"";
+                    else if (columnIndices[ColumnID::USE_VARIABLES] != -1 && subItem == columnIndices[ColumnID::USE_VARIABLES]) plvdi->item.pszText = itemData.useVariables ? L"\u2714" : L"";
+                    else if (columnIndices[ColumnID::EXTENDED] != -1 && subItem == columnIndices[ColumnID::EXTENDED])     plvdi->item.pszText = itemData.extended ? L"\u2714" : L"";
+                    else if (columnIndices[ColumnID::REGEX] != -1 && subItem == columnIndices[ColumnID::REGEX])        plvdi->item.pszText = itemData.regex ? L"\u2714" : L"";
+                    else if (columnIndices[ColumnID::COMMENTS] != -1 && subItem == columnIndices[ColumnID::COMMENTS])     plvdi->item.pszText = const_cast<LPWSTR>(itemData.comments.c_str());
+                    else if (columnIndices[ColumnID::DELETE_BUTTON] != -1 && subItem == columnIndices[ColumnID::DELETE_BUTTON]) plvdi->item.pszText = L"\u2716";
                 }
                 return TRUE;
             }
