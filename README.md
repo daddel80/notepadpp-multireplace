@@ -105,7 +105,7 @@ Search scopes define the area within a document for search and replace operation
 Selecting the **CSV** scope enables powerful tools for working with delimited data.
 
 - **Scope Definition:**
-  - **Cols**: Specify the columns for focused operations (e.g., `1,3-5`).
+  - **Cols**: Specify the target columns for the operation (e.g., `1,3,5-7`). For sorting, the sequence is crucial as it defines the priority (e.g., `3,1` sorts by column 3, then 1). Descending ranges like `5-3` are also supported.
   - **Delim**: Define the delimiter character.
   - **Quote**: Specify a quote character (`"` or `'`) to ignore delimiters within quoted text.
 
