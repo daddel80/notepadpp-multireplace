@@ -9283,63 +9283,71 @@ int MultiReplace::getFontHeight(HWND hwnd, HFONT hFont) {
 std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage)
 {
     std::vector<int> result;
-    if (input.empty()) return result; // Return empty vector if input is empty
+    if (input.empty()) return result;  // nothing to parse
 
-    std::set<int> uniqueNumbers;
+    // use a hash set to filter out duplicates, but preserve insertion order in 'result'
+    std::unordered_set<int> seen;
+
     std::wistringstream stream(input);
     std::wstring token;
 
-    // Lambda function to process each token (either a single number or a range "1-5")
+    // helper to add a number only once, in the order encountered
+    auto pushUnique = [&](int n) {
+        if (seen.insert(n).second)      // if n was not already present
+            result.push_back(n);
+        };
+
+    // process each comma-separated token, either a single number or a range "start-end"
     auto processToken = [&](const std::wstring& token) -> bool
         {
-            if (token.empty()) return true; // Ignore empty tokens
+            if (token.empty()) return true;  // skip empty entries
 
-            try
-            {
+            try {
                 size_t dashPos = token.find(L'-');
-                if (dashPos != std::wstring::npos)
-                {
-                    // Extract range start and end
+                if (dashPos != std::wstring::npos) {
+                    // RANGE: parse start and end values
                     int startRange = std::stoi(token.substr(0, dashPos));
                     int endRange = std::stoi(token.substr(dashPos + 1));
-
-                    // Validate range
-                    if (startRange < 1 || endRange < startRange)
+                    if (startRange < 1 || endRange < 1)
                         return false;
 
-                    // Insert numbers in the range
-                    for (int i = startRange; i <= endRange; ++i)
-                        uniqueNumbers.insert(i);
+                    // push each number in the range, preserving order
+                    if (endRange >= startRange) {
+                        // ascending range
+                        for (int i = startRange; i <= endRange; ++i)
+                            pushUnique(i);
+                    }
+                    else {
+                        // descending range
+                        for (int i = startRange; i >= endRange; --i)
+                            pushUnique(i);
+                    }
                 }
-                else
-                {
-                    // Single number
+                else {
+                    // SINGLE NUMBER
                     int number = std::stoi(token);
                     if (number < 1)
-                        return false; // Invalid input
+                        return false;  // invalid value
 
-                    uniqueNumbers.insert(number);
+                    // add the single number
+                    pushUnique(number);
                 }
             }
-            catch (const std::exception&)
-            {
-                return false; // Invalid input format
+            catch (const std::exception&) {
+                return false;  // parsing failure
             }
-
             return true;
         };
 
-    // Split input by comma and process each token
-    while (std::getline(stream, token, L','))
-    {
-        if (!processToken(token))
-        {
+    // split the input string on commas and feed each token to our processor
+    while (std::getline(stream, token, L',')) {
+        if (!processToken(token)) {
             showStatusMessage(errorMessage, MessageStatus::Error);
-            return {}; // Invalid input -> return empty vector
+            return {};  // abort on invalid syntax
         }
     }
 
-    result.assign(uniqueNumbers.begin(), uniqueNumbers.end());
+    // 'result' contains the right values in the correct order
     return result;
 }
 
