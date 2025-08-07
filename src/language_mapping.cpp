@@ -111,7 +111,6 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"split_button_replace_all", L"Replace All" },
 { L"split_button_replace_all_in_docs", L"Replace All in Docs" },
 { L"split_button_replace_all_in_files", L"Replace in Files" },
-
 { L"split_menu_find_all", L"Find All" },
 { L"split_menu_find_all_in_docs", L"Find All in All opened Documents" },
 { L"split_menu_find_all_in_files", L"Find All in Files" },
@@ -241,6 +240,5 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"dock_crit_header",L"Search \"$REPLACE_STRING1\" ($REPLACE_STRING2 hits)" },
 { L"dock_hits_suffix", L"($REPLACE_STRING hits)" },
 { L"dock_line", L"Line" },
-
 
 };
