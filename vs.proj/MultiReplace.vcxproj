@@ -29,7 +29,6 @@
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
     <ClInclude Include="..\src\ConfigManager.h" />
-    <ClInclude Include="..\src\DockingDlgInterface.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
     <ClInclude Include="..\src\Encoding.h" />
