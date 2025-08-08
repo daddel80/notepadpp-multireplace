@@ -67,7 +67,7 @@ private:
     std::vector<Item> _undo;
     std::vector<Item> _redo;
 
-    size_t _capacity = 200;    // limited stps
+    size_t _capacity = 200;    // limited steps
     void trim() {
         if (_capacity == 0) return;
         while (_undo.size() > _capacity) _undo.erase(_undo.begin());

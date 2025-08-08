@@ -21,46 +21,35 @@
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <unordered_map>
 #include <windows.h>
-#include <map>
 
 namespace {
-
-    // Build a cache key from id + placeholders.
-    static std::wstring makeKey(const std::wstring& id,
+    // --- Local helpers ----------------------------------------------------
+    std::wstring makeKey(const std::wstring& id,
         const std::vector<std::wstring>& repl)
     {
-        // Use a rarely used unit separator as delimiter.
         std::wstring key = id;
         key.push_back(L'\x1F');
-        for (const auto& r : repl) {
-            key += r;
-            key.push_back(L'\x1F');
-        }
+        for (const auto& r : repl) { key += r; key.push_back(L'\x1F'); }
         return key;
     }
 
-    // Global cache holder for getLPCW(); single instance per process.
-    static std::unordered_map<std::wstring, std::wstring>& lpcwCache()
+    std::unordered_map<std::wstring, std::wstring>& lpcwCache()
     {
         static std::unordered_map<std::wstring, std::wstring> cache;
         return cache;
     }
-
 }
 
-// -----------------------------------------------------------------
-// Singleton
-// -----------------------------------------------------------------
+// --- Singleton ------------------------------------------------------------
 LanguageManager& LanguageManager::instance()
 {
     static LanguageManager mgr;
     return mgr;
 }
 
-// -----------------------------------------------------------------
-// Public loading helpers
-// -----------------------------------------------------------------
+// --- Loading --------------------------------------------------------------
 bool LanguageManager::load(const std::wstring& pluginDir,
     const std::wstring& nativeLangXmlPath)
 {
@@ -77,8 +66,7 @@ bool LanguageManager::load(const std::wstring& pluginDir,
 bool LanguageManager::loadFromIni(const std::wstring& iniFile,
     const std::wstring& languageCode)
 {
-    // 1) fallback = English
-    _table = languageMap;
+    _table = languageMap; // fallback: English
 
     if (!_cache.load(iniFile))
         return false;
@@ -88,7 +76,7 @@ bool LanguageManager::loadFromIni(const std::wstring& iniFile,
         for (const auto& kv : it->second)
             _table[kv.first] = kv.second;
 
-    invalidateCaches(); // Clear derived caches after language change
+    invalidateCaches();
     return true;
 }
 
@@ -97,65 +85,61 @@ void LanguageManager::invalidateCaches()
     lpcwCache().clear();
 }
 
-// -----------------------------------------------------------------
-// String getters
-// -----------------------------------------------------------------
-// Replace <br/>, then $REPLACE_n (descending), then $REPLACE.
+// --- Strings --------------------------------------------------------------
+// <br/> -> CRLF, then $REPLACE_STRINGn (high->low), then $REPLACE_STRING.
 std::wstring LanguageManager::get(const std::wstring& id,
     const std::vector<std::wstring>& repl) const
 {
     auto it = _table.find(id);
     if (it == _table.end())
-        return id; // developer-friendly fallback: show missing key
+        return id;
 
     std::wstring result = it->second;
     const std::wstring base = L"$REPLACE_STRING";
 
-    // 1) Replace <br/> with CRLF (all occurrences)
+    // <br/> -> CRLF
     for (size_t p = result.find(L"<br/>");
         p != std::wstring::npos;
         p = result.find(L"<br/>", p))
     {
         result.replace(p, 5, L"\r\n");
-        p += 2; // advance beyond inserted CRLF to avoid re-scan at same spot
+        p += 2;
     }
 
-    // 2) Numbered placeholders: $REPLACE_STRING1, $REPLACE_STRING2, ... (highest index first)
+    // $REPLACE_STRINGn
     for (size_t i = repl.size(); i > 0; --i)
     {
         const std::wstring ph = base + std::to_wstring(i);
-        const std::wstring& val = repl[i - 1];
+        const std::wstring& vv = repl[i - 1];
 
         for (size_t p = result.find(ph);
             p != std::wstring::npos;
             p = result.find(ph, p))
         {
-            result.replace(p, ph.size(), val);
-            p += val.size(); // skip over inserted text
+            result.replace(p, ph.size(), vv);
+            p += vv.size();
         }
     }
 
-    // 3) Plain $REPLACE_STRING -> repl[0] (empty if not provided)
+    // $REPLACE_STRING
     {
-        const std::wstring& val = repl.empty() ? std::wstring() : repl[0];
+        const std::wstring& vv = repl.empty() ? std::wstring() : repl[0];
 
         for (size_t p = result.find(base);
             p != std::wstring::npos;
             p = result.find(base, p))
         {
-            result.replace(p, base.size(), val);
-            p += val.size(); // skip over inserted text
+            result.replace(p, base.size(), vv);
+            p += vv.size();
         }
     }
 
     return result;
 }
 
-
 LPCWSTR LanguageManager::getLPCW(const std::wstring& id,
     const std::vector<std::wstring>& repl) const
 {
-    // Cache per (id + repl) to avoid wrong reuse for different placeholders.
     auto& cache = lpcwCache();
     const std::wstring key = makeKey(id, repl);
 
@@ -166,24 +150,20 @@ LPCWSTR LanguageManager::getLPCW(const std::wstring& id,
     return it->second.c_str();
 }
 
-
 LPWSTR LanguageManager::getLPW(const std::wstring& id,
     const std::vector<std::wstring>& repl) const
 {
-    // Use a thread-local buffer to avoid data races and overwrite issues.
     thread_local std::wstring buf;
     buf = get(id, repl);
-    return buf.empty() ? nullptr : &buf[0];
+    return buf.empty() ? nullptr : buf.data();
 }
 
-
-// -----------------------------------------------------------------
-// Detect active language from Notepad++ nativeLang.xml
-// -----------------------------------------------------------------
+// --- nativeLang.xml detection --------------------------------------------
 std::wstring LanguageManager::detectLanguage(const std::wstring& xmlPath)
 {
     std::wifstream file(xmlPath);
-    if (!file.is_open()) return L"english";
+    if (!file.is_open())
+        return L"english";
 
     std::wregex  rx(L"<Native-Langue .*? filename=\"(.*?)\\.xml\"");
     std::wsmatch m;
@@ -196,8 +176,7 @@ std::wstring LanguageManager::detectLanguage(const std::wstring& xmlPath)
                 break;
             }
     }
-    catch (...) {
-        // keep fallback
-    }
+    catch (...) { /* keep fallback */ }
+
     return lang;
 }

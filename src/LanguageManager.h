@@ -23,43 +23,29 @@
 // --------------------------------------------------------------
 
 #include "IniFileCache.h"
-
 #include <string>
 #include <vector>
 #include <unordered_map>
-#include <map>
-#include <windows.h>    // LPCWSTR / LPWSTR
+#include <windows.h>
 
 class LanguageManager
 {
 public:
-    // Singleton accessor
+    // --- Singleton --------------------------------------------------------
     static LanguageManager& instance();
 
-    // ---------------------------------------------------------------------
-    // Loading
-    // ---------------------------------------------------------------------
-    // Auto‑detect language code, then call loadFromIni(...)
-    bool load(const std::wstring& pluginDir,
-        const std::wstring& nativeLangXml);
+    // --- Loading ----------------------------------------------------------
+    bool load(const std::wstring& pluginDir, const std::wstring& nativeLangXml);
+    bool loadFromIni(const std::wstring& iniFile, const std::wstring& languageCode);
 
-    // Explicit: give path to languages.ini + language code (en_US, de_DE …)
-    bool loadFromIni(const std::wstring& iniFile,
-        const std::wstring& languageCode);
-
-    // ---------------------------------------------------------------------
-    // String retrieval
-    // ---------------------------------------------------------------------
+    // --- Strings ----------------------------------------------------------
     std::wstring get(const std::wstring& id,
         const std::vector<std::wstring>& repl = {}) const;
-
-    LPCWSTR getLPCW(const std::wstring& id,
+    LPCWSTR      getLPCW(const std::wstring& id,
+        const std::vector<std::wstring>& repl = {}) const;
+    LPWSTR       getLPW(const std::wstring& id,
         const std::vector<std::wstring>& repl = {}) const;
 
-    LPWSTR  getLPW(const std::wstring& id,
-        const std::vector<std::wstring>& repl = {}) const;
-
-    // Raw cache access (rarely required)
     const IniFileCache& ini() const { return _cache; }
 
 private:
@@ -71,6 +57,6 @@ private:
     static std::wstring detectLanguage(const std::wstring& nativeLangXmlPath);
     void invalidateCaches();
 
-    IniFileCache _cache;                               // languages.ini only
-    std::unordered_map<std::wstring, std::wstring> _table;   // id → text
+    IniFileCache _cache;                                      // languages.ini
+    std::unordered_map<std::wstring, std::wstring> _table;    // id -> text
 };
