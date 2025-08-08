@@ -17,7 +17,6 @@
 #ifndef MULTI_REPLACE_H
 #define MULTI_REPLACE_H
 
-#include "StaticDialog/StaticDialog.h"
 #include "StaticDialog/resource.h"
 #include "PluginInterface.h"
 #include "DropTarget.h"
@@ -32,14 +31,11 @@
 #include <map>
 #include <functional>
 #include <regex>
-#include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
 #include <filesystem>
-
 #include <commctrl.h>
-
 #include <lua.hpp>
 
 extern NppData nppData;
@@ -333,13 +329,7 @@ struct EditControlContext
     HWND hwndExpandBtn;
 };
 
-// each new Vector has to be delared outside of the class due to unresolved memory behaviours, 
-// possible initial limited stack size in N++ for Plugins
-inline HWND hwndExpandBtn = nullptr;
-inline HFONT _hBoldFont2;
-inline lua_State* _luaState = nullptr;    // Reused Lua state
 
-inline bool _editIsExpanded = false; // track expand state
 using IniData = std::map<std::wstring, std::map<std::wstring, std::wstring>>;
 //inline IniData iniCache;
 
@@ -357,6 +347,7 @@ public:
         _replaceListView(NULL),
         _hStandardFont(nullptr),
         _hBoldFont1(nullptr),
+        _hBoldFont2(nullptr),
         _hNormalFont1(nullptr),
         _hNormalFont2(nullptr),
         _hNormalFont3(nullptr),
@@ -368,7 +359,7 @@ public:
     {
         setInstance(this);
     };
-    static MultiReplace* instance; // Static instance of the class
+    inline static MultiReplace* instance = nullptr; // Static instance of the class
 
     // Helper functions for scaling
     inline int sx(int value) { return dpiMgr->scaleX(value); }
@@ -420,17 +411,17 @@ public:
     static constexpr COLORREF DMODE_INFO = RGB(147, 147, 255);
     static constexpr COLORREF DMODE_FILTER_HELP = RGB(255, 235, 59);
 
-    static bool isWindowOpen;
-    static bool textModified;
-    static bool documentSwitched;
-    static int scannedDelimiterBufferID;
-    static bool isLoggingEnabled;
-    static bool isCaretPositionEnabled;
-    static bool isLuaErrorDialogEnabled;
+    inline static bool isWindowOpen = false;
+    inline static bool textModified = true;
+    inline static bool documentSwitched = false;
+    inline static int  scannedDelimiterBufferID = -1;
+    inline static bool isLoggingEnabled = true;
+    inline static bool isCaretPositionEnabled = false;
+    inline static bool isLuaErrorDialogEnabled = true;
 
-    static std::vector<size_t> originalLineOrder; // Stores the order of lines before sorting
-    static SortDirection currentSortState; // Status of column sort
-    static bool isSortedColumn; // Indicates if a column is sorted
+    inline static std::vector<size_t> originalLineOrder{}; // Stores the order of lines before sorting
+    inline static SortDirection currentSortState = SortDirection::Unsorted; // Status of column sort
+    inline static bool isSortedColumn = false; // Indicates if a column is sorted
 
     // Static methods for Event Handling
     static void onSelectionChanged();
@@ -452,7 +443,7 @@ public:
         Sci_Position blockSize = 1;
     };
 
-    static std::vector<LogEntry> logChanges;
+    inline static std::vector<LogEntry> logChanges{};
 
     // Drag-and-Drop functionality
     DropTarget* dropTarget;  // Pointer to DropTarget instance
@@ -461,11 +452,13 @@ public:
     void initializeDragAndDrop();
    // std::wstring getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements = {});
 
+    inline static HWND       hwndExpandBtn = nullptr;
+    lua_State* _luaState = nullptr;   // Reused Lua state
+
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 
 private:
-    static constexpr int MAX_TEXT_LENGTH = 4096; // Maximum text length for Find and Replace String
     static constexpr int MARKER_COLOR = 0x007F00; // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     static constexpr int REPLACE_FILES_PANEL_HEIGHT = 88;
@@ -498,11 +491,11 @@ private:
     DPIManager* dpiMgr; // Pointer to DPIManager instance
 
     // Static variables related to GUI 
-    static HWND s_hScintilla;
-    static HWND s_hDlg;
+    inline static HWND s_hScintilla = nullptr;
+    inline static HWND s_hDlg = nullptr;
     HWND hwndEdit = NULL;
     WNDPROC originalListViewProc;
-    static std::map<int, ControlInfo> ctrlMap;
+    inline static std::map<int, ControlInfo> ctrlMap{};
 
     // Instance-specific GUI-related variables 
     HINSTANCE hInstance;
@@ -516,6 +509,7 @@ private:
     HWND _hStatusMessage;
     HFONT _hStandardFont;
     HFONT _hBoldFont1;
+    HFONT _hBoldFont2;
     HFONT _hNormalFont1;
     HFONT _hNormalFont2;
     HFONT _hNormalFont3;
@@ -563,12 +557,12 @@ private:
     LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
     SIZE_T CSVheaderLinesCount = 1; // Number of header lines not included in CSV sorting
     bool isStatisticsColumnsExpanded = false;
-    static POINT debugWindowPosition;
-    static bool debugWindowPositionSet;
-    static int debugWindowResponse;
-    static SIZE debugWindowSize;
-    static bool debugWindowSizeSet;
-    static HWND hDebugWnd; // Handle for the debug window
+    inline static POINT debugWindowPosition{ CW_USEDEFAULT, CW_USEDEFAULT };
+    inline static bool  debugWindowPositionSet = false;
+    inline static int   debugWindowResponse = -1;
+    inline static SIZE  debugWindowSize{ 400, 250 };
+    inline static bool  debugWindowSizeSet = false;
+    inline static HWND  hDebugWnd = nullptr; // Handle for the debug window
     int _editingItemIndex;
     int _editingColumnIndex;
     int _editingColumnID;
@@ -616,9 +610,9 @@ private:
 
     bool isHoverTextSuppressed = false;    // Temporarily suppress HoverText to avoid flickering when Edit in list is open
 
-
+    bool _editIsExpanded = false; // track expand state
     bool _isCancelRequested = false; // Flag to signal cancellation in Replace Files
-    static bool _isShuttingDown; // Flag to signal app shutdown
+    inline static bool  _isShuttingDown = false; // Flag to signal app shutdown
     HBRUSH _hDlgBrush = nullptr; // Handle for the dialog's background brush
 
     // GUI control-related constants
@@ -656,7 +650,7 @@ private:
     int DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled;
     int DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled;
 
-
+    
     //Initialization
     void initializeWindowSize();
     RECT calculateMinWindowFrame(HWND hwnd);
