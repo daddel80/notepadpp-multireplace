@@ -2443,6 +2443,21 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         break;
     }
 
+    case WM_SYSKEYDOWN:
+    {
+        if ((GetKeyState(VK_MENU) & 0x8000) && wParam == VK_UP) {
+            int iItem = ListView_GetNextItem(hwnd, -1, LVNI_SELECTED);
+            if (iItem >= 0) { NMITEMACTIVATE nmia{}; nmia.iItem = iItem; pThis->handleCopyBack(&nmia); }
+            return 0;
+        }
+        // Optional fallback for Alt+E / Alt+D
+        if (GetKeyState(VK_MENU) & 0x8000) {
+            if (wParam == 'E') { pThis->setSelections(true, ListView_GetSelectedCount(hwnd) > 0);  return 0; }
+            if (wParam == 'D') { pThis->setSelections(false, ListView_GetSelectedCount(hwnd) > 0);  return 0; }
+        }
+        break;
+    }
+
     case WM_TIMER: {
         if (wParam == 1) { // Tooltip re-enable timer   
             KillTimer(hwnd, 1); // Kill the timer first to prevent it from firing again
@@ -3279,7 +3294,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     (void)lstrcpynW(plvdi->item.pszText, d.replaceCount.c_str(), plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::SELECTION] != -1 && subItem == columnIndices[ColumnID::SELECTION]) {
-                    // If you draw this via text (icons), supply a short glyph; if via custom draw/images, you can leave it empty.
                     (void)lstrcpynW(plvdi->item.pszText, d.isEnabled ? L"\u25A0" : L"\u2610", plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::FIND_TEXT] != -1 && subItem == columnIndices[ColumnID::FIND_TEXT]) {
@@ -3307,7 +3321,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     (void)lstrcpynW(plvdi->item.pszText, d.comments.c_str(), plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::DELETE_BUTTON] != -1 && subItem == columnIndices[ColumnID::DELETE_BUTTON]) {
-                    // If delete is text-based (✖), supply it; else leave empty and draw an image.
                     (void)lstrcpynW(plvdi->item.pszText, L"\u2716", plvdi->item.cchTextMax);
                 }
                 else {
@@ -3385,26 +3398,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         performItemAction(_contextMenuClickPoint, ItemAction::Add);
                         break;
                     }
-                }
-                else if (GetKeyState(VK_MENU) & 0x8000) { // If Alt is pressed
-                    switch (pnkd->wVKey) {
-                    case 'E': // Alt+E for Enable Line
-                        setSelections(true, ListView_GetSelectedCount(_replaceListView) > 0);
-                        break;
-                    case 'D': // Alt+D for Disable Line
-                        setSelections(false, ListView_GetSelectedCount(_replaceListView) > 0);
-                        break;
-                    case VK_UP: // Alt+ UP for Push Back
-                        iItem = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED);
-                        if (iItem >= 0) {
-                            NMITEMACTIVATE nmia;
-                            ZeroMemory(&nmia, sizeof(nmia));
-                            nmia.iItem = iItem;
-                            handleCopyBack(&nmia);
-                        }
-                        break;
-                    }
-                }
+                } 
                 else {
                     switch (pnkd->wVKey) {
                     case VK_DELETE: // Delete key for deleting selected lines
