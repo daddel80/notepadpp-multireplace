@@ -614,7 +614,6 @@ void ResultDock::applyTheme()
     S(SCI_SETCARETLINEBACK, theme.caretLineBg, 0);
     S(SCI_SETCARETLINEBACKALPHA, theme.caretLineAlpha);
 
-
     // Line background indicator
     S(SCI_INDICSETSTYLE, INDIC_LINE_BACKGROUND, INDIC_HIDDEN);
 

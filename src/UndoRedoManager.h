@@ -39,7 +39,6 @@ public:
 
     bool undo();          // returns false if nothing to undo
     bool redo();          // returns false if nothing to redo
-
     void clear();
 
     [[nodiscard]] bool   canUndo()   const { return !_undo.empty(); }
@@ -49,6 +48,9 @@ public:
 
     [[nodiscard]] std::wstring peekUndoLabel() const;
     [[nodiscard]] std::wstring peekRedoLabel() const;
+
+    void setCapacity(size_t cap) { _capacity = cap; trim(); }
+    size_t capacity() const { return _capacity; }
 
 private:
     UndoRedoManager() = default;
@@ -64,4 +66,11 @@ private:
 
     std::vector<Item> _undo;
     std::vector<Item> _redo;
+
+    size_t _capacity = 200;    // limited stps
+    void trim() {
+        if (_capacity == 0) return;
+        while (_undo.size() > _capacity) _undo.erase(_undo.begin());
+        while (_redo.size() > _capacity) _redo.erase(_redo.begin());
+    }
 };

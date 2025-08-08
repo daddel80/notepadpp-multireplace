@@ -24,6 +24,31 @@
 #include <windows.h>
 #include <map>
 
+namespace {
+
+    // Build a cache key from id + placeholders.
+    static std::wstring makeKey(const std::wstring& id,
+        const std::vector<std::wstring>& repl)
+    {
+        // Use a rarely used unit separator as delimiter.
+        std::wstring key = id;
+        key.push_back(L'\x1F');
+        for (const auto& r : repl) {
+            key += r;
+            key.push_back(L'\x1F');
+        }
+        return key;
+    }
+
+    // Global cache holder for getLPCW(); single instance per process.
+    static std::unordered_map<std::wstring, std::wstring>& lpcwCache()
+    {
+        static std::unordered_map<std::wstring, std::wstring> cache;
+        return cache;
+    }
+
+}
+
 // -----------------------------------------------------------------
 // Singleton
 // -----------------------------------------------------------------
@@ -59,68 +84,98 @@ bool LanguageManager::loadFromIni(const std::wstring& iniFile,
         return false;
 
     const auto& data = _cache.raw();
-    // 2) override with requested language
     if (auto it = data.find(languageCode); it != data.end())
         for (const auto& kv : it->second)
             _table[kv.first] = kv.second;
 
+    invalidateCaches(); // Clear derived caches after language change
     return true;
+}
+
+void LanguageManager::invalidateCaches()
+{
+    lpcwCache().clear();
 }
 
 // -----------------------------------------------------------------
 // String getters
 // -----------------------------------------------------------------
+// Replace <br/>, then $REPLACE_n (descending), then $REPLACE.
 std::wstring LanguageManager::get(const std::wstring& id,
     const std::vector<std::wstring>& repl) const
 {
     auto it = _table.find(id);
-    if (it == _table.end()) return L"Text not found";
+    if (it == _table.end())
+        return id; // developer-friendly fallback: show missing key
 
     std::wstring result = it->second;
     const std::wstring base = L"$REPLACE_STRING";
 
-    // <br/>  →  CRLF
+    // 1) Replace <br/> with CRLF (all occurrences)
     for (size_t p = result.find(L"<br/>");
         p != std::wstring::npos;
         p = result.find(L"<br/>", p))
+    {
         result.replace(p, 5, L"\r\n");
+        p += 2; // advance beyond inserted CRLF to avoid re-scan at same spot
+    }
 
-    // numbered placeholders (highest first)
-    for (size_t i = repl.size(); i > 0; --i) {
-        std::wstring ph = base + std::to_wstring(i);
+    // 2) Numbered placeholders: $REPLACE_STRING1, $REPLACE_STRING2, ... (highest index first)
+    for (size_t i = repl.size(); i > 0; --i)
+    {
+        const std::wstring ph = base + std::to_wstring(i);
+        const std::wstring& val = repl[i - 1];
+
         for (size_t p = result.find(ph);
             p != std::wstring::npos;
             p = result.find(ph, p))
-            result.replace(p, ph.size(), repl[i - 1]);
+        {
+            result.replace(p, ph.size(), val);
+            p += val.size(); // skip over inserted text
+        }
     }
 
-    // plain $REPLACE_STRING
-    for (size_t p = result.find(base);
-        p != std::wstring::npos;
-        p = result.find(base, p))
-        result.replace(p, base.size(),
-            repl.empty() ? L"" : repl[0]);
+    // 3) Plain $REPLACE_STRING -> repl[0] (empty if not provided)
+    {
+        const std::wstring& val = repl.empty() ? std::wstring() : repl[0];
+
+        for (size_t p = result.find(base);
+            p != std::wstring::npos;
+            p = result.find(base, p))
+        {
+            result.replace(p, base.size(), val);
+            p += val.size(); // skip over inserted text
+        }
+    }
 
     return result;
 }
 
+
 LPCWSTR LanguageManager::getLPCW(const std::wstring& id,
     const std::vector<std::wstring>& repl) const
 {
-    static std::map<std::wstring, std::wstring> cache;
-    auto& ref = cache[id];
-    if (ref.empty())
-        ref = get(id, repl);
-    return ref.c_str();
+    // Cache per (id + repl) to avoid wrong reuse for different placeholders.
+    auto& cache = lpcwCache();
+    const std::wstring key = makeKey(id, repl);
+
+    auto it = cache.find(key);
+    if (it == cache.end())
+        it = cache.emplace(key, get(id, repl)).first;
+
+    return it->second.c_str();
 }
+
 
 LPWSTR LanguageManager::getLPW(const std::wstring& id,
     const std::vector<std::wstring>& repl) const
 {
-    static std::wstring buf;
+    // Use a thread-local buffer to avoid data races and overwrite issues.
+    thread_local std::wstring buf;
     buf = get(id, repl);
-    return &buf[0];
+    return buf.empty() ? nullptr : &buf[0];
 }
+
 
 // -----------------------------------------------------------------
 // Detect active language from Notepad++ nativeLang.xml

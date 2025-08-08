@@ -39,6 +39,7 @@ void UndoRedoManager::push(Action undoAction,
                       std::move(redoAction),
                       label });
     _redo.clear();
+    trim();
 }
 
 // -----------------------------------------------------------------------------

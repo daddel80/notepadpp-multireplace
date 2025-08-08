@@ -69,6 +69,7 @@ private:
     LanguageManager& operator=(const LanguageManager&) = delete;
 
     static std::wstring detectLanguage(const std::wstring& nativeLangXmlPath);
+    void invalidateCaches();
 
     IniFileCache _cache;                               // languages.ini only
     std::unordered_map<std::wstring, std::wstring> _table;   // id → text
