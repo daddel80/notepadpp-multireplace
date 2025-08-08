@@ -3273,42 +3273,42 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
                 // Fill text depending on which column is asking
                 if (columnIndices[ColumnID::FIND_COUNT] != -1 && subItem == columnIndices[ColumnID::FIND_COUNT]) {
-                    lstrcpynW(plvdi->item.pszText, d.findCount.c_str(), plvdi->item.cchTextMax);
+                    (void)lstrcpynW(plvdi->item.pszText, d.findCount.c_str(), plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::REPLACE_COUNT] != -1 && subItem == columnIndices[ColumnID::REPLACE_COUNT]) {
-                    lstrcpynW(plvdi->item.pszText, d.replaceCount.c_str(), plvdi->item.cchTextMax);
+                    (void)lstrcpynW(plvdi->item.pszText, d.replaceCount.c_str(), plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::SELECTION] != -1 && subItem == columnIndices[ColumnID::SELECTION]) {
                     // If you draw this via text (icons), supply a short glyph; if via custom draw/images, you can leave it empty.
-                    lstrcpynW(plvdi->item.pszText, d.isEnabled ? L"\u25A0" : L"\u2610", plvdi->item.cchTextMax);
+                    (void)lstrcpynW(plvdi->item.pszText, d.isEnabled ? L"\u25A0" : L"\u2610", plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::FIND_TEXT] != -1 && subItem == columnIndices[ColumnID::FIND_TEXT]) {
-                    lstrcpynW(plvdi->item.pszText, d.findText.c_str(), plvdi->item.cchTextMax);
+                    (void)lstrcpynW(plvdi->item.pszText, d.findText.c_str(), plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::REPLACE_TEXT] != -1 && subItem == columnIndices[ColumnID::REPLACE_TEXT]) {
-                    lstrcpynW(plvdi->item.pszText, d.replaceText.c_str(), plvdi->item.cchTextMax);
+                    (void)lstrcpynW(plvdi->item.pszText, d.replaceText.c_str(), plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::WHOLE_WORD] != -1 && subItem == columnIndices[ColumnID::WHOLE_WORD]) {
-                    lstrcpynW(plvdi->item.pszText, d.wholeWord ? L"\u2714" : L"", plvdi->item.cchTextMax);
+                    (void)lstrcpynW(plvdi->item.pszText, d.wholeWord ? L"\u2714" : L"", plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::MATCH_CASE] != -1 && subItem == columnIndices[ColumnID::MATCH_CASE]) {
-                    lstrcpynW(plvdi->item.pszText, d.matchCase ? L"\u2714" : L"", plvdi->item.cchTextMax);
+                    (void)lstrcpynW(plvdi->item.pszText, d.matchCase ? L"\u2714" : L"", plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::USE_VARIABLES] != -1 && subItem == columnIndices[ColumnID::USE_VARIABLES]) {
-                    lstrcpynW(plvdi->item.pszText, d.useVariables ? L"\u2714" : L"", plvdi->item.cchTextMax);
+                    (void)lstrcpynW(plvdi->item.pszText, d.useVariables ? L"\u2714" : L"", plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::EXTENDED] != -1 && subItem == columnIndices[ColumnID::EXTENDED]) {
-                    lstrcpynW(plvdi->item.pszText, d.extended ? L"\u2714" : L"", plvdi->item.cchTextMax);
+                    (void)lstrcpynW(plvdi->item.pszText, d.extended ? L"\u2714" : L"", plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::REGEX] != -1 && subItem == columnIndices[ColumnID::REGEX]) {
-                    lstrcpynW(plvdi->item.pszText, d.regex ? L"\u2714" : L"", plvdi->item.cchTextMax);
+                    (void)lstrcpynW(plvdi->item.pszText, d.regex ? L"\u2714" : L"", plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::COMMENTS] != -1 && subItem == columnIndices[ColumnID::COMMENTS]) {
-                    lstrcpynW(plvdi->item.pszText, d.comments.c_str(), plvdi->item.cchTextMax);
+                    (void)lstrcpynW(plvdi->item.pszText, d.comments.c_str(), plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::DELETE_BUTTON] != -1 && subItem == columnIndices[ColumnID::DELETE_BUTTON]) {
                     // If delete is text-based (✖), supply it; else leave empty and draw an image.
-                    lstrcpynW(plvdi->item.pszText, L"\u2716", plvdi->item.cchTextMax);
+                    (void)lstrcpynW(plvdi->item.pszText, L"\u2716", plvdi->item.cchTextMax);
                 }
                 else {
                     if (plvdi->item.pszText && plvdi->item.cchTextMax > 0)
