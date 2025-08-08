@@ -4998,11 +4998,12 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 int MultiReplace::safeLoadFileSandbox(lua_State* L) {
 // Return signature: (bool success, table or errorMessage)
 
-    // 1) Get the file path argument
+    // Get the file path argument
     const char* path = luaL_checkstring(L, 1);
 
-    // 2) Read raw bytes from disk
-    std::ifstream in(path, std::ios::binary);
+    // UTF-8 → Wide → filesystem::path → ifstream
+    std::wstring wpath = Encoding::utf8ToWString(path);
+    std::ifstream in(std::filesystem::path(wpath), std::ios::binary);
     if (!in) {
         lua_pushboolean(L, false);
         lua_pushfstring(L, "Cannot open file: %s", path);
@@ -5012,10 +5013,10 @@ int MultiReplace::safeLoadFileSandbox(lua_State* L) {
         std::istreambuf_iterator<char>());
     in.close();
 
-    // 3) Detect UTF-8 vs ANSI
+    // Detect UTF-8 vs ANSI
     bool rawIsUtf8 = Encoding::isValidUtf8(raw);
 
-    // 4) Convert to a true UTF-8 buffer if needed
+    // Convert to a true UTF-8 buffer if needed
     std::string utf8_buf;
     if (rawIsUtf8) {
         utf8_buf = std::move(raw);
@@ -5032,7 +5033,7 @@ int MultiReplace::safeLoadFileSandbox(lua_State* L) {
         WideCharToMultiByte(CP_UTF8, 0, wide.data(), wlen, &utf8_buf[0], u8len, nullptr, nullptr);
     }
 
-    // 5) Strip UTF-8 BOM if present
+    // Strip UTF-8 BOM if present
     if (utf8_buf.size() >= 3 &&
         static_cast<unsigned char>(utf8_buf[0]) == 0xEF &&
         static_cast<unsigned char>(utf8_buf[1]) == 0xBB &&
@@ -5041,14 +5042,14 @@ int MultiReplace::safeLoadFileSandbox(lua_State* L) {
         utf8_buf.erase(0, 3);
     }
 
-    // 6) Load the UTF-8 chunk into Lua
+    // Load the UTF-8 chunk into Lua
     if (luaL_loadbuffer(L, utf8_buf.data(), utf8_buf.size(), path) != LUA_OK) { 
         lua_pushboolean(L, false); 
         lua_pushstring(L, lua_tostring(L, -1));  // error message
         return 2;
     }
 
-    // 7) Run the chunk: expect it to return a table of entries
+    // Run the chunk: expect it to return a table of entries
     if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
         lua_pushboolean(L, false);
         lua_pushstring(L, lua_tostring(L, -1));
@@ -5056,7 +5057,7 @@ int MultiReplace::safeLoadFileSandbox(lua_State* L) {
     }
     // Stack now: [ table ]
 
-    // 8) Prepend a 'true' for the success flag
+    // Prepend a 'true' for the success flag
     lua_pushboolean(L, true);
     lua_insert(L, -2);  // now stack: [ true, table ]
 
@@ -9367,7 +9368,7 @@ std::wstring MultiReplace::promptSaveListToCsv() {
 }
 
 bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
-    std::ofstream outFile(filePath, std::ios::binary);
+    std::ofstream outFile(std::filesystem::path(filePath), std::ios::binary);
 
     if (!outFile.is_open()) {
         return false;
@@ -9377,7 +9378,7 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
     outFile.write("\xEF\xBB\xBF", 3);
 
     // Convert and Write CSV header
-    std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Regex,Extended,Comments\n");
+    std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Extended,Regex,Comments\n");
     outFile << utf8Header;
 
     // Write list items to CSV file
@@ -9470,7 +9471,7 @@ int MultiReplace::checkForUnsavedChanges() {
 
 void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list) {
     // Open the CSV file
-    std::ifstream inFile(filePath, std::ios::binary);
+    std::ifstream inFile(std::filesystem::path(filePath), std::ios::binary);
     if (!inFile.is_open()) {
         std::wstring shortenedFilePathW = getShortenedFilePath(filePath, 500);
         throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_unable_to_open_file", { shortenedFilePathW })));

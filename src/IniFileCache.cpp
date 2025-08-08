@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <codecvt>
 #include <windows.h>
+#include <filesystem> 
 
 namespace {
 
@@ -74,19 +75,11 @@ bool IniFileCache::load(const std::wstring& iniFile)
 // ------------------------------------------------------------------
 bool IniFileCache::parse(const std::wstring& iniFilePath)
 {
-    // convert wide → UTF‑8 for std::ifstream
-    int sz8 = WideCharToMultiByte(CP_UTF8, 0,
-        iniFilePath.c_str(), (int)iniFilePath.size(),
-        nullptr, 0, nullptr, nullptr);
-    std::string filePath(sz8, 0);
-    WideCharToMultiByte(CP_UTF8, 0,
-        iniFilePath.c_str(), (int)iniFilePath.size(),
-        &filePath[0], sz8, nullptr, nullptr);
-
-    std::ifstream ini(filePath, std::ios::binary);
+    // Open via filesystem::path (wide) → WinAPI 'W' path, Unicode-safe
+    std::ifstream ini(std::filesystem::path(iniFilePath), std::ios::binary);
     if (!ini.is_open()) return false;
 
-    // read whole file
+    // Read whole file (unchanged)
     std::string raw((std::istreambuf_iterator<char>(ini)),
         std::istreambuf_iterator<char>());
     ini.close();
