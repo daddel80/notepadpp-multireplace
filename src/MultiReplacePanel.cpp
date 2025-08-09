@@ -6645,7 +6645,305 @@ void MultiReplace::handleFindAllInDocsButton()
         MessageStatus::Success);
 }
 
-void MultiReplace::handleFindInFiles(){
+void MultiReplace::handleFindInFiles() {
+    // 1) sanity + hidden buffer
+    if (!validateDelimiterData())
+        return;
+
+    HiddenSciGuard guard;
+    if (!guard.create()) {
+        showStatusMessage(LM.get(L"status_error_hidden_buffer"), MessageStatus::Error);
+        return;
+    }
+
+    // Read all inputs once at the beginning.
+    auto wDir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
+    auto wFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+    bool recurse = IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED;
+    bool hide = IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED;
+
+    // If the filter is empty, default to "*.*" and update the UI.
+    if (wFilter.empty()) {
+        wFilter = L"*.*";
+        SetDlgItemTextW(_hSelf, IDC_FILTER_EDIT, wFilter.c_str());
+    }
+    guard.parseFilter(wFilter);
+
+    if (wDir.empty() || !std::filesystem::exists(wDir)) {
+        showStatusMessage(LM.get(L"status_error_invalid_directory"), MessageStatus::Error);
+        return;
+    }
+
+    // Build the file list using the same traversal and matching logic as ReplaceInFiles.
+    std::vector<std::filesystem::path> files;
+    try {
+        namespace fs = std::filesystem;
+        if (recurse) {
+            for (auto& e : fs::recursive_directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
+                if (_isShuttingDown) return;
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
+            }
+        }
+        else {
+            for (auto& e : fs::directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
+                if (_isShuttingDown) return;
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
+            }
+        }
+    }
+    catch (const std::exception& ex) {
+        std::string narrowReason = ex.what();
+        std::wstring wideReason(narrowReason.begin(), narrowReason.end());
+        showStatusMessage(LM.get(L"status_error_scanning_directory", { wideReason }), MessageStatus::Error);
+        return;
+    }
+
+    if (files.empty()) {
+        MessageBox(_hSelf, LM.getLPW(L"msgbox_no_files"), LM.getLPW(L"msgbox_title_confirm"), MB_OK);
+        return;
+    }
+
+    // 2) result dock
+    ResultDock& dock = ResultDock::instance();
+    dock.ensureCreatedAndVisible(nppData);
+
+    // counters
+    int totalHits = 0;
+    std::unordered_set<std::string> uniqueFiles;
+
+    if (useListEnabled) resetCountColumns();
+    std::vector<int> listHitTotals(useListEnabled ? replaceListData.size() : 0, 0);
+
+    // placeholder header (updated in closeSearchBlock)
+    std::wstring placeholder = useListEnabled
+        ? LM.get(L"dock_list_header", { L"0", L"0" })
+        : LM.get(L"dock_single_header", {
+              sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
+              L"0", L"0" });
+
+    // Search Result API call to open block
+    dock.startSearchBlock(placeholder,
+        useListEnabled ? groupResultsEnabled : false,
+        dock.purgeEnabled());
+
+    // 3) RAII-based UI lock identical to ReplaceInFiles
+    struct UiStateGuard {
+        HWND hDlg;
+        UiStateGuard(HWND h) : hDlg(h) { setUiInProgress(true); }
+        ~UiStateGuard() { setUiInProgress(false); }
+        void setUiInProgress(bool inProgress) {
+            const std::vector<int> controlsToDisable = {
+                IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_FIND_ALL_BUTTON, IDC_MARK_BUTTON,
+                IDC_CLEAR_MARKS_BUTTON, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
+                IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_MARK_MATCHES_BUTTON,
+                IDC_COPY_MARKED_TEXT_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON,
+                IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON,
+                IDC_EXPORT_BASH_BUTTON, IDC_BROWSE_DIR_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON,
+                IDC_USE_LIST_BUTTON, IDC_SWAP_BUTTON, IDC_COLUMN_SORT_DESC_BUTTON,
+                IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON,
+                IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_FILTER_EDIT,
+                IDC_DIR_EDIT, IDC_REPLACE_HIT_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT,
+                IDC_QUOTECHAR_EDIT, IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX,
+                IDC_USE_VARIABLES_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
+                IDC_REPLACE_AT_MATCHES_CHECKBOX, IDC_2_BUTTONS_MODE, IDC_SUBFOLDERS_CHECKBOX,
+                IDC_HIDDENFILES_CHECKBOX, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
+                IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO
+            };
+            for (int id : controlsToDisable) {
+                EnableWindow(GetDlgItem(hDlg, id), !inProgress);
+            }
+            EnableWindow(GetDlgItem(hDlg, IDC_CANCEL_REPLACE_BUTTON), inProgress);
+        }
+    };
+    UiStateGuard uiGuard(_hSelf);
+
+    _isCancelRequested = false;
+
+    // save and later restore current Scintilla binding
+    HWND        oldSci = _hScintilla;
+    SciFnDirect oldFn = pSciMsg;
+    sptr_t      oldData = pSciWndData;
+
+    // progress
+    int idx = 0;
+    int total = static_cast<int>(files.size());
+    showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
+
+    // 4) per-file processing
+    for (auto& fp : files)
+    {
+        // pump messages to keep UI responsive and allow cancel
+        MSG m;
+        while (::PeekMessage(&m, NULL, 0, 0, PM_REMOVE)) {
+            ::TranslateMessage(&m);
+            ::DispatchMessage(&m);
+        }
+
+        if (_isShuttingDown) { return; }
+        if (_isCancelRequested) { break; }
+
+        ++idx;
+
+        // progress line with shortened path
+        int percent = static_cast<int>((static_cast<double>(idx) / total) * 100.0);
+        std::wstring progress_part = L"Progress: [" + std::to_wstring(percent) + L"%] ";
+        HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
+        HDC hdc = GetDC(hStatus);
+        HFONT hFont = (HFONT)SendMessage(hStatus, WM_GETFONT, 0, 0);
+        SelectObject(hdc, hFont);
+        SIZE progress_size;
+        GetTextExtentPoint32W(hdc, progress_part.c_str(), static_cast<int>(progress_part.length()), &progress_size);
+        RECT status_rect;
+        GetClientRect(hStatus, &status_rect);
+        int available_width = status_rect.right - status_rect.left - progress_size.cx;
+        std::wstring shortened_path = getShortenedFilePath(fp.wstring(), available_width, hdc);
+        ReleaseDC(hStatus, hdc);
+        showStatusMessage(progress_part + shortened_path, MessageStatus::Info);
+
+        // read file; read-only files are processed like all others (no skip)
+        std::string original_buf;
+        if (!guard.loadFile(fp, original_buf)) { continue; }
+
+        // detect and convert to UTF-8 for the hidden buffer
+        EncodingInfo enc_info = detectEncoding(original_buf);
+        std::string utf8_input_buf;
+        if (!convertBufferToUtf8(original_buf, enc_info, utf8_input_buf)) {
+            continue;
+        }
+
+        // bind hidden Scintilla
+        _hScintilla = guard.hSci;
+        pSciMsg = guard.fn;
+        pSciWndData = guard.pData;
+
+        auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT {
+            return ::SendMessage(_hScintilla, m, w, l);
+            };
+
+        // set text
+        send(SCI_CLEARALL, 0, 0);
+        send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
+        send(SCI_ADDTEXT, utf8_input_buf.length(), reinterpret_cast<sptr_t>(utf8_input_buf.data()));
+
+        // delimiters
+        handleDelimiterPositions(DelimiterOperation::LoadAll);
+
+        // build per-file aggregation
+        std::wstring wPath = fp.wstring();
+        std::string  u8Path = Encoding::wstringToUtf8(wPath);
+        uniqueFiles.insert(u8Path);
+
+        Sci_Position scanStart = 0;
+        bool columnMode = false;
+
+        ResultDock::FileMap fileMap;
+        int hitsInFile = 0;
+
+        auto collect = [&](size_t critIdx, const std::wstring& patt, SearchContext& ctx) {
+            std::vector<ResultDock::Hit> raw;
+            LRESULT pos = scanStart;
+            while (true)
+            {
+                SearchResult r = performSearchForward(ctx, pos);
+                if (r.pos < 0) break;
+                pos = r.pos + r.length;
+
+                ResultDock::Hit h{};
+                h.fullPathUtf8 = u8Path;
+                h.pos = r.pos;
+                h.length = r.length;
+                this->trimHitToFirstLine(sciSend, h);
+                if (h.length > 0) raw.push_back(std::move(h));
+            }
+            int hitCnt = static_cast<int>(raw.size());
+            if (hitCnt == 0) return;
+
+            auto& agg = fileMap[u8Path];
+            agg.wPath = wPath;
+            agg.hitCount += hitCnt;
+            agg.crits.push_back({ sanitizeSearchPattern(patt), std::move(raw) });
+            totalHits += hitCnt;
+            hitsInFile += hitCnt;
+            if (useListEnabled && critIdx < listHitTotals.size())
+                listHitTotals[critIdx] += hitCnt;
+            };
+
+        // search setup
+        if (useListEnabled)
+        {
+            for (size_t i = 0; i < replaceListData.size(); ++i)
+            {
+                const auto& it = replaceListData[i];
+                if (!it.isEnabled || it.findText.empty())
+                    continue;
+
+                SearchContext ctx;
+                ctx.docLength = send(SCI_GETLENGTH);
+                ctx.isColumnMode = columnMode;
+                ctx.isSelectionMode = false;
+                ctx.findText = convertAndExtendW(it.findText, it.extended);
+                ctx.searchFlags = (it.wholeWord ? SCFIND_WHOLEWORD : 0)
+                    | (it.matchCase ? SCFIND_MATCHCASE : 0)
+                    | (it.regex ? SCFIND_REGEXP : 0);
+                send(SCI_SETSEARCHFLAGS, ctx.searchFlags, 0);
+                collect(i, it.findText, ctx);
+            }
+        }
+        else
+        {
+            std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+            if (!findW.empty())
+            {
+                SearchContext ctx;
+                ctx.docLength = send(SCI_GETLENGTH);
+                ctx.isColumnMode = columnMode;
+                ctx.isSelectionMode = false;
+                ctx.findText = convertAndExtendW(findW,
+                    IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+                ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
+                    | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
+                    | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+                send(SCI_SETSEARCHFLAGS, ctx.searchFlags, 0);
+                collect(0, findW, ctx);
+            }
+        }
+
+        if (hitsInFile > 0)
+        {
+            // Search Result API call per file 
+            dock.appendFileBlock(fileMap, sciSend);
+        }
+    }
+
+    // restore Scintilla binding
+    _hScintilla = oldSci; pSciMsg = oldFn; pSciWndData = oldData;
+
+    // update list counters + UI
+    if (useListEnabled)
+    {
+        for (size_t i = 0; i < listHitTotals.size(); ++i)
+        {
+            if (!replaceListData[i].isEnabled || replaceListData[i].findText.empty())
+                continue;
+            replaceListData[i].findCount = std::to_wstring(listHitTotals[i]);
+            updateCountColumns(i, listHitTotals[i]);
+        }
+        refreshUIListView();
+    }
+
+    // 5) finalise or error
+    if (totalHits == 0)
+    {
+        showStatusMessage(LM.get(L"status_no_matches_found"),
+            MessageStatus::Error, true);
+        return;
+    }
+
+    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
+
+    showStatusMessage(LM.get(L"status_occurrences_found",
+        { std::to_wstring(totalHits) }),
+        MessageStatus::Success);
 }
 
 #pragma endregion
