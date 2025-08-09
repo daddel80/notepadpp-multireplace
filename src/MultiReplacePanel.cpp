@@ -198,7 +198,7 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
 
     // Add extra room if “Replace in Files” panel is visible AND we're not in Two-Buttons-Mode
     bool twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
-    int panelExtra = (isReplaceInFiles && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
+    int panelExtra = ((isReplaceInFiles || isFindAllInFiles) && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
 
     int minHeight = minContentHeight + panelExtra;
     int minWidth = MIN_WIDTH_scaled;
@@ -235,7 +235,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     // Calculate dimensions without scaling
     BOOL twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
-    int filesOffsetY = (isReplaceInFiles && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
+    int filesOffsetY = ((isReplaceInFiles || isFindAllInFiles) && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
     int buttonX = windowWidth - sx(33 + 128);
     int checkbox2X = buttonX + sx(134);
     int useListButtonX = buttonX + sx(133);
@@ -578,48 +578,327 @@ void MultiReplace::updateListViewFrame()
     MoveWindow(lv, ci.x, ci.y, ci.cx, ci.cy, TRUE);
 }
 
-void MultiReplace::updateReplaceInFilesVisibility()
+void MultiReplace::repaintPanelContents(HWND hGrp, const wchar_t* title)
 {
-    // IDs of everything in the “Replace in Files” frame
+    // The control IDs within the panel.
     static const std::vector<int> repInFilesIds = {
         IDC_REPLACE_IN_FILES_GROUP,
-        IDC_FILTER_STATIC,  IDC_FILTER_EDIT, IDC_FILTER_HELP,
-        IDC_DIR_STATIC,     IDC_DIR_EDIT,       IDC_BROWSE_DIR_BUTTON,
+        IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
+        IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
         IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
         IDC_CANCEL_REPLACE_BUTTON
     };
 
-    bool twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
-    bool show = isReplaceInFiles && !twoButtonsMode;
+    // Update the title
+    SetDlgItemText(_hSelf, IDC_REPLACE_IN_FILES_GROUP, title);
 
+    // Get the panel's rectangle in the parent dialog's coordinates
+    RECT rcGrp;
+    GetWindowRect(hGrp, &rcGrp);
+    MapWindowPoints(HWND_DESKTOP, _hSelf, reinterpret_cast<LPPOINT>(&rcGrp), 2);
+
+    // 1. Erase the parent's background behind the panel to prevent artifacts
+    RedrawWindow(_hSelf, &rcGrp, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_NOCHILDREN);
+
+    // 2. Redraw the group box's frame and title without erasing its background (no flicker)
+    RedrawWindow(hGrp, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE | RDW_NOCHILDREN | RDW_FRAME);
+
+    // 3. Redraw all visible child controls inside the panel
     for (int id : repInFilesIds) {
-        ShowWindow(GetDlgItem(_hSelf, id), show ? SW_SHOW : SW_HIDE);
+        if (id == IDC_REPLACE_IN_FILES_GROUP) continue;
+        HWND hChild = GetDlgItem(_hSelf, id);
+        if (IsWindow(hChild) && IsWindowVisible(hChild)) {
+            RedrawWindow(hChild, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
+        }
     }
-
-    if (show) {
-        EnableWindow(GetDlgItem(_hSelf, IDC_CANCEL_REPLACE_BUTTON), FALSE);
-        // Clears the selection of IDC_DIR_EDIT after opening the panel
-        SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_SETEDITSEL, 0, 0);
-    }
-
-    // now re-flow the rest of the UI
-    RECT rcClient;
-    GetClientRect(_hSelf, &rcClient);
-    int w = rcClient.right - rcClient.left, h = rcClient.bottom - rcClient.top;
-    positionAndResizeControls(w, h);       // recalc ctrlMap positions
-    
-    // resize listview
-    updateListViewFrame();
-
-    moveAndResizeControls();               // actually MoveWindow()/SetWindowPos() all controls
-    adjustWindowSize();                    // shrink/grow the dialog to fit
-   
-    onSelectionChanged();                  // disable Selection Radio Button if Text Selection
-
-    InvalidateRect(_hSelf, NULL, TRUE);    // repaint client
-    UpdateWindow(_hSelf);
 }
 
+void MultiReplace::updateReplaceInFilesVisibility()
+{
+    // IDs of everything in the “Replace/Find in Files” frame
+    static const std::vector<int> repInFilesIds = {
+        IDC_REPLACE_IN_FILES_GROUP,
+        IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
+        IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
+        IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
+        IDC_CANCEL_REPLACE_BUTTON
+    };
+
+    // Remember last state to avoid unnecessary relayout/repaint
+    static bool lastShow = false;
+    static std::wstring lastTitleKey;
+
+    const bool twoButtonsMode = (IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED);
+    const bool show = (isReplaceInFiles || isFindAllInFiles) && !twoButtonsMode;
+
+    // Determine title for the group box
+    const wchar_t* titlePtr = nullptr;
+    std::wstring   titleKey;
+    if (isReplaceInFiles && isFindAllInFiles) {
+        titlePtr = LM.getLPW(L"panel_find_replace_in_files");
+        titleKey = L"panel_find_replace_in_files";
+    }
+    else if (isFindAllInFiles) {
+        titlePtr = LM.getLPW(L"panel_find_in_files");
+        titleKey = L"panel_find_in_files";
+    }
+    else {
+        titlePtr = LM.getLPW(L"panel_replace_in_files");
+        titleKey = L"panel_replace_in_files";
+    }
+
+    HWND hGrp = GetDlgItem(_hSelf, IDC_REPLACE_IN_FILES_GROUP);
+    HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
+
+    // Case A) Visibility changed: full show/hide + relayout; localized repaint
+    if (show != lastShow)
+    {
+        RECT rcStatusBefore{};
+        if (IsWindow(hStatus)) {
+            GetWindowRect(hStatus, &rcStatusBefore);
+            MapWindowPoints(HWND_DESKTOP, _hSelf, reinterpret_cast<LPPOINT>(&rcStatusBefore), 2);
+        }
+
+        SendMessage(hGrp, WM_SETREDRAW, FALSE, 0);
+
+        for (int id : repInFilesIds) {
+            ShowWindow(GetDlgItem(_hSelf, id), show ? SW_SHOW : SW_HIDE);
+        }
+
+        if (show) {
+            EnableWindow(GetDlgItem(_hSelf, IDC_CANCEL_REPLACE_BUTTON), FALSE);
+            SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_SETEDITSEL, 0, 0);
+        }
+
+        RECT rcClient; GetClientRect(_hSelf, &rcClient);
+        positionAndResizeControls(rcClient.right - rcClient.left, rcClient.bottom - rcClient.top);
+        updateListViewFrame();
+        moveAndResizeControls();
+        adjustWindowSize();
+        onSelectionChanged();
+
+        SendMessage(hGrp, WM_SETREDRAW, TRUE, 0);
+
+        if (show) {
+            // handles the complete repaint logic for showing the panel.
+            repaintPanelContents(hGrp, titlePtr);
+        }
+        else {
+            // HIDE: This logic is specific to cleaning up and must remain.
+            RECT rcGrp; GetWindowRect(hGrp, &rcGrp);
+            MapWindowPoints(HWND_DESKTOP, _hSelf, reinterpret_cast<LPPOINT>(&rcGrp), 2);
+            RECT rcStatusAfter{};
+            if (IsWindow(hStatus)) {
+                GetWindowRect(hStatus, &rcStatusAfter);
+                MapWindowPoints(HWND_DESKTOP, _hSelf, reinterpret_cast<LPPOINT>(&rcStatusAfter), 2);
+            }
+            RECT rcStatusUnion;
+            UnionRect(&rcStatusUnion, &rcStatusBefore, &rcStatusAfter);
+
+            RedrawWindow(_hSelf, &rcGrp, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_NOCHILDREN);
+            RedrawWindow(_hSelf, &rcStatusUnion, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_NOCHILDREN);
+
+            const int idsShiftedUp[] = {
+                IDC_REPLACE_LIST, IDC_STATUS_MESSAGE, IDC_PATH_DISPLAY, IDC_STATS_DISPLAY,
+                IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON,
+                IDC_SAVE_TO_CSV_BUTTON,  IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON,
+                IDC_EXPORT_BASH_BUTTON, IDC_SHIFT_FRAME, IDC_SHIFT_TEXT,
+                IDC_UP_BUTTON, IDC_DOWN_BUTTON
+            };
+            for (int id : idsShiftedUp) {
+                HWND hCtrl = GetDlgItem(_hSelf, id);
+                if (IsWindow(hCtrl) && IsWindowVisible(hCtrl)) {
+                    RedrawWindow(hCtrl, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
+                }
+            }
+        }
+
+        lastShow = show;
+        lastTitleKey = show ? titleKey : std::wstring();
+        return;
+    }
+
+    if (!show) {
+        lastShow = false;
+        lastTitleKey.clear();
+        return;
+    }
+
+    // Case C) Visible and only the title changed
+    if (titleKey != lastTitleKey)
+    {
+        // *** ERSETZT ***
+        // The helper function also handles the repaint logic for a simple title change.
+        repaintPanelContents(hGrp, titlePtr);
+        lastTitleKey = titleKey;
+    }
+}
+
+/*
+void MultiReplace::updateReplaceInFilesVisibility()
+{
+    // IDs of everything in the “Replace/Find in Files” frame
+    static const std::vector<int> repInFilesIds = {
+        IDC_REPLACE_IN_FILES_GROUP,
+        IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
+        IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
+        IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
+        IDC_CANCEL_REPLACE_BUTTON
+    };
+
+    // Remember last state to avoid unnecessary relayout/repaint
+    static bool lastShow = false;
+    static std::wstring lastTitleKey; // "panel_replace_in_files" / "panel_find_in_files" / "panel_find_replace_in_files"
+
+    const bool twoButtonsMode = (IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED);
+    const bool show = (isReplaceInFiles || isFindAllInFiles) && !twoButtonsMode;
+
+    // Determine title for the group box
+    const wchar_t* titlePtr = nullptr;
+    std::wstring   titleKey;
+    if (isReplaceInFiles && isFindAllInFiles) {
+        titlePtr = LM.getLPW(L"panel_find_replace_in_files");
+        titleKey = L"panel_find_replace_in_files";
+    }
+    else if (isFindAllInFiles) {
+        titlePtr = LM.getLPW(L"panel_find_in_files");
+        titleKey = L"panel_find_in_files";
+    }
+    else {
+        titlePtr = LM.getLPW(L"panel_replace_in_files");
+        titleKey = L"panel_replace_in_files";
+    }
+
+    HWND hGrp = GetDlgItem(_hSelf, IDC_REPLACE_IN_FILES_GROUP);
+    HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
+
+    // Case A) Visibility changed: full show/hide + relayout; localized repaint
+    if (show != lastShow)
+    {
+        // Capture old status rect BEFORE layout (for cleanup of freed area)
+        RECT rcStatusBefore{};
+        if (IsWindow(hStatus)) {
+            GetWindowRect(hStatus, &rcStatusBefore);
+            MapWindowPoints(HWND_DESKTOP, _hSelf, reinterpret_cast<LPPOINT>(&rcStatusBefore), 2);
+        }
+
+        // Freeze painting while toggling visibility and setting caption
+        SendMessage(hGrp, WM_SETREDRAW, FALSE, 0);
+
+        for (int id : repInFilesIds) {
+            ShowWindow(GetDlgItem(_hSelf, id), show ? SW_SHOW : SW_HIDE);
+        }
+
+        if (show) {
+            SetDlgItemText(_hSelf, IDC_REPLACE_IN_FILES_GROUP, titlePtr);
+            EnableWindow(GetDlgItem(_hSelf, IDC_CANCEL_REPLACE_BUTTON), FALSE);
+            SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_SETEDITSEL, 0, 0);
+        }
+
+        // Recalculate and apply layout only on visibility toggle
+        RECT rcClient; GetClientRect(_hSelf, &rcClient);
+        const int w = rcClient.right - rcClient.left;
+        const int h = rcClient.bottom - rcClient.top;
+
+        positionAndResizeControls(w, h);
+        updateListViewFrame();
+        moveAndResizeControls();
+        adjustWindowSize();
+        onSelectionChanged();
+
+        // Unfreeze painting
+        SendMessage(hGrp, WM_SETREDRAW, TRUE, 0);
+
+        // Compute rectangles
+        RECT rcGrp; GetWindowRect(hGrp, &rcGrp);
+        MapWindowPoints(HWND_DESKTOP, _hSelf, reinterpret_cast<LPPOINT>(&rcGrp), 2);
+
+        RECT rcStatusAfter{};
+        if (IsWindow(hStatus)) {
+            GetWindowRect(hStatus, &rcStatusAfter);
+            MapWindowPoints(HWND_DESKTOP, _hSelf, reinterpret_cast<LPPOINT>(&rcStatusAfter), 2);
+        }
+
+        // Union of old & new status rect
+        RECT rcStatusUnion;
+        UnionRect(&rcStatusUnion, &rcStatusBefore, &rcStatusAfter);
+
+        if (show) {
+            // SHOW: Clean the parent background where the groupbox will appear
+            RedrawWindow(_hSelf, &rcGrp, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_NOCHILDREN);
+            // Redraw the groupbox frame and title
+            RedrawWindow(hGrp, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE | RDW_NOCHILDREN | RDW_FRAME);
+            // Redraw all children within the groupbox
+            for (int id : repInFilesIds) {
+                if (id == IDC_REPLACE_IN_FILES_GROUP) continue;
+                HWND hChild = GetDlgItem(_hSelf, id);
+                if (IsWindowVisible(hChild)) {
+                    RedrawWindow(hChild, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
+                }
+            }
+        }
+        else {
+            // HIDE:
+            // 1. Erase the background of the parent dialog where the panel and the status bar were.
+            RedrawWindow(_hSelf, &rcGrp, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_NOCHILDREN);
+            RedrawWindow(_hSelf, &rcStatusUnion, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_NOCHILDREN);
+
+            // 2. Force every control that moved up into the now-empty space to repaint itself.
+            const int idsShiftedUp[] = {
+                IDC_REPLACE_LIST,
+                IDC_STATUS_MESSAGE, // Wichtig: auch die Statuszeile selbst!
+                IDC_PATH_DISPLAY, IDC_STATS_DISPLAY,
+                IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON,
+                IDC_SAVE_TO_CSV_BUTTON,  IDC_SAVE_BUTTON,        IDC_SAVE_AS_BUTTON,
+                IDC_EXPORT_BASH_BUTTON,
+                IDC_SHIFT_FRAME, IDC_SHIFT_TEXT, IDC_UP_BUTTON, IDC_DOWN_BUTTON
+            };
+            for (int id : idsShiftedUp) {
+                HWND hCtrl = GetDlgItem(_hSelf, id);
+                if (IsWindow(hCtrl) && IsWindowVisible(hCtrl)) {
+                    // RDW_NOERASE prevents flicker. The background is already clean.
+                    RedrawWindow(hCtrl, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
+                }
+            }
+        }
+
+        // Persist new state
+        lastShow = show;
+        lastTitleKey = show ? titleKey : std::wstring();
+        return;
+    }
+
+    // Case B) Still hidden: nothing to do
+    if (!show) {
+        lastShow = false;
+        lastTitleKey.clear();
+        return;
+    }
+
+    // Case C) Visible and only the title changed
+    if (titleKey != lastTitleKey)
+    {
+        SendMessage(hGrp, WM_SETREDRAW, FALSE, 0);
+        SetDlgItemText(_hSelf, IDC_REPLACE_IN_FILES_GROUP, titlePtr);
+        SendMessage(hGrp, WM_SETREDRAW, TRUE, 0);
+
+        RECT rcGrp; GetWindowRect(hGrp, &rcGrp);
+        MapWindowPoints(HWND_DESKTOP, _hSelf, reinterpret_cast<LPPOINT>(&rcGrp), 2);
+
+        RedrawWindow(_hSelf, &rcGrp, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_NOCHILDREN);
+        RedrawWindow(hGrp, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE | RDW_NOCHILDREN | RDW_FRAME);
+
+        for (int id : repInFilesIds) {
+            if (id == IDC_REPLACE_IN_FILES_GROUP) continue;
+            HWND hChild = GetDlgItem(_hSelf, id);
+            if (IsWindowVisible(hChild)) {
+                RedrawWindow(hChild, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
+            }
+        }
+        lastTitleKey = titleKey;
+    }
+}
+*/
 void MultiReplace::setUIElementVisibility() {
     // Determine the state of mode radio buttons
     bool regexChecked = SendMessage(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -3210,6 +3489,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             HMENU hMenu = CreatePopupMenu();
             AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_OPTION, LM.getLPW(L"split_menu_find_all"));
             AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_ALL_DOCS_OPTION, LM.getLPW(L"split_menu_find_all_in_docs"));
+            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_FILES_OPTION, LM.getLPW(L"split_menu_find_all_in_files"));
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, nullptr);
             DestroyMenu(hMenu);
             return TRUE;
@@ -3693,7 +3973,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
 
-            if (isFindAllInDocs)
+            if (isFindAllInFiles)
+                handleFindInFiles();
+            else if (isFindAllInDocs)
                 handleFindAllInDocsButton();
             else
                 handleFindAllButton();
@@ -3705,6 +3987,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getLPW(L"split_button_find_all"));
             isFindAllInDocs = false;
+            isFindAllInFiles = false;
+            updateReplaceInFilesVisibility();
             return TRUE;
         }
 
@@ -3712,6 +3996,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getLPW(L"split_button_find_all_in_docs"));
             isFindAllInDocs = true;
+            isFindAllInFiles = false;
+            updateReplaceInFilesVisibility();
+            return TRUE;
+        }
+
+        case ID_FIND_ALL_IN_FILES_OPTION:
+        {
+            SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getLPW(L"split_button_find_all_in_files"));
+            isFindAllInDocs = false;
+            isFindAllInFiles = true;
+            updateReplaceInFilesVisibility();
             return TRUE;
         }
 
@@ -6348,6 +6643,9 @@ void MultiReplace::handleFindAllInDocsButton()
     showStatusMessage(LM.get(L"status_occurrences_found",
         { std::to_wstring(totalHits) }),
         MessageStatus::Success);
+}
+
+void MultiReplace::handleFindInFiles(){
 }
 
 #pragma endregion
@@ -10567,7 +10865,7 @@ void MultiReplace::onSelectionChanged()
     //    - Nur wenn er noch angehakt ist, auf All Text umschalten
     //    - Dann sofort zurückkehren, damit er nicht erneut aktiviert wird
     // -----------------------------------------------------------------------
-    if (instance && instance->isReplaceInFiles)
+    if (instance && (instance->isReplaceInFiles || instance->isFindAllInFiles))
     {
         HWND hSel = ::GetDlgItem(hDlg, IDC_SELECTION_RADIO);
         ::EnableWindow(hSel, FALSE);

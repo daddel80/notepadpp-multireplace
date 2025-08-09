@@ -465,6 +465,7 @@ private:
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
     bool isReplaceInFiles = false;   // True if replacing in files, false for current document only.
     bool isFindAllInDocs = false;
+    bool isFindAllInFiles = false;
 
     static constexpr int MIN_GENERAL_WIDTH = 40;
     static constexpr int DEFAULT_COLUMN_WIDTH_FIND = 150;   // Default size for Find Column
@@ -663,6 +664,7 @@ private:
     void moveAndResizeControls();
     void updateTwoButtonsVisibility();
     void updateListViewFrame();
+    void repaintPanelContents(HWND hGrp, const wchar_t* title);
     void updateReplaceInFilesVisibility();
     void setUIElementVisibility();
     void drawGripper();
@@ -728,7 +730,7 @@ private:
     void handleEditOnDoubleClick(int itemIndex, ColumnID columnID);
 
     //Replace
-    void MultiReplace::replaceAllInOpenedDocs();
+    void replaceAllInOpenedDocs();
     bool handleReplaceAllButton(bool showCompletionMessage = true, const std::filesystem::path* explicitPath = nullptr);
     void handleReplaceButton();
     bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX);
@@ -766,6 +768,7 @@ private:
     void trimHitToFirstLine(const std::function<LRESULT(UINT, WPARAM, LPARAM)>& sciSend, ResultDock::Hit& h);
     void handleFindAllButton();
     void handleFindAllInDocsButton();
+    void handleFindInFiles();
 
     //Find
     void handleFindNextButton();
