@@ -578,9 +578,8 @@ void MultiReplace::updateListViewFrame()
     MoveWindow(lv, ci.x, ci.y, ci.cx, ci.cy, TRUE);
 }
 
-void MultiReplace::repaintPanelContents(HWND hGrp, const wchar_t* title)
+void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title)
 {
-    // The control IDs within the panel.
     static const std::vector<int> repInFilesIds = {
         IDC_REPLACE_IN_FILES_GROUP,
         IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
@@ -589,26 +588,25 @@ void MultiReplace::repaintPanelContents(HWND hGrp, const wchar_t* title)
         IDC_CANCEL_REPLACE_BUTTON
     };
 
-    // Update the title
-    SetDlgItemText(_hSelf, IDC_REPLACE_IN_FILES_GROUP, title);
+    // WICHTIG: Jetzt immer eine stabile Kopie verwenden
+    SetDlgItemText(_hSelf, IDC_REPLACE_IN_FILES_GROUP, title.c_str());
 
-    // Get the panel's rectangle in the parent dialog's coordinates
     RECT rcGrp;
     GetWindowRect(hGrp, &rcGrp);
     MapWindowPoints(HWND_DESKTOP, _hSelf, reinterpret_cast<LPPOINT>(&rcGrp), 2);
 
-    // 1. Erase the parent's background behind the panel to prevent artifacts
-    RedrawWindow(_hSelf, &rcGrp, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_NOCHILDREN);
+    RedrawWindow(_hSelf, &rcGrp, NULL,
+        RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_NOCHILDREN);
 
-    // 2. Redraw the group box's frame and title without erasing its background (no flicker)
-    RedrawWindow(hGrp, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE | RDW_NOCHILDREN | RDW_FRAME);
+    RedrawWindow(hGrp, NULL, NULL,
+        RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE | RDW_NOCHILDREN | RDW_FRAME);
 
-    // 3. Redraw all visible child controls inside the panel
     for (int id : repInFilesIds) {
         if (id == IDC_REPLACE_IN_FILES_GROUP) continue;
         HWND hChild = GetDlgItem(_hSelf, id);
         if (IsWindow(hChild) && IsWindowVisible(hChild)) {
-            RedrawWindow(hChild, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
+            RedrawWindow(hChild, NULL, NULL,
+                RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
         }
     }
 }
@@ -632,18 +630,18 @@ void MultiReplace::updateReplaceInFilesVisibility()
     const bool show = (isReplaceInFiles || isFindAllInFiles) && !twoButtonsMode;
 
     // Determine title for the group box
-    const wchar_t* titlePtr = nullptr;
     std::wstring   titleKey;
+    std::wstring titleText;
     if (isReplaceInFiles && isFindAllInFiles) {
-        titlePtr = LM.getLPW(L"panel_find_replace_in_files");
+        titleText = LM.get(L"panel_find_replace_in_files");
         titleKey = L"panel_find_replace_in_files";
     }
     else if (isFindAllInFiles) {
-        titlePtr = LM.getLPW(L"panel_find_in_files");
+        titleText = LM.get(L"panel_find_in_files");
         titleKey = L"panel_find_in_files";
     }
     else {
-        titlePtr = LM.getLPW(L"panel_replace_in_files");
+        titleText = LM.get(L"panel_replace_in_files");
         titleKey = L"panel_replace_in_files";
     }
 
@@ -681,7 +679,7 @@ void MultiReplace::updateReplaceInFilesVisibility()
 
         if (show) {
             // handles the complete repaint logic for showing the panel.
-            repaintPanelContents(hGrp, titlePtr);
+            repaintPanelContents(hGrp, titleText);
         }
         else {
             // HIDE: This logic is specific to cleaning up and must remain.
@@ -729,7 +727,7 @@ void MultiReplace::updateReplaceInFilesVisibility()
     {
         // *** ERSETZT ***
         // The helper function also handles the repaint logic for a simple title change.
-        repaintPanelContents(hGrp, titlePtr);
+        repaintPanelContents(hGrp, titleText);
         lastTitleKey = titleKey;
     }
 }
