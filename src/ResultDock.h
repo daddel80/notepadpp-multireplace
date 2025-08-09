@@ -88,7 +88,10 @@ private:
     void create(const NppData& npp);
     void initFolding() const;
     void applyTheme();
-    void prependHits(const std::vector<Hit>& newHits, const std::wstring& dockText);
+    void applyStylingRange(Sci_Position pos0, Sci_Position len, const std::vector<Hit>& newHits) const;
+    void rebuildFoldingRange(int firstLine, int lastLine) const;
+    void prependBlock(const std::wstring& dockText, std::vector<Hit>& newHits);
+    static void appendUtf8Chunked(HWND hSci, const std::string& u8);
     void collapseOldSearches();
 
     // --- Formatting Helpers ---
@@ -217,7 +220,18 @@ private:
     bool             _groupViewPending = false;
     bool             _blockOpen = false;
 
+    std::vector<int> _searchHeaderLines;
+
     // UI Option Flags
     inline static bool _wrapEnabled = false;
     inline static bool _purgeOnNextSearch = false;
+
+    // --- Call acceleration (Scintilla DirectFunction) ---
+    using SciFnDirect_t = sptr_t(__cdecl*)(sptr_t, unsigned int, uptr_t, sptr_t);
+    SciFnDirect_t _sciFn = nullptr;
+    sptr_t        _sciPtr = 0;
+
+    inline LRESULT S(UINT m, WPARAM w = 0, LPARAM l = 0) const {
+        return _sciFn ? _sciFn(_sciPtr, m, w, l) : ::SendMessage(_hSci, m, w, l);
+    }
 };
