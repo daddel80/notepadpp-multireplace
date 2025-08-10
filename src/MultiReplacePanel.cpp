@@ -695,6 +695,9 @@ void MultiReplace::updateFilesPanel()
         if (show) {
             // Showing: repaint panel (title + frame + children) safely
             repaintPanelContents(hGrp, titleText);
+            // Clear selection in both edit fields after opening the panel
+            SendMessage(GetDlgItem(_hSelf, IDC_FILTER_EDIT), CB_SETEDITSEL, 0, 0);
+            SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_SETEDITSEL, 0, 0);
         }
         else {
             // Hiding: erase old group area (use BEFORE-rect, not the clamped one after resize)
