@@ -372,59 +372,52 @@ void MultiReplace::initializeCtrlMap() {
 }
 
 bool MultiReplace::createAndShowWindows() {
+    // IDs of all controls in the “Replace/Find in Files” panel
+    static const std::vector<int> repInFilesIds = {
+        IDC_REPLACE_IN_FILES_GROUP,
+        IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
+        IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
+        IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
+        IDC_CANCEL_REPLACE_BUTTON
+    };
+
+    const bool twoButtonsMode = (IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED);
+    const bool initialShow = (isReplaceInFiles || isFindAllInFiles) && !twoButtonsMode;
+
+    auto isRepInFilesId = [&](int id) {
+        return std::find(repInFilesIds.begin(), repInFilesIds.end(), id) != repInFilesIds.end();
+        };
 
     for (auto& pair : ctrlMap)
     {
+        const bool isFilesCtrl = isRepInFilesId(pair.first);
+
+        // Create all controls as children, but only set WS_VISIBLE if needed
+        DWORD style = pair.second.style | WS_CHILD;
+        if (!isFilesCtrl || initialShow) {
+            style |= WS_VISIBLE;
+        }
+
         HWND hwndControl = CreateWindowEx(
-            0,                          // No additional window styles.
-            pair.second.className,      // Window class
-            pair.second.windowName,     // Window text
-            pair.second.style | WS_CHILD | WS_VISIBLE, // Window style
-            pair.second.x,              // x position
-            pair.second.y,              // y position
-            pair.second.cx,             // width
-            pair.second.cy,             // height
-            _hSelf,                     // Parent window    
-            (HMENU)(INT_PTR)pair.first, // Menu, or child-window identifier
-            hInstance,                  // The window instance.
-            NULL                        // Additional application data.
+            0,
+            pair.second.className,
+            pair.second.windowName,
+            style,
+            pair.second.x, pair.second.y, pair.second.cx, pair.second.cy,
+            _hSelf,
+            (HMENU)(INT_PTR)pair.first,
+            hInstance,
+            NULL
         );
-
-        if (hwndControl == NULL)
-        {
-            DWORD dwError = GetLastError();
-            std::wstring errorMsg = LM.get(L"msgbox_failed_create_control", { std::to_wstring(pair.first), std::to_wstring(dwError) });
-            MessageBox(nppData._nppHandle, errorMsg.c_str(), LM.get(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
-            return false;
+        if (!hwndControl) {
+            return false; // Handle creation error
         }
 
-        // Only create tooltips if enabled and text is available
-        if ((tooltipsEnabled || pair.first == IDC_FILTER_HELP) && pair.second.tooltipText != nullptr && pair.second.tooltipText[0] != '\0')
-        {
-            HWND hwndTooltip = CreateWindowEx(
-                NULL, TOOLTIPS_CLASS, NULL,
-                WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON | TTS_NOPREFIX,
-                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-                _hSelf, NULL, hInstance, NULL);
-
-            if (hwndTooltip)
-            {
-                // limit width only for the "?" help tooltip
-                DWORD maxWidth = (pair.first == IDC_FILTER_HELP) ? 200 /*px*/ : 0; // 0 = unlimited
-                SendMessage(hwndTooltip, TTM_SETMAXTIPWIDTH, 0, maxWidth);
-
-                TOOLINFO toolInfo = { 0 };
-                toolInfo.cbSize = sizeof(toolInfo);
-                toolInfo.hwnd = _hSelf;
-                toolInfo.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
-                toolInfo.uId = (UINT_PTR)hwndControl;
-                toolInfo.lpszText = (LPWSTR)pair.second.tooltipText;
-                SendMessage(hwndTooltip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
-            }
+        // Show/Update only if we really want the control visible
+        if (!isFilesCtrl || initialShow) {
+            ShowWindow(hwndControl, SW_SHOW);
+            UpdateWindow(hwndControl);
         }
-        // Show the window
-        ShowWindow(hwndControl, SW_SHOW);
-        UpdateWindow(hwndControl);
     }
     return true;
 }
