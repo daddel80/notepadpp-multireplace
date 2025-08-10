@@ -196,6 +196,10 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_title_reload", L"Reload" },
 { L"msgbox_title_warning", L"Warning" },
 
+{ L"msgbox_title_create_file", L"Create file" },
+{ L"msgbox_prompt_create_file", L"$REPLACE_STRING doesn't exist. Create it?" },
+{ L"msgbox_error_create_file", L"Cannot create the file $REPLACE_STRING" },
+
 // MessageBox Messages
 { L"msgbox_failed_create_control", L"Failed to create control with ID: $REPLACE_STRING1, GetLastError returned: $REPLACE_STRING2" },
 { L"msgbox_confirm_replace_all", L"Are you sure you want to replace all occurrences in all open documents?" },

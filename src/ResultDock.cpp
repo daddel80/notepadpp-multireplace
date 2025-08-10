@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #include "PluginDefinition.h"
+#include "Notepad_plus_msgs.h"
 #include <windows.h>
 #include "Scintilla.h"
 #include "StaticDialog/resource.h"
@@ -171,6 +172,7 @@ void ResultDock::clear()
 {
     // ----- Data structures -------------------------------------------------
     _hits.clear();
+    _lineStartToHitIndex.clear();
 
 
     if (!_hSci)
@@ -331,6 +333,9 @@ void ResultDock::prependBlock(const std::wstring& dockText, std::vector<Hit>& ne
     _hits.insert(_hits.begin(),
         std::make_move_iterator(newHits.begin()),
         std::make_move_iterator(newHits.end()));
+
+    // Rebuild O(1) index after structural change
+    rebuildHitLineIndex();
 
     // Keep the view at the top so the user sees the newest block immediately
     ::InvalidateRect(_hSci, nullptr, FALSE);
@@ -1463,6 +1468,148 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     // ------------------------------------------------------------------
     dock.rebuildFolding();
     dock.applyStyling();
+    dock.rebuildHitLineIndex();
+}
+
+bool ResultDock::IsPseudoPath(const std::wstring& p)
+{
+    // Pseudo when no drive/dir separators -> e.g. "new 1"
+    return (p.find(L'\\') == std::wstring::npos) &&
+        (p.find(L'/') == std::wstring::npos) &&
+        (p.find(L':') == std::wstring::npos);
+}
+
+bool ResultDock::FileExistsW(const std::wstring& fullPath)
+{
+    const DWORD a = ::GetFileAttributesW(fullPath.c_str());
+    return (a != INVALID_FILE_ATTRIBUTES) && !(a & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+std::wstring ResultDock::GetNppProgramDir()
+{
+    wchar_t buf[MAX_PATH] = { 0 };
+    DWORD n = ::GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    std::wstring exePath = (n ? std::wstring(buf, n) : std::wstring());
+    const size_t pos = exePath.find_last_of(L"\\/");
+    return (pos == std::wstring::npos) ? L"." : exePath.substr(0, pos);
+}
+
+bool ResultDock::IsCurrentDocByFullPath(const std::wstring& fullPath)
+{
+    wchar_t cur[MAX_PATH] = { 0 };
+    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, (WPARAM)MAX_PATH, (LPARAM)cur);
+    return (_wcsicmp(cur, fullPath.c_str()) == 0);
+}
+
+bool ResultDock::IsCurrentDocByTitle(const std::wstring& titleOnly)
+{
+    // Compare against current tab title (filename only)
+    wchar_t name[MAX_PATH] = { 0 };
+    ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, (WPARAM)MAX_PATH, (LPARAM)name);
+    return (_wcsicmp(name, titleOnly.c_str()) == 0);
+}
+
+void ResultDock::SwitchToFileIfOpenByFullPath(const std::wstring& fullPath)
+{
+    // NPP reuses an existing tab if the file is open; otherwise: no effect.
+    ::SendMessage(nppData._nppHandle, NPPM_SWITCHTOFILE, 0, (LPARAM)fullPath.c_str());
+}
+
+std::wstring ResultDock::BuildDefaultPathForPseudo(const std::wstring& label)
+{
+    // Map "new 1" -> "<NppProgramDir>\new 1"
+    const std::wstring dir = GetNppProgramDir();
+    if (dir.empty()) return label;
+    return dir + L"\\" + label;
+}
+
+bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, std::wstring& outOpenedPath)
+{
+    // Detect pseudo (e.g., "new 1") and normalize to a real path if needed.
+    const bool isPseudo = IsPseudoPath(desiredPath);
+
+    // Fast path: if it's a pseudo-name and that tab is currently open, just return.
+    if (isPseudo && IsCurrentDocByTitle(desiredPath)) {
+        outOpenedPath = desiredPath;
+        return true;
+    }
+
+    // Normalize pseudo names to a full path upfront (e.g., "<NppDir>\new 1")
+    const std::wstring targetPath = isPseudo ? BuildDefaultPathForPseudo(desiredPath)
+        : desiredPath;
+
+    // Try to activate if already open
+    SwitchToFileIfOpenByFullPath(desiredPath);
+    if (IsCurrentDocByFullPath(desiredPath)) {
+        outOpenedPath = desiredPath;
+        return true;
+    }
+
+    // Not open: try to open if it exists
+    if (FileExistsW(desiredPath)) {
+        ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)desiredPath.c_str());
+        outOpenedPath = desiredPath;
+        return true;
+    }
+
+    // Missing: prompt to create at the desiredPath
+    const std::wstring title = LM.get(L"msgbox_title_create_file");
+    const std::wstring prompt = LM.get(L"msgbox_prompt_create_file", { desiredPath });
+
+    const int res = ::MessageBoxW(nppData._nppHandle, prompt.c_str(), title.c_str(), MB_YESNO | MB_APPLMODAL);
+    if (res != IDYES) return false;
+
+    // Try to create an empty file; if it fails, show error
+    HANDLE hFile = ::CreateFileW(desiredPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+        CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        const std::wstring err = LM.get(L"msgbox_error_create_file", { desiredPath });
+        ::MessageBoxW(nppData._nppHandle, err.c_str(), title.c_str(), MB_OK | MB_APPLMODAL);
+        return false;
+    }
+    ::CloseHandle(hFile);
+
+    // Open the just created file
+    const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)desiredPath.c_str());
+    if (ok) {
+        outOpenedPath = desiredPath;
+        return true;
+    }
+
+    // Should not happen, but keep safe fallback
+    const std::wstring err = LM.get(L"msgbox_error_create_file", { desiredPath });
+    ::MessageBoxW(nppData._nppHandle, err.c_str(), title.c_str(), MB_OK | MB_APPLMODAL);
+    return true;
+}
+
+void ResultDock::JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len)
+{
+    // Always use the currently active Scintilla to avoid focusing the wrong view.
+    int whichView = 0; // 0 main, 1 secondary
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&whichView);
+    HWND hEd = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+    if (!hEd) return;
+
+    ::SetFocus(hEd);
+    ::SendMessage(hEd, SCI_SETFOCUS, TRUE, 0);
+
+    // Ensure line visible, select range, and center
+    const Sci_Position targetLine = (Sci_Position)::SendMessage(hEd, SCI_LINEFROMPOSITION, pos, 0);
+    ::SendMessage(hEd, SCI_ENSUREVISIBLE, targetLine, 0);
+    ::SendMessage(hEd, SCI_GOTOPOS, pos, 0);
+    ::SendMessage(hEd, SCI_SETSEL, pos, pos + len);
+    ::SendMessage(hEd, SCI_SCROLLCARET, 0, 0);
+
+    // Center the caret line without extra auto-scrolling
+    const size_t firstVisibleDocLine =
+        (size_t)::SendMessage(hEd, SCI_DOCLINEFROMVISIBLE, (WPARAM)::SendMessage(hEd, SCI_GETFIRSTVISIBLELINE, 0, 0), 0);
+    size_t linesOnScreen = (size_t)::SendMessage(hEd, SCI_LINESONSCREEN, (WPARAM)firstVisibleDocLine, 0);
+    if (linesOnScreen == 0) linesOnScreen = 1;
+    const size_t caretLine = (size_t)::SendMessage(hEd, SCI_LINEFROMPOSITION, pos, 0);
+    const size_t midDisplay = firstVisibleDocLine + linesOnScreen / 2;
+    const ptrdiff_t deltaLines = (ptrdiff_t)caretLine - (ptrdiff_t)midDisplay;
+    ::SendMessage(hEd, SCI_LINESCROLL, 0, deltaLines);
+    ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY, (WPARAM)caretLine, 0);
 }
 
 // --- Private Callbacks ---------------------------------------------------
@@ -1488,109 +1635,88 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         break;
     }
 
+                  // ResultDock.cpp  (innerhalb LRESULT CALLBACK ResultDock::sciSubclassProc(...))
     case WM_LBUTTONDBLCLK:
     {
-        // 1) Remember scroll
-        LRESULT firstVisible = ::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0);
+        // 1) Remember current dock scroll state
+        const LRESULT firstVisible = ::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0);
 
-        // 2) Which display‐line was clicked?
-        int x = LOWORD(lp);
-        int y = HIWORD(lp);
-        Sci_Position pos = ::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y);
-        if (pos < 0)                         // guard for empty area
-            return 0;
-        int dispLine = (int)::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0);
+        // 2) Determine clicked line
+        const int x = LOWORD(lp);
+        const int y = HIWORD(lp);
+        const Sci_Position posInDock = ::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y);
+        if (posInDock < 0) return 0;
+        const int dispLine = (int)::SendMessage(hwnd, SCI_LINEFROMPOSITION, posInDock, 0);
 
-        // --- Toggle fold if the clicked line is a header ----------
-        int level = (int)::SendMessage(hwnd, SCI_GETFOLDLEVEL, dispLine, 0);
+        // 2a) Header fold toggle unchanged
+        const int level = (int)::SendMessage(hwnd, SCI_GETFOLDLEVEL, dispLine, 0);
         if (level & SC_FOLDLEVELHEADERFLAG) {
             ::SendMessage(hwnd, SCI_TOGGLEFOLD, dispLine, 0);
-            // --- remove double‑click word selection & keep scroll ----------
-            Sci_Position linePos = (Sci_Position)::SendMessage(
-                hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
-            ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, linePos, 0);
+            const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
+            ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStartPos, 0);
             ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
-
             return 0;
         }
 
-        // 3) Read the raw text of that line
-        int lineLen = (int)::SendMessage(hwnd, SCI_LINELENGTH, dispLine, 0);
+        // 3) Read raw to classify as HitLine
+        const int lineLen = (int)::SendMessage(hwnd, SCI_LINELENGTH, dispLine, 0);
         std::string raw(lineLen, '\0');
-        ::SendMessage(hwnd, SCI_GETLINE, dispLine, (LPARAM)&raw[0]);
+        ::SendMessage(hwnd, SCI_GETLINE, dispLine, (LPARAM)raw.data());
         raw.resize(strnlen(raw.c_str(), lineLen));
+        if (ResultDock::classify(raw) != LineKind::HitLine) return 0;
 
-        // 4) Bail if this line does *not* contain "Line "
-        if (classify(raw) != LineKind::HitLine)
-            return 0;
-
-        // 5) Count *all* previous "Line " occurrences to get our hitIndex
+        // 4) Compute hitIndex by counting previous HitLines (unchanged)
         int hitIndex = -1;
         for (int i = 0; i <= dispLine; ++i) {
-            int len = (int)::SendMessage(hwnd, SCI_LINELENGTH, i, 0);
+            const int len = (int)::SendMessage(hwnd, SCI_LINELENGTH, i, 0);
             std::string buf(len, '\0');
-            ::SendMessage(hwnd, SCI_GETLINE, i, (LPARAM)&buf[0]);
+            ::SendMessage(hwnd, SCI_GETLINE, i, (LPARAM)buf.data());
             buf.resize(strnlen(buf.c_str(), len));
-            if (classify(buf) == LineKind::HitLine)
+            if (ResultDock::classify(buf) == LineKind::HitLine)
                 ++hitIndex;
         }
+        const std::vector<Hit>& hits = ResultDock::instance().hits();
+        if (hitIndex < 0 || hitIndex >= (int)hits.size()) return 0;
+        const Hit& hit = hits[(size_t)hitIndex];
 
-        const auto& hits = ResultDock::instance().hits();
-        if (hitIndex < 0 || hitIndex >= (int)hits.size())
-            return 0;
-        const auto& hit = hits[hitIndex];
-
-        // 6) Convert UTF-8 path → wide
-        std::wstring wpath;
-        int wlen = ::MultiByteToWideChar(CP_UTF8, 0,
-            hit.fullPathUtf8.c_str(), -1,
-            nullptr, 0);
+        // 5) Convert UTF-8 path to wide
+        std::wstring wPath;
+        const int wlen = ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, nullptr, 0);
         if (wlen > 0) {
-            wpath.resize(wlen - 1);
-            ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, &wpath[0], wlen);
+            wPath.resize(wlen - 1);
+            ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, &wPath[0], wlen);
         }
 
-        // 7) Switch file
-        ::SendMessage(nppData._nppHandle, NPPM_SWITCHTOFILE, 0, (LPARAM)wpath.c_str());
+        // 6) Decide pseudo vs real, ensure open, then select
+        const bool isPseudo = ResultDock::IsPseudoPath(wPath);
+        std::wstring pathToOpen = wPath;
 
-        // 8) Jump, select and centre the hit in the visible editor area
-        HWND hEd = nppData._scintillaMainHandle;
-        Sci_Position targetPos = hit.pos;
+        if (isPseudo) {
+            // First try: if current tab title matches this pseudo label -> just jump
+            if (ResultDock::IsCurrentDocByTitle(wPath)) {
+                ResultDock::JumpSelectCenterActiveEditor(hit.pos, hit.length);
+            }
+            else {
+                // Not open: use generated default path, then same logic as real files
+                pathToOpen = ResultDock::BuildDefaultPathForPseudo(wPath);
+                std::wstring opened;
+                const bool ok = ResultDock::EnsureFileOpenOrOfferCreate(pathToOpen, opened);
+                if (!ok) return 0;
+                ResultDock::JumpSelectCenterActiveEditor(hit.pos, hit.length);
+            }
+        }
+        else {
+            // Real path: try switch, open if needed, or ask to create
+            std::wstring opened;
+            const bool ok = ResultDock::EnsureFileOpenOrOfferCreate(pathToOpen,  opened);
+            if (!ok) return 0;
+            ResultDock::JumpSelectCenterActiveEditor(hit.pos, hit.length);
+        }
 
-        // 8‑a) ensure target is unfolded and visible
-        ::SendMessage(hEd, SCI_ENSUREVISIBLE,
-            ::SendMessage(hEd, SCI_LINEFROMPOSITION, targetPos, 0), 0);
-
-        // 8‑b) move caret to target position and select the range
-        ::SendMessage(hEd, SCI_GOTOPOS, targetPos, 0);
-        ::SendMessage(hEd, SCI_SETSEL, targetPos, targetPos + hit.length);
-
-        // 8‑c) re‑query display geometry
-        size_t firstVisibleDocLine =
-            (size_t)::SendMessage(hEd, SCI_DOCLINEFROMVISIBLE, (WPARAM)::SendMessage(hEd, SCI_GETFIRSTVISIBLELINE, 0, 0), 0);
-        size_t linesOnScreen =
-            (size_t)::SendMessage(hEd, SCI_LINESONSCREEN, (WPARAM)firstVisibleDocLine, 0);
-        if (linesOnScreen == 0) linesOnScreen = 1;
-
-        // 8‑d) compute centred target visible line
-        size_t caretLine =
-            (size_t)::SendMessage(hEd, SCI_LINEFROMPOSITION, targetPos, 0);
-        size_t midDisplay = firstVisibleDocLine + linesOnScreen / 2;
-        ptrdiff_t deltaLines = (ptrdiff_t)caretLine - (ptrdiff_t)midDisplay;
-
-        // 8‑e) scroll by delta without further auto‑scroll
-        ::SendMessage(hEd, SCI_LINESCROLL, 0, deltaLines);
-        ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY, (WPARAM)::SendMessage(hEd, SCI_LINEFROMPOSITION, targetPos, 0), 0);
-
-
-        // 9) Restore dock scroll
+        // 7) Restore dock scroll & clear its selection; keep focus on dock (as before)
         ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
-
-        // 10) Clear selection in the dock
-        Sci_Position dockPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
-        ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockPos, 0);
-
-        // 11) Give focus back to the dock control so its caret‐line highlight stays visible
+        const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
+        ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStartPos, 0);
         ::SetFocus(hwnd);
         return 0;
     }
@@ -1720,4 +1846,15 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
     return s_prevSciProc
         ? ::CallWindowProc(s_prevSciProc, hwnd, msg, wp, lp)
         : ::DefWindowProc(hwnd, msg, wp, lp);
+}
+
+void ResultDock::rebuildHitLineIndex()
+{
+    _lineStartToHitIndex.clear();
+    _lineStartToHitIndex.reserve(_hits.size());
+    for (int i = 0; i < (int)_hits.size(); ++i)
+    {
+        const int pos = _hits[i].displayLineStart;
+        if (pos >= 0) _lineStartToHitIndex[pos] = i;
+    }
 }

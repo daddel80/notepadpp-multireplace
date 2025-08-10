@@ -98,7 +98,7 @@ private:
     void buildListText(const FileMap& files, bool groupView, const std::wstring& header, const SciSendFn& sciSend, std::wstring& outText, std::vector<Hit>& outHits) const;
     void formatHitsLines(const SciSendFn& sciSend, std::vector<Hit>& hitsInOut, std::wstring& outBlock, size_t& ioUtf8Len) const;
 
-    // --- Static Helpers (moved from anonymous namespace) ---
+    // --- Static Helpers ---
     enum class LineLevel : int { SearchHdr = 0, FileHdr = 1, CritHdr = 2, HitLine = 3 };
     static constexpr int INDENT_SPACES[] = { 1, 2, 3, 4 };
 
@@ -113,6 +113,15 @@ private:
     static int ancestorFileLine(HWND hSci, int startLine);
     static std::wstring getLineW(HWND hSci, int line);
     static int leadingSpaces(const char* line, int len);
+    static bool IsPseudoPath(const std::wstring& pathOrLabel);
+    static bool FileExistsW(const std::wstring& fullPath);
+    static std::wstring GetNppProgramDir();
+    static bool IsCurrentDocByFullPath(const std::wstring& fullPath);
+    static bool IsCurrentDocByTitle(const std::wstring& titleOnly);
+    static void SwitchToFileIfOpenByFullPath(const std::wstring& fullPath);
+    static std::wstring BuildDefaultPathForPseudo(const std::wstring& label);
+    static bool EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, std::wstring& outOpenedPath);
+    static void JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len);
 
     // --- Context Menu Command Handlers ---
     static void copySelectedLines(HWND hSci);
@@ -234,4 +243,7 @@ private:
     inline LRESULT S(UINT m, WPARAM w = 0, LPARAM l = 0) const {
         return _sciFn ? _sciFn(_sciPtr, m, w, l) : ::SendMessage(_hSci, m, w, l);
     }
+
+    void rebuildHitLineIndex();
+    std::unordered_map<int, int> _lineStartToHitIndex;
 };
