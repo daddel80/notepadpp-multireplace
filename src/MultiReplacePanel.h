@@ -665,7 +665,7 @@ private:
     void updateTwoButtonsVisibility();
     void updateListViewFrame();
     void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title);
-    void updateReplaceInFilesVisibility();
+    void updateFilesPanel();
     void setUIElementVisibility();
     void drawGripper();
     void SetWindowTransparency(HWND hwnd, BYTE alpha);

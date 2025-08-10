@@ -302,6 +302,7 @@ copy ..\languages.ini $(OutDir)languages.ini</Command>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(ProjectDir)..\src\lua</AdditionalIncludeDirectories>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -314,7 +315,9 @@ copy ..\languages.ini $(OutDir)languages.ini</Command>
       </StackCommitSize>
       <HeapReserveSize>
       </HeapReserveSize>
-      <Profile>true</Profile>
+      <Profile>false</Profile>
+      <OptimizeReferences>false</OptimizeReferences>
+      <EnableCOMDATFolding>false</EnableCOMDATFolding>
     </Link>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt

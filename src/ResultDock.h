@@ -1,4 +1,8 @@
-﻿// This file is part of the MultiReplace plugin for Notepad++.
+﻿#pragma once
+
+// ResultDock: dockable Scintilla view that shows search results
+
+// This file is part of the MultiReplace plugin for Notepad++.
 // Copyright (C) 2023 Thomas Knoefel
 //
 // This program is free software: you can redistribute it and/or modify
@@ -14,14 +18,17 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#pragma once
 
 // ResultDock: dockable Scintilla view that shows search results
+
+#pragma once
 
 #include <windows.h>
 #include <string>
 #include <vector>
 #include <functional>
+#include <unordered_map>
+
 #include "Encoding.h"
 #include "Sci_Position.h"
 #include "PluginDefinition.h"
@@ -30,9 +37,9 @@
 // Helper for Scintilla message calls
 using SciSendFn = std::function<LRESULT(UINT, WPARAM, LPARAM)>;
 
-// -------------------------------------------------------------
-// ResultDock (singleton)
-// -------------------------------------------------------------
+// ============================================================================
+// ResultDock
+// ============================================================================
 class ResultDock final
 {
 public:
@@ -52,7 +59,6 @@ public:
         std::vector<int> matchLens;   // Lengths of match substrings
     };
 
-    // Used for buildListText() (multi-file/grouped display)
     struct CritAgg { std::wstring text; std::vector<Hit> hits; };
     struct FileAgg { std::wstring wPath; int hitCount = 0; std::vector<CritAgg> crits; };
     using FileMap = std::unordered_map<std::string, FileAgg>;
@@ -74,13 +80,13 @@ public:
     static void  setWrapEnabled(bool v) { _wrapEnabled = v; }
     static void  setPurgeEnabled(bool v) { _purgeOnNextSearch = v; }
 
-    // API block for MultipleSearch
+    // ------------------- Search Block API ---------------------
     void startSearchBlock(const std::wstring& header, bool  groupView, bool purge);
     void appendFileBlock(const FileMap& fm, const SciSendFn& sciSend);
     void closeSearchBlock(int totalHits, int totalFiles);
 
 private:
-    // --- Construction & Core State ---
+    // ---------------- Construction & Core State ---------------
     explicit ResultDock(HINSTANCE hInst);
     ResultDock(const ResultDock&) = delete;
     ResultDock& operator=(const ResultDock&) = delete;
@@ -88,17 +94,30 @@ private:
     void create(const NppData& npp);
     void initFolding() const;
     void applyTheme();
+
+    // -------- Range styling / folding (partial updates) -------
     void applyStylingRange(Sci_Position pos0, Sci_Position len, const std::vector<Hit>& newHits) const;
     void rebuildFoldingRange(int firstLine, int lastLine) const;
+
+    // ---------------- Block building / insertion --------------
     void prependBlock(const std::wstring& dockText, std::vector<Hit>& newHits);
     static void appendUtf8Chunked(HWND hSci, const std::string& u8);
     void collapseOldSearches();
 
-    // --- Formatting Helpers ---
-    void buildListText(const FileMap& files, bool groupView, const std::wstring& header, const SciSendFn& sciSend, std::wstring& outText, std::vector<Hit>& outHits) const;
-    void formatHitsLines(const SciSendFn& sciSend, std::vector<Hit>& hitsInOut, std::wstring& outBlock, size_t& ioUtf8Len) const;
+    // ---------------------- Formatting ------------------------
+    void buildListText(const FileMap& files,
+        bool groupView,
+        const std::wstring& header,
+        const SciSendFn& sciSend,
+        std::wstring& outText,
+        std::vector<Hit>& outHits) const;
 
-    // --- Static Helpers ---
+    void formatHitsLines(const SciSendFn& sciSend,
+        std::vector<Hit>& hitsInOut,
+        std::wstring& outBlock,
+        size_t& ioUtf8Len) const;
+
+    // --------------------- Line helpers -----------------------
     enum class LineLevel : int { SearchHdr = 0, FileHdr = 1, CritHdr = 2, HitLine = 3 };
     static constexpr int INDENT_SPACES[] = { 1, 2, 3, 4 };
 
@@ -113,6 +132,8 @@ private:
     static int ancestorFileLine(HWND hSci, int startLine);
     static std::wstring getLineW(HWND hSci, int line);
     static int leadingSpaces(const char* line, int len);
+
+    // -------------------- Path/File helpers -------------------
     static bool IsPseudoPath(const std::wstring& pathOrLabel);
     static bool FileExistsW(const std::wstring& fullPath);
     static std::wstring GetNppProgramDir();
@@ -123,18 +144,18 @@ private:
     static bool EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, std::wstring& outOpenedPath);
     static void JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len);
 
-    // --- Context Menu Command Handlers ---
+    // --------------- Context Menu Command Handlers ------------
     static void copySelectedLines(HWND hSci);
     static void copySelectedPaths(HWND hSci);
     static void openSelectedPaths(HWND hSci);
     static void copyTextToClipboard(HWND owner, const std::wstring& w);
     static void deleteSelectedItems(HWND hSci);
 
-    // --- Callbacks & Low-Level ---
+    // -------------------- Callbacks/Subclassing ---------------
     static LRESULT CALLBACK sciSubclassProc(HWND, UINT, WPARAM, LPARAM);
     static inline WNDPROC s_prevSciProc = nullptr;
 
-    // --- Theme & Style Data ---
+    // ----------------------- Theme Colors ---------------------
     struct DockThemeColors {
         COLORREF lineBg;
         COLORREF lineNr;
@@ -148,10 +169,9 @@ private:
         COLORREF foldGlyph;
         COLORREF foldHighlight;
         COLORREF caretLineBg;
-        int caretLineAlpha;
+        int      caretLineAlpha;
     };
 
-    // --- Theme & Style Data ---
     static constexpr DockThemeColors LightDockTheme = {
         RGB(0xEE, 0xEE, 0xEE), // lineBg
         RGB(0x40, 0x80, 0xBF), // lineNr
@@ -189,7 +209,7 @@ private:
         return darkMode ? DarkDockTheme : LightDockTheme;
     }
 
-    // --- Private IDs & Constants ---
+    // ------------------- Command & style IDs ------------------
     enum : UINT {
         IDM_RD_FOLD_ALL = 60001,
         IDM_RD_UNFOLD_ALL = 60002,
@@ -203,7 +223,6 @@ private:
         IDM_RD_TOGGLE_PURGE = 60010
     };
 
-    // Scintilla Style/Indicator IDs
     static constexpr int INDIC_LINE_BACKGROUND = 8;
     static constexpr int INDIC_LINENUMBER_FORE = 9;
     static constexpr int INDIC_MATCH_FORE = 10;
@@ -212,23 +231,24 @@ private:
     static constexpr int STYLE_CRITHDR = 34;
     static constexpr int STYLE_FILEPATH = 35;
 
-    // --- Member Variables ---
+    // -------------------------- Members -----------------------
     // Handles
-    HINSTANCE   _hInst{ nullptr };     // DLL instance
-    HWND        _hSci{ nullptr };      // Scintilla handle (client)
-    HWND        _hDock{ nullptr };     // N++ dock container
+    HINSTANCE _hInst{ nullptr };
+    HWND      _hSci{ nullptr };
+    HWND      _hDock{ nullptr };
 
-    // Core Data
-    std::vector<Hit> _hits;            // All visible hits
-    tTbData _dockData{};               // Persistent docking info
+    // Core data
+    std::vector<Hit> _hits;
+    tTbData _dockData{};
 
-    // Block API State
+    // Pending block build state
     std::wstring     _pendingText;
     std::vector<Hit> _pendingHits;
     size_t           _utf8LenPending = 0;
     bool             _groupViewPending = false;
     bool             _blockOpen = false;
 
+    // Track header line indices for collapse logic
     std::vector<int> _searchHeaderLines;
 
     // UI Option Flags
@@ -244,6 +264,7 @@ private:
         return _sciFn ? _sciFn(_sciPtr, m, w, l) : ::SendMessage(_hSci, m, w, l);
     }
 
+    // O(1) mapping from absolute line start to hit index
     void rebuildHitLineIndex();
     std::unordered_map<int, int> _lineStartToHitIndex;
 };

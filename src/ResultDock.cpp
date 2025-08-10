@@ -277,72 +277,6 @@ void ResultDock::rebuildFolding()
 
 }
 
-void ResultDock::prependBlock(const std::wstring& dockText, std::vector<Hit>& newHits)
-{
-    if (!_hSci || dockText.empty())
-        return;
-
-    // Convert once to UTF-8
-    const std::string u8 = Encoding::wstringToUtf8(dockText);
-
-    // Current buffer length (in bytes)
-    const Sci_Position oldLen = (Sci_Position)S(SCI_GETLENGTH);
-
-    // Bytes we will insert at position 0. We ensure a blank separator line if there is old content.
-    const int sepBytes = (oldLen > 0 ? 2 : 0);          // "\r\n" between searches
-    const int deltaBytes = (int)u8.size() + sepBytes;
-
-    // Shift all existing hit offsets by the inserted byte count
-    for (auto& h : _hits)
-        h.displayLineStart += deltaBytes;
-
-    // Insert new block at top (minimize UI work)
-    ::SendMessage(_hSci, WM_SETREDRAW, FALSE, 0);
-    S(SCI_SETREADONLY, FALSE);
-    S(SCI_ALLOCATE, oldLen + (Sci_Position)deltaBytes + 65536, 0);
-
-    // Insert block text at position 0
-    S(SCI_INSERTTEXT, 0, (LPARAM)u8.c_str());
-    // Insert blank separator line between searches (exactly one CRLF)
-    if (sepBytes)
-        S(SCI_INSERTTEXT, (WPARAM)u8.size(), (LPARAM)("\r\n"));
-
-    S(SCI_SETREADONLY, TRUE);
-    ::SendMessage(_hSci, WM_SETREDRAW, TRUE, 0);
-
-    // Range-only styling/folding for the newly inserted block
-    const Sci_Position pos0 = 0;
-    const Sci_Position len = (Sci_Position)u8.size();
-    // The newly inserted block spans from line 0 to lastLine, plus 1 separator line if any
-    int newBlockLines = 0; for (char c : u8) if (c == '\n') ++newBlockLines;
-    const int firstLine = 0;
-    const int lastLine = (newBlockLines > 0 ? newBlockLines - 1 : 0);
-
-    rebuildFoldingRange(firstLine, lastLine);
-    applyStylingRange(pos0, len, newHits);
-
-    // Collapse the previous (now second) top search block in O(1)
-    if (oldLen > 0) {
-        const int firstLineOfOldBlock = newBlockLines + 1; // + separator line
-        const int level = (int)S(SCI_GETFOLDLEVEL, firstLineOfOldBlock);
-        if ((level & SC_FOLDLEVELHEADERFLAG) && S(SCI_GETFOLDEXPANDED, firstLineOfOldBlock))
-            S(SCI_FOLDLINE, firstLineOfOldBlock, SC_FOLDACTION_CONTRACT);
-    }
-
-    // Add the new hits to our master list (already at correct absolute positions)
-    _hits.insert(_hits.begin(),
-        std::make_move_iterator(newHits.begin()),
-        std::make_move_iterator(newHits.end()));
-
-    // Rebuild O(1) index after structural change
-    rebuildHitLineIndex();
-
-    // Keep the view at the top so the user sees the newest block immediately
-    ::InvalidateRect(_hSci, nullptr, FALSE);
-    S(SCI_SETFIRSTVISIBLELINE, 0);
-    S(SCI_GOTOPOS, 0);
-}
-
 void ResultDock::rebuildFoldingRange(int firstLine, int lastLine) const
 {
     if (!_hSci || lastLine < firstLine) return;
@@ -526,7 +460,6 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
             S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
     }
 }
-
 
 void ResultDock::onThemeChanged() {
     applyTheme();
@@ -793,6 +726,73 @@ void ResultDock::applyTheme()
     S(SCI_STYLESETITALIC, STYLE_FILEPATH, TRUE);
     S(SCI_STYLESETEOLFILLED, STYLE_FILEPATH, TRUE);
 }
+
+void ResultDock::prependBlock(const std::wstring& dockText, std::vector<Hit>& newHits)
+{
+    if (!_hSci || dockText.empty())
+        return;
+
+    // Convert once to UTF-8
+    const std::string u8 = Encoding::wstringToUtf8(dockText);
+
+    // Current buffer length (in bytes)
+    const Sci_Position oldLen = (Sci_Position)S(SCI_GETLENGTH);
+
+    // Bytes we will insert at position 0. We ensure a blank separator line if there is old content.
+    const int sepBytes = (oldLen > 0 ? 2 : 0);          // "\r\n" between searches
+    const int deltaBytes = (int)u8.size() + sepBytes;
+
+    // Shift all existing hit offsets by the inserted byte count
+    for (auto& h : _hits)
+        h.displayLineStart += deltaBytes;
+
+    // Insert new block at top (minimize UI work)
+    ::SendMessage(_hSci, WM_SETREDRAW, FALSE, 0);
+    S(SCI_SETREADONLY, FALSE);
+    S(SCI_ALLOCATE, oldLen + (Sci_Position)deltaBytes + 65536, 0);
+
+    // Insert block text at position 0
+    S(SCI_INSERTTEXT, 0, (LPARAM)u8.c_str());
+    // Insert blank separator line between searches (exactly one CRLF)
+    if (sepBytes)
+        S(SCI_INSERTTEXT, (WPARAM)u8.size(), (LPARAM)("\r\n"));
+
+    S(SCI_SETREADONLY, TRUE);
+    ::SendMessage(_hSci, WM_SETREDRAW, TRUE, 0);
+
+    // Range-only styling/folding for the newly inserted block
+    const Sci_Position pos0 = 0;
+    const Sci_Position len = (Sci_Position)u8.size();
+    // The newly inserted block spans from line 0 to lastLine, plus 1 separator line if any
+    int newBlockLines = 0; for (char c : u8) if (c == '\n') ++newBlockLines;
+    const int firstLine = 0;
+    const int lastLine = (newBlockLines > 0 ? newBlockLines - 1 : 0);
+
+    rebuildFoldingRange(firstLine, lastLine);
+    applyStylingRange(pos0, len, newHits);
+
+    // Collapse the previous (now second) top search block in O(1)
+    if (oldLen > 0) {
+        const int firstLineOfOldBlock = newBlockLines + 1; // + separator line
+        const int level = (int)S(SCI_GETFOLDLEVEL, firstLineOfOldBlock);
+        if ((level & SC_FOLDLEVELHEADERFLAG) && S(SCI_GETFOLDEXPANDED, firstLineOfOldBlock))
+            S(SCI_FOLDLINE, firstLineOfOldBlock, SC_FOLDACTION_CONTRACT);
+    }
+
+    // Add the new hits to our master list (already at correct absolute positions)
+    _hits.insert(_hits.begin(),
+        std::make_move_iterator(newHits.begin()),
+        std::make_move_iterator(newHits.end()));
+
+    // Rebuild O(1) index after structural change
+    rebuildHitLineIndex();
+
+    // Keep the view at the top so the user sees the newest block immediately
+    ::InvalidateRect(_hSci, nullptr, FALSE);
+    S(SCI_SETFIRSTVISIBLELINE, 0);
+    S(SCI_GOTOPOS, 0);
+}
+
 
 void ResultDock::collapseOldSearches()
 {
