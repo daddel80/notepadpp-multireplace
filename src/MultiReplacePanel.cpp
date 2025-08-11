@@ -695,8 +695,6 @@ void MultiReplace::updateFilesPanel()
     // Case A) Visibility toggles: full show/hide + relayout + localized repaint
     if (show != lastShow)
     {
-        // Freeze parent to minimize flicker while toggling and relayout
-        SendMessage(_hSelf, WM_SETREDRAW, FALSE, 0);
 
         // Toggle visibility of all panel controls
         for (int id : repInFilesIds) {
@@ -729,14 +727,6 @@ void MultiReplace::updateFilesPanel()
             SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_SETEDITSEL, 0, 0);
         }
         else {
-            // Hiding: erase old group area (use BEFORE-rect, not the clamped one after resize)
-            RedrawWindow(_hSelf, &rcGrpBefore, NULL,
-                RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_NOCHILDREN);
-
-            // Also clean the area occupied by the status line before/after it moved
-            RECT rcStatusUnion{}; UnionRect(&rcStatusUnion, &rcStatusBefore, &rcStatusAfter);
-            RedrawWindow(_hSelf, &rcStatusUnion, NULL,
-                RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_NOCHILDREN);
 
             // Force controls that moved up to repaint (no erase to avoid flicker)
             const int idsShiftedUp[] = {
