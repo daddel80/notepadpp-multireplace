@@ -413,10 +413,39 @@ bool MultiReplace::createAndShowWindows() {
             return false; // Handle creation error
         }
 
-        // Show/Update only if we really want the control visible
-        if (!isFilesCtrl || initialShow) {
-            ShowWindow(hwndControl, SW_SHOW);
-            UpdateWindow(hwndControl);
+        // Only create tooltips if enabled and tooltip text is available
+        if ((tooltipsEnabled || pair.first == IDC_FILTER_HELP)
+            && pair.second.tooltipText != nullptr
+            && pair.second.tooltipText[0] != L'\0')
+        {
+            // Create a tooltip window for this control
+            HWND hwndTooltip = CreateWindowEx(
+                0,                                   // no extended styles
+                TOOLTIPS_CLASS,                      // tooltip class
+                nullptr,
+                WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON | TTS_NOPREFIX,
+                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                _hSelf,                              // parent = our panel/dialog
+                nullptr,
+                hInstance,
+                nullptr
+            );
+
+            if (hwndTooltip)
+            {
+                // Limit width only for the "?" help tooltip; 0 = unlimited
+                DWORD maxWidth = (pair.first == IDC_FILTER_HELP) ? 200 : 0;
+                SendMessage(hwndTooltip, TTM_SETMAXTIPWIDTH, 0, maxWidth);
+
+                // Bind the tooltip to the specific child control (by HWND)
+                TOOLINFO ti = { 0 };
+                ti.cbSize = sizeof(ti);
+                ti.hwnd = _hSelf;                         // parent window
+                ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;    // subclass the control to show tips
+                ti.uId = (UINT_PTR)hwndControl;          // identify by child HWND
+                ti.lpszText = const_cast<LPWSTR>(pair.second.tooltipText);
+                SendMessage(hwndTooltip, TTM_ADDTOOL, 0, (LPARAM)&ti);
+            }
         }
     }
     return true;
