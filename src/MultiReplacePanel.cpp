@@ -720,6 +720,7 @@ void MultiReplace::updateFilesPanel()
         }
 
         if (show) {
+            EnableWindow(GetDlgItem(_hSelf, IDC_CANCEL_REPLACE_BUTTON), FALSE);
             // Showing: repaint panel (title + frame + children) safely
             repaintPanelContents(hGrp, titleText);
             // Clear selection in both edit fields after opening the panel

@@ -101,7 +101,6 @@ private:
 
     // ---------------- Block building / insertion --------------
     void prependBlock(const std::wstring& dockText, std::vector<Hit>& newHits);
-    static void appendUtf8Chunked(HWND hSci, const std::string& u8);
     void collapseOldSearches();
 
     // ---------------------- Formatting ------------------------

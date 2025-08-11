@@ -47,7 +47,7 @@ namespace {
     }
 }
 
-// --- Singleton & Public Methods ------------------------------------------
+// --------------- Singleton & API methods ------------------
 
 ResultDock& ResultDock::instance()
 {
@@ -69,105 +69,6 @@ void ResultDock::ensureCreatedAndVisible(const NppData& npp)
             reinterpret_cast<LPARAM>(_hSci));
 }
 
-// --- Public API Block (Multiple Search) ----------------------------------
-
-// ---------------------------------------------------------------------
-//  1. open a new block
-// ---------------------------------------------------------------------
-void ResultDock::startSearchBlock(const std::wstring& header, bool groupView, bool purge)
-{
-    if (purge) {
-        clear();
-        _searchHeaderLines.clear();
-    }
-
-    _pendingText.clear();
-    _pendingHits.clear();
-    _utf8LenPending = 0;
-    _groupViewPending = groupView;
-    _blockOpen = true;
-
-    // Einleitungszeile (Search-Header). Zahlen werden in closeSearchBlock ersetzt.
-    _pendingText = getIndentString(LineLevel::SearchHdr) + header + L"\r\n";
-    _utf8LenPending = Encoding::wstringToUtf8(_pendingText).size();
-}
-
-// ---------------------------------------------------------------------
-//  2. append results for ONE file (can be called many times)
-// ---------------------------------------------------------------------
-void ResultDock::appendFileBlock(const FileMap& fm, const SciSendFn& sciSend)
-{
-    if (!_blockOpen) return;
-
-    std::wstring  partText;
-    std::vector<Hit> partHits;
-
-    // build WITHOUT another search header
-    buildListText(fm, _groupViewPending, L"", sciSend,
-        partText, partHits);
-
-    shiftHits(partHits, _utf8LenPending);          // adjust offsets
-
-    _pendingText += partText;
-    _utf8LenPending += Encoding::wstringToUtf8(partText).size();
-
-    _pendingHits.insert(_pendingHits.end(),
-        std::make_move_iterator(partHits.begin()),
-        std::make_move_iterator(partHits.end()));
-}
-
-
-void ResultDock::appendUtf8Chunked(HWND hSci, const std::string& u8)
-{
-    constexpr size_t CHUNK = 1u << 20; // 1 MB
-    size_t sent = 0;
-    const size_t total = u8.size();
-    while (sent < total) {
-        const size_t n = (std::min)(CHUNK, total - sent);
-        ::SendMessageA(hSci, SCI_ADDTEXT, (WPARAM)n, (LPARAM)(u8.data() + sent));
-        sent += n;
-    }
-}
-
-// ---------------------------------------------------------------------
-//  3. finalise header, insert block, restyle
-// ---------------------------------------------------------------------
-void ResultDock::closeSearchBlock(int totalHits, int totalFiles)
-{
-    if (!_blockOpen) return;
-
-    // Replace placeholders in the pending header line
-    const std::wstring hitsStr = std::to_wstring(totalHits);
-    const std::wstring filesStr = std::to_wstring(totalFiles);
-
-    size_t p = _pendingText.find_first_of(L"0123456789", /*start*/1);
-    if (p != std::wstring::npos) {
-        size_t e = _pendingText.find_first_not_of(L"0123456789", p);
-        _pendingText.replace(p, (e == std::wstring::npos ? _pendingText.size() - p : e - p), hitsStr);
-
-        size_t p2 = _pendingText.find_first_of(L"0123456789", p + hitsStr.size());
-        if (p2 != std::wstring::npos) {
-            size_t e2 = _pendingText.find_first_not_of(L"0123456789", p2);
-            _pendingText.replace(p2, (e2 == std::wstring::npos ? _pendingText.size() - p2 : e2 - p2), filesStr);
-        }
-    }
-
-    // Adjust byte offsets due to the replaced numbers
-    const size_t newU8 = Encoding::wstringToUtf8(_pendingText).size();
-    const ptrdiff_t deltaBytes = static_cast<ptrdiff_t>(newU8) - static_cast<ptrdiff_t>(_utf8LenPending);
-    if (deltaBytes != 0) {
-        for (auto& h : _pendingHits)
-            h.displayLineStart += static_cast<int>(deltaBytes);
-    }
-
-    // Prepend the whole block (with a blank separator line between searches)
-    prependBlock(_pendingText, _pendingHits);
-
-    _blockOpen = false;
-}
-
-// --- Other Public Methods ------------------------------------------------
-
 void ResultDock::clear()
 {
     // ----- Data structures -------------------------------------------------
@@ -179,28 +80,26 @@ void ResultDock::clear()
         return;
 
     // ----- reset Scintilla‑Puffer completly --------------------------
-    ::SendMessage(_hSci, SCI_SETREADONLY, FALSE, 0);
-    ::SendMessage(_hSci, SCI_CLEARALL, 0, 0);             // Text & styles
-    ::SendMessage(_hSci, SCI_SETREADONLY, TRUE, 0);
+    S(SCI_SETREADONLY, FALSE);
+    S(SCI_CLEARALL);                                      // Text & styles
+    S(SCI_SETREADONLY, TRUE);
 
     // remove all folding levels → BASE
-    const int lineCount = (int)::SendMessage(_hSci,
-        SCI_GETLINECOUNT, 0, 0);
+    const int lineCount = (int)S(SCI_GETLINECOUNT);
     for (int l = 0; l < lineCount; ++l)
-        ::SendMessage(_hSci, SCI_SETFOLDLEVEL, l, SC_FOLDLEVELBASE);
+        S(SCI_SETFOLDLEVEL, l, SC_FOLDLEVELBASE);;
 
     // Clear every indicator used by the dock
     for (int ind : { INDIC_LINE_BACKGROUND, INDIC_LINENUMBER_FORE,
         INDIC_MATCH_BG, INDIC_MATCH_FORE })
     {
-        ::SendMessage(_hSci, SCI_SETINDICATORCURRENT, ind, 0);
-        ::SendMessage(_hSci, SCI_INDICATORCLEARRANGE, 0,
-            ::SendMessage(_hSci, SCI_GETLENGTH, 0, 0));
+        S(SCI_SETINDICATORCURRENT, ind);
+        S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
     }
 
     // reset caret/scroll position
-    ::SendMessage(_hSci, SCI_GOTOPOS, 0, 0);
-    ::SendMessage(_hSci, SCI_SETFIRSTVISIBLELINE, 0, 0);
+    S(SCI_GOTOPOS, 0);
+    S(SCI_SETFIRSTVISIBLELINE, 0);
 
     // ----- Styles & Folding neu aufbauen -----------------------------------
     rebuildFolding();
@@ -211,33 +110,30 @@ void ResultDock::rebuildFolding()
 {
     if (!_hSci) return;
 
-    auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
-        { return ::SendMessage(_hSci, m, w, l); };
-
-    const int lineCount = static_cast<int>(sciSend(SCI_GETLINECOUNT));
+    const int lineCount = (int)S(SCI_GETLINECOUNT);
 
     // Enable folding (redundant if already set)
-    sciSend(SCI_SETPROPERTY, (WPARAM)"fold", (LPARAM)"1");
-    sciSend(SCI_SETPROPERTY, (WPARAM)"fold.compact", (LPARAM)"1");
+    S(SCI_SETPROPERTY, reinterpret_cast<uptr_t>("fold"), reinterpret_cast<sptr_t>("1"));
+    S(SCI_SETPROPERTY, reinterpret_cast<uptr_t>("fold.compact"), reinterpret_cast<sptr_t>("1"));
 
     const int BASE = SC_FOLDLEVELBASE;
 
     // Pass 1: mark every line as plain content
     for (int l = 0; l < lineCount; ++l)
-        sciSend(SCI_SETFOLDLEVEL, l, BASE);
+        S(SCI_SETFOLDLEVEL, l, BASE);
 
     // Pass 2: detect semantic levels purely by leading spaces via classify()
     for (int l = 0; l < lineCount; ++l)
     {
         // read raw line
-        const int rawLen = static_cast<int>(sciSend(SCI_LINELENGTH, l));
+        const int rawLen = (int)S(SCI_LINELENGTH, l);
         std::string buf(rawLen, '\0');
-        sciSend(SCI_GETLINE, l, reinterpret_cast<LPARAM>(buf.data()));
+        S(SCI_GETLINE, l, (LPARAM)buf.data());
         buf.resize(strnlen(buf.c_str(), rawLen));
 
         LineKind kind = classify(buf);
         if (kind == LineKind::Blank) {                     // blank → plain content
-            sciSend(SCI_SETFOLDLEVEL, l, BASE);
+            S(SCI_SETFOLDLEVEL, l, BASE);
             continue;
         }
 
@@ -260,7 +156,7 @@ void ResultDock::rebuildFolding()
         }
 
         if (isHeader) {
-            sciSend(SCI_SETFOLDLEVEL, l, level | SC_FOLDLEVELHEADERFLAG);
+            S(SCI_SETFOLDLEVEL, l, level | SC_FOLDLEVELHEADERFLAG);
         }
         else {
             int depth = 1;  // min 1 Level
@@ -271,44 +167,16 @@ void ResultDock::rebuildFolding()
             else if (spaces >= INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)])
                 depth = static_cast<int>(LineLevel::FileHdr);   // 1
 
-            sciSend(SCI_SETFOLDLEVEL, l, BASE + depth);
+            S(SCI_SETFOLDLEVEL, l, BASE + depth);
         }
     }
 
-}
-
-void ResultDock::rebuildFoldingRange(int firstLine, int lastLine) const
-{
-    if (!_hSci || lastLine < firstLine) return;
-
-    const int BASE = SC_FOLDLEVELBASE;
-
-    for (int l = firstLine; l <= lastLine; ++l)
-        S(SCI_SETFOLDLEVEL, l, BASE);
-
-    for (int l = firstLine; l <= lastLine; ++l) {
-        const int indent = (int)S(SCI_GETLINEINDENTATION, l);
-        bool isHeader = false;
-        int  level = BASE;
-
-        if (indent == INDENT_SPACES[(int)LineLevel::SearchHdr]) { isHeader = true; level = BASE + (int)LineLevel::SearchHdr; }
-        else if (indent == INDENT_SPACES[(int)LineLevel::FileHdr]) { isHeader = true; level = BASE + (int)LineLevel::FileHdr; }
-        else if (indent == INDENT_SPACES[(int)LineLevel::CritHdr]) { isHeader = true; level = BASE + (int)LineLevel::CritHdr; }
-
-        if (isHeader)
-            S(SCI_SETFOLDLEVEL, l, level | SC_FOLDLEVELHEADERFLAG);
-        else
-            S(SCI_SETFOLDLEVEL, l, BASE + (int)LineLevel::HitLine);
-    }
 }
 
 void ResultDock::applyStyling() const
 {
     if (!_hSci)
         return;
-
-    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT
-        { return ::SendMessage(_hSci, m, w, l); };
 
     // Step 1: Clear previous styling indicators
     const std::vector<int> indicatorsToClear = { INDIC_LINE_BACKGROUND, INDIC_LINENUMBER_FORE, INDIC_MATCH_FORE, INDIC_MATCH_BG };
@@ -400,72 +268,97 @@ void ResultDock::applyStyling() const
     }
 }
 
-void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const std::vector<Hit>& newHits) const
-{
-    if (!_hSci || len <= 0) return;
-
-    const Sci_Position endPos = pos0 + len;
-    const int firstLine = (int)S(SCI_LINEFROMPOSITION, pos0);
-    const int lastLine = (int)S(SCI_LINEFROMPOSITION, endPos);
-
-    // Base styling for affected lines, using indentation only (no full GETLINE)
-    Sci_Position lineStartPos = S(SCI_POSITIONFROMLINE, firstLine);
-    S(SCI_STARTSTYLING, lineStartPos, 0);
-
-    for (int line = firstLine; line <= lastLine; ++line) {
-        const Sci_Position ls = S(SCI_POSITIONFROMLINE, line);
-        const int ll = (int)S(SCI_LINELENGTH, line);
-
-        int style = STYLE_DEFAULT;
-        if (ll > 0) {
-            const int indent = (int)S(SCI_GETLINEINDENTATION, line); // spaces (tabs expanded)
-            if (indent == INDENT_SPACES[(int)LineLevel::SearchHdr]) style = STYLE_HEADER;
-            else if (indent == INDENT_SPACES[(int)LineLevel::CritHdr])   style = STYLE_CRITHDR;
-            else if (indent == INDENT_SPACES[(int)LineLevel::FileHdr])   style = STYLE_FILEPATH;
-        }
-        if (ll > 0) S(SCI_SETSTYLING, ll, style);
-
-        // EOL default (optional; keeps visuals consistent)
-        const Sci_Position lineEnd = S(SCI_GETLINEENDPOSITION, line);
-        const int eolLen = (int)(lineEnd - (ls + ll));
-        if (eolLen > 0) S(SCI_SETSTYLING, eolLen, STYLE_DEFAULT);
-    }
-
-    // Indicators only for the new hits (minimal work: no global clears)
-    S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
-    for (const auto& h : newHits) {
-        if (h.displayLineStart < 0) continue;
-        const int line = (int)S(SCI_LINEFROMPOSITION, h.displayLineStart);
-        const Sci_Position ls = S(SCI_POSITIONFROMLINE, line);
-        const Sci_Position ll = S(SCI_LINELENGTH, line);
-        if (ll > 0) S(SCI_INDICATORFILLRANGE, ls, ll);
-    }
-
-    S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
-    for (const auto& h : newHits)
-        if (h.displayLineStart >= 0)
-            S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.numberStart, h.numberLen);
-
-    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_BG);
-    for (const auto& h : newHits) {
-        if (h.displayLineStart < 0) continue;
-        for (size_t i = 0; i < h.matchStarts.size(); ++i)
-            S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
-    }
-
-    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
-    for (const auto& h : newHits) {
-        if (h.displayLineStart < 0) continue;
-        for (size_t i = 0; i < h.matchStarts.size(); ++i)
-            S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
-    }
-}
-
 void ResultDock::onThemeChanged() {
     applyTheme();
 }
 
-// --- Private Methods -----------------------------------------------------
+// ------------------- Search Block API ---------------------
+
+// -----------------------------------------------------------
+//  1. open a new block
+// -----------------------------------------------------------
+void ResultDock::startSearchBlock(const std::wstring& header, bool groupView, bool purge)
+{
+    if (purge) {
+        clear();
+        _searchHeaderLines.clear();
+    }
+
+    _pendingText.clear();
+    _pendingHits.clear();
+    _utf8LenPending = 0;
+    _groupViewPending = groupView;
+    _blockOpen = true;
+
+    // Intro line for the search header; hit/file numbers are patched in closeSearchBlock().
+    _pendingText = getIndentString(LineLevel::SearchHdr) + header + L"\r\n";
+    _utf8LenPending = Encoding::wstringToUtf8(_pendingText).size();
+}
+
+
+// -----------------------------------------------------------
+//  2. append results for ONE file (can be called many times)
+// -----------------------------------------------------------
+void ResultDock::appendFileBlock(const FileMap& fm, const SciSendFn& sciSend)
+{
+    if (!_blockOpen) return;
+
+    std::wstring  partText;
+    std::vector<Hit> partHits;
+
+    // build WITHOUT another search header
+    buildListText(fm, _groupViewPending, L"", sciSend,
+        partText, partHits);
+
+    shiftHits(partHits, _utf8LenPending);          // adjust offsets
+
+    _pendingText += partText;
+    _utf8LenPending += Encoding::wstringToUtf8(partText).size();
+
+    _pendingHits.insert(_pendingHits.end(),
+        std::make_move_iterator(partHits.begin()),
+        std::make_move_iterator(partHits.end()));
+}
+
+
+// -----------------------------------------------------------
+//  3. finalise header, insert block, restyle
+// -----------------------------------------------------------
+void ResultDock::closeSearchBlock(int totalHits, int totalFiles)
+{
+    if (!_blockOpen) return;
+
+    // Replace placeholders in the pending header line
+    const std::wstring hitsStr = std::to_wstring(totalHits);
+    const std::wstring filesStr = std::to_wstring(totalFiles);
+
+    size_t p = _pendingText.find_first_of(L"0123456789", /*start*/1);
+    if (p != std::wstring::npos) {
+        size_t e = _pendingText.find_first_not_of(L"0123456789", p);
+        _pendingText.replace(p, (e == std::wstring::npos ? _pendingText.size() - p : e - p), hitsStr);
+
+        size_t p2 = _pendingText.find_first_of(L"0123456789", p + hitsStr.size());
+        if (p2 != std::wstring::npos) {
+            size_t e2 = _pendingText.find_first_not_of(L"0123456789", p2);
+            _pendingText.replace(p2, (e2 == std::wstring::npos ? _pendingText.size() - p2 : e2 - p2), filesStr);
+        }
+    }
+
+    // Adjust byte offsets due to the replaced numbers
+    const size_t newU8 = Encoding::wstringToUtf8(_pendingText).size();
+    const ptrdiff_t deltaBytes = static_cast<ptrdiff_t>(newU8) - static_cast<ptrdiff_t>(_utf8LenPending);
+    if (deltaBytes != 0) {
+        for (auto& h : _pendingHits)
+            h.displayLineStart += static_cast<int>(deltaBytes);
+    }
+
+    // Prepend the whole block (with a blank separator line between searches)
+    prependBlock(_pendingText, _pendingHits);
+
+    _blockOpen = false;
+}
+
+// ---------------- Construction & Core State ---------------
 
 ResultDock::ResultDock(HINSTANCE hInst)
     : _hInst(hInst)      // member‑initialiser‑list
@@ -570,9 +463,6 @@ void ResultDock::initFolding() const
 {
     if (!_hSci) return;
 
-    auto S = [this](UINT msg, WPARAM w = 0, LPARAM l = 0)
-        { return ::SendMessage(_hSci, msg, w, l); };
-
     // 1) configure margin #2 for folding symbols -----------------
     constexpr int M_FOLD = 2;
     S(SCI_SETMARGINTYPEN, M_FOLD, SC_MARGIN_SYMBOL);
@@ -623,9 +513,6 @@ void ResultDock::initFolding() const
 
 void ResultDock::applyTheme()
 {
-    if (!_hSci)
-        return;
-
     // Helper lambda for Scintilla calls
     auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
         return ::SendMessage(_hSci, m, w, l);
@@ -727,6 +614,96 @@ void ResultDock::applyTheme()
     S(SCI_STYLESETEOLFILLED, STYLE_FILEPATH, TRUE);
 }
 
+// -------- Range styling / folding (partial updates) -------
+
+void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const std::vector<Hit>& newHits) const
+{
+    if (!_hSci || len <= 0) return;
+
+    const Sci_Position endPos = pos0 + len;
+    const int firstLine = (int)S(SCI_LINEFROMPOSITION, pos0);
+    const int lastLine = (int)S(SCI_LINEFROMPOSITION, endPos);
+
+    // Base styling for affected lines, using indentation only (no full GETLINE)
+    Sci_Position lineStartPos = S(SCI_POSITIONFROMLINE, firstLine);
+    S(SCI_STARTSTYLING, lineStartPos, 0);
+
+    for (int line = firstLine; line <= lastLine; ++line) {
+        const Sci_Position ls = S(SCI_POSITIONFROMLINE, line);
+        const int ll = (int)S(SCI_LINELENGTH, line);
+
+        int style = STYLE_DEFAULT;
+        if (ll > 0) {
+            const int indent = (int)S(SCI_GETLINEINDENTATION, line); // spaces (tabs expanded)
+            if (indent == INDENT_SPACES[(int)LineLevel::SearchHdr]) style = STYLE_HEADER;
+            else if (indent == INDENT_SPACES[(int)LineLevel::CritHdr])   style = STYLE_CRITHDR;
+            else if (indent == INDENT_SPACES[(int)LineLevel::FileHdr])   style = STYLE_FILEPATH;
+        }
+        if (ll > 0) S(SCI_SETSTYLING, ll, style);
+
+        // EOL default (optional; keeps visuals consistent)
+        const Sci_Position lineEnd = S(SCI_GETLINEENDPOSITION, line);
+        const int eolLen = (int)(lineEnd - (ls + ll));
+        if (eolLen > 0) S(SCI_SETSTYLING, eolLen, STYLE_DEFAULT);
+    }
+
+    // Indicators only for the new hits (minimal work: no global clears)
+    S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
+    for (const auto& h : newHits) {
+        if (h.displayLineStart < 0) continue;
+        const int line = (int)S(SCI_LINEFROMPOSITION, h.displayLineStart);
+        const Sci_Position ls = S(SCI_POSITIONFROMLINE, line);
+        const Sci_Position ll = S(SCI_LINELENGTH, line);
+        if (ll > 0) S(SCI_INDICATORFILLRANGE, ls, ll);
+    }
+
+    S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
+    for (const auto& h : newHits)
+        if (h.displayLineStart >= 0)
+            S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.numberStart, h.numberLen);
+
+    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_BG);
+    for (const auto& h : newHits) {
+        if (h.displayLineStart < 0) continue;
+        for (size_t i = 0; i < h.matchStarts.size(); ++i)
+            S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
+    }
+
+    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
+    for (const auto& h : newHits) {
+        if (h.displayLineStart < 0) continue;
+        for (size_t i = 0; i < h.matchStarts.size(); ++i)
+            S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
+    }
+}
+
+void ResultDock::rebuildFoldingRange(int firstLine, int lastLine) const
+{
+    if (!_hSci || lastLine < firstLine) return;
+
+    const int BASE = SC_FOLDLEVELBASE;
+
+    for (int l = firstLine; l <= lastLine; ++l)
+        S(SCI_SETFOLDLEVEL, l, BASE);
+
+    for (int l = firstLine; l <= lastLine; ++l) {
+        const int indent = (int)S(SCI_GETLINEINDENTATION, l);
+        bool isHeader = false;
+        int  level = BASE;
+
+        if (indent == INDENT_SPACES[(int)LineLevel::SearchHdr]) { isHeader = true; level = BASE + (int)LineLevel::SearchHdr; }
+        else if (indent == INDENT_SPACES[(int)LineLevel::FileHdr]) { isHeader = true; level = BASE + (int)LineLevel::FileHdr; }
+        else if (indent == INDENT_SPACES[(int)LineLevel::CritHdr]) { isHeader = true; level = BASE + (int)LineLevel::CritHdr; }
+
+        if (isHeader)
+            S(SCI_SETFOLDLEVEL, l, level | SC_FOLDLEVELHEADERFLAG);
+        else
+            S(SCI_SETFOLDLEVEL, l, BASE + (int)LineLevel::HitLine);
+    }
+}
+
+// ---------------- Block building / insertion --------------
+
 void ResultDock::prependBlock(const std::wstring& dockText, std::vector<Hit>& newHits)
 {
     if (!_hSci || dockText.empty())
@@ -793,26 +770,25 @@ void ResultDock::prependBlock(const std::wstring& dockText, std::vector<Hit>& ne
     S(SCI_GOTOPOS, 0);
 }
 
-
 void ResultDock::collapseOldSearches()
 {
     if (!_hSci || _searchHeaderLines.size() < 2)
         return;
 
-    // Alle außer dem letzten (aktuellen) zusammenfalten
+    /// Collapse all previous search blocks; keep only the most recent expanded.
     const size_t lastIdx = _searchHeaderLines.size() - 1;
     for (size_t i = 0; i < lastIdx; ++i) {
         const int headerLine = _searchHeaderLines[i];
-        // Sicherheitsprüfung: innerhalb des aktuellen LineCounts?
-        const int lineCount = (int)::SendMessage(_hSci, SCI_GETLINECOUNT, 0, 0);
+        /// Safety check: ensure headerLine is within the current line count.
+        const int lineCount = (int)S(SCI_GETLINECOUNT);
         if (headerLine >= 0 && headerLine < lineCount) {
-            ::SendMessage(_hSci, SCI_SETFOLDEXPANDED, headerLine, FALSE);
-            ::SendMessage(_hSci, SCI_FOLDCHILDREN, headerLine, SC_FOLDACTION_CONTRACT);
+            S(SCI_SETFOLDEXPANDED, headerLine, FALSE);
+            S(SCI_FOLDCHILDREN, headerLine, SC_FOLDACTION_CONTRACT);
         }
     }
 }
 
-// --- Private Formatting Helpers ------------------------------------------
+// ---------------------- Formatting ------------------------
 
 void ResultDock::buildListText(
     const FileMap& files,
@@ -1002,8 +978,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         hits.end());
 }
 
-
-// --- Private Static Helpers ----------------------------------------------
+// --------------------- Line helpers -----------------------
 
 ResultDock::LineKind ResultDock::classify(const std::string& raw) {
     size_t spaces = 0;
@@ -1012,7 +987,7 @@ ResultDock::LineKind ResultDock::classify(const std::string& raw) {
     std::string_view trimmed(raw.data() + spaces, raw.size() - spaces);
     if (trimmed.empty()) return LineKind::Blank;
 
-    // Hier vollqualifizieren:
+    // Fully qualify level by matching exact indent widths.
     for (int lvl = 0; lvl <= static_cast<int>(ResultDock::LineLevel::HitLine); ++lvl) {
         if ((int)spaces == ResultDock::INDENT_SPACES[lvl]) {
             switch (static_cast<ResultDock::LineLevel>(lvl)) {
@@ -1081,10 +1056,16 @@ std::wstring ResultDock::pathFromFileHdr(const std::wstring& w)
 }
 
 int ResultDock::ancestorFileLine(HWND hSci, int startLine) {
+    auto fn = (SciFnDirect_t)::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0);
+    auto ptr = (sptr_t)::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0);
+    auto Sx = [&](UINT m, uptr_t w = 0, sptr_t l = 0)->sptr_t {
+        return fn ? fn(ptr, m, w, l) : ::SendMessage(hSci, m, w, l);
+        };
+
     for (int l = startLine; l >= 0; --l) {
-        int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
+        int len = (int)Sx(SCI_LINELENGTH, l);
         std::string raw(len, '\0');
-        ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
+        Sx(SCI_GETLINE, l, (sptr_t)raw.data());
         raw.resize(strnlen(raw.c_str(), len));
         if (classify(raw) == LineKind::FileHdr) return l;
     }
@@ -1092,9 +1073,14 @@ int ResultDock::ancestorFileLine(HWND hSci, int startLine) {
 }
 
 std::wstring ResultDock::getLineW(HWND hSci, int line) {
-    int len = (int)::SendMessage(hSci, SCI_LINELENGTH, line, 0);
+    auto fn = (SciFnDirect_t)::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0);
+    auto ptr = (sptr_t)::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0);
+    auto Sx = [&](UINT m, uptr_t w = 0, sptr_t l = 0)->sptr_t {
+        return fn ? fn(ptr, m, w, l) : ::SendMessage(hSci, m, w, l);
+        };
+    int len = (int)Sx(SCI_LINELENGTH, line);
     std::string raw(len, '\0');
-    ::SendMessage(hSci, SCI_GETLINE, line, (LPARAM)raw.data());
+    Sx(SCI_GETLINE, line, (sptr_t)raw.data());
     raw.resize(strnlen(raw.c_str(), len));
     return Encoding::utf8ToWString(raw);
 }
@@ -1106,370 +1092,7 @@ int ResultDock::leadingSpaces(const char* line, int len)
     return s;
 }
 
-// --- Private Context Menu Handlers ---------------------------------------
-
-void ResultDock::copySelectedLines(HWND hSci) {
-
-    auto indentOf = [](ResultDock::LineLevel lvl) -> int {                                                                  // NEW
-        return ResultDock::INDENT_SPACES[static_cast<int>(lvl)];
-        };
-
-    // determine selection range
-    Sci_Position a = ::SendMessage(hSci, SCI_GETSELECTIONNANCHOR, 0, 0);
-    Sci_Position c = ::SendMessage(hSci, SCI_GETCURRENTPOS, 0, 0);
-    if (a > c) std::swap(a, c);
-    int lineStart = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, a, 0);
-    int lineEnd = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, c, 0);
-    bool hasSel = (a != c);
-
-    std::vector<std::wstring> out;
-
-    if (hasSel) {                               // ----- selection mode
-        for (int l = lineStart; l <= lineEnd; ++l) {
-            int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
-            std::string raw(len, '\0');
-            ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
-            raw.resize(strnlen(raw.c_str(), len));
-            if (classify(raw) == LineKind::HitLine)
-                out.emplace_back(stripHitPrefix(Encoding::utf8ToWString(raw)));
-        }
-    }
-    else {                                    // ----- caret hierarchy walk
-        int caretLine = lineStart;
-        int len = (int)::SendMessage(hSci, SCI_LINELENGTH, caretLine, 0);
-        std::string rawCaret(len, '\0');
-        ::SendMessage(hSci, SCI_GETLINE, caretLine, (LPARAM)rawCaret.data());
-        rawCaret.resize(strnlen(rawCaret.c_str(), len));
-        LineKind kind = classify(rawCaret);
-
-        auto pushHitsBelow = [&](int fromLine, int minIndent) {
-            int total = (int)::SendMessage(hSci, SCI_GETLINECOUNT, 0, 0);
-            for (int l = fromLine; l < total; ++l) {
-                int lLen = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
-                std::string raw(lLen, '\0');
-                ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
-                raw.resize(strnlen(raw.c_str(), lLen));
-
-                // stop when leaving the subtree
-                if ((int)ResultDock::leadingSpaces(raw.c_str(), (int)raw.size()) <= minIndent &&
-                    classify(raw) != LineKind::HitLine) break;
-
-                if (classify(raw) == LineKind::HitLine)
-                    out.emplace_back(stripHitPrefix(Encoding::utf8ToWString(raw)));
-            }
-            };
-
-        switch (kind) {
-        case LineKind::HitLine:
-            out.emplace_back(stripHitPrefix(Encoding::utf8ToWString(rawCaret)));
-            break;
-
-        case LineKind::CritHdr:
-            pushHitsBelow(caretLine + 1, indentOf(LineLevel::CritHdr));
-            break;
-
-        case LineKind::FileHdr:
-            pushHitsBelow(caretLine + 1, indentOf(LineLevel::FileHdr));
-            break;
-
-        case LineKind::SearchHdr:
-            pushHitsBelow(caretLine + 1, indentOf(LineLevel::SearchHdr));
-            break;
-        default: break;
-        }
-    }
-
-    if (!out.empty()) {
-        std::wstring joined;
-        for (size_t i = 0; i < out.size(); ++i) {
-            joined += out[i];                   // << keeps original behaviour
-        }
-        copyTextToClipboard(hSci, joined);
-    }
-}
-
-void ResultDock::copyTextToClipboard(HWND owner, const std::wstring& wText) {
-    if (!::OpenClipboard(owner)) return;
-    ::EmptyClipboard();
-    HGLOBAL hMem = ::GlobalAlloc(GMEM_MOVEABLE, (wText.size() + 1) * sizeof(wchar_t));
-    if (hMem) {
-        auto* buf = static_cast<wchar_t*>(::GlobalLock(hMem));
-        std::copy(wText.c_str(), wText.c_str() + wText.size() + 1, buf);
-        ::GlobalUnlock(hMem);
-        ::SetClipboardData(CF_UNICODETEXT, hMem);
-    }
-    ::CloseClipboard();
-}
-
-void ResultDock::copySelectedPaths(HWND hSci) {
-    Sci_Position a = ::SendMessage(hSci, SCI_GETSELECTIONNANCHOR, 0, 0);
-    Sci_Position c = ::SendMessage(hSci, SCI_GETCURRENTPOS, 0, 0);
-    if (a > c) std::swap(a, c);
-    int lineStart = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, a, 0);
-    int lineEnd = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, c, 0);
-    bool hasSel = (a != c);
-
-    std::vector<std::wstring> paths;
-    std::unordered_set<std::wstring> seen;
-    auto addUnique = [&](const std::wstring& p) { if (seen.insert(p).second) paths.push_back(p); };
-
-    auto pushFileHdrsBelow = [&](int fromLine, int minIndent) {
-        int total = (int)::SendMessage(hSci, SCI_GETLINECOUNT, 0, 0);
-        for (int l = fromLine; l < total; ++l) {
-            int lLen = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
-            std::string raw(lLen, '\0');
-            ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
-            raw.resize(strnlen(raw.c_str(), lLen));
-
-            int indent = ResultDock::leadingSpaces(raw.c_str(), (int)raw.size());
-            if (indent <= minIndent && classify(raw) != LineKind::HitLine) break;
-
-            if (classify(raw) == LineKind::FileHdr)
-                addUnique(pathFromFileHdr(Encoding::utf8ToWString(raw)));
-        }
-        };
-
-    if (hasSel) {
-        for (int l = lineStart; l <= lineEnd; ++l) {
-            int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
-            std::string raw(len, '\0');
-            ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
-            raw.resize(strnlen(raw.c_str(), len));
-            LineKind k = classify(raw);
-
-            if (k == LineKind::FileHdr)
-                addUnique(pathFromFileHdr(Encoding::utf8ToWString(raw)));
-            else if (k == LineKind::HitLine || k == LineKind::CritHdr) {
-                int fLine = ancestorFileLine(hSci, l);
-                if (fLine != -1)
-                    addUnique(pathFromFileHdr(getLineW(hSci, fLine)));
-            }
-        }
-    }
-    else {
-        int caretLine = lineStart;
-        int len = (int)::SendMessage(hSci, SCI_LINELENGTH, caretLine, 0);
-        std::string raw(len, '\0');
-        ::SendMessage(hSci, SCI_GETLINE, caretLine, (LPARAM)raw.data());
-        raw.resize(strnlen(raw.c_str(), len));
-        LineKind kind = classify(raw);
-
-        switch (kind) {
-        case LineKind::HitLine:
-        case LineKind::CritHdr: {
-            int fLine = ancestorFileLine(hSci, caretLine);
-            if (fLine != -1)
-                addUnique(pathFromFileHdr(getLineW(hSci, fLine)));
-            break;
-        }
-        case LineKind::FileHdr:
-            addUnique(pathFromFileHdr(Encoding::utf8ToWString(raw)));
-            break;
-        case LineKind::SearchHdr:
-            pushFileHdrsBelow(caretLine + 1, 0);
-            break;
-        default: break;
-        }
-    }
-
-    if (!paths.empty()) {
-        std::wstring joined;
-        for (size_t i = 0; i < paths.size(); ++i) {
-            if (i) joined += L"\r\n";
-            joined += paths[i];
-        }
-        copyTextToClipboard(hSci, joined);
-    }
-}
-
-void ResultDock::openSelectedPaths(HWND hSci) {
-    copySelectedPaths(hSci);   // copy first (UX)
-
-    Sci_Position a = ::SendMessage(hSci, SCI_GETSELECTIONNANCHOR, 0, 0);
-    Sci_Position c = ::SendMessage(hSci, SCI_GETCURRENTPOS, 0, 0);
-    if (a > c) std::swap(a, c);
-    int lineStart = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, a, 0);
-    int lineEnd = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, c, 0);
-
-    std::unordered_set<std::wstring> opened;
-
-    for (int l = lineStart; l <= lineEnd; ++l) {
-        int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
-        std::string raw(len, '\0');
-        ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
-        raw.resize(strnlen(raw.c_str(), len));
-        LineKind k = classify(raw);
-
-        if (k == LineKind::FileHdr) {
-            std::wstring p = pathFromFileHdr(Encoding::utf8ToWString(raw));
-            if (opened.insert(p).second)
-                ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)p.c_str());
-        }
-        else if (k == LineKind::HitLine || k == LineKind::CritHdr) {
-            int fLine = ancestorFileLine(hSci, l);
-            if (fLine != -1) {
-                std::wstring p = pathFromFileHdr(getLineW(hSci, fLine));
-                if (opened.insert(p).second)
-                    ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)p.c_str());
-            }
-        }
-    }
-}
-
-void ResultDock::deleteSelectedItems(HWND hSci)
-{
-    auto& dock = ResultDock::instance();
-
-    // ------------------------------------------------------------------
-    //  Determine anchor / caret lines
-    // ------------------------------------------------------------------
-    Sci_Position a = ::SendMessage(hSci, SCI_GETSELECTIONNANCHOR, 0, 0);
-    Sci_Position c = ::SendMessage(hSci, SCI_GETCURRENTPOS, 0, 0);
-    if (a > c) std::swap(a, c);
-
-    int firstLine = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, a, 0);
-    int lastLine = (int)::SendMessage(hSci, SCI_LINEFROMPOSITION, c, 0);
-    bool hasSel = (a != c);
-
-    // ------------------------------------------------------------------
-    //  Build list of display‑line ranges that must be deleted
-    // ------------------------------------------------------------------
-    struct DelRange { int first; int last; };
-    std::vector<DelRange> ranges;
-
-    auto subtreeEnd = [&](int fromLine, int minIndent) -> int
-        {
-            int total = (int)::SendMessage(hSci, SCI_GETLINECOUNT, 0, 0);
-            for (int l = fromLine; l < total; ++l)
-            {
-                int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
-                std::string raw(len, '\0');
-                ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
-                raw.resize(strnlen(raw.c_str(), len));
-
-                int indent = ResultDock::leadingSpaces(raw.c_str(), (int)raw.size());
-                if (indent <= minIndent && classify(raw) != LineKind::HitLine)
-                    return l - 1;                           // previous line ends subtree
-            }
-            return (int)::SendMessage(hSci, SCI_GETLINECOUNT, 0, 0) - 1; // EOF
-        };
-
-    auto pushRange = [&](int first, int last)
-        {
-            if (ranges.empty() || first > ranges.back().last + 1)
-                ranges.push_back({ first, last });
-            else
-                ranges.back().last = (std::max)(ranges.back().last, last);
-        };
-
-    // ------------------------------------------------------------------
-    //  Selection mode: collect every header / hit and expand hierarchy
-    // ------------------------------------------------------------------
-    if (hasSel) {
-        for (int l = firstLine; l <= lastLine; ++l)
-        {
-            // skip lines already included by previous pushRange
-            if (!ranges.empty() && l <= ranges.back().last) continue;
-
-            int len = (int)::SendMessage(hSci, SCI_LINELENGTH, l, 0);
-            std::string raw(len, '\0');
-            ::SendMessage(hSci, SCI_GETLINE, l, (LPARAM)raw.data());
-            raw.resize(strnlen(raw.c_str(), len));
-
-            LineKind kind = classify(raw);
-            int endLine = l;   // default: only this line
-
-            switch (kind) {
-            case LineKind::HitLine: endLine = l;
-                break;
-            case LineKind::CritHdr:
-                endLine = subtreeEnd(l + 1, INDENT_SPACES[static_cast<int>(LineLevel::CritHdr)]);
-                break;
-            case LineKind::FileHdr:
-                endLine = subtreeEnd(l + 1, INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)]);
-                break;
-            case LineKind::SearchHdr:
-                endLine = subtreeEnd(l + 1, INDENT_SPACES[static_cast<int>(LineLevel::SearchHdr)]);
-                break;
-            default:                  continue;                       // ignore blanks
-            }
-            pushRange(l, endLine);
-        }
-    }
-    else {
-        // ------------------------------------------------------------------
-        //  Caret‑only mode: single logical block
-        // ------------------------------------------------------------------
-        int len = (int)::SendMessage(hSci, SCI_LINELENGTH, firstLine, 0);
-        std::string raw(len, '\0');
-        ::SendMessage(hSci, SCI_GETLINE, firstLine, (LPARAM)raw.data());
-        raw.resize(strnlen(raw.c_str(), len));
-
-        LineKind kind = classify(raw);
-        int endLine = firstLine;
-
-        switch (kind)
-        {
-        case LineKind::HitLine: endLine = firstLine; break;
-        case LineKind::CritHdr: endLine = subtreeEnd(firstLine + 1, INDENT_SPACES[static_cast<int>(LineLevel::CritHdr)]);
-            break;
-        case LineKind::FileHdr: endLine = subtreeEnd(firstLine + 1, INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)]);
-            break;
-        case LineKind::SearchHdr: endLine = subtreeEnd(firstLine + 1, INDENT_SPACES[static_cast<int>(LineLevel::SearchHdr)]);
-            break;
-        default: return; // nothing deletable on this line
-        }
-        ranges.push_back({ firstLine, endLine });
-    }
-
-    if (ranges.empty())
-        return;
-
-    // ------------------------------------------------------------------
-    //  Delete ranges bottom‑up and update _hits offsets
-    // ------------------------------------------------------------------
-    ::SendMessage(hSci, SCI_SETREADONLY, FALSE, 0);
-
-    for (auto it = ranges.rbegin(); it != ranges.rend(); ++it) {
-        int fLine = it->first;
-        int lLine = it->last;
-
-        Sci_Position start = ::SendMessage(hSci, SCI_POSITIONFROMLINE, fLine, 0);
-        Sci_Position end = (lLine + 1 < ::SendMessage(hSci, SCI_GETLINECOUNT, 0, 0))
-            ? ::SendMessage(hSci, SCI_POSITIONFROMLINE, lLine + 1, 0)
-            : ::SendMessage(hSci, SCI_GETLENGTH, 0, 0);
-
-        Sci_Position delta = end - start;
-        if (delta <= 0) continue;
-
-        // ---- remove from Scintilla buffer
-        ::SendMessage(hSci, SCI_DELETERANGE, start, delta);
-
-        // ---- sync internal hit list
-        for (auto h = dock._hits.begin(); h != dock._hits.end(); )
-        {
-            if (h->displayLineStart >= start && h->displayLineStart < end)
-            {
-                h = dock._hits.erase(h);                  // entry deleted
-            }
-            else
-            {
-                if (h->displayLineStart >= end)
-                    h->displayLineStart -= (int)delta;    // shift left
-                ++h;
-            }
-        }
-    }
-
-    ::SendMessage(hSci, SCI_SETREADONLY, TRUE, 0);
-
-    // ------------------------------------------------------------------
-    //  Re‑fold and re‑style remaining lines
-    // ------------------------------------------------------------------
-    dock.rebuildFolding();
-    dock.applyStyling();
-    dock.rebuildHitLineIndex();
-}
+// -------------------- Path/File helpers -------------------
 
 bool ResultDock::IsPseudoPath(const std::wstring& p)
 {
@@ -1612,7 +1235,396 @@ void ResultDock::JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len
     ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY, (WPARAM)caretLine, 0);
 }
 
-// --- Private Callbacks ---------------------------------------------------
+void ResultDock::rebuildHitLineIndex()
+{
+    _lineStartToHitIndex.clear();
+    _lineStartToHitIndex.reserve(_hits.size());
+    for (int i = 0; i < (int)_hits.size(); ++i)
+    {
+        const int pos = _hits[i].displayLineStart;
+        if (pos >= 0) _lineStartToHitIndex[pos] = i;
+    }
+}
+
+// --------------- Context Menu Command Handlers ------------
+
+void ResultDock::copySelectedLines(HWND hSci) {
+
+    auto fn = (SciFnDirect_t)::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0);
+    auto ptr = (sptr_t)::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0);
+    auto Sx = [&](UINT m, uptr_t w = 0, sptr_t l = 0)->sptr_t {
+        return fn ? fn(ptr, m, w, l) : ::SendMessage(hSci, m, w, l);
+        };
+
+    auto indentOf = [](ResultDock::LineLevel lvl) -> int {                                                                  // NEW
+        return ResultDock::INDENT_SPACES[static_cast<int>(lvl)];
+        };
+
+    // determine selection range
+    Sci_Position a = (Sci_Position)Sx(SCI_GETSELECTIONNANCHOR);
+    Sci_Position c = (Sci_Position)Sx(SCI_GETCURRENTPOS);
+    if (a > c) std::swap(a, c);
+    int lineStart = (int)Sx(SCI_LINEFROMPOSITION, a);
+    int lineEnd = (int)Sx(SCI_LINEFROMPOSITION, c);
+    bool hasSel = (a != c);
+
+    std::vector<std::wstring> out;
+
+    if (hasSel) {                               // ----- selection mode
+        for (int l = lineStart; l <= lineEnd; ++l) {
+            int len = (int)Sx(SCI_LINELENGTH, l);
+            std::string raw(len, '\0');
+            Sx(SCI_GETLINE, l, (sptr_t)raw.data());
+            raw.resize(strnlen(raw.c_str(), len));
+            if (classify(raw) == LineKind::HitLine)
+                out.emplace_back(stripHitPrefix(Encoding::utf8ToWString(raw)));
+        }
+    }
+    else {                                    // ----- caret hierarchy walk
+        int caretLine = lineStart;
+        int len = (int)Sx(SCI_LINELENGTH, caretLine);
+        std::string rawCaret(len, '\0');
+        Sx(SCI_GETLINE, caretLine, (sptr_t)rawCaret.data());
+        rawCaret.resize(strnlen(rawCaret.c_str(), len));
+        LineKind kind = classify(rawCaret);
+
+        auto pushHitsBelow = [&](int fromLine, int minIndent) {
+            int total = (int)Sx(SCI_GETLINECOUNT);
+            for (int l = fromLine; l < total; ++l) {
+                int lLen = (int)Sx(SCI_LINELENGTH, l);
+                std::string raw(lLen, '\0');
+                Sx(SCI_GETLINE, l, (sptr_t)raw.data());
+                raw.resize(strnlen(raw.c_str(), lLen));
+
+                // stop when leaving the subtree
+                if ((int)ResultDock::leadingSpaces(raw.c_str(), (int)raw.size()) <= minIndent &&
+                    classify(raw) != LineKind::HitLine) break;
+
+                if (classify(raw) == LineKind::HitLine)
+                    out.emplace_back(stripHitPrefix(Encoding::utf8ToWString(raw)));
+            }
+            };
+
+        switch (kind) {
+        case LineKind::HitLine:
+            out.emplace_back(stripHitPrefix(Encoding::utf8ToWString(rawCaret)));
+            break;
+
+        case LineKind::CritHdr:
+            pushHitsBelow(caretLine + 1, indentOf(LineLevel::CritHdr));
+            break;
+
+        case LineKind::FileHdr:
+            pushHitsBelow(caretLine + 1, indentOf(LineLevel::FileHdr));
+            break;
+
+        case LineKind::SearchHdr:
+            pushHitsBelow(caretLine + 1, indentOf(LineLevel::SearchHdr));
+            break;
+        default: break;
+        }
+    }
+
+    if (!out.empty()) {
+        std::wstring joined;
+        for (size_t i = 0; i < out.size(); ++i) {
+            joined += out[i];                   // << keeps original behaviour
+        }
+        copyTextToClipboard(hSci, joined);
+    }
+}
+
+void ResultDock::copyTextToClipboard(HWND owner, const std::wstring& wText) {
+    if (!::OpenClipboard(owner)) return;
+    ::EmptyClipboard();
+    HGLOBAL hMem = ::GlobalAlloc(GMEM_MOVEABLE, (wText.size() + 1) * sizeof(wchar_t));
+    if (hMem) {
+        auto* buf = static_cast<wchar_t*>(::GlobalLock(hMem));
+        std::copy(wText.c_str(), wText.c_str() + wText.size() + 1, buf);
+        ::GlobalUnlock(hMem);
+        ::SetClipboardData(CF_UNICODETEXT, hMem);
+    }
+    ::CloseClipboard();
+}
+
+void ResultDock::copySelectedPaths(HWND hSci) {
+    auto fn = (SciFnDirect_t)::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0);
+    auto ptr = (sptr_t)::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0);
+    auto Sx = [&](UINT m, uptr_t w = 0, sptr_t l = 0)->sptr_t {
+        return fn ? fn(ptr, m, w, l) : ::SendMessage(hSci, m, w, l);
+        };
+
+    Sci_Position a = (Sci_Position)Sx(SCI_GETSELECTIONNANCHOR);
+    Sci_Position c = (Sci_Position)Sx(SCI_GETCURRENTPOS);
+    if (a > c) std::swap(a, c);
+    int lineStart = (int)Sx(SCI_LINEFROMPOSITION, a);
+    int lineEnd = (int)Sx(SCI_LINEFROMPOSITION, c);
+    bool hasSel = (a != c);
+
+    std::vector<std::wstring> paths;
+    std::unordered_set<std::wstring> seen;
+    auto addUnique = [&](const std::wstring& p) { if (seen.insert(p).second) paths.push_back(p); };
+
+    auto pushFileHdrsBelow = [&](int fromLine, int minIndent) {
+        int total = (int)Sx(SCI_GETLINECOUNT);
+        for (int l = fromLine; l < total; ++l) {
+            int lLen = (int)Sx(SCI_LINELENGTH, l);
+            std::string raw(lLen, '\0');
+            Sx(SCI_GETLINE, l, (sptr_t)raw.data());
+            raw.resize(strnlen(raw.c_str(), lLen));
+
+            int indent = ResultDock::leadingSpaces(raw.c_str(), (int)raw.size());
+            if (indent <= minIndent && classify(raw) != LineKind::HitLine) break;
+
+            if (classify(raw) == LineKind::FileHdr)
+                addUnique(pathFromFileHdr(Encoding::utf8ToWString(raw)));
+        }
+        };
+
+    if (hasSel) {
+        for (int l = lineStart; l <= lineEnd; ++l) {
+            int len = (int)Sx(SCI_LINELENGTH, l);
+            std::string raw(len, '\0');
+            Sx(SCI_GETLINE, l, (sptr_t)raw.data());
+            raw.resize(strnlen(raw.c_str(), len));
+            LineKind k = classify(raw);
+
+            if (k == LineKind::FileHdr)
+                addUnique(pathFromFileHdr(Encoding::utf8ToWString(raw)));
+            else if (k == LineKind::HitLine || k == LineKind::CritHdr) {
+                int fLine = ancestorFileLine(hSci, l);
+                if (fLine != -1)
+                    addUnique(pathFromFileHdr(getLineW(hSci, fLine)));
+            }
+        }
+    }
+    else {
+        int caretLine = lineStart;
+        int len = (int)Sx(SCI_LINELENGTH, caretLine);
+        std::string raw(len, '\0');
+        Sx(SCI_GETLINE, caretLine, (sptr_t)raw.data());
+        raw.resize(strnlen(raw.c_str(), len));
+        LineKind kind = classify(raw);
+
+        switch (kind) {
+        case LineKind::HitLine:
+        case LineKind::CritHdr: {
+            int fLine = ancestorFileLine(hSci, caretLine);
+            if (fLine != -1)
+                addUnique(pathFromFileHdr(getLineW(hSci, fLine)));
+            break;
+        }
+        case LineKind::FileHdr:
+            addUnique(pathFromFileHdr(Encoding::utf8ToWString(raw)));
+            break;
+        case LineKind::SearchHdr:
+            pushFileHdrsBelow(caretLine + 1, 0);
+            break;
+        default: break;
+        }
+    }
+
+    if (!paths.empty()) {
+        std::wstring joined;
+        for (size_t i = 0; i < paths.size(); ++i) {
+            if (i) joined += L"\r\n";
+            joined += paths[i];
+        }
+        copyTextToClipboard(hSci, joined);
+    }
+}
+
+void ResultDock::openSelectedPaths(HWND hSci) {
+    copySelectedPaths(hSci);   // copy first (UX)
+
+    auto fn = (SciFnDirect_t)::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0);
+    auto ptr = (sptr_t)::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0);
+    auto Sx = [&](UINT m, uptr_t w = 0, sptr_t l = 0)->sptr_t {
+        return fn ? fn(ptr, m, w, l) : ::SendMessage(hSci, m, w, l);
+        };
+
+    Sci_Position a = (Sci_Position)Sx(SCI_GETSELECTIONNANCHOR);
+    Sci_Position c = (Sci_Position)Sx(SCI_GETCURRENTPOS);
+    if (a > c) std::swap(a, c);
+    int lineStart = (int)Sx(SCI_LINEFROMPOSITION, a);
+    int lineEnd = (int)Sx(SCI_LINEFROMPOSITION, c);
+
+    std::unordered_set<std::wstring> opened;
+
+    for (int l = lineStart; l <= lineEnd; ++l) {
+        int len = (int)Sx(SCI_LINELENGTH, l);
+        std::string raw(len, '\0');
+        Sx(SCI_GETLINE, l, (sptr_t)raw.data());
+        raw.resize(strnlen(raw.c_str(), len));
+        LineKind k = classify(raw);
+
+        if (k == LineKind::FileHdr) {
+            std::wstring p = pathFromFileHdr(Encoding::utf8ToWString(raw));
+            if (opened.insert(p).second)
+                ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)p.c_str());
+        }
+        else if (k == LineKind::HitLine || k == LineKind::CritHdr) {
+            int fLine = ancestorFileLine(hSci, l);
+            if (fLine != -1) {
+                std::wstring p = pathFromFileHdr(getLineW(hSci, fLine));
+                if (opened.insert(p).second)
+                    ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)p.c_str());
+            }
+        }
+    }
+}
+
+void ResultDock::deleteSelectedItems(HWND hSci)
+{
+    auto& dock = ResultDock::instance();
+
+    auto fn = (SciFnDirect_t)::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0);
+    auto ptr = (sptr_t)::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0);
+    auto Sx = [&](UINT m, uptr_t w = 0, sptr_t l = 0)->sptr_t {
+        return fn ? fn(ptr, m, w, l) : ::SendMessage(hSci, m, w, l);
+        };
+
+    // ------------------------------------------------------------------
+    //  Determine anchor / caret lines
+    // ------------------------------------------------------------------
+    Sci_Position a = (Sci_Position)Sx(SCI_GETSELECTIONNANCHOR);
+    Sci_Position c = (Sci_Position)Sx(SCI_GETCURRENTPOS);
+    if (a > c) std::swap(a, c);
+
+    int firstLine = (int)Sx(SCI_LINEFROMPOSITION, a);
+    int lastLine = (int)Sx(SCI_LINEFROMPOSITION, c);
+    bool hasSel = (a != c);
+
+    // ------------------------------------------------------------------
+    //  Build list of display‑line ranges that must be deleted
+    // ------------------------------------------------------------------
+    struct DelRange { int first; int last; };
+    std::vector<DelRange> ranges;
+
+    auto subtreeEnd = [&](int fromLine, int minIndent) -> int
+        {
+            int total = (int)Sx(SCI_GETLINECOUNT);
+            for (int l = fromLine; l < total; ++l)
+            {
+                int len = (int)Sx(SCI_LINELENGTH, l);
+                std::string raw(len, '\0');
+                Sx(SCI_GETLINE, l, (sptr_t)raw.data());
+                raw.resize(strnlen(raw.c_str(), len));
+
+                int indent = ResultDock::leadingSpaces(raw.c_str(), (int)raw.size());
+                if (indent <= minIndent && classify(raw) != LineKind::HitLine)
+                    return l - 1;                           // previous line ends subtree
+            }
+            return (int)Sx(SCI_GETLINECOUNT) - 1; // EOF
+        };
+
+    auto pushRange = [&](int first, int last)
+        {
+            if (ranges.empty() || first > ranges.back().last + 1)
+                ranges.push_back({ first, last });
+            else
+                ranges.back().last = (std::max)(ranges.back().last, last);
+        };
+
+    // ------------------------------------------------------------------
+    //  Selection mode: collect every header / hit and expand hierarchy
+    // ------------------------------------------------------------------
+    if (hasSel) {
+        for (int l = firstLine; l <= lastLine; ++l)
+        {
+            // skip lines already included by previous pushRange
+            if (!ranges.empty() && l <= ranges.back().last) continue;
+
+            int len = (int)Sx(SCI_LINELENGTH, l);
+            std::string raw(len, '\0');
+            Sx(SCI_GETLINE, l, (sptr_t)raw.data());
+            raw.resize(strnlen(raw.c_str(), len));
+
+            LineKind kind = classify(raw);
+            int endLine = l;   // default: only this line
+
+            switch (kind) {
+            case LineKind::HitLine: endLine = l;
+                break;
+            case LineKind::CritHdr:
+                endLine = subtreeEnd(l + 1, INDENT_SPACES[static_cast<int>(LineLevel::CritHdr)]);
+                break;
+            case LineKind::FileHdr:
+                endLine = subtreeEnd(l + 1, INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)]);
+                break;
+            case LineKind::SearchHdr:
+                endLine = subtreeEnd(l + 1, INDENT_SPACES[static_cast<int>(LineLevel::SearchHdr)]);
+                break;
+            default:                  continue;                       // ignore blanks
+            }
+            pushRange(l, endLine);
+        }
+    }
+    else {
+        // ------------------------------------------------------------------
+        //  Caret‑only mode: single logical block
+        // ------------------------------------------------------------------
+        int len = (int)Sx(SCI_LINELENGTH, firstLine);
+        std::string raw(len, '\0');
+        Sx(SCI_GETLINE, firstLine, (sptr_t)raw.data());
+        raw.resize(strnlen(raw.c_str(), len));
+
+        LineKind kind = classify(raw);
+        int endLine = firstLine;
+
+        switch (kind)
+        {
+        case LineKind::HitLine: endLine = firstLine; break;
+        case LineKind::CritHdr: endLine = subtreeEnd(firstLine + 1, INDENT_SPACES[static_cast<int>(LineLevel::CritHdr)]);
+            break;
+        case LineKind::FileHdr: endLine = subtreeEnd(firstLine + 1, INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)]);
+            break;
+        case LineKind::SearchHdr: endLine = subtreeEnd(firstLine + 1, INDENT_SPACES[static_cast<int>(LineLevel::SearchHdr)]);
+            break;
+        default: break; // nothing deletable on this line
+        }
+        pushRange(firstLine, endLine);
+    }
+
+    if (ranges.empty())
+        return;
+
+    // ------------------------------------------------------------------
+    //  Delete ranges bottom‑up and update _hits offsets
+    // ------------------------------------------------------------------
+    std::sort(ranges.begin(), ranges.end(), [](auto& a, auto& b) {
+        return a.first != b.first ? a.first < b.first : a.last < b.last;
+        });
+
+    for (auto it = ranges.rbegin(); it != ranges.rend(); ++it) {
+        const int l0 = it->first;
+        const int l1 = it->last;
+
+        Sci_Position p0 = (Sci_Position)Sx(SCI_POSITIONFROMLINE, l0);
+        Sci_Position p1 = (Sci_Position)Sx(SCI_GETLINEENDPOSITION, l1);
+
+        // include trailing CRLF if not EOF
+        const int totalLines = (int)Sx(SCI_GETLINECOUNT);
+        if (l1 < totalLines - 1)
+            p1 += 2;
+
+        // make writable, delete, make readonly (wie in prependBlock/clear)
+        ::SendMessage(hSci, WM_SETREDRAW, FALSE, 0);
+        Sx(SCI_SETREADONLY, FALSE);
+        Sx(SCI_DELETERANGE, (uptr_t)p0, (sptr_t)(p1 - p0));
+        Sx(SCI_SETREADONLY, TRUE);
+        ::SendMessage(hSci, WM_SETREDRAW, TRUE, 0);
+    }
+
+    Sx(SCI_SETREADONLY, TRUE);
+
+    // Update our cached structures (dock state)
+    dock.rebuildFolding();
+    dock.applyStyling();
+    dock.rebuildHitLineIndex();
+}
+
+// -------------------- Callbacks/Subclassing ---------------
 
 LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
@@ -1635,7 +1647,6 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         break;
     }
 
-                  // ResultDock.cpp  (innerhalb LRESULT CALLBACK ResultDock::sciSubclassProc(...))
     case WM_LBUTTONDBLCLK:
     {
         // 1) Remember current dock scroll state
@@ -1846,15 +1857,4 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
     return s_prevSciProc
         ? ::CallWindowProc(s_prevSciProc, hwnd, msg, wp, lp)
         : ::DefWindowProc(hwnd, msg, wp, lp);
-}
-
-void ResultDock::rebuildHitLineIndex()
-{
-    _lineStartToHitIndex.clear();
-    _lineStartToHitIndex.reserve(_hits.size());
-    for (int i = 0; i < (int)_hits.size(); ++i)
-    {
-        const int pos = _hits[i].displayLineStart;
-        if (pos >= 0) _lineStartToHitIndex[pos] = i;
-    }
 }
