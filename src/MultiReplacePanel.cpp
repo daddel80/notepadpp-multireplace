@@ -10120,15 +10120,16 @@ std::wstring MultiReplace::escapeCsvValue(const std::wstring& value) {
 
 std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
     std::wstring unescapedValue;
-    if (value.empty()) {
-        return unescapedValue;
-    }
+    if (value.empty()) return unescapedValue;
 
-    size_t start = (value.front() == L'"' && value.back() == L'"') ? 1 : 0;
-    size_t end = (start == 1) ? value.size() - 1 : value.size();
+    // Detect outer quotes: only if both first and last are quotes
+    const bool hadOuterQuotes = (value.front() == L'"' && value.back() == L'"');
+    size_t start = hadOuterQuotes ? 1 : 0;
+    size_t end = hadOuterQuotes ? value.size() - 1 : value.size();
 
     for (size_t i = start; i < end; ++i) {
         if (i < end - 1 && value[i] == L'\\') {
+            // Handle backslash escapes
             switch (value[i + 1]) {
             case L'n': unescapedValue += L'\n'; ++i; break;
             case L'r': unescapedValue += L'\r'; ++i; break;
@@ -10136,7 +10137,9 @@ std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
             default: unescapedValue += value[i]; break;
             }
         }
-        else if (i < end - 1 && value[i] == L'"' && value[i + 1] == L'"') {
+        // IMPORTANT: Only collapse CSV double quotes ("") to (")
+        // if the original field had outer quotes (i.e., it was a quoted CSV field).
+        else if (hadOuterQuotes && i < end - 1 && value[i] == L'"' && value[i + 1] == L'"') {
             unescapedValue += L'"';
             ++i;
         }
@@ -10144,7 +10147,6 @@ std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
             unescapedValue += value[i];
         }
     }
-
     return unescapedValue;
 }
 
