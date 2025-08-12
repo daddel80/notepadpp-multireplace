@@ -28,6 +28,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
+    <ClInclude Include="..\src\BatchUIGuard.h" />
     <ClInclude Include="..\src\ConfigManager.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
@@ -154,6 +155,7 @@
     <ClCompile Include="..\src\lua\lzio.c" />
     <ClCompile Include="..\src\MultiReplacePanel.cpp" />
     <ClCompile Include="..\src\MultiReplace.cpp" />
+    <ClCompile Include="..\src\MultiReplacePanel_BatchUI.cpp" />
     <ClCompile Include="..\src\PluginDefinition.cpp" />
     <ClCompile Include="..\src\ResultDock.cpp" />
     <ClCompile Include="..\src\StaticDialog\StaticDialog.cpp" />

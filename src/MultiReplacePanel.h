@@ -455,6 +455,9 @@ public:
     inline static HWND       hwndExpandBtn = nullptr;
     lua_State* _luaState = nullptr;   // Reused Lua state
 
+    bool _keepOnTopDuringBatch = false;
+    void setBatchUIState(HWND hDlg, bool inProgress);
+
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 

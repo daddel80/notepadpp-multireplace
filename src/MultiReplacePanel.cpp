@@ -18,6 +18,7 @@
 #define WM_UPDATE_FOCUS (WM_APP + 2)
 
 #include "StaticDialog/StaticDialog.h"
+#include "BatchUIGuard.h"
 #include "MultiReplacePanel.h"
 #include "Notepad_plus_msgs.h"
 #include "PluginDefinition.h"
@@ -3214,6 +3215,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_ACTIVATE:
     {
+        if (_keepOnTopDuringBatch) {
+            // Force foreground alpha during batch
+            SetWindowTransparency(_hSelf, foregroundTransparency);
+            return 0;
+        }
+
         if (LOWORD(wParam) == WA_INACTIVE) {
             // The window loses focus
             SetWindowTransparency(_hSelf, backgroundTransparency); // Use the loaded value
@@ -5408,45 +5415,13 @@ void MultiReplace::handleReplaceInFiles() {
     // Build the structured message using the variables from the top of the function.
     std::wstring message = LM.get(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()), shortenedDirectory, wFilter });
 
-    // Show the MessageBox.
-    // FIX 1: Removed MB_ICONWARNING to prevent the system sound.
     if (MessageBox(_hSelf, message.c_str(), LM.getLPW(L"msgbox_title_confirm"), MB_OKCANCEL | MB_SETFOREGROUND) != IDOK)
     {
         return;
     }
 
     // RAII-based UI State Management with a comprehensive list of controls.
-    struct UiStateGuard {
-        HWND hDlg;
-        UiStateGuard(HWND h) : hDlg(h) { setUiInProgress(true); }
-        ~UiStateGuard() { setUiInProgress(false); }
-
-        void setUiInProgress(bool inProgress) {
-            const std::vector<int> controlsToDisable = {
-                IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_FIND_ALL_BUTTON, IDC_MARK_BUTTON,
-                IDC_CLEAR_MARKS_BUTTON, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
-                IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_MARK_MATCHES_BUTTON,
-                IDC_COPY_MARKED_TEXT_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON,
-                IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON,
-                IDC_EXPORT_BASH_BUTTON, IDC_BROWSE_DIR_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON,
-                IDC_USE_LIST_BUTTON, IDC_SWAP_BUTTON, IDC_COLUMN_SORT_DESC_BUTTON,
-                IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON,
-                IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_FILTER_EDIT,
-                IDC_DIR_EDIT, IDC_REPLACE_HIT_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT,
-                IDC_QUOTECHAR_EDIT, IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX,
-                IDC_USE_VARIABLES_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
-                IDC_REPLACE_AT_MATCHES_CHECKBOX, IDC_2_BUTTONS_MODE, IDC_SUBFOLDERS_CHECKBOX,
-                IDC_HIDDENFILES_CHECKBOX, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
-                IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO
-            };
-
-            for (int id : controlsToDisable) {
-                EnableWindow(GetDlgItem(hDlg, id), !inProgress);
-            }
-            EnableWindow(GetDlgItem(hDlg, IDC_CANCEL_REPLACE_BUTTON), inProgress);
-        }
-    };
-    UiStateGuard uiGuard(_hSelf);
+    BatchUIGuard uiGuard(this, _hSelf);
 
     _isCancelRequested = false;
 
@@ -6600,35 +6575,7 @@ void MultiReplace::handleFindInFiles() {
         dock.purgeEnabled());
 
     // 3) RAII-based UI lock identical to ReplaceInFiles
-    struct UiStateGuard {
-        HWND hDlg;
-        UiStateGuard(HWND h) : hDlg(h) { setUiInProgress(true); }
-        ~UiStateGuard() { setUiInProgress(false); }
-        void setUiInProgress(bool inProgress) {
-            const std::vector<int> controlsToDisable = {
-                IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_FIND_ALL_BUTTON, IDC_MARK_BUTTON,
-                IDC_CLEAR_MARKS_BUTTON, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
-                IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_MARK_MATCHES_BUTTON,
-                IDC_COPY_MARKED_TEXT_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON,
-                IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON,
-                IDC_EXPORT_BASH_BUTTON, IDC_BROWSE_DIR_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON,
-                IDC_USE_LIST_BUTTON, IDC_SWAP_BUTTON, IDC_COLUMN_SORT_DESC_BUTTON,
-                IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON,
-                IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_FILTER_EDIT,
-                IDC_DIR_EDIT, IDC_REPLACE_HIT_EDIT, IDC_COLUMN_NUM_EDIT, IDC_DELIMITER_EDIT,
-                IDC_QUOTECHAR_EDIT, IDC_WHOLE_WORD_CHECKBOX, IDC_MATCH_CASE_CHECKBOX,
-                IDC_USE_VARIABLES_CHECKBOX, IDC_WRAP_AROUND_CHECKBOX,
-                IDC_REPLACE_AT_MATCHES_CHECKBOX, IDC_2_BUTTONS_MODE, IDC_SUBFOLDERS_CHECKBOX,
-                IDC_HIDDENFILES_CHECKBOX, IDC_NORMAL_RADIO, IDC_EXTENDED_RADIO, IDC_REGEX_RADIO,
-                IDC_ALL_TEXT_RADIO, IDC_SELECTION_RADIO, IDC_COLUMN_MODE_RADIO
-            };
-            for (int id : controlsToDisable) {
-                EnableWindow(GetDlgItem(hDlg, id), !inProgress);
-            }
-            EnableWindow(GetDlgItem(hDlg, IDC_CANCEL_REPLACE_BUTTON), inProgress);
-        }
-    };
-    UiStateGuard uiGuard(_hSelf);
+    BatchUIGuard guardguard(this, _hSelf);
 
     _isCancelRequested = false;
 
