@@ -408,7 +408,7 @@ public:
     // Dark Mode Colors for Message
     static constexpr COLORREF DMODE_SUCCESS = RGB(120, 220, 120); 
     static constexpr COLORREF DMODE_ERROR = RGB(255, 110, 110);
-    static constexpr COLORREF DMODE_INFO = RGB(147, 147, 255);
+    static constexpr COLORREF DMODE_INFO = RGB(180, 180, 255);
     static constexpr COLORREF DMODE_FILTER_HELP = RGB(255, 235, 59);
 
     inline static bool isWindowOpen = false;

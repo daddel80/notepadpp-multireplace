@@ -6654,7 +6654,7 @@ void MultiReplace::handleFindInFiles() {
         uniqueFiles.insert(u8Path);
 
         Sci_Position scanStart = 0;
-        bool columnMode = false;
+        bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
         ResultDock::FileMap fileMap;
         int hitsInFile = 0;

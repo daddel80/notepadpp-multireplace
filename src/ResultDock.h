@@ -131,6 +131,7 @@ private:
     static int ancestorFileLine(HWND hSci, int startLine);
     static std::wstring getLineW(HWND hSci, int line);
     static int leadingSpaces(const char* line, int len);
+    static bool hasContentBeyondIndent(HWND hSci, int line);
 
     // -------------------- Path/File helpers -------------------
     static bool IsPseudoPath(const std::wstring& pathOrLabel);

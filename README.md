@@ -473,7 +473,7 @@ You can manage the visibility of the additional columns via the **Header Column 
 ### Entry Interaction and Limits
 - **Manage Entries**: Manage search and replace strings in a list, and enable or disable entries for replacement, highlighting or searching within the list.
 - **Highlighting**: Highlight multiple find words in unique colors for better visual distinction, with over 20 distinct colors available.
-- **Character Limit**: Field limits of 4096 characters for "Find what:" and "Replace with:" fields.
+- **Character Limit**: Find and replace texts have no fixed length limit. Very long texts may slow down processing.
 
 <br>
 

@@ -106,165 +106,152 @@ void ResultDock::clear()
     applyStyling();
 }
 
+bool ResultDock::hasContentBeyondIndent(HWND hSci, int line)
+{
+    int lineEnd = static_cast<int>(::SendMessage(hSci, SCI_GETLINEENDPOSITION, line, 0));
+    int indentPos = static_cast<int>(::SendMessage(hSci, SCI_GETLINEINDENTPOSITION, line, 0));
+
+    return indentPos < lineEnd; // true if there is content after indentation
+}
+
 void ResultDock::rebuildFolding()
 {
     if (!_hSci) return;
 
     const int lineCount = (int)S(SCI_GETLINECOUNT);
+    if (lineCount <= 0) return;
 
-    // Enable folding (redundant if already set)
+    // Ensure folding is enabled; harmless if already set
     S(SCI_SETPROPERTY, reinterpret_cast<uptr_t>("fold"), reinterpret_cast<sptr_t>("1"));
     S(SCI_SETPROPERTY, reinterpret_cast<uptr_t>("fold.compact"), reinterpret_cast<sptr_t>("1"));
 
     const int BASE = SC_FOLDLEVELBASE;
 
-    // Pass 1: mark every line as plain content
-    for (int l = 0; l < lineCount; ++l)
-        S(SCI_SETFOLDLEVEL, l, BASE);
+    // Cache indent thresholds and level constants locally to avoid array lookups in the loop
+    const int IND_SEARCH = INDENT_SPACES[(int)LineLevel::SearchHdr];
+    const int IND_FILE = INDENT_SPACES[(int)LineLevel::FileHdr];
+    const int IND_CRIT = INDENT_SPACES[(int)LineLevel::CritHdr];
+    const int IND_HIT = INDENT_SPACES[(int)LineLevel::HitLine];
 
-    // Pass 2: detect semantic levels purely by leading spaces via classify()
+    auto calcLevel = [&](int indent, bool& isHeader) -> int {
+        // 1) Headers: exact indent match for clear detection
+        if (indent == IND_SEARCH) { isHeader = true;  return BASE + (int)LineLevel::SearchHdr; }
+        if (indent == IND_FILE) { isHeader = true;  return BASE + (int)LineLevel::FileHdr; }
+        if (indent == IND_CRIT) { isHeader = true;  return BASE + (int)LineLevel::CritHdr; }
+
+        // 2) Non-headers: bucket depth by >= thresholds (restores fine depth levels)
+        isHeader = false;
+        if (indent >= IND_HIT)    return BASE + (int)LineLevel::HitLine;
+        if (indent >= IND_CRIT)   return BASE + (int)LineLevel::CritHdr;
+        if (indent >= IND_FILE)   return BASE + (int)LineLevel::FileHdr;
+        return BASE + 1; // minimal content depth
+        };
+
+    // Batch update to minimize repaints during rebuild
+    ::SendMessage(_hSci, WM_SETREDRAW, FALSE, 0);
+
     for (int l = 0; l < lineCount; ++l)
     {
-        // read raw line
-        const int rawLen = (int)S(SCI_LINELENGTH, l);
-        std::string buf(rawLen, '\0');
-        S(SCI_GETLINE, l, (LPARAM)buf.data());
-        buf.resize(strnlen(buf.c_str(), rawLen));
+        const int lineLen = (int)S(SCI_LINELENGTH, l);
 
-        LineKind kind = classify(buf);
-        if (kind == LineKind::Blank) {                     // blank → plain content
-            S(SCI_SETFOLDLEVEL, l, BASE);
+        // True blank or whitespace-only → BASE (non-foldable)
+        if (lineLen == 0 || !hasContentBeyondIndent(_hSci, l)) {
+            const int cur = (int)S(SCI_GETFOLDLEVEL, l);
+            if (cur != BASE) S(SCI_SETFOLDLEVEL, l, BASE);
             continue;
         }
 
-        // count leading spaces
-        int spaces = 0;
-        while (spaces < static_cast<int>(buf.size()) && buf[spaces] == ' ')
-            ++spaces;
+        const int indent = (int)S(SCI_GETLINEINDENTATION, l);
+        bool isHdr = false;
+        const int level = calcLevel(indent, isHdr);
+        const int target = isHdr ? (level | SC_FOLDLEVELHEADERFLAG) : level;
 
-        bool isHeader = false;
-        int  level = BASE;
-
-        switch (kind) {
-        case LineKind::SearchHdr:
-            isHeader = true;  level = BASE + static_cast<int>(LineLevel::SearchHdr); break;
-        case LineKind::FileHdr:
-            isHeader = true;  level = BASE + static_cast<int>(LineLevel::FileHdr);   break;
-        case LineKind::CritHdr:
-            isHeader = true;  level = BASE + static_cast<int>(LineLevel::CritHdr);   break;
-        default: break;       // HitLine or unknown stays content
-        }
-
-        if (isHeader) {
-            S(SCI_SETFOLDLEVEL, l, level | SC_FOLDLEVELHEADERFLAG);
-        }
-        else {
-            int depth = 1;  // min 1 Level
-            if (spaces >= INDENT_SPACES[static_cast<int>(LineLevel::HitLine)])
-                depth = static_cast<int>(LineLevel::HitLine);   // 3
-            else if (spaces >= INDENT_SPACES[static_cast<int>(LineLevel::CritHdr)])
-                depth = static_cast<int>(LineLevel::CritHdr);   // 2
-            else if (spaces >= INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)])
-                depth = static_cast<int>(LineLevel::FileHdr);   // 1
-
-            S(SCI_SETFOLDLEVEL, l, BASE + depth);
+        // Only set if value changed to reduce unnecessary messages
+        const int cur = (int)S(SCI_GETFOLDLEVEL, l);
+        if (cur != target) {
+            S(SCI_SETFOLDLEVEL, l, target);
         }
     }
 
+    ::SendMessage(_hSci, WM_SETREDRAW, TRUE, 0);
 }
 
 void ResultDock::applyStyling() const
 {
-    if (!_hSci)
-        return;
+    if (!_hSci) return;
 
-    // Step 1: Clear previous styling indicators
-    const std::vector<int> indicatorsToClear = { INDIC_LINE_BACKGROUND, INDIC_LINENUMBER_FORE, INDIC_MATCH_FORE, INDIC_MATCH_BG };
-    for (int indicator : indicatorsToClear) {
-        S(SCI_SETINDICATORCURRENT, indicator);
+    // 1) Clear all indicators used by this view
+    const std::vector<int> indicatorsToClear = {
+        INDIC_LINE_BACKGROUND, INDIC_LINENUMBER_FORE, INDIC_MATCH_FORE, INDIC_MATCH_BG
+    };
+    for (int id : indicatorsToClear) {
+        S(SCI_SETINDICATORCURRENT, id);
         S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
     }
 
-    // Step 2: Apply base style for each line (Header, File Path, Default)
+    // 2) Base styles per line (indentation-only, zero string parsing)
     S(SCI_STARTSTYLING, 0, 0);
 
-    const int lineCount = static_cast<int>(S(SCI_GETLINECOUNT));
+    const int lineCount = (int)S(SCI_GETLINECOUNT);
+    const int IND_SRCH = INDENT_SPACES[(int)LineLevel::SearchHdr];
+    const int IND_FILE = INDENT_SPACES[(int)LineLevel::FileHdr];
+    const int IND_CRIT = INDENT_SPACES[(int)LineLevel::CritHdr];
+
     for (int line = 0; line < lineCount; ++line) {
-        const Sci_Position lineStart = S(SCI_POSITIONFROMLINE, line, 0);
-        const int lineLength = static_cast<int>(S(SCI_LINELENGTH, line, 0));
+        const Sci_Position lineStart = S(SCI_POSITIONFROMLINE, line);
+        const int          lineLength = (int)S(SCI_LINELENGTH, line);
+        if (lineLength <= 0) continue;
 
         int style = STYLE_DEFAULT;
-        if (lineLength > 0)
-        {
-            std::string buf(lineLength, '\0');
-            S(SCI_GETLINE, line, reinterpret_cast<LPARAM>(buf.data()));
-            buf.resize(strnlen(buf.c_str(), lineLength));   // trim trailing NULs
-
-            switch (classify(buf))
-            {
-            case LineKind::SearchHdr:   style = STYLE_HEADER;     break;
-            case LineKind::CritHdr:     style = STYLE_CRITHDR;    break;
-            case LineKind::FileHdr:     style = STYLE_FILEPATH;   break;
-            case LineKind::HitLine:     /* keep default */        break;
-            case LineKind::Blank:       /* keep default */        break;
-            }
+        if (hasContentBeyondIndent(_hSci, line)) {
+            const int indent = (int)S(SCI_GETLINEINDENTATION, line);
+            if (indent == IND_SRCH) style = STYLE_HEADER;
+            else if (indent == IND_CRIT) style = STYLE_CRITHDR;
+            else if (indent == IND_FILE) style = STYLE_FILEPATH;
         }
 
-        // Apply determined style to line content
-        if (lineLength > 0) {
-            S(SCI_SETSTYLING, lineLength, style);
-        }
+        S(SCI_SETSTYLING, lineLength, style);
 
-        // Apply default style to EOL characters
-        const Sci_Position lineEnd = S(SCI_GETLINEENDPOSITION, line, 0);
-        const int eolLength = static_cast<int>(lineEnd - (lineStart + lineLength));
-        if (eolLength > 0) {
-            S(SCI_SETSTYLING, eolLength, STYLE_DEFAULT);
+        // Keep EOL visuals consistent
+        const Sci_Position lineEnd = S(SCI_GETLINEENDPOSITION, line);
+        const int          eolLen = (int)(lineEnd - (lineStart + lineLength));
+        if (eolLen > 0) S(SCI_SETSTYLING, eolLen, STYLE_DEFAULT);
+    }
+
+    // 3) Overlay indicators
+    auto indicStyle = [&](int id) { return (int)S(SCI_INDICGETSTYLE, id); };
+
+    // 3a) whole hit line background (do nothing if hidden in theme)
+    if (indicStyle(INDIC_LINE_BACKGROUND) != INDIC_HIDDEN) {
+        S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
+        for (const auto& hit : _hits) {
+            if (hit.displayLineStart < 0) continue;
+            const int          l = (int)S(SCI_LINEFROMPOSITION, hit.displayLineStart);
+            const Sci_Position ls = S(SCI_POSITIONFROMLINE, l);
+            const Sci_Position le = S(SCI_GETLINEENDPOSITION, l);
+            const Sci_Position n = le - ls;
+            if (n > 0) S(SCI_INDICATORFILLRANGE, ls, n);
         }
     }
 
-    // Step 3: Overlay indicators for hits
-
-    // 3a. Background for hit lines
-    S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
-    for (const auto& hit : _hits) {
-        if (hit.displayLineStart < 0)
-            continue;
-
-        int line = static_cast<int>(S(SCI_LINEFROMPOSITION, hit.displayLineStart, 0));
-        Sci_Position startPos = S(SCI_POSITIONFROMLINE, line, 0);
-        Sci_Position length = S(SCI_LINELENGTH, line, 0);
-
-        if (length > 0)
-            S(SCI_INDICATORFILLRANGE, startPos, length);
-    }
-
-    // 3b. Line-number digits
+    // 3b) digits of the line number inside hit lines
     S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
-    for (const auto& hit : _hits) {
+    for (const auto& hit : _hits)
         if (hit.displayLineStart >= 0)
             S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.numberStart, hit.numberLen);
-    }
 
-    // 3c. Match substrings (background and foreground)
+    // 3c) exact match substrings (BG + FG)
     S(SCI_SETINDICATORCURRENT, INDIC_MATCH_BG);
     for (const auto& hit : _hits) {
-        if (hit.displayLineStart < 0)
-            continue;
-
-        for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
+        if (hit.displayLineStart < 0) continue;
+        for (size_t i = 0; i < hit.matchStarts.size(); ++i)
             S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
-        }
     }
-
     S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
     for (const auto& hit : _hits) {
-        if (hit.displayLineStart < 0)
-            continue;
-
-        for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
+        if (hit.displayLineStart < 0) continue;
+        for (size_t i = 0; i < hit.matchStarts.size(); ++i)
             S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
-        }
     }
 }
 
@@ -373,14 +360,10 @@ void ResultDock::create(const NppData& npp)
     // 1) Create the Scintilla window that will become our dock client
     _hSci = ::CreateWindowExW(
         WS_EX_CLIENTEDGE,
-        L"Scintilla",
-        L"",
+        L"Scintilla", L"",
         WS_CHILD | WS_CLIPSIBLINGS,
         0, 0, 100, 100,
-        npp._nppHandle,
-        nullptr,
-        _hInst,
-        nullptr);
+        npp._nppHandle, nullptr, _hInst, nullptr);
 
     if (!_hSci) {
         ::MessageBoxW(npp._nppHandle,
@@ -400,6 +383,10 @@ void ResultDock::create(const NppData& npp)
     ::SendMessageW(_hSci, SCI_SETMODEVENTMASK, 0, 0);         // no mod events
     ::SendMessageW(_hSci, SCI_SETSCROLLWIDTHTRACKING, TRUE, 0);
     ::SendMessageW(_hSci, SCI_SETWRAPMODE, wrapEnabled() ? SC_WRAP_WORD : SC_WRAP_NONE, 0);
+
+    // 3a) **Performance/caching**: keep layout cached for whole doc + buffered drawing
+    ::SendMessageW(_hSci, SCI_SETBUFFEREDDRAW, TRUE, 0);
+    ::SendMessageW(_hSci, SCI_SETLAYOUTCACHE, SC_CACHE_DOCUMENT, 0); // critical for fast fold open on older blocks
 
     // 3b) DirectFunction (hot path)
     _sciFn = reinterpret_cast<SciFnDirect_t>(::SendMessage(_hSci, SCI_GETDIRECTFUNCTION, 0, 0));
@@ -624,9 +611,13 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
     const int firstLine = (int)S(SCI_LINEFROMPOSITION, pos0);
     const int lastLine = (int)S(SCI_LINEFROMPOSITION, endPos);
 
-    // Base styling for affected lines, using indentation only (no full GETLINE)
+    // Base styling using indentation (no GETLINE)
     Sci_Position lineStartPos = S(SCI_POSITIONFROMLINE, firstLine);
     S(SCI_STARTSTYLING, lineStartPos, 0);
+
+    const int IND_SRCH = INDENT_SPACES[(int)LineLevel::SearchHdr];
+    const int IND_FILE = INDENT_SPACES[(int)LineLevel::FileHdr];
+    const int IND_CRIT = INDENT_SPACES[(int)LineLevel::CritHdr];
 
     for (int line = firstLine; line <= lastLine; ++line) {
         const Sci_Position ls = S(SCI_POSITIONFROMLINE, line);
@@ -634,24 +625,24 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
 
         int style = STYLE_DEFAULT;
         if (ll > 0) {
-            const int indent = (int)S(SCI_GETLINEINDENTATION, line); // spaces (tabs expanded)
-            if (indent == INDENT_SPACES[(int)LineLevel::SearchHdr]) style = STYLE_HEADER;
-            else if (indent == INDENT_SPACES[(int)LineLevel::CritHdr])   style = STYLE_CRITHDR;
-            else if (indent == INDENT_SPACES[(int)LineLevel::FileHdr])   style = STYLE_FILEPATH;
+            const int indent = (int)S(SCI_GETLINEINDENTATION, line);
+            if (indent == IND_SRCH) style = STYLE_HEADER;
+            else if (indent == IND_CRIT) style = STYLE_CRITHDR;
+            else if (indent == IND_FILE) style = STYLE_FILEPATH;
         }
         if (ll > 0) S(SCI_SETSTYLING, ll, style);
 
-        // EOL default (optional; keeps visuals consistent)
+        // Keep EOL visuals aligned with default
         const Sci_Position lineEnd = S(SCI_GETLINEENDPOSITION, line);
         const int eolLen = (int)(lineEnd - (ls + ll));
         if (eolLen > 0) S(SCI_SETSTYLING, eolLen, STYLE_DEFAULT);
     }
 
-    // Indicators only for the new hits (minimal work: no global clears)
+    // Indicators only on the freshly added hits
     S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
     for (const auto& h : newHits) {
         if (h.displayLineStart < 0) continue;
-        const int line = (int)S(SCI_LINEFROMPOSITION, h.displayLineStart);
+        const int          line = (int)S(SCI_LINEFROMPOSITION, h.displayLineStart);
         const Sci_Position ls = S(SCI_POSITIONFROMLINE, line);
         const Sci_Position ll = S(SCI_LINELENGTH, line);
         if (ll > 0) S(SCI_INDICATORFILLRANGE, ls, ll);
@@ -668,7 +659,6 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
         for (size_t i = 0; i < h.matchStarts.size(); ++i)
             S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
     }
-
     S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
     for (const auto& h : newHits) {
         if (h.displayLineStart < 0) continue;
@@ -682,24 +672,40 @@ void ResultDock::rebuildFoldingRange(int firstLine, int lastLine) const
     if (!_hSci || lastLine < firstLine) return;
 
     const int BASE = SC_FOLDLEVELBASE;
+    const int IND_SRCH = INDENT_SPACES[(int)LineLevel::SearchHdr];
+    const int IND_FILE = INDENT_SPACES[(int)LineLevel::FileHdr];
+    const int IND_CRIT = INDENT_SPACES[(int)LineLevel::CritHdr];
+    const int IND_HIT = INDENT_SPACES[(int)LineLevel::HitLine];
 
-    for (int l = firstLine; l <= lastLine; ++l)
-        S(SCI_SETFOLDLEVEL, l, BASE);
+    auto calcLevel = [&](int indent, bool& isHeader) -> int {
+        if (indent == IND_SRCH) { isHeader = true; return BASE + (int)LineLevel::SearchHdr; }
+        if (indent == IND_FILE) { isHeader = true; return BASE + (int)LineLevel::FileHdr; }
+        if (indent == IND_CRIT) { isHeader = true; return BASE + (int)LineLevel::CritHdr; }
+        isHeader = false;
+        if (indent >= IND_HIT)  return BASE + (int)LineLevel::HitLine;
+        if (indent >= IND_CRIT) return BASE + (int)LineLevel::CritHdr;
+        if (indent >= IND_FILE) return BASE + (int)LineLevel::FileHdr;
+        return BASE + 1;
+        };
+
+    ::SendMessage(_hSci, WM_SETREDRAW, FALSE, 0);
 
     for (int l = firstLine; l <= lastLine; ++l) {
-        const int indent = (int)S(SCI_GETLINEINDENTATION, l);
-        bool isHeader = false;
-        int  level = BASE;
+        // Treat whitespace-only like blank
+        const int lineLen = (int)S(SCI_LINELENGTH, l);
+        int target = BASE;
+        if (lineLen > 0 && hasContentBeyondIndent(_hSci, l)) {
+            const int indent = (int)S(SCI_GETLINEINDENTATION, l);
+            bool isHdr = false;
+            const int lvl = calcLevel(indent, isHdr);
+            target = isHdr ? (lvl | SC_FOLDLEVELHEADERFLAG) : lvl;
+        }
 
-        if (indent == INDENT_SPACES[(int)LineLevel::SearchHdr]) { isHeader = true; level = BASE + (int)LineLevel::SearchHdr; }
-        else if (indent == INDENT_SPACES[(int)LineLevel::FileHdr]) { isHeader = true; level = BASE + (int)LineLevel::FileHdr; }
-        else if (indent == INDENT_SPACES[(int)LineLevel::CritHdr]) { isHeader = true; level = BASE + (int)LineLevel::CritHdr; }
-
-        if (isHeader)
-            S(SCI_SETFOLDLEVEL, l, level | SC_FOLDLEVELHEADERFLAG);
-        else
-            S(SCI_SETFOLDLEVEL, l, BASE + (int)LineLevel::HitLine);
+        const int cur = (int)S(SCI_GETFOLDLEVEL, l);
+        if (cur != target) S(SCI_SETFOLDLEVEL, l, target);
     }
+
+    ::SendMessage(_hSci, WM_SETREDRAW, TRUE, 0);
 }
 
 // ---------------- Block building / insertion --------------
