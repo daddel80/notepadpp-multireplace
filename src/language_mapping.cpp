@@ -169,6 +169,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_error_hidden_buffer", L"Error creating hidden buffer for processing." },
 { L"status_error_invalid_directory", L"The specified directory is invalid or does not exist." },
 { L"status_error_scanning_directory", L"Error scanning directory: $REPLACE_STRING" },
+{ L"status_canceled", L"Canceled" },
 
 // Dynamic Status message entries
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },

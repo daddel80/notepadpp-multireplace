@@ -83,6 +83,11 @@ public:
     // ------------------- Search Block API ---------------------
     void startSearchBlock(const std::wstring& header, bool  groupView, bool purge);
     void appendFileBlock(const FileMap& fm, const SciSendFn& sciSend);
+
+    // Incremental insertion helpers (commit per-file immediately)
+    void insertFileBlockNow(const FileMap& fm, const SciSendFn& sciSend);
+    void insertSearchHeader(const std::wstring& header);
+
     void closeSearchBlock(int totalHits, int totalFiles);
 
 private:

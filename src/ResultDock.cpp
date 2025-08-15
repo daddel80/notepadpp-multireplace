@@ -307,6 +307,76 @@ void ResultDock::appendFileBlock(const FileMap& fm, const SciSendFn& sciSend)
         std::make_move_iterator(partHits.end()));
 }
 
+// -----------------------------------------------------------------------------
+// Insert one formatted file block *immediately* into the dock.
+// Builds text for exactly one file (no SearchHdr) and prepends it as a block.
+// After insertion we re-expand the previously-top block to neutralize the
+// "collapse previous block" behaviour inside prependBlock().
+// -----------------------------------------------------------------------------
+void ResultDock::insertFileBlockNow(const FileMap& fm, const SciSendFn& sciSend)
+{
+    if (!_hSci) return;
+
+    // Build per-file text & hits (no SearchHdr)
+    std::wstring  partText;
+    std::vector<Hit> partHits;
+    buildListText(fm, _groupViewPending, L"", sciSend, partText, partHits);
+    if (partText.empty()) return;
+
+    // Count lines of the new block; check whether there was old content
+    const bool hadOld = S(SCI_GETLENGTH) > 0;
+    int newBlockLines = 0;
+    for (wchar_t c : partText) if (c == L'\n') ++newBlockLines;
+
+    // Prepend the block (will also style/fold this fragment and collapse previous block)
+    prependBlock(partText, partHits);
+
+    // If there was a previous block, prependBlock() collapsed it by design.
+    // For per-file incremental commits we prefer keeping it expanded → re-expand it.
+    if (hadOld) {
+        const int firstLineOfOldBlock = newBlockLines + 1; // + separator line
+        const int level = (int)S(SCI_GETFOLDLEVEL, firstLineOfOldBlock);
+        if (level & SC_FOLDLEVELHEADERFLAG) {
+            S(SCI_SETFOLDEXPANDED, firstLineOfOldBlock, TRUE);
+            S(SCI_FOLDCHILDREN, firstLineOfOldBlock, SC_FOLDACTION_EXPAND);
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Insert only the search header at the very top (final numbers), used after
+// incremental per-file inserts. We also re-expand the now-second block so the
+// last file block does not end up collapsed just because we added the header.
+// -----------------------------------------------------------------------------
+void ResultDock::insertSearchHeader(const std::wstring& header)
+{
+    if (!_hSci) return;
+
+    // Build single header line (as in startSearchBlock)
+    std::wstring hdr = getIndentString(LineLevel::SearchHdr) + header + L"\r\n";
+
+    // Count header lines (always 1) and whether there was content before
+    const bool hadOld = S(SCI_GETLENGTH) > 0;
+    int hdrLines = 0; for (wchar_t c : hdr) if (c == L'\n') ++hdrLines;
+
+    std::vector<Hit> none;
+    prependBlock(hdr, none);
+
+    // If there was existing content, the previous top block (a file block)
+    // was just collapsed by prependBlock(). Immediately re-expand it.
+    if (hadOld) {
+        const int firstLineOfOldBlock = hdrLines + 1; // typically 1
+        const int level = (int)S(SCI_GETFOLDLEVEL, firstLineOfOldBlock);
+        if (level & SC_FOLDLEVELHEADERFLAG) {
+            S(SCI_SETFOLDEXPANDED, firstLineOfOldBlock, TRUE);
+            S(SCI_FOLDCHILDREN, firstLineOfOldBlock, SC_FOLDACTION_EXPAND);
+        }
+    }
+
+    // Optional: remember header line index if you use collapseOldSearches elsewhere
+    _searchHeaderLines.insert(_searchHeaderLines.begin(), 0);
+}
+
 
 // -----------------------------------------------------------
 //  3. finalise header, insert block, restyle
@@ -1024,19 +1094,34 @@ void ResultDock::shiftHits(std::vector<ResultDock::Hit>& v, size_t delta)
 std::wstring ResultDock::stripHitPrefix(const std::wstring& w)
 {
     const int indentLen = ResultDock::INDENT_SPACES[static_cast<int>(ResultDock::LineLevel::HitLine)];
-    size_t i = (std::min)(static_cast<size_t>(indentLen), w.size()); // skip indent
+    size_t i = (std::min)(static_cast<size_t>(indentLen), w.size()); // skip leading indent
 
-    while (i < w.size() && iswspace(w[i])) ++i;   // extra padding
-    while (i < w.size() && iswalpha(w[i])) ++i;   // “Line”, “Zeile”, …
-    if (i < w.size() && w[i] == L' ') ++i;        // single space
+    // optional extra padding right after indent
+    while (i < w.size() && iswspace(w[i])) ++i;
 
+    // skip the localized token ("Line", "Zeile", …)
+    while (i < w.size() && iswalpha(w[i])) ++i;
+
+    // allow *multiple* spaces between token and number
+    while (i < w.size() && iswspace(w[i])) ++i;
+
+    // read the line number
     size_t digitStart = i;
-    while (i < w.size() && iswdigit(w[i])) ++i;   // line number
-    if (i == digitStart || i >= w.size() || w[i] != L':') return w;
-    ++i;                                          // skip ':'
+    while (i < w.size() && iswdigit(w[i])) ++i;
 
-    while (i < w.size() && iswspace(w[i])) ++i;   // space after ':'
-    return w.substr(i);                           // pure hit text
+    // allow *multiple* spaces between number and ':'
+    while (i < w.size() && iswspace(w[i])) ++i;
+
+    if (i == digitStart || i >= w.size() || w[i] != L':')
+        return w; // not a formatted hit line → return as-is
+
+    ++i; // skip ':'
+
+    // allow *multiple* spaces after ':'
+    while (i < w.size() && iswspace(w[i])) ++i;
+
+    // return the original line content (incl. original EOLs), prefix removed
+    return w.substr(i);
 }
 
 std::wstring ResultDock::pathFromFileHdr(const std::wstring& w)

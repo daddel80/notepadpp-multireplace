@@ -5360,13 +5360,11 @@ void MultiReplace::handleReplaceInFiles() {
     // Read all inputs once at the beginning.
     auto wDir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
     auto wFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
-    bool recurse = IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED;
-    bool hide = IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED;
+    const bool recurse = (IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED);
+    const bool hide = (IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED);
 
-    // If the filter is empty, default to "*.*" and update the UI.
     if (wFilter.empty()) {
         wFilter = L"*.*";
-        // FIX 2: Update the filter edit control to show the default value.
         SetDlgItemTextW(_hSelf, IDC_FILTER_EDIT, wFilter.c_str());
     }
     guard.parseFilter(wFilter);
@@ -5393,8 +5391,7 @@ void MultiReplace::handleReplaceInFiles() {
         }
     }
     catch (const std::exception& ex) {
-        std::string narrowReason = ex.what();
-        std::wstring wideReason(narrowReason.begin(), narrowReason.end());
+        std::wstring wideReason = Encoding::utf8ToWString(ex.what());
         showStatusMessage(LM.get(L"status_error_scanning_directory", { wideReason }), MessageStatus::Error);
         return;
     }
@@ -5412,24 +5409,17 @@ void MultiReplace::handleReplaceInFiles() {
     std::wstring shortenedDirectory = getShortenedFilePath(wDir, 400, dialogHdc);
     ReleaseDC(_hSelf, dialogHdc);
 
-    // Build the structured message using the variables from the top of the function.
     std::wstring message = LM.get(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()), shortenedDirectory, wFilter });
-
     if (MessageBox(_hSelf, message.c_str(), LM.getLPW(L"msgbox_title_confirm"), MB_OKCANCEL | MB_SETFOREGROUND) != IDOK)
-    {
         return;
-    }
 
-    // RAII-based UI State Management with a comprehensive list of controls.
+    // RAII-based UI State Management
     BatchUIGuard uiGuard(this, _hSelf);
-
     _isCancelRequested = false;
 
-    HWND        oldSci = _hScintilla;
-    SciFnDirect oldFn = pSciMsg;
-    sptr_t      oldData = pSciWndData;
-
-    resetCountColumns();
+    if (useListEnabled) {
+        resetCountColumns();
+    }
 
     std::vector<int> listFindTotals;
     std::vector<int> listReplaceTotals;
@@ -5441,78 +5431,90 @@ void MultiReplace::handleReplaceInFiles() {
     int total = static_cast<int>(files.size()), idx = 0, changed = 0;
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
 
-    for (auto& fp : files) {
+    // Per-file binding guard
+    struct SciBindingGuard {
+        MultiReplace* self;
+        HWND oldSci; SciFnDirect oldFn; sptr_t oldData;
+        HiddenSciGuard& g;
+        SciBindingGuard(MultiReplace* s, HiddenSciGuard& guard) : self(s), g(guard) {
+            oldSci = s->_hScintilla; oldFn = s->pSciMsg; oldData = s->pSciWndData;
+            s->_hScintilla = g.hSci; s->pSciMsg = g.fn; s->pSciWndData = g.pData;
+        }
+        ~SciBindingGuard() {
+            self->_hScintilla = oldSci; self->pSciMsg = oldFn; self->pSciWndData = oldData;
+        }
+    };
+
+    bool aborted = false;
+
+    for (const auto& fp : files) {
         MSG m;
-        while (::PeekMessage(&m, NULL, 0, 0, PM_REMOVE)) {
+        while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) {
             ::TranslateMessage(&m);
             ::DispatchMessage(&m);
         }
 
-        if (_isShuttingDown) { return; }
-
-        if (_isCancelRequested) {
-            break;
-        }
+        if (_isShuttingDown) { aborted = true; break; }
+        if (_isCancelRequested) { aborted = true; break; }
 
         ++idx;
 
-        int percent = static_cast<int>((static_cast<double>(idx) / total) * 100.0);
-        std::wstring progress_part = L"Progress: [" + std::to_wstring(percent) + L"%] ";
+        int percent = static_cast<int>((static_cast<double>(idx) / (std::max)(1, total)) * 100.0);
+        std::wstring prefix = L"Progress: [" + std::to_wstring(percent) + L"%] ";
         HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
         HDC hdc = GetDC(hStatus);
         HFONT hFont = (HFONT)SendMessage(hStatus, WM_GETFONT, 0, 0);
         SelectObject(hdc, hFont);
-        SIZE progress_size;
-        GetTextExtentPoint32W(hdc, progress_part.c_str(), static_cast<int>(progress_part.length()), &progress_size);
-        RECT status_rect;
-        GetClientRect(hStatus, &status_rect);
-        int available_width = status_rect.right - status_rect.left - progress_size.cx;
-        std::wstring shortened_path = getShortenedFilePath(fp.wstring(), available_width, hdc);
+        SIZE sz{}; GetTextExtentPoint32W(hdc, prefix.c_str(), (int)prefix.length(), &sz);
+        RECT rc{}; GetClientRect(hStatus, &rc);
+        int avail = (rc.right - rc.left) - sz.cx;
+        std::wstring shortPath = getShortenedFilePath(fp.wstring(), avail, hdc);
         ReleaseDC(hStatus, hdc);
-        showStatusMessage(progress_part + shortened_path, MessageStatus::Info);
+        showStatusMessage(prefix + shortPath, MessageStatus::Info);
 
-        std::string original_buf;
-        if (!guard.loadFile(fp, original_buf)) { continue; }
-        auto a = GetFileAttributesW(fp.c_str());
-        if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_READONLY)) { continue; }
+        std::string original;
+        if (!guard.loadFile(fp, original)) { continue; }
 
-        EncodingInfo enc_info = detectEncoding(original_buf);
-        std::string utf8_input_buf;
-        if (!convertBufferToUtf8(original_buf, enc_info, utf8_input_buf)) {
-            continue;
-        }
+        DWORD attrs = GetFileAttributesW(fp.c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) { continue; }
 
-        _hScintilla = guard.hSci;
-        pSciMsg = guard.fn;
-        pSciWndData = guard.pData;
+        EncodingInfo enc = detectEncoding(original);
+        std::string u8in;
+        if (!convertBufferToUtf8(original, enc, u8in)) { continue; }
 
-        send(SCI_CLEARALL, 0, 0);
-        send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
-        send(SCI_ADDTEXT, utf8_input_buf.length(), reinterpret_cast<sptr_t>(utf8_input_buf.data()));
+        // Bind hidden buffer for the file scope
+        {
+            SciBindingGuard bind(this, guard);
 
-        handleDelimiterPositions(DelimiterOperation::LoadAll);
+            send(SCI_CLEARALL, 0, 0);
+            send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
+            send(SCI_ADDTEXT, (WPARAM)u8in.length(), reinterpret_cast<sptr_t>(u8in.data()));
 
-        if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; break; }
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
 
-        if (useListEnabled) {
-            for (size_t i = 0; i < replaceListData.size(); ++i) {
-                int f = replaceListData[i].findCount.empty()
-                    ? 0 : std::stoi(replaceListData[i].findCount);
-                int r = replaceListData[i].replaceCount.empty()
-                    ? 0 : std::stoi(replaceListData[i].replaceCount);
-                listFindTotals[i] += f; 
-                listReplaceTotals[i] += r;
+            if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; aborted = true; }
+
+            // Keep list counters in sync (per-item find/replace tallies)
+            if (useListEnabled) {
+                for (size_t i = 0; i < replaceListData.size(); ++i) {
+                    if (!replaceListData[i].isEnabled) continue;
+                    const int f = replaceListData[i].findCount.empty() ? 0 : std::stoi(replaceListData[i].findCount);
+                    const int r = replaceListData[i].replaceCount.empty() ? 0 : std::stoi(replaceListData[i].replaceCount);
+                    listFindTotals[i] += f;
+                    listReplaceTotals[i] += r;
+                }
+            }
+
+            // Write back only if content changed
+            std::string u8out = guard.getText();  // uses directfunction of hidden buffer  :contentReference[oaicite:6]{index=6}
+            if (u8out != u8in) {
+                std::string finalBuf;
+                if (convertUtf8ToOriginal(u8out, enc, original, finalBuf))
+                    if (guard.writeFile(fp, finalBuf)) ++changed;
             }
         }
 
-        std::string utf8_out = guard.getText();
-        _hScintilla = oldSci; pSciMsg = oldFn; pSciWndData = oldData;
-
-        if (utf8_out != utf8_input_buf) {
-            std::string final_write_buf;
-            if (convertUtf8ToOriginal(utf8_out, enc_info, original_buf, final_write_buf))
-                if (guard.writeFile(fp, final_write_buf)) ++changed;
-        }
+        if (aborted) break; // ensures RAII restored before leaving loop
     }
 
     if (useListEnabled) {
@@ -5523,13 +5525,27 @@ void MultiReplace::handleReplaceInFiles() {
         refreshUIListView();
     }
 
+    // status line
     if (!_isShuttingDown) {
-        std::wstring summaryMsg = LM.get(L"status_replace_summary",
+        const bool wasCanceled = (_isCancelRequested || aborted);
+
+        std::wstring msg = LM.get(L"status_replace_summary",
             { std::to_wstring(changed), std::to_wstring(files.size()) });
-        showStatusMessage(summaryMsg, _isCancelRequested ? MessageStatus::Info
-            : MessageStatus::Success);
+        if (wasCanceled) {
+            msg += L" - " + LM.get(L"status_canceled");
+        }
+
+        MessageStatus ms = MessageStatus::Success;
+        if (wasCanceled || changed == 0) {
+            // neutral if canceled or no changes were written
+            ms = MessageStatus::Info;
+        }
+
+        showStatusMessage(msg, ms);
     }
     _isCancelRequested = false;
+
+
 }
 
 bool MultiReplace::convertBufferToUtf8(const std::string& original_buf, const EncodingInfo& enc_info, std::string& utf8_output) {
@@ -6165,7 +6181,7 @@ void MultiReplace::handleFindAllButton()
     ResultDock::FileMap fileMap;
     int totalHits = 0;
 
-    // LIST MODE  (aggregate per-file, then per-criterion)
+    // ===== LIST MODE =====
     if (useListEnabled)
     {
         if (replaceListData.empty())
@@ -6179,11 +6195,8 @@ void MultiReplace::handleFindAllButton()
         for (size_t idx = 0; idx < replaceListData.size(); ++idx)
         {
             auto& item = replaceListData[idx];
-
             if (!item.isEnabled || item.findText.empty())
-            {
                 continue;
-            }
 
             // Sanitize pattern for this criterion's header
             std::wstring sanitizedPattern = this->sanitizeSearchPattern(item.findText);
@@ -6213,21 +6226,25 @@ void MultiReplace::handleFindAllButton()
                 if (h.length > 0)
                     rawHits.push_back(std::move(h));
             }
-            int hitCnt = static_cast<int>(rawHits.size());
+
+            // (c) Write per-criterion counters (even if zero)
+            const int hitCnt = static_cast<int>(rawHits.size());
             item.findCount = std::to_wstring(hitCnt);
             updateCountColumns(idx, hitCnt);
-            if (hitCnt == 0) continue;
 
-            // (c) Aggregate per-file
-            auto& agg = fileMap[utf8FilePath];
-            agg.wPath = wFilePath;
-            agg.hitCount += hitCnt;
-            agg.crits.push_back({ sanitizedPattern, std::move(rawHits) });
-            totalHits += hitCnt;
+            // (d) Aggregate only when there are hits
+            if (hitCnt > 0) {
+                auto& agg = fileMap[utf8FilePath];
+                agg.wPath = wFilePath;
+                agg.hitCount += hitCnt;
+                agg.crits.push_back({ sanitizedPattern, std::move(rawHits) });
+                totalHits += hitCnt;
+            }
         }
+
         refreshUIListView();
     }
-    // SINGLE MODE
+    // ===== SINGLE MODE =====
     else
     {
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
@@ -6262,37 +6279,23 @@ void MultiReplace::handleFindAllButton()
             if (h.length > 0)
                 rawHits.push_back(std::move(h));
         }
-        if (rawHits.empty())
-        {
-            showStatusMessage(LM.get(L"status_no_matches_found"),
-                MessageStatus::Error, true);
-            return;
-        }
 
-        // Aggregate into one file entry
-        fileMap.clear();
+        // Aggregate into one file entry only when there are hits
+        if (!rawHits.empty())
         {
             auto& agg = fileMap[utf8FilePath];
             agg.wPath = wFilePath;
             agg.hitCount = static_cast<int>(rawHits.size());
             agg.crits.push_back({ headerPattern, std::move(rawHits) });
-            totalHits += static_cast<int>(agg.crits.back().hits.size());
+            totalHits += agg.hitCount;
         }
     }
 
-    if (totalHits == 0)
-    {
-        showStatusMessage(LM.get(L"status_no_matches_found"),
-            MessageStatus::Error, true);
-        return;
-    }
-
-    // unified Search Result API calls
-    size_t fileCount = fileMap.size();
-    std::wstring header = useListEnabled
+    // ===== unified Search Result API calls — ALWAYS show a header =====
+    const size_t fileCount = fileMap.size(); // counts files *with* hits
+    const std::wstring header = useListEnabled
         ? LM.get(L"dock_list_header", { std::to_wstring(totalHits), std::to_wstring(fileCount) })
-        : LM.get(L"dock_single_header", { this->sanitizeSearchPattern(
-                                             getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
+        : LM.get(L"dock_single_header", { this->sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
                                            std::to_wstring(totalHits),
                                            std::to_wstring(fileCount) });
 
@@ -6300,15 +6303,18 @@ void MultiReplace::handleFindAllButton()
         useListEnabled ? groupResultsEnabled : false,
         dock.purgeEnabled());
 
-    // exactly ONE file block in single-file search
-    dock.appendFileBlock(fileMap, sciSend);
+    // In the current-doc case we have at most one file block to append
+    if (fileCount > 0)
+        dock.appendFileBlock(fileMap, sciSend);
 
-    dock.closeSearchBlock(totalHits,
-        static_cast<int>(fileCount));
+    dock.closeSearchBlock(totalHits, static_cast<int>(fileCount));
 
-    showStatusMessage(LM.get(L"status_occurrences_found",
-        { std::to_wstring(totalHits) }),
-        MessageStatus::Success);
+    // Status: 0 hits → Error, else Success
+    showStatusMessage(
+        (totalHits == 0)
+        ? LM.get(L"status_no_matches_found")
+        : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }),
+        (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
 
 void MultiReplace::handleFindAllInDocsButton()
@@ -6322,19 +6328,19 @@ void MultiReplace::handleFindAllInDocsButton()
 
     // 2) counters
     int totalHits = 0;
-    std::unordered_set<std::string> uniqueFiles;
+    std::unordered_set<std::string> uniqueFiles; // files *with* hits
 
     if (useListEnabled) resetCountColumns();
     std::vector<int> listHitTotals(useListEnabled ? replaceListData.size() : 0, 0);
 
-    // 3) placeholder header
+    // 3) placeholder header (will be updated in closeSearchBlock)
     std::wstring placeholder = useListEnabled
         ? LM.get(L"dock_list_header", { L"0", L"0" })
         : LM.get(L"dock_single_header", {
               sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
               L"0", L"0" });
 
-    // Search Result API call to open block
+    // open block (pending text; commit happens in closeSearchBlock)
     dock.startSearchBlock(placeholder,
         groupResultsEnabled,
         dock.purgeEnabled());
@@ -6348,20 +6354,16 @@ void MultiReplace::handleFindAllInDocsButton()
                 };
 
             wchar_t wBuf[MAX_PATH] = {};
-            ::SendMessage(nppData._nppHandle,
-                NPPM_GETFULLCURRENTPATH,
-                MAX_PATH, (LPARAM)wBuf);
+            ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, (LPARAM)wBuf);
             std::wstring wPath = *wBuf ? wBuf : L"<untitled>";
             std::string  u8Path = Encoding::wstringToUtf8(wPath);
-            uniqueFiles.insert(u8Path);
 
-            const bool selMode =
-                IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED;
+            const bool selMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
             SelectionInfo sel = getSelectionInfo(false);
             if (selMode && sel.length == 0) return;
 
             Sci_Position scanStart = selMode ? sel.startPos : 0;
-            bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+            const bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
             ResultDock::FileMap fileMap;
             int hitsInFile = 0;
@@ -6374,6 +6376,7 @@ void MultiReplace::handleFindAllInDocsButton()
                     SearchResult r = performSearchForward(ctx, pos);
                     if (r.pos < 0) break;
                     pos = r.pos + r.length;
+
                     ResultDock::Hit h{};
                     h.fullPathUtf8 = u8Path;
                     h.pos = r.pos;
@@ -6381,8 +6384,9 @@ void MultiReplace::handleFindAllInDocsButton()
                     this->trimHitToFirstLine(sciSend, h);
                     if (h.length > 0) raw.push_back(std::move(h));
                 }
-                int hitCnt = static_cast<int>(raw.size());
-                if (useListEnabled) listHitTotals[critIdx] += hitCnt;
+                const int hitCnt = static_cast<int>(raw.size());
+                if (useListEnabled && critIdx < listHitTotals.size())
+                    listHitTotals[critIdx] += hitCnt;
                 if (hitCnt == 0) return;
 
                 auto& agg = fileMap[u8Path];
@@ -6396,9 +6400,9 @@ void MultiReplace::handleFindAllInDocsButton()
             {
                 for (size_t idx = 0; idx < replaceListData.size(); ++idx)
                 {
-                    auto& it = replaceListData[idx];
-
+                    const auto& it = replaceListData[idx];
                     if (!it.isEnabled || it.findText.empty()) continue;
+
                     SearchContext ctx;
                     ctx.docLength = sciSend(SCI_GETLENGTH);
                     ctx.isColumnMode = columnMode;
@@ -6414,31 +6418,32 @@ void MultiReplace::handleFindAllInDocsButton()
             else
             {
                 std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-                if (findW.empty()) return;
-                SearchContext ctx;
-                ctx.docLength = sciSend(SCI_GETLENGTH);
-                ctx.isColumnMode = columnMode;
-                ctx.isSelectionMode = selMode;
-                ctx.findText = convertAndExtendW(findW,
-                    IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
-                    | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
-                    | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
-                sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
-                collect(0, sanitizeSearchPattern(findW), ctx);
+                if (!findW.empty()) {
+                    SearchContext ctx;
+                    ctx.docLength = sciSend(SCI_GETLENGTH);
+                    ctx.isColumnMode = columnMode;
+                    ctx.isSelectionMode = selMode;
+                    ctx.findText = convertAndExtendW(findW,
+                        IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+                    ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
+                        | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
+                        | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+                    sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+                    collect(0, sanitizeSearchPattern(findW), ctx);
+                }
             }
 
             if (hitsInFile > 0)
             {
-                // Search Result API call per file 
+                // Commit this file and count it as "with hits"
                 dock.appendFileBlock(fileMap, sciSend);
                 totalHits += hitsInFile;
+                uniqueFiles.insert(u8Path);
             }
         };
 
     // iterate tabs (unchanged)
-    LRESULT savedIdx = ::SendMessage(nppData._nppHandle,
-        NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
+    LRESULT savedIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
     const bool mainVis = !!::IsWindowVisible(nppData._scintillaMainHandle);
     const bool subVis = !!::IsWindowVisible(nppData._scintillaSecondHandle);
     LRESULT nbMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
@@ -6476,21 +6481,15 @@ void MultiReplace::handleFindAllInDocsButton()
         refreshUIListView();
     }
 
-    // 6) finalise or error
-    if (totalHits == 0)
-    {
-        showStatusMessage(LM.get(L"status_no_matches_found"),
-            MessageStatus::Error, true);
-        return;
-    }
+    // 6) finalise — ALWAYS close block (header even with zero hits)
+    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
 
-    //  Search Result API close call
-    dock.closeSearchBlock(totalHits,
-        static_cast<int>(uniqueFiles.size()));
-
-    showStatusMessage(LM.get(L"status_occurrences_found",
-        { std::to_wstring(totalHits) }),
-        MessageStatus::Success);
+    // Status: 0 hits → Error, else Success
+    showStatusMessage(
+        (totalHits == 0)
+        ? LM.get(L"status_no_matches_found")
+        : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }),
+        (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
 
 void MultiReplace::handleFindInFiles() {
@@ -6507,8 +6506,8 @@ void MultiReplace::handleFindInFiles() {
     // Read all inputs once at the beginning.
     auto wDir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
     auto wFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
-    bool recurse = IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED;
-    bool hide = IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED;
+    const bool recurse = (IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED);
+    const bool hide = (IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED);
 
     // If the filter is empty, default to "*.*" and update the UI.
     if (wFilter.empty()) {
@@ -6540,8 +6539,7 @@ void MultiReplace::handleFindInFiles() {
         }
     }
     catch (const std::exception& ex) {
-        std::string narrowReason = ex.what();
-        std::wstring wideReason(narrowReason.begin(), narrowReason.end());
+        std::wstring wideReason = Encoding::utf8ToWString(ex.what());
         showStatusMessage(LM.get(L"status_error_scanning_directory", { wideReason }), MessageStatus::Error);
         return;
     }
@@ -6553,11 +6551,11 @@ void MultiReplace::handleFindInFiles() {
 
     // 2) result dock
     ResultDock& dock = ResultDock::instance();
-    dock.ensureCreatedAndVisible(nppData);
+    dock.ensureCreatedAndVisible(nppData);  // ok if already visible  :contentReference[oaicite:0]{index=0}
 
     // counters
     int totalHits = 0;
-    std::unordered_set<std::string> uniqueFiles;
+    std::unordered_set<std::string> uniqueFiles; // files *with* hits only
 
     if (useListEnabled) resetCountColumns();
     std::vector<int> listHitTotals(useListEnabled ? replaceListData.size() : 0, 0);
@@ -6566,104 +6564,103 @@ void MultiReplace::handleFindInFiles() {
     std::wstring placeholder = useListEnabled
         ? LM.get(L"dock_list_header", { L"0", L"0" })
         : LM.get(L"dock_single_header", {
-              sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
-              L"0", L"0" });
+            sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
+            L"0", L"0" });
 
-    // Search Result API call to open block
+    // Open the search block (pending buffer; committed in closeSearchBlock)
     dock.startSearchBlock(placeholder,
         useListEnabled ? groupResultsEnabled : false,
-        dock.purgeEnabled());
+        dock.purgeEnabled());  // may clear view first  :contentReference[oaicite:1]{index=1}
 
     // 3) RAII-based UI lock identical to ReplaceInFiles
-    BatchUIGuard guardguard(this, _hSelf);
-
+    BatchUIGuard uiGuard(this, _hSelf);
     _isCancelRequested = false;
 
-    // save and later restore current Scintilla binding
-    HWND        oldSci = _hScintilla;
-    SciFnDirect oldFn = pSciMsg;
-    sptr_t      oldData = pSciWndData;
-
-    // progress
+    // Progress
     int idx = 0;
-    int total = static_cast<int>(files.size());
+    const int total = static_cast<int>(files.size());
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
 
+    // Small RAII guard to bind/unbind the hidden Scintilla safely per file
+    struct SciBindingGuard {
+        MultiReplace* self;
+        HWND oldSci; SciFnDirect oldFn; sptr_t oldData;
+        HiddenSciGuard& g;
+        SciBindingGuard(MultiReplace* s, HiddenSciGuard& guard) : self(s), g(guard) {
+            oldSci = s->_hScintilla; oldFn = s->pSciMsg; oldData = s->pSciWndData;
+            s->_hScintilla = g.hSci; s->pSciMsg = g.fn; s->pSciWndData = g.pData;
+        }
+        ~SciBindingGuard() {
+            self->_hScintilla = oldSci; self->pSciMsg = oldFn; self->pSciWndData = oldData;
+        }
+    };
+
     // 4) per-file processing
-    for (auto& fp : files)
+    bool aborted = false;
+
+    for (const auto& fp : files)
     {
-        // pump messages to keep UI responsive and allow cancel
+        // Pump messages to keep UI responsive and allow cancel clicks
         MSG m;
-        while (::PeekMessage(&m, NULL, 0, 0, PM_REMOVE)) {
+        while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) {
             ::TranslateMessage(&m);
             ::DispatchMessage(&m);
         }
 
-        if (_isShuttingDown) { return; }
-        if (_isCancelRequested) { break; }
+        if (_isShuttingDown) { aborted = true; break; }
+        if (_isCancelRequested) { aborted = true; break; }
 
         ++idx;
 
         // progress line with shortened path
-        int percent = static_cast<int>((static_cast<double>(idx) / total) * 100.0);
-        std::wstring progress_part = L"Progress: [" + std::to_wstring(percent) + L"%] ";
+        const int percent = static_cast<int>((static_cast<double>(idx) / (std::max)(1, total)) * 100.0);
+        const std::wstring prefix = L"Progress: [" + std::to_wstring(percent) + L"%] ";
+
         HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
         HDC hdc = GetDC(hStatus);
         HFONT hFont = (HFONT)SendMessage(hStatus, WM_GETFONT, 0, 0);
         SelectObject(hdc, hFont);
-        SIZE progress_size;
-        GetTextExtentPoint32W(hdc, progress_part.c_str(), static_cast<int>(progress_part.length()), &progress_size);
-        RECT status_rect;
-        GetClientRect(hStatus, &status_rect);
-        int available_width = status_rect.right - status_rect.left - progress_size.cx;
-        std::wstring shortened_path = getShortenedFilePath(fp.wstring(), available_width, hdc);
+        SIZE sz{}; GetTextExtentPoint32W(hdc, prefix.c_str(), (int)prefix.length(), &sz);
+        RECT rc{}; GetClientRect(hStatus, &rc);
+        const int avail = (rc.right - rc.left) - sz.cx;
+        std::wstring shortPath = getShortenedFilePath(fp.wstring(), avail, hdc);
         ReleaseDC(hStatus, hdc);
-        showStatusMessage(progress_part + shortened_path, MessageStatus::Info);
+        showStatusMessage(prefix + shortPath, MessageStatus::Info);
 
-        // read file; read-only files are processed like all others (no skip)
-        std::string original_buf;
-        if (!guard.loadFile(fp, original_buf)) { continue; }
+        // read file; read-only/not-readable files are simply skipped
+        std::string original;
+        if (!guard.loadFile(fp, original)) { continue; }
 
         // detect and convert to UTF-8 for the hidden buffer
-        EncodingInfo enc_info = detectEncoding(original_buf);
-        std::string utf8_input_buf;
-        if (!convertBufferToUtf8(original_buf, enc_info, utf8_input_buf)) {
-            continue;
-        }
+        EncodingInfo enc = detectEncoding(original);
+        std::string u8;
+        if (!convertBufferToUtf8(original, enc, u8)) { continue; }
 
-        // bind hidden Scintilla
-        _hScintilla = guard.hSci;
-        pSciMsg = guard.fn;
-        pSciWndData = guard.pData;
+        // Bind hidden buffer for the whole per-file scope
+        SciBindingGuard bind(this, guard);
 
-        auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT {
-            return ::SendMessage(_hScintilla, m, w, l);
-            };
-
-        // set text
+        // set text into hidden buffer
         send(SCI_CLEARALL, 0, 0);
         send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
-        send(SCI_ADDTEXT, utf8_input_buf.length(), reinterpret_cast<sptr_t>(utf8_input_buf.data()));
+        send(SCI_ADDTEXT, (WPARAM)u8.length(), reinterpret_cast<sptr_t>(u8.data()));
 
-        // delimiters
+        // delimiters snapshot
         handleDelimiterPositions(DelimiterOperation::LoadAll);
 
-        // build per-file aggregation
-        std::wstring wPath = fp.wstring();
-        std::string  u8Path = Encoding::wstringToUtf8(wPath);
-        uniqueFiles.insert(u8Path);
+        // Aggregation for *this* file only
+        const std::wstring wPath = fp.wstring();
+        const std::string  u8Path = Encoding::wstringToUtf8(wPath);
 
-        Sci_Position scanStart = 0;
         bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
-        ResultDock::FileMap fileMap;
+        ResultDock::FileMap fileMap;   // one file entry
         int hitsInFile = 0;
 
-        auto collect = [&](size_t critIdx, const std::wstring& patt, SearchContext& ctx) {
+        auto collect = [&](size_t critIdx, const std::wstring& pattW, SearchContext& ctx) {
             std::vector<ResultDock::Hit> raw;
-            LRESULT pos = scanStart;
-            while (true)
-            {
+            LRESULT pos = 0;
+
+            while (true) {
                 SearchResult r = performSearchForward(ctx, pos);
                 if (r.pos < 0) break;
                 pos = r.pos + r.length;
@@ -6672,20 +6669,25 @@ void MultiReplace::handleFindInFiles() {
                 h.fullPathUtf8 = u8Path;
                 h.pos = r.pos;
                 h.length = r.length;
-                this->trimHitToFirstLine(sciSend, h);
+
+                // Trim to first line for the dock (operates on currently bound hidden buffer)
+                this->trimHitToFirstLine([this](UINT m, WPARAM w, LPARAM l)->LRESULT { return send(m, w, l); }, h);
+
                 if (h.length > 0) raw.push_back(std::move(h));
             }
-            int hitCnt = static_cast<int>(raw.size());
-            if (hitCnt == 0) return;
+
+            const int n = (int)raw.size();
+            if (n == 0) return;
 
             auto& agg = fileMap[u8Path];
             agg.wPath = wPath;
-            agg.hitCount += hitCnt;
-            agg.crits.push_back({ sanitizeSearchPattern(patt), std::move(raw) });
-            totalHits += hitCnt;
-            hitsInFile += hitCnt;
+            agg.hitCount += n;
+            agg.crits.push_back({ sanitizeSearchPattern(pattW), std::move(raw) });
+
+            hitsInFile += n;
+            totalHits += n;
             if (useListEnabled && critIdx < listHitTotals.size())
-                listHitTotals[critIdx] += hitCnt;
+                listHitTotals[critIdx] += n;
             };
 
         // search setup
@@ -6694,10 +6696,9 @@ void MultiReplace::handleFindInFiles() {
             for (size_t i = 0; i < replaceListData.size(); ++i)
             {
                 const auto& it = replaceListData[i];
-                if (!it.isEnabled || it.findText.empty())
-                    continue;
+                if (!it.isEnabled || it.findText.empty()) continue;
 
-                SearchContext ctx;
+                SearchContext ctx{};
                 ctx.docLength = send(SCI_GETLENGTH);
                 ctx.isColumnMode = columnMode;
                 ctx.isSelectionMode = false;
@@ -6714,12 +6715,11 @@ void MultiReplace::handleFindInFiles() {
             std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
             if (!findW.empty())
             {
-                SearchContext ctx;
+                SearchContext ctx{};
                 ctx.docLength = send(SCI_GETLENGTH);
                 ctx.isColumnMode = columnMode;
                 ctx.isSelectionMode = false;
-                ctx.findText = convertAndExtendW(findW,
-                    IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+                ctx.findText = convertAndExtendW(findW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
                 ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
                     | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
                     | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
@@ -6728,15 +6728,16 @@ void MultiReplace::handleFindInFiles() {
             }
         }
 
-        if (hitsInFile > 0)
-        {
-            // Search Result API call per file 
-            dock.appendFileBlock(fileMap, sciSend);
+        // Commit per-file block
+        if (hitsInFile > 0) {
+            auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT { return send(m, w, l); };
+            dock.appendFileBlock(fileMap, sciSend);  // adds to pending text  :contentReference[oaicite:2]{index=2}
+            uniqueFiles.insert(u8Path);              // count only files with hits
         }
     }
 
-    // restore Scintilla binding
-    _hScintilla = oldSci; pSciMsg = oldFn; pSciWndData = oldData;
+    // 5) finalize: ALWAYS close the search block, even with zero hits or cancel
+    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));  // commits header + pending text  :contentReference[oaicite:3]{index=3}
 
     // update list counters + UI
     if (useListEnabled)
@@ -6751,19 +6752,25 @@ void MultiReplace::handleFindInFiles() {
         refreshUIListView();
     }
 
-    // 5) finalise or error
-    if (totalHits == 0)
-    {
-        showStatusMessage(LM.get(L"status_no_matches_found"),
-            MessageStatus::Error, true);
-        return;
+    // status line
+// --- status line (+ optional " - Canceled" suffix from LM) ---
+    const bool wasCanceled = (_isCancelRequested || aborted);
+    const std::wstring canceledSuffix = wasCanceled ? (L" - " + LM.get(L"status_canceled")) : L"";
+
+    std::wstring msg = (totalHits == 0)
+        ? LM.get(L"status_no_matches_found")
+        : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) });
+
+    MessageStatus ms = MessageStatus::Success;
+    if (wasCanceled) {
+        ms = MessageStatus::Info;
+    }
+    else if (totalHits == 0) {
+        ms = MessageStatus::Error;
     }
 
-    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
-
-    showStatusMessage(LM.get(L"status_occurrences_found",
-        { std::to_wstring(totalHits) }),
-        MessageStatus::Success);
+    showStatusMessage(msg + canceledSuffix, ms, true);
+    _isCancelRequested = false;
 }
 
 #pragma endregion
