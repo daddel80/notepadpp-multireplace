@@ -604,6 +604,13 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Default**: `GroupResults=0` (disabled).
   - **Description**: This option changes how 'Find All' results are presented. When enabled (`1`), results are grouped by their source list entry, creating a categorized view. When disabled (`0`), all results are displayed as a single, flat list, sorted by their position in the document, without any categorization.
 
+- **SafeMode**: Controls which standard Lua libraries are available.  
+  - **Default**: `SafeMode=1` (enabled).  
+  - **Description**: When enabled (`1`), some libraries are disabled (`os`, `io`, `package`, `debug`, and functions like `dofile`, `require`, `load`). Common libraries such as `string`, `table`, `math`, `utf8`, `coroutine` remain available. When disabled (`0`), all standard libraries are loaded.
+
+- **StepLimit**: Sets an instruction limit to abort runaway Lua scripts.  
+  - **Default**: `StepLimit=0` unlimited.
+  - **Description**: Sets the maximum number of internal execution steps the embedded Lua engine may perform for one command execution.
 
 ### Multilingual UI Support
 
