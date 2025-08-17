@@ -608,10 +608,6 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Default**: `SafeMode=1` (enabled).  
   - **Description**: When enabled (`1`), some libraries are disabled (`os`, `io`, `package`, `debug`, and functions like `dofile`, `require`, `load`). Common libraries such as `string`, `table`, `math`, `utf8`, `coroutine` remain available. When disabled (`0`), all standard libraries are loaded.
 
-- **StepLimit**: Sets an instruction limit to abort runaway Lua scripts.  
-  - **Default**: `StepLimit=0` unlimited.
-  - **Description**: Sets the maximum number of internal execution steps the embedded Lua engine may perform for one command execution.
-
 ### Multilingual UI Support
 
 The UI language settings for the MultiReplace plugin can be customized by adjusting the `languages.ini` file located in `C:\Program Files\Notepad++\plugins\MultiReplace\`. These adjustments will ensure that the selected language in Notepad++ is applied within the plugin. 
