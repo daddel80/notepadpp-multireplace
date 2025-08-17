@@ -406,11 +406,12 @@ Use init entries (empty Find) to preload variables or helper functions before an
 <br>
 
 ### Operators 
-| Type        | Operators                     |
-|-------------|-------------------------------|
-| Arithmetic  | `+`, `-`, `*`, `/`, `^`, `%`  |
-| Relational  | `==`, `~=`, `<`, `>`, `<=`, `>=`|
-| Logical     | `and`, `or`, `not`            |
+| Type           | Operators                                | Example                                                |
+|----------------|------------------------------------------|--------------------------------------------------------|
+| Concatenation  | `..`                                     | `set("Found "..CNT)`                                   |
+| Arithmetic     | `+`, `-`, `*`, `/`, `^`, `%`             | `set(CNT * 2)`                                         |
+| Relational     | `==`, `~=`, `<`, `>`, `<=`, `>=`         | `cond(LINE == 1, "First", "Not first")`               |
+| Logical        | `and`, `or`, `not`                       | `cond(LINE > 5 and CNT < 10, "Midrange", "Other")`    |
 
 <br>
 
