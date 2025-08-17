@@ -609,8 +609,9 @@ private:
     inline static bool isHoverTextEnabled = true;        // Important to set on false as TIMER will be triggered at startup.
     inline static int  editFieldSize = 5;                // Size of the edit field for find/replace input
     inline static bool listStatisticsEnabled = false;    // Status for showing list statistics
-    inline static bool stayAfterReplaceEnabled = false; // Status for keeping panel open after replace
-    inline static bool groupResultsEnabled = false;          // Status for flat list view
+    inline static bool stayAfterReplaceEnabled = false;  // Status for keeping panel open after replace
+    inline static bool groupResultsEnabled = false;      // Status for flat list view
+    inline static bool luaSafeModeEnabled = true;       // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
 
     bool isHoverTextSuppressed = false;    // Temporarily suppress HoverText to avoid flickering when Edit in list is open
 
@@ -751,6 +752,7 @@ private:
     bool initLuaState();
     bool compileLuaReplaceCode(const std::string& luaCode);
     static int safeLoadFileSandbox(lua_State* L);
+    static void applyLuaSafeMode(lua_State* L);
 
     //Replace in files
     bool handleBrowseDirectoryButton();

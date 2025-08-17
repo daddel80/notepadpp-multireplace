@@ -296,6 +296,39 @@ function lvars(filePath)
   return resultTable
 end
 
+------------------------------------------------------------------
+-- 6) lcmd function
+-- Loads a file that returns a table of helper functions and registers them globally.
+-- Example file: return { padLeft=function(s,w,ch) ... end, upper=function(s) ... end }
+------------------------------------------------------------------
+function lcmd(path)
+  local ok, mod = safeLoadFileSandbox(path) 
+  if not ok then
+    error("lcmd: " .. tostring(mod))
+  end
+  if type(mod) ~= "table" then
+    error("lcmd: file must return a table of functions")
+  end
+
+  local env = _ENV or _G
+  local count = 0
+  for name, fn in pairs(mod) do
+    if type(fn) == "function" then
+      if env[name] ~= nil then
+        error("lcmd: command already exists: " .. tostring(name)) -- no overrides
+      end
+      env[name] = fn -- helper (returns string/number; used with set()/cond())
+      count = count + 1
+    end
+  end
+  if count == 0 then
+    error("lcmd: file exported no functions")
+  end
+
+  resultTable = resultTable or { result = "", skip = true }
+  return resultTable
+end
+
 )";
 static const size_t luaSourceSize = sizeof(luaSourceCode);
 

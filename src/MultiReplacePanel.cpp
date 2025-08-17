@@ -5005,6 +5005,10 @@ bool MultiReplace::initLuaState()
 
     luaL_openlibs(_luaState);
 
+    if (luaSafeModeEnabled) {
+        applyLuaSafeMode(_luaState);
+    }
+
     // Load Lua source code directly (fallback mode)
     if (luaL_loadstring(_luaState, luaSourceCode) != LUA_OK) {
         const char* errMsg = lua_tostring(_luaState, -1);
@@ -5213,13 +5217,11 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     return true;
 }
 
-int MultiReplace::safeLoadFileSandbox(lua_State* L) {
-// Return signature: (bool success, table or errorMessage)
-
-    // Get the file path argument
+int MultiReplace::safeLoadFileSandbox(lua_State* L)
+{
     const char* path = luaL_checkstring(L, 1);
 
-    // UTF-8 → Wide → filesystem::path → ifstream
+    // Read file (your existing UTF-8/ANSI logic)
     std::wstring wpath = Encoding::utf8ToWString(path);
     std::ifstream in(std::filesystem::path(wpath), std::ios::binary);
     if (!in) {
@@ -5227,25 +5229,19 @@ int MultiReplace::safeLoadFileSandbox(lua_State* L) {
         lua_pushfstring(L, "Cannot open file: %s", path);
         return 2;
     }
-    std::string raw((std::istreambuf_iterator<char>(in)),
-        std::istreambuf_iterator<char>());
+    std::string raw((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     in.close();
 
-    // Detect UTF-8 vs ANSI
     bool rawIsUtf8 = Encoding::isValidUtf8(raw);
-
-    // Convert to a true UTF-8 buffer if needed
     std::string utf8_buf;
     if (rawIsUtf8) {
         utf8_buf = std::move(raw);
     }
     else {
-        // ANSI → UTF-16
         int wlen = MultiByteToWideChar(CP_ACP, 0, raw.data(), (int)raw.size(), nullptr, 0);
         std::wstring wide(wlen, L'\0');
         MultiByteToWideChar(CP_ACP, 0, raw.data(), (int)raw.size(), &wide[0], wlen);
 
-        // UTF-16 → UTF-8
         int u8len = WideCharToMultiByte(CP_UTF8, 0, wide.data(), wlen, nullptr, 0, nullptr, nullptr);
         utf8_buf.resize(u8len);
         WideCharToMultiByte(CP_UTF8, 0, wide.data(), wlen, &utf8_buf[0], u8len, nullptr, nullptr);
@@ -5253,33 +5249,60 @@ int MultiReplace::safeLoadFileSandbox(lua_State* L) {
 
     // Strip UTF-8 BOM if present
     if (utf8_buf.size() >= 3 &&
-        static_cast<unsigned char>(utf8_buf[0]) == 0xEF &&
-        static_cast<unsigned char>(utf8_buf[1]) == 0xBB &&
-        static_cast<unsigned char>(utf8_buf[2]) == 0xBF)
+        (unsigned char)utf8_buf[0] == 0xEF &&
+        (unsigned char)utf8_buf[1] == 0xBB &&
+        (unsigned char)utf8_buf[2] == 0xBF)
     {
         utf8_buf.erase(0, 3);
     }
 
-    // Load the UTF-8 chunk into Lua
-    if (luaL_loadbuffer(L, utf8_buf.data(), utf8_buf.size(), path) != LUA_OK) { 
-        lua_pushboolean(L, false); 
-        lua_pushstring(L, lua_tostring(L, -1));  // error message
+    // Load as text chunk only (avoid binary precompiled chunks)
+#if LUA_VERSION_NUM >= 503
+    if (luaL_loadbufferx(L, utf8_buf.data(), utf8_buf.size(), path, "t") != LUA_OK)
+#else
+    if (luaL_loadbuffer(L, utf8_buf.data(), utf8_buf.size(), path) != LUA_OK)
+#endif
+    {
+        lua_pushboolean(L, false);
+        lua_pushstring(L, lua_tostring(L, -2)); // copy error
+        lua_remove(L, -3); // remove original error under the two pushes
         return 2;
     }
 
-    // Run the chunk: expect it to return a table of entries
     if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
         lua_pushboolean(L, false);
-        lua_pushstring(L, lua_tostring(L, -1));
+        lua_pushstring(L, lua_tostring(L, -2));
+        lua_remove(L, -3);
         return 2;
     }
-    // Stack now: [ table ]
 
-    // Prepend a 'true' for the success flag
+    // Success: stack has [ table ]
     lua_pushboolean(L, true);
-    lua_insert(L, -2);  // now stack: [ true, table ]
-
+    lua_insert(L, -2); // [ true, table ]
     return 2;
+}
+
+void MultiReplace::applyLuaSafeMode(lua_State* L)
+{
+    auto removeGlobal = [&](const char* name) {
+        lua_pushnil(L);
+        lua_setglobal(L, name);
+        };
+
+    // Remove dangerous base functions
+    removeGlobal("dofile");
+    removeGlobal("load");
+    removeGlobal("loadfile");
+    removeGlobal("require");
+    removeGlobal("collectgarbage");
+
+    // Remove whole libraries
+    removeGlobal("os");
+    removeGlobal("io");
+    removeGlobal("package");
+    removeGlobal("debug");
+
+    // Keep string/table/math/utf8/base intact.
 }
 
 #pragma endregion
@@ -10534,6 +10557,10 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << Encoding::wstringToUtf8(L"StayAfterReplace=" + std::to_wstring(stayAfterReplaceEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"GroupResults=" + std::to_wstring(groupResultsEnabled) + L"\n");
 
+    // Lua runtime options
+    outFile << Encoding::wstringToUtf8(L"[Lua]\n");
+    outFile << Encoding::wstringToUtf8(L"SafeMode=" + std::to_wstring(luaSafeModeEnabled ? 1 : 0) + L"\n");
+
     // Convert and Store the scope options
     int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
     int columnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED ? 1 : 0;
@@ -10733,6 +10760,9 @@ void MultiReplace::loadSettingsFromIni() {
     listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
     stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
     groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
+
+    // Lua runtime options
+    luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", true);
 
     // Loading and setting the scope
     int selection = CFG.readInt(L"Scope", L"Selection", 0);
