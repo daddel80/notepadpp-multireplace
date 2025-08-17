@@ -120,8 +120,8 @@
     p + p                        {margin: .5em 0 0 0; padding: 0;}
     h1                           {line-height: 1.25; margin: .5em 0 0 0;}
     h1                           {font-size: 1.5rem; text-align: center; font-weight: bold; font-style: normal; padding: 0;}
-    h2                           {font-size: 1.2rem; text-align: left;   font-weight: bold; font-style: normal; padding: 0; margin: 0;}
-    h3                           {font-size: 1rem; text-align: left; font-weight: bold; font-style: normal; padding: 0; margin: 0; }
+    h2                           {font-size: 1.3rem; text-align: left;   font-weight: bold; font-style: normal; padding: 0; margin: 0;}
+    h3                           {font-size: 1.2rem; text-align: left; font-weight: bold; font-style: normal; padding: 0; margin: 0; }
 
     main a                       {white-space: nowrap; text-decoration: none;}
     main a:link                  {color: #00c;}
@@ -340,7 +340,8 @@
     <a href="#lvarsfilepath" class="sub-item">lvars()</a>
     <a href="#lkpkey-hpath-inner" class="sub-item">lkp()</a>
     <a href="#fmtnnum-maxdecimals-fixeddecimals" class="sub-item">fmtN()</a>
-    <a href="#preloading-variables">Preloading Variables</a>
+    <a href="#lcmdpath" class="sub-item">lcmd(path)</a>
+    <a href="#preload-variables--helpers">Preload variables &amp; helpers</a>
     <a href="#Operators">Operators</a>
     <a href="#IfThenLogic">If-Then Logic</a>
     <a href="#DebugOption">Debug Option</a>
@@ -350,233 +351,239 @@
 
 <article>
 
-    <section id="Introduction">
-        <h2>Introduction</h2>
-            <p>
-            Enable the <strong>Use Variables</strong> option to enhance replacements with calculations and logic based on the matched text. This feature lets you create dynamic replacement patterns, handle conditions, and produce flexible outputs—all configured directly in the Replace field. The functionality relies on the 
-            <a href="https://www.lua.org/" target="_blank">Lua engine</a>.
-            </p>
-    </section>
+  <section id="Introduction">
+    <h2>Introduction</h2>
+    <p>
+      Enable the <strong>Use Variables</strong> option to enhance replacements with calculations and logic based on the matched text. This feature lets you create dynamic replacement patterns, handle conditions, and produce flexible outputs—all configured directly in the Replace field. This functionality relies on the <a href="https://www.lua.org/">Lua engine</a>.
+    </p>
+  </section>
 
-    <section id="QuickStart">
-        <h2>Quick Start: Use Variables</h2>
-        <ol>
-            <li>
-                <strong>Enable "Use Variables":</strong>  
-                Enable the checkbox labeled <strong>"Use Variables"</strong> in the Replace interface.
-            </li>
-            <li>
-                <strong>Use a Command:</strong>
-                <p>
-                    <strong>Option 1:</strong> <a href="#setstrorcalc"><code>set(...)</code></a> – Directly replaces with a value or calculation.
-                </p>
-                <ul>
-                    <li><strong>Example:</strong>
-                         <ul>
-                             <li><strong>Find:</strong> <code>(\d+)</code></li>
-                             <li><strong>Replace:</strong> <code>set(CAP1 * 2)</code></li>
-                             <li><strong>Result:</strong> Doubles numbers (e.g., <code>50</code> → <code>100</code>).</li>
-                         </ul>
-                         <em>(Enable "Regular Expression" in 'Search Mode' to use <code>(\d+)</code> as a capture group.)</em>
-                    </li>
-                </ul>
-                <p>
-                    <strong>Option 2:</strong> <a href="#condcondition-trueval-falseval"><code>cond(...)</code></a> – Conditional replacement.
-                </p>
-                <ul>
-                    <li><strong>Example:</strong>
-                         <ul>
-                             <li><strong>Find:</strong> <code>word</code></li>
-                             <li><strong>Replace:</strong> <code>cond(CNT==1, "FirstWord")</code></li>
-                             <li><strong>Result:</strong> Changes only the <strong>first</strong> occurrence of "word" to "FirstWord".</li>
-                         </ul>
-                    </li>
-                </ul>
-            </li>
-            <li>
-                <strong>Use Basic Variables:</strong>  
-                <ul>
-                    <li><strong><code>CNT</code></strong>: Inserts the current match number (e.g., "1" for the first match, "2" for the second).</li>
-                    <li><strong><code>CAP1</code>, <code>CAP2</code>, etc.:</strong> Holds captured groups when Regex is enabled.  
-                        <p>
-                            <strong>Capture Groups:</strong>  
-                            With a regex in parentheses <code>(...)</code>, matched text is stored in <code>CAP</code> variables (e.g., <code>(\d+)</code> in <code>Item 123</code> stores <code>123</code> in <code>CAP1</code>). For more details, refer to regex documentation.
-                        </p>
-                    </li>
-                </ul>
-                See the <a href="#Variables">Variables Overview</a> for a complete list.
-            </li>
-        </ol>
-    </section>
-	
-    <section id="Variables">
-        <h2>Variables</h2>
-        <table class="optionsTable">
-            <tr>
-                <th>Variable</th>
-                <th>Description</th>
-            </tr>
-            <tr>
-                <td><strong>CNT</strong></td>
-                <td>Count of the detected string.</td>
-            </tr>
-            <tr>
-                <td><strong>LCNT</strong></td>
-                <td>Count of the detected string within the line.</td>
-            </tr>
-            <tr>
-                <td><strong>LINE</strong></td>
-                <td>Line number where the string is found.</td>
-            </tr>
-            <tr>
-                <td><strong>LPOS</strong></td>
-                <td>Relative character position within the line.</td>
-            </tr>
-            <tr>
-                <td><strong>APOS</strong></td>
-                <td>Absolute character position in the document.</td>
-            </tr>
-            <tr>
-                <td><strong>COL</strong></td>
-                <td>Column number where the string was found (CSV-Scope option selected).</td>
-            </tr>
-            <tr>
-                <td><strong>MATCH</strong></td>
-                <td>Contains the text of the detected string, in contrast to <code>CAP</code> variables which correspond to capture groups in regex patterns.</td>
-            </tr>
-            <tr>
-                 <td><strong>FNAME</strong></td>
-                 <td>Filename or window title for new, unsaved files.</td>
-             </tr>
-             <tr>
-                 <td><strong>FPATH</strong></td>
-                 <td>Full path including the filename, or empty for new, unsaved files.</td>
-             </tr>
-            <tr>
-                <td><strong>CAP1</strong>, <strong>CAP2</strong>,...</td>
-                <td>These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.</td>
-            </tr>
-        </table>
+  <hr>
 
-        <strong>Note:</strong>
+  <section id="QuickStart">
+    <h2>Quick Start: Use Variables</h2>
+    <ol>
+      <li>
+        <strong>Enable "Use Variables"</strong><br>
+        Check the "<strong>Use Variables</strong>" option in the Replace interface.
+      </li>
+
+      <li>
+        <strong>Use a Command</strong><br><br>
+
+        <p><strong>Option 1:</strong> <a href="#setstrorcalc"><code>set(...)</code></a> → Directly replaces with a value or calculation.</p>
         <ul>
-            <li><code>FNAME</code> and <code>FPATH</code> are updated for each file processed by <em>Replace&nbsp;All&nbsp;in&nbsp;All&nbsp;Open&nbsp;Docs</em> and <em>Replace&nbsp;All&nbsp;in&nbsp;Files</em>; they always refer to the file currently being modified.</li>
-            <li><strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are interpreted as numbers, both dot (.) and comma (,) may be used as decimal separators. Thousands separators are not supported.</li>
+          <li><strong>Find</strong>: <code>(\d+)</code></li>
+          <li><strong>Replace</strong>: <code>set(CAP1 * 2)</code></li>
+          <li><strong>Result</strong>: Doubles numbers (e.g., <code>50</code> → <code>100</code>).</li>
         </ul>
-    </section>
+        <em>(Enable "Regular Expression" in 'Search Mode' to use <code>(\d+)</code> as a capture group.)</em>
 
-    <section id="Commands">
-        <h2>Commands</h2>
+        <p><strong>Option 2:</strong> <a href="#condcondition-trueval-falseval"><code>cond(...)</code></a> → Conditional replacement.</p>
+        <ul>
+          <li><strong>Find</strong>: <code>word</code></li>
+          <li><strong>Replace</strong>: <code>cond(CNT==1, "FirstWord")</code></li>
+          <li><strong>Result</strong>: Changes only the <strong>first</strong> occurrence of "word" to "FirstWord".</li>
+        </ul>
+      </li>
 
-        <h3 id="setstrorcalc">set(strOrCalc)</h3>
-        <p>Directly outputs strings or numbers, replacing the matched text with a specified or calculated value.</p>
-        <table class="optionsTable">
-            <tr>
-                <th>Find</th>
-                <th>Replace with</th>
-                <th>Regex</th>
-                <th>Description/Expected Output</th>
-            </tr>
-            <tr>
-                <td><code>apple</code></td>
-                <td><code>set("banana")</code></td>
-                <td>No</td>
-                <td>Replaces every occurrence of <code>apple</code> with the string <code>"banana"</code>.</td>
-            </tr>
-            <tr>
-                <td><code>(\d+)</code></td>
-                <td><code>set(CAP1 * 2)</code></td>
-                <td>Yes</td>
-                <td>Doubles any found number; e.g., <code>10</code> becomes <code>20</code>.</td>
-            </tr>
-            <tr>
-                <td><code>found</code></td>
-                <td><code>set("Found #"..CNT.." at position "..APOS)</code></td>
-                <td>No</td>
-                <td>Shows how many times <code>found</code> was detected and its absolute position.</td>
-            </tr>
-        </table>
-        
-        <h3 id="condcondition-trueval-falseval">cond(condition, trueVal, [falseVal])</h3>
-        <p>Evaluates the condition and outputs <code>trueVal</code> if the condition is true, otherwise <code>falseVal</code>. If <code>falseVal</code> is omitted, the original text remains unchanged when the condition is false.</p>
-        <table class="optionsTable">
-            <tr>
-                <th>Find</th>
-                <th>Replace with</th>
-                <th>Regex</th>
-                <th>Description/Expected Output</th>
-            </tr>
-            <tr>
-                <td><code>word</code></td>
-                <td><code>cond(CNT==1, "First 'word'", "Another 'word'")</code></td>
-                <td>No</td>
-                <td>For the first occurrence of <code>word</code> → <code>"First 'word'"</code>; for subsequent matches → <code>"Another 'word'"</code>.</td>
-            </tr>
-            <tr>
-                <td><code>(\d+)</code></td>
-                <td><code>cond(CAP1>100, "Large number", cond(CAP1>50, "Medium number", "Small number"))</code></td>
-                <td>Yes</td>
-                <td>For a numeric match: if &gt; 100 → <code>"Large number"</code>, if &gt; 50 → <code>"Medium number"</code>, otherwise → <code>"Small number"</code>.</td>
-            </tr>
-            <tr>
-                <td><code>anymatch</code></td>
-                <td><code>cond(APOS&lt;50, "Early in document", "Later in document")</code></td>
-                <td>No</td>
-                <td>If the absolute position <code>APOS</code> is under 50 → <code>"Early in document"</code>, otherwise → <code>"Later in document"</code>.</td>
-            </tr>
-        </table>
+      <li>
+        <strong>Use Basic Variables:</strong>
+        <ul>
+          <li><strong><code>CNT</code></strong>: Inserts the current match number (e.g., "1" for the first match, "2" for the second).</li>
+          <li><strong><code>CAP1</code>, <code>CAP2</code>, etc.:</strong> Holds captured groups when Regex is enabled.<br>
+            <blockquote>
+              <strong>Capture Groups:</strong><br>
+              With a regex in parentheses <code>(...)</code>, matched text is stored in <code>CAP</code> variables (e.g., <code>(\d+)</code> in <code>Item 123</code> stores <code>123</code> in <code>CAP1</code>).  For more details, refer to regex documentation.
+            </blockquote>
+          </li>
+        </ul>
+        See the <a href="#Variables">Variables Overview</a> for a complete list.
+      </li>
+    </ol>
+  </section>
 
+  <hr>
 
-         <!-- vars({Variable1=Value1, Variable2=Value2, ...}) -->
-         <h3 id="varsvariable1value1-variable2value2-">vars({Variable1=Value1, Variable2=Value2, ...})</h3>
-         <p><strong>Note:</strong> This command was previously named <code>init(...)</code> and has been renamed to <code>vars(...)</code>. For compatibility, <code>init(...)</code> still works.</p>
-         <p>
-         Initializes custom variables for use in various commands, extending beyond standard variables like <code>CNT</code>, <code>MATCH</code>, <code>CAP1</code>. These variables can carry the status of previous find-and-replace operations to subsequent ones.
-         </p>
-         <p>
-         Custom variables maintain their values throughout a single Replace-All or within a list of multiple Replace operations, allowing them to transfer values from one list entry to the next. They reset at the start of each new document in <em>'Replace All in All Open Documents'</em>.
-         </p>
-         <p><strong>Tip:</strong> To learn how to preload variables using an empty Find field before the main replacement process starts, see <a href="#preloading-variables">Preloading Variables</a>.</p>
-         
-         <table class="optionsTable">
-             <tr>
-                 <th>Find</th>
-                 <th>Replace</th>
-                 <th>Before</th>
-                 <th>After</th>
-                 <th>Regex</th>
-                 <th>Scope CSV</th>
-                 <th>Description</th>
-             </tr>
-             <tr>
-                 <td><code>(\d+)</code></td>
-                 <td>
-                     <code>vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);<br>
-                     if COL==2 then COL2=CAP1 end;<br>
-                     if COL==4 then COL4=CAP1 end;</code>
-                 </td>
-                 <td>1,20,text,2,0<br>2,30,text,3,0<br>3,40,text,4,0</td>
-                 <td>1,20,text,2,22.0<br>2,30,text,3,33.0<br>3,40,text,4,44.0</td>
-                 <td>Yes</td>
-                 <td>Yes</td>
-                 <td>Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line.</td>
-             </tr>
-         </table>
-         
-         <!-- lvars(filePath) -->
-         <h3 id="lvarsfilepath">lvars(filePath)</h3>
-         <p>
-         Loads custom variables from an external file. The file specifies variable names and their corresponding values. The loaded variables can then be used throughout the Replace process, similar to how variables defined with <a href="#varsvariable1value1-variable2value2-"><code>vars</code></a> work.
-         </p>
-         <p>The parameter <strong>filePath</strong> must specify a valid path to a file. Supported path formats include:</p>
-         <ul>
-             <li>Long Bracket String: &nbsp;&nbsp;&nbsp;<code>[[C:\path\to\file.vars]]</code></li>
-             <li>Forward Slashes: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code>"C:/path/to/file.vars"</code></li>
-             <li>Escaped Backslashes: &nbsp;<code>"C:\\path\\to\\file.vars"</code></li>
-         </ul>
-         <p><strong>Example File:</strong></p>
-<pre><code>-- Local variables remain private
-local PATH = [[C:\Data\Projects\Example\]]
+  <section id="Variables">
+    <h2>Variables Overview</h2>
+    <table class="optionsTable">
+      <tr>
+        <th>Variable</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><strong>CNT</strong></td>
+        <td>Count of the detected string.</td>
+      </tr>
+      <tr>
+        <td><strong>LCNT</strong></td>
+        <td>Count of the detected string within the line.</td>
+      </tr>
+      <tr>
+        <td><strong>LINE</strong></td>
+        <td>Line number where the string is found.</td>
+      </tr>
+      <tr>
+        <td><strong>LPOS</strong></td>
+        <td>Relative character position within the line.</td>
+      </tr>
+      <tr>
+        <td><strong>APOS</strong></td>
+        <td>Absolute character position in the document.</td>
+      </tr>
+      <tr>
+        <td><strong>COL</strong></td>
+        <td>Column number where the string was found (CSV-Scope option selected).</td>
+      </tr>
+      <tr>
+        <td><strong>MATCH</strong></td>
+        <td>Contains the text of the detected string, in contrast to <code>CAP</code> variables which correspond to capture groups in regex patterns.</td>
+      </tr>
+      <tr>
+        <td><strong>FNAME</strong></td>
+        <td>Filename or window title for new, unsaved files.</td>
+      </tr>
+      <tr>
+        <td><strong>FPATH</strong></td>
+        <td>Full path including the filename, or empty for new, unsaved files.</td>
+      </tr>
+      <tr>
+        <td><strong>CAP1</strong>, <strong>CAP2</strong>, ...</td>
+        <td>These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.</td>
+      </tr>
+    </table>
+
+    <p><strong>Note:</strong></p>
+    <ul>
+      <li>FNAME and FPATH are updated for each file processed by <code>Replace All in All Open Docs</code> and <code>Replace All in Files</code>. This ensures that variables always refer to the file currently being modified.</li>
+      <li><strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.</li>
+    </ul>
+  </section>
+
+  <br>
+
+  <section id="Commands">
+    <h2>Commands</h2>
+
+    <h3>String Composition</h3>
+    <p><code>..</code> is employed for concatenation.<br>
+    E.g., <code>"Detected "..CNT.." times."</code></p>
+
+    <br>
+
+    <h3 id="setstrorcalc">set(strOrCalc)</h3>
+    <p>Directly outputs strings or numbers, replacing the matched text with a specified or calculated value.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace with</th>
+        <th>Regex</th>
+        <th>Description/Expected Output</th>
+      </tr>
+      <tr>
+        <td><code>apple</code></td>
+        <td><code>set("banana")</code></td>
+        <td>No</td>
+        <td>Replaces every occurrence of <code>apple</code> with the string <code>"banana"</code>.</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>set(CAP1 * 2)</code></td>
+        <td>Yes</td>
+        <td>Doubles any found number; e.g., <code>10</code> becomes <code>20</code>.</td>
+      </tr>
+      <tr>
+        <td><code>found</code></td>
+        <td><code>set("Found #"..CNT.." at position "..APOS)</code></td>
+        <td>No</td>
+        <td>Shows how many times <code>found</code> was detected and its absolute position.</td>
+      </tr>
+    </table>
+
+    <br>
+
+    <h3 id="condcondition-trueval-falseval">cond(condition, trueVal, [falseVal])</h3>
+    <p>Evaluates the condition and outputs <code>trueVal</code> if the condition is true, otherwise <code>falseVal</code>. If <code>falseVal</code> is omitted, the original text remains unchanged when the condition is false.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace with</th>
+        <th>Regex</th>
+        <th>Description/Expected Output</th>
+      </tr>
+      <tr>
+        <td><code>word</code></td>
+        <td><code>cond(CNT==1, "First 'word'", "Another 'word'")</code></td>
+        <td>No</td>
+        <td>For the first occurrence of <code>word</code> → <code>"First 'word'"</code>; for subsequent matches → <code>"Another 'word'"</code>.</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>cond(CAP1&gt;100, "Large number", cond(CAP1&gt;50, "Medium number", "Small number"))</code></td>
+        <td>Yes</td>
+        <td>For a numeric match: if &gt; 100 → <code>"Large number"</code>, if &gt; 50 → <code>"Medium number"</code>, otherwise → <code>"Small number"</code>.</td>
+      </tr>
+      <tr>
+        <td><code>anymatch</code></td>
+        <td><code>cond(APOS&lt;50, "Early in document", "Later in document")</code></td>
+        <td>No</td>
+        <td>If the absolute position <code>APOS</code> is under 50 → <code>"Early in document"</code>, otherwise → <code>"Later in document"</code>.</td>
+      </tr>
+    </table>
+
+    <br>
+
+    <h3 id="varsvariable1value1-variable2value2-">vars({Variable1=Value1, Variable2=Value2, ...})</h3>
+    <p><strong>Note:</strong> This command was previously named <code>init(...)</code> and has been renamed to <code>vars(...)</code>. For compatibility, <code>init(...)</code> still works.</p>
+    <p>Initializes custom variables for use in various commands, extending beyond standard variables like <code>CNT</code>, <code>MATCH</code>, <code>CAP1</code>. These variables can carry the status of previous find-and-replace operations to subsequent ones.</p>
+    <p>Custom variables maintain their values throughout a single Replace-All or within a list of multiple Replace operations. Thus, they can transfer values from one list entry to subsequent ones. They reset at the start of each new document in <strong>'Replace All in All Open Documents'</strong>.</p>
+    <p><strong>Init usage:</strong> can be used as an init entry (empty Find) to preload before replacements; not mandatory. See <a href="#preload-variables--helpers">Preload variables &amp; helpers</a> for workflow and examples.</p>
+
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Before</th>
+        <th>After</th>
+        <th>Regex</th>
+        <th>Scope CSV</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);</code><br><code>if COL==2 then COL2=CAP1 end;</code><br><code>if COL==4 then COL4=CAP1 end;</code></td>
+        <td>1,20,text,2,0<br>2,30,text,3,0<br>3,40,text,4,0</td>
+        <td>1,20,text,2,22.0<br>2,30,text,3,33.0<br>3,40,text,4,44.0</td>
+        <td>Yes</td>
+        <td>Yes</td>
+        <td>Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line.</td>
+      </tr>
+      <tr>
+        <td><code>\d{2}-[A-Z]{3}</code></td>
+        <td><code>vars({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;</code></td>
+        <td>12-POV,00-PLC<br>65-SUB,00-PLC<br>43-VOL,00-PLC</td>
+        <td>Moved,12-POV<br>Moved,65-SUB<br>Moved,43-VOL</td>
+        <td>Yes</td>
+        <td>No</td>
+        <td>Uses <code>MATCH_PREV</code> to track the first match in the line and shift it to the 2nd (<code>LCNT</code>) match during replacements.</td>
+      </tr>
+    </table>
+
+    <br>
+
+    <h3 id="lvarsfilepath">lvars(filePath)</h3>
+    <p>Loads custom variables from an external file. The file specifies variable names and their corresponding values. The loaded variables can then be used throughout the Replace process, similar to how variables defined with <a href="#varsvariable1value1-variable2value2-">vars</a> work.</p>
+    <p>The parameter <strong>filePath</strong> must specify a valid path to a file. Supported path formats include:</p>
+    <ul>
+      <li>Escaped Backslashes: <code>"C:\\path\\to\\file.vars"</code></li>
+      <li>Forward Slashes: <code>"C:/path/to/file.vars"</code></li>
+      <li>Long Bracket String: <code>[[C:\path\to\file.vars]]</code></li>
+    </ul>
+
+    <p><strong>File:</strong></p>
+    <pre><code>-- Local variables remain private
+local PATH = [[C:\Data\Projects\\]]
 
 -- Only the returned variables are accessible in Replace operations
 return {
@@ -586,362 +593,425 @@ return {
     fullPath = PATH .. "dataFile.lkp" -- Combine a local variable with a string
 }
 </code></pre>
-         <p><strong>Tip:</strong> To learn how to preload variables using an empty Find field before the main replacement process starts, see <a href="#preloading-variables">Preloading Variables</a>.</p>
-         
-         <table class="optionsTable">
-             <tr>
-                 <th>Find</th>
-                 <th>Replace</th>
-                 <th>Regex</th>
-                 <th>Scope CSV</th>
-                 <th>Description</th>
-             </tr>
-             <tr>
-                 <td>(empty)</td>
-                 <td><code>lvars([[C:/tmp/myVars.vars]])</code></td>
-                 <td>No</td>
-                 <td>No</td>
-                 <td>Loads variables such as <code>userName = "Alice"</code> and <code>threshold = 10</code> from <code>myVars.vars</code>.</td>
-             </tr>
-             <tr>
-                 <td><code>Hello</code></td>
-                 <td><code>set(userName)</code></td>
-                 <td>No</td>
-                 <td>No</td>
-                 <td>Replaces <code>Hello</code> with the value of the variable <code>userName</code>, e.g., "Alice".</td>
-             </tr>
-             <tr>
-                 <td><code>(\d+)</code></td>
-                 <td><code>cond(threshold &gt; 5, "Above", "Below")</code></td>
-                 <td>Yes</td>
-                 <td>No</td>
-                 <td>Replaces the match based on the condition evaluated using the variable <code>threshold</code>.</td>
-             </tr>
-         </table>
-         <p>
-         <strong>Key Points:</strong>
-         <ul>
-             <li><strong>Conditional Loading:</strong> Variables can be loaded conditionally by placing <code>lvars(filePath)</code> alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.</li>
-             <li><strong>Local vs. Returned Variables:</strong> Only variables explicitly included in the return table of the <code>.vars</code> file are available for use. Any local variables remain private to the file.</li>
-         </ul>
-         </p>
-         
-         <!-- lkp(key, hpath, inner) -->
-         <h3 id="lkpkey-hpath-inner">lkp(key, hpath, inner)</h3>
-         <p>
-         Performs an external lookup of <strong>key</strong> against an indexed data file located at <strong>hpath</strong> and returns the corresponding value. By default, if the <strong>key</strong> is not found, <code>lkp()</code> reverts to the key itself. Setting <strong>inner</strong> to <code>true</code> instead yields a <code>nil</code> result when the key is missing, allowing for conditional checks or deeper nested logic.
-         </p>
-         <h4>Key and File Path</h4>
-         <ul>
-             <li><strong>Key</strong>: The key can be either a string or a number. Numbers are automatically converted to strings for compatibility.</li>
-             <li><strong>File Path (hpath)</strong>: The hpath must point to a valid <code>.lkp</code> file that returns a table of data.
-               <br><em>Supported Path Formats</em>:
-                 <ul>
-                     <li>Long Bracket String: &nbsp;&nbsp;&nbsp;<code>[[C:\path\to\file.lkp]]</code></li>
-                     <li>Forward Slashes: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code>"C:/path/to/file.lkp"</code></li>
-                     <li>Escaped Backslashes: &nbsp;<code>"C:\\path\\to\\file.lkp"</code></li>
-                 </ul>
-             </li>
-         </ul>
-        
-        <h4>Data File Format</h4>
-        <p>Each lkp file must be defined as a table of entries in the form <code>{ [keys], value }</code>, where <code>[keys]</code> can be:</p>
+
+    <p><strong>Init usage:</strong> can be used as an init entry (empty Find) to preload before replacements; not mandatory. See <a href="#preload-variables--helpers">Preload variables &amp; helpers</a> for workflow and examples.</p>
+
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Regex</th>
+        <th>Scope CSV</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><em>(empty)</em></td>
+        <td><code>lvars([[C:\tmp\m\Vars.vars]])</code></td>
+        <td>No</td>
+        <td>No</td>
+        <td>Loads variables such as <code>userName = "Alice"</code> and <code>threshold = 10</code> from <code>myVars.vars</code>.</td>
+      </tr>
+      <tr>
+        <td><code>Hello</code></td>
+        <td><code>set(userName)</code></td>
+        <td>No</td>
+        <td>No</td>
+        <td>Replaces <code>Hello</code> with the value of the variable <code>userName</code>, e.g., "Alice".</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>cond(threshold &gt; 5, "Above", "Below")</code></td>
+        <td>Yes</td>
+        <td>No</td>
+        <td>Replaces the match based on the condition evaluated using the variable <code>threshold</code>.</td>
+      </tr>
+    </table>
+
+    <p><strong>Key Points</strong></p>
+    <ul>
+      <li><strong>Conditional Loading</strong>: Variables can be loaded conditionally by placing lvars(filePath) alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.</li>
+      <li><strong>Local vs. Returned Variables</strong>: Only variables explicitly included in the return table of the .vars file are available for use. Any local variables remain private to the file.</li>
+    </ul>
+
+    <br>
+
+    <h3 id="lkpkey-hpath-inner">lkp(key, hpath, inner)</h3>
+    <p>Performs an external lookup of <strong>key</strong> against an indexed data file located at <strong>hpath</strong> and returns the corresponding value. By default, if the <strong>key</strong> is not found, <code>lkp()</code> simply reverts to the key itself. Setting <strong>inner</strong> to <code>true</code> instead yields a <code>nil</code> result when the key is missing, allowing for conditional checks or deeper nested logic.</p>
+
+    <h4>Key and File Path</h4>
+    <ul>
+      <li><strong>Key</strong>:<br>The <strong>key</strong> can be either a string or a number. Numbers are automatically converted to strings to ensure compatibility in the lookup process.</li>
+      <li><strong>File Path (hpath)</strong>:<br>The <strong>hpath</strong> must point to a valid <code>.lkp</code> file that returns a table of data.<br>
+        <strong>Supported Path Formats</strong>:
         <ul>
-            <li>A single key (e.g., <code>"001"</code>).</li>
-            <li>An array of keys (e.g., <code>{"001", "1", 1}</code>) mapping to the same value.</li>
+          <li>Escaped Backslashes: <code>"C:\\path\\to\\file.lkp"</code></li>
+          <li>Forward Slashes: <code>"C:/path/to/file.lkp"</code></li>
+          <li>Long Bracket String: <code>[[C:\path\to\file.lkp]]</code></li>
         </ul>
-<pre><code>return {
+      </li>
+    </ul>
+
+    <h4>Data File Format</h4>
+    <p>Each lkp file must be defined as a table of entries in the form <code>{ [keys], value }</code>, where <code>[keys]</code> can be:</p>
+    <ul>
+      <li>A single key (e.g., <code>"001"</code>).</li>
+      <li>An array of keys (e.g., <code>{ "001", "1", 1 }</code>) mapping to the same value.</li>
+    </ul>
+
+    <pre><code>return {
     { {"001", "1", 1}, "One" },
     { 2, "Two" },
     { "003", "Three" }
 }
 </code></pre>
-        <p>
-        In this example:
-        <ul>
-            <li><code>'001'</code>, <code>'1'</code>, and <code>1</code> all correspond to <code>"One"</code>.</li>
-            <li><code>2</code> corresponds to <code>"Two"</code>.</li>
-            <li><code>'003'</code> directly maps to <code>"Three"</code>.</li>
-        </ul>
-        </p>
-        
-        <h4>Caching Mechanism</h4>
-        <p>
-        Once <code>lkp()</code> loads the data file for <em>hpath</em>, the parsed table is cached in memory for the duration of the Replace-All operation.
-        </p>
-        
-        <h4>inner Flag</h4>
-        <ul>
-            <li><strong>false</strong> (default, can be omitted): If the key is not found, <code>lkp()</code> returns the <strong>search term itself</strong> (e.g., <code>MATCH</code>, <code>CAP1</code>), instead of a mapped value.</li>
-            <li><strong>true</strong>: If the key is not found, <code>lkp()</code> returns <code>nil</code>, allowing conditional handling.</li>
-        </ul>
-        
-        <h4>Examples</h4>
-        <table class="optionsTable">
-            <tr>
-                <th>Find</th>
-                <th>Replace</th>
-                <th>Regex</th>
-                <th>Scope CSV</th>
-                <th>Description</th>
-            </tr>
-            <tr>
-                <td><code>\b\w+\b</code></td>
-                <td><code>lkp(MATCH, [[C:\tmp\hash.lkp]], true)</code></td>
-                <td>Yes</td>
-                <td>No</td>
-                <td>Uses <strong>inner = true</strong>: If a match is found in the lookup file, replaces it with the mapped value. If no match is found, the original word is removed.</td>
-            </tr>
-            <tr>
-                <td><code>(\d+)</code></td>
-                <td><code>lkp(CAP1, "C:/path/to/myLookupFile.lkp")</code></td>
-                <td>Yes</td>
-                <td>No</td>
-                <td>Uses <strong>inner = false</strong> (default): If a match is found, replaces it with the mapped value. Otherwise, returns the original text (<code>CAP1</code>).</td>
-            </tr>
-            <tr>
-                <td><code>\b\w+\b</code></td>
-                <td><code>output = lkp(MATCH, [[C:\tmp\hash.lkp]], true).result; set(output or "NoKey")</code></td>
-                <td>Yes</td>
-                <td>No</td>
-                <td>Uses <strong>inner = true</strong>: If the lookup result is non-<code>nil</code>, replaces with the mapped value. Otherwise, replaces with <code>"NoKey"</code>.</td>
-            </tr>
-            <tr>
-                <td><code>\b\w+\b</code></td>
-                <td><code>cond(COL==3, lkp(MATCH, [[C:/tmp/col3_hash.lkp]]))</code></td>
-                <td>No</td>
-                <td>Yes</td>
-                <td>Looks up values in the third column (<code>COL==3</code>) using a separate lookup file (<code>col3_hash.lkp</code>) if a match is found.</td>
-            </tr>
-        </table>
-        
-        <h3 id="fmtnnum-maxdecimals-fixeddecimals">fmtN(num, maxDecimals, fixedDecimals)</h3>
-        <p>
-        Formats numbers based on precision (<em>maxDecimals</em>) and whether the number of decimals is fixed (<em>fixedDecimals</em> being <code>true</code> or <code>false</code>).
-        </p>
-        <p><strong>Note</strong>: The <code>fmtN</code> command can exclusively be used within the <code>set</code> and <code>cond</code> commands.</p>
-        <table class="optionsTable">
-            <tr>
-                <th>Example</th>
-                <th>Result</th>
-            </tr>
-            <tr>
-                <td><code>set(fmtN(5.73652, 2, true))</code></td>
-                <td>5.74</td>
-            </tr>
-            <tr>
-                <td><code>set(fmtN(5.0, 2, true))</code></td>
-                <td>5.00</td>
-            </tr>
-            <tr>
-                <td><code>set(fmtN(5.73652, 4, false))</code></td>
-                <td>5.7365</td>
-            </tr>
-            <tr>
-                <td><code>set(fmtN(5.0, 4, false))</code></td>
-                <td>5</td>
-            </tr>
-        </table>
-    </section>
 
-    <section id="preloading-variables">
-        <h2>Preloading Variables</h2>
-        <p>MultiReplace supports <strong>predefining or loading variables</strong> before any replacements occur. By separating initialization from the actual replacements, operations stay clean and maintainable.</p>
-        
-        <h3>🔹 How it works:</h3>
-        <ul>
-            <li>Place <code>vars()</code> or <code>lvars()</code> next to an empty Find field.</li>
-            <li>This entry does <strong>not</strong> search for matches but runs before replacements begin.</li>
-            <li>It ensures that <strong>variables are loaded once</strong>, regardless of their position in the list.</li>
-        </ul>
-        
-        <h3>Examples</h3>
-        <table class="optionsTable">
-            <tr>
-                <th>Find</th>
-                <th>Replace</th>
-                <th>Description</th>
-            </tr>
-            <tr>
-                <td>(empty)</td>
-                <td><code>vars({prefix = "ID_"})</code></td>
-                <td>Sets <code>prefix = "ID_"</code> before replacements.</td>
-            </tr>
-            <tr>
-                <td>(empty)</td>
-                <td><code>lvars([[C:/path/to/myVars.vars]])</code></td>
-                <td>Loads external variables from a file.</td>
-            </tr>
-            <tr>
-                <td><code>(\d+)</code></td>
-                <td><code>set(prefix .. CAP1)</code></td>
-                <td>Uses <code>prefix</code> from initialization (e.g., <code>123</code> → <code>ID_123</code>).</td>
-            </tr>
-        </table>
-    </section>
+    <p>In this example:</p>
+    <ul>
+      <li><code>'001'</code>, <code>'1'</code>, and <code>1</code> all correspond to <code>"One"</code>.</li>
+      <li><code>2</code> corresponds to <code>"Two"</code>.</li>
+      <li><code>'003'</code> directly maps to <code>"Three"</code>.</li>
+    </ul>
 
-    <section id="Operators">
-        <h2>Operators</h2>
-        <table class="optionsTable">
-            <tr>
-                <th>Type</th>
-                <th>Operators</th>
-                <th>Example</th>
-            </tr>
-            <tr>
-                <td>Concatenation</td>
-                <td><code>..</code></td>
-                <td><code>set("Found "..CNT)</code></td>
-            </tr>
-            <tr>
-                <td>Arithmetic</td>
-                <td><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>^</code>, <code>%</code></td>
-                <td><code>set(CNT * 2)</code></td>
-            </tr>
-            <tr>
-                <td>Relational</td>
-                <td><code>==</code>, <code>~=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code></td>
-                <td><code>cond(LINE == 1, "First", "Not first")</code></td>
-            </tr>
-            <tr>
-                <td>Logical</td>
-                <td><code>and</code>, <code>or</code>, <code>not</code></td>
-                <td><code>cond(LINE &gt; 5 and CNT &lt; 10, "Midrange", "Other")</code></td>
-            </tr>
-        </table>
-    </section>
-	
-    <section id="IfThenLogic">
-        <h2>If-Then Logic</h2>
-        <p>
-            If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.
-        </p>
-        <p>
-            <strong>Note</strong>: Do not embed <code>cond()</code>, <code>set()</code>, or <code>vars()</code> within <code>if</code> statements; <code>if</code> statements are exclusively for adjusting custom variables.
-        </p>
-        <h3>Syntax Combinations</h3>
-        <ul>
-            <li><code>if condition then ... end</code></li>
-            <li><code>if condition then ... else ... end</code></li>
-            <li><code>if condition then ... elseif another_condition then ... end</code></li>
-            <li><code>if condition then ... elseif another_condition then ... else ... end</code></li>
-        </ul>
-        <h3>Example</h3>
-        <p>
-            This example shows how to use <code>if</code> statements with <code>cond()</code> to manage variables based on conditions:
-        </p>
-        <code>vars({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end</code>
-    </section>
+    <h4>Caching Mechanism</h4>
+    <p>Once <code>lkp()</code> loads the data file for <strong>hpath</strong>, the parsed table is cached in memory for the duration of the Replace-All operation.</p>
 
-    <section id="DebugOption">
-        <h2>DEBUG option</h2>
-        <p>
-            The <code>DEBUG</code> option lets you inspect global variables during replacements. When enabled, it opens a message box displaying the current values of all global variables for each replacement hit, requiring confirmation to proceed to the next match. Initialize the <code>DEBUG</code> option in your replacement string to enable it.
-        </p>
-        <h3>Example</h3>
-        <table class="optionsTable">
-            <tr>
-                <th>Find:</th>
-                <th>Replace with:</th>
-            </tr>
-            <tr>
-                <td>(empty)</td>
-                <td><code>vars({DEBUG=true})</code></td>
-            </tr>
-        </table>
-    </section>
+    <h4>inner Flag</h4>
+    <ul>
+      <li><strong><code>false</code> (default, can be omitted)</strong>: If the key is not found, <code>lkp()</code> returns the <strong>search term itself</strong> (e.g., <code>MATCH</code>, <code>CAP1</code>), instead of a mapped value.</li>
+      <li><strong><code>true</code></strong>: If the key is not found, <code>lkp()</code> returns <code>nil</code>, allowing conditional handling.</li>
+    </ul>
 
-    <section id="FurtherFunctions">
-        <h2>Math &amp; String Functions</h2>
-        <p>
-            MultiReplace uses the <a href="https://www.lua.org/" target="_blank">Lua engine</a>, allowing for Lua math operations and string methods. Refer to 
-            <a href="https://www.lua.org/manual/5.4/manual.html#6.4" target="_blank">Lua String Manipulation</a> and 
-            <a href="https://www.lua.org/manual/5.4/manual.html#6.6" target="_blank">Lua Mathematical Functions</a> for more information.
-        </p>
-    </section>
+    <h4>Examples</h4>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Regex</th>
+        <th>Scope CSV</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><code>\b\w+\b</code></td>
+        <td><code>lkp(MATCH, [[C:\tmp\hash.lkp]], true)</code></td>
+        <td>Yes</td>
+        <td>No</td>
+        <td>Uses <strong>inner = true</strong>: If a match is found in the lookup file, replaces it with the mapped value. If no match is found, the original word is removed.</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>lkp(CAP1, "C:/path/to/myLookupFile.lkp")</code></td>
+        <td>Yes</td>
+        <td>No</td>
+        <td>Uses <strong>inner = false</strong> (default): If a match is found, replaces it with the mapped value. If no match is found, the original text (<code>CAP1</code>) is returned.</td>
+      </tr>
+      <tr>
+        <td><code>\b\w+\b</code></td>
+        <td><code>output = lkp(MATCH, [[C:\tmp\hash.lkp]], true).result; set(output or "NoKey")</code></td>
+        <td>Yes</td>
+        <td>No</td>
+        <td>Uses <strong>inner = true</strong>: If the lookup result is non-<code>nil</code>, replaces with the mapped value. Otherwise, replaces with <code>"NoKey"</code>.</td>
+      </tr>
+      <tr>
+        <td><code>\b\w+\b</code></td>
+        <td><code>cond(COL==3, lkp(MATCH, [[C:/tmp/col3_hash.lkp]]))</code></td>
+        <td>No</td>
+        <td>Yes</td>
+        <td>Looks up values in the third column (<code>COL==3</code>) using a separate lookup file (<code>col3_hash.lkp</code>). If a match is found, replaces it; otherwise, leaves it unchanged.</td>
+      </tr>
+    </table>
 
-    <section id="Examples">
-        <h2>Examples</h2>
-        <table class="optionsTable">
-            <tr>
-                <th>Find in:</th>
-                <th>Replace with:</th>
-                <th>Description/Expected Output</th>
-                <th>Regex</th>
-                <th>Scope CSV</th>
-            </tr>
-            <tr>
-                <td><code>;</code></td>
-                <td><code>cond(LCNT==5,";Column5;")</code></td>
-                <td>Adds a 5th Column for each line into a `;` delimited file.</td>
-                <td>No</td>
-                <td>No</td>
-            </tr>
-            <tr>
-                <td><code>key</code></td>
-                <td><code>set("key"..CNT)</code></td>
-                <td>Enumerates key values by appending the count of detected strings. E.g., key1, key2, key3, etc.</td>
-                <td>No</td>
-                <td>No</td>
-            </tr>
-            <tr>
-                <td><code>(\d+)</code></td>
-                <td><code>set(CAP1.."€ The VAT is: ".. (CAP1 * 0.15).."€ Total with VAT: ".. (CAP1 + (CAP1 * 0.15)).."€")</code></td>
-                <td>Finds a number and calculates the VAT at 15%, then displays the original amount, the VAT, and the total amount. E.g., `50` becomes `50€ The VAT is: 7.5€ Total with VAT: 57.5€`</td>
-                <td>Yes</td>
-                <td>No</td>
-            </tr>
-            <tr>
-                <td><code>---</code></td>
-                <td>
-                    <code>cond(COL==1 and LINE&lt;3, "0-2",
-                         cond(COL==2 and LINE&gt;2 and LINE&lt;5, "3-4",
-                           cond(COL==3 and LINE&gt;=5 and LINE&lt;10, "5-9",
-                             cond(COL==4 and LINE&gt;=10, "10+"))))</code>
-                </td>
-                <td>Replaces `---` with a specific range based on the `COL` and `LINE` values. E.g., `3-4` in column 2 of lines 3-4, and `5-9` in column 3 of lines 5-9.</td>
-                <td>No</td>
-                <td>Yes</td>
-            </tr>
-            <tr>
-                <td><code>(\d+)\.(\d+)\.(\d+)</code></td>
-                <td><code>cond(CAP1 &gt; 0 and CAP2 == 0 and CAP3 == 0, MATCH, cond(CAP2 &gt; 0 and CAP3 == 0, " " .. MATCH, " " .. MATCH))</code></td>
-                <td>Alters the spacing based on the hierarchy of the version numbers, aligning lower hierarchies with spaces as needed. E.g., `1.0.0` remains `1.0.0`, `1.2.0` becomes ` 1.2.0`, indicating a second-level version change.</td>
-                <td>Yes</td>
-                <td>No</td>
-            </tr>
-            <tr>
-                <td><code>(\d+)</code></td>
-                <td><code>set(CAP1 * 2)</code></td>
-                <td>Doubles the matched number. E.g., `100` becomes `200`.</td>
-                <td>Yes</td>
-                <td>No</td>
-            </tr>
-            <tr>
-                <td><code>;</code></td>
-                <td><code>cond(LCNT == 1, string.rep(" ", 20 - (LPOS))..";")</code></td>
-                <td>Inserts spaces before the semicolon to align it to the 20th character position if it's the first occurrence.</td>
-                <td>No</td>
-                <td>No</td>
-            </tr>
-            <tr>
-                <td><code>-</code></td>
-                <td><code>cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), "*", " ")</code></td>
-                <td>Draws a sine wave across a canvas of '-' characters spanning at least 20 lines and 80 characters per line.</td>
-                <td>No</td>
-                <td>No</td>
-            </tr>
-            <tr>
-                <td><code>^(.*)$</code></td>
-                <td><code>vars({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;</code></td>
-                <td>Removes duplicate lines, keeping the first occurrence of each line by comparing consecutive lines.</td>
-                <td>Yes</td>
-                <td>No</td>
-            </tr>
-        </table>
-    </section>
+    <br>
+
+    <h3 id="fmtnnum-maxdecimals-fixeddecimals">fmtN(num, maxDecimals, fixedDecimals)</h3>
+    <p>Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).</p>
+    <p><strong>Note</strong>: The <code>fmtN</code> command can exclusively be used within the <code>set</code> and <code>cond</code> commands.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Example</th>
+        <th>Result</th>
+      </tr>
+      <tr>
+        <td><code>set(fmtN(5.73652, 2, true))</code></td>
+        <td>5.74</td>
+      </tr>
+      <tr>
+        <td><code>set(fmtN(5.0, 2, true))</code></td>
+        <td>5.00</td>
+      </tr>
+      <tr>
+        <td><code>set(fmtN(5.73652, 4, false))</code></td>
+        <td>5.7365</td>
+      </tr>
+      <tr>
+        <td><code>set(fmtN(5.0, 4, false))</code></td>
+        <td>5</td>
+      </tr>
+    </table>
+
+    <br>
+
+    <h3 id="lcmdpath">lcmd(path)</h3>
+    <p>Load user-defined helper functions from a Lua file. The file must <code>return</code> a table of functions. <code>lcmd</code> registers those functions as globals for the current run.</p>
+    <p><strong>Purpose:</strong> add reusable helper functions (formatters, slugifiers, padding, small logic). Helpers <strong>must return a string or number</strong> and are intended to be called from <strong>action</strong> commands (e.g. <code>set(...)</code>, <code>cond(...)</code>).<br>
+    <strong>Init usage:</strong> can be used as an init entry (empty Find) to preload before replacements; not mandatory. See <a href="#preload-variables--helpers">Preload variables &amp; helpers</a> for workflow and examples.</p>
+
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Regex</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><em>(empty)</em></td>
+        <td><code>lcmd([[C:\tmp\mycmds.lcmd]])</code></td>
+        <td>No</td>
+        <td>Load helpers from file (init row — no replacement).</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>set(padLeft(CAP1, 6, '0'))</code></td>
+        <td>Yes</td>
+        <td>Zero-pad captured number to width 6 using <code>padLeft</code>.</td>
+      </tr>
+      <tr>
+        <td><code>(.+)</code></td>
+        <td><code>set(slug(CAP1))</code></td>
+        <td>Yes</td>
+        <td>Create a URL-safe slug from the whole line using <code>slug</code>.</td>
+      </tr>
+    </table>
+
+    <p><strong>File format:</strong></p>
+    <pre><code>return {
+-- padLeft: left-pad to width
+  padLeft = function(s, w, ch)
+    s = tostring(s or "")
+    ch = ch or " "
+    if #s >= w then return s end
+    return string.rep(ch, w - #s) .. s
+  end,
+
+-- slug: make URL-friendly
+  slug = function(s)
+    s = tostring(s or ""):lower()
+    s = s:gsub("%s+", "-"):gsub("[^%w%-]", "")
+    return s
+  end
+}
+</code></pre>
+
+  </section>
+
+  <section id="preload-variables--helpers">
+    <h2><strong>Preload variables &amp; helpers</strong></h2>
+    <p>Use init entries (empty Find) to preload variables or helper functions before any replacements run. Init entries run once per Replace-All (or per list pass) and do not change text directly.</p>
+
+    <h3><strong>How it works</strong></h3>
+    <ul>
+      <li><strong>Place <code>vars()</code>, <code>lvars()</code> or <code>lcmd()</code> next to an empty Find field.</strong></li>
+      <li>This entry does <strong>not</strong> search for matches but runs before replacements begin.</li>
+      <li>It ensures that <strong>variables and helpers are loaded once</strong>, regardless of their position in the list.</li>
+      <li>Use <strong>Use Variables = ON</strong> for init rows so loaded variables/helpers are available to later rows.</li>
+    </ul>
+
+    <h3>Examples</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><em>(empty)</em></td>
+        <td><code>vars({prefix = "ID_"})</code></td>
+        <td>Set <code>prefix</code> before replacements.</td>
+      </tr>
+      <tr>
+        <td><em>(empty)</em></td>
+        <td><code>lvars([[C:\path\to\myVars.vars]])</code></td>
+        <td>Load variables from file (file must <code>return { ... }</code>).</td>
+      </tr>
+      <tr>
+        <td><em>(empty)</em></td>
+        <td><code>lcmd([[C:\tmp\mycmds.lcmd]])</code></td>
+        <td>Load helpers from file (e.g. <code>padLeft</code>, <code>slug</code>).</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>set(prefix .. CAP1)</code></td>
+        <td>Uses <code>prefix</code> from init (<code>123</code> → <code>ID_123</code>).</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>set(padLeft(CAP1, 6, '0'))</code></td>
+        <td>Use helper loaded by <code>lcmd</code> to zero-pad (<code>123</code> → <code>000123</code>).</td>
+      </tr>
+      <tr>
+        <td><code>(.+)</code></td>
+        <td><code>set(slug(CAP1))</code></td>
+        <td>Use helper loaded by <code>lcmd</code> to create a slug (<code>Hello World!</code> → <code>hello-world</code>).</td>
+      </tr>
+    </table>
+  </section>
+
+  <br>
+
+ <section id="Operators">
+     <h2>Operators</h2>
+     <table class="optionsTable">
+         <tr>
+             <th>Type</th>
+             <th>Operators</th>
+             <th>Example</th>
+         </tr>
+         <tr>
+             <td>Concatenation</td>
+             <td><code>..</code></td>
+             <td><code>set("Found "..CNT)</code></td>
+         </tr>
+         <tr>
+             <td>Arithmetic</td>
+             <td><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>^</code>, <code>%</code></td>
+             <td><code>set(CNT * 2)</code></td>
+         </tr>
+         <tr>
+             <td>Relational</td>
+             <td><code>==</code>, <code>~=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code></td>
+             <td><code>cond(LINE == 1, "First", "Not first")</code></td>
+         </tr>
+         <tr>
+             <td>Logical</td>
+             <td><code>and</code>, <code>or</code>, <code>not</code></td>
+             <td><code>cond(LINE &gt; 5 and CNT &lt; 10, "Midrange", "Other")</code></td>
+         </tr>
+     </table>
+ </section>
+
+  <br>
+
+  <section id="IfThenLogic">
+    <h2>If-Then Logic</h2>
+    <p>If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.</p>
+    <p><strong>Note</strong>: Do not embed <code>cond()</code>, <code>set()</code>, or <code>vars()</code> within if statements; if statements are exclusively for adjusting custom variables.</p>
+
+    <h4>Syntax Combinations</h4>
+    <ul>
+      <li><code>if condition then ... end</code></li>
+      <li><code>if condition then ... else ... end</code></li>
+      <li><code>if condition then ... elseif another_condition then ... end</code></li>
+      <li><code>if condition then ... elseif another_condition then ... else ... end</code></li>
+    </ul>
+
+    <h4>Example</h4>
+    <p>This example shows how to use <code>if</code> statements with <code>cond()</code> to manage variables based on conditions:</p>
+    <p><code>vars({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end</code></p>
+  </section>
+
+  <br>
+
+  <section id="DebugOption">
+    <h2>DEBUG option</h2>
+    <p>The <code>DEBUG</code> option lets you inspect global variables during replacements. When enabled, it opens a message box displaying the current values of all global variables for each replacement hit, requiring confirmation to proceed to the next match. Initialize the <code>DEBUG</code> option in your replacement string to enable it.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+      </tr>
+      <tr>
+        <td><em>(empty)</em></td>
+        <td><code>vars({DEBUG=true})</code></td>
+      </tr>
+    </table>
+  </section>
+
+  <section id="FurtherFunctions">
+    <h2>Math &amp; String Functions</h2>
+    <p>
+      MultiReplace uses the <a href="https://www.lua.org/" target="_blank">Lua engine</a>, allowing for Lua math operations and string methods. Refer to 
+      <a href="https://www.lua.org/manual/5.4/manual.html#6.4" target="_blank">Lua String Manipulation</a> and 
+      <a href="https://www.lua.org/manual/5.4/manual.html#6.6" target="_blank">Lua Mathematical Functions</a> for more information.
+    </p>
+  </section>
+
+  <section id="Examples">
+    <h2>Examples</h2>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Regex</th>
+        <th>Scope CSV</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><code>;</code></td>
+        <td><code>cond(LCNT==5,";Column5;")</code></td>
+        <td>No</td>
+        <td>No</td>
+        <td>Adds a 5th Column for each line into a <code>`;`</code> delimited file.</td>
+      </tr>
+      <tr>
+        <td><code>key</code></td>
+        <td><code>set("key"..CNT)</code></td>
+        <td>No</td>
+        <td>No</td>
+        <td>Enumerates key values by appending the count of detected strings. E.g., key1, key2, key3, etc.</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>set(CAP1.."€ The VAT is: ".. (CAP1 * 0.15).."€ Total with VAT: ".. (CAP1 + (CAP1 * 0.15)).."€")</code></td>
+        <td>Yes</td>
+        <td>No</td>
+        <td>Finds a number and calculates the VAT at 15%, then displays the original amount, the VAT, and the total amount. E.g., <code>`50`</code> becomes <code>`50€ The VAT is: 7.5€ Total with VAT: 57.5€`</code>.</td>
+      </tr>
+      <tr>
+        <td><code>---</code></td>
+        <td><code>cond(COL==1 and LINE&lt;3, "0-2", cond(COL==2 and LINE&gt;2 and LINE&lt;5, "3-4", cond(COL==3 and LINE&gt;=5 and LINE&lt;10, "5-9", cond(COL==4 and LINE&gt;=10, "10+"))))</code></td>
+        <td>No</td>
+        <td>Yes</td>
+        <td>Replaces <code>`---`</code> with a specific range based on the <code>`COL`</code> and <code>`LINE`</code> values. E.g., <code>`3-4`</code> in column 2 of lines 3-4, and <code>`5-9`</code> in column 3 of lines 5-9 assuming <code>`---`</code> is found in all lines and columns.</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)\.(\d+)\.(\d+)</code></td>
+        <td><code>cond(CAP1 &gt; 0 and CAP2 == 0 and CAP3 == 0, MATCH, cond(CAP2 &gt; 0 and CAP3 == 0, " " .. MATCH, " " .. MATCH))</code></td>
+        <td>Yes</td>
+        <td>No</td>
+        <td>Alters the spacing based on the hierarchy of the version numbers, aligning lower hierarchies with spaces as needed. E.g., <code>`1.0.0`</code> remains <code>`1.0.0`</code>, <code>`1.2.0`</code> becomes <code>` 1.2.0`</code>, indicating a second-level version change.</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>set(CAP1 * 2)</code></td>
+        <td>Yes</td>
+        <td>No</td>
+        <td>Doubles the matched number. E.g., <code>`100`</code> becomes <code>`200`</code>.</td>
+      </tr>
+      <tr>
+        <td><code>;</code></td>
+        <td><code>cond(LCNT == 1, string.rep(" ", 20- (LPOS))..";")</code></td>
+        <td>No</td>
+        <td>No</td>
+        <td>Inserts spaces before the semicolon to align it to the 20th character position if it's the first occurrence.</td>
+      </tr>
+      <tr>
+        <td><code>-</code></td>
+        <td><code>cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), "*", " ")</code></td>
+        <td>No</td>
+        <td>No</td>
+        <td>Draws a sine wave across a canvas of '-' characters spanning at least 20 lines and 80 characters per line.</td>
+      </tr>
+      <tr>
+        <td><code>^(.*)$</code></td>
+        <td><code>vars({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;</code></td>
+        <td>Yes</td>
+        <td>No</td>
+        <td>Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses <code>MATCH_PREV</code> to identify and remove consecutive duplicates.</td>
+      </tr>
+    </table>
+  </section>
 
 </article>
+
 </main>
 
 <footer id="footer">
