@@ -350,7 +350,7 @@ Formats numbers based on precision (maxDecimals) and whether the number of decim
 
 #### **lcmd(path)**
 
-Load user-defined helper functions from a Lua file. The file **must** `return` a table of functions. `lcmd` registers those functions as globals for the current run.
+Load user-defined helper functions from a Lua file. The file must `return` a table of functions. `lcmd` registers those functions as globals for the current run.
 
 **Purpose:** add reusable helper functions (formatters, slugifiers, padding, small logic). Helpers **must return a string or number** and are intended to be called from **action** commands (e.g. `set(...)`, `cond(...)`).  
 **Init usage:** can be used as an init entry (empty Find) to preload before replacements; not mandatory. See [Preload variables & helpers](#preload-variables--helpers) for workflow and examples.
@@ -402,11 +402,6 @@ Use init entries (empty Find) to preload variables or helper functions before an
 | `(\d+)`     | `set(prefix .. CAP1)`                        | Uses `prefix` from init (`123` → `ID_123`). |
 | `(\d+)`     | `set(padLeft(CAP1, 6, '0'))`                 | Use helper loaded by `lcmd` to zero-pad (`123` → `000123`). |
 | `(.+)`      | `set(slug(CAP1))`                            | Use helper loaded by `lcmd` to create a slug (`Hello World!` → `hello-world`). |
-
-#### File notes
-- `lvars` / `lcmd` files must **return a table**. Recommended extension: `*.lua` (e.g. `myVars.vars`, `mycmds.lcmd`).  
-- `lcmd` registers helper functions globally for the run and **errors on name collisions** (no overrides).  
-- Errors from loading are reported to the user (loader returns `(false, errMsg)` on failure).
 
 <br>
 
