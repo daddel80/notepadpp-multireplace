@@ -26,7 +26,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
     - [lvars](#lvarsfilepath)
     - [lkp](#lkpkey-hpath-inner)
     - [fmtN](#fmtnnum-maxdecimals-fixeddecimals)
-  - [Preloading Variables](#preloading-variables)
+  - [Preload variables & helpers](#preload-variables--helpers)
   - [Operators](#operators)
   - [If-Then Logic](#if-then-logic)
   - [DEBUG option](#debug-option)
@@ -237,7 +237,7 @@ Initializes custom variables for use in various commands, extending beyond stand
 
 Custom variables maintain their values throughout a single Replace-All or within a list of multiple Replace operations. Thus, they can transfer values from one list entry to subsequent ones. They reset at the start of each new document in **'Replace All in All Open Documents'**.
 
-> **Tip**: To learn how to preload variables using an empty Find field before the main replacement process starts, see [Preloading Variables](#preloading-variables).
+**Init usage:** can be used as an init entry (empty Find) to preload before replacements; not mandatory. See [Preload variables & helpers](#preload-variables--helpers) for workflow and examples.
 
 | **Find**        | **Replace**                                                                                                                            | **Before**                                     | **After**                                              | **Regex** | **Scope CSV** | **Description**                                                                                                              |
 |-----------------|----------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------|--------------------------------------------------------|----------|--------------|------------------------------------------------------------------------------------------------------------------------------|
@@ -269,7 +269,7 @@ return {
 }
 ```
 
-> **Tip**: To learn how to preload variables using an empty Find field before the main replacement process starts, see [Preloading Variables](#preloading-variables).
+**Init usage:** can be used as an init entry (empty Find) to preload before replacements; not mandatory. See [Preload variables & helpers](#preload-variables--helpers) for workflow and examples.
 
 | Find          | Replace                                                                       | Regex | Scope CSV | Description                                                                                          |
 |---------------|-------------------------------------------------------------------------------|-------|-----------|------------------------------------------------------------------------------------------------------|
@@ -348,21 +348,65 @@ Formats numbers based on precision (maxDecimals) and whether the number of decim
 
 <br>
 
-### **Preloading Variables**
-MultiReplace supports **predefining or loading variables** before any replacements occur. By separating initialization from the actual replacements, operations stay clean and maintainable.
+#### **lcmd(path)**
 
-#### 🔹 **How it works:**
-- **Place `vars()` or `lvars()` next to an empty Find field.**
-- This entry does **not** search for matches but runs before replacements begin.
-- It ensures that **variables are loaded once**, regardless of their position in the list.
+Load user-defined helper functions from a Lua file. The file **must** `return` a table of functions. `lcmd` registers those functions as globals for the current run.
 
-**Examples**  
+**Purpose:** add reusable helper functions (formatters, slugifiers, padding, small logic). Helpers **must return a string or number** and are intended to be called from **action** commands (e.g. `set(...)`, `cond(...)`).  
+**Init usage:** can be used as an init entry (empty Find) to preload before replacements; not mandatory. See [Preload variables & helpers](#preload-variables--helpers) for workflow and examples.
 
-| **Find**    | **Replace**                                                 | **Description** |
-|--------------|------------------------------------------------------------|----------------|
-| *(empty)*   | `vars({prefix = "ID_"})`                                    | Sets `prefix = "ID_"` before replacements. |
-| *(empty)*   | `lvars([[C:\path\to\myVars.vars]])`                         | Loads external variables from a file. |
-| `(\d+)`     | `set(prefix .. CAP1)`                                       | Uses `prefix` from initialization (e.g., `123` → `ID_123`). |
+| Find      | Replace                                | Regex | Description |
+|-----------|----------------------------------------|-------|-------------|
+| *(empty)* | `lcmd([[C:\tmp\mycmds.lcmd]])`          | No    | Load helpers from file (init row — no replacement). |
+| `(\d+)`   | `set(padLeft(CAP1, 6, '0'))`           | Yes   | Zero-pad captured number to width 6 using `padLeft`. |
+| `(.+)`    | `set(slug(CAP1))`                      | Yes   | Create a URL-safe slug from the whole line using `slug`. |
+
+**File format:**
+```lua
+return {
+-- padLeft: left-pad to width
+  padLeft = function(s, w, ch)
+    s = tostring(s or "")
+    ch = ch or " "
+    if #s >= w then return s end
+    return string.rep(ch, w - #s) .. s
+  end,
+
+-- slug: make URL-friendly
+  slug = function(s)
+    s = tostring(s or ""):lower()
+    s = s:gsub("%s+", "-"):gsub("[^%w%-]", "")
+    return s
+  end
+}
+```
+
+<br>
+
+### **Preload variables & helpers**
+Use init entries (empty Find) to preload variables or helper functions before any replacements run. Init entries run once per Replace-All (or per list pass) and do not change text directly.
+
+#### **How it works**
+- **Place `vars()`, `lvars()` or `lcmd()` next to an empty Find field.**  
+- This entry does **not** search for matches but runs before replacements begin.  
+- It ensures that **variables and helpers are loaded once**, regardless of their position in the list.  
+- Use **Use Variables = ON** for init rows so loaded variables/helpers are available to later rows.
+
+#### Examples
+
+| **Find**    | **Replace**                                 | **Description** |
+|-------------|----------------------------------------------|-----------------|
+| *(empty)*   | `vars({prefix = "ID_"})`                     | Set `prefix` before replacements. |
+| *(empty)*   | `lvars([[C:\path\to\myVars.vars]])`           | Load variables from file (file must `return { ... }`). |
+| *(empty)*   | `lcmd([[C:\tmp\mycmds.lcmd]])`                | Load helpers from file (e.g. `padLeft`, `slug`). |
+| `(\d+)`     | `set(prefix .. CAP1)`                        | Uses `prefix` from init (`123` → `ID_123`). |
+| `(\d+)`     | `set(padLeft(CAP1, 6, '0'))`                 | Use helper loaded by `lcmd` to zero-pad (`123` → `000123`). |
+| `(.+)`      | `set(slug(CAP1))`                            | Use helper loaded by `lcmd` to create a slug (`Hello World!` → `hello-world`). |
+
+#### File notes
+- `lvars` / `lcmd` files must **return a table**. Recommended extension: `*.lua` (e.g. `myVars.vars`, `mycmds.lcmd`).  
+- `lcmd` registers helper functions globally for the run and **errors on name collisions** (no overrides).  
+- Errors from loading are reported to the user (loader returns `(false, errMsg)` on failure).
 
 <br>
 
@@ -560,6 +604,9 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Default**: `GroupResults=0` (disabled).
   - **Description**: This option changes how 'Find All' results are presented. When enabled (`1`), results are grouped by their source list entry, creating a categorized view. When disabled (`0`), all results are displayed as a single, flat list, sorted by their position in the document, without any categorization.
 
+- **SafeMode**: Controls which standard Lua libraries are available.  
+  - **Default**: `SafeMode=1` (enabled).  
+  - **Description**: When enabled (`1`), some libraries are disabled (`os`, `io`, `package`, `debug`, and functions like `dofile`, `require`, `load`). Common libraries such as `string`, `table`, `math`, `utf8`, `coroutine` remain available. When disabled (`0`), all standard libraries are loaded.
 
 ### Multilingual UI Support
 
