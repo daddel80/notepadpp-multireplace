@@ -1575,9 +1575,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
         return fn ? fn(ptr, m, w, l) : ::SendMessage(hSci, m, w, l);
         };
 
-    // ------------------------------------------------------------------
-    //  Determine anchor / caret lines
-    // ------------------------------------------------------------------
+    // Determine anchor / caret lines
     Sci_Position a = (Sci_Position)Sx(SCI_GETSELECTIONNANCHOR);
     Sci_Position c = (Sci_Position)Sx(SCI_GETCURRENTPOS);
     if (a > c) std::swap(a, c);
@@ -1586,44 +1584,35 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     int lastLine = (int)Sx(SCI_LINEFROMPOSITION, c);
     bool hasSel = (a != c);
 
-    // ------------------------------------------------------------------
-    //  Build list of display‑line ranges that must be deleted
-    // ------------------------------------------------------------------
+    // Build list of display-line ranges to delete (unchanged logic)
     struct DelRange { int first; int last; };
     std::vector<DelRange> ranges;
 
-    auto subtreeEnd = [&](int fromLine, int minIndent) -> int
-        {
-            int total = (int)Sx(SCI_GETLINECOUNT);
-            for (int l = fromLine; l < total; ++l)
-            {
-                int len = (int)Sx(SCI_LINELENGTH, l);
-                std::string raw(len, '\0');
-                Sx(SCI_GETLINE, l, (sptr_t)raw.data());
-                raw.resize(strnlen(raw.c_str(), len));
+    auto subtreeEnd = [&](int fromLine, int minIndent) -> int {
+        int total = (int)Sx(SCI_GETLINECOUNT);
+        for (int l = fromLine; l < total; ++l) {
+            int len = (int)Sx(SCI_LINELENGTH, l);
+            std::string raw(len, '\0');
+            Sx(SCI_GETLINE, l, (sptr_t)raw.data());
+            raw.resize(strnlen(raw.c_str(), len));
 
-                int indent = ResultDock::leadingSpaces(raw.c_str(), (int)raw.size());
-                if (indent <= minIndent && classify(raw) != LineKind::HitLine)
-                    return l - 1;                           // previous line ends subtree
-            }
-            return (int)Sx(SCI_GETLINECOUNT) - 1; // EOF
+            int indent = ResultDock::leadingSpaces(raw.c_str(), (int)raw.size());
+            // stop when same-or-less indent and not a HitLine
+            if (indent <= minIndent && classify(raw) != LineKind::HitLine)
+                return l - 1;
+        }
+        return (int)Sx(SCI_GETLINECOUNT) - 1;
         };
 
-    auto pushRange = [&](int first, int last)
-        {
-            if (ranges.empty() || first > ranges.back().last + 1)
-                ranges.push_back({ first, last });
-            else
-                ranges.back().last = (std::max)(ranges.back().last, last);
+    auto pushRange = [&](int f, int l) {
+        if (ranges.empty() || f > ranges.back().last + 1)
+            ranges.push_back({ f, l });
+        else
+            ranges.back().last = (std::max)(ranges.back().last, l);
         };
 
-    // ------------------------------------------------------------------
-    //  Selection mode: collect every header / hit and expand hierarchy
-    // ------------------------------------------------------------------
     if (hasSel) {
-        for (int l = firstLine; l <= lastLine; ++l)
-        {
-            // skip lines already included by previous pushRange
+        for (int l = firstLine; l <= lastLine; ++l) {
             if (!ranges.empty() && l <= ranges.back().last) continue;
 
             int len = (int)Sx(SCI_LINELENGTH, l);
@@ -1632,29 +1621,18 @@ void ResultDock::deleteSelectedItems(HWND hSci)
             raw.resize(strnlen(raw.c_str(), len));
 
             LineKind kind = classify(raw);
-            int endLine = l;   // default: only this line
-
+            int endLine = l;
             switch (kind) {
-            case LineKind::HitLine: endLine = l;
-                break;
-            case LineKind::CritHdr:
-                endLine = subtreeEnd(l + 1, INDENT_SPACES[static_cast<int>(LineLevel::CritHdr)]);
-                break;
-            case LineKind::FileHdr:
-                endLine = subtreeEnd(l + 1, INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)]);
-                break;
-            case LineKind::SearchHdr:
-                endLine = subtreeEnd(l + 1, INDENT_SPACES[static_cast<int>(LineLevel::SearchHdr)]);
-                break;
-            default:                  continue;                       // ignore blanks
+            case LineKind::HitLine:   endLine = l; break;
+            case LineKind::CritHdr:   endLine = subtreeEnd(l + 1, INDENT_SPACES[(int)LineLevel::CritHdr]);  break;
+            case LineKind::FileHdr:   endLine = subtreeEnd(l + 1, INDENT_SPACES[(int)LineLevel::FileHdr]);  break;
+            case LineKind::SearchHdr: endLine = subtreeEnd(l + 1, INDENT_SPACES[(int)LineLevel::SearchHdr]); break;
+            default:                  continue;
             }
             pushRange(l, endLine);
         }
     }
     else {
-        // ------------------------------------------------------------------
-        //  Caret‑only mode: single logical block
-        // ------------------------------------------------------------------
         int len = (int)Sx(SCI_LINELENGTH, firstLine);
         std::string raw(len, '\0');
         Sx(SCI_GETLINE, firstLine, (sptr_t)raw.data());
@@ -1662,17 +1640,12 @@ void ResultDock::deleteSelectedItems(HWND hSci)
 
         LineKind kind = classify(raw);
         int endLine = firstLine;
-
-        switch (kind)
-        {
-        case LineKind::HitLine: endLine = firstLine; break;
-        case LineKind::CritHdr: endLine = subtreeEnd(firstLine + 1, INDENT_SPACES[static_cast<int>(LineLevel::CritHdr)]);
-            break;
-        case LineKind::FileHdr: endLine = subtreeEnd(firstLine + 1, INDENT_SPACES[static_cast<int>(LineLevel::FileHdr)]);
-            break;
-        case LineKind::SearchHdr: endLine = subtreeEnd(firstLine + 1, INDENT_SPACES[static_cast<int>(LineLevel::SearchHdr)]);
-            break;
-        default: break; // nothing deletable on this line
+        switch (kind) {
+        case LineKind::HitLine:   endLine = firstLine; break;
+        case LineKind::CritHdr:   endLine = subtreeEnd(firstLine + 1, INDENT_SPACES[(int)LineLevel::CritHdr]);  break;
+        case LineKind::FileHdr:   endLine = subtreeEnd(firstLine + 1, INDENT_SPACES[(int)LineLevel::FileHdr]);  break;
+        case LineKind::SearchHdr: endLine = subtreeEnd(firstLine + 1, INDENT_SPACES[(int)LineLevel::SearchHdr]); break;
+        default: break;
         }
         pushRange(firstLine, endLine);
     }
@@ -1680,11 +1653,9 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     if (ranges.empty())
         return;
 
-    // ------------------------------------------------------------------
-    //  Delete ranges bottom‑up and update _hits offsets
-    // ------------------------------------------------------------------
-    std::sort(ranges.begin(), ranges.end(), [](auto& a, auto& b) {
-        return a.first != b.first ? a.first < b.first : a.last < b.last;
+    // Delete ranges bottom-up (keep your original structure)
+    std::sort(ranges.begin(), ranges.end(), [](auto& A, auto& B) {
+        return A.first != B.first ? A.first < B.first : A.last < B.last;
         });
 
     for (auto it = ranges.rbegin(); it != ranges.rend(); ++it) {
@@ -1699,20 +1670,35 @@ void ResultDock::deleteSelectedItems(HWND hSci)
         if (l1 < totalLines - 1)
             p1 += 2;
 
-        // make writable, delete, make readonly (wie in prependBlock/clear)
+        const int delta = (int)(p1 - p0);
+
+        // remove hits inside [p0, p1)
+        dock._hits.erase(
+            std::remove_if(dock._hits.begin(), dock._hits.end(),
+                [&](const Hit& h) { return h.displayLineStart >= (int)p0 && h.displayLineStart < (int)p1; }),
+            dock._hits.end());
+        // shift hits at/after p1 back by delta
+        for (auto& h : dock._hits)
+            if (h.displayLineStart >= (int)p1)
+                h.displayLineStart -= delta;
+
+        // per-range redraw/read-only toggling
         ::SendMessage(hSci, WM_SETREDRAW, FALSE, 0);
         Sx(SCI_SETREADONLY, FALSE);
-        Sx(SCI_DELETERANGE, (uptr_t)p0, (sptr_t)(p1 - p0));
+        Sx(SCI_DELETERANGE, (uptr_t)p0, (sptr_t)delta);
         Sx(SCI_SETREADONLY, TRUE);
         ::SendMessage(hSci, WM_SETREDRAW, TRUE, 0);
     }
 
-    Sx(SCI_SETREADONLY, TRUE);
-
-    // Update our cached structures (dock state)
+    // Rebuild dock caches as before
     dock.rebuildFolding();
     dock.applyStyling();
     dock.rebuildHitLineIndex();
+
+    // force a synchronous repaint (matches prependBlock's explicit refresh idea) ---
+    ::RedrawWindow(hSci, nullptr, nullptr,
+        RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    ::UpdateWindow(hSci);
 }
 
 // -------------------- Callbacks/Subclassing ---------------
