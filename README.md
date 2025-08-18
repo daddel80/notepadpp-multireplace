@@ -26,6 +26,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
     - [lvars](#lvarsfilepath)
     - [lkp](#lkpkey-hpath-inner)
     - [fmtN](#fmtnnum-maxdecimals-fixeddecimals)
+    - [lcmd](#lcmdpath)
   - [Preload variables & helpers](#preload-variables--helpers)
   - [Operators](#operators)
   - [If-Then Logic](#if-then-logic)
