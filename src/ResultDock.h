@@ -1,8 +1,4 @@
-﻿#pragma once
-
-// ResultDock: dockable Scintilla view that shows search results
-
-// This file is part of the MultiReplace plugin for Notepad++.
+﻿// This file is part of the MultiReplace plugin for Notepad++.
 // Copyright (C) 2023 Thomas Knoefel
 //
 // This program is free software: you can redistribute it and/or modify
@@ -17,7 +13,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
-
 
 // ResultDock: dockable Scintilla view that shows search results
 
@@ -83,12 +78,11 @@ public:
     // ------------------- Search Block API ---------------------
     void startSearchBlock(const std::wstring& header, bool  groupView, bool purge);
     void appendFileBlock(const FileMap& fm, const SciSendFn& sciSend);
+    void closeSearchBlock(int totalHits, int totalFiles);
 
     // Incremental insertion helpers (commit per-file immediately)
     void insertFileBlockNow(const FileMap& fm, const SciSendFn& sciSend);
     void insertSearchHeader(const std::wstring& header);
-
-    void closeSearchBlock(int totalHits, int totalFiles);
 
 private:
     // ---------------- Construction & Core State ---------------

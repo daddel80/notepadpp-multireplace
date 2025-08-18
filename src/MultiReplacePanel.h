@@ -668,7 +668,7 @@ private:
     void moveAndResizeControls();
     void updateTwoButtonsVisibility();
     void updateListViewFrame();
-    void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title);
+    void repaintPanelContents(HWND hGrp, const std::wstring& title);
     void updateFilesPanel();
     void setUIElementVisibility();
     void drawGripper();
@@ -851,7 +851,7 @@ private:
     std::vector<WCHAR> createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
     int getCharacterWidth(int elementID, const wchar_t* character);
     int getFontHeight(HWND hwnd, HFONT hFont);
-    std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
+    std::vector<int> parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
     UINT getCurrentDocCodePage();
 
     //FileOperations

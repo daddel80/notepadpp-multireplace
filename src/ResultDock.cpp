@@ -282,7 +282,6 @@ void ResultDock::startSearchBlock(const std::wstring& header, bool groupView, bo
     _utf8LenPending = Encoding::wstringToUtf8(_pendingText).size();
 }
 
-
 // -----------------------------------------------------------
 //  2. append results for ONE file (can be called many times)
 // -----------------------------------------------------------
@@ -306,6 +305,44 @@ void ResultDock::appendFileBlock(const FileMap& fm, const SciSendFn& sciSend)
         std::make_move_iterator(partHits.begin()),
         std::make_move_iterator(partHits.end()));
 }
+
+// -----------------------------------------------------------
+//  3. finalise header, insert block, restyle
+// -----------------------------------------------------------
+void ResultDock::closeSearchBlock(int totalHits, int totalFiles)
+{
+    if (!_blockOpen) return;
+
+    // Replace placeholders in the pending header line
+    const std::wstring hitsStr = std::to_wstring(totalHits);
+    const std::wstring filesStr = std::to_wstring(totalFiles);
+
+    size_t p = _pendingText.find_first_of(L"0123456789", /*start*/1);
+    if (p != std::wstring::npos) {
+        size_t e = _pendingText.find_first_not_of(L"0123456789", p);
+        _pendingText.replace(p, (e == std::wstring::npos ? _pendingText.size() - p : e - p), hitsStr);
+
+        size_t p2 = _pendingText.find_first_of(L"0123456789", p + hitsStr.size());
+        if (p2 != std::wstring::npos) {
+            size_t e2 = _pendingText.find_first_not_of(L"0123456789", p2);
+            _pendingText.replace(p2, (e2 == std::wstring::npos ? _pendingText.size() - p2 : e2 - p2), filesStr);
+        }
+    }
+
+    // Adjust byte offsets due to the replaced numbers
+    const size_t newU8 = Encoding::wstringToUtf8(_pendingText).size();
+    const ptrdiff_t deltaBytes = static_cast<ptrdiff_t>(newU8) - static_cast<ptrdiff_t>(_utf8LenPending);
+    if (deltaBytes != 0) {
+        for (auto& h : _pendingHits)
+            h.displayLineStart += static_cast<int>(deltaBytes);
+    }
+
+    // Prepend the whole block (with a blank separator line between searches)
+    prependBlock(_pendingText, _pendingHits);
+
+    _blockOpen = false;
+}
+
 
 // -----------------------------------------------------------------------------
 // Insert one formatted file block *immediately* into the dock.
@@ -375,44 +412,6 @@ void ResultDock::insertSearchHeader(const std::wstring& header)
 
     // Optional: remember header line index if you use collapseOldSearches elsewhere
     _searchHeaderLines.insert(_searchHeaderLines.begin(), 0);
-}
-
-
-// -----------------------------------------------------------
-//  3. finalise header, insert block, restyle
-// -----------------------------------------------------------
-void ResultDock::closeSearchBlock(int totalHits, int totalFiles)
-{
-    if (!_blockOpen) return;
-
-    // Replace placeholders in the pending header line
-    const std::wstring hitsStr = std::to_wstring(totalHits);
-    const std::wstring filesStr = std::to_wstring(totalFiles);
-
-    size_t p = _pendingText.find_first_of(L"0123456789", /*start*/1);
-    if (p != std::wstring::npos) {
-        size_t e = _pendingText.find_first_not_of(L"0123456789", p);
-        _pendingText.replace(p, (e == std::wstring::npos ? _pendingText.size() - p : e - p), hitsStr);
-
-        size_t p2 = _pendingText.find_first_of(L"0123456789", p + hitsStr.size());
-        if (p2 != std::wstring::npos) {
-            size_t e2 = _pendingText.find_first_not_of(L"0123456789", p2);
-            _pendingText.replace(p2, (e2 == std::wstring::npos ? _pendingText.size() - p2 : e2 - p2), filesStr);
-        }
-    }
-
-    // Adjust byte offsets due to the replaced numbers
-    const size_t newU8 = Encoding::wstringToUtf8(_pendingText).size();
-    const ptrdiff_t deltaBytes = static_cast<ptrdiff_t>(newU8) - static_cast<ptrdiff_t>(_utf8LenPending);
-    if (deltaBytes != 0) {
-        for (auto& h : _pendingHits)
-            h.displayLineStart += static_cast<int>(deltaBytes);
-    }
-
-    // Prepend the whole block (with a blank separator line between searches)
-    prependBlock(_pendingText, _pendingHits);
-
-    _blockOpen = false;
 }
 
 // ---------------- Construction & Core State ---------------
