@@ -10784,7 +10784,7 @@ void MultiReplace::loadSettingsFromIni() {
     groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
 
     // Lua runtime options
-    luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", true);
+    luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
 
     // Loading and setting the scope
     int selection = CFG.readInt(L"Scope", L"Selection", 0);
