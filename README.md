@@ -26,6 +26,7 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
     - [lvars](#lvarsfilepath)
     - [lkp](#lkpkey-hpath-inner)
     - [fmtN](#fmtnnum-maxdecimals-fixeddecimals)
+    - [lcmd](#lcmdpath)
   - [Preload variables & helpers](#preload-variables--helpers)
   - [Operators](#operators)
   - [If-Then Logic](#if-then-logic)
@@ -353,6 +354,7 @@ Formats numbers based on precision (maxDecimals) and whether the number of decim
 Load user-defined helper functions from a Lua file. The file must `return` a table of functions. `lcmd` registers those functions as globals for the current run.
 
 **Purpose:** add reusable helper functions (formatters, slugifiers, padding, small logic). Helpers **must return a string or number** and are intended to be called from **action** commands (e.g. `set(...)`, `cond(...)`).  
+
 **Init usage:** can be used as an init entry (empty Find) to preload before replacements; not mandatory. See [Preload variables & helpers](#preload-variables--helpers) for workflow and examples.
 
 | Find      | Replace                                | Regex | Description |
