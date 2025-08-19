@@ -4683,9 +4683,29 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     context.highlightMatch = false;
 
     send(SCI_SETSEARCHFLAGS, context.searchFlags);
-    SearchResult searchResult = performSearchForward(context, 0);
 
-    // --- "Replace at matches" logic (unchanged) ---
+    // ---------------------------------------------------------------------
+    // Unified start position:
+    // Selection mode: always from selection.start (always full selection)
+    // Other modes (column or whole document):
+    //   - Wrap ON  : from 0 (full scope)
+    //   - Wrap OFF : from caret if ReplaceAllFromCursor is enabled, otherwise from 0
+    // ---------------------------------------------------------------------
+    const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+    SelectionInfo selInfo = getSelectionInfo(false);
+    const Sci_Position caretPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
+    Sci_Position startPos = 0;
+
+    if (context.isSelectionMode) {
+        startPos = selInfo.startPos; // full selection, ignore flag & wrap
+    }
+    else {
+        startPos = wrapAroundEnabled ? 0 : (replaceAllFromCursorEnabled ? caretPos : 0);
+    }
+
+    SearchResult searchResult = performSearchForward(context, startPos);
+
+    // --- Replace at matches---
     bool useMatchList = IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED;
     std::vector<int> matchList;
     if (useMatchList) {
@@ -10555,6 +10575,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << Encoding::wstringToUtf8(L"EditFieldSize=" + std::to_wstring(editFieldSize) + L"\n");
     outFile << Encoding::wstringToUtf8(L"ListStatistics=" + std::to_wstring(listStatisticsEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"StayAfterReplace=" + std::to_wstring(stayAfterReplaceEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"ReplaceAllFromCursor=" + std::to_wstring(replaceAllFromCursorEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"GroupResults=" + std::to_wstring(groupResultsEnabled) + L"\n");
 
     // Lua runtime options
@@ -10759,6 +10780,7 @@ void MultiReplace::loadSettingsFromIni() {
 
     listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
     stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
+    replaceAllFromCursorEnabled = CFG.readBool(L"Options", L"ReplaceAllFromCursor", false);
     groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
 
     // Lua runtime options

@@ -612,6 +612,7 @@ private:
     inline static bool stayAfterReplaceEnabled = false;  // Status for keeping panel open after replace
     inline static bool groupResultsEnabled = false;      // Status for flat list view
     inline static bool luaSafeModeEnabled = true;       // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
+    inline static bool replaceAllFromCursorEnabled = true; // Controls the starting point for Replace All when wrap is OFF.
 
     bool isHoverTextSuppressed = false;    // Temporarily suppress HoverText to avoid flickering when Edit in list is open
 
