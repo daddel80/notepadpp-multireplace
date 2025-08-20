@@ -365,21 +365,37 @@ Load user-defined helper functions from a Lua file. The file must `return` a tab
 
 **File format:**
 ```lua
+-- C:\tmp\helpers.lcmd
 return {
--- padLeft: left-pad to width
+  -- padLeft: left-pad string with a given character, return padded string
+  -- Usage: set(padLeft("42", 5, "0"))   → "00042"
   padLeft = function(s, w, ch)
     s = tostring(s or "")
     ch = ch or " "
+    w = tonumber(w) or 0
     if #s >= w then return s end
     return string.rep(ch, w - #s) .. s
   end,
 
--- slug: make URL-friendly
+  -- slug: create a URL-friendly slug, return the slug
+  -- Usage: set(slug("Hello World!"))    → "hello-world"
   slug = function(s)
     s = tostring(s or ""):lower()
     s = s:gsub("%s+", "-"):gsub("[^%w%-]", "")
     return s
-  end
+  end,
+
+  -- file_log_simple: append the exact match to file, return the original match
+  -- Usage: set(file_log_simple(MATCH)) or set(file_log_simple(CAP1, [[C:\tmp\out.txt]]))
+  file_log_simple = function(match, path)
+    if match == nil then return "" end
+    path = path or [[C:\tmp\matches.txt]]
+    local f, err = io.open(path, "a")
+    if not f then return match end
+    f:write(tostring(match) .. "\n")
+    f:close()
+    return match
+  end,
 }
 ```
 
