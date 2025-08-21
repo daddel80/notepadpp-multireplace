@@ -362,25 +362,43 @@ Load user-defined helper functions from a Lua file. The file must `return` a tab
 | *(empty)* | `lcmd([[C:\tmp\mycmds.lcmd]])`          | No    | Load helpers from file (init row — no replacement). |
 | `(\d+)`   | `set(padLeft(CAP1, 6, '0'))`           | Yes   | Zero-pad captured number to width 6 using `padLeft`. |
 | `(.+)`    | `set(slug(CAP1))`                      | Yes   | Create a URL-safe slug from the whole line using `slug`. |
+| `\{\{(.*?)\}\}`   | `set(file_log_simple(MATCH, [[C:\tmp\out.txt]]))`   | Yes   | Logs the entire search hit (the full `{{...}}` placeholder) to a custom file, leaving the original text unchanged. |
 
 **File format:**
 ```lua
+-- C:\tmp\helpers.lcmd
 return {
--- padLeft: left-pad to width
+  -- padLeft: left-pad string with a given character, return padded string
+  -- Usage: set(padLeft("42", 5, "0"))   → "00042"
   padLeft = function(s, w, ch)
     s = tostring(s or "")
     ch = ch or " "
+    w = tonumber(w) or 0
     if #s >= w then return s end
     return string.rep(ch, w - #s) .. s
   end,
 
--- slug: make URL-friendly
+  -- slug: create a URL-friendly slug, return the slug
+  -- Usage: set(slug("Hello World!"))    → "hello-world"
   slug = function(s)
     s = tostring(s or ""):lower()
     s = s:gsub("%s+", "-"):gsub("[^%w%-]", "")
     return s
-  end
+  end,
+
+  -- file_log_simple: append the exact match to file, return the original match
+  -- Usage: set(file_log_simple(MATCH)) or set(file_log_simple(CAP1, [[C:\tmp\out.txt]]))
+  file_log_simple = function(match, path)
+    if match == nil then return "" end
+    path = path or [[C:\tmp\matches.txt]]
+    local f, err = io.open(path, "a")
+    if not f then return match end
+    f:write(tostring(match) .. "\n")
+    f:close()
+    return match
+  end,
 }
+
 ```
 
 <br>
@@ -606,11 +624,11 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Default**: `GroupResults=0` (disabled).
   - **Description**: This option changes how 'Find All' results are presented. When enabled (`1`), results are grouped by their source list entry, creating a categorized view. When disabled (`0`), all results are displayed as a single, flat list, sorted by their position in the document, without any categorization.
 
-- **SafeMode**: Controls which standard Lua libraries are available.  
-  - **Default**: `SafeMode=1` (enabled).  
-  - **Description**: When enabled (`1`), some libraries are disabled (`os`, `io`, `package`, `debug`, and functions like `dofile`, `require`, `load`). Common libraries such as `string`, `table`, `math`, `utf8`, `coroutine` remain available. When disabled (`0`), all standard libraries are loaded.
-
-### Multilingual UI Support
+- **SafeMode**: Controls which standard Lua libraries are available.
+  - **Default**: `SafeMode=0` (disabled).
+  - **Description**: For enhanced security, enabling (`1`) disables all libraries (`os`, `io`, `package`, `debug`) and functions (`dofile`, `load`, `loadfile`, `require`, `collectgarbage`) that provide file or system access. This also disables file-dependent commands like `lvars`, `lkp`, and `lcmd`. The `string`, `table`, `math`, `utf8`, and `base` libraries remain available. When disabled (`0`), all standard libraries are loaded.
+   
+  ### Multilingual UI Support
 
 The UI language settings for the MultiReplace plugin can be customized by adjusting the `languages.ini` file located in `C:\Program Files\Notepad++\plugins\MultiReplace\`. These adjustments will ensure that the selected language in Notepad++ is applied within the plugin. 
 
