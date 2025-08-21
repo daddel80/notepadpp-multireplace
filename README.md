@@ -47,13 +47,13 @@ MultiReplace is a Notepad++ plugin that allows users to create, store, and manag
 ## Key Features
 
 - **Batch Replacement Lists** – Run any number of search-and-replace pairs in a single pass, either in the current document or across all open documents.
-- **Rule-Driven & Variable Replacements** – Lua-powered variables, conditions, and calculations enable dynamic, context-aware substitutions.
 - **CSV Column Toolkit** – Search, replace, sort, or delete specific columns; numeric-aware sorting and header exclusion included.
-- **External Lookup Tables** – Swap matches with values from external hash/lookup files—ideal for large or frequently updated mapping tables.
-- **Precision Scopes & Selections** – Rectangle and multi-selection support, column scopes, and “replace at specific match” for pinpoint operations.
 - **Reusable Replacement Lists** – Save, load, and drag-and-drop lists with all options intact—perfect for recurring workflows.
+- **Rule-Driven & Variable Replacements** – Lua-powered variables, conditions, and calculations enable dynamic, context-aware substitutions.
+- **External Lookup Tables** – Swap matches with values from external hash/lookup files—ideal for large or frequently updated mapping tables.
+- **Open Scripting API** – Add your own Lua functions to handle advanced formatting, data logging, and fully custom replacement logic.
+- **Precision Scopes & Selections** – Rectangle and multi-selection support, column scopes, and “replace at specific match” for pinpoint operations.
 - **Multi-Colour Highlighting** – Highlight search hits in up to 20 distinct colours for rapid visual confirmation.
-- **Script Export** – Generate standalone bash scripts that reproduce the replacement logic outside of Notepad++.
 
 <br>
 
