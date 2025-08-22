@@ -3,7 +3,11 @@
 [![Latest Stable Version](https://img.shields.io/badge/version-4.5.0.30-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.5.0.30)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
-MultiReplace is a Notepad++ plugin that allows users to create, store, and manage search and replace strings within a list, perfect for use across different sessions or projects. It increases efficiency by enabling multiple replacements at once, supports sorting and applying operations to specific columns in CSV files, and offers flexible options for replacing text, including conditional and mathematical operations, as well as the use of external hash tables for dynamic data lookups.
+MultiReplace is a Notepad++ plugin designed for complex and repeatable text transformations. Its foundation is the management of search/replace operations in reusable lists, suitable for use across sessions and projects.
+
+For data-heavy tasks, the plugin provides dedicated tools. These include specific operations on CSV columns (e.g., sort, delete) and the use of external files as lookup tables.
+
+At its core, a rule engine allows any replacement to be enhanced with conditional (if/then) and mathematical logic, providing the flexibility needed for specific and complex requirements.
 
 ![MultiReplace Screenshot](./MultiReplace.gif)
 
