@@ -154,7 +154,6 @@ Execution targets define **which files** an operation is applied to. They are ac
 <br>
 
 ## Option 'Use Variables'
-*This section describes the most powerful feature of MultiReplace. Here you will learn how to go beyond static text and create dynamic, logic-driven replacements using a simple scripting engine.*
 
 Enable the '**Use Variables**' option to enhance replacements with calculations and logic based on the matched text. This feature lets you create dynamic replacement patterns, handle conditions, and produce flexible outputs—all configured directly in the Replace field. This functionality relies on the [Lua engine](https://www.lua.org/).
 
