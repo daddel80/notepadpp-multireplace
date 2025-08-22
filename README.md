@@ -628,7 +628,7 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Default**: `SafeMode=0` (disabled).
   - **Description**: For enhanced security, enabling (`1`) disables all libraries (`os`, `io`, `package`, `debug`) and functions (`dofile`, `load`, `loadfile`, `require`, `collectgarbage`) that provide file or system access. This also disables file-dependent commands like `lvars`, `lkp`, and `lcmd`. The `string`, `table`, `math`, `utf8`, and `base` libraries remain available. When disabled (`0`), all standard libraries are loaded.
    
-  ### Multilingual UI Support
+### Multilingual UI Support
 
 The UI language settings for the MultiReplace plugin can be customized by adjusting the `languages.ini` file located in `C:\Program Files\Notepad++\plugins\MultiReplace\`. These adjustments will ensure that the selected language in Notepad++ is applied within the plugin. 
 
