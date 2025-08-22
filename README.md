@@ -154,6 +154,8 @@ Execution targets define **which files** an operation is applied to. They are ac
 <br>
 
 ## Option 'Use Variables'
+*This section describes the most powerful feature of MultiReplace. Here you will learn how to go beyond static text and create dynamic, logic-driven replacements using a simple scripting engine.*
+
 Enable the '**Use Variables**' option to enhance replacements with calculations and logic based on the matched text. This feature lets you create dynamic replacement patterns, handle conditions, and produce flexible outputs—all configured directly in the Replace field. This functionality relies on the [Lua engine](https://www.lua.org/).
 
 ---
@@ -169,7 +171,7 @@ Enable the '**Use Variables**' option to enhance replacements with calculations 
    - **Find**: `(\d+)`  
    - **Replace**: `set(CAP1 * 2)`  
    - **Result**: Doubles numbers (e.g., `50` → `100`).  
-   *(Enable "Regular Expression" in 'Search Mode' to use `(\d+)` as a capture group.)*  
+   *(Enable 'Regular Expression' in 'Search Mode' to use `(\d+)` as a capture group.)*  
 
    **Option 2:** [`cond(...)`](#condcondition-trueval-falseval) → Conditional replacement.  
    - **Find**: `word`  
@@ -201,7 +203,7 @@ Enable the '**Use Variables**' option to enhance replacements with calculations 
 | **CAP1**, **CAP2**, ...  | These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.|
 
 **Note:**
-- FNAME and FPATH are updated for each file processed by `Replace All in All Open Docs` and `Replace All in Files`. This ensures that variables always refer to the file currently being modified.
+- `FNAME` and `FPATH` are updated for each file processed by `Replace All in All Open Docs` and `Replace All in Files`. This ensures that variables always refer to the file currently being modified.
 - **Decimal Separator:** When `MATCH` and `CAP` variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.
 
 <br>
@@ -236,7 +238,7 @@ Evaluates the condition and outputs `trueVal` if the condition is true, otherwis
 <br>
 
 #### **vars({Variable1=Value1, Variable2=Value2, ...})**
-**Note:** This command was previously named `init(...)` and has been renamed to `vars(...)`. For compatibility, `init(...)` still works.
+**Note:** This command was previously named `init()` and has been renamed to `vars()`. For compatibility, `init()` still works.
 
 Initializes custom variables for use in various commands, extending beyond standard variables like `CNT`, `MATCH`, `CAP1`. These variables can carry the status of previous find-and-replace operations to subsequent ones.
 
@@ -283,7 +285,7 @@ return {
 | `(\d+)`       | `cond(threshold > 5, "Above", "Below")`                                      | Yes   | No        | Replaces the match based on the condition evaluated using the variable `threshold`.                 |
 
 **Key Points**
-- **Conditional Loading**: Variables can be loaded conditionally by placing lvars(filePath) alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.
+- **Conditional Loading**: Variables can be loaded conditionally by placing `lvars()` alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.
 - **Local vs. Returned Variables**: Only variables explicitly included in the return table of the .vars file are available for use. Any local variables remain private to the file.
 
 <br>
@@ -343,7 +345,7 @@ Once `lkp()` loads the data file for **hpath**, the parsed table is cached in me
 #### **fmtN(num, maxDecimals, fixedDecimals)**
 Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).
 
-**Note**: The `fmtN` command can exclusively be used within the `set` and `cond` commands.
+**Note**: The `fmtN()` command can exclusively be used within the `set()` and `cond()` commands.
 | Example                             | Result  |
 |-------------------------------------|---------|
 | `set(fmtN(5.73652, 2, true))`       | 5.74  |
@@ -442,7 +444,7 @@ Use init entries (empty Find) to preload variables or helper functions before an
 ### If-Then Logic
 If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.
 
-**Note**: Do not embed `cond()`, `set()`, or `vars()` within if statements; if statements are exclusively for adjusting custom variables.
+**Note**: Do not embed `cond()`, `set()`, or `vars()` within if statements; `if statements` are exclusively for adjusting custom variables.
 
 ##### Syntax Combinations
 - `if condition then ... end`

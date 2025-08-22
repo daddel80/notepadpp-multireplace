@@ -377,7 +377,7 @@
           <li><strong>Replace</strong>: <code>set(CAP1 * 2)</code></li>
           <li><strong>Result</strong>: Doubles numbers (e.g., <code>50</code> → <code>100</code>).</li>
         </ul>
-        <em>(Enable "Regular Expression" in 'Search Mode' to use <code>(\d+)</code> as a capture group.)</em>
+        <em>(Enable 'Regular Expression' in 'Search Mode' to use <code>(\d+)</code> as a capture group.)</em>
 
         <p><strong>Option 2:</strong> <a href="#condcondition-trueval-falseval"><code>cond(...)</code></a> → Conditional replacement.</p>
         <ul>
@@ -456,7 +456,7 @@
 
     <p><strong>Note:</strong></p>
     <ul>
-      <li>FNAME and FPATH are updated for each file processed by <code>Replace All in All Open Docs</code> and <code>Replace All in Files</code>. This ensures that variables always refer to the file currently being modified.</li>
+      <li><code>FNAME</code> and <code>FPATH</code> are updated for each file processed by <code>Replace All in All Open Docs</code> and <code>Replace All in Files</code>. This ensures that variables always refer to the file currently being modified.</li>
       <li><strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.</li>
     </ul>
   </section>
@@ -535,7 +535,7 @@
     <br>
 
     <h3 id="varsvariable1value1-variable2value2-">vars({Variable1=Value1, Variable2=Value2, ...})</h3>
-    <p><strong>Note:</strong> This command was previously named <code>init(...)</code> and has been renamed to <code>vars(...)</code>. For compatibility, <code>init(...)</code> still works.</p>
+    <p><strong>Note:</strong> This command was previously named <code>init()</code> and has been renamed to <code>vars()</code>. For compatibility, <code>init()</code> still works.</p>
     <p>Initializes custom variables for use in various commands, extending beyond standard variables like <code>CNT</code>, <code>MATCH</code>, <code>CAP1</code>. These variables can carry the status of previous find-and-replace operations to subsequent ones.</p>
     <p>Custom variables maintain their values throughout a single Replace-All or within a list of multiple Replace operations. Thus, they can transfer values from one list entry to subsequent ones. They reset at the start of each new document in <strong>'Replace All in All Open Documents'</strong>.</p>
     <p><strong>Init usage:</strong> can be used as an init entry (empty Find) to preload before replacements; not mandatory. See <a href="#preload-variables--helpers">Preload variables &amp; helpers</a> for workflow and examples.</p>
@@ -629,7 +629,7 @@ return {
 
     <p><strong>Key Points</strong></p>
     <ul>
-      <li><strong>Conditional Loading</strong>: Variables can be loaded conditionally by placing lvars(filePath) alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.</li>
+      <li><strong>Conditional Loading</strong>: Variables can be loaded conditionally by placing <code>lvars()</code> alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.</li>
       <li><strong>Local vs. Returned Variables</strong>: Only variables explicitly included in the return table of the .vars file are available for use. Any local variables remain private to the file.</li>
     </ul>
 
@@ -724,7 +724,7 @@ return {
 
     <h3 id="fmtnnum-maxdecimals-fixeddecimals">fmtN(num, maxDecimals, fixedDecimals)</h3>
     <p>Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).</p>
-    <p><strong>Note</strong>: The <code>fmtN</code> command can exclusively be used within the <code>set</code> and <code>cond</code> commands.</p>
+    <p><strong>Note</strong>: The <code>fmtN()</code> command can exclusively be used within the <code>set()</code> and <code>cond()</code> commands.</p>
     <table class="optionsTable">
       <tr>
         <th>Example</th>
@@ -916,7 +916,7 @@ return {
   <section id="IfThenLogic">
     <h2>If-Then Logic</h2>
     <p>If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.</p>
-    <p><strong>Note</strong>: Do not embed <code>cond()</code>, <code>set()</code>, or <code>vars()</code> within if statements; if statements are exclusively for adjusting custom variables.</p>
+    <p><strong>Note</strong>: Do not embed <code>cond()</code>, <code>set()</code>, or <code>vars()</code> within <code>if statements</code>; <code>if statements</code> are exclusively for adjusting custom variables.</p>
 
     <h4>Syntax Combinations</h4>
     <ul>
