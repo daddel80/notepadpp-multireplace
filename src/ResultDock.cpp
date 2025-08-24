@@ -1116,8 +1116,8 @@ std::wstring ResultDock::stripHitPrefix(const std::wstring& w)
 
     ++i; // skip ':'
 
-    // allow *multiple* spaces after ':'
-    while (i < w.size() && iswspace(w[i])) ++i;
+    // Keep any original leading spaces/tabs of the source line intact.
+    if (i < w.size() && w[i] == L' ') ++i;
 
     // return the original line content (incl. original EOLs), prefix removed
     return w.substr(i);
