@@ -242,7 +242,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int useListButtonX = buttonX + sx(133);
     int swapButtonX = windowWidth - sx(33 + 128 + 26);
     int comboWidth = windowWidth - sx(289);
-    int listWidth = windowWidth - sx(202);
+    int listWidth = windowWidth - sx(197);
     int listHeight = std::max(windowHeight - sy(245) - filesOffsetY, sy(20)); // Minimum listHeight to prevent IDC_PATH_DISPLAY from overlapping with IDC_STATUS_MESSAGE
     int useListButtonY = windowHeight - sy(34);
 
