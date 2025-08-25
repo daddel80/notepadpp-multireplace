@@ -10882,8 +10882,11 @@ void MultiReplace::loadUIConfigFromIni() {
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     updateUseListState(false);
 
+    // add extra width to align right edge of List/Edit with Scope group box at initial startup
+    int DEFAULT_WIDTH_EXTRA = 23;
+
     // Load window width
-    int savedWidth = CFG.readInt(L"Window", L"Width", MIN_WIDTH_scaled);
+    int savedWidth = CFG.readInt(L"Window", L"Width", sx(MIN_WIDTH + DEFAULT_WIDTH_EXTRA));
     int width = std::max(savedWidth, MIN_WIDTH_scaled);
 
     // Load useListOnHeight
