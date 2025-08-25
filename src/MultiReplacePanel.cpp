@@ -319,7 +319,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_REPLACE_IN_FILES_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, NULL };
+    ctrlMap[IDC_FILE_OPS_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, NULL };
 
     ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_filter"), SS_RIGHT, NULL };
     ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -375,7 +375,7 @@ void MultiReplace::initializeCtrlMap() {
 bool MultiReplace::createAndShowWindows() {
     // IDs of all controls in the “Replace/Find in Files” panel
     static const std::vector<int> repInFilesIds = {
-        IDC_REPLACE_IN_FILES_GROUP,
+        IDC_FILE_OPS_GROUP,
         IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
         IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
         IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
@@ -507,7 +507,7 @@ void MultiReplace::moveAndResizeControls() {
         IDC_USE_LIST_BUTTON, IDC_CANCEL_REPLACE_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
         IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, 
         IDC_PATH_DISPLAY, IDC_STATS_DISPLAY, IDC_FILTER_EDIT, IDC_FILTER_HELP, IDC_SUBFOLDERS_CHECKBOX, 
-        IDC_HIDDENFILES_CHECKBOX, IDC_DIR_EDIT, IDC_BROWSE_DIR_BUTTON, IDC_REPLACE_IN_FILES_GROUP, IDC_DIR_PROGRESS_BAR, IDC_STATUS_MESSAGE
+        IDC_HIDDENFILES_CHECKBOX, IDC_DIR_EDIT, IDC_BROWSE_DIR_BUTTON, IDC_FILE_OPS_GROUP, IDC_DIR_PROGRESS_BAR, IDC_STATUS_MESSAGE
     };
 
     std::unordered_map<int, HWND> hwndMap;  // Store HWNDs to avoid multiple calls to GetDlgItem
@@ -605,7 +605,7 @@ void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title)
 {
     // All controls inside the "Replace/Find in Files" panel
     static const std::vector<int> repInFilesIds = {
-        IDC_REPLACE_IN_FILES_GROUP,
+        IDC_FILE_OPS_GROUP,
         IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
         IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
         IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
@@ -613,7 +613,7 @@ void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title)
     };
 
     // Keep the caption in sync
-    SetDlgItemText(_hSelf, IDC_REPLACE_IN_FILES_GROUP, title.c_str());
+    SetDlgItemText(_hSelf, IDC_FILE_OPS_GROUP, title.c_str());
 
     // Never repaint the frame if the group is hidden. This avoids "ghost frames".
     if (!IsWindowVisible(hGrp)) {
@@ -635,7 +635,7 @@ void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title)
 
     // Redraw visible children (no erase to prevent flicker)
     for (int id : repInFilesIds) {
-        if (id == IDC_REPLACE_IN_FILES_GROUP) continue;
+        if (id == IDC_FILE_OPS_GROUP) continue;
         HWND hChild = GetDlgItem(_hSelf, id);
         if (IsWindow(hChild) && IsWindowVisible(hChild)) {
             RedrawWindow(hChild, NULL, NULL,
@@ -648,7 +648,7 @@ void MultiReplace::updateFilesPanel()
 {
     // All controls inside the "Replace/Find in Files" panel
     static const std::vector<int> repInFilesIds = {
-        IDC_REPLACE_IN_FILES_GROUP,
+        IDC_FILE_OPS_GROUP,
         IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
         IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
         IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
@@ -678,7 +678,7 @@ void MultiReplace::updateFilesPanel()
         titleText = LM.get(titleKey);
     }
 
-    HWND hGrp = GetDlgItem(_hSelf, IDC_REPLACE_IN_FILES_GROUP);
+    HWND hGrp = GetDlgItem(_hSelf, IDC_FILE_OPS_GROUP);
     HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
 
     // Capture geometry BEFORE layout changes (used to clean freed area when hiding)

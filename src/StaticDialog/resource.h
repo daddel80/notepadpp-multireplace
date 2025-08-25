@@ -155,7 +155,7 @@
 // ===================================================================
 //  5465-block – “Replace-in-Files” frame
 // ===================================================================
-#define IDC_REPLACE_IN_FILES_GROUP      5469
+#define IDC_FILE_OPS_GROUP              5469
 #define IDC_FILTER_EDIT                 5470
 #define IDC_FILTER_HELP                 5471
 #define IDC_FILTER_STATIC               5472
