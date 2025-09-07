@@ -4343,11 +4343,44 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
             return false;
         }
 
+        // snapshot a stable start and current selection (only computed once)
+        const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+        const bool allFromCursor = allFromCursorEnabled;
+
+        SearchContext startCtx{};
+        startCtx.docLength = send(SCI_GETLENGTH, 0, 0);
+        startCtx.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+        startCtx.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+        startCtx.retrieveFoundText = false;
+        startCtx.highlightMatch = false;
+
+        const SelectionInfo fixedSel = getSelectionInfo(false);
+        const Sci_Position  fixedStart = computeAllStartPos(startCtx, wrapAroundEnabled, allFromCursor);
+
         send(SCI_BEGINUNDOACTION, 0, 0);
         for (size_t i = 0; i < replaceListData.size(); ++i)
         {
             if (replaceListData[i].isEnabled)
             {
+                if (!wrapAroundEnabled && allFromCursor)
+                {
+                    const Sci_Position docLenNow = send(SCI_GETLENGTH, 0, 0);
+                    auto clamp = [&](Sci_Position p) {
+                        return (p < 0) ? 0 : (p > docLenNow ? docLenNow : p);
+                        };
+
+                    if (startCtx.isSelectionMode) {
+                        Sci_Position s = clamp(fixedSel.startPos);
+                        Sci_Position e = clamp(fixedSel.endPos);
+                        if (e < s) std::swap(s, e);
+                        send(SCI_SETSEL, s, e);
+                    }
+                    else {
+                        const Sci_Position s = clamp(fixedStart);
+                        send(SCI_GOTOPOS, s, 0);
+                    }
+                }
+
                 int findCount = 0;
                 int replaceCount = 0;
 
@@ -4360,8 +4393,9 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
                 // Accumulate total replacements
                 totalReplaceCount += replaceCount;
 
+                // cosmetic caret restore only for single-document run
                 if (!replaceSuccess) {
-                    break;  // Exit loop on error or Debug Stop
+                    break;
                 }
             }
         }
@@ -4645,7 +4679,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 newPos = itemData.regex
                     ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
                     : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
-
+                newPos = ensureForwardProgress(newPos, searchResult);
                 send(SCI_SETSEL, newPos, newPos);
                 if (itemIndex != SIZE_MAX) {
                     updateCountColumns(itemIndex, -2, 1);
@@ -4655,9 +4689,8 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
         }
 
         // Replacement was skipped by Lua logic.
-        newPos = searchResult.pos + searchResult.length;
-        send(SCI_SETSELECTIONSTART, newPos, 0);
-        send(SCI_SETSELECTIONEND, newPos, 0);
+        newPos = ensureForwardProgress(searchResult.pos + searchResult.length, searchResult);
+        send(SCI_SETSEL, newPos, newPos);
     }
     return false; // No replacement was made.
 }
@@ -4684,24 +4717,9 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     send(SCI_SETSEARCHFLAGS, context.searchFlags);
 
-    // ---------------------------------------------------------------------
-    // Unified start position:
-    // Selection mode: always from selection.start (always full selection)
-    // Other modes (column or whole document):
-    //   - Wrap ON  : from 0 (full scope)
-    //   - Wrap OFF : from caret if ReplaceAllFromCursor is enabled, otherwise from 0
-    // ---------------------------------------------------------------------
     const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
-    SelectionInfo selInfo = getSelectionInfo(false);
-    const Sci_Position caretPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
-    Sci_Position startPos = 0;
 
-    if (context.isSelectionMode) {
-        startPos = selInfo.startPos; // full selection, ignore flag & wrap
-    }
-    else {
-        startPos = wrapAroundEnabled ? 0 : (replaceAllFromCursorEnabled ? caretPos : 0);
-    }
+    Sci_Position startPos = computeAllStartPos(context, wrapAroundEnabled, allFromCursorEnabled);
 
     SearchResult searchResult = performSearchForward(context, startPos);
 
@@ -4727,6 +4745,11 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         }
     }
 
+    std::string fixedReplace;
+    if (!itemData.useVariables) {
+        fixedReplace = convertAndExtendW(itemData.replaceText, itemData.extended, documentCodepage);
+    }
+
     int prevLineIdx = -1;
     int lineFindCount = 0;
 
@@ -4736,6 +4759,11 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         bool skipReplace = false;
         ++findCount;
         if (itemIndex != SIZE_MAX) updateCountColumns(itemIndex, findCount);
+
+        const bool replaceThisHit =
+            !useMatchList || (std::find(matchList.begin(), matchList.end(), findCount) != matchList.end());
+
+        Sci_Position nextPos; // declared before both branches use it
 
         // This block contains the core replacement logic, structured to be consistent with replaceOne.
         {
@@ -4772,31 +4800,33 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                 }
 
                 // Convert the result from Lua (UTF-8) to the final document codepage.
-                finalReplaceText = convertAndExtendW(Encoding::utf8ToWString(luaWorkingUtf8), itemData.extended, documentCodepage);
+                if (replaceThisHit && !skipReplace) {
+                    finalReplaceText = convertAndExtendW(Encoding::utf8ToWString(luaWorkingUtf8), itemData.extended, documentCodepage);
+                }
             }
-            else {
-                // Case without variables: convert once using the safe helper.
-                finalReplaceText = convertAndExtendW(itemData.replaceText, itemData.extended, documentCodepage);
-            }
-
-            // --- Final Replacement Execution ---
-            bool replaceThisHit = !useMatchList || std::find(matchList.begin(), matchList.end(), findCount) != matchList.end();
-            Sci_Position nextPos;
 
             if (replaceThisHit && !skipReplace) {
-                nextPos = itemData.regex
-                    ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
-                    : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
+                if (!itemData.useVariables) {
+                    nextPos = itemData.regex
+                        ? performRegexReplace(fixedReplace, searchResult.pos, searchResult.length)
+                        : performReplace(fixedReplace, searchResult.pos, searchResult.length);
+                }
+                else {
+                    nextPos = itemData.regex
+                        ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
+                        : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
+                }
 
                 ++replaceCount;
                 if (itemIndex != SIZE_MAX) updateCountColumns(itemIndex, -1, replaceCount);
-                context.docLength = send(SCI_GETLENGTH, 0, 0); // Update doc length after modification.
+                context.docLength = send(SCI_GETLENGTH); // Update doc length after modification.
             }
             else {
                 nextPos = searchResult.pos + searchResult.length;
                 send(SCI_SETSELECTIONSTART, nextPos, 0);
                 send(SCI_SETSELECTIONEND, nextPos, 0);
             }
+            nextPos = ensureForwardProgress(nextPos, searchResult);
             searchResult = performSearchForward(context, nextPos);
         }
     }
@@ -5323,6 +5353,16 @@ void MultiReplace::applyLuaSafeMode(lua_State* L)
     removeGlobal("debug");
 
     // Keep string/table/math/utf8/base intact.
+}
+
+Sci_Position MultiReplace::computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled)
+{
+    SelectionInfo selInfo = getSelectionInfo(false);
+    if (context.isSelectionMode) {
+        return selInfo.startPos;
+    }
+    const Sci_Position caretPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
+    return wrapEnabled ? 0 : (fromCursorEnabled ? caretPos : 0);
 }
 
 #pragma endregion
@@ -6216,9 +6256,8 @@ void MultiReplace::handleFindAllButton()
     context.retrieveFoundText = false;
     context.highlightMatch = false;
 
-    // starting position for selection-mode scans
-    SelectionInfo selInfo = getSelectionInfo(false);
-    Sci_Position scanStart = context.isSelectionMode ? selInfo.startPos : 0;
+    const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+    Sci_Position scanStart = computeAllStartPos(context, wrapAroundEnabled, allFromCursorEnabled);
 
     // 6) containers 
     ResultDock::FileMap fileMap;
@@ -6259,7 +6298,7 @@ void MultiReplace::handleFindAllButton()
             {
                 SearchResult r = performSearchForward(context, pos);
                 if (r.pos < 0) break;
-                pos = r.pos + r.length;
+                pos = advanceAfterMatch(r);
 
                 ResultDock::Hit h{};
                 h.fullPathUtf8 = utf8FilePath;
@@ -6307,12 +6346,12 @@ void MultiReplace::handleFindAllButton()
 
         // Collect hits
         std::vector<ResultDock::Hit> rawHits;
-        LRESULT pos = context.isSelectionMode ? selInfo.startPos : 0;
+        LRESULT pos = scanStart;
         while (true)
         {
             SearchResult r = performSearchForward(context, pos);
             if (r.pos < 0) break;
-            pos = r.pos + r.length;
+            pos = advanceAfterMatch(r);
 
             ResultDock::Hit h{};
             h.fullPathUtf8 = utf8FilePath;
@@ -6418,7 +6457,7 @@ void MultiReplace::handleFindAllInDocsButton()
                 {
                     SearchResult r = performSearchForward(ctx, pos);
                     if (r.pos < 0) break;
-                    pos = r.pos + r.length;
+                    pos = advanceAfterMatch(r);
 
                     ResultDock::Hit h{};
                     h.fullPathUtf8 = u8Path;
@@ -6706,7 +6745,7 @@ void MultiReplace::handleFindInFiles() {
             while (true) {
                 SearchResult r = performSearchForward(ctx, pos);
                 if (r.pos < 0) break;
-                pos = r.pos + r.length;
+                pos = advanceAfterMatch(r);
 
                 ResultDock::Hit h{};
                 h.fullPathUtf8 = u8Path;
@@ -7402,6 +7441,9 @@ void MultiReplace::handleMarkMatchesButton() {
     int totalMatchCount = 0;
     markedStringsCount = 0;
 
+    // Read wrap state once
+    const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+
     if (useListEnabled) {
         if (replaceListData.empty()) {
             showStatusMessage(LM.get(L"status_add_values_or_mark_directly"), MessageStatus::Error);
@@ -7409,40 +7451,53 @@ void MultiReplace::handleMarkMatchesButton() {
         }
 
         for (size_t i = 0; i < replaceListData.size(); ++i) {
-            if (replaceListData[i].isEnabled) {
-                const ReplaceItemData& item = replaceListData[i];
+            if (!replaceListData[i].isEnabled) continue;
 
-                // Prepare SearchContext for list-based marking
-                SearchContext context;
-                context.findText = convertAndExtendW(item.findText, item.extended);
-                context.searchFlags = (item.wholeWord * SCFIND_WHOLEWORD)
-                    | (item.matchCase * SCFIND_MATCHCASE)
-                    | (item.regex * SCFIND_REGEXP);
-                context.docLength = send(SCI_GETLENGTH, 0, 0);
-                context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
-                context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
-                context.retrieveFoundText = false;
-                context.highlightMatch = false;
+            const ReplaceItemData& item = replaceListData[i];
 
-                int matchCount = markString(context);
+            // Build SearchContext for list-based marking
+            SearchContext context;
+            context.findText = convertAndExtendW(item.findText, item.extended);
+            context.searchFlags = (item.wholeWord * SCFIND_WHOLEWORD)
+                | (item.matchCase * SCFIND_MATCHCASE)
+                | (item.regex * SCFIND_REGEXP);
+            context.docLength = send(SCI_GETLENGTH, 0, 0);
+            context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+            context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+            context.retrieveFoundText = false;
+            context.highlightMatch = false;
 
-                if (matchCount > 0) {
-                    totalMatchCount += matchCount;
-                    updateCountColumns(i, matchCount);
-                    refreshUIListView();  // Refresh UI only when necessary
-                }
+            // --- Start position logic (mirrors Find All / Replace All)
+            Sci_Position startPos = 0;
+            if (context.isSelectionMode) {
+                const SelectionInfo selInfo = getSelectionInfo(false);
+                startPos = selInfo.startPos;
+            }
+            else if (wrapAroundEnabled) {
+                startPos = 0;
+            }
+            else {
+                const Sci_Position caretPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
+                startPos = allFromCursorEnabled ? caretPos : 0;
+            }
+
+            const int matchCount = markString(context, startPos);
+            if (matchCount > 0) {
+                totalMatchCount += matchCount;
+                updateCountColumns(i, matchCount);
+                refreshUIListView();  // Refresh UI only when necessary
             }
         }
     }
     else {
         // Retrieve search parameters from UI
-        std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-        bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-        bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-        bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-        bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+        const std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        const bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+        const bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+        const bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+        const bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
-        // Prepare SearchContext for direct marking
+        // Build SearchContext for direct marking
         SearchContext context;
         context.findText = convertAndExtendW(findText, extended);
         context.searchFlags = (wholeWord * SCFIND_WHOLEWORD)
@@ -7454,7 +7509,21 @@ void MultiReplace::handleMarkMatchesButton() {
         context.retrieveFoundText = false;
         context.highlightMatch = false;
 
-        totalMatchCount = markString(context);
+        // --- Start position logic (mirrors Find All / Replace All)
+        Sci_Position startPos = 0;
+        if (context.isSelectionMode) {
+            const SelectionInfo selInfo = getSelectionInfo(false);
+            startPos = selInfo.startPos;
+        }
+        else if (wrapAroundEnabled) {
+            startPos = 0;
+        }
+        else {
+            const Sci_Position caretPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
+            startPos = allFromCursorEnabled ? caretPos : 0;
+        }
+
+        totalMatchCount = markString(context, startPos);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
 
@@ -7462,40 +7531,28 @@ void MultiReplace::handleMarkMatchesButton() {
     showStatusMessage(LM.get(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), MessageStatus::Info);
 }
 
-int MultiReplace::markString(const SearchContext& context) {
-    if (context.findText.empty()) {
-        return 0; // Exit early if the search string is empty
-    }
+int MultiReplace::markString(const SearchContext& context, Sci_Position initialStart)
+{
+    if (context.findText.empty()) return 0;
 
-    int markCount = 0;  // Counter for marked matches
-    LRESULT startPos = 0; // Start search from the beginning of the document
-
-    // Set search flags before calling `performSearchForward`
+    int markCount = 0;
+    LRESULT pos = initialStart;
     send(SCI_SETSEARCHFLAGS, context.searchFlags);
 
-    // Perform the first search
-    SearchResult searchResult = performSearchForward(context, startPos);
-
-    while (searchResult.pos >= 0) {
-        if (searchResult.length > 0) {
-            highlightTextRange(searchResult.pos, searchResult.length, context.findText);
+    for (SearchResult r = performSearchForward(context, pos);
+        r.pos >= 0;
+        r = performSearchForward(context, pos))
+    {
+        if (r.length > 0) {
+            highlightTextRange(r.pos, r.length, context.findText);
             ++markCount;
         }
+        pos = advanceAfterMatch(r);
 
-        // Move search position forward to prevent infinite loops
-        startPos = searchResult.pos + searchResult.length;
-        if (startPos >= context.docLength) {
-            break; // Avoid searching beyond document length
-        }
-
-        // Perform next search
-        searchResult = performSearchForward(context, startPos);
+        if (pos >= context.docLength) break;
     }
 
-    if (useListEnabled && markCount > 0) {
-        ++markedStringsCount;
-    }
-
+    if (useListEnabled && markCount > 0) ++markedStringsCount;
     return markCount;
 }
 
@@ -9812,6 +9869,22 @@ UINT MultiReplace::getCurrentDocCodePage()
     return static_cast<UINT>(cp != 0 ? cp : CP_ACP);
 }
 
+Sci_Position MultiReplace::advanceAfterMatch(const SearchResult& r)  {
+    if (r.length > 0) return r.pos + r.length;
+    const Sci_Position after = static_cast<Sci_Position>(send(SCI_POSITIONAFTER, r.pos, 0));
+    const Sci_Position next = (after > r.pos) ? after : (r.pos + 1);
+    const Sci_Position docLen = static_cast<Sci_Position>(send(SCI_GETLENGTH, 0, 0));
+    return (next > docLen) ? docLen : next;
+}
+
+Sci_Position MultiReplace::ensureForwardProgress(Sci_Position candidate, const SearchResult& last)  {
+    if (candidate > last.pos) return candidate;
+    const Sci_Position after = static_cast<Sci_Position>(send(SCI_POSITIONAFTER, last.pos, 0));
+    const Sci_Position next = (after > last.pos) ? after : (last.pos + 1);
+    const Sci_Position docLen = static_cast<Sci_Position>(send(SCI_GETLENGTH, 0, 0));
+    return (next > docLen) ? docLen : next;
+}
+
 #pragma endregion
 
 
@@ -10575,7 +10648,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << Encoding::wstringToUtf8(L"EditFieldSize=" + std::to_wstring(editFieldSize) + L"\n");
     outFile << Encoding::wstringToUtf8(L"ListStatistics=" + std::to_wstring(listStatisticsEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"StayAfterReplace=" + std::to_wstring(stayAfterReplaceEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ReplaceAllFromCursor=" + std::to_wstring(replaceAllFromCursorEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"AllFromCursor=" + std::to_wstring(allFromCursorEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"GroupResults=" + std::to_wstring(groupResultsEnabled) + L"\n");
 
     // Lua runtime options
@@ -10780,7 +10853,7 @@ void MultiReplace::loadSettingsFromIni() {
 
     listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
     stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
-    replaceAllFromCursorEnabled = CFG.readBool(L"Options", L"ReplaceAllFromCursor", false);
+    allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
     groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
 
     // Lua runtime options

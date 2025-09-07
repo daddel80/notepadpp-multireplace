@@ -1,6 +1,6 @@
 # MultiReplace for Notepad++
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-brightgreen)](https://github.com/daddel80/notepadpp-multireplace/blob/main/license.txt)
-[![Latest Stable Version](https://img.shields.io/badge/version-4.5.0.30-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.5.0.30)
+[![Latest Stable Version](https://img.shields.io/badge/version-4.5.1.31-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/4.5.1.31)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
 MultiReplace is a Notepad++ plugin designed for complex and repeatable text transformations. Its foundation is the management of search/replace operations in reusable lists, suitable for use across sessions and projects.
@@ -624,6 +624,10 @@ The MultiReplace plugin provides several configuration options, including transp
 - **ReplaceAllFromCursor**: Controls whether "Replace All" starts from the beginning or from the current cursor position.
   - **Default**: `ReplaceAllFromCursor=0` (disabled).
   - **Description**: When enabled (`1`), "Replace All" starts at the current cursor position instead of always starting from the beginning of the document or scope.
+
+- **AllFromCursor**: Controls whether “Find All”, “Replace All”, and “Mark” start from the beginning or from the current cursor position.
+  - **Default**: `ReplaceAllFromCursor=0` (disabled).
+  - **Description**: When enabled (`1`) these “All” actions start at the current cursor position. If Selection scope is active, they start at the beginning of the selection instead. If Wrap Around is enabled, they always start from the beginning of the document and cover the entire file, regardless of this setting.
 
 - **GroupResults**: Controls how 'Find All' search results are displayed.
   - **Default**: `GroupResults=0` (disabled).

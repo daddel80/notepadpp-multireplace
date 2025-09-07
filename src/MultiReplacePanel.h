@@ -612,7 +612,7 @@ private:
     inline static bool stayAfterReplaceEnabled = false;  // Status for keeping panel open after replace
     inline static bool groupResultsEnabled = false;      // Status for flat list view
     inline static bool luaSafeModeEnabled = false;       // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
-    inline static bool replaceAllFromCursorEnabled = true; // Controls the starting point for Replace All when wrap is OFF.
+    inline static bool allFromCursorEnabled = false; // Controls the starting point for Replace All, Find All and Mark when wrap is OFF.
 
     bool isHoverTextSuppressed = false;    // Temporarily suppress HoverText to avoid flickering when Edit in list is open
 
@@ -754,6 +754,7 @@ private:
     bool compileLuaReplaceCode(const std::string& luaCode);
     static int safeLoadFileSandbox(lua_State* L);
     static void applyLuaSafeMode(lua_State* L);
+    Sci_Position computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled);
 
     //Replace in files
     bool handleBrowseDirectoryButton();
@@ -790,7 +791,7 @@ private:
 
     //Mark
     void handleMarkMatchesButton();
-    int markString(const SearchContext& context);
+    int markString(const SearchContext& context, Sci_Position initialStart);
     void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
     int generateColorValue(const std::string& str);
     void handleClearTextMarksButton();
@@ -854,6 +855,9 @@ private:
     int getFontHeight(HWND hwnd, HFONT hFont);
     std::vector<int> parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
     UINT getCurrentDocCodePage();
+    // --- Zero-length / no-progress helpers ---
+    Sci_Position advanceAfterMatch(const SearchResult& r);
+    Sci_Position ensureForwardProgress(Sci_Position nextPos, const SearchResult& r);
 
     //FileOperations
     std::wstring promptSaveListToCsv();
