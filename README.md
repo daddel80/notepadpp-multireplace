@@ -626,8 +626,8 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Description**: When enabled (`1`), "Replace All" starts at the current cursor position instead of always starting from the beginning of the document or scope.
 
 - **AllFromCursor**: Controls whether “Find All”, “Replace All”, and “Mark” start from the beginning or from the current cursor position.
-  - **Default**: `ReplaceAllFromCursor=0` (disabled).
-  - **Description**: When enabled (`1`) these “All” actions start at the current cursor position. If Selection scope is active, they start at the beginning of the selection instead. If Wrap Around is enabled, they always start from the beginning of the document and cover the entire file, regardless of this setting.
+  - **Default**: `AllFromCursor=0` (disabled).
+  - **Description**: When enabled (`1`) these “All” actions start at the current cursor position. With **Wrap Around** enabled, they always start at the beginning of the document and cover the entire file.
 
 - **GroupResults**: Controls how 'Find All' search results are displayed.
   - **Default**: `GroupResults=0` (disabled).
