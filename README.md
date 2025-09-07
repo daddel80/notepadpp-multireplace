@@ -47,7 +47,7 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
   - [Column Locking](#column-locking)
   - [Configuration Settings](#configuration-settings)
   - [Multilingual UI Support](#multilingual-ui-support)
-  
+
 ## Key Features
 
 - **Batch Replacement Lists** – Run any number of search-and-replace pairs in a single pass, either in the current document or across all open documents.
@@ -176,7 +176,7 @@ Enable the '**Use Variables**' option to enhance replacements with calculations 
    - **Find**: `word`  
    - **Replace**: `cond(CNT==1, "FirstWord")`  
    - **Result**: Changes only the **first** occurrence of "word" to "FirstWord".
-    
+
 3. **Use Basic Variables:**  
    - **`CNT`**: Inserts the current match number (e.g., "1" for the first match, "2" for the second).
    - **`CAP1`**, **`CAP2`**, etc.: Holds captured groups when Regex is enabled.  
@@ -295,7 +295,7 @@ Performs an external lookup of **key** against an indexed data file located at *
 ##### Key and File Path
 - **Key**:  
   The **key** can be either a string or a number. Numbers are automatically converted to strings to ensure compatibility in the lookup process.
-  
+
 - **File Path (hpath)**:  
   The **hpath** must point to a valid `.lkp` file that returns a table of data.
 
@@ -549,7 +549,7 @@ You can manage the visibility of the additional columns via the **Header Column 
 -   List files can also be loaded by dragging and dropping them onto the list area.
 -   The CSV files follow RFC 4180 standards for compatibility with other tools.
 -   Saved lists make it easy to reuse and share search/replace workflows across sessions and projects.
- 
+
 ### Bash Script Export (optional)
 -   You can export your search and replace list as a standalone bash script for use outside of Notepad++.
 -   **Note:** This feature is disabled by default for most users. To enable it, set `BashExport=1` in the [`INI file`](#configuration-settings).
@@ -608,7 +608,7 @@ The MultiReplace plugin provides several configuration options, including transp
 - **AlertNotFound**: Controls notifications for unsuccessful searches.
   - **Default**: `AlertNotFound=1` (enabled).
   - **Description**: To disable the bell sound for unsuccessful searches, set `AlertNotFound=0` in the INI file.
- 
+
 - **ListStatistics**: Controls whether list statistics are displayed below the list.
   - **Default**: `ListStatistics=0` (disabled).
   - **Description**: When enabled (`1`), a compact statistics field appears below the list, showing:
@@ -616,7 +616,7 @@ The MultiReplace plugin provides several configuration options, including transp
     - **L**: Total number of list items
     - **R**: Index of the currently focused row
     - **S**: Number of selected items
-   
+
 - **StayAfterReplace**: Controls whether it jumps to the next match after pressing Replace.
   - **Default**: `StayAfterReplace=0` (disabled).
   - **Description**: When enabled (`1`), pressing the **Replace** button replaces the current match without jumping to the next one. When disabled (`0`), it automatically jumps to the next match after replacing.
@@ -625,6 +625,10 @@ The MultiReplace plugin provides several configuration options, including transp
   - **Default**: `ReplaceAllFromCursor=0` (disabled).
   - **Description**: When enabled (`1`), "Replace All" starts at the current cursor position instead of always starting from the beginning of the document or scope.
 
+- **AllFromCursor**: Controls whether “Find All”, “Replace All”, and “Mark” start from the beginning or from the current cursor position.
+  - **Default**: `AllFromCursor=0` (disabled).
+  - **Description**: When enabled (`1`) these “All” actions start at the current cursor position. With **Wrap Around** enabled, they always start at the beginning of the document and cover the entire file.
+
 - **GroupResults**: Controls how 'Find All' search results are displayed.
   - **Default**: `GroupResults=0` (disabled).
   - **Description**: This option changes how 'Find All' results are presented. When enabled (`1`), results are grouped by their source list entry, creating a categorized view. When disabled (`0`), all results are displayed as a single, flat list, sorted by their position in the document, without any categorization.
@@ -632,7 +636,7 @@ The MultiReplace plugin provides several configuration options, including transp
 - **SafeMode**: Controls which standard Lua libraries are available.
   - **Default**: `SafeMode=0` (disabled).
   - **Description**: For enhanced security, enabling (`1`) disables all libraries (`os`, `io`, `package`, `debug`) and functions (`dofile`, `load`, `loadfile`, `require`, `collectgarbage`) that provide file or system access. This also disables file-dependent commands like `lvars`, `lkp`, and `lcmd`. The `string`, `table`, `math`, `utf8`, and `base` libraries remain available. When disabled (`0`), all standard libraries are loaded.
-   
+
 ### Multilingual UI Support
 
 The UI language settings for the MultiReplace plugin can be customized by adjusting the `languages.ini` file located in `C:\Program Files\Notepad++\plugins\MultiReplace\`. These adjustments will ensure that the selected language in Notepad++ is applied within the plugin. 
