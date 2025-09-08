@@ -328,8 +328,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
     ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(20), sy(230), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(20), sy(257), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(21), sy(230), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(21), sy(257), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
 }
 
 void MultiReplace::initializeCtrlMap() {
