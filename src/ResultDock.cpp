@@ -104,6 +104,8 @@ void ResultDock::clear()
     // ----- Styles & Folding neu aufbauen -----------------------------------
     rebuildFolding();
     applyStyling();
+
+    ::RedrawWindow(_hSci, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
 }
 
 bool ResultDock::hasContentBeyondIndent(HWND hSci, int line)
