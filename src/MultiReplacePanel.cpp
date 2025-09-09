@@ -6217,9 +6217,16 @@ void MultiReplace::trimHitToFirstLine(
     // Trim match length to not exceed first line
     if (eolPos != std::string::npos) {
         Sci_Position matchOffset = h.pos - lineStart;
-        Sci_Position maxLen = (Sci_Position)eolPos - matchOffset;
-        if (matchOffset < (Sci_Position)eolPos) {
+        Sci_Position eolOff = static_cast<Sci_Position>(eolPos);
+
+        if (matchOffset < eolOff) {
+            Sci_Position maxLen = eolOff - matchOffset;
             h.length = std::max<Sci_Position>(0, std::min(h.length, maxLen));
+        }
+        else if (matchOffset == eolOff) {
+            // EOL-only match (e.g., "\r\n"): do not trim it away!
+            // Keep at least 1 character so the hit is counted/displayed.
+            h.length = std::min<Sci_Position>(h.length, 1);
         }
         else {
             h.length = 0;

@@ -31,7 +31,7 @@ FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
 DEFPUSHBUTTON   "OK", IDOK, 70, 110, 60, 20
 LTEXT           "Version:",          IDC_VERSION_LABEL, 20, 20, 60, 15
-CONTROL         "4.5.1.31",          IDC_VERSION_STATIC, "Static", SS_LEFT | WS_VISIBLE, 85, 20, 100, 15
+CONTROL         "4.5.2.32",          IDC_VERSION_STATIC, "Static", SS_LEFT | WS_VISIBLE, 85, 20, 100, 15
 LTEXT           "Author:",           IDC_AUTHOR_LABEL, 20, 40, 60, 15
 CONTROL         "Thomas Knoefel",    IDC_NAME_STATIC, "Static", SS_NOTIFY | WS_VISIBLE, 85, 40, 130, 15
 LTEXT           "License:",          IDC_LICENSE_LABEL, 20, 60, 60, 15
