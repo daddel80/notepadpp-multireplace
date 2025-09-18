@@ -4659,7 +4659,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 // Convert the MATCH variable to UTF-8 for Lua if the document is ANSI.
                 vars.MATCH = searchResult.foundText;
                 if (documentCodepage != SC_CP_UTF8) {
-                    vars.MATCH = Encoding::wstringToUtf8(Encoding::ansiToWString(vars.MATCH, documentCodepage));
+                    vars.MATCH = Encoding::wstringToUtf8(Encoding::bytesToWString(vars.MATCH, documentCodepage));
                 }
 
                 if (!resolveLuaSyntax(luaTemplateUtf8, vars, skipReplace, itemData.regex)) {
@@ -4792,7 +4792,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                 // Convert the MATCH variable to UTF-8 for Lua if the document is ANSI.
                 vars.MATCH = searchResult.foundText;
                 if (documentCodepage != SC_CP_UTF8) {
-                    vars.MATCH = Encoding::wstringToUtf8(Encoding::ansiToWString(vars.MATCH, documentCodepage));
+                    vars.MATCH = Encoding::wstringToUtf8(Encoding::bytesToWString(vars.MATCH, documentCodepage));
                 }
 
                 if (!resolveLuaSyntax(luaWorkingUtf8, vars, skipReplace, itemData.regex)) {
@@ -5282,7 +5282,7 @@ int MultiReplace::safeLoadFileSandbox(lua_State* L)
     std::string raw((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     in.close();
 
-    bool rawIsUtf8 = Encoding::isValidUtf8(raw);
+    bool rawIsUtf8 = Encoding::isValidUtf8(raw.data(), raw.size());
     std::string utf8_buf;
     if (rawIsUtf8) {
         utf8_buf = std::move(raw);
@@ -5561,9 +5561,11 @@ void MultiReplace::handleReplaceInFiles() {
         DWORD attrs = GetFileAttributesW(fp.c_str());
         if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) { continue; }
 
-        EncodingInfo enc = detectEncoding(original);
+        Encoding::DetectOptions dopts;
+        const std::vector<char> raw(original.begin(), original.end());
+        const Encoding::EncodingInfo enc = Encoding::detectEncoding(raw.data(), raw.size(), dopts);
         std::string u8in;
-        if (!convertBufferToUtf8(original, enc, u8in)) { continue; }
+        if (!Encoding::convertBufferToUtf8(raw, enc, u8in)) { continue; }
 
         // Bind hidden buffer for the file scope
         {
@@ -5589,11 +5591,16 @@ void MultiReplace::handleReplaceInFiles() {
             }
 
             // Write back only if content changed
-            std::string u8out = guard.getText();  // uses directfunction of hidden buffer  :contentReference[oaicite:6]{index=6}
+            std::string u8out = guard.getText();
             if (u8out != u8in) {
-                std::string finalBuf;
-                if (convertUtf8ToOriginal(u8out, enc, original, finalBuf))
-                    if (guard.writeFile(fp, finalBuf)) ++changed;
+                Encoding::ConvertOptions copt;           // strict: no best-fit (default)
+                std::vector<char> outBytes;
+                if (Encoding::convertUtf8ToOriginal(u8out, enc, outBytes, copt)) {
+                    std::string finalBuf(outBytes.begin(), outBytes.end());  // kein 'const' nötig
+                    if (guard.writeFile(fp, finalBuf)) {
+                        ++changed;
+                    }
+                }
             }
         }
 
@@ -5628,117 +5635,6 @@ void MultiReplace::handleReplaceInFiles() {
     }
     _isCancelRequested = false;
 
-
-}
-
-bool MultiReplace::convertBufferToUtf8(const std::string& original_buf, const EncodingInfo& enc_info, std::string& utf8_output) {
-    const char* data_ptr = original_buf.data() + enc_info.bom_length;
-    int data_len = static_cast<int>(original_buf.size() - enc_info.bom_length);
-    if (data_len < 0) return false;
-
-    if (enc_info.sc_codepage == SC_CP_UTF8) {
-        utf8_output.assign(data_ptr, data_len);
-        return true;
-    }
-
-    std::wstring wbuf;
-
-    switch (enc_info.sc_codepage) {
-    case 1200: { // UTF-16 LE
-        if (data_len % 2 != 0) return false;
-        wbuf.assign(reinterpret_cast<const wchar_t*>(data_ptr), data_len / sizeof(wchar_t));
-        break;
-    }
-    case 1201: { // UTF-16 BE
-        if (data_len % 2 != 0) return false;
-        std::string temp_le_buf(data_ptr, data_len);
-        for (size_t i = 0; i < temp_le_buf.length(); i += 2) {
-            std::swap(temp_le_buf[i], temp_le_buf[i + 1]);
-        }
-        wbuf.assign(reinterpret_cast<const wchar_t*>(temp_le_buf.data()), temp_le_buf.length() / sizeof(wchar_t));
-        break;
-    }
-    default: { // ANSI
-        int wide_len = MultiByteToWideChar(enc_info.sc_codepage, 0, data_ptr, data_len, nullptr, 0);
-        if (wide_len <= 0) return false;
-        wbuf.resize(wide_len);
-        MultiByteToWideChar(enc_info.sc_codepage, 0, data_ptr, data_len, &wbuf[0], wide_len);
-        break;
-    }
-    }
-
-    if (wbuf.empty() && data_len > 0) return false; // Conversion to wstring failed
-
-    int utf8_len = WideCharToMultiByte(CP_UTF8, 0, &wbuf[0], (int)wbuf.size(), nullptr, 0, nullptr, nullptr);
-    if (utf8_len <= 0) return false;
-    utf8_output.resize(utf8_len);
-    WideCharToMultiByte(CP_UTF8, 0, &wbuf[0], (int)wbuf.size(), &utf8_output[0], utf8_len, nullptr, nullptr);
-
-    return true;
-}
-
-bool MultiReplace::convertUtf8ToOriginal(const std::string& utf8_input, const EncodingInfo& original_enc_info, const std::string& original_buf_with_bom, std::string& final_output_with_bom) {
-    std::string final_output_no_bom;
-
-    if (original_enc_info.sc_codepage == SC_CP_UTF8) {
-        final_output_no_bom = utf8_input;
-    }
-    else {
-        // Step 1: Convert the modified UTF-8 string back to a standard wstring (UTF-16 LE on Windows)
-        std::wstring wbuf_out;
-        int wide_len_out = MultiByteToWideChar(CP_UTF8, 0, utf8_input.c_str(), (int)utf8_input.size(), nullptr, 0);
-        if (wide_len_out <= 0) return false;
-        wbuf_out.resize(wide_len_out);
-        MultiByteToWideChar(CP_UTF8, 0, utf8_input.c_str(), (int)utf8_input.size(), &wbuf_out[0], wide_len_out);
-
-        // Step 2: Convert the wstring to the original target encoding
-        switch (original_enc_info.sc_codepage) {
-        case 1200: { // Original was UTF-16 LE
-            final_output_no_bom.assign(reinterpret_cast<const char*>(wbuf_out.data()), wbuf_out.size() * sizeof(wchar_t));
-            break;
-        }
-        case 1201: { // Original was UTF-16 BE
-            // To convert from our wstring (UTF-16 LE) to UTF-16 BE, we must byte-swap each character.
-            final_output_no_bom.assign(reinterpret_cast<const char*>(wbuf_out.data()), wbuf_out.size() * sizeof(wchar_t));
-            for (size_t i = 0; i < final_output_no_bom.length(); i += 2) {
-                std::swap(final_output_no_bom[i], final_output_no_bom[i + 1]);
-            }
-            break;
-        }
-        default: { // Original was ANSI
-            int final_len = WideCharToMultiByte(original_enc_info.sc_codepage, 0, wbuf_out.c_str(), (int)wbuf_out.size(), nullptr, 0, nullptr, nullptr);
-            if (final_len <= 0) return false;
-            final_output_no_bom.resize(final_len);
-            WideCharToMultiByte(original_enc_info.sc_codepage, 0, wbuf_out.c_str(), (int)wbuf_out.size(), &final_output_no_bom[0], final_len, nullptr, nullptr);
-            break;
-        }
-        }
-    }
-
-    // Step 3: Prepend the original BOM
-    final_output_with_bom.clear();
-    if (original_enc_info.bom_length > 0) {
-        final_output_with_bom.append(original_buf_with_bom.data(), original_enc_info.bom_length);
-    }
-    final_output_with_bom.append(final_output_no_bom);
-    return true;
-}
-
-EncodingInfo MultiReplace::detectEncoding(const std::string& buffer) {
-    if (buffer.empty()) { return { CP_ACP, 0 }; }
-    if (buffer.size() >= 3 && static_cast<unsigned char>(buffer[0]) == 0xEF && static_cast<unsigned char>(buffer[1]) == 0xBB && static_cast<unsigned char>(buffer[2]) == 0xBF) { return { SC_CP_UTF8, 3 }; }
-    if (buffer.size() >= 2 && static_cast<unsigned char>(buffer[0]) == 0xFF && static_cast<unsigned char>(buffer[1]) == 0xFE) { return { 1200, 2 }; }
-    if (buffer.size() >= 2 && static_cast<unsigned char>(buffer[0]) == 0xFE && static_cast<unsigned char>(buffer[1]) == 0xFF) { return { 1201, 2 }; }
-    if (Encoding::isValidUtf8(buffer)) { return { SC_CP_UTF8, 0 }; }
-    int check_len = std::min((int)buffer.size(), 512);
-    if (check_len > 1) {
-        if (check_len % 2 != 0) check_len--;
-        int nulls_at_odd_pos = 0;
-        for (int i = 1; i < check_len; i += 2) { if (buffer[i] == '\0') { nulls_at_odd_pos++; } }
-        double null_ratio = (check_len > 0) ? (static_cast<double>(nulls_at_odd_pos) / (check_len / 2.0)) : 0.0;
-        if (null_ratio > 0.40) { return { 1200, 0 }; }
-    }
-    return { CP_ACP, 0 };
 }
 
 #pragma endregion
@@ -6721,9 +6617,11 @@ void MultiReplace::handleFindInFiles() {
         if (!guard.loadFile(fp, original)) { continue; }
 
         // detect and convert to UTF-8 for the hidden buffer
-        EncodingInfo enc = detectEncoding(original);
+        Encoding::DetectOptions dopts;
+        const std::vector<char> raw(original.begin(), original.end());
+        const Encoding::EncodingInfo enc = Encoding::detectEncoding(raw.data(), raw.size(), dopts);
         std::string u8;
-        if (!convertBufferToUtf8(original, enc, u8)) { continue; }
+        if (!Encoding::convertBufferToUtf8(raw, enc, u8)) { continue; }
 
         // Bind hidden buffer for the whole per-file scope
         SciBindingGuard bind(this, guard);
@@ -9115,7 +9013,7 @@ static inline bool decodeNumericEscape(const std::wstring& src,size_t pos, int  
 std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool extended, UINT targetCodepage) const
 {
     if (!extended)                          // fast path – no escapes
-        return Encoding::wstringToString(input, targetCodepage);
+        return Encoding::wstringToBytes(input, targetCodepage);
 
     std::wstring out;
     out.reserve(input.size());
@@ -9175,7 +9073,7 @@ std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool exte
         }
     }
 
-    return Encoding::wstringToString(out, targetCodepage);
+    return Encoding::wstringToBytes(out, targetCodepage);
 }
 
 std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool extended)
@@ -10097,7 +9995,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     {
         offset = 3;                                       // skip BOM
     }
-    else if (!Encoding::isValidUtf8(raw)) {
+    else if (!Encoding::isValidUtf8(raw.data(), raw.size())) {
         cp = CP_ACP;                                      // fallback to ANSI
     }
 

@@ -94,7 +94,7 @@ bool IniFileCache::parse(const std::wstring& iniFilePath)
     {
         offset = 3;
     }
-    else if (!Encoding::isValidUtf8(raw)) {
+    else if (!Encoding::isValidUtf8(raw.data(), raw.size())) {
         cp = CP_ACP;
     }
 

@@ -762,7 +762,6 @@ private:
     void handleReplaceInFiles();
     bool convertUtf8ToOriginal(const std::string& utf8_input, const EncodingInfo& original_enc_info, const std::string& original_buf_with_bom, std::string& final_output_with_bom);
     bool convertBufferToUtf8(const std::string& original_buf, const EncodingInfo& enc_info, std::string& utf8_output);
-    EncodingInfo detectEncoding(const std::string& buffer);
 
     //DebugWindow
     int ShowDebugWindow(const std::string& message);

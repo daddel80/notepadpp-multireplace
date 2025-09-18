@@ -15,31 +15,70 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #pragma once
+// Encoding.h
+// Robust Windows encoding utilities for MultiReplace.
+// - BOM & charset detection (UTF-8/UTF-16LE/UTF-16BE/ANSI)
+// - Optional Auto-CJK detection on ANSI fallback (932/936/949/950) via lossless roundtrip
+// - Optional extra ANSI candidates (e.g., 1250) per deployment
+// - Safe conversions (no best-fit by default), BOM preservation
+
 #include <string>
-#include <Windows.h>
+#include <vector>
+#include <cstdint>
+#include <windows.h>
 
-/// Collection of static helper functions for common text‑encoding tasks.
+namespace Encoding {
 
-class Encoding final
-{
-public:
-    // raw bytes(document code page) → UTF‑8 std::string
-    static std::string bytesToUtf8(const std::string_view src, UINT codePage);
-    static std::wstring Encoding::bytesToWString(const std::string& raw, UINT cp);
+    // ---------- Kinds & options ----------
 
-    // UTF‑8 ⇄ std::wstring
-    static std::wstring utf8ToWString(const std::string& utf8);
-    static std::string  wstringToUtf8(const std::wstring& ws);
+    enum class Kind {
+        UTF8,
+        UTF16LE,
+        UTF16BE,
+        ANSI
+    };
 
-    // ANSI code page ⇄ std::wstring
-    static std::wstring ansiToWString(const std::string& input, UINT codePage);
-    static std::string  wstringToString(const std::wstring& ws, UINT codePage);
+    struct DetectOptions {
+        bool  preferUtf8NoBOM = true;       // treat valid UTF-8 (no BOM) as UTF-8
+        bool  enableAutoCJK = true;      // probe CJK codepages on ANSI fallback
+        std::vector<UINT> extraAnsiCandidates{}; // user-provided extra candidates (e.g., 1250)
+        double asciiQuickPathThreshold = 0.98;   // skip probing if mostly ASCII
+        size_t sampleKB = 128;              // size per sample for probing
+    };
 
-    // utilities
-    static std::wstring trim(const std::wstring& str);
-    static bool         isValidUtf8(const std::string& data);
+    struct EncodingInfo {
+        Kind  kind = Kind::ANSI;
+        UINT  codepage = CP_ACP;  // used when kind==ANSI
+        bool  withBOM = false;   // preserve BOM on write
+        int   bomBytes = 0;       // 0, 2, or 3
+    };
 
-private:
-    Encoding() = delete;  // static‑only class
-    ~Encoding() = delete;
-};
+    struct ConvertOptions {
+        bool allowBestFit = false; // default strict: no best-fit
+    };
+
+    // ---------- Validation ----------
+    bool isValidUtf8(const char* data, size_t len);
+
+    // ---------- Detection ----------
+    EncodingInfo detectEncoding(const char* data, size_t len, const DetectOptions& opt = {});
+    UINT autoDetectAnsiCodepage(const char* data, int len, UINT acp, const DetectOptions& opt);
+
+    // ---------- Low-level helper ----------
+    bool roundtripLossless(const char* data, int len, UINT cp);
+
+    // ---------- String conversions ----------
+    std::wstring bytesToWString(const std::string& bytes, UINT cp);
+    std::string  wstringToBytes(const std::wstring& w, UINT cp, const ConvertOptions& copt = {});
+    std::string  bytesToUtf8(const std::string& bytes, UINT cp);
+    std::string  wstringToUtf8(const std::wstring& w);
+    std::wstring utf8ToWString(const std::string& u8);
+    std::string  utf8ToBytes(const std::string& u8, UINT cp, const ConvertOptions& copt = {});
+
+    // ---------- Buffer conversions with BOM handling ----------
+    bool convertBufferToUtf8(const std::vector<char>& in, const EncodingInfo& src, std::string& outUtf8);
+    bool convertUtf8ToOriginal(const std::string& u8, const EncodingInfo& dst, std::vector<char>& outBytes, const ConvertOptions& copt = {});
+
+    std::wstring trim(const std::wstring& str);
+
+} // namespace Encoding
