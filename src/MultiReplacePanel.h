@@ -760,8 +760,6 @@ private:
     bool handleBrowseDirectoryButton();
     bool selectDirectoryDialog(HWND owner, std::wstring& outPath);
     void handleReplaceInFiles();
-    bool convertUtf8ToOriginal(const std::string& utf8_input, const EncodingInfo& original_enc_info, const std::string& original_buf_with_bom, std::string& final_output_with_bom);
-    bool convertBufferToUtf8(const std::string& original_buf, const EncodingInfo& enc_info, std::string& utf8_output);
 
     //DebugWindow
     int ShowDebugWindow(const std::string& message);
@@ -871,10 +869,6 @@ private:
 
     //Export
     void exportToBashScript(const std::wstring& fileName);
-    std::string escapeSpecialChars(const std::string& input, bool extended);
-    void handleEscapeSequence(const std::regex& regex, const std::string& input, std::string& output, std::function<char(const std::string&)> converter);
-    std::string translateEscapes(const std::string& input);
-    std::string replaceNewline(const std::string& input, ReplaceMode mode);
 
     //INI
     std::pair<std::wstring, std::wstring> generateConfigFilePaths();

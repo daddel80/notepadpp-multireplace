@@ -79,6 +79,4 @@ namespace Encoding {
     bool convertBufferToUtf8(const std::vector<char>& in, const EncodingInfo& src, std::string& outUtf8);
     bool convertUtf8ToOriginal(const std::string& u8, const EncodingInfo& dst, std::vector<char>& outBytes, const ConvertOptions& copt = {});
 
-    std::wstring trim(const std::wstring& str);
-
 } // namespace Encoding

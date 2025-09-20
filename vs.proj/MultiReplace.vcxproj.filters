@@ -117,6 +117,8 @@
     <ClCompile Include="..\src\ConfigManager.cpp" />
     <ClCompile Include="..\src\IniFileCache.cpp" />
     <ClCompile Include="..\src\UndoRedoManager.cpp" />
+    <ClCompile Include="..\src\MultiReplacePanel_BatchUI.cpp" />
+    <ClCompile Include="..\src\StringUtils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -222,6 +224,8 @@
     <ClInclude Include="..\src\IniFileCache.h" />
     <ClInclude Include="..\src\language_mapping.h" />
     <ClInclude Include="..\src\UndoRedoManager.h" />
+    <ClInclude Include="..\src\BatchUIGuard.h" />
+    <ClInclude Include="..\src\StringUtils.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

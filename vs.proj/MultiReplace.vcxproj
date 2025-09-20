@@ -74,6 +74,7 @@
     <ClInclude Include="..\src\StaticDialog\Docking.h" />
     <ClInclude Include="..\src\StaticDialog\resource.h" />
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
+    <ClInclude Include="..\src\StringUtils.h" />
     <ClInclude Include="..\src\UndoRedoManager.h" />
   </ItemGroup>
   <ItemGroup>
@@ -159,6 +160,7 @@
     <ClCompile Include="..\src\PluginDefinition.cpp" />
     <ClCompile Include="..\src\ResultDock.cpp" />
     <ClCompile Include="..\src\StaticDialog\StaticDialog.cpp" />
+    <ClCompile Include="..\src\StringUtils.cpp" />
     <ClCompile Include="..\src\UndoRedoManager.cpp" />
   </ItemGroup>
   <ItemGroup>

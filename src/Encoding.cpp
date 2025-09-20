@@ -359,18 +359,4 @@ namespace Encoding {
         }
     }
 
-
-    //
-    // trim leading/trailing whitespace & line breaks
-    //
-    std::wstring trim(const std::wstring& str)
-    {
-        const auto first = str.find_first_not_of(L" \t\r\n");
-        if (first == std::wstring::npos)
-            return L"";
-
-        const auto last = str.find_last_not_of(L" \t\r\n");
-        return str.substr(first, last - first + 1);
-    }
-
 } // namespace Encoding

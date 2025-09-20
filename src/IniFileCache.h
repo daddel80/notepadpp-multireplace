@@ -25,6 +25,7 @@
 #include <string>
 #include <unordered_map>
 #include <windows.h>    // BYTE
+#include "StringUtils.h"
 
 class IniFileCache
 {

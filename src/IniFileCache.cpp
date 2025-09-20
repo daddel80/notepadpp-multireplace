@@ -16,6 +16,7 @@
 
 #include "IniFileCache.h"
 #include "Encoding.h"               // Encoding::trim / isValidUtf8
+#include "StringUtils.h"
 #include <fstream>
 #include <sstream>
 #include <regex>
@@ -113,7 +114,7 @@ bool IniFileCache::parse(const std::wstring& iniFilePath)
     std::wstring line, section;
 
     while (std::getline(ss, line)) {
-        line = Encoding::trim(line);
+        line = StringUtils::trim(line);
         if (line.empty()) continue;
 
         wchar_t first = line[0];
@@ -122,7 +123,7 @@ bool IniFileCache::parse(const std::wstring& iniFilePath)
         if (first == L'[') {
             size_t close = line.find(L']');
             if (close != std::wstring::npos) {
-                section = Encoding::trim(line.substr(1, close - 1));
+                section = StringUtils::trim(line.substr(1, close - 1));
             }
             continue;
         }
@@ -130,8 +131,8 @@ bool IniFileCache::parse(const std::wstring& iniFilePath)
         size_t eq = line.find(L'=');
         if (eq == std::wstring::npos) continue;
 
-        std::wstring key = Encoding::trim(line.substr(0, eq));
-        std::wstring value = Encoding::trim(line.substr(eq + 1));
+        std::wstring key = StringUtils::trim(line.substr(0, eq));
+        std::wstring value = StringUtils::trim(line.substr(eq + 1));
         _data[section][key] = unescapeCsvValue(value);
     }
     return true;

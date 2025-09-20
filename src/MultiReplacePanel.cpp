@@ -31,6 +31,7 @@
 #include "LanguageManager.h"
 #include "ConfigManager.h"
 #include "UndoRedoManager.h"
+#include "StringUtils.h"
 #include <algorithm>
 #include <bitset>
 #include <fstream>
@@ -55,6 +56,7 @@
 static LanguageManager& LM = LanguageManager::instance();
 static ConfigManager& CFG = ConfigManager::instance();
 static UndoRedoManager& URM = UndoRedoManager::instance();
+namespace SU = StringUtils;
 
 
 #pragma region Initialization
@@ -10281,16 +10283,16 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
         std::string find;
         std::string replace;
         if (itemData.extended) {
-            find = replaceNewline(translateEscapes(escapeSpecialChars(Encoding::wstringToUtf8(itemData.findText), true)), ReplaceMode::Extended);
-            replace = replaceNewline(translateEscapes(escapeSpecialChars(Encoding::wstringToUtf8(itemData.replaceText), true)), ReplaceMode::Extended);
+            find = SU::replaceNewline(SU::translateEscapes(SU::escapeSpecialChars(Encoding::wstringToUtf8(itemData.findText), true)), SU::ReplaceMode::Extended);
+            replace = SU::replaceNewline(SU::translateEscapes(SU::escapeSpecialChars(Encoding::wstringToUtf8(itemData.replaceText), true)), SU::ReplaceMode::Extended);
         }
         else if (itemData.regex) {
-            find = replaceNewline(Encoding::wstringToUtf8(itemData.findText), ReplaceMode::Regex);
-            replace = replaceNewline(Encoding::wstringToUtf8(itemData.replaceText), ReplaceMode::Regex);
+            find = SU::replaceNewline(Encoding::wstringToUtf8(itemData.findText), SU::ReplaceMode::Regex);
+            replace = SU::replaceNewline(Encoding::wstringToUtf8(itemData.replaceText), SU::ReplaceMode::Regex);
         }
         else {
-            find = replaceNewline(escapeSpecialChars(Encoding::wstringToUtf8(itemData.findText), false), ReplaceMode::Normal);
-            replace = replaceNewline(escapeSpecialChars(Encoding::wstringToUtf8(itemData.replaceText), false), ReplaceMode::Normal);
+            find = SU::replaceNewline(SU::escapeSpecialChars(Encoding::wstringToUtf8(itemData.findText), false), SU::ReplaceMode::Normal);
+            replace = SU::replaceNewline(SU::escapeSpecialChars(Encoding::wstringToUtf8(itemData.replaceText), false), SU::ReplaceMode::Normal);
         }
 
         std::string wholeWord = itemData.wholeWord ? "1" : "0";
@@ -10319,121 +10321,6 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
             MB_OK | MB_ICONWARNING);
     }
 
-}
-
-std::string MultiReplace::escapeSpecialChars(const std::string& input, bool extended) {
-    std::string output = input;
-
-    // Define the escape characters that should not be masked
-    std::string supportedEscapes = "nrt0xubd";
-
-    // Mask all characters that could be interpreted by sed or the shell, including escape sequences.
-    std::string specialChars = "$.*[]^&\\{}()?+|<>\"'`~;#";
-
-    for (char c : specialChars) {
-        std::string str(1, c);
-        size_t pos = output.find(str);
-
-        while (pos != std::string::npos) {
-            // Check if the current character is an escape character
-            if (str == "\\" && (pos == 0 || output[pos - 1] != '\\')) {
-                // Skip masking if it is a supported or unsupported escape
-                if (extended && (pos + 1 < output.size() && supportedEscapes.find(output[pos + 1]) != std::string::npos)) {
-                    pos = output.find(str, pos + 1);
-                    continue;
-                }
-            }
-
-            output.insert(pos, "\\");
-            pos = output.find(str, pos + 2);
-
-        }
-    }
-
-    return output;
-}
-
-void MultiReplace::handleEscapeSequence(const std::regex& regex, const std::string& input, std::string& output, std::function<char(const std::string&)> converter) {
-    std::sregex_iterator begin = std::sregex_iterator(input.begin(), input.end(), regex);
-    std::sregex_iterator end;
-    for (std::sregex_iterator i = begin; i != end; ++i) {
-        std::smatch match = *i;
-        std::string escape = match.str();
-        try {
-            char actualChar = converter(escape);
-            size_t pos = output.find(escape);
-            if (pos != std::string::npos) {
-                output.replace(pos, escape.length(), 1, actualChar);
-            }
-        }
-        catch (...) {
-            // no errors caught during tests yet
-        }
-
-    }
-}
-
-std::string MultiReplace::translateEscapes(const std::string& input) {
-    std::string output = input;
-
-    std::regex octalRegex("\\\\o([0-7]{3})");
-    std::regex decimalRegex("\\\\d([0-9]{3})");
-    std::regex hexRegex("\\\\x([0-9a-fA-F]{2})");
-    std::regex binaryRegex("\\\\b([01]{8})");
-    std::regex unicodeRegex("\\\\u([0-9a-fA-F]{4})");
-    std::regex newlineRegex("\\\\n");
-    std::regex carriageReturnRegex("\\\\r");
-    std::regex nullCharRegex("\\\\0");
-
-    handleEscapeSequence(octalRegex, input, output, [](const std::string& octalEscape) {
-        return static_cast<char>(std::stoi(octalEscape.substr(2), nullptr, 8));
-        });
-
-    handleEscapeSequence(decimalRegex, input, output, [](const std::string& decimalEscape) {
-        return static_cast<char>(std::stoi(decimalEscape.substr(2)));
-        });
-
-    handleEscapeSequence(hexRegex, input, output, [](const std::string& hexEscape) {
-        return static_cast<char>(std::stoi(hexEscape.substr(2), nullptr, 16));
-        });
-
-    handleEscapeSequence(binaryRegex, input, output, [](const std::string& binaryEscape) {
-        return static_cast<char>(std::bitset<8>(binaryEscape.substr(2)).to_ulong());
-        });
-
-    handleEscapeSequence(unicodeRegex, input, output, [this](const std::string& unicodeEscape) -> char {
-        int codepoint = std::stoi(unicodeEscape.substr(2), nullptr, 16);
-        wchar_t unicodeChar = static_cast<wchar_t>(codepoint);
-        std::wstring unicodeString = { unicodeChar };
-        std::string result = Encoding::wstringToUtf8(unicodeString);
-        return result.empty() ? 0 : result.front();
-        });
-
-
-    output = std::regex_replace(output, newlineRegex, "__NEWLINE__");
-    output = std::regex_replace(output, carriageReturnRegex, "__CARRIAGERETURN__");
-    output = std::regex_replace(output, nullCharRegex, "");  // \0 will not be supported
-
-    return output;
-}
-
-std::string MultiReplace::replaceNewline(const std::string& input, ReplaceMode mode) {
-    std::string result = input;
-
-    if (mode == ReplaceMode::Normal) {
-        result.erase(std::remove(result.begin(), result.end(), '\n'), result.end());
-        result.erase(std::remove(result.begin(), result.end(), '\r'), result.end());
-    }
-    else if (mode == ReplaceMode::Extended) {
-        result = std::regex_replace(result, std::regex("\n"), "__NEWLINE__");
-        result = std::regex_replace(result, std::regex("\r"), "__CARRIAGERETURN__");
-    }
-    else if (mode == ReplaceMode::Regex) {
-        result = std::regex_replace(result, std::regex("\n"), "\\n");
-        result = std::regex_replace(result, std::regex("\r"), "\\r");
-    }
-
-    return result;
 }
 
 #pragma endregion
