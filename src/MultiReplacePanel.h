@@ -25,6 +25,7 @@
 #include "Encoding.h"
 #include "LanguageManager.h"
 #include "ConfigManager.h"
+#include "ColumnTabs.h" 
 
 #include <string>
 #include <vector>
@@ -620,6 +621,8 @@ private:
     bool _isCancelRequested = false; // Flag to signal cancellation in Replace Files
     inline static bool  _isShuttingDown = false; // Flag to signal app shutdown
     HBRUSH _hDlgBrush = nullptr; // Handle for the dialog's background brush
+    bool _elasticTabsActive = false;   // current visual state (editor tabstops)
+    int  _elasticPaddingPx = 8;       // min pixel gap after each column
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
@@ -799,6 +802,11 @@ private:
     void handleCopyColumnsToClipboard();
     bool confirmColumnDeletion();
     void handleDeleteColumns();
+    void handleColumnGridTabsButton();
+    void clearElasticTabsIfAny();
+    bool buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const;
+    bool applyElasticTabStops();
+    bool clearElasticTabStops();
 
     //CSV Sort
     std::vector<CombinedColumns> extractColumnData(SIZE_T startLine, SIZE_T lineCount);

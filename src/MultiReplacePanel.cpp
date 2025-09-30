@@ -31,6 +31,7 @@
 #include "LanguageManager.h"
 #include "ConfigManager.h"
 #include "UndoRedoManager.h"
+#include "ColumnTabs.h"
 #include "StringUtils.h"
 #include <algorithm>
 #include <bitset>
@@ -157,7 +158,7 @@ void MultiReplace::initializeFontStyles() {
     for (int controlId : { IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_STATUS_MESSAGE, IDC_PATH_DISPLAY, IDC_STATS_DISPLAY }) {
         SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hNormalFont1, TRUE);
     }
-    for (int controlId : { IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON }) {
+    for (int controlId : { IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_COLUMN_GRIDTABS_BUTTON }) {
         SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hNormalFont2, TRUE);
     }
 
@@ -282,6 +283,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(459), sy(149), sx(25), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_drop_columns") };
     ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(487), sy(149), sx(25), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_columns") }; // 
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(515), sy(149), sx(45), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_highlight") };
+    ctrlMap[IDC_COLUMN_GRIDTABS_BUTTON] = { sx(515), sy(126), sx(45), sy(20), WC_BUTTON, L"TABS", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_tabs") };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -784,8 +786,8 @@ void MultiReplace::setUIElementVisibility() {
     EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), !regexChecked);
 
     const std::vector<int> columnRadioDependentElements = {
-        IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON,
-        IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON
+        IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON,
+        IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_COLUMN_GRIDTABS_BUTTON
     };
 
     // Update the UI elements based on Column mode
@@ -3747,6 +3749,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             setUIElementVisibility();
             handleClearDelimiterState();
+            clearElasticTabsIfAny();
             return TRUE;
         }
 
@@ -3754,6 +3757,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             setUIElementVisibility();
             handleClearDelimiterState();
+            clearElasticTabsIfAny();
             return TRUE;
         }
 
@@ -3820,6 +3824,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             else {
                 handleClearColumnMarks();
                 showStatusMessage(LanguageManager::instance().get(L"status_column_marks_cleared"), MessageStatus::Success);
+            }
+            return TRUE;
+        }
+
+        case IDC_COLUMN_GRIDTABS_BUTTON:
+        {
+            if (HIWORD(wParam) == BN_CLICKED) {
+                handleColumnGridTabsButton();
             }
             return TRUE;
         }
@@ -7833,6 +7845,129 @@ void MultiReplace::handleCopyColumnsToClipboard()
     // Convert to Wide String and copy to clipboard
     std::wstring wstr = Encoding::bytesToWString(combinedText, getCurrentDocCodePage());
     copyTextToClipboard(wstr, copiedFieldsCount);
+}
+
+bool MultiReplace::buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const
+{
+    if (lineDelimiterPositions.empty() || !columnDelimiterData.isValid())
+        return false;
+
+    outModel = {};
+    outModel.docStartLine = 0;
+    outModel.delimiterIsTab = (columnDelimiterData.extendedDelimiter.size() == 1
+        && columnDelimiterData.extendedDelimiter[0] == '\t');
+    outModel.delimiterLength = (int)columnDelimiterData.delimiterLength;
+    outModel.collapseTabRuns = outModel.delimiterIsTab;
+    outModel.Lines.reserve(lineDelimiterPositions.size());
+
+    // Copy only what we need (offsets + line length)
+    for (size_t i = 0; i < lineDelimiterPositions.size(); ++i) {
+        const LineInfo& src = lineDelimiterPositions[i];
+
+        ColumnTabs::CT_ColumnLineInfo li{};
+        li.lineLength = (int)src.lineLength;
+        li.delimiterOffsets.reserve(src.positions.size());
+        for (const auto& dp : src.positions) {
+            li.delimiterOffsets.push_back((int)dp.offsetInLine);
+        }
+        // runEnds optional: we leave empty; ColumnTabs arbeitet auch ohne.
+        outModel.Lines.emplace_back(std::move(li));
+    }
+    return true;
+}
+
+bool MultiReplace::applyElasticTabStops()
+{
+    ColumnTabs::CT_ColumnModelView model;
+    if (!buildCTModelFromMatrix(model))
+        return false;
+
+    const int firstLine = 0;
+    const int lastLine = (int)model.Lines.size() - 1;
+
+    // pixel-accurate, editor-global; does not change text
+    return ColumnTabs::ApplyElasticTabStops(_hScintilla, model, firstLine, lastLine, _elasticPaddingPx);
+}
+
+bool MultiReplace::clearElasticTabStops()
+{
+    return ColumnTabs::ClearTabStops(_hScintilla);
+}
+
+void MultiReplace::handleColumnGridTabsButton()
+{
+    // Ensure CSV scope + Matrix
+    if (!_elasticTabsActive) {
+        if (!validateDelimiterData()) {
+            showStatusMessage(L"CSV scope not initialized.", MessageStatus::Error);
+            return;
+        }
+        if (lineDelimiterPositions.empty())
+            findAllDelimitersInDocument();
+        if (lineDelimiterPositions.empty()) {
+            showStatusMessage(L"No delimiters found.", MessageStatus::Error);
+            return;
+        }
+    }
+
+    ColumnTabs::CT_ColumnModelView model{};
+    if (!buildCTModelFromMatrix(model)) {
+        showStatusMessage(L"Elastic Tabs: model build failed.", MessageStatus::Error);
+        return;
+    }
+
+    if (!_elasticTabsActive)
+    {
+        // Destructive: insert aligned padding before delimiters
+        ColumnTabs::CT_AlignOptions opt{};
+        opt.firstLine = 0;
+        opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
+        opt.gapCells = 2;
+        opt.spacesOnlyIfTabDelimiter = true; // TSV => spaces padding only
+
+        // optional: dedicate indicator slot to avoid collisions
+        ColumnTabs::CT_SetIndicatorId(30);
+
+        const bool ok = ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt);
+        if (!ok) {
+            showStatusMessage(L"Elastic Tabs: insert failed.", MessageStatus::Error);
+            return;
+        }
+
+        // Matrix refresh (positions haben sich verschoben)
+        findAllDelimitersInDocument();
+
+        _elasticTabsActive = true;
+        if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
+            ::SetWindowText(h, L"TABS (ON)");
+        showStatusMessage(L"Elastic Tabs: INSERTED.", MessageStatus::Success);
+    }
+    else
+    {
+        // Remove only what we inserted earlier
+        const bool ok = ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
+        if (!ok) {
+            showStatusMessage(L"Elastic Tabs: remove failed.", MessageStatus::Error);
+            return;
+        }
+
+        // Matrix refresh (Text wieder “clean”)
+        findAllDelimitersInDocument();
+
+        _elasticTabsActive = false;
+        if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
+            ::SetWindowText(h, L"TABS");
+        showStatusMessage(L"Elastic Tabs: REMOVED.", MessageStatus::Info);
+    }
+}
+
+
+void MultiReplace::clearElasticTabsIfAny()
+{
+    if (_elasticTabsActive) {
+        clearElasticTabStops();
+        _elasticTabsActive = false;
+    }
 }
 
 #pragma endregion

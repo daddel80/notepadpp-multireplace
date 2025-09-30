@@ -119,6 +119,7 @@
     <ClCompile Include="..\src\UndoRedoManager.cpp" />
     <ClCompile Include="..\src\MultiReplacePanel_BatchUI.cpp" />
     <ClCompile Include="..\src\StringUtils.cpp" />
+    <ClCompile Include="..\src\ColumnTabs.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -226,6 +227,7 @@
     <ClInclude Include="..\src\UndoRedoManager.h" />
     <ClInclude Include="..\src\BatchUIGuard.h" />
     <ClInclude Include="..\src\StringUtils.h" />
+    <ClInclude Include="..\src\ColumnTabs.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

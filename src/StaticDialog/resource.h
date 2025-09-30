@@ -142,13 +142,14 @@
 #define IDC_COLUMN_DROP_BUTTON          5457
 #define IDC_COLUMN_COPY_BUTTON          5458
 #define IDC_COLUMN_HIGHLIGHT_BUTTON     5459
+#define IDC_COLUMN_GRIDTABS_BUTTON      5460
 
-#define IDC_COLUMN_NUM_EDIT             5460
-#define IDC_DELIMITER_EDIT              5461
-#define IDC_QUOTECHAR_EDIT              5462
-#define IDC_DELIMITER_STATIC            5463
-#define IDC_COLUMN_NUM_STATIC           5464
-#define IDC_QUOTECHAR_STATIC            5465
+#define IDC_COLUMN_NUM_EDIT             5461
+#define IDC_DELIMITER_EDIT              5462
+#define IDC_QUOTECHAR_EDIT              5463
+#define IDC_DELIMITER_STATIC            5464
+#define IDC_COLUMN_NUM_STATIC           5465
+#define IDC_QUOTECHAR_STATIC            5466
 
 
 
