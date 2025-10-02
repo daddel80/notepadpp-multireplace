@@ -1,42 +1,42 @@
-// ColumnTabs.cpp
-#include "ColumnTabs.h"
+﻿#include "ColumnTabs.h"
 #include <algorithm>
 
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 
-// --- direct scintilla call ---
-static inline sptr_t S(HWND hSci, UINT m, uptr_t w = 0, sptr_t l = 0) {
+// --- Scintilla direct --------------------------------------------------------
+static inline sptr_t S(HWND hSci, UINT m, uptr_t w = 0, sptr_t l = 0)
+{
     auto fn = reinterpret_cast<SciFnDirect>(::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0));
     auto ptr = (sptr_t)       ::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0);
     return fn ? fn(ptr, m, w, l) : ::SendMessage(hSci, m, w, l);
 }
 
-// redraw guard (UI batching)
 struct RedrawGuard {
-    HWND h;
+    HWND h{};
     explicit RedrawGuard(HWND hwnd) : h(hwnd) { ::SendMessage(h, WM_SETREDRAW, FALSE, 0); }
     ~RedrawGuard() { ::SendMessage(h, WM_SETREDRAW, TRUE, 0); ::InvalidateRect(h, nullptr, TRUE); }
 };
 
-// -----------------------------------------------------------------------------
-//               implementation inside namespace ColumnTabs
-// -----------------------------------------------------------------------------
-namespace ColumnTabs {
+namespace ColumnTabs
+{
 
-    static int g_indic = 8;
+    // --- Globals -----------------------------------------------------------------
+    static int g_CT_IndicatorId = 30;
 
-    void CT_SetIndicatorId(int id) noexcept { g_indic = id; }
-    int  CT_GetIndicatorId() noexcept { return g_indic; }
+    void CT_SetIndicatorId(int id) noexcept { g_CT_IndicatorId = id; }
+    int  CT_GetIndicatorId() noexcept { return g_CT_IndicatorId; }
 
-    static inline int getTabWidth(HWND hSci) {
-        const int w = (int)S(hSci, SCI_GETTABWIDTH);
-        return w > 0 ? w : 8;
+    // --- Helpers -----------------------------------------------------------------
+    static inline int pxOfSpace(HWND hSci)
+    {
+        const int px = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
+        return (px > 0) ? px : 8;
     }
 
-    // Count visual cells (monospace). '\t' jumps to next tab stop; CR/LF ignored.
-    size_t CT_VisualCellWidth(const char* s, size_t n, int tabWidth) {
+    size_t CT_VisualCellWidth(const char* s, size_t n, int tabWidth)
+    {
         size_t col = 0;
         for (size_t i = 0; i < n; ++i) {
             const unsigned char c = (unsigned char)s[i];
@@ -52,193 +52,272 @@ namespace ColumnTabs {
         return col;
     }
 
-    // Build shortest mix of tabs+spaces to reach targetCol from currentCol (cells).
-    static inline void makePadding(size_t curCol, size_t tgtCol, int tabWidth, bool allowTabs, std::string& out) {
-        out.clear();
-        if (tgtCol <= curCol) return;
-        if (!allowTabs || tabWidth <= 1) { out.assign(tgtCol - curCol, ' '); return; }
-        size_t col = curCol;
-        while (true) {
-            const size_t next = ((col / (size_t)tabWidth) + 1) * (size_t)tabWidth;
-            if (next > tgtCol) break;
-            out.push_back('\t'); col = next;
-        }
-        if (tgtCol > col) out.append(tgtCol - col, ' ');
-    }
-
-    // ---------------- non-destructive: editor tab stops --------------------------
-
-    bool ClearTabStops(HWND hSci) {
-        S(hSci, SCI_CLEARTABSTOPS);
-        return true;
-    }
-
-    // Pixel-accurate editor-global tab stops (minimal variant; safe default).
-    bool ApplyElasticTabStops(HWND hSci, const CT_ColumnModelView& model,
-        int firstLine, int lastLine, int paddingPx)
+    static inline CT_ColumnLineInfo fetchLine(const CT_ColumnModelView& model, int line)
     {
-        if (model.Lines.empty() && !model.getLineInfo) return false;
-
-        const int total = (int)(model.getLineInfo ? (lastLine >= 0 ? (lastLine - firstLine + 1) : 0)
-            : model.Lines.size());
-        if (total == 0) return false;
-
-        // Determine range
-        const int line0 = (std::max)(0, firstLine);
-        const int line1 = (lastLine < 0) ? (line0 + (int)model.Lines.size() - 1) : (std::max)(firstLine, lastLine);
-        (void)line0; (void)line1;
-
-        // Reset and keep base width
-        S(hSci, SCI_CLEARTABSTOPS);
-        const int baseTabW = (int)S(hSci, SCI_GETTABWIDTH);
-        const int padPx = (paddingPx > 0 ? paddingPx : 8);
-        S(hSci, SCI_SETTABWIDTH, (baseTabW > 0 ? baseTabW : 4));
-        (void)padPx; // placeholder for future per-column pixel stops
-        return true;
+        const size_t idx = (size_t)(line - (int)model.docStartLine);
+        return model.getLineInfo ? model.getLineInfo(idx) : model.Lines[idx];
     }
 
-    // ---------------- destructive: aligned padding (tabs+spaces) -----------------
-
-   // Compute per-column maximum field widths (cells), WITHOUT gap.
-// Handles multi-char delimiters via model.delimiterLength.
-    static bool computeTargets(HWND hSci, const ColumnTabs::CT_ColumnModelView& model,
-        int line0, int line1, int /*gapCells*/, int tabWidth,
-        std::vector<size_t>& maxWidth /*out*/)
+    // Compute pixel tabstops (N fields -> N-1 stops) with symmetric padding around delimiters,
+ // using your cumulative rule PLUS an exact EOL clamp that is computed with the SAME layout
+ // model as the preferred stops. This guarantees that if any line ends at column m (no m+1),
+ // all stops from m onward are >= that line's EOL, so the last delimiters of other lines
+ // align flush with that EOL.
+ //
+ // Preferred rule (your formula):
+ //   STOP_pref(c) = sum_{k=0..c}   (maxCellWidthPx[k]       + gapBeforePx)
+ //                + sum_{k=0..c-1} (maxDelimiterWidthPx[k] + gapAfterPx)
+ //
+ // Our addition (exact EOL clamp):
+ //   For each line with last column index L (i.e., FieldCount = L+1):
+ //     EOL_X(line) = sum_{k=0..L-1} (cellW_line[k] + gapBeforePx + delimW_line[k] + gapAfterPx)
+ //                 + cellW_line[L]         // no gap/delimiter after the last cell
+ //   For every c >= L, eolClamp[c] = max(eolClamp[c], EOL_X(line)).
+ //
+ // Final stop:
+ //   STOP(c) = max(STOP_pref(c), eolClamp(c))   // no artificial +1; monotonic non-decreasing.
+    static bool computeStopsFromWidthsPx(HWND hSci,
+        const ColumnTabs::CT_ColumnModelView& model,
+        int line0, int line1,
+        std::vector<int>& stopPx /*out*/,
+        int gapPx)
     {
+        using namespace ColumnTabs;
+
+        if (line1 < line0) std::swap(line0, line1);
+
+        // Symmetric gaps (you can make them asymmetric if needed)
+        const int gapBeforePx = (gapPx >= 0) ? gapPx : 0; // left padding before a visible delimiter
+        const int gapAfterPx = (gapPx >= 0) ? gapPx : 0; // right padding after the delimiter
+
+        // --- determine maximum number of fields in range
         size_t maxCols = 0;
         for (int ln = line0; ln <= line1; ++ln) {
-            const auto L = model.getLineInfo
-                ? model.getLineInfo((size_t)(ln - model.docStartLine))
-                : model.Lines[(size_t)(ln - model.docStartLine)];
-            maxCols = (std::max)(maxCols, L.FieldCount());
+            const auto L = fetchLine(model, ln);
+            maxCols = (std::max)(maxCols, L.FieldCount()); // FieldCount = nDelims + 1
         }
-        maxWidth.assign(maxCols, 0);
+        if (maxCols < 2) { stopPx.clear(); return true; }
+
+        const size_t stopsCount = maxCols - 1;
+
+        // We do NOT rely on current tabstops for measuring; we measure text widths explicitly.
+        // However, to avoid per-line stop contamination elsewhere, clear stops in range.
+        for (int ln = line0; ln <= line1; ++ln)
+            S(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
+
+        // ---------- helpers to fetch substrings (Scintilla 5 API) and measure pixel width ----------
+        auto getSubText = [&](Sci_Position pos0, Sci_Position pos1, std::string& out) {
+            if (pos1 <= pos0) { out.clear(); return; }
+            const ptrdiff_t need = (ptrdiff_t)(pos1 - pos0);
+            out.assign((size_t)need + 1u, '\0');
+
+            Sci_TextRangeFull tr{};             // requires Scintilla.h with full API
+            tr.chrg.cpMin = (Sci_PositionCR)pos0;
+            tr.chrg.cpMax = (Sci_PositionCR)pos1;
+            tr.lpstrText = out.data();
+            S(hSci, SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
+
+            out.resize(std::strlen(out.c_str()));
+            };
+
+        auto measurePx = [&](const std::string& s) -> int {
+            if (s.empty()) return 0;
+            return (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)s.c_str());
+            };
+
+        // ---------- PASS 1: collect maxima for preferred stops AND per-line EOL clamp ----------
+        std::vector<int> maxCellWidthPx(maxCols, 0);         // per column k
+        std::vector<int> maxDelimiterWidthPx(stopsCount, 0); // per delimiter k (between k and k+1)
+        std::vector<int> eolClamp(stopsCount, 0);            // cumulative EOL requirement per stop
+
+        // Temporary buffers per line to compute its EOL in *our layout model*
+        std::vector<int> cellW_line;    cellW_line.reserve(maxCols);
+        std::vector<int> delimW_line;   delimW_line.reserve(stopsCount);
 
         for (int ln = line0; ln <= line1; ++ln) {
-            const auto L = model.getLineInfo
-                ? model.getLineInfo((size_t)(ln - model.docStartLine))
-                : model.Lines[(size_t)(ln - model.docStartLine)];
+            const auto L = fetchLine(model, ln);
 
             const Sci_Position base = (Sci_Position)S(hSci, SCI_POSITIONFROMLINE, ln);
             const size_t nDelims = L.delimiterOffsets.size();
             const size_t nFields = nDelims + 1;
 
-            for (size_t col = 0; col < nFields; ++col) {
-                // [s..e) field bytes
+            cellW_line.assign(nFields, 0);
+            delimW_line.assign(nDelims, 0);
+
+            // --- measure each cell's pixel width on this line
+            for (size_t k = 0; k < nFields; ++k) {
                 Sci_Position s = base;
-                if (col > 0) {
-                    const int prevDel = L.delimiterOffsets[col - 1];
-                    s = base + (Sci_Position)prevDel + (Sci_Position)model.delimiterLength;
-                }
-                Sci_Position e = base + (Sci_Position)L.lineLength;
-                if (col < nDelims) {
-                    const int thisDel = L.delimiterOffsets[col];
-                    e = base + (Sci_Position)thisDel;
-                }
-                if (e <= s) continue;
+                if (k > 0)
+                    s = base + (Sci_Position)L.delimiterOffsets[k - 1]
+                    + (Sci_Position)model.delimiterLength;
 
-                std::string buf; buf.resize((size_t)(e - s));
-                Sci_TextRangeFull tr{ s, e, buf.data() };
-                S(hSci, SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
+                Sci_Position e = (k < nDelims)
+                    ? (base + (Sci_Position)L.delimiterOffsets[k])
+                    : (base + (Sci_Position)L.lineLength);
 
-                const size_t w = ColumnTabs::CT_VisualCellWidth(buf.data(), buf.size(), tabWidth);
-                maxWidth[col] = (std::max)(maxWidth[col], w);
+                std::string cell;
+                getSubText(s, e, cell);
+                const int w = measurePx(cell);
+                cellW_line[k] = w;
+                if (w > maxCellWidthPx[k]) maxCellWidthPx[k] = w;
+            }
+
+            // --- measure each delimiter width on this line (if not a tab)
+            if (!model.delimiterIsTab && model.delimiterLength > 0) {
+                for (size_t d = 0; d < nDelims && d < stopsCount; ++d) {
+                    Sci_Position d0 = base + (Sci_Position)L.delimiterOffsets[d];
+                    Sci_Position d1 = d0 + (Sci_Position)model.delimiterLength;
+                    std::string del;
+                    getSubText(d0, d1, del);
+                    const int dw = measurePx(del);
+                    delimW_line[d] = dw;
+                    if (dw > maxDelimiterWidthPx[d]) maxDelimiterWidthPx[d] = dw;
+                }
+            }
+            else {
+                // delimiter is a TAB -> visual width is governed by stops; treat as 0
+                std::fill(delimW_line.begin(), delimW_line.end(), 0);
+            }
+
+            // --- compute this line's EOL in our layout model (exact)
+            const int lastIdx = (int)nFields - 1;
+            int eolX = 0;
+            // all complete boundaries before the last column:
+            for (int k = 0; k < lastIdx; ++k) {
+                eolX += cellW_line[(size_t)k] + gapBeforePx;
+                eolX += delimW_line[(size_t)k] + gapAfterPx;
+            }
+            // finally add only the last cell's width (no gap/delimiter after it)
+            eolX += cellW_line[(size_t)lastIdx];
+
+            // this EOL clamps all subsequent stops c >= lastIdx
+            for (size_t c = (size_t)lastIdx; c < stopsCount; ++c)
+                if (eolX > eolClamp[c]) eolClamp[c] = eolX;
+        }
+
+        // ---------- PASS 2: build preferred stops from maxima (your rule) ----------
+        std::vector<int> stopPref(stopsCount, 0);
+        {
+            int acc = 0;
+            for (size_t c = 0; c < stopsCount; ++c) {
+                // add full previous boundaries
+                acc += maxCellWidthPx[c] + gapBeforePx;
+                stopPref[c] = acc; // delimiter c starts here
+                // carry delimiter width and right gap to the next boundary
+                acc += maxDelimiterWidthPx[c] + gapAfterPx;
             }
         }
+
+        // ---------- Final stops: take the stronger of preferred vs. cumulative EOL clamp ----------
+        stopPx.assign(stopsCount, 0);
+        for (size_t c = 0; c < stopsCount; ++c) {
+            int target = (stopPref[c] < eolClamp[c]) ? eolClamp[c] : stopPref[c];
+            // enforce non-decreasing without artificial +1
+            if (c > 0 && target < stopPx[c - 1])
+                target = stopPx[c - 1];
+            stopPx[c] = target;
+        }
+
         return true;
     }
 
 
-
-    bool ColumnTabs::CT_InsertAlignedPadding(HWND hSci,
-        const CT_ColumnModelView& model,
-        const CT_AlignOptions& opt)
+    // Tabstops (Pixel) pro Zeile setzen.
+    static void setTabStopsRangePx(HWND hSci, int line0, int line1, const std::vector<int>& stops)
     {
-        // basic guards
-        const bool hasPrefilled = !model.Lines.empty();
-        if (!hasPrefilled && !model.getLineInfo) return false;
+        for (int ln = line0; ln <= line1; ++ln) {
+            S(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
+            for (size_t i = 0; i < stops.size(); ++i)
+                S(hSci, SCI_ADDTABSTOP, (uptr_t)ln, (sptr_t)stops[i]);
+        }
+    }
 
-        // range
+    // --- Public: apply tabstops only --------------------------------------------
+    bool ApplyElasticTabStops(HWND hSci, const CT_ColumnModelView& model,
+        int firstLine, int lastLine, int paddingPx)
+    {
+        const bool hasVec = !model.Lines.empty();
+        if (!hasVec && !model.getLineInfo) return false;
+
+        const int line0 = (std::max)(0, firstLine);
+        const int line1 = hasVec
+            ? ((lastLine < 0) ? (line0 + (int)model.Lines.size() - 1)
+                : (std::max)(firstLine, lastLine))
+            : lastLine;
+
+        const int gapPx = (paddingPx > 0) ? paddingPx : 0;
+
+        std::vector<int> stops;
+        if (!computeStopsFromWidthsPx(hSci, model, line0, line1, stops, gapPx)) return false;
+        setTabStopsRangePx(hSci, line0, line1, stops);
+        return true;
+    }
+
+    // --- Public: destructive insert (one '\t' per delimiter) ---------------------
+    bool CT_InsertAlignedPadding(HWND hSci, const CT_ColumnModelView& model, const CT_AlignOptions& opt)
+    {
+        const bool hasVec = !model.Lines.empty();
+        if (!hasVec && !model.getLineInfo) return false;
+
         const int line0 = (std::max)(0, opt.firstLine);
-        const int line1 = hasPrefilled
+        const int line1 = hasVec
             ? ((opt.lastLine < 0) ? (line0 + (int)model.Lines.size() - 1)
                 : (std::max)(opt.firstLine, opt.lastLine))
-            : opt.lastLine; // when using callback you must pass a bounded range
+            : opt.lastLine;
 
-        if (hasPrefilled && (line1 < line0 || model.Lines.empty())) return false;
+        // Tabstops vorab setzen
+        const int gapPx = (opt.gapCells > 0) ? (pxOfSpace(hSci) * opt.gapCells) : 0;
+        std::vector<int> stops;
+        if (!computeStopsFromWidthsPx(hSci, model, line0, line1, stops, gapPx)) return false;
+        setTabStopsRangePx(hSci, line0, line1, stops);
 
-        const int tabW = getTabWidth(hSci);
+        if (opt.oneElasticTabOnly && model.delimiterIsTab)
+            return true;
 
-        // 1) max field widths per column (cells), WITHOUT gap
-        std::vector<size_t> targets; // per-column max widths (cells)
-        if (!computeTargets(hSci, model, line0, line1, /*gapCells*/0, tabW, targets))
-            return false;
-
-        // 2) absolute start of each column (cells), global per document
-        //    start[0] = 0; start[c] = start[c-1] + targets[c-1] + gap
-        std::vector<size_t> colStart;
-        colStart.resize(targets.size());
-        if (!targets.empty()) {
-            colStart[0] = 0;
-            for (size_t c = 1; c < targets.size(); ++c)
-                colStart[c] = colStart[c - 1] + targets[c - 1] + (size_t)opt.gapCells;
-        }
-
-        const bool allowTabs = !(opt.spacesOnlyIfTabDelimiter && model.delimiterIsTab);
-
-        RedrawGuard rg(hSci);
+        RedrawGuard rd(hSci);
         S(hSci, SCI_BEGINUNDOACTION);
-        S(hSci, SCI_SETINDICATORCURRENT, g_indic);
-        S(hSci, SCI_INDICSETSTYLE, g_indic, INDIC_HIDDEN);
-        S(hSci, SCI_INDICSETALPHA, g_indic, 0);
+        S(hSci, SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
+        S(hSci, SCI_INDICSETSTYLE, g_CT_IndicatorId, INDIC_HIDDEN);
+        S(hSci, SCI_INDICSETALPHA, g_CT_IndicatorId, 0);
 
-        // 3) per-line insert pass (top -> bottom)
         for (int ln = line0; ln <= line1; ++ln) {
-            // get line info
-            const CT_ColumnLineInfo L = model.getLineInfo
-                ? model.getLineInfo((size_t)(ln - model.docStartLine))
-                : model.Lines[(size_t)(ln - model.docStartLine)];
-
+            const auto L = fetchLine(model, ln);
             const Sci_Position base = (Sci_Position)S(hSci, SCI_POSITIONFROMLINE, ln);
             Sci_Position delta = 0;
 
             const size_t nDelims = L.delimiterOffsets.size();
-            const size_t nFields = nDelims + 1;
+            for (size_t c = 0; c < nDelims; ++c) {
+                const Sci_Position delimPos = base + (Sci_Position)L.delimiterOffsets[c] + delta;
 
-            for (size_t col = 0; col < nFields; ++col) {
-                if (col >= nDelims) break; // last field has no trailing delimiter
-
-                // delimiter byte-offset in line (start of token)
-                const int thisDelOff = L.delimiterOffsets[col];
-
-                // absolute insert position (before delimiter), account inserts in this line
-                const Sci_Position d = base + (Sci_Position)thisDelOff + delta;
-
-                // measure ABSOLUTE current delimiter column (cells from line start)
-                size_t currentAbs = 0;
-                if (d > base) {
-                    std::string head; head.resize((size_t)(d - base));
-                    Sci_TextRangeFull trHead{ base, d, head.data() };
-                    S(hSci, SCI_GETTEXTRANGEFULL, 0, (sptr_t)&trHead);
-                    currentAbs = CT_VisualCellWidth(head.data(), head.size(), tabW);
+                // trim before delimiter
+                Sci_Position wsStart = delimPos;
+                while (wsStart > base) {
+                    const int ch = (int)S(hSci, SCI_GETCHARAT, (uptr_t)(wsStart - 1), 0);
+                    if (ch == ' ' || ch == '\t') --wsStart; else break;
+                }
+                const Sci_Position wsLen = delimPos - wsStart;
+                if (wsLen > 0) {
+                    S(hSci, SCI_DELETERANGE, wsStart, wsLen);
+                    S(hSci, SCI_INDICATORCLEARRANGE, wsStart, wsLen);
+                    delta -= wsLen;
                 }
 
-                // ABSOLUTE target delimiter column: start[col] + targets[col] + gap
-                size_t targetAbs = currentAbs;
-                if (col < targets.size()) {
-                    const size_t startCol = (col < colStart.size()) ? colStart[col] : 0;
-                    targetAbs = startCol + targets[col] + (size_t)opt.gapCells;
+                // insert one tab and tag it
+                const Sci_Position tabPos = base + (Sci_Position)L.delimiterOffsets[c] + delta;
+                S(hSci, SCI_INSERTTEXT, tabPos, (sptr_t)"\t");
+                S(hSci, SCI_INDICATORFILLRANGE, tabPos, 1);
+                delta += 1;
+
+                // trim after delimiter (start of next field)
+                Sci_Position afterDelim = tabPos + (Sci_Position)model.delimiterLength + 1;
+                while (true) {
+                    const int ch = (int)S(hSci, SCI_GETCHARAT, (uptr_t)afterDelim, 0);
+                    if (ch == ' ' || ch == '\t') {
+                        S(hSci, SCI_DELETERANGE, afterDelim, 1);
+                        S(hSci, SCI_INDICATORCLEARRANGE, afterDelim, 1);
+                    }
+                    else break;
                 }
-
-                if (currentAbs >= targetAbs) continue;
-
-                std::string pad;
-                makePadding(/*current*/currentAbs, /*target*/targetAbs, tabW, allowTabs, pad);
-                if (pad.empty()) continue;
-
-                S(hSci, SCI_INSERTTEXT, d, (sptr_t)pad.c_str());
-                S(hSci, SCI_INDICATORFILLRANGE, d, (sptr_t)pad.size());
-                delta += (Sci_Position)pad.size();
             }
         }
 
@@ -246,77 +325,52 @@ namespace ColumnTabs {
         return true;
     }
 
-
+    // --- Public: remove all tagged tabs & clear tabstops -------------------------
     bool CT_RemoveAlignedPadding(HWND hSci)
     {
-        RedrawGuard rg(hSci);
+        RedrawGuard rd(hSci);
         S(hSci, SCI_BEGINUNDOACTION);
-        S(hSci, SCI_SETINDICATORCURRENT, g_indic);
+        S(hSci, SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
 
         const Sci_Position len = S(hSci, SCI_GETLENGTH);
         std::vector<std::pair<Sci_Position, Sci_Position>> spans;
         spans.reserve(1024);
 
-        // Collect all indicator ranges left->right using VALUEAT
         Sci_Position pos = 0;
         while (pos < len) {
-            const int v = (int)S(hSci, SCI_INDICATORVALUEAT, g_indic, pos);
-            if (v != 0) {
+            if ((int)S(hSci, SCI_INDICATORVALUEAT, g_CT_IndicatorId, pos) != 0) {
                 const Sci_Position start = pos;
-                // advance until indicator ends
-                while (pos < len && (int)S(hSci, SCI_INDICATORVALUEAT, g_indic, pos) != 0)
-                    ++pos;
-                const Sci_Position end = pos;
-                if (end > start) spans.emplace_back(start, end);
+                while (pos < len && (int)S(hSci, SCI_INDICATORVALUEAT, g_CT_IndicatorId, pos) != 0) ++pos;
+                spans.emplace_back(start, pos);
             }
-            else {
-                ++pos;
-            }
+            else ++pos;
+        }
+        for (auto it = spans.rbegin(); it != spans.rend(); ++it) {
+            S(hSci, SCI_INDICATORCLEARRANGE, it->first, it->second - it->first);
+            S(hSci, SCI_DELETERANGE, it->first, it->second - it->first);
         }
 
-        // Delete back->front to keep offsets stable
-        for (auto it = spans.rbegin(); it != spans.rend(); ++it) {
-            const Sci_Position start = it->first;
-            const Sci_Position length = it->second - it->first;
-            S(hSci, SCI_INDICATORCLEARRANGE, start, length);
-            S(hSci, SCI_DELETERANGE, start, length);
-        }
+        const int total = (int)S(hSci, SCI_GETLINECOUNT);
+        for (int ln = 0; ln < total; ++ln)
+            S(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
 
         S(hSci, SCI_ENDUNDOACTION);
         return true;
     }
 
-
-    // ---------------- QS ----------------
-
-    bool CT_QS_SelfTest()
+    bool ClearTabStops(HWND hSci)
     {
-        if (!(CT_VisualCellWidth("a", 1, 4) == 1)) return false;
-        if (!(CT_VisualCellWidth("\t", 1, 4) == 4)) return false;
-        if (!(CT_VisualCellWidth("ab", 2, 4) == 2)) return false;
-        if (!(CT_VisualCellWidth("ab\t", 3, 4) == 4)) return false;
-        if (!(CT_VisualCellWidth("a\tb", 3, 4) == 5)) return false;
+        const int total = (int)S(hSci, SCI_GETLINECOUNT);
+        for (int ln = 0; ln < total; ++ln)
+            S(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
         return true;
     }
 
-    bool CT_QS_AlignedOnOff(HWND hSci, const CT_ColumnModelView& model)
+    bool CT_HasAlignedPadding(HWND hSci) noexcept
     {
-        CT_RemoveAlignedPadding(hSci);
-
-        CT_AlignOptions opt{};
-        opt.firstLine = 0;
-        opt.lastLine = (int)model.Lines.size() - 1;
-        opt.gapCells = 2;
-        opt.spacesOnlyIfTabDelimiter = true;
-
-        const bool on = CT_InsertAlignedPadding(hSci, model, opt);
-        S(hSci, SCI_SETINDICATORCURRENT, g_indic);
-        const bool has = (S(hSci, SCI_INDICATORSTART, g_indic, S(hSci, SCI_GETLENGTH)) >= 0);
-
-        const bool off = CT_RemoveAlignedPadding(hSci);
-        const bool clr = (S(hSci, SCI_INDICATORSTART, g_indic, S(hSci, SCI_GETLENGTH)) >= 0);
-
-        return on && has && off && !clr;
+        S(hSci, SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
+        const Sci_Position any = S(hSci, SCI_INDICATORSTART, g_CT_IndicatorId, S(hSci, SCI_GETLENGTH));
+        return (any >= 0);
     }
 
 } // namespace ColumnTabs

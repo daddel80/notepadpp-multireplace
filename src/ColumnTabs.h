@@ -1,79 +1,72 @@
-﻿// ColumnTabs.h
-// MultiReplace – Elastic Column Alignment (tabstops + aligned padding)
-// - Non-destructive (editor tab stops): ApplyElasticTabStops / ClearTabStops
-// - Destructive (tabs+spaces padding, removable): CT_InsertAlignedPadding / CT_RemoveAlignedPadding
-
-#pragma once
+﻿#pragma once
 
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #include <windows.h>
-#include <string>
+
 #include <vector>
-#include <cstdint>
+#include <functional>
+#include <string>
 #include "Scintilla.h"
 
-namespace ColumnTabs {
+#ifdef max
+#undef max
+#endif
+#ifdef min
+#undef min
+#endif
 
-    // --- CSV model used by this lib (kept minimal; keep in sync with your matrix) ---
+namespace ColumnTabs
+{
+#ifndef CT_TABSTOPS_PIXELS
+#define CT_TABSTOPS_PIXELS 1
+#endif
+
+    // One line in the CSV model.
     struct CT_ColumnLineInfo {
-        int lineLength = 0;                    // absolute line length (bytes)
-        std::vector<int> delimiterOffsets;     // delimiter byte offsets (line-relative)
-        std::vector<int> delimiterRunEnds;     // optional (TAB runs), exclusive end
-
-        size_t FieldCount() const { return delimiterOffsets.size() + 1; }
-
-        // line-relative byte offsets
-        int FieldStartInLine(size_t col) const {
-            return (col == 0) ? 0 : (delimiterOffsets[col - 1] + 1);
-        }
-        int FieldEndInLine(size_t col) const {
-            return (col + 1 < FieldCount()) ? delimiterOffsets[col] : lineLength;
-        }
-        int DelimiterPosInLine(size_t col) const { return delimiterOffsets[col]; }
+        int lineLength = 0;                 // bytes, without CR/LF
+        std::vector<int> delimiterOffsets;  // byte offsets of each delimiter
+        size_t FieldCount() const noexcept { return delimiterOffsets.size() + 1; }
     };
 
+    // Read-only view of the parsed CSV.
     struct CT_ColumnModelView {
-        int  docStartLine = 0;
-        bool delimiterIsTab = false;
-        int  delimiterLength = 1;
-        bool collapseTabRuns = true;
+        std::vector<CT_ColumnLineInfo> Lines;   // optional (if getLineInfo is set)
+        size_t docStartLine = 0;                // 0-based
 
-        std::vector<CT_ColumnLineInfo> Lines;
+        bool delimiterIsTab = false;            // true if '\t'
+        int  delimiterLength = 1;               // bytes per delimiter token (>=1)
+        bool collapseTabRuns = true;            // kept for callers
 
-        // optional callback if you don’t prefill Lines
-        CT_ColumnLineInfo(*getLineInfo)(size_t idx) = nullptr;
+        // If set, used instead of Lines (index = line - docStartLine).
+        std::function<CT_ColumnLineInfo(size_t)> getLineInfo;
     };
 
-    // ---------------- Indicator (destructive mode) ----------------
-    void CT_SetIndicatorId(int id) noexcept;   // default 8
-    int  CT_GetIndicatorId() noexcept;
-
-    // ---------------- Non-destructive (editor tab stops) ----------
-    bool ApplyElasticTabStops(HWND hSci, const CT_ColumnModelView& model,
-        int firstLine, int lastLine, int paddingPx);
-    bool ClearTabStops(HWND hSci);
-
-    // ---------------- Destructive (aligned padding, removable) ----
+    // Options for padding/alignment.
     struct CT_AlignOptions {
-        int  firstLine = 0;            // inclusive
-        int  lastLine = -1;           // -1 => to last
-        int  gapCells = 2;            // min spacing after column
+        int  firstLine = 0;                 // inclusive
+        int  lastLine = -1;                // -1 => to last model line
+        int  gapCells = 2;                 // visual gap after a column (in "space" units)
         bool spacesOnlyIfTabDelimiter = true;
+        bool oneElasticTabOnly = true;      // replace run by one '\t' and set tabstops
     };
 
-    bool CT_InsertAlignedPadding(HWND hSci, const CT_ColumnModelView& model, const CT_AlignOptions& opt);
-    bool CT_RemoveAlignedPadding(HWND hSci);
+    // Indicator id used to mark inserted tabs.
+    void   CT_SetIndicatorId(int id) noexcept;
+    int    CT_GetIndicatorId() noexcept;
 
-    // helpers (QS/unit)
+    // Utility (kept for callers).
     size_t CT_VisualCellWidth(const char* s, size_t n, int tabWidth);
-    inline size_t CT_VisualCellWidth(const std::string& s, int tabWidth) {
-        return CT_VisualCellWidth(s.data(), s.size(), tabWidth);
-    }
 
-    // sanity tests
-    bool CT_QS_SelfTest();
-    bool CT_QS_AlignedOnOff(HWND hSci, const CT_ColumnModelView& model);
+    // Core API.
+    bool   CT_InsertAlignedPadding(HWND hSci, const CT_ColumnModelView& model, const CT_AlignOptions& opt);
+    bool   CT_RemoveAlignedPadding(HWND hSci);
+
+    bool   ApplyElasticTabStops(HWND hSci, const CT_ColumnModelView& model,
+        int firstLine, int lastLine, int paddingPx /*pixels*/);
+
+    bool   ClearTabStops(HWND hSci);
+    bool   CT_HasAlignedPadding(HWND hSci) noexcept;
 
 } // namespace ColumnTabs
