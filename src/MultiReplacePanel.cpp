@@ -7860,21 +7860,33 @@ bool MultiReplace::buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outMod
     outModel.collapseTabRuns = outModel.delimiterIsTab;
     outModel.Lines.reserve(lineDelimiterPositions.size());
 
+    size_t validLines = 0;
+
     // Copy only what we need (offsets + line length)
     for (size_t i = 0; i < lineDelimiterPositions.size(); ++i) {
         const LineInfo& src = lineDelimiterPositions[i];
 
         ColumnTabs::CT_ColumnLineInfo li{};
         li.lineLength = (int)src.lineLength;
+
         li.delimiterOffsets.reserve(src.positions.size());
         for (const auto& dp : src.positions) {
-            li.delimiterOffsets.push_back((int)dp.offsetInLine);
+            // guard against invalid offsets (must be within line)
+            if (dp.offsetInLine >= 0 && dp.offsetInLine < (LRESULT)src.lineLength)
+                li.delimiterOffsets.push_back((int)dp.offsetInLine);
         }
-        // runEnds optional: we leave empty; ColumnTabs arbeitet auch ohne.
-        outModel.Lines.emplace_back(std::move(li));
+
+        // only accept consistent lines
+        if (li.lineLength >= 0) {
+            outModel.Lines.emplace_back(std::move(li));
+            ++validLines;
+        }
     }
-    return true;
+
+    // fail if nothing valid was collected
+    return validLines > 0;
 }
+
 
 bool MultiReplace::applyElasticTabStops()
 {
