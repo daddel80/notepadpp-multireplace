@@ -20,6 +20,7 @@
 #include "StaticDialog/StaticDialog.h"
 #include "BatchUIGuard.h"
 #include "MultiReplacePanel.h"
+#include "ColumnTabs.h"
 #include "Notepad_plus_msgs.h"
 #include "PluginDefinition.h"
 #include "Scintilla.h"
@@ -7887,7 +7888,6 @@ bool MultiReplace::buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outMod
     return validLines > 0;
 }
 
-
 bool MultiReplace::applyElasticTabStops()
 {
     ColumnTabs::CT_ColumnModelView model;
@@ -7906,6 +7906,7 @@ bool MultiReplace::clearElasticTabStops()
     return ColumnTabs::ClearTabStops(_hScintilla);
 }
 
+// MultiReplacePanel.cpp
 void MultiReplace::handleColumnGridTabsButton()
 {
     // Ensure CSV scope + Matrix
@@ -7937,7 +7938,7 @@ void MultiReplace::handleColumnGridTabsButton()
         opt.gapCells = 2;
         opt.spacesOnlyIfTabDelimiter = true; // TSV => spaces padding only
 
-        // optional: dedicate indicator slot to avoid collisions
+        // dedicate indicator slot to avoid collisions
         ColumnTabs::CT_SetIndicatorId(30);
 
         const bool ok = ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt);
@@ -7946,7 +7947,7 @@ void MultiReplace::handleColumnGridTabsButton()
             return;
         }
 
-        // Matrix refresh (positions haben sich verschoben)
+        // Matrix refresh (positions have shifted)
         findAllDelimitersInDocument();
 
         _elasticTabsActive = true;
@@ -7956,14 +7957,17 @@ void MultiReplace::handleColumnGridTabsButton()
     }
     else
     {
-        // Remove only what we inserted earlier
+        // Remove only what we inserted earlier (indicator-driven)
         const bool ok = ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
         if (!ok) {
             showStatusMessage(L"Elastic Tabs: remove failed.", MessageStatus::Error);
             return;
         }
 
-        // Matrix refresh (Text wieder “clean”)
+        // Also clear any visual ETS to avoid re-applying them later unintentionally
+        ColumnTabs::ClearElasticTabStops(_hScintilla); // selective; fallback: ClearTabStops
+
+        // Matrix refresh (text back to canonical)
         findAllDelimitersInDocument();
 
         _elasticTabsActive = false;
@@ -7973,13 +7977,89 @@ void MultiReplace::handleColumnGridTabsButton()
     }
 }
 
-
 void MultiReplace::clearElasticTabsIfAny()
 {
-    if (_elasticTabsActive) {
-        clearElasticTabStops();
-        _elasticTabsActive = false;
+#if defined(HAVE_SELECTIVE_CLEAR_ETABS)
+    ColumnTabs::ClearElasticTabStops(_hScintilla);
+#else
+    ColumnTabs::ClearTabStops(_hScintilla);
+#endif
+}
+
+// MultiReplacePanel.cpp
+bool MultiReplace::runCsvWithEtabs(CsvOp op, const std::function<bool()>& body)
+{
+    // Ensure CSV matrix exists
+    if (lineDelimiterPositions.empty())
+        findAllDelimitersInDocument();
+
+    // Derive mode with UI flag taking precedence
+    enum class EtabsMode { Off, Visual, Padding };
+    const EtabsMode mode =
+        (!_elasticTabsActive) ? EtabsMode::Off
+        : (ColumnTabs::CT_HasAlignedPadding(_hScintilla) ? EtabsMode::Padding
+            : EtabsMode::Visual);
+
+    // Which ops modify text?
+    const bool modifiesText =
+        (op == CsvOp::Sort) || (op == CsvOp::DeleteColumns) ||
+        (op == CsvOp::Replace) || (op == CsvOp::BatchReplace);
+
+    // If Padding + modifying op → unpad to get canonical text
+    if (mode == EtabsMode::Padding && modifiesText && ColumnTabs::CT_HasAlignedPadding(_hScintilla)) {
+        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
+        findAllDelimitersInDocument(); // offsets changed
     }
+
+    // Run the actual operation on canonical text
+    const bool ok = body ? body() : true;
+
+    // Matrix may have changed
+    findAllDelimitersInDocument();
+
+    // Reflow presentation (VIS or PAD)
+    switch (mode) {
+    case EtabsMode::Visual: {
+        // Guard: only re-apply if UI still wants visual ETS right now
+        if (!_elasticTabsActive) break;
+
+        ColumnTabs::CT_ColumnModelView model{};
+        if (buildCTModelFromMatrix(model)) {
+            const bool canVis = model.delimiterIsTab || ColumnTabs::CT_HasAlignedPadding(_hScintilla);
+            if (canVis && !model.Lines.empty()) {
+                ColumnTabs::ClearElasticTabStops(_hScintilla); // selective
+                const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
+                const int gapPx = 2 * spacePx;
+                const int first = 0;
+                const int last = (int)model.Lines.size() - 1;
+                ColumnTabs::ApplyElasticTabStops(_hScintilla, model, first, last, gapPx);
+            }
+        }
+        break;
+    }
+    case EtabsMode::Padding: {
+        // Guard: never re-insert padding if UI is OFF now
+        if (!_elasticTabsActive) break;
+
+        ColumnTabs::CT_ColumnModelView model{};
+        if (buildCTModelFromMatrix(model) && !model.Lines.empty()) {
+            ColumnTabs::CT_AlignOptions a{};
+            a.firstLine = 0;
+            a.lastLine = (int)model.Lines.size() - 1;
+            a.gapCells = 2;                      // compact policy: 2 spaces per gap
+            a.spacesOnlyIfTabDelimiter = true;
+            a.oneElasticTabOnly = true;     // exactly one tab before delimiter
+            ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, a);
+        }
+        break;
+    }
+    case EtabsMode::Off:
+    default:
+        // nothing
+        break;
+    }
+
+    return ok;
 }
 
 #pragma endregion
@@ -8083,66 +8163,83 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
 
 void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
 {
-    // Validate delimiters before sorting
+    // validate CSV delimiter config
     if (!columnDelimiterData.isValid()) {
         showStatusMessage(LM.get(L"status_invalid_column_or_delimiter"), MessageStatus::Error);
         return;
     }
 
-    send(SCI_BEGINUNDOACTION, 0, 0);
+    // run under the ETabs layer (handles PAD remove/reinsert or VIS re-apply)
+    runCsvWithEtabs(CsvOp::Sort, [&]() -> bool {
+        send(SCI_BEGINUNDOACTION, 0, 0);
 
-    size_t lineCount = lineDelimiterPositions.size();
-    if (lineCount <= CSVheaderLinesCount) {
-        send(SCI_ENDUNDOACTION);
-        return;
-    }
+        const size_t lineCount = lineDelimiterPositions.size();
+        if (lineCount <= CSVheaderLinesCount) {
+            send(SCI_ENDUNDOACTION, 0, 0);
+            return true; // nothing to sort
+        }
 
-    // Create an index array for all lines
-    std::vector<size_t> tempOrder(lineCount);
+        // build initial order
+        std::vector<size_t> tempOrder(lineCount);
+        std::iota(tempOrder.begin(), tempOrder.end(), 0);
 
-    // Initialize vector with numeric sorted values
-    std::iota(tempOrder.begin(), tempOrder.end(), 0);
+        // extract columns after headers
+        std::vector<CombinedColumns> combinedData =
+            extractColumnData(CSVheaderLinesCount, lineCount);
 
-    // Extract the columns after any header lines
-    std::vector<CombinedColumns> combinedData = extractColumnData(CSVheaderLinesCount, lineCount);
-
-    // Single-pass sort using multi-column comparison
-    std::sort(tempOrder.begin() + CSVheaderLinesCount, tempOrder.end(),
-        [&](size_t a, size_t b) {
-            size_t indexA = a - CSVheaderLinesCount;
-            size_t indexB = b - CSVheaderLinesCount;
-            const auto& rowA = combinedData[indexA];
-            const auto& rowB = combinedData[indexB];
-
-            // Compare each column in priority order
-            for (size_t colIndex = 0; colIndex < columnDelimiterData.inputColumns.size(); ++colIndex) {
-                // If needed, map to actual column (e.g., size_t realIndex = columnDelimiterData.inputColumns[colIndex] - 1;)
-                int cmp = compareColumnValue(rowA.columns[colIndex], rowB.columns[colIndex]);
-                if (cmp != 0) {
-                    return (sortDirection == SortDirection::Ascending) ? (cmp < 0) : (cmp > 0);
-                }
+        // optional: stabilize numeric vs string by sanitizing tabs/spaces (comparison-only)
+        auto sanitize = [](std::string s) {
+            if (!s.empty()) {
+                s.erase(std::remove(s.begin(), s.end(), '\t'), s.end());
+                const auto b = s.find_first_not_of(' ');
+                if (b == std::string::npos) return std::string();
+                const auto e = s.find_last_not_of(' ');
+                s = s.substr(b, e - b + 1);
             }
-            // If all columns match, keep original order
-            return false;
+            return s;
+            };
+        std::vector<CombinedColumns> sortable = combinedData;
+        for (auto& row : sortable)
+            for (auto& col : row.columns) {
+                col.text = sanitize(col.text);
+                col.isNumeric = false; col.numericValue = 0.0;
+            }
+        detectNumericColumns(sortable);
+
+        // sort (stable for equal rows)
+        std::sort(tempOrder.begin() + CSVheaderLinesCount, tempOrder.end(),
+            [&](size_t a, size_t b) {
+                const size_t ia = a - CSVheaderLinesCount;
+                const size_t ib = b - CSVheaderLinesCount;
+                const auto& ra = sortable[ia];
+                const auto& rb = sortable[ib];
+
+                for (size_t colIndex = 0; colIndex < columnDelimiterData.inputColumns.size(); ++colIndex) {
+                    const int cmp = compareColumnValue(ra.columns[colIndex], rb.columns[colIndex]);
+                    if (cmp != 0)
+                        return (sortDirection == SortDirection::Ascending) ? (cmp < 0) : (cmp > 0);
+                }
+                return false; // keep original order
+            }
+        );
+
+        // update originalLineOrder if tracking is used
+        if (!originalLineOrder.empty()) {
+            std::vector<size_t> newOrder(originalLineOrder.size());
+            for (size_t i = 0; i < tempOrder.size(); ++i)
+                newOrder[i] = originalLineOrder[tempOrder[i]];
+            originalLineOrder = std::move(newOrder);
         }
-    );
-
-    // Update originalLineOrder if tracking is used
-    if (!originalLineOrder.empty()) {
-        std::vector<size_t> newOrder(originalLineOrder.size());
-        for (size_t i = 0; i < tempOrder.size(); ++i) {
-            newOrder[i] = originalLineOrder[tempOrder[i]];
+        else {
+            originalLineOrder = tempOrder;
         }
-        originalLineOrder = std::move(newOrder);
-    }
-    else {
-        originalLineOrder = tempOrder;
-    }
 
-    // Reorder lines in the editor based on sorted indices
-    reorderLinesInScintilla(tempOrder);
+        // apply new order in editor
+        reorderLinesInScintilla(tempOrder);
 
-    send(SCI_ENDUNDOACTION, 0, 0);
+        send(SCI_ENDUNDOACTION, 0, 0);
+        return true;
+        });
 }
 
 void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedIndex) {
@@ -8259,7 +8356,10 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
     if ((direction == SortDirection::Ascending && currentSortState == SortDirection::Ascending) ||
         (direction == SortDirection::Descending && currentSortState == SortDirection::Descending)) {
         isSortedColumn = false; //Disable logging of changes
-        restoreOriginalLineOrder(originalLineOrder);
+        runCsvWithEtabs(CsvOp::Sort, [&]() -> bool {
+            restoreOriginalLineOrder(originalLineOrder);
+            return true;
+        });
         currentSortState = SortDirection::Unsorted;
         originalLineOrder.clear();
     }

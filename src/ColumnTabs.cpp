@@ -19,6 +19,33 @@ struct RedrawGuard {
     ~RedrawGuard() { ::SendMessage(h, WM_SETREDRAW, TRUE, 0); ::InvalidateRect(h, nullptr, TRUE); }
 };
 
+namespace {
+    // Track which lines currently have ETS-owned visual tabstops
+    std::vector<uint8_t> g_hasETSLine;                 // 0/1 per line
+
+    // Snapshot of manual tabstops (in px) that existed before ETS took over the line
+    std::vector<std::vector<int>> g_savedManualStopsPx;
+
+    inline void ensureCapacity(HWND hSci) {
+        const int total = (int)SendMessage(hSci, SCI_GETLINECOUNT, 0, 0);
+        if ((int)g_hasETSLine.size() < total)          g_hasETSLine.resize((size_t)total, 0);
+        if ((int)g_savedManualStopsPx.size() < total)  g_savedManualStopsPx.resize((size_t)total);
+    }
+
+    // Collect all current tabstops (px) on a given line (manual or otherwise)
+    static std::vector<int> collectTabStopsPx(HWND hSci, int line) {
+        std::vector<int> stops;
+        int pos = 0;
+        for (;;) {
+            const int next = (int)SendMessage(hSci, SCI_GETNEXTTABSTOP, (uptr_t)line, (sptr_t)pos);
+            if (next <= 0 || next == pos) break;
+            stops.push_back(next);
+            pos = next;
+        }
+        return stops;
+    }
+}
+
 namespace ColumnTabs
 {
 
@@ -233,8 +260,11 @@ namespace ColumnTabs
     }
 
     // --- Public: apply tabstops only --------------------------------------------
-    bool ApplyElasticTabStops(HWND hSci, const CT_ColumnModelView& model,
-        int firstLine, int lastLine, int paddingPx)
+    bool ApplyElasticTabStops(HWND hSci,
+        const CT_ColumnModelView& model,
+        int firstLine,
+        int lastLine,
+        int paddingPx)
     {
         const bool hasVec = !model.Lines.empty();
         if (!hasVec && !model.getLineInfo) return false;
@@ -244,12 +274,54 @@ namespace ColumnTabs
             ? ((lastLine < 0) ? (line0 + (int)model.Lines.size() - 1)
                 : (std::max)(firstLine, lastLine))
             : lastLine;
+        if (line0 > line1) return false;
 
         const int gapPx = (paddingPx > 0) ? paddingPx : 0;
 
+        // --- ETS ownership: snapshot manual tabstops once per line ---
+        ensureCapacity(hSci); // prepares g_hasETSLine / g_savedManualStopsPx
+        for (int ln = line0; ln <= line1; ++ln) {
+            if ((int)g_hasETSLine.size() > ln && g_hasETSLine[(size_t)ln] == 0u) {
+                g_savedManualStopsPx[(size_t)ln] = collectTabStopsPx(hSci, ln);
+            }
+        }
+
+        // compute + set visual tabstops (unchanged core)
         std::vector<int> stops;
-        if (!computeStopsFromWidthsPx(hSci, model, line0, line1, stops, gapPx)) return false;
+        if (!computeStopsFromWidthsPx(hSci, model, line0, line1, stops, gapPx))
+            return false;
+
         setTabStopsRangePx(hSci, line0, line1, stops);
+
+        // mark lines as ETS-owned so ClearElasticTabStops can act selectively
+        for (int ln = line0; ln <= line1; ++ln)
+            g_hasETSLine[(size_t)ln] = 1u;
+
+        return true;
+    }
+
+    bool ColumnTabs::ClearElasticTabStops(HWND hSci)
+    {
+        ensureCapacity(hSci);
+
+        const int total = (int)SendMessage(hSci, SCI_GETLINECOUNT, 0, 0);
+        const int limit = (std::min)(total, (int)g_hasETSLine.size());
+
+        for (int ln = 0; ln < limit; ++ln) {
+            if (!g_hasETSLine[(size_t)ln]) continue;
+
+            // 1) clear all tabstops on this line (only visual editor stops, not text)
+            SendMessage(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
+
+            // 2) restore previously saved manual tabstops (if any)
+            const auto& manual = g_savedManualStopsPx[(size_t)ln];
+            for (int px : manual)
+                SendMessage(hSci, SCI_ADDTABSTOP, (uptr_t)ln, (sptr_t)px);
+
+            // 3) reset tracking
+            g_hasETSLine[(size_t)ln] = 0u;
+            g_savedManualStopsPx[(size_t)ln].clear();
+        }
         return true;
     }
 
@@ -264,8 +336,9 @@ namespace ColumnTabs
             ? ((opt.lastLine < 0) ? (line0 + (int)model.Lines.size() - 1)
                 : (std::max)(opt.firstLine, opt.lastLine))
             : opt.lastLine;
+        if (line0 > line1) return false;
 
-        // Tabstops vorab setzen
+        // pre-compute editor tabstops (visual aid)
         const int gapPx = (opt.gapCells > 0) ? (pxOfSpace(hSci) * opt.gapCells) : 0;
         std::vector<int> stops;
         if (!computeStopsFromWidthsPx(hSci, model, line0, line1, stops, gapPx)) return false;
@@ -280,43 +353,107 @@ namespace ColumnTabs
         S(hSci, SCI_INDICSETSTYLE, g_CT_IndicatorId, INDIC_HIDDEN);
         S(hSci, SCI_INDICSETALPHA, g_CT_IndicatorId, 0);
 
+        // Clamp helper (prevents Editor.cxx assert)
+        auto safeDeleteRange = [&](Sci_Position pos, Sci_Position len) {
+            const Sci_Position docLen = (Sci_Position)S(hSci, SCI_GETLENGTH, 0, 0);
+            if (pos < 0 || len <= 0) return;
+            if (pos > docLen) return;
+            if (pos + len > docLen) len = docLen - pos;
+            if (len > 0) {
+                S(hSci, SCI_DELETERANGE, pos, len);
+                S(hSci, SCI_INDICATORCLEARRANGE, pos, len);
+            }
+            };
+
         for (int ln = line0; ln <= line1; ++ln) {
             const auto L = fetchLine(model, ln);
             const Sci_Position base = (Sci_Position)S(hSci, SCI_POSITIONFROMLINE, ln);
             Sci_Position delta = 0;
 
             const size_t nDelims = L.delimiterOffsets.size();
-            for (size_t c = 0; c < nDelims; ++c) {
-                const Sci_Position delimPos = base + (Sci_Position)L.delimiterOffsets[c] + delta;
+            if (nDelims == 0) continue;
 
-                // trim before delimiter
+            for (size_t c = 0; c < nDelims; ++c) {
+                // dynamic line end (runtime, not model)
+                const Sci_Position lineEndNow = (Sci_Position)S(hSci, SCI_GETLINEENDPOSITION, ln, 0);
+
+                // compute delimiter position in current text
+                const Sci_Position delimPos = base + (Sci_Position)L.delimiterOffsets[c] + delta;
+                if (delimPos < base || delimPos > lineEndNow) {
+                    // stale offset or past EOL; skip this delimiter safely
+                    continue;
+                }
+
+                // scan whitespace run BEFORE delimiter
                 Sci_Position wsStart = delimPos;
                 while (wsStart > base) {
                     const int ch = (int)S(hSci, SCI_GETCHARAT, (uptr_t)(wsStart - 1), 0);
                     if (ch == ' ' || ch == '\t') --wsStart; else break;
                 }
-                const Sci_Position wsLen = delimPos - wsStart;
-                if (wsLen > 0) {
-                    S(hSci, SCI_DELETERANGE, wsStart, wsLen);
-                    S(hSci, SCI_INDICATORCLEARRANGE, wsStart, wsLen);
-                    delta -= wsLen;
+
+                // existing '\t' exactly before delimiter?
+                const bool keepExistingTab =
+                    (wsStart < delimPos) &&
+                    ((int)S(hSci, SCI_GETCHARAT, (uptr_t)(delimPos - 1), 0) == '\t');
+
+                // trim BEFORE delimiter
+                if (wsStart < delimPos) {
+                    if (keepExistingTab) {
+                        const Sci_Position lastTab = delimPos - 1;
+
+                        if (lastTab > wsStart) {
+                            const Sci_Position len1 = lastTab - wsStart;
+                            safeDeleteRange(wsStart, len1);
+                            delta -= len1;
+                        }
+                        const Sci_Position afterTab = lastTab + 1;
+                        if (afterTab < delimPos) {
+                            const Sci_Position len2 = delimPos - afterTab;
+                            safeDeleteRange(afterTab, len2);
+                            delta -= len2;
+                        }
+                    }
+                    else {
+                        const Sci_Position wsLen = delimPos - wsStart;
+                        safeDeleteRange(wsStart, wsLen);
+                        delta -= wsLen;
+                    }
                 }
 
-                // insert one tab and tag it
-                const Sci_Position tabPos = base + (Sci_Position)L.delimiterOffsets[c] + delta;
-                S(hSci, SCI_INSERTTEXT, tabPos, (sptr_t)"\t");
-                S(hSci, SCI_INDICATORFILLRANGE, tabPos, 1);
-                delta += 1;
+                // ensure exactly one tab right before the delimiter
+                Sci_Position tabPos = 0;
+                if (keepExistingTab) {
+                    tabPos = delimPos - 1; // reuse manual tab; do NOT mark it
+                }
+                else {
+                    // insert new elastic tab at delimiter start and mark it
+                    tabPos = base + (Sci_Position)L.delimiterOffsets[c] + delta;
+                    S(hSci, SCI_INSERTTEXT, tabPos, (sptr_t)"\t");
+                    S(hSci, SCI_INDICATORFILLRANGE, tabPos, 1);
+                    delta += 1;
+                }
 
-                // trim after delimiter (start of next field)
-                Sci_Position afterDelim = tabPos + (Sci_Position)model.delimiterLength + 1;
-                while (true) {
+                // --- trim AFTER delimiter (start of next field) ---
+                // Correct start-of-trim:
+                //   if we reused a manual tab:  afterDelim = delimPos + delimiterLength
+                //   if we inserted a tab:       afterDelim = delimPos + 1 /*tab*/ + delimiterLength
+                Sci_Position afterDelim = keepExistingTab
+                    ? (delimPos + (Sci_Position)model.delimiterLength)
+                    : (delimPos + 1 + (Sci_Position)model.delimiterLength);
+
+                // guard: never run past current doc end
+                for (;;) {
+                    const Sci_Position docLen = (Sci_Position)S(hSci, SCI_GETLENGTH, 0, 0);
+                    if (afterDelim >= docLen) break;
+
                     const int ch = (int)S(hSci, SCI_GETCHARAT, (uptr_t)afterDelim, 0);
                     if (ch == ' ' || ch == '\t') {
-                        S(hSci, SCI_DELETERANGE, afterDelim, 1);
-                        S(hSci, SCI_INDICATORCLEARRANGE, afterDelim, 1);
+                        safeDeleteRange(afterDelim, 1);
+                        // no delta update (we delete after the boundary)
                     }
-                    else break;
+                    else {
+                        break;
+                    }
                 }
             }
         }

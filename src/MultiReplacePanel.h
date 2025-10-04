@@ -624,6 +624,18 @@ private:
     bool _elasticTabsActive = false;   // current visual state (editor tabstops)
     int  _elasticPaddingPx = 8;       // min pixel gap after each column
 
+    enum class CsvOp {
+        Sort,
+        DeleteColumns,
+        CopyColumns,
+        Replace,        // single or all
+        Mark,           // mark/highlight
+        BatchReplace,   // replace in files or multi-doc
+    };
+
+    // ETabs presentation mode used by the layer (derived internally by default)
+    enum class EtabsMode { Off, Visual, Padding };
+
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
 
@@ -807,6 +819,7 @@ private:
     bool buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const;
     bool applyElasticTabStops();
     bool clearElasticTabStops();
+    bool runCsvWithEtabs(CsvOp op, const std::function<bool()>& body);
 
     //CSV Sort
     std::vector<CombinedColumns> extractColumnData(SIZE_T startLine, SIZE_T lineCount);

@@ -66,6 +66,9 @@ namespace ColumnTabs
     bool   ApplyElasticTabStops(HWND hSci, const CT_ColumnModelView& model,
         int firstLine, int lastLine, int paddingPx /*pixels*/);
 
+    // Remove only ETS-owned visual tabstops (keeps any manual tabstops).
+    bool ClearElasticTabStops(HWND hSci);
+
     bool   ClearTabStops(HWND hSci);
     bool   CT_HasAlignedPadding(HWND hSci) noexcept;
 
