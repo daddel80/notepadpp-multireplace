@@ -1,75 +1,126 @@
-﻿#pragma once
+﻿// This file is part of the MultiReplace plugin for Notepad++.
+// Copyright (C) 2023 Thomas Knoefel
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
+#pragma once
+
+
 #include <windows.h>
 
 #include <vector>
-#include <functional>
 #include <string>
+#include <functional>
 #include "Scintilla.h"
-
-#ifdef max
-#undef max
-#endif
-#ifdef min
-#undef min
-#endif
 
 namespace ColumnTabs
 {
-#ifndef CT_TABSTOPS_PIXELS
-#define CT_TABSTOPS_PIXELS 1
-#endif
 
-    // One line in the CSV model.
-    struct CT_ColumnLineInfo {
-        int lineLength = 0;                 // bytes, without CR/LF
-        std::vector<int> delimiterOffsets;  // byte offsets of each delimiter
+    // --- Data model ----------------------------------------------------------
+
+    // One physical line in the column model.
+    struct CT_ColumnLineInfo
+    {
+        int lineLength = 0;                 // length in bytes (without CR/LF)
+        std::vector<int> delimiterOffsets;  // byte offsets of each delimiter token
+
         size_t FieldCount() const noexcept { return delimiterOffsets.size() + 1; }
     };
 
-    // Read-only view of the parsed CSV.
-    struct CT_ColumnModelView {
-        std::vector<CT_ColumnLineInfo> Lines;   // optional (if getLineInfo is set)
-        size_t docStartLine = 0;                // 0-based
+    // Read-only view of the parsed document range.
+    struct CT_ColumnModelView
+    {
+        std::vector<CT_ColumnLineInfo> Lines;    // optional if getLineInfo is set
+        size_t docStartLine = 0;                 // 0-based absolute document line
 
-        bool delimiterIsTab = false;            // true if '\t'
-        int  delimiterLength = 1;               // bytes per delimiter token (>=1)
-        bool collapseTabRuns = true;            // kept for callers
+        bool delimiterIsTab = false;             // true if delimiter is '\t'
+        int  delimiterLength = 1;                // bytes per delimiter (>= 1)
+        bool collapseTabRuns = true;             // preserved for callers
 
-        // If set, used instead of Lines (index = line - docStartLine).
+        // If set, used instead of Lines; index = (line - docStartLine).
         std::function<CT_ColumnLineInfo(size_t)> getLineInfo;
     };
 
-    // Options for padding/alignment.
-    struct CT_AlignOptions {
-        int  firstLine = 0;                 // inclusive
-        int  lastLine = -1;                // -1 => to last model line
-        int  gapCells = 2;                 // visual gap after a column (in "space" units)
+    // Options for destructive alignment (text-changing padding).
+    struct CT_AlignOptions
+    {
+        int  firstLine = 0;                  // inclusive, model-relative
+        int  lastLine = -1;                 // -1 => last model line
+        int  gapCells = 2;                  // visual gap *in spaces* between columns
         bool spacesOnlyIfTabDelimiter = true;
-        bool oneElasticTabOnly = true;      // replace run by one '\t' and set tabstops
+        bool oneElasticTabOnly = true; // collapse runs to one '\t' and add tabstops
     };
 
-    // Indicator id used to mark inserted tabs.
-    void   CT_SetIndicatorId(int id) noexcept;
-    int    CT_GetIndicatorId() noexcept;
+    // --- Indicator (tracks inserted padding) --------------------------------
 
-    // Utility (kept for callers).
+    // Set/Get the indicator id used to mark inserted padding.
+    void CT_SetIndicatorId(int id) noexcept;
+    int  CT_GetIndicatorId() noexcept;
+
+    // --- Destructive API (edits text) ---------------------------------------
+
+    // Insert aligned padding (tabs/spaces) according to the model/options.
+    bool CT_InsertAlignedPadding(HWND hSci,
+        const CT_ColumnModelView& model,
+        const CT_AlignOptions& opt);
+
+    // Remove previously inserted aligned padding (by indicator).
+    bool CT_RemoveAlignedPadding(HWND hSci);
+
+    // Query whether the buffer currently contains aligned padding owned by us.
+    bool CT_HasAlignedPadding(HWND hSci) noexcept;
+
+    // --- Visual API (does not edit text; manages Scintilla tab stops) -------
+
+    // Apply elastic tab stops for [firstLine..lastLine] with a fixed pixel gap.
+    // Units: paddingPx in *pixels* (e.g., 12).
+    bool CT_ApplyElasticTabStops(HWND hSci,
+        const CT_ColumnModelView& model,
+        int firstLine,
+        int lastLine,   // -1 => all model lines
+        int paddingPx /*pixels*/);
+
+    // Convenience: apply to all lines in model.
+    inline bool CT_ApplyElasticTabStopsAll(HWND hSci,
+        const CT_ColumnModelView& model,
+        int paddingPx /*pixels*/) {
+        return CT_ApplyElasticTabStops(hSci, model, 0, -1, paddingPx);
+    }
+
+    // Convenience overload: gap expressed in *spaces*; converts to pixels internally.
+    bool CT_ApplyElasticTabStopsSpaces(HWND hSci,
+        const CT_ColumnModelView& model,
+        int firstLine,
+        int lastLine,
+        int gapSpaces /*spaces*/);
+
+    bool CT_DisableElasticTabStops(HWND hSci, bool restoreManual);
+
+    // Remove only elastic (ETS-owned) tab stops; restores any manual per-line stops.
+    inline bool CT_ClearElasticTabStops(HWND hSci) {
+        return CT_DisableElasticTabStops(hSci, /*restoreManual=*/true);
+    }
+
+    // Remove *all* tab stops in the buffer (manual and elastic).
+    bool CT_ClearAllTabStops(HWND hSci);
+
+    // Forget any cached visual state (must be called on buffer/document switch).
+    void CT_ResetElasticVisualState() noexcept;
+
+    // --- Utilities (kept for callers) ---------------------------------------
+
+    // Measure a cell’s *visual* width assuming a given tab width (utility).
     size_t CT_VisualCellWidth(const char* s, size_t n, int tabWidth);
-
-    // Core API.
-    bool   CT_InsertAlignedPadding(HWND hSci, const CT_ColumnModelView& model, const CT_AlignOptions& opt);
-    bool   CT_RemoveAlignedPadding(HWND hSci);
-
-    bool   ApplyElasticTabStops(HWND hSci, const CT_ColumnModelView& model,
-        int firstLine, int lastLine, int paddingPx /*pixels*/);
-
-    // Remove only ETS-owned visual tabstops (keeps any manual tabstops).
-    bool ClearElasticTabStops(HWND hSci);
-
-    bool   ClearTabStops(HWND hSci);
-    bool   CT_HasAlignedPadding(HWND hSci) noexcept;
 
 } // namespace ColumnTabs

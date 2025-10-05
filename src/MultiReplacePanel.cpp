@@ -3750,7 +3750,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             setUIElementVisibility();
             handleClearDelimiterState();
-            clearElasticTabsIfAny();
             return TRUE;
         }
 
@@ -3758,7 +3757,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             setUIElementVisibility();
             handleClearDelimiterState();
-            clearElasticTabsIfAny();
             return TRUE;
         }
 
@@ -7894,23 +7892,16 @@ bool MultiReplace::applyElasticTabStops()
     if (!buildCTModelFromMatrix(model))
         return false;
 
-    const int firstLine = 0;
-    const int lastLine = (int)model.Lines.size() - 1;
-
     // pixel-accurate, editor-global; does not change text
-    return ColumnTabs::ApplyElasticTabStops(_hScintilla, model, firstLine, lastLine, _elasticPaddingPx);
+    return ColumnTabs::CT_ApplyElasticTabStopsAll(_hScintilla, model, _elasticPaddingPx);
 }
 
-bool MultiReplace::clearElasticTabStops()
-{
-    return ColumnTabs::ClearTabStops(_hScintilla);
-}
-
-// MultiReplacePanel.cpp
 void MultiReplace::handleColumnGridTabsButton()
 {
-    // Ensure CSV scope + Matrix
-    if (!_elasticTabsActive) {
+    if (!_elasticTabsActive)
+    {
+        // We are going to TURN ON elastic tabs (insert aligned padding)
+
         if (!validateDelimiterData()) {
             showStatusMessage(L"CSV scope not initialized.", MessageStatus::Error);
             return;
@@ -7921,34 +7912,35 @@ void MultiReplace::handleColumnGridTabsButton()
             showStatusMessage(L"No delimiters found.", MessageStatus::Error);
             return;
         }
-    }
 
-    ColumnTabs::CT_ColumnModelView model{};
-    if (!buildCTModelFromMatrix(model)) {
-        showStatusMessage(L"Elastic Tabs: model build failed.", MessageStatus::Error);
-        return;
-    }
+        ColumnTabs::CT_ColumnModelView model{};
+        if (!buildCTModelFromMatrix(model)) {
+            showStatusMessage(L"Elastic Tabs: model build failed.", MessageStatus::Error);
+            return;
+        }
 
-    if (!_elasticTabsActive)
-    {
         // Destructive: insert aligned padding before delimiters
         ColumnTabs::CT_AlignOptions opt{};
         opt.firstLine = 0;
         opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
         opt.gapCells = 2;
-        opt.spacesOnlyIfTabDelimiter = true; // TSV => spaces padding only
+        opt.spacesOnlyIfTabDelimiter = true;
+        opt.oneElasticTabOnly = true;
 
-        // dedicate indicator slot to avoid collisions
         ColumnTabs::CT_SetIndicatorId(30);
 
-        const bool ok = ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt);
-        if (!ok) {
+        const bool okInsert = ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt);
+        if (!okInsert) {
             showStatusMessage(L"Elastic Tabs: insert failed.", MessageStatus::Error);
             return;
         }
 
-        // Matrix refresh (positions have shifted)
+        // Matrix refresh (offsets shifted by our insertions)
         findAllDelimitersInDocument();
+
+        if (!applyElasticTabStops()) {
+            showStatusMessage(L"Elastic Tabs: visual tabstops failed.", MessageStatus::Error);
+        }
 
         _elasticTabsActive = true;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
@@ -7957,17 +7949,20 @@ void MultiReplace::handleColumnGridTabsButton()
     }
     else
     {
-        // Remove only what we inserted earlier (indicator-driven)
-        const bool ok = ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
-        if (!ok) {
-            showStatusMessage(L"Elastic Tabs: remove failed.", MessageStatus::Error);
-            return;
-        }
+        // We are going to TURN OFF elastic tabs.
 
-        // Also clear any visual ETS to avoid re-applying them later unintentionally
-        ColumnTabs::ClearElasticTabStops(_hScintilla); // selective; fallback: ClearTabStops
+        // 1) remove any text padding we inserted (indicator driven)
+        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
 
-        // Matrix refresh (text back to canonical)
+        // 2) remove visual ETS tabstops WITHOUT restoring manual per-line stops
+        //    -> tabs immediately fall back to the editor's default tab width
+        ColumnTabs::CT_DisableElasticTabStops(_hScintilla, /*restoreManual=*/false);
+
+        // 3) now reset ETS bookkeeping (must be AFTER disabling, not before)
+        ColumnTabs::CT_ResetElasticVisualState();
+
+
+        // Matrix refresh (back to canonical)
         findAllDelimitersInDocument();
 
         _elasticTabsActive = false;
@@ -7979,14 +7974,22 @@ void MultiReplace::handleColumnGridTabsButton()
 
 void MultiReplace::clearElasticTabsIfAny()
 {
-#if defined(HAVE_SELECTIVE_CLEAR_ETABS)
-    ColumnTabs::ClearElasticTabStops(_hScintilla);
-#else
-    ColumnTabs::ClearTabStops(_hScintilla);
-#endif
+    // Remove only padding we inserted (manual tabs remain).
+    if (ColumnTabs::CT_HasAlignedPadding(_hScintilla)) {
+        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
+    }
+
+    // Always clear visual tab stops (no text change).
+    ColumnTabs::CT_ClearElasticTabStops(_hScintilla);
+
+    // Reset UI state if button was marked ON.
+    if (_elasticTabsActive) {
+        _elasticTabsActive = false;
+        if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
+            ::SetWindowText(h, L"TABS");
+    }
 }
 
-// MultiReplacePanel.cpp
 bool MultiReplace::runCsvWithEtabs(CsvOp op, const std::function<bool()>& body)
 {
     // Ensure CSV matrix exists
@@ -8002,8 +8005,7 @@ bool MultiReplace::runCsvWithEtabs(CsvOp op, const std::function<bool()>& body)
 
     // Which ops modify text?
     const bool modifiesText =
-        (op == CsvOp::Sort) || (op == CsvOp::DeleteColumns) ||
-        (op == CsvOp::Replace) || (op == CsvOp::BatchReplace);
+        (op == CsvOp::Sort) || (op == CsvOp::DeleteColumns);
 
     // If Padding + modifying op → unpad to get canonical text
     if (mode == EtabsMode::Padding && modifiesText && ColumnTabs::CT_HasAlignedPadding(_hScintilla)) {
@@ -8027,12 +8029,12 @@ bool MultiReplace::runCsvWithEtabs(CsvOp op, const std::function<bool()>& body)
         if (buildCTModelFromMatrix(model)) {
             const bool canVis = model.delimiterIsTab || ColumnTabs::CT_HasAlignedPadding(_hScintilla);
             if (canVis && !model.Lines.empty()) {
-                ColumnTabs::ClearElasticTabStops(_hScintilla); // selective
+                ColumnTabs::CT_ClearElasticTabStops(_hScintilla); // selective
                 const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
                 const int gapPx = 2 * spacePx;
                 const int first = 0;
                 const int last = (int)model.Lines.size() - 1;
-                ColumnTabs::ApplyElasticTabStops(_hScintilla, model, first, last, gapPx);
+                ColumnTabs::CT_ApplyElasticTabStops(_hScintilla, model, first, last, gapPx);
             }
         }
         break;
@@ -9121,12 +9123,6 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         return;
     }
 
-    // If there's been a change in the active window within Notepad++, reset all delimiter settings
-    if (documentSwitched) {
-        handleClearDelimiterState();
-        documentSwitched = false;
-    }
-
     if (operation == DelimiterOperation::LoadAll) {
         // Parse column and delimiter data; exit if parsing fails or if delimiter is empty
         if (!parseColumnAndDelimiterData()) {
@@ -9158,6 +9154,8 @@ void MultiReplace::handleClearDelimiterState() {
     if (isColumnHighlighted) {
         handleClearColumnMarks();
     }
+    clearElasticTabsIfAny();
+    ColumnTabs::CT_ResetElasticVisualState();
     isCaretPositionEnabled = false;
 }
 
@@ -11118,9 +11116,9 @@ void MultiReplace::onDocumentSwitched() {
         isCaretPositionEnabled = false;
         scannedDelimiterBufferID = currentBufferID;
 
-        if (instance != nullptr) {
-            // Clear highlighting only if the tab was previously highlighted
-            instance->handleClearColumnMarks();
+        if (instance) {
+            // One-stop cleanup: clears delimiter matrix + ETS visual state + padding + highlight (if any)
+            instance->handleClearDelimiterState();
             instance->showStatusMessage(L"", MessageStatus::Info);
         }
     }

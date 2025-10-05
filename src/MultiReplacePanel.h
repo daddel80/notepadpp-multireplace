@@ -818,7 +818,6 @@ private:
     void clearElasticTabsIfAny();
     bool buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const;
     bool applyElasticTabStops();
-    bool clearElasticTabStops();
     bool runCsvWithEtabs(CsvOp op, const std::function<bool()>& body);
 
     //CSV Sort
