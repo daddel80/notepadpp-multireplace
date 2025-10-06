@@ -159,7 +159,7 @@ void MultiReplace::initializeFontStyles() {
     for (int controlId : { IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_STATUS_MESSAGE, IDC_PATH_DISPLAY, IDC_STATS_DISPLAY }) {
         SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hNormalFont1, TRUE);
     }
-    for (int controlId : { IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_COLUMN_GRIDTABS_BUTTON }) {
+    for (int controlId : { IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON }) {
         SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hNormalFont2, TRUE);
     }
 
@@ -168,6 +168,7 @@ void MultiReplace::initializeFontStyles() {
     SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont4, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont5, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont6, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont6, TRUE);
 
     // Define bold fonts
     _hBoldFont1 = createFont(22, FW_BOLD, L"Courier New");
@@ -284,7 +285,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(459), sy(149), sx(25), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_drop_columns") };
     ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(487), sy(149), sx(25), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_columns") }; // 
     ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(515), sy(149), sx(45), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_highlight") };
-    ctrlMap[IDC_COLUMN_GRIDTABS_BUTTON] = { sx(515), sy(126), sx(45), sy(20), WC_BUTTON, L"TABS", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_tabs") };
+    ctrlMap[IDC_COLUMN_GRIDTABS_BUTTON] = { sx(515), sy(126), sx(45), sy(20), WC_BUTTON, L"⇉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_tabs") };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -3829,7 +3830,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_GRIDTABS_BUTTON:
         {
-            if (HIWORD(wParam) == BN_CLICKED) {
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            if (columnDelimiterData.isValid()) {
                 handleColumnGridTabsButton();
             }
             return TRUE;
@@ -7900,93 +7902,90 @@ void MultiReplace::handleColumnGridTabsButton()
 {
     if (!_elasticTabsActive)
     {
-        // We are going to TURN ON elastic tabs (insert aligned padding)
-
-        if (!validateDelimiterData()) {
-            showStatusMessage(L"CSV scope not initialized.", MessageStatus::Error);
-            return;
-        }
-        if (lineDelimiterPositions.empty())
-            findAllDelimitersInDocument();
+        // TURN ON elastic tabs (requires a fresh matrix already ensured by the caller)
         if (lineDelimiterPositions.empty()) {
             showStatusMessage(L"No delimiters found.", MessageStatus::Error);
             return;
         }
 
+        // Build the column model from the (fresh) matrix
         ColumnTabs::CT_ColumnModelView model{};
         if (!buildCTModelFromMatrix(model)) {
             showStatusMessage(L"Elastic Tabs: model build failed.", MessageStatus::Error);
             return;
         }
 
-        // Destructive: insert aligned padding before delimiters
+        // Destructive alignment: insert a single elastic tab before each delimiter
         ColumnTabs::CT_AlignOptions opt{};
         opt.firstLine = 0;
         opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
-        opt.gapCells = 2;
-        opt.spacesOnlyIfTabDelimiter = true;
-        opt.oneElasticTabOnly = true;
+        opt.gapCells = 2;                      // visual gap in "cells" (adapt as you use it)
+        opt.spacesOnlyIfTabDelimiter = true;   // when delimiter is '\t', keep visual width stable
+        opt.oneElasticTabOnly = true;          // do not stack multiple tabs for the same column
 
         ColumnTabs::CT_SetIndicatorId(30);
 
-        const bool okInsert = ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt);
-        if (!okInsert) {
+        if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt)) {
             showStatusMessage(L"Elastic Tabs: insert failed.", MessageStatus::Error);
             return;
         }
 
-        // Matrix refresh (offsets shifted by our insertions)
+        // Our insertions changed offsets → refresh the delimiter matrix ONCE
         findAllDelimitersInDocument();
 
+        // Apply visual elastic tab stops (pixel-accurate; editor-global; non-destructive)
         if (!applyElasticTabStops()) {
             showStatusMessage(L"Elastic Tabs: visual tabstops failed.", MessageStatus::Error);
         }
 
         _elasticTabsActive = true;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-            ::SetWindowText(h, L"TABS (ON)");
+            ::SetWindowText(h, L"⤶");
+
         showStatusMessage(L"Elastic Tabs: INSERTED.", MessageStatus::Success);
     }
     else
     {
-        // We are going to TURN OFF elastic tabs.
+        // TURN OFF elastic tabs
 
-        // 1) remove any text padding we inserted (indicator driven)
-        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
+        // Remove only what we inserted (cheap indicator-driven check avoids unnecessary work)
+        const bool hadPad = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
+        if (hadPad)
+            ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
 
-        // 2) remove visual ETS tabstops WITHOUT restoring manual per-line stops
-        //    -> tabs immediately fall back to the editor's default tab width
+        // Drop visual ETS; do NOT restore manual per-line stops
         ColumnTabs::CT_DisableElasticTabStops(_hScintilla, /*restoreManual=*/false);
+        ColumnTabs::CT_ResetElasticVisualState(); // must be AFTER disabling
 
-        // 3) now reset ETS bookkeeping (must be AFTER disabling, not before)
-        ColumnTabs::CT_ResetElasticVisualState();
-
-
-        // Matrix refresh (back to canonical)
-        findAllDelimitersInDocument();
+        // Rebuild matrix ONLY if offsets changed (i.e., padding was actually removed)
+        if (hadPad)
+            findAllDelimitersInDocument();
 
         _elasticTabsActive = false;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-            ::SetWindowText(h, L"TABS");
+            ::SetWindowText(h, L"⇉");
+
+        normalizeSelectionAfterCleanup();
+
         showStatusMessage(L"Elastic Tabs: REMOVED.", MessageStatus::Info);
     }
 }
 
 void MultiReplace::clearElasticTabsIfAny()
 {
-    // Remove only padding we inserted (manual tabs remain).
-    if (ColumnTabs::CT_HasAlignedPadding(_hScintilla)) {
-        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
-    }
+    const bool hadPad = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
+    const bool hadVis = ColumnTabs::CT_HasElasticTabStops();
 
-    // Always clear visual tab stops (no text change).
-    ColumnTabs::CT_ClearElasticTabStops(_hScintilla);
+    if (hadPad) ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
+    if (hadVis) ColumnTabs::CT_DisableElasticTabStops(_hScintilla, /*restoreManual=*/false);
+    if (hadVis) ColumnTabs::CT_ResetElasticVisualState();
 
-    // Reset UI state if button was marked ON.
-    if (_elasticTabsActive) {
+    if (hadPad) findAllDelimitersInDocument();
+
+    if (hadPad || hadVis) {
         _elasticTabsActive = false;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-            ::SetWindowText(h, L"TABS");
+            ::SetWindowText(h, L"⇉");
     }
 }
 
@@ -9123,6 +9122,12 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         return;
     }
 
+    // If there's been a change in the active window within Notepad++, reset all delimiter settings
+    if (documentSwitched) {
+        handleClearDelimiterState();
+        documentSwitched = false;
+    }
+
     if (operation == DelimiterOperation::LoadAll) {
         // Parse column and delimiter data; exit if parsing fails or if delimiter is empty
         if (!parseColumnAndDelimiterData()) {
@@ -9157,6 +9162,22 @@ void MultiReplace::handleClearDelimiterState() {
     clearElasticTabsIfAny();
     ColumnTabs::CT_ResetElasticVisualState();
     isCaretPositionEnabled = false;
+    normalizeSelectionAfterCleanup();
+}
+
+void MultiReplace::normalizeSelectionAfterCleanup()
+{
+    // Normalize selection to avoid EOL-fill artifacts after destructive/visual cleanup.
+    const int  prevSelMode = (int)SendMessage(_hScintilla, SCI_GETSELECTIONMODE, 0, 0); // SC_SEL_*
+    const BOOL prevEolFilled = (BOOL)SendMessage(_hScintilla, SCI_GETSELEOLFILLED, 0, 0);
+
+    SendMessage(_hScintilla, SCI_SETSELECTIONMODE, SC_SEL_STREAM, 0);
+    SendMessage(_hScintilla, SCI_SETSELEOLFILLED, FALSE, 0);
+    SendMessage(_hScintilla, SCI_CLEARSELECTIONS, 0, 0); // clears multi/rect selections as well
+
+    SendMessage(_hScintilla, SCI_SETSELECTIONMODE, prevSelMode, 0);
+    SendMessage(_hScintilla, SCI_SETSELEOLFILLED, prevEolFilled, 0);
+    SendMessage(_hScintilla, SCI_COLOURISE, 0, -1);
 }
 
 /* For testing purposes only
@@ -11102,32 +11123,39 @@ void MultiReplace::processLog() {
     instance->handleDelimiterPositions(DelimiterOperation::Update);
 }
 
-void MultiReplace::onDocumentSwitched() {
-    if (!isWindowOpen) {
+void MultiReplace::onDocumentSwitched()
+{
+    // Always operate via the instance pointer to avoid "non-static member" errors
+    MultiReplace* self = instance;
+    if (!self || !self->isWindowOpen) return;
+
+    const int currentBufferID =
+        (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+
+    // No buffer change → nothing to do
+    if (currentBufferID == self->scannedDelimiterBufferID)
         return;
-    }
 
-    // Get the current buffer ID of the newly opened document
-    int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+    // Mark for lazy reload: Highlight / Tabs (ON) will rescan on first use
+    self->documentSwitched = true;
+    self->isCaretPositionEnabled = false;
+    self->scannedDelimiterBufferID = currentBufferID;
 
-    // Check if the document has changed
-    if (currentBufferID != scannedDelimiterBufferID) {
-        documentSwitched = true;
-        isCaretPositionEnabled = false;
-        scannedDelimiterBufferID = currentBufferID;
+    // UI cleanup (NO delimiter matrix work here; lazy like before)
+    self->handleClearColumnMarks();
+    self->isColumnHighlighted = false;
 
-        if (instance) {
-            // One-stop cleanup: clears delimiter matrix + ETS visual state + padding + highlight (if any)
-            instance->handleClearDelimiterState();
-            instance->showStatusMessage(L"", MessageStatus::Info);
-        }
-    }
+    self->_elasticTabsActive = false;
+    if (HWND h = ::GetDlgItem(self->_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
+        ::SetWindowText(h, L"⇉");
 
-    // Reset sorting state when switching documents
-    originalLineOrder.clear();
-    currentSortState = SortDirection::Unsorted;
-    isSortedColumn = false;
-    instance->UpdateSortButtonSymbols();
+    self->showStatusMessage(L"", MessageStatus::Info);
+
+    // Reset sort UI
+    self->originalLineOrder.clear();
+    self->currentSortState = SortDirection::Unsorted;
+    self->isSortedColumn = false;
+    self->UpdateSortButtonSymbols();
 }
 
 void MultiReplace::pointerToScintilla() {

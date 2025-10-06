@@ -848,6 +848,7 @@ private:
     void processLogForDelimiters();
     void handleDelimiterPositions(DelimiterOperation operation);
     void handleClearDelimiterState();
+    void normalizeSelectionAfterCleanup();
 
     //Utilities
     std::string convertAndExtendW(const std::wstring& input, bool extended, UINT cp /*docCp or CP_UTF8*/) const;

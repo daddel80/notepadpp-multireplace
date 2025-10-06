@@ -118,6 +118,8 @@ namespace ColumnTabs
     // Forget any cached visual state (must be called on buffer/document switch).
     void CT_ResetElasticVisualState() noexcept;
 
+    bool CT_HasElasticTabStops() noexcept;
+
     // --- Utilities (kept for callers) ---------------------------------------
 
     // Measure a cell’s *visual* width assuming a given tab width (utility).

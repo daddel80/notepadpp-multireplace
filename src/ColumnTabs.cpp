@@ -330,13 +330,16 @@ namespace ColumnTabs
 
         ensureCapacity(hSci);
 
+        // Batch repaint while clearing many lines
+        RedrawGuard rd(hSci);
+
         const int total = (int)SendMessage(hSci, SCI_GETLINECOUNT, 0, 0);
         const int limit = (std::min)(total, (int)g_hasETSLine.size());
 
         for (int ln = 0; ln < limit; ++ln) {
             if (!g_hasETSLine[(size_t)ln]) continue;
 
-            // 1) Remove ETS-owned per-line tab stops on this line (visual only; does not change text)
+            // 1) Remove ETS-owned per-line tab stops (visual only)
             SendMessage(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
 
             // 2) Optionally restore previously saved manual per-line tab stops
@@ -367,6 +370,33 @@ namespace ColumnTabs
         detail::g_hasETSLine.clear();
         detail::g_savedManualStopsPx.clear();
     }
+
+    bool CT_HasAlignedPadding(HWND hSci) noexcept
+    {
+        using namespace detail;
+
+        // Make sure we check the correct indicator
+        S(hSci, SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
+
+        const Sci_Position len = S(hSci, SCI_GETLENGTH);
+        for (Sci_Position pos = 0; pos < len; ++pos) {
+            // Non-zero => indicator present at this position
+            if ((int)S(hSci, SCI_INDICATORVALUEAT, g_CT_IndicatorId, pos) != 0)
+                return true;
+        }
+        return false;
+    }
+
+    bool ColumnTabs::CT_HasElasticTabStops() noexcept
+    {
+        using namespace detail;
+        // Linear scan in memory; avoids any editor calls.
+        for (size_t i = 0, n = g_hasETSLine.size(); i < n; ++i) {
+            if (g_hasETSLine[i]) return true;
+        }
+        return false;
+    }
+
 
     // ----------------------------------------------------------------------------
     // Destructive API (edits text)
@@ -530,19 +560,10 @@ namespace ColumnTabs
             S(hSci, SCI_DELETERANGE, it->first, it->second - it->first);
         }
 
-        const int total = (int)S(hSci, SCI_GETLINECOUNT);
-        for (int ln = 0; ln < total; ++ln)
-            S(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
-
+        // IMPORTANT: Do NOT clear tabstops here. Visual ETS will be disabled explicitly by caller.
         S(hSci, SCI_ENDUNDOACTION);
-        return true;
-    }
 
-    bool CT_HasAlignedPadding(HWND hSci) noexcept
-    {
-        S(hSci, SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
-        const Sci_Position any = S(hSci, SCI_INDICATORSTART, g_CT_IndicatorId, S(hSci, SCI_GETLENGTH));
-        return (any >= 0);
+        return true;
     }
 
 } // namespace ColumnTabs
