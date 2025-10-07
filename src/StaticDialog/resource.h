@@ -261,7 +261,7 @@
 // ===================================================================
 #define POS_X               92
 #define POS_Y               40
-#define MIN_WIDTH           753
+#define MIN_WIDTH           810
 #define MIN_HEIGHT          400
 #define SHRUNK_HEIGHT       224
 

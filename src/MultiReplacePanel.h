@@ -355,6 +355,7 @@ public:
         _hNormalFont4(nullptr),
         _hNormalFont5(nullptr),
         _hNormalFont6(nullptr),
+        _hNormalFont7(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
     {
@@ -521,6 +522,7 @@ private:
     HFONT _hNormalFont4;
     HFONT _hNormalFont5;
     HFONT _hNormalFont6;
+    HFONT _hNormalFont7;
     COLORREF COLOR_SUCCESS;
     COLORREF COLOR_ERROR;
     COLORREF COLOR_INFO;

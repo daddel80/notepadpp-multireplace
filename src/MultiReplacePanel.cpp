@@ -149,6 +149,7 @@ void MultiReplace::initializeFontStyles() {
     _hNormalFont4 = createFont(16, FW_NORMAL, L"Courier New");
     _hNormalFont5 = createFont(18, FW_NORMAL, L"Courier New");
     _hNormalFont6 = createFont(22, FW_NORMAL, L"Courier New");
+    _hNormalFont7 = createFont(26, FW_NORMAL, L"Courier New");
 
     // Apply standard font to all controls in ctrlMap
     for (const auto& pair : ctrlMap) {
@@ -168,7 +169,7 @@ void MultiReplace::initializeFontStyles() {
     SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont4, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont5, TRUE);
     SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont6, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont6, TRUE);
+    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont7, TRUE);
 
     // Define bold fonts
     _hBoldFont1 = createFont(22, FW_BOLD, L"Courier New");
@@ -268,24 +269,24 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_SCOPE_GROUP] = { sx(367), sy(79), sx(203), sy(125), WC_BUTTON, LM.getLPCW(L"panel_scope"), BS_GROUPBOX, NULL };
+    ctrlMap[IDC_SCOPE_GROUP] = { sx(367), sy(79), sx(252), sy(125), WC_BUTTON, LM.getLPCW(L"panel_scope"), BS_GROUPBOX, NULL };
     ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(375), sy(101), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
     ctrlMap[IDC_SELECTION_RADIO] = { sx(375), sy(126), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
     ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(375), sy(150), sx(45), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
 
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(369), sy(181), sx(30), sy(20), WC_STATIC, LM.getLPCW(L"panel_cols"), SS_RIGHT, NULL };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(400), sy(181), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_columns") };
-    ctrlMap[IDC_DELIMITER_STATIC] = { sx(442), sy(181), sx(38), sy(20), WC_STATIC, LM.getLPCW(L"panel_delim"), SS_RIGHT, NULL };
-    ctrlMap[IDC_DELIMITER_EDIT] = { sx(481), sy(181), sx(25), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_delimiter") };
-    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(506), sy(181), sx(37), sy(20), WC_STATIC, LM.getLPCW(L"panel_quote"), SS_RIGHT, NULL };
-    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(544), sy(181), sx(15), sy(16), WC_EDIT, NULL, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_quote") };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(412), sy(151), sx(30), sy(20), WC_STATIC, LM.getLPCW(L"panel_cols"), SS_RIGHT, NULL };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(443), sy(151), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_columns") };
+    ctrlMap[IDC_DELIMITER_STATIC] = { sx(485), sy(151), sx(38), sy(20), WC_STATIC, LM.getLPCW(L"panel_delim"), SS_RIGHT, NULL };
+    ctrlMap[IDC_DELIMITER_EDIT] = { sx(524), sy(151), sx(25), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_delimiter") };
+    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(549), sy(151), sx(37), sy(20), WC_STATIC, LM.getLPCW(L"panel_quote"), SS_RIGHT, NULL };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(587), sy(151), sx(15), sy(16), WC_EDIT, NULL, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_quote") };
 
-    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(418), sy(149), sx(19), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_descending") };
-    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(437), sy(149), sx(19), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_ascending") };
-    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(459), sy(149), sx(25), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_drop_columns") };
-    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(487), sy(149), sx(25), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_columns") }; // 
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(515), sy(149), sx(45), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_highlight") };
-    ctrlMap[IDC_COLUMN_GRIDTABS_BUTTON] = { sx(515), sy(126), sx(45), sy(20), WC_BUTTON, L"⇉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_tabs") };
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(373), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_descending") };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(410), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_ascending") };
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(453), sy(176), sx(34), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_drop_columns") };
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(490), sy(176), sx(34), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_columns") }; // 
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(533), sy(176), sx(34), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_highlight") };
+    ctrlMap[IDC_COLUMN_GRIDTABS_BUTTON] = { sx(570), sy(176), sx(34), sy(20), WC_BUTTON, L"⇥", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_tabs") };
 
     // Dynamic positions and sizes
     ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
@@ -3280,6 +3281,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         DeleteObject(_hNormalFont4);
         DeleteObject(_hNormalFont5);
         DeleteObject(_hNormalFont6);
+        DeleteObject(_hNormalFont7);
 
         // Close the debug window if open
         if (hDebugWnd != NULL) {
@@ -7940,7 +7942,7 @@ void MultiReplace::handleColumnGridTabsButton()
 
         _elasticTabsActive = true;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-            ::SetWindowText(h, L"⤶");
+            ::SetWindowText(h, L"⇤");
 
         showStatusMessage(L"Elastic Tabs: INSERTED.", MessageStatus::Success);
     }
@@ -7963,7 +7965,7 @@ void MultiReplace::handleColumnGridTabsButton()
 
         _elasticTabsActive = false;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-            ::SetWindowText(h, L"⇉");
+            ::SetWindowText(h, L"⇥");
 
         normalizeSelectionAfterCleanup();
 
@@ -7985,7 +7987,7 @@ void MultiReplace::clearElasticTabsIfAny()
     if (hadPad || hadVis) {
         _elasticTabsActive = false;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-            ::SetWindowText(h, L"⇉");
+            ::SetWindowText(h, L"⇥");
     }
 }
 
@@ -11147,7 +11149,7 @@ void MultiReplace::onDocumentSwitched()
 
     self->_elasticTabsActive = false;
     if (HWND h = ::GetDlgItem(self->_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-        ::SetWindowText(h, L"⇉");
+        ::SetWindowText(h, L"⇥");
 
     self->showStatusMessage(L"", MessageStatus::Info);
 
