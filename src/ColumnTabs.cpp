@@ -151,6 +151,12 @@ namespace ColumnTabs::detail {
 
                 std::string cell;
                 getSubText(s, e, cell);
+
+                // Tab-invariant measurement: ignore '\t' only for width computation
+                if (!cell.empty()) {
+                    cell.erase(std::remove(cell.begin(), cell.end(), '\t'), cell.end());
+                }
+
                 const int w = measurePx(cell);
                 lm.cellW[k] = w;
                 if (w > maxCellWidthPx[k]) maxCellWidthPx[k] = w;
@@ -264,7 +270,7 @@ namespace ColumnTabs
     // ----------------------------------------------------------------------------
     // Visual API (non-destructive)
     // ----------------------------------------------------------------------------
-    bool CT_ApplyElasticTabStops(HWND hSci,
+    bool CT_ApplyFlowTabStops(HWND hSci,
         const CT_ColumnModelView& model,
         int firstLine,
         int lastLine,
@@ -306,7 +312,7 @@ namespace ColumnTabs
 
         setTabStopsRangePx(hSci, line0, effectiveLast, stops);
 
-        // Mark lines as ETS-owned so CT_ClearElasticTabStops can act selectively.
+        // Mark lines as ETS-owned so CT_ClearFlowTabStops can act selectively.
         for (int ln = line0; ln <= effectiveLast; ++ln)
             g_hasETSLine[(size_t)ln] = 1u;
 
@@ -314,17 +320,17 @@ namespace ColumnTabs
     }
 
 
-    bool CT_ApplyElasticTabStopsSpaces(HWND hSci,
+    bool CT_ApplyFlowTabStopsSpaces(HWND hSci,
         const CT_ColumnModelView& model,
         int firstLine,
         int lastLine,
         int gapSpaces /*spaces*/)
     {
         const int px = (gapSpaces > 0) ? (detail::pxOfSpace(hSci) * gapSpaces) : 0;
-        return CT_ApplyElasticTabStops(hSci, model, firstLine, lastLine, px);
+        return CT_ApplyFlowTabStops(hSci, model, firstLine, lastLine, px);
     }
 
-    bool CT_DisableElasticTabStops(HWND hSci, bool restoreManual)
+    bool CT_DisableFlowTabStops(HWND hSci, bool restoreManual)
     {
         using namespace detail;
 
@@ -365,7 +371,7 @@ namespace ColumnTabs
         return true;
     }
 
-    void CT_ResetElasticVisualState() noexcept
+    void CT_ResetFlowVisualState() noexcept
     {
         detail::g_hasETSLine.clear();
         detail::g_savedManualStopsPx.clear();
@@ -387,7 +393,7 @@ namespace ColumnTabs
         return false;
     }
 
-    bool ColumnTabs::CT_HasElasticTabStops() noexcept
+    bool ColumnTabs::CT_HasFlowTabStops() noexcept
     {
         using namespace detail;
         // Linear scan in memory; avoids any editor calls.
@@ -421,7 +427,8 @@ namespace ColumnTabs
         if (!computeStopsFromWidthsPx(hSci, model, line0, line1, stops, gapPx)) return false;
         setTabStopsRangePx(hSci, line0, line1, stops);
 
-        if (opt.oneElasticTabOnly && model.delimiterIsTab)
+        // If the delimiter itself is a tab and we only want one Flow tab, there is nothing to insert.
+        if (opt.oneFlowTabOnly && model.delimiterIsTab)
             return true;
 
         RedrawGuard rd(hSci);
@@ -430,7 +437,7 @@ namespace ColumnTabs
         S(hSci, SCI_INDICSETSTYLE, g_CT_IndicatorId, INDIC_HIDDEN);
         S(hSci, SCI_INDICSETALPHA, g_CT_IndicatorId, 0);
 
-        // Safe delete range helper (guards editor bounds and clears indicator).
+        // Safe delete range helper (kept for completeness; currently unused after removing trims)
         auto safeDeleteRange = [&](Sci_Position pos, Sci_Position len) {
             const Sci_Position docLen = (Sci_Position)S(hSci, SCI_GETLENGTH, 0, 0);
             if (pos < 0 || len <= 0) return;
@@ -454,78 +461,32 @@ namespace ColumnTabs
                 // Dynamic line end
                 const Sci_Position lineEndNow = (Sci_Position)S(hSci, SCI_GETLINEENDPOSITION, ln, 0);
 
-                // Delimiter position in current text
+                // Current delimiter position (accounts for previous inserts in this line via 'delta')
                 const Sci_Position delimPos = base + (Sci_Position)L.delimiterOffsets[c] + delta;
                 if (delimPos < base || delimPos > lineEndNow) {
-                    // stale offset or past EOL; skip safely
+                    // Stale offset or past EOL; skip safely
                     continue;
                 }
 
-                // Scan whitespace BEFORE delimiter
+                // Scan whitespace BEFORE delimiter (only to detect if a tab already sits directly before)
                 Sci_Position wsStart = delimPos;
                 while (wsStart > base) {
                     const int ch = (int)S(hSci, SCI_GETCHARAT, (uptr_t)(wsStart - 1), 0);
                     if (ch == ' ' || ch == '\t') --wsStart; else break;
                 }
 
-                // Existing '\t' exactly before delimiter?
+                // Existing '\t' exactly before the delimiter?
                 const bool keepExistingTab =
                     (wsStart < delimPos) &&
                     ((int)S(hSci, SCI_GETCHARAT, (uptr_t)(delimPos - 1), 0) == '\t');
 
-                // Trim BEFORE delimiter
-                if (wsStart < delimPos) {
-                    if (keepExistingTab) {
-                        const Sci_Position lastTab = delimPos - 1;
-
-                        if (lastTab > wsStart) {
-                            const Sci_Position len1 = lastTab - wsStart;
-                            safeDeleteRange(wsStart, len1);
-                            delta -= len1;
-                        }
-                        const Sci_Position afterTab = lastTab + 1;
-                        if (afterTab < delimPos) {
-                            const Sci_Position len2 = delimPos - afterTab;
-                            safeDeleteRange(afterTab, len2);
-                            delta -= len2;
-                        }
-                    }
-                    else {
-                        const Sci_Position wsLen = delimPos - wsStart;
-                        safeDeleteRange(wsStart, wsLen);
-                        delta -= wsLen;
-                    }
-                }
-
-                // Ensure exactly one tab right before the delimiter
-                Sci_Position tabPos = 0;
-                if (keepExistingTab) {
-                    tabPos = delimPos - 1; // reuse manual tab; do NOT mark it
-                }
-                else {
-                    // insert new elastic tab at delimiter start and mark it
-                    tabPos = base + (Sci_Position)L.delimiterOffsets[c] + delta;
+                // Do not trim any whitespace around the delimiter; preserve user's spaces/tabs.
+                // Ensure exactly one Flow tab right before the delimiter (insert only if none exists there).
+                if (!keepExistingTab) {
+                    const Sci_Position tabPos = delimPos;  // insert at delimiter start
                     S(hSci, SCI_INSERTTEXT, tabPos, (sptr_t)"\t");
-                    S(hSci, SCI_INDICATORFILLRANGE, tabPos, 1);
-                    delta += 1;
-                }
-
-                // --- trim AFTER delimiter (start of next field) ---
-                Sci_Position afterDelim = keepExistingTab
-                    ? (delimPos + (Sci_Position)model.delimiterLength)
-                    : (delimPos + 1 + (Sci_Position)model.delimiterLength);
-
-                for (;;) {
-                    const Sci_Position docLen = (Sci_Position)S(hSci, SCI_GETLENGTH, 0, 0);
-                    if (afterDelim >= docLen) break;
-
-                    const int ch = (int)S(hSci, SCI_GETCHARAT, (uptr_t)afterDelim, 0);
-                    if (ch == ' ' || ch == '\t') {
-                        safeDeleteRange(afterDelim, 1);
-                    }
-                    else {
-                        break;
-                    }
+                    S(hSci, SCI_INDICATORFILLRANGE, tabPos, 1); // mark the inserted Flow tab
+                    delta += 1; // keep offsets correct for subsequent delimiters in this line
                 }
             }
         }

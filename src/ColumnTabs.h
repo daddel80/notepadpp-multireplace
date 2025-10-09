@@ -59,7 +59,7 @@ namespace ColumnTabs
         int  lastLine = -1;                 // -1 => last model line
         int  gapCells = 2;                  // visual gap *in spaces* between columns
         bool spacesOnlyIfTabDelimiter = true;
-        bool oneElasticTabOnly = true; // collapse runs to one '\t' and add tabstops
+        bool oneFlowTabOnly = true; // collapse runs to one '\t' and add tabstops
     };
 
     // --- Indicator (tracks inserted padding) --------------------------------
@@ -83,42 +83,42 @@ namespace ColumnTabs
 
     // --- Visual API (does not edit text; manages Scintilla tab stops) -------
 
-    // Apply elastic tab stops for [firstLine..lastLine] with a fixed pixel gap.
+    // Apply Flow tab stops for [firstLine..lastLine] with a fixed pixel gap.
     // Units: paddingPx in *pixels* (e.g., 12).
-    bool CT_ApplyElasticTabStops(HWND hSci,
+    bool CT_ApplyFlowTabStops(HWND hSci,
         const CT_ColumnModelView& model,
         int firstLine,
         int lastLine,   // -1 => all model lines
         int paddingPx /*pixels*/);
 
     // Convenience: apply to all lines in model.
-    inline bool CT_ApplyElasticTabStopsAll(HWND hSci,
+    inline bool CT_ApplyFlowTabStopsAll(HWND hSci,
         const CT_ColumnModelView& model,
         int paddingPx /*pixels*/) {
-        return CT_ApplyElasticTabStops(hSci, model, 0, -1, paddingPx);
+        return CT_ApplyFlowTabStops(hSci, model, 0, -1, paddingPx);
     }
 
     // Convenience overload: gap expressed in *spaces*; converts to pixels internally.
-    bool CT_ApplyElasticTabStopsSpaces(HWND hSci,
+    bool CT_ApplyFlowTabStopsSpaces(HWND hSci,
         const CT_ColumnModelView& model,
         int firstLine,
         int lastLine,
         int gapSpaces /*spaces*/);
 
-    bool CT_DisableElasticTabStops(HWND hSci, bool restoreManual);
+    bool CT_DisableFlowTabStops(HWND hSci, bool restoreManual);
 
-    // Remove only elastic (ETS-owned) tab stops; restores any manual per-line stops.
-    inline bool CT_ClearElasticTabStops(HWND hSci) {
-        return CT_DisableElasticTabStops(hSci, /*restoreManual=*/true);
+    // Remove only Flow (ETS-owned) tab stops; restores any manual per-line stops.
+    inline bool CT_ClearFlowTabStops(HWND hSci) {
+        return CT_DisableFlowTabStops(hSci, /*restoreManual=*/true);
     }
 
-    // Remove *all* tab stops in the buffer (manual and elastic).
+    // Remove *all* tab stops in the buffer (manual and Flow).
     bool CT_ClearAllTabStops(HWND hSci);
 
     // Forget any cached visual state (must be called on buffer/document switch).
-    void CT_ResetElasticVisualState() noexcept;
+    void CT_ResetFlowVisualState() noexcept;
 
-    bool CT_HasElasticTabStops() noexcept;
+    bool CT_HasFlowTabStops() noexcept;
 
     // --- Utilities (kept for callers) ---------------------------------------
 

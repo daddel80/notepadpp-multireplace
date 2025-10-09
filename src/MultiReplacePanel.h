@@ -623,8 +623,8 @@ private:
     bool _isCancelRequested = false; // Flag to signal cancellation in Replace Files
     inline static bool  _isShuttingDown = false; // Flag to signal app shutdown
     HBRUSH _hDlgBrush = nullptr; // Handle for the dialog's background brush
-    bool _elasticTabsActive = false;   // current visual state (editor tabstops)
-    int  _elasticPaddingPx = 8;       // min pixel gap after each column
+    bool _flowTabsActive = false;   // current visual state (editor tabstops)
+    int  _flowPaddingPx = 8;       // min pixel gap after each column
 
     enum class CsvOp {
         Sort,
@@ -817,9 +817,9 @@ private:
     bool confirmColumnDeletion();
     void handleDeleteColumns();
     void handleColumnGridTabsButton();
-    void clearElasticTabsIfAny();
+    void clearFlowTabsIfAny();
     bool buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const;
-    bool applyElasticTabStops();
+    bool applyFlowTabStops();
     bool runCsvWithEtabs(CsvOp op, const std::function<bool()>& body);
 
     //CSV Sort
@@ -844,6 +844,7 @@ private:
     void initializeColumnStyles();
     void handleHighlightColumnsInDocument();
     void highlightColumnsInLine(LRESULT line);
+    void fixHighlightAtDocumentEnd();
     void handleClearColumnMarks();
     std::wstring addLineAndColumnMessage(LRESULT pos);
     void updateDelimitersInDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType);

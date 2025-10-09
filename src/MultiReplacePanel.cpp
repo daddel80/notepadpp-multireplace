@@ -7890,21 +7890,21 @@ bool MultiReplace::buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outMod
     return validLines > 0;
 }
 
-bool MultiReplace::applyElasticTabStops()
+bool MultiReplace::applyFlowTabStops()
 {
     ColumnTabs::CT_ColumnModelView model;
     if (!buildCTModelFromMatrix(model))
         return false;
 
     // pixel-accurate, editor-global; does not change text
-    return ColumnTabs::CT_ApplyElasticTabStopsAll(_hScintilla, model, _elasticPaddingPx);
+    return ColumnTabs::CT_ApplyFlowTabStopsAll(_hScintilla, model, _flowPaddingPx);
 }
 
 void MultiReplace::handleColumnGridTabsButton()
 {
-    if (!_elasticTabsActive)
+    if (!_flowTabsActive)
     {
-        // TURN ON elastic tabs (requires a fresh matrix already ensured by the caller)
+        // TURN ON Flow Tabs (requires a fresh matrix already ensured by the caller)
         if (lineDelimiterPositions.empty()) {
             showStatusMessage(L"No delimiters found.", MessageStatus::Error);
             return;
@@ -7913,42 +7913,51 @@ void MultiReplace::handleColumnGridTabsButton()
         // Build the column model from the (fresh) matrix
         ColumnTabs::CT_ColumnModelView model{};
         if (!buildCTModelFromMatrix(model)) {
-            showStatusMessage(L"Elastic Tabs: model build failed.", MessageStatus::Error);
+            showStatusMessage(L"Flow Tabs: model build failed.", MessageStatus::Error);
             return;
         }
 
-        // Destructive alignment: insert a single elastic tab before each delimiter
+        // Destructive alignment: insert a single Flow tab before each delimiter
         ColumnTabs::CT_AlignOptions opt{};
         opt.firstLine = 0;
         opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
-        opt.gapCells = 2;                      // visual gap in "cells" (adapt as you use it)
-        opt.spacesOnlyIfTabDelimiter = true;   // when delimiter is '\t', keep visual width stable
-        opt.oneElasticTabOnly = true;          // do not stack multiple tabs for the same column
+
+        // 1) Space-Pixelbreite ermitteln
+        const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
+
+        // 2) cells festlegen (dein gewünschter Abstand in Leerzeichen-Einheiten)
+        opt.gapCells = 2;
+
+        // 3) EINEN Pixel-Gap daraus ableiten und merken (Single Source of Truth)
+        _flowPaddingPx = spacePx * opt.gapCells;
+
+        // 4) Rest wie gehabt
+        opt.spacesOnlyIfTabDelimiter = true;
+        opt.oneFlowTabOnly = true;
 
         ColumnTabs::CT_SetIndicatorId(30);
-
         if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt)) {
-            showStatusMessage(L"Elastic Tabs: insert failed.", MessageStatus::Error);
+            showStatusMessage(L"Flow Tabs: insert failed.", MessageStatus::Error);
             return;
         }
 
         // Our insertions changed offsets → refresh the delimiter matrix ONCE
         findAllDelimitersInDocument();
 
-        // Apply visual elastic tab stops (pixel-accurate; editor-global; non-destructive)
-        if (!applyElasticTabStops()) {
-            showStatusMessage(L"Elastic Tabs: visual tabstops failed.", MessageStatus::Error);
+        // Apply visual Flow tab stops (pixel-accurate; editor-global; non-destructive)
+        if (!applyFlowTabStops()) {
+            showStatusMessage(L"Flow Tabs: visual tabstops failed.", MessageStatus::Error);
         }
 
-        _elasticTabsActive = true;
+        _flowTabsActive = true;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
             ::SetWindowText(h, L"⇤");
 
-        showStatusMessage(L"Elastic Tabs: INSERTED.", MessageStatus::Success);
+        showStatusMessage(L"Flow Tabs: INSERTED.", MessageStatus::Success);
     }
     else
     {
-        // TURN OFF elastic tabs
+        // TURN OFF Flow Tabs
 
         // Remove only what we inserted (cheap indicator-driven check avoids unnecessary work)
         const bool hadPad = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
@@ -7956,36 +7965,39 @@ void MultiReplace::handleColumnGridTabsButton()
             ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
 
         // Drop visual ETS; do NOT restore manual per-line stops
-        ColumnTabs::CT_DisableElasticTabStops(_hScintilla, /*restoreManual=*/false);
-        ColumnTabs::CT_ResetElasticVisualState(); // must be AFTER disabling
+        ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
+        ColumnTabs::CT_ResetFlowVisualState(); // must be AFTER disabling
 
         // Rebuild matrix ONLY if offsets changed (i.e., padding was actually removed)
         if (hadPad)
             findAllDelimitersInDocument();
 
-        _elasticTabsActive = false;
+        _flowTabsActive = false;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
             ::SetWindowText(h, L"⇥");
 
         normalizeSelectionAfterCleanup();
 
-        showStatusMessage(L"Elastic Tabs: REMOVED.", MessageStatus::Info);
+        // Workaround: Highlight last lines to fix N++ bug causing loss of styling 
+        fixHighlightAtDocumentEnd();
+
+        showStatusMessage(L"Flow Tabs: REMOVED.", MessageStatus::Info);
     }
 }
 
-void MultiReplace::clearElasticTabsIfAny()
+void MultiReplace::clearFlowTabsIfAny()
 {
     const bool hadPad = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
-    const bool hadVis = ColumnTabs::CT_HasElasticTabStops();
+    const bool hadVis = ColumnTabs::CT_HasFlowTabStops();
 
     if (hadPad) ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
-    if (hadVis) ColumnTabs::CT_DisableElasticTabStops(_hScintilla, /*restoreManual=*/false);
-    if (hadVis) ColumnTabs::CT_ResetElasticVisualState();
+    if (hadVis) ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
+    if (hadVis) ColumnTabs::CT_ResetFlowVisualState();
 
     if (hadPad) findAllDelimitersInDocument();
 
     if (hadPad || hadVis) {
-        _elasticTabsActive = false;
+        _flowTabsActive = false;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
             ::SetWindowText(h, L"⇥");
     }
@@ -8000,7 +8012,7 @@ bool MultiReplace::runCsvWithEtabs(CsvOp op, const std::function<bool()>& body)
     // Derive mode with UI flag taking precedence
     enum class EtabsMode { Off, Visual, Padding };
     const EtabsMode mode =
-        (!_elasticTabsActive) ? EtabsMode::Off
+        (!_flowTabsActive) ? EtabsMode::Off
         : (ColumnTabs::CT_HasAlignedPadding(_hScintilla) ? EtabsMode::Padding
             : EtabsMode::Visual);
 
@@ -8024,34 +8036,34 @@ bool MultiReplace::runCsvWithEtabs(CsvOp op, const std::function<bool()>& body)
     switch (mode) {
     case EtabsMode::Visual: {
         // Guard: only re-apply if UI still wants visual ETS right now
-        if (!_elasticTabsActive) break;
+        if (!_flowTabsActive) break;
 
         ColumnTabs::CT_ColumnModelView model{};
         if (buildCTModelFromMatrix(model)) {
-            const bool canVis = model.delimiterIsTab || ColumnTabs::CT_HasAlignedPadding(_hScintilla);
-            if (canVis && !model.Lines.empty()) {
-                ColumnTabs::CT_ClearElasticTabStops(_hScintilla); // selective
-                const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
-                const int gapPx = 2 * spacePx;
+            if (!model.Lines.empty()) {
+                ColumnTabs::CT_ClearFlowTabStops(_hScintilla); // selective
+                const int gapPx = _flowPaddingPx;
                 const int first = 0;
                 const int last = (int)model.Lines.size() - 1;
-                ColumnTabs::CT_ApplyElasticTabStops(_hScintilla, model, first, last, gapPx);
+                ColumnTabs::CT_ApplyFlowTabStops(_hScintilla, model, first, last, gapPx);
             }
         }
         break;
     }
     case EtabsMode::Padding: {
         // Guard: never re-insert padding if UI is OFF now
-        if (!_elasticTabsActive) break;
+        if (!_flowTabsActive) break;
 
         ColumnTabs::CT_ColumnModelView model{};
         if (buildCTModelFromMatrix(model) && !model.Lines.empty()) {
             ColumnTabs::CT_AlignOptions a{};
             a.firstLine = 0;
             a.lastLine = (int)model.Lines.size() - 1;
-            a.gapCells = 2;                      // compact policy: 2 spaces per gap
+            // Convert pixels -> "cells" (width of one space in the current font)
+            const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
+            a.gapCells = (spacePx > 0) ? (_flowPaddingPx / spacePx) : 2;
             a.spacesOnlyIfTabDelimiter = true;
-            a.oneElasticTabOnly = true;     // exactly one tab before delimiter
+            a.oneFlowTabOnly = true;
             ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, a);
         }
         break;
@@ -8190,17 +8202,17 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
         std::vector<CombinedColumns> combinedData =
             extractColumnData(CSVheaderLinesCount, lineCount);
 
-        // optional: stabilize numeric vs string by sanitizing tabs/spaces (comparison-only)
+        // comparison-only: ignore leading/trailing spaces/tabs for numeric detection & compare
         auto sanitize = [](std::string s) {
-            if (!s.empty()) {
-                s.erase(std::remove(s.begin(), s.end(), '\t'), s.end());
-                const auto b = s.find_first_not_of(' ');
-                if (b == std::string::npos) return std::string();
-                const auto e = s.find_last_not_of(' ');
-                s = s.substr(b, e - b + 1);
-            }
-            return s;
-            };
+            if (s.empty()) return s;
+            // trim left (space or tab)
+            size_t b = 0;
+            while (b < s.size() && (s[b] == ' ' || s[b] == '\t')) ++b;
+            // trim right (space or tab)
+            size_t e = s.size();
+            while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t')) --e;
+            return s.substr(b, e - b);
+        };
         std::vector<CombinedColumns> sortable = combinedData;
         for (auto& row : sortable)
             for (auto& col : row.columns) {
@@ -8781,6 +8793,25 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     isCaretPositionEnabled = true;
 }
 
+void MultiReplace::fixHighlightAtDocumentEnd() {
+    if (!isColumnHighlighted) return;
+
+    // Workaround: Highlight last lines to fix N++ bug causing loss of styling
+    size_t lastLine = lineDelimiterPositions.size();
+    LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
+
+    if (lastLine >= 2) {
+        size_t highlightLine1 = lastLine - 2;
+        if (highlightLine1 < (size_t)docLineCount) {
+            highlightColumnsInLine((LRESULT)highlightLine1);
+        }
+        size_t highlightLine2 = lastLine - 1;
+        if (highlightLine2 < (size_t)docLineCount) {
+            highlightColumnsInLine((LRESULT)highlightLine2);
+        }
+    }
+}
+
 void MultiReplace::highlightColumnsInLine(LRESULT line) {
     // Retrieve the pre-parsed line information
     const auto& lineInfo = lineDelimiterPositions[line];
@@ -9021,21 +9052,7 @@ void MultiReplace::processLogForDelimiters() {
     }
 
     // Workaround: Highlight last lines to fix N++ bug causing loss of styling 
-    if (isColumnHighlighted) {
-        size_t lastLine = lineDelimiterPositions.size();
-        LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
-
-        if (lastLine >= 2) {
-            size_t highlightLine1 = lastLine - 2;
-            if (highlightLine1 < (size_t)docLineCount) {
-                highlightColumnsInLine((LRESULT)highlightLine1);
-            }
-            size_t highlightLine2 = lastLine - 1;
-            if (highlightLine2 < (size_t)docLineCount) {
-                highlightColumnsInLine((LRESULT)highlightLine2);
-            }
-        }
-    }
+    fixHighlightAtDocumentEnd();
 
     // Clear Log queue
     logChanges.clear();
@@ -9136,6 +9153,11 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
             return;
         }
 
+        // Check current highlight status (global or per-tab)
+        const int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+        const bool highlightActive = (isColumnHighlighted != FALSE) ||
+            highlightedTabs.isHighlighted(currentBufferID);
+
         // Trigger scan only if necessary
         if (columnDelimiterData.isValid() &&
             (columnDelimiterData.delimiterChanged ||
@@ -9143,6 +9165,19 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
                 lineDelimiterPositions.empty()))
         {
             findAllDelimitersInDocument();
+
+            // Re-apply highlight when structure changed and highlight is active
+            if (highlightActive) {
+                handleHighlightColumnsInDocument();
+            }
+        }
+
+        // Re-apply highlight when only the selected column changed (no rescan required)
+        if (columnDelimiterData.isValid() &&
+            columnDelimiterData.columnChanged &&
+            highlightActive)
+        {
+            handleHighlightColumnsInDocument();
         }
     }
     else if (operation == DelimiterOperation::Update) {
@@ -9161,8 +9196,8 @@ void MultiReplace::handleClearDelimiterState() {
     if (isColumnHighlighted) {
         handleClearColumnMarks();
     }
-    clearElasticTabsIfAny();
-    ColumnTabs::CT_ResetElasticVisualState();
+    clearFlowTabsIfAny();
+    ColumnTabs::CT_ResetFlowVisualState();
     isCaretPositionEnabled = false;
     normalizeSelectionAfterCleanup();
 }
@@ -11147,7 +11182,7 @@ void MultiReplace::onDocumentSwitched()
     self->handleClearColumnMarks();
     self->isColumnHighlighted = false;
 
-    self->_elasticTabsActive = false;
+    self->_flowTabsActive = false;
     if (HWND h = ::GetDlgItem(self->_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
         ::SetWindowText(h, L"⇥");
 
