@@ -7904,16 +7904,27 @@ void MultiReplace::handleColumnGridTabsButton()
 {
     if (!_flowTabsActive)
     {
+        if (!flowTabsIntroDontShowEnabled) {
+            bool dontShow = false;
+            if (!showFlowTabsIntroDialog(dontShow))
+                return; // user pressed Cancel
+
+            if (dontShow) {
+                flowTabsIntroDontShowEnabled = true;
+                saveSettings(); // oder saveSettingsToIni(...), je nach deinem Projekt
+            }
+        }
+
         // TURN ON Flow Tabs (requires a fresh matrix already ensured by the caller)
         if (lineDelimiterPositions.empty()) {
-            showStatusMessage(L"No delimiters found.", MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_no_delimiters"), MessageStatus::Error);
             return;
         }
 
         // Build the column model from the (fresh) matrix
         ColumnTabs::CT_ColumnModelView model{};
         if (!buildCTModelFromMatrix(model)) {
-            showStatusMessage(L"Flow Tabs: model build failed.", MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_model_build_failed"), MessageStatus::Error);
             return;
         }
 
@@ -7937,7 +7948,7 @@ void MultiReplace::handleColumnGridTabsButton()
 
         ColumnTabs::CT_SetIndicatorId(30);
         if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt)) {
-            showStatusMessage(L"Flow Tabs: insert failed.", MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_padding_insert_failed"), MessageStatus::Error);
             return;
         }
 
@@ -7946,14 +7957,14 @@ void MultiReplace::handleColumnGridTabsButton()
 
         // Apply visual Flow tab stops (pixel-accurate; editor-global; non-destructive)
         if (!applyFlowTabStops()) {
-            showStatusMessage(L"Flow Tabs: visual tabstops failed.", MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
         }
 
         _flowTabsActive = true;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
             ::SetWindowText(h, L"⇤");
 
-        showStatusMessage(L"Flow Tabs: INSERTED.", MessageStatus::Success);
+        showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
     }
     else
     {
@@ -7981,7 +7992,7 @@ void MultiReplace::handleColumnGridTabsButton()
         // Workaround: Highlight last lines to fix N++ bug causing loss of styling 
         fixHighlightAtDocumentEnd();
 
-        showStatusMessage(L"Flow Tabs: REMOVED.", MessageStatus::Info);
+        showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
     }
 }
 
@@ -8003,7 +8014,7 @@ void MultiReplace::clearFlowTabsIfAny()
     }
 }
 
-bool MultiReplace::runCsvWithEtabs(CsvOp op, const std::function<bool()>& body)
+bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& body)
 {
     // Ensure CSV matrix exists
     if (lineDelimiterPositions.empty())
@@ -8075,6 +8086,128 @@ bool MultiReplace::runCsvWithEtabs(CsvOp op, const std::function<bool()>& body)
     }
 
     return ok;
+}
+
+bool MultiReplace::showFlowTabsIntroDialog(bool& dontShowFlag) const
+{
+    // Localized strings (single body + checkbox; buttons from INI with fallback)
+    const std::wstring body = LM.get(L"msgbox_flowtabs_intro_body");
+    const std::wstring chkLabel = LM.get(L"msgbox_flowtabs_intro_checkbox");
+    std::wstring okTxt = LM.get(L"msgbox_button_ok");     if (okTxt.empty())     okTxt = L"OK";
+    std::wstring cancelTxt = LM.get(L"msgbox_button_cancel"); if (cancelTxt.empty()) cancelTxt = L"Cancel";
+    const std::wstring title = LM.get(L"msgbox_title_info");
+
+    if (body.empty())
+        return true; // nothing to show
+
+    // --- Build an in-memory DLGTEMPLATE (no .rc, USER32 only) ---
+    // Layout (DLUs)
+    const short W = 320, H = 112, Mx = 7, My = 7;
+    const short Tw = W - 2 * Mx;
+    const short Ch = 12, Bw = 60, Bh = 14, Bp = 6;
+    const short Gt = 4, Gb = 4;
+    const short ThMax = H - (2 * My + Bh + Ch + Gt + Gb);
+    const short Th = (short)std::max<short>(40, ThMax);
+
+    // Size the buffer safely (text length dominates)
+    const size_t needBytes =
+        1024 + // header/overhead
+        (title.size() + 1 +
+            body.size() + 1 +
+            chkLabel.size() + 1 +
+            okTxt.size() + 1 +
+            cancelTxt.size() + 1) * sizeof(wchar_t);
+
+    std::vector<BYTE> buf((std::max)(needBytes, (size_t)4096)); // min 4KB
+    DLGTEMPLATE* dlg = reinterpret_cast<DLGTEMPLATE*>(buf.data());
+    dlg->style = DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
+    dlg->cdit = 4;  // STATIC, CHECKBOX, OK, Cancel
+    dlg->x = 0; dlg->y = 0; dlg->cx = W; dlg->cy = H;
+
+    BYTE* p = buf.data() + sizeof(DLGTEMPLATE);
+    auto W16 = [&](WORD v) { *reinterpret_cast<WORD*>(p) = v; p += sizeof(WORD); };
+    auto WSTR = [&](const std::wstring& s) {
+        const size_t n = (s.size() + 1) * sizeof(wchar_t);
+        memcpy(p, s.c_str(), n);
+        p += n;
+        };
+    auto AL = [&]() {                 // correct DWORD align on x86/x64
+        uintptr_t a = reinterpret_cast<uintptr_t>(p);
+        a = (a + 3) & ~(uintptr_t)3;
+        p = reinterpret_cast<BYTE*>(a);
+        };
+
+    // Menu=0, Class=0, Title
+    W16(0); W16(0); WSTR(title.empty() ? L"" : title);
+    // DS_SETFONT (point size + face name)
+    W16(9); WSTR(L"Segoe UI");
+
+    // Item 1: STATIC (multiline body)
+    AL(); auto* it = reinterpret_cast<DLGITEMTEMPLATE*>(p);
+    it->style = WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX;
+    it->dwExtendedStyle = 0;
+    it->x = Mx; it->y = My; it->cx = Tw; it->cy = Th; it->id = 1001;
+    p += sizeof(DLGITEMTEMPLATE);
+    W16(0xFFFF); W16(0x0082); // STATIC class
+    WSTR(body);
+    W16(0); // no creation data
+
+    // Item 2: CHECKBOX
+    AL(); it = reinterpret_cast<DLGITEMTEMPLATE*>(p);
+    it->style = WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX;
+    it->dwExtendedStyle = 0;
+    it->x = Mx; it->y = My + Th + 4; it->cx = Tw - 2; it->cy = Ch; it->id = 1002;
+    p += sizeof(DLGITEMTEMPLATE);
+    W16(0xFFFF); W16(0x0080); // BUTTON class
+    WSTR(chkLabel.empty() ? L"" : chkLabel);
+    W16(0);
+
+    // Buttons (right aligned)
+    const short By = H - My - Bh, BxC = W - Mx - Bw, BxO = BxC - Bw - Bp;
+
+    // Item 3: OK
+    AL(); it = reinterpret_cast<DLGITEMTEMPLATE*>(p);
+    it->style = WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON;
+    it->dwExtendedStyle = 0;
+    it->x = BxO; it->y = By; it->cx = Bw; it->cy = Bh; it->id = IDOK;
+    p += sizeof(DLGITEMTEMPLATE);
+    W16(0xFFFF); W16(0x0080); // BUTTON
+    WSTR(okTxt);
+    W16(0);
+
+    // Item 4: Cancel
+    AL(); it = reinterpret_cast<DLGITEMTEMPLATE*>(p);
+    it->style = WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON;
+    it->dwExtendedStyle = 0;
+    it->x = BxC; it->y = By; it->cx = Bw; it->cy = Bh; it->id = IDCANCEL;
+    p += sizeof(DLGITEMTEMPLATE);
+    W16(0xFFFF); W16(0x0080); // BUTTON
+    WSTR(cancelTxt);
+    W16(0);
+
+    struct Payload { bool* pDont; } payload{ const_cast<bool*>(&dontShowFlag) };
+
+    auto DlgProc = [](HWND h, UINT m, WPARAM w, LPARAM l) -> INT_PTR {
+        auto* pay = reinterpret_cast<Payload*>(::GetWindowLongPtrW(h, GWLP_USERDATA));
+        switch (m) {
+        case WM_INITDIALOG:
+            ::SetWindowLongPtrW(h, GWLP_USERDATA, l);
+            return TRUE;
+        case WM_COMMAND:
+            if (LOWORD(w) == IDOK || LOWORD(w) == IDCANCEL) {
+                if (LOWORD(w) == IDOK && pay && pay->pDont) {
+                    *pay->pDont = (BST_CHECKED == ::IsDlgButtonChecked(h, 1002));
+                }
+                ::EndDialog(h, LOWORD(w));
+                return TRUE;
+            }
+            break;
+        }
+        return FALSE;
+        };
+
+    const INT_PTR rc = ::DialogBoxIndirectParamW(_hInst, dlg, _hSelf, (DLGPROC)DlgProc, (LPARAM)&payload);
+    return (rc == IDOK);
 }
 
 #pragma endregion
@@ -8185,7 +8318,7 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
     }
 
     // run under the ETabs layer (handles PAD remove/reinsert or VIS re-apply)
-    runCsvWithEtabs(CsvOp::Sort, [&]() -> bool {
+    runCsvWithFlowTabs(CsvOp::Sort, [&]() -> bool {
         send(SCI_BEGINUNDOACTION, 0, 0);
 
         const size_t lineCount = lineDelimiterPositions.size();
@@ -8371,7 +8504,7 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
     if ((direction == SortDirection::Ascending && currentSortState == SortDirection::Ascending) ||
         (direction == SortDirection::Descending && currentSortState == SortDirection::Descending)) {
         isSortedColumn = false; //Disable logging of changes
-        runCsvWithEtabs(CsvOp::Sort, [&]() -> bool {
+        runCsvWithFlowTabs(CsvOp::Sort, [&]() -> bool {
             restoreOriginalLineOrder(originalLineOrder);
             return true;
         });
@@ -10735,6 +10868,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << Encoding::wstringToUtf8(L"DockWrap=" + std::to_wstring(ResultDock::wrapEnabled()) + L"\n");
     outFile << Encoding::wstringToUtf8(L"DockPurge=" + std::to_wstring(ResultDock::purgeEnabled()) + L"\n");
     outFile << Encoding::wstringToUtf8(L"HighlightMatch=" + std::to_wstring(highlightMatchEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"FlowTabsIntroDontShow=" + std::to_wstring(flowTabsIntroDontShowEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"ExportToBash=" + std::to_wstring(exportToBashEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"Tooltips=" + std::to_wstring(tooltipsEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"AlertNotFound=" + std::to_wstring(alertNotFoundEnabled ? 1 : 0) + L"\n");
@@ -10937,6 +11071,8 @@ void MultiReplace::loadSettingsFromIni() {
     ResultDock::setPurgeEnabled(CFG.readBool(L"Options", L"DockPurge", false));
 
     highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);
+    flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
+
     exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
     alertNotFoundEnabled = CFG.readBool(L"Options", L"AlertNotFound", true);
     doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);

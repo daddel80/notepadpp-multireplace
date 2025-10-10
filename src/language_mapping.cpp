@@ -77,6 +77,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"tooltip_drop_columns", L"Drop Columns" },
 { L"tooltip_copy_columns", L"Copy Columns to Clipboard" },
 { L"tooltip_column_highlight", L"Column highlight: On/Off" },
+{ L"tooltip_column_tabs", L"Column Alignment: On/Off" },
 { L"tooltip_copy_marked_text", L"Copy Marked Text" },
 { L"tooltip_display_statistics_columns", L"Show/Hide Statistics Columns" },
 { L"tooltip_new_list", L"New List" },
@@ -170,6 +171,12 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"status_error_invalid_directory", L"The specified directory is invalid or does not exist." },
 { L"status_error_scanning_directory", L"Error scanning directory: $REPLACE_STRING" },
 { L"status_canceled", L"Canceled" },
+{ L"status_no_delimiters", L"No delimiters found." },
+{ L"status_model_build_failed", L"Flow Tabs: model build failed." },
+{ L"status_padding_insert_failed", L"Flow Tabs: insert failed." },
+{ L"status_visual_fail", L"Flow Tabs: visual tabstops failed." },
+{ L"status_tabs_inserted", L"Flow Tabs: INSERTED." },
+{ L"status_tabs_removed", L"Flow Tabs: REMOVED." },
 
 // Dynamic Status message entries
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },
@@ -196,6 +203,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_title_save_list", L"Save list" },
 { L"msgbox_title_reload", L"Reload" },
 { L"msgbox_title_warning", L"Warning" },
+{ L"msgbox_title_info", L"Info" },
 
 { L"msgbox_title_create_file", L"Create file" },
 { L"msgbox_prompt_create_file", L"$REPLACE_STRING doesn't exist. Create it?" },
@@ -215,6 +223,15 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"msgbox_use_variables_not_exported", L"Some items with 'Use Variables' enabled were not exported." },
 { L"msgbox_no_files", L"No files matched the specified filter." },
 { L"msgbox_confirm_replace_in_files", L"Do you want to perform replacements in $REPLACE_STRING1 files?<br/><br/>In the directory:<br/>  $REPLACE_STRING2<br/><br/>For file type:<br/>  $REPLACE_STRING3" },
+{ L"msgbox_flowtabs_intro_body",
+  L"Activating Flow-Tabs (Column Alignment)\n\n"
+  L"Please note the following before proceeding:\n\n"
+  L"•  Tab-delimited files: Existing tabs are reused for alignment.\n"
+  L"•  Non-tab delimited files: Real Tabs (\\t) are inserted. Note these may affect Find/Replace.\n"
+  L"•  Reversal: Click the Flow-Tabs button again to remove the inserted tabs." },
+{ L"msgbox_flowtabs_intro_checkbox", L"Do not show this message again" },
+{ L"msgbox_button_ok",     L"OK" },
+{ L"msgbox_button_cancel", L"Cancel" },
 
 // Context Menu List
 { L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },

@@ -616,6 +616,7 @@ private:
     inline static bool groupResultsEnabled = false;      // Status for flat list view
     inline static bool luaSafeModeEnabled = false;       // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
     inline static bool allFromCursorEnabled = false; // Controls the starting point for Replace All, Find All and Mark when wrap is OFF.
+    inline static bool flowTabsIntroDontShowEnabled = false;
 
     bool isHoverTextSuppressed = false;    // Temporarily suppress HoverText to avoid flickering when Edit in list is open
 
@@ -820,7 +821,8 @@ private:
     void clearFlowTabsIfAny();
     bool buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const;
     bool applyFlowTabStops();
-    bool runCsvWithEtabs(CsvOp op, const std::function<bool()>& body);
+    bool runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& body);
+    bool showFlowTabsIntroDialog(bool& dontShowFlag) const;
 
     //CSV Sort
     std::vector<CombinedColumns> extractColumnData(SIZE_T startLine, SIZE_T lineCount);
