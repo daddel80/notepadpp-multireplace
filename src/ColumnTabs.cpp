@@ -495,36 +495,375 @@ namespace ColumnTabs
         return true;
     }
 
-    bool CT_RemoveAlignedPadding(HWND hSci)
+    bool ColumnTabs::CT_RemoveAlignedPadding(HWND hSci)
     {
-        RedrawGuard rd(hSci);
-        S(hSci, SCI_BEGINUNDOACTION);
-        S(hSci, SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
+        auto S = [hSci](UINT msg, WPARAM w = 0, LPARAM l = 0)->sptr_t {
+            return (sptr_t)::SendMessage(hSci, msg, w, l);
+            };
 
-        const Sci_Position len = S(hSci, SCI_GETLENGTH);
-        std::vector<std::pair<Sci_Position, Sci_Position>> spans;
-        spans.reserve(1024);
+        const int ind = CT_GetIndicatorId();
+        S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
 
-        Sci_Position pos = 0;
-        while (pos < len) {
-            if ((int)S(hSci, SCI_INDICATORVALUEAT, g_CT_IndicatorId, pos) != 0) {
-                const Sci_Position start = pos;
-                while (pos < len && (int)S(hSci, SCI_INDICATORVALUEAT, g_CT_IndicatorId, pos) != 0) ++pos;
-                spans.emplace_back(start, pos);
-            }
-            else {
-                ++pos;
+        // Batch edits in a single undo step
+        S(SCI_BEGINUNDOACTION);
+
+        // Walk backwards so deletions don't invalidate upcoming positions
+        Sci_Position pos = (Sci_Position)S(SCI_GETLENGTH);
+        while (pos > 0) {
+            --pos;
+            if ((int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)pos) == 0)
+                continue;
+
+            // Get full extent of this indicator run
+            const Sci_Position start = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)pos);
+            const Sci_Position end = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)pos);
+            if (end > start) {
+                // Clear indicator first, then delete the text it marks
+                S(SCI_INDICATORCLEARRANGE, (uptr_t)start, (sptr_t)(end - start));
+                S(SCI_DELETERANGE, (uptr_t)start, (sptr_t)(end - start));
+                pos = start; // continue scanning before the deleted range
             }
         }
-        for (auto it = spans.rbegin(); it != spans.rend(); ++it) {
-            S(hSci, SCI_INDICATORCLEARRANGE, it->first, it->second - it->first);
-            S(hSci, SCI_DELETERANGE, it->first, it->second - it->first);
-        }
 
-        // IMPORTANT: Do NOT clear tabstops here. Visual ETS will be disabled explicitly by caller.
-        S(hSci, SCI_ENDUNDOACTION);
-
+        S(SCI_ENDUNDOACTION);
         return true;
     }
+
+    // small helpers (file-local)
+    static int CT_TextWidthPx(HWND hSci, const std::string& s) {
+        const int w = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)s.c_str());
+        if (w > 0) return w;
+        const int sp = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
+        return (int)s.size() * (sp > 0 ? sp : 8);
+    }
+
+    static void CT_GetSubTextUtf8(HWND hSci, Sci_Position pos0, Sci_Position pos1, std::string& out) {
+        out.clear();
+        if (pos1 <= pos0) return;
+        const ptrdiff_t need = (ptrdiff_t)(pos1 - pos0);
+        out.assign((size_t)need + 1u, '\0');
+        Sci_TextRangeFull tr{}; tr.chrg.cpMin = pos0; tr.chrg.cpMax = pos1; tr.lpstrText = out.data();
+        S(hSci, SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
+        if (!out.empty()) out.pop_back();
+    }
+
+
+    // find number in [fieldPos0, fieldPos1): returns doc pos of first digit/sign and px width of left part
+    static bool CT_FindNumericToken(HWND hSci,
+        Sci_Position fieldPos0,
+        Sci_Position fieldPos1,
+        Sci_Position& outStartDoc,
+        int& outLeftPx,
+        bool& outHasDecimal)
+    {
+        std::string fld;
+        CT_GetSubTextUtf8(hSci, fieldPos0, fieldPos1, fld);
+        if (fld.empty()) return false;
+
+        // 1) Find start of numeric token: optional sign followed by digit, or digit
+        size_t i = 0;
+        while (i < fld.size()) {
+            const unsigned char c = (unsigned char)fld[i];
+            if ((c == '+' || c == '-') && i + 1 < fld.size() && ::isdigit((unsigned char)fld[i + 1])) break;
+            if (::isdigit(c)) break;
+            ++i;
+        }
+        if (i >= fld.size()) return false;
+
+        // 2) Consume integer digits
+        size_t j = i;
+        while (j < fld.size() && ::isdigit((unsigned char)fld[j])) ++j;
+
+        // 3) Optional decimal separator ('.' or ',')
+        //    IMPORTANT: Treat a separator as "decimal present" EVEN IF no digit follows.
+        //    Examples to accept as decimal:
+        //      "55555."  -> decimal present (fraction length 0)
+        //      "34,"     -> decimal present (fraction length 0)
+        //      "17.666"  -> decimal present (fraction length > 0)
+        size_t dec = std::string::npos;
+        if (j < fld.size() && (fld[j] == '.' || fld[j] == ',')) {
+            const size_t decPos = j;
+            size_t k = j + 1;
+            // optional fractional digits
+            while (k < fld.size() && ::isdigit((unsigned char)fld[k])) ++k;
+
+            dec = decPos;   // count as decimal even if (k == j + 1) => no digit after separator
+            j = k;          // token end includes separator and any following digits
+        }
+
+        if (i == j) return false;
+
+        // 4) Measure pixel width of the integer part (left of separator if present)
+        const std::string left = (dec == std::string::npos)
+            ? fld.substr(i, j - i)
+            : fld.substr(i, dec - i);
+
+        outLeftPx = CT_TextWidthPx(hSci, left);
+        outStartDoc = fieldPos0 + (Sci_Position)i;
+        outHasDecimal = (dec != std::string::npos);
+        return true;
+    }
+
+
+    bool ColumnTabs::CT_ApplyNumericPadding(
+        HWND hSci,
+        const CT_ColumnModelView& model,
+        int firstLine,
+        int lastLine)
+    {
+        const HWND hwnd = hSci;
+
+        // --- light wrappers over Scintilla ---
+        auto S = [hwnd](UINT msg, WPARAM w = 0, LPARAM l = 0)->sptr_t { return (sptr_t)::SendMessage(hwnd, msg, w, l); };
+        auto ls = [&](int ln)->Sci_Position { return (Sci_Position)S(SCI_POSITIONFROMLINE, (uptr_t)ln); };
+        auto le = [&](int ln)->Sci_Position { return (Sci_Position)S(SCI_GETLINEENDPOSITION, (uptr_t)ln); };
+        auto gc = [&](Sci_Position p)->int { return (int)S(SCI_GETCHARAT, (uptr_t)p);  };
+
+        const bool haveVec = !model.Lines.empty();
+        const bool liveInfo = (model.getLineInfo != nullptr);
+        if (!haveVec && !liveInfo) return false;
+
+        // --- normalize line range ---
+        const int l0 = (firstLine < 0) ? 0 : firstLine;
+        int       l1 = lastLine;
+        if (l1 < 0) l1 = haveVec ? (l0 + (int)model.Lines.size() - 1) : l0;
+        if (l0 > l1) return false;
+
+        // Use our indicator; keep it invisible, under text
+        S(SCI_SETINDICATORCURRENT, (uptr_t)CT_GetIndicatorId());
+        S(SCI_INDICSETSTYLE, (uptr_t)CT_GetIndicatorId(), INDIC_HIDDEN);
+        S(SCI_INDICSETUNDER, (uptr_t)CT_GetIndicatorId(), 1);
+
+        // Fetch current line info (live via callback or from model.Lines)
+        auto fetchLine = [&](int ln)->CT_ColumnLineInfo {
+            if (liveInfo) return model.getLineInfo(ln);
+            size_t i = (size_t)(ln - l0);
+            if (i >= model.Lines.size()) i = model.Lines.size() - 1;
+            return model.Lines[i];
+            };
+
+        // --- PASS 0: column count ---
+        size_t maxCols = 0;
+        for (int ln = l0; ln <= l1; ++ln)
+            maxCols = (std::max)(maxCols, fetchLine(ln).FieldCount());
+        if (maxCols == 0) return true;
+
+        std::vector<int>  maxIntDigits(maxCols, 0);
+        std::vector<char> colHasDec(maxCols, 0);
+
+        // --- local tokenizer (fallback) ---
+        auto scanToken = [&](Sci_Position s, Sci_Position e,
+            Sci_Position& tokStart, int& intDigits, bool& hasDec)->bool
+            {
+                // Skip leading whitespace inside slice
+                Sci_Position i = s;
+                while (i < e) { const int ch = gc(i); if (ch == ' ' || ch == '\t') ++i; else break; }
+                if (i >= e) return false;
+
+                // Optional sign
+                const bool sign = (gc(i) == '+' || gc(i) == '-');
+                if (sign) { ++i; if (i >= e) return false; }
+
+                // Integer digits
+                Sci_Position j = i;
+                while (j < e && std::isdigit(gc(j))) ++j;
+                intDigits = (int)(j - i);
+
+                // Decimal part (dot or comma, fractional digits optional)
+                hasDec = false;
+                if (j < e) {
+                    const int ch = gc(j);
+                    if (ch == '.' || ch == ',') {
+                        hasDec = true;
+                        ++j;
+                        while (j < e && std::isdigit(gc(j))) ++j;
+                    }
+                }
+
+                if (intDigits <= 0 && !hasDec) return false;
+
+                // token starts at first non-WS of slice; include sign if present
+                tokStart = s;
+                while (tokStart < e) {
+                    const int ch = gc(tokStart);
+                    if (ch == ' ' || ch == '\t') ++tokStart; else break;
+                }
+                if (sign && tokStart > s) --tokStart; // include sign so spaces go before it
+
+                return true;
+            };
+
+        // --- primary tokenizer with CT_FindNumericToken (keeps it referenced) ---
+        auto findNumberUsingCT = [hwnd, &gc, &scanToken](Sci_Position s, Sci_Position e,
+            Sci_Position& tokStart,
+            int& intDigits,
+            bool& hasDec) -> bool
+            {
+                int dummyPx = 0; hasDec = false;
+                if (ColumnTabs::CT_FindNumericToken(hwnd, s, e, tokStart, dummyPx, hasDec)) {
+                    // Count integer digits (skip optional sign)
+                    intDigits = 0;
+                    Sci_Position p = tokStart;
+                    int ch = gc(p);
+                    if (ch == '+' || ch == '-') ++p;
+                    for (;; ++p) {
+                        if (p >= e) break;
+                        ch = gc(p);
+                        if (ch >= '0' && ch <= '9') { ++intDigits; continue; }
+                        if (ch == '.' || ch == ',') break; // decimal separator ends integer part
+                        break;
+                    }
+                    // Accept tokens like ".5" (intDigits==0 & hasDec==true)
+                    return (intDigits > 0) || hasDec;
+                }
+                // Fallback (sign-aware, handles ".5", "5.", etc.)
+                return scanToken(s, e, tokStart, intDigits, hasDec);
+            };
+
+        // --- robust field slicing ---
+        // Start: after previous delimiter + ALL whitespace that follows it
+        // End  : before next delimiter − ALL whitespace that precedes it
+        auto sliceBounds = [&](const CT_ColumnLineInfo& L, int ln, size_t col,
+            Sci_Position delta, Sci_Position& s, Sci_Position& e)
+            {
+                const Sci_Position base = ls(ln);
+                const Sci_Position eol = le(ln);
+                const size_t nDelim = L.delimiterOffsets.size();
+                const size_t nField = nDelim + 1;
+
+                if (col >= nField) { s = e = base; return; }
+
+                // End: right before the next delimiter, trimming its left padding
+                if (col < nDelim) {
+                    e = base + (Sci_Position)L.delimiterOffsets[col] + delta;
+                    while (e > base) {
+                        const int chL = gc(e - 1);
+                        if (chL == ' ' || chL == '\t') { --e; continue; }
+                        break;
+                    }
+                }
+                else {
+                    e = eol;
+                }
+
+                // Start: after previous delimiter + delimiterLength, skip ALL WS
+                if (col == 0) {
+                    s = base;
+                }
+                else {
+                    s = base + (Sci_Position)L.delimiterOffsets[col - 1] + delta + (Sci_Position)model.delimiterLength;
+                    while (s < e) {
+                        const int chR = gc(s);
+                        if (chR == ' ' || chR == '\t') { ++s; continue; }
+                        break;
+                    }
+                }
+
+                if (s < base) s = base;
+                if (e > eol)  e = eol;
+                if (s > e)    s = e;
+            };
+
+        // --- PASS 1: collect maxima and decimal flags per column ---
+        for (int ln = l0; ln <= l1; ++ln) {
+            const auto L = fetchLine(ln);
+            const size_t nField = L.FieldCount();
+            Sci_Position dummyDelta = 0;
+
+            for (size_t c = 0; c < nField; ++c) {
+                Sci_Position s{}, e{}; sliceBounds(L, ln, c, dummyDelta, s, e);
+                if (s >= e) continue;
+
+                Sci_Position tokStart{}; int intDigits = 0; bool hasDec = false;
+                if (findNumberUsingCT(s, e, tokStart, intDigits, hasDec)) {
+                    if (intDigits > maxIntDigits[c]) maxIntDigits[c] = intDigits;
+                    if (hasDec) colHasDec[c] = 1;
+                }
+            }
+        }
+
+        // --- PASS 2: apply only spaces (mark them with our indicator) ---
+        S(SCI_BEGINUNDOACTION);
+
+        for (int ln = l0; ln <= l1; ++ln) {
+            const auto L0 = fetchLine(ln);
+            const size_t nField = L0.FieldCount();
+            Sci_Position delta = 0; // per-line offset shift due to edits
+
+            for (size_t c = 0; c < nField; ++c) {
+                if (c >= maxCols || maxIntDigits[c] <= 0) continue;
+
+                const auto L = fetchLine(ln); // live read (processLog keeps fresh)
+                Sci_Position s{}, e{}; sliceBounds(L, ln, c, delta, s, e);
+                if (s >= e) continue;
+
+                Sci_Position tokStart{}; int intDigits = 0; bool hasDec = false;
+                const bool isNum = findNumberUsingCT(s, e, tokStart, intDigits, hasDec);
+                if (!isNum) continue;
+
+                // Count ASCII spaces *touching* the token on the left (tabs are ignored)
+                int spacesTouching = 0;
+                {
+                    Sci_Position p = tokStart;
+                    while (p > s && gc(p - 1) == ' ') { --p; ++spacesTouching; }
+                }
+
+                // Base breathing room in front of every number
+                const int baseGapUnits = 1;
+
+                // Sign handling (hanging sign in decimal columns)
+                bool hasSign = false;
+                if (tokStart < e) {
+                    const int ch0 = gc(tokStart);
+                    hasSign = (ch0 == '+' || ch0 == '-');
+                }
+
+                // Need = base gap + (maxInt - ownInt), clipped to >= 0
+                int needUnits = baseGapUnits + (maxIntDigits[c] - intDigits);
+                if (needUnits < 0) needUnits = 0;
+
+                // Signed numbers in decimal columns: one less unit so '.' stays vertically aligned
+                if (hasSign && colHasDec[c] && needUnits > 0)
+                    --needUnits;
+
+                // NO imaginary decimal for integers (keep integers one cell left of decimals)
+                // (intentionally no: if (colHasDec[c] && !hasDec) ++needUnits;)
+
+                const int diff = needUnits - spacesTouching;
+                if (diff > 0) {
+                    // Insert exactly 'diff' spaces and mark them so we can remove later
+                    std::string pad((size_t)diff, ' ');
+                    S(SCI_INSERTTEXT, (uptr_t)tokStart, (sptr_t)pad.c_str());
+                    S(SCI_INDICATORFILLRANGE, (uptr_t)tokStart, (sptr_t)diff);
+                    delta += (Sci_Position)diff;
+                }
+                else if (diff < 0) {
+                    // Remove only our own (marked) spaces, never user spaces or tabs
+                    int toDel = -diff;
+                    const int ind = CT_GetIndicatorId();
+                    S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
+
+                    int delAvail = 0;
+                    if (tokStart > s &&
+                        (int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)(tokStart - 1)) != 0)
+                    {
+                        const Sci_Position runBeg = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)(tokStart - 1));
+                        delAvail = (int)(tokStart - runBeg);
+                    }
+                    if (delAvail > 0) {
+                        if (toDel > delAvail) toDel = delAvail;     // clamp to what we actually inserted
+                        const Sci_Position posDel = tokStart - (Sci_Position)toDel;
+                        S(SCI_INDICATORCLEARRANGE, (uptr_t)posDel, (sptr_t)toDel);
+                        S(SCI_DELETERANGE, (uptr_t)posDel, (sptr_t)toDel);
+                        delta -= (Sci_Position)toDel;
+                    }
+                }
+            }
+        }
+
+        S(SCI_ENDUNDOACTION);
+        return true;
+    }
+
 
 } // namespace ColumnTabs

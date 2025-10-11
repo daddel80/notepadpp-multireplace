@@ -7908,41 +7908,49 @@ void MultiReplace::handleColumnGridTabsButton()
             bool dontShow = false;
             if (!showFlowTabsIntroDialog(dontShow))
                 return; // user pressed Cancel
-
             if (dontShow) {
                 flowTabsIntroDontShowEnabled = true;
-                saveSettings(); // oder saveSettingsToIni(...), je nach deinem Projekt
+                saveSettings();
             }
         }
 
-        // TURN ON Flow Tabs (requires a fresh matrix already ensured by the caller)
+        // Must have a fresh delimiter matrix at this point
         if (lineDelimiterPositions.empty()) {
             showStatusMessage(LM.get(L"status_no_delimiters"), MessageStatus::Error);
             return;
         }
 
-        // Build the column model from the (fresh) matrix
+        // Build model from the CURRENT matrix (canonical text, no Flow-Tabs yet)
         ColumnTabs::CT_ColumnModelView model{};
         if (!buildCTModelFromMatrix(model)) {
             showStatusMessage(LM.get(L"status_model_build_failed"), MessageStatus::Error);
             return;
         }
 
-        // Destructive alignment: insert a single Flow tab before each delimiter
+        // --- 1) NUMERIC PADDING FIRST (works on canonical text)
+        if (flowTabsNumericAlignEnabled) {
+            // Align purely by spaces inside fields; does NOT depend on Flow-Tabs
+            ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, (int)model.Lines.size() - 1);
+
+            // Numeric padding changed text offsets (spaces added/removed) → refresh once
+            findAllDelimitersInDocument();
+            if (!buildCTModelFromMatrix(model)) {
+                showStatusMessage(L"Numeric align: model rebuild failed", MessageStatus::Error);
+                return;
+            }
+        }
+
+        // --- 2) THEN INSERT THE FLOW-TABS (destructive, before each delimiter)
         ColumnTabs::CT_AlignOptions opt{};
         opt.firstLine = 0;
         opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
 
-        // 1) Space-Pixelbreite ermitteln
+        // Convert pixel gap to "cells" and keep a single source of truth for visuals
         const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
-
-        // 2) cells festlegen (dein gewünschter Abstand in Leerzeichen-Einheiten)
-        opt.gapCells = 2;
-
-        // 3) EINEN Pixel-Gap daraus ableiten und merken (Single Source of Truth)
+        opt.gapCells = 2; // your chosen cell width
         _flowPaddingPx = spacePx * opt.gapCells;
 
-        // 4) Rest wie gehabt
+        // Insert exactly one Flow-Tab before each delimiter; do NOT touch delimiters
         opt.spacesOnlyIfTabDelimiter = true;
         opt.oneFlowTabOnly = true;
 
@@ -7952,10 +7960,10 @@ void MultiReplace::handleColumnGridTabsButton()
             return;
         }
 
-        // Our insertions changed offsets → refresh the delimiter matrix ONCE
+        // Flow-Tab insertion changed offsets again → refresh ONCE
         findAllDelimitersInDocument();
 
-        // Apply visual Flow tab stops (pixel-accurate; editor-global; non-destructive)
+        // Rebuild a final model (optional for visuals; safe to reuse) and apply visual tab stops
         if (!applyFlowTabStops()) {
             showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
         }
@@ -7969,17 +7977,13 @@ void MultiReplace::handleColumnGridTabsButton()
     else
     {
         // TURN OFF Flow Tabs
-
-        // Remove only what we inserted (cheap indicator-driven check avoids unnecessary work)
         const bool hadPad = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
         if (hadPad)
             ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
 
-        // Drop visual ETS; do NOT restore manual per-line stops
         ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
-        ColumnTabs::CT_ResetFlowVisualState(); // must be AFTER disabling
+        ColumnTabs::CT_ResetFlowVisualState();
 
-        // Rebuild matrix ONLY if offsets changed (i.e., padding was actually removed)
         if (hadPad)
             findAllDelimitersInDocument();
 
@@ -7988,10 +7992,7 @@ void MultiReplace::handleColumnGridTabsButton()
             ::SetWindowText(h, L"⇥");
 
         normalizeSelectionAfterCleanup();
-
-        // Workaround: Highlight last lines to fix N++ bug causing loss of styling 
         fixHighlightAtDocumentEnd();
-
         showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
     }
 }
@@ -8076,6 +8077,9 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
             a.spacesOnlyIfTabDelimiter = true;
             a.oneFlowTabOnly = true;
             ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, a);
+            if (flowTabsNumericAlignEnabled) {
+                ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, a.firstLine, a.lastLine);
+            }
         }
         break;
     }

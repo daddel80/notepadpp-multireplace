@@ -81,6 +81,8 @@ namespace ColumnTabs
     // Query whether the buffer currently contains aligned padding owned by us.
     bool CT_HasAlignedPadding(HWND hSci) noexcept;
 
+    bool CT_ApplyNumericPadding(HWND hSci, const CT_ColumnModelView& model, int firstLine, int lastLine);
+
     // --- Visual API (does not edit text; manages Scintilla tab stops) -------
 
     // Apply Flow tab stops for [firstLine..lastLine] with a fixed pixel gap.
