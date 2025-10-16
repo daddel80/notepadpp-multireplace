@@ -4696,7 +4696,12 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 newPos = itemData.regex
                     ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
                     : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
-                newPos = ensureForwardProgress(newPos, searchResult);
+                
+                // Only skip advancing when we deleted a non-empty match:
+                if (searchResult.length == 0 || newPos != searchResult.pos) {
+                    newPos = ensureForwardProgress(newPos, searchResult);
+                }
+
                 send(SCI_SETSEL, newPos, newPos);
                 if (itemIndex != SIZE_MAX) {
                     updateCountColumns(itemIndex, -2, 1);
@@ -4843,7 +4848,10 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                 send(SCI_SETSELECTIONSTART, nextPos, 0);
                 send(SCI_SETSELECTIONEND, nextPos, 0);
             }
-            nextPos = ensureForwardProgress(nextPos, searchResult);
+            // Only skip advancing when we deleted a non-empty match:
+            if (searchResult.length == 0 || nextPos != searchResult.pos) {
+                nextPos = ensureForwardProgress(nextPos, searchResult);
+            }
             searchResult = performSearchForward(context, nextPos);
         }
     }
@@ -7003,8 +7011,8 @@ SearchResult MultiReplace::performSingleSearch(const SearchContext& context, Sel
     Sci_Position pos = send(SCI_SEARCHINTARGET, context.findText.size(), reinterpret_cast<sptr_t>(context.findText.c_str()));
     Sci_Position matchEnd = send(SCI_GETTARGETEND);
 
-    // Validate the search result using cached document length from context
-    if (pos < 0 || matchEnd <= pos || matchEnd > context.docLength) {
+    // Accept zero-length matches (matchEnd == pos) so anchors/lookarounds can be replaced.
+    if (pos < 0 || matchEnd < pos || matchEnd > context.docLength) {
         return {};  // Return empty result if no match is found
     }
 
@@ -7902,90 +7910,25 @@ bool MultiReplace::applyFlowTabStops()
 
 void MultiReplace::handleColumnGridTabsButton()
 {
-    if (!_flowTabsActive)
+    pointerToScintilla();
+    if (!_hScintilla) return;
+
+    // Always select our indicator BEFORE any action so both
+    // numeric-padding and flow-tabs use the SAME id.
+    ColumnTabs::CT_SetIndicatorId(30); // single source of truth for padding marks
+
+    // If the buffer already contains our padding (tabs and/or numeric spaces),
+    // treat this click as "TURN OFF" regardless of _flowTabsActive.
+    const bool hasPadNow = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
+
+    if (hasPadNow)
     {
-        if (!flowTabsIntroDontShowEnabled) {
-            bool dontShow = false;
-            if (!showFlowTabsIntroDialog(dontShow))
-                return; // user pressed Cancel
-            if (dontShow) {
-                flowTabsIntroDontShowEnabled = true;
-                saveSettings();
-            }
-        }
-
-        // Must have a fresh delimiter matrix at this point
-        if (lineDelimiterPositions.empty()) {
-            showStatusMessage(LM.get(L"status_no_delimiters"), MessageStatus::Error);
-            return;
-        }
-
-        // Build model from the CURRENT matrix (canonical text, no Flow-Tabs yet)
-        ColumnTabs::CT_ColumnModelView model{};
-        if (!buildCTModelFromMatrix(model)) {
-            showStatusMessage(LM.get(L"status_model_build_failed"), MessageStatus::Error);
-            return;
-        }
-
-        // --- 1) NUMERIC PADDING FIRST (works on canonical text)
-        if (flowTabsNumericAlignEnabled) {
-            // Align purely by spaces inside fields; does NOT depend on Flow-Tabs
-            ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, (int)model.Lines.size() - 1);
-
-            // Numeric padding changed text offsets (spaces added/removed) → refresh once
-            findAllDelimitersInDocument();
-            if (!buildCTModelFromMatrix(model)) {
-                showStatusMessage(L"Numeric align: model rebuild failed", MessageStatus::Error);
-                return;
-            }
-        }
-
-        // --- 2) THEN INSERT THE FLOW-TABS (destructive, before each delimiter)
-        ColumnTabs::CT_AlignOptions opt{};
-        opt.firstLine = 0;
-        opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
-
-        // Convert pixel gap to "cells" and keep a single source of truth for visuals
-        const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
-        opt.gapCells = 2; // your chosen cell width
-        _flowPaddingPx = spacePx * opt.gapCells;
-
-        // Insert exactly one Flow-Tab before each delimiter; do NOT touch delimiters
-        opt.spacesOnlyIfTabDelimiter = true;
-        opt.oneFlowTabOnly = true;
-
-        ColumnTabs::CT_SetIndicatorId(30);
-        if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt)) {
-            showStatusMessage(LM.get(L"status_padding_insert_failed"), MessageStatus::Error);
-            return;
-        }
-
-        // Flow-Tab insertion changed offsets again → refresh ONCE
-        findAllDelimitersInDocument();
-
-        // Rebuild a final model (optional for visuals; safe to reuse) and apply visual tab stops
-        if (!applyFlowTabStops()) {
-            showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
-        }
-
-        _flowTabsActive = true;
-        if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-            ::SetWindowText(h, L"⇤");
-
-        showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
-    }
-    else
-    {
-        // TURN OFF Flow Tabs
-        const bool hadPad = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
-        if (hadPad)
-            ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
-
+        // --- TURN OFF (remove everything we inserted and all visuals)
+        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);                     // delete marked tabs/spaces
         ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
         ColumnTabs::CT_ResetFlowVisualState();
 
-        if (hadPad)
-            findAllDelimitersInDocument();
+        findAllDelimitersInDocument(); // offsets changed due to deletions
 
         _flowTabsActive = false;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
@@ -7994,7 +7937,86 @@ void MultiReplace::handleColumnGridTabsButton()
         normalizeSelectionAfterCleanup();
         fixHighlightAtDocumentEnd();
         showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
+        return;
     }
+
+    // From here on we know there is NO aligned padding in the buffer.
+    // If the UI is already "active", just (re)apply visuals and bail out.
+    if (_flowTabsActive)
+    {
+        if (!applyFlowTabStops())
+            showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
+        return;
+    }
+
+    // --- TURN ON (insert)
+    if (!flowTabsIntroDontShowEnabled) {
+        bool dontShow = false;
+        if (!showFlowTabsIntroDialog(dontShow))
+            return; // user pressed Cancel
+        if (dontShow) {
+            flowTabsIntroDontShowEnabled = true;
+            saveSettings();
+        }
+    }
+
+    // Must have a fresh delimiter matrix at this point
+    if (lineDelimiterPositions.empty()) {
+        showStatusMessage(LM.get(L"status_no_delimiters"), MessageStatus::Error);
+        return;
+    }
+
+    // Build model from the CURRENT matrix (canonical text, no Flow-Tabs yet)
+    ColumnTabs::CT_ColumnModelView model{};
+    if (!buildCTModelFromMatrix(model)) {
+        showStatusMessage(LM.get(L"status_model_build_failed"), MessageStatus::Error);
+        return;
+    }
+
+    // 1) NUMERIC PADDING FIRST (works on canonical text).
+    // Indicator ID is already set above → numeric spaces are marked with id=30.
+    if (flowTabsNumericAlignEnabled) {
+        ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, (int)model.Lines.size() - 1);
+
+        // Numeric padding changed text offsets → refresh once
+        findAllDelimitersInDocument();
+        if (!buildCTModelFromMatrix(model)) {
+            showStatusMessage(L"Numeric align: model rebuild failed", MessageStatus::Error);
+            return;
+        }
+    }
+
+    // 2) THEN INSERT THE FLOW-TABS (destructive, before each delimiter)
+    ColumnTabs::CT_AlignOptions opt{};
+    opt.firstLine = 0;
+    opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
+
+    // Compute gap in pixels from "cells" and keep pixels for visual tab stops
+    const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
+    opt.gapCells = 2;                                  // your chosen cell width
+    _flowPaddingPx = spacePx * opt.gapCells;           // single source of truth for visuals
+
+    opt.spacesOnlyIfTabDelimiter = true;
+    opt.oneFlowTabOnly = true;
+
+    if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt)) {
+        showStatusMessage(LM.get(L"status_padding_insert_failed"), MessageStatus::Error);
+        return;
+    }
+
+    // Flow-Tab insertion changed offsets again → refresh once
+    findAllDelimitersInDocument();
+
+    // Rebuild (optional for visuals) and apply visual tab stops
+    if (!applyFlowTabStops()) {
+        showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
+    }
+
+    _flowTabsActive = true;
+    if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
+        ::SetWindowText(h, L"⇤");
+
+    showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
 }
 
 void MultiReplace::clearFlowTabsIfAny()
@@ -11305,6 +11327,7 @@ void MultiReplace::onDocumentSwitched()
     // Always operate via the instance pointer to avoid "non-static member" errors
     MultiReplace* self = instance;
     if (!self || !self->isWindowOpen) return;
+
 
     const int currentBufferID =
         (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
