@@ -8021,6 +8021,11 @@ void MultiReplace::handleColumnGridTabsButton()
 
 void MultiReplace::clearFlowTabsIfAny()
 {
+    pointerToScintilla();
+    if (!_hScintilla) return;
+
+    ColumnTabs::CT_SetIndicatorId(30);
+
     const bool hadPad = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
     const bool hadVis = ColumnTabs::CT_HasFlowTabStops();
 
@@ -9348,6 +9353,8 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
 }
 
 void MultiReplace::handleClearDelimiterState() {
+    pointerToScintilla();
+    if (!_hScintilla) return;
     lineDelimiterPositions.clear();
     isLoggingEnabled = false;
     textModified = false;
@@ -9356,7 +9363,6 @@ void MultiReplace::handleClearDelimiterState() {
         handleClearColumnMarks();
     }
     clearFlowTabsIfAny();
-    ColumnTabs::CT_ResetFlowVisualState();
     isCaretPositionEnabled = false;
     normalizeSelectionAfterCleanup();
 }
@@ -11324,24 +11330,50 @@ void MultiReplace::processLog() {
 
 void MultiReplace::onDocumentSwitched()
 {
-    // Always operate via the instance pointer to avoid "non-static member" errors
     MultiReplace* self = instance;
     if (!self || !self->isWindowOpen) return;
 
+    self->pointerToScintilla();
+    if (!self->_hScintilla) return;
+    HWND hSci = self->_hScintilla;
+
+    // Leave-clean: remove only marked pads (indicator 30) from the previously active document
+    static sptr_t s_prevDocPtr = 0;
+    const sptr_t newDocPtr = (sptr_t)::SendMessage(hSci, SCI_GETDOCPOINTER, 0, 0);
+    if (s_prevDocPtr && s_prevDocPtr != newDocPtr)
+    {
+        ::SendMessage(hSci, WM_SETREDRAW, FALSE, 0);
+        const sptr_t savedDocPtr = newDocPtr;
+        ::SendMessage(hSci, SCI_SETDOCPOINTER, 0, (sptr_t)s_prevDocPtr);
+
+        ColumnTabs::CT_SetIndicatorId(30);
+        if (!(BOOL)::SendMessage(hSci, SCI_GETREADONLY, 0, 0) && ColumnTabs::CT_HasAlignedPadding(hSci))
+            ColumnTabs::CT_RemoveAlignedPadding(hSci);
+
+        ::SendMessage(hSci, SCI_SETDOCPOINTER, 0, (sptr_t)savedDocPtr);
+        ::SendMessage(hSci, WM_SETREDRAW, TRUE, 0);
+        ::InvalidateRect(hSci, nullptr, FALSE);
+    }
+
+    // Visual cleanup in the newly activated document (no text changes)
+    ColumnTabs::CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
+    ColumnTabs::CT_ResetFlowVisualState();
 
     const int currentBufferID =
         (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
 
-    // No buffer change → nothing to do
-    if (currentBufferID == self->scannedDelimiterBufferID)
+    // No buffer change → nothing else to do
+    if (currentBufferID == self->scannedDelimiterBufferID) {
+        s_prevDocPtr = newDocPtr;
         return;
+    }
 
-    // Mark for lazy reload: Highlight / Tabs (ON) will rescan on first use
+    // Mark for lazy reload
     self->documentSwitched = true;
     self->isCaretPositionEnabled = false;
     self->scannedDelimiterBufferID = currentBufferID;
 
-    // UI cleanup (NO delimiter matrix work here; lazy like before)
+    // UI cleanup (styles only; does not touch indicator 30)
     self->handleClearColumnMarks();
     self->isColumnHighlighted = false;
 
@@ -11356,6 +11388,9 @@ void MultiReplace::onDocumentSwitched()
     self->currentSortState = SortDirection::Unsorted;
     self->isSortedColumn = false;
     self->UpdateSortButtonSymbols();
+
+    // Remember current doc for next switch
+    s_prevDocPtr = newDocPtr;
 }
 
 void MultiReplace::pointerToScintilla() {
