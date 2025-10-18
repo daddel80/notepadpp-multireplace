@@ -127,4 +127,14 @@ namespace ColumnTabs
     // Measure a cell’s *visual* width assuming a given tab width (utility).
     size_t CT_VisualCellWidth(const char* s, size_t n, int tabWidth);
 
+    // Per-document padding state (O(1) gate to avoid scans on switches)
+    void CT_SetDocHasPads(sptr_t docPtr, bool has) noexcept;
+    bool CT_GetDocHasPads(sptr_t docPtr) noexcept;
+
+    // Convenience: resolve doc pointer from HWND
+    void CT_SetCurDocHasPads(HWND hSci, bool has) noexcept;
+    bool CT_GetCurDocHasPads(HWND hSci) noexcept;
+
+
+
 } // namespace ColumnTabs

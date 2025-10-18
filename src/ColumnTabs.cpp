@@ -1,5 +1,6 @@
 ﻿#include "ColumnTabs.h"
 #include <algorithm>
+#include <unordered_map>
 
 // --- Scintilla direct --------------------------------------------------------
 static inline sptr_t S(HWND hSci, UINT m, uptr_t w = 0, sptr_t l = 0)
@@ -16,6 +17,13 @@ struct RedrawGuard {
 };
 
 namespace ColumnTabs::detail {
+
+    // docPtr -> has pads (for O(1) gate)
+    static std::unordered_map<sptr_t, bool> g_docHasPads;
+
+    // docPtr -> list of (pos,len) we inserted (tabs/spaces), for removal fallback
+    static std::unordered_map<sptr_t, std::vector<std::pair<Sci_Position, int>>> g_padRunsByDoc;
+
 
     // Tracks which lines currently have ETS-owned visual tab stops.
     static std::vector<uint8_t> g_hasETSLine;                 // 0/1 per line
@@ -411,6 +419,11 @@ namespace ColumnTabs
     {
         using namespace detail;
 
+        // Wrap SendMessage for this hSci
+        auto S = [hSci](UINT msg, WPARAM w = 0, LPARAM l = 0)->sptr_t {
+            return (sptr_t)::SendMessage(hSci, msg, w, l);
+            };
+
         const bool hasVec = !model.Lines.empty();
         if (!hasVec && !model.getLineInfo) return false;
 
@@ -421,77 +434,75 @@ namespace ColumnTabs
             : opt.lastLine;
         if (line0 > line1) return false;
 
-        // Pre-compute editor tab stops (visual aid only).
+        // Visual stops
         const int gapPx = (opt.gapCells > 0) ? (pxOfSpace(hSci) * opt.gapCells) : 0;
         std::vector<int> stops;
         if (!computeStopsFromWidthsPx(hSci, model, line0, line1, stops, gapPx)) return false;
         setTabStopsRangePx(hSci, line0, line1, stops);
 
-        // If the delimiter itself is a tab and we only want one Flow tab, there is nothing to insert.
+        // One-flow-tab-only + delimiter is TAB => nothing to insert
         if (opt.oneFlowTabOnly && model.delimiterIsTab)
             return true;
 
         RedrawGuard rd(hSci);
-        S(hSci, SCI_BEGINUNDOACTION);
-        S(hSci, SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
-        S(hSci, SCI_INDICSETSTYLE, g_CT_IndicatorId, INDIC_HIDDEN);
-        S(hSci, SCI_INDICSETALPHA, g_CT_IndicatorId, 0);
 
-        // Safe delete range helper (kept for completeness; currently unused after removing trims)
-        auto safeDeleteRange = [&](Sci_Position pos, Sci_Position len) {
-            const Sci_Position docLen = (Sci_Position)S(hSci, SCI_GETLENGTH, 0, 0);
-            if (pos < 0 || len <= 0) return;
-            if (pos > docLen) return;
-            if (pos + len > docLen) len = docLen - pos;
-            if (len > 0) {
-                S(hSci, SCI_DELETERANGE, pos, len);
-                S(hSci, SCI_INDICATORCLEARRANGE, pos, len);
-            }
+        S(SCI_BEGINUNDOACTION);
+        S(SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
+        S(SCI_INDICSETSTYLE, g_CT_IndicatorId, INDIC_HIDDEN);
+        S(SCI_INDICSETALPHA, g_CT_IndicatorId, 0);
+
+        bool madePads = false;
+
+        // We'll record inserted runs for fallback removal
+        const sptr_t doc = (sptr_t)S(SCI_GETDOCPOINTER);
+
+        auto fetchLine = [&](int ln)->CT_ColumnLineInfo {
+            if (hasVec) return model.Lines[(size_t)(ln - line0)];
+            return model.getLineInfo ? model.getLineInfo(ln) : CT_ColumnLineInfo{};
             };
 
         for (int ln = line0; ln <= line1; ++ln) {
-            const auto L = fetchLine(model, ln);
-            const Sci_Position base = (Sci_Position)S(hSci, SCI_POSITIONFROMLINE, ln);
+            const auto L = fetchLine(ln);
+            const Sci_Position base = (Sci_Position)S(SCI_POSITIONFROMLINE, ln);
             Sci_Position delta = 0;
 
             const size_t nDelims = L.delimiterOffsets.size();
             if (nDelims == 0) continue;
 
             for (size_t c = 0; c < nDelims; ++c) {
-                // Dynamic line end
-                const Sci_Position lineEndNow = (Sci_Position)S(hSci, SCI_GETLINEENDPOSITION, ln, 0);
-
-                // Current delimiter position (accounts for previous inserts in this line via 'delta')
+                const Sci_Position lineEndNow = (Sci_Position)S(SCI_GETLINEENDPOSITION, ln, 0);
                 const Sci_Position delimPos = base + (Sci_Position)L.delimiterOffsets[c] + delta;
-                if (delimPos < base || delimPos > lineEndNow) {
-                    // Stale offset or past EOL; skip safely
-                    continue;
-                }
+                if (delimPos < base || delimPos > lineEndNow) continue;
 
-                // Scan whitespace BEFORE delimiter (only to detect if a tab already sits directly before)
+                // scan whitespace BEFORE delimiter
                 Sci_Position wsStart = delimPos;
                 while (wsStart > base) {
-                    const int ch = (int)S(hSci, SCI_GETCHARAT, (uptr_t)(wsStart - 1), 0);
+                    const int ch = (int)S(SCI_GETCHARAT, (uptr_t)(wsStart - 1), 0);
                     if (ch == ' ' || ch == '\t') --wsStart; else break;
                 }
 
-                // Existing '\t' exactly before the delimiter?
                 const bool keepExistingTab =
                     (wsStart < delimPos) &&
-                    ((int)S(hSci, SCI_GETCHARAT, (uptr_t)(delimPos - 1), 0) == '\t');
+                    ((int)S(SCI_GETCHARAT, (uptr_t)(delimPos - 1), 0) == '\t');
 
-                // Do not trim any whitespace around the delimiter; preserve user's spaces/tabs.
-                // Ensure exactly one Flow tab right before the delimiter (insert only if none exists there).
                 if (!keepExistingTab) {
-                    const Sci_Position tabPos = delimPos;  // insert at delimiter start
-                    S(hSci, SCI_INSERTTEXT, tabPos, (sptr_t)"\t");
-                    S(hSci, SCI_INDICATORFILLRANGE, tabPos, 1); // mark the inserted Flow tab
-                    delta += 1; // keep offsets correct for subsequent delimiters in this line
+                    const Sci_Position tabPos = delimPos;
+                    S(SCI_INSERTTEXT, (uptr_t)tabPos, (sptr_t)"\t");
+                    S(SCI_INDICATORFILLRANGE, (uptr_t)tabPos, (sptr_t)1);
+                    delta += 1;
+                    madePads = true;
+
+                    // record for fallback removal
+                    g_padRunsByDoc[doc].emplace_back(tabPos, 1);
                 }
             }
         }
 
-        S(hSci, SCI_ENDUNDOACTION);
+        S(SCI_ENDUNDOACTION);
+
+        if (madePads)
+            ColumnTabs::CT_SetDocHasPads(doc, true);
+
         return true;
     }
 
@@ -504,28 +515,73 @@ namespace ColumnTabs
         const int ind = CT_GetIndicatorId();
         S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
 
-        // Batch edits in a single undo step
         S(SCI_BEGINUNDOACTION);
 
-        // Walk backwards so deletions don't invalidate upcoming positions
-        Sci_Position pos = (Sci_Position)S(SCI_GETLENGTH);
-        while (pos > 0) {
-            --pos;
-            if ((int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)pos) == 0)
-                continue;
+        bool removedAny = false;
 
-            // Get full extent of this indicator run
-            const Sci_Position start = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)pos);
-            const Sci_Position end = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)pos);
-            if (end > start) {
-                // Clear indicator first, then delete the text it marks
-                S(SCI_INDICATORCLEARRANGE, (uptr_t)start, (sptr_t)(end - start));
-                S(SCI_DELETERANGE, (uptr_t)start, (sptr_t)(end - start));
-                pos = start; // continue scanning before the deleted range
+        // 1) Try indicator-based removal (fast path)
+        {
+            Sci_Position pos = (Sci_Position)S(SCI_GETLENGTH);
+            while (pos > 0) {
+                --pos;
+                if ((int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)pos) == 0)
+                    continue;
+
+                const Sci_Position start = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)pos);
+                const Sci_Position end = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)pos);
+                if (end > start) {
+                    S(SCI_INDICATORCLEARRANGE, (uptr_t)start, (sptr_t)(end - start));
+                    S(SCI_DELETERANGE, (uptr_t)start, (sptr_t)(end - start));
+                    pos = start;
+                    removedAny = true;
+                }
             }
         }
 
         S(SCI_ENDUNDOACTION);
+
+        // 2) Fallback: recorded runs (if indicators were already gone)
+        if (!removedAny) {
+            const sptr_t doc = (sptr_t)S(SCI_GETDOCPOINTER);
+            auto it = detail::g_padRunsByDoc.find(doc);
+            if (it != detail::g_padRunsByDoc.end() && !it->second.empty()) {
+                auto& runs = it->second;
+                // delete from end to start
+                std::sort(runs.begin(), runs.end(),
+                    [](const auto& a, const auto& b) { return a.first > b.first; });
+
+                S(SCI_BEGINUNDOACTION);
+
+                const Sci_Position docLen = (Sci_Position)S(SCI_GETLENGTH);
+                for (const auto& r : runs) {
+                    const Sci_Position p = r.first;
+                    const Sci_Position n = (Sci_Position)r.second;
+                    if (p < 0 || p + n > docLen) continue;
+
+                    bool ok = true;
+                    for (Sci_Position k = 0; k < n; ++k) {
+                        const int ch = (int)S(SCI_GETCHARAT, (uptr_t)(p + k), 0);
+                        if (!(ch == ' ' || ch == '\t')) { ok = false; break; }
+                    }
+                    if (!ok) continue;
+
+                    S(SCI_DELETERANGE, (uptr_t)p, (sptr_t)n);
+                    removedAny = true;
+                }
+
+                S(SCI_ENDUNDOACTION);
+
+                runs.clear(); // consumed
+            }
+        }
+
+        if (removedAny) {
+            ColumnTabs::CT_SetCurDocHasPads(hSci, false);
+            // also clear recorded runs for this doc
+            const sptr_t doc = (sptr_t)SendMessage(hSci, SCI_GETDOCPOINTER, 0, 0);
+            detail::g_padRunsByDoc.erase(doc);
+        }
+
         return true;
     }
 
@@ -865,5 +921,20 @@ namespace ColumnTabs
         return true;
     }
 
+    void ColumnTabs::CT_SetDocHasPads(sptr_t docPtr, bool has) noexcept {
+        detail::g_docHasPads[docPtr] = has;
+    }
+    bool ColumnTabs::CT_GetDocHasPads(sptr_t docPtr) noexcept {
+        auto it = detail::g_docHasPads.find(docPtr);
+        return (it != detail::g_docHasPads.end()) && it->second;
+    }
+    void ColumnTabs::CT_SetCurDocHasPads(HWND hSci, bool has) noexcept {
+        sptr_t doc = (sptr_t)::SendMessage(hSci, SCI_GETDOCPOINTER, 0, 0);
+        CT_SetDocHasPads(doc, has);
+    }
+    bool ColumnTabs::CT_GetCurDocHasPads(HWND hSci) noexcept {
+        sptr_t doc = (sptr_t)::SendMessage(hSci, SCI_GETDOCPOINTER, 0, 0);
+        return CT_GetDocHasPads(doc);
+    }
 
 } // namespace ColumnTabs

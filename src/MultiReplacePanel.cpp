@@ -53,13 +53,26 @@
 #include <iomanip>
 #include <lua.hpp>
 #include <sdkddkver.h>
+#include <unordered_set>
 
 
 static LanguageManager& LM = LanguageManager::instance();
 static ConfigManager& CFG = ConfigManager::instance();
 static UndoRedoManager& URM = UndoRedoManager::instance();
 namespace SU = StringUtils;
+static sptr_t g_prevDocPtr = 0;
 
+// Pointer-sized BufferID
+using BufferId = UINT_PTR;
+
+// Async leave-clean state machine
+static BufferId g_prevBufId = 0;    // last active buffer (source)
+static BufferId g_returnBufId = 0;    // where we must end up
+static BufferId g_pendingCleanId = 0;    // buffer we still need to clean
+static bool     g_cleanInProgress = false;
+
+// O(1) gate: which buffers currently have flow-pads
+static std::unordered_set<BufferId> g_padBufs;
 
 #pragma region Initialization
 
@@ -3168,7 +3181,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         LanguageManager::instance().load(pluginDir, langXml);
         initializeWindowSize();
+
         pointerToScintilla();
+        if (_hScintilla) {
+            g_prevBufId = static_cast<int>(static_cast<UINT_PTR>(
+                ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0)
+                ));
+        }
+
         initializeMarkerStyle();
         initializeCtrlMap();
         initializeFontStyles();
@@ -7913,18 +7933,19 @@ void MultiReplace::handleColumnGridTabsButton()
     pointerToScintilla();
     if (!_hScintilla) return;
 
-    // Always select our indicator BEFORE any action so both
-    // numeric-padding and flow-tabs use the SAME id.
-    ColumnTabs::CT_SetIndicatorId(30); // single source of truth for padding marks
+    // Current buffer id (pointer-sized alias BufferId)
+    const BufferId bufId = (BufferId)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
 
-    // If the buffer already contains our padding (tabs and/or numeric spaces),
-    // treat this click as "TURN OFF" regardless of _flowTabsActive.
+    ColumnTabs::CT_SetIndicatorId(30);
+
+    // Seed prev id so the very first switch can clean the source document
+    if (g_prevBufId == 0) g_prevBufId = bufId;
+
+    // If padding already present, treat as "TURN OFF"
     const bool hasPadNow = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
-
     if (hasPadNow)
     {
-        // --- TURN OFF (remove everything we inserted and all visuals)
-        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);                     // delete marked tabs/spaces
+        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);                     // delete only our marked pads
         ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
         ColumnTabs::CT_ResetFlowVisualState();
 
@@ -7937,11 +7958,12 @@ void MultiReplace::handleColumnGridTabsButton()
         normalizeSelectionAfterCleanup();
         fixHighlightAtDocumentEnd();
         showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
+
+        g_padBufs.erase(bufId); // this buffer no longer has pads
         return;
     }
 
-    // From here on we know there is NO aligned padding in the buffer.
-    // If the UI is already "active", just (re)apply visuals and bail out.
+    // If visuals are already "active", just re-apply and bail
     if (_flowTabsActive)
     {
         if (!applyFlowTabStops())
@@ -7953,32 +7975,28 @@ void MultiReplace::handleColumnGridTabsButton()
     if (!flowTabsIntroDontShowEnabled) {
         bool dontShow = false;
         if (!showFlowTabsIntroDialog(dontShow))
-            return; // user pressed Cancel
+            return; // user cancelled
         if (dontShow) {
             flowTabsIntroDontShowEnabled = true;
             saveSettings();
         }
     }
 
-    // Must have a fresh delimiter matrix at this point
+    // Need a current delimiter matrix
     if (lineDelimiterPositions.empty()) {
         showStatusMessage(LM.get(L"status_no_delimiters"), MessageStatus::Error);
         return;
     }
 
-    // Build model from the CURRENT matrix (canonical text, no Flow-Tabs yet)
     ColumnTabs::CT_ColumnModelView model{};
     if (!buildCTModelFromMatrix(model)) {
         showStatusMessage(LM.get(L"status_model_build_failed"), MessageStatus::Error);
         return;
     }
 
-    // 1) NUMERIC PADDING FIRST (works on canonical text).
-    // Indicator ID is already set above → numeric spaces are marked with id=30.
+    // 1) Numeric padding first
     if (flowTabsNumericAlignEnabled) {
         ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, (int)model.Lines.size() - 1);
-
-        // Numeric padding changed text offsets → refresh once
         findAllDelimitersInDocument();
         if (!buildCTModelFromMatrix(model)) {
             showStatusMessage(L"Numeric align: model rebuild failed", MessageStatus::Error);
@@ -7986,15 +8004,14 @@ void MultiReplace::handleColumnGridTabsButton()
         }
     }
 
-    // 2) THEN INSERT THE FLOW-TABS (destructive, before each delimiter)
+    // 2) Then insert Flow-Tabs
     ColumnTabs::CT_AlignOptions opt{};
     opt.firstLine = 0;
     opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
 
-    // Compute gap in pixels from "cells" and keep pixels for visual tab stops
     const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
-    opt.gapCells = 2;                                  // your chosen cell width
-    _flowPaddingPx = spacePx * opt.gapCells;           // single source of truth for visuals
+    opt.gapCells = 2;
+    _flowPaddingPx = spacePx * opt.gapCells;
 
     opt.spacesOnlyIfTabDelimiter = true;
     opt.oneFlowTabOnly = true;
@@ -8004,10 +8021,10 @@ void MultiReplace::handleColumnGridTabsButton()
         return;
     }
 
-    // Flow-Tab insertion changed offsets again → refresh once
+    // Re-scan once after insertion
     findAllDelimitersInDocument();
 
-    // Rebuild (optional for visuals) and apply visual tab stops
+    // Apply visuals
     if (!applyFlowTabStops()) {
         showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
     }
@@ -8017,6 +8034,14 @@ void MultiReplace::handleColumnGridTabsButton()
         ::SetWindowText(h, L"⇤");
 
     showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
+
+    // Mark this buffer as having pads (O(1) gate for leave-clean)
+    g_padBufs.insert(bufId);
+
+    // *** KEY FIX ***
+    // Ensure the very next switch treats THIS doc as the "previous" to clean.
+    // This fixes the “first switch after insertion doesn’t clean” issue.
+    g_prevBufId = bufId;
 }
 
 void MultiReplace::clearFlowTabsIfAny()
@@ -11328,6 +11353,28 @@ void MultiReplace::processLog() {
     instance->handleDelimiterPositions(DelimiterOperation::Update);
 }
 
+// Resolve (view, index) from BufferID. Returns false if not found in any view.
+static bool GetViewIndexFromBufferId(BufferId bufId, int& viewOut, int& indexOut)
+{
+    // Try MAIN view first, then SUB view.
+    int pos = (int)::SendMessage(nppData._nppHandle, NPPM_GETPOSFROMBUFFERID, (WPARAM)bufId, MAIN_VIEW);
+    if (pos < 0)
+        pos = (int)::SendMessage(nppData._nppHandle, NPPM_GETPOSFROMBUFFERID, (WPARAM)bufId, SUB_VIEW);
+    if (pos < 0) return false;
+
+    viewOut = (pos >> 30) & 0x3;         // top 2 bits
+    indexOut = (pos & 0x3FFFFFFF);        // low 30 bits
+    return true;
+}
+
+// Post (not Send) an activation to avoid reentrancy freezes inside onDocumentSwitched().
+static void PostActivateBufferId(BufferId bufId)
+{
+    int view, index;
+    if (!GetViewIndexFromBufferId(bufId, view, index)) return;
+    ::PostMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, (WPARAM)view, (LPARAM)index);
+}
+
 void MultiReplace::onDocumentSwitched()
 {
     MultiReplace* self = instance;
@@ -11337,43 +11384,67 @@ void MultiReplace::onDocumentSwitched()
     if (!self->_hScintilla) return;
     HWND hSci = self->_hScintilla;
 
-    // Leave-clean: remove only marked pads (indicator 30) from the previously active document
-    static sptr_t s_prevDocPtr = 0;
-    const sptr_t newDocPtr = (sptr_t)::SendMessage(hSci, SCI_GETDOCPOINTER, 0, 0);
-    if (s_prevDocPtr && s_prevDocPtr != newDocPtr)
+    const BufferId currBufId =
+        (BufferId)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+
+    // Seed prev at first opportunity (e.g., first call after panel shows)
+    if (g_prevBufId == 0)
+        g_prevBufId = currBufId;
+
+    // PHASE A: We posted an activation to the *previous* buffer, and it is now active.
+    // Clean *here*, because now the leaving document is really active.
+    if (g_cleanInProgress && g_pendingCleanId == currBufId)
     {
-        ::SendMessage(hSci, WM_SETREDRAW, FALSE, 0);
-        const sptr_t savedDocPtr = newDocPtr;
-        ::SendMessage(hSci, SCI_SETDOCPOINTER, 0, (sptr_t)s_prevDocPtr);
-
         ColumnTabs::CT_SetIndicatorId(30);
-        if (!(BOOL)::SendMessage(hSci, SCI_GETREADONLY, 0, 0) && ColumnTabs::CT_HasAlignedPadding(hSci))
-            ColumnTabs::CT_RemoveAlignedPadding(hSci);
 
-        ::SendMessage(hSci, SCI_SETDOCPOINTER, 0, (sptr_t)savedDocPtr);
-        ::SendMessage(hSci, WM_SETREDRAW, TRUE, 0);
-        ::InvalidateRect(hSci, nullptr, FALSE);
+        const BOOL ro = (BOOL)::SendMessage(hSci, SCI_GETREADONLY, 0, 0);
+        if (!ro) {
+            ColumnTabs::CT_RemoveAlignedPadding(hSci); // removes only our marked ranges (or fallback)
+        }
+        ColumnTabs::CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
+
+        // Update O(1) gate: cleaned
+        g_padBufs.erase(currBufId);
+
+        // Now go back to the originally requested target buffer, asynchronously.
+        const BufferId backId = g_returnBufId;
+        g_pendingCleanId = 0;
+        g_cleanInProgress = false;
+        PostActivateBufferId(backId);
+        return; // stop here; arrival on target continues in the next call
     }
 
-    // Visual cleanup in the newly activated document (no text changes)
+    // PHASE B: Natural user switch (we just arrived on a target buffer).
+    // If the previous buffer had pads, schedule an async hop back to clean it.
+    const bool differentDoc = (g_prevBufId != 0 && g_prevBufId != currBufId);
+    const bool prevHasPads = (g_padBufs.find(g_prevBufId) != g_padBufs.end());
+
+    if (!g_cleanInProgress && differentDoc && prevHasPads)
+    {
+        // Remember where to return after cleaning; then hop back asynchronously.
+        g_returnBufId = currBufId;
+        g_pendingCleanId = g_prevBufId;
+        g_cleanInProgress = true;
+        PostActivateBufferId(g_prevBufId);
+        return; // we will clean in the next onDocumentSwitched() (when prev becomes active)
+    }
+
+    // From here: normal "arrival" housekeeping for the active doc (cheap; no text scans)
     ColumnTabs::CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
     ColumnTabs::CT_ResetFlowVisualState();
 
     const int currentBufferID =
         (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
 
-    // No buffer change → nothing else to do
     if (currentBufferID == self->scannedDelimiterBufferID) {
-        s_prevDocPtr = newDocPtr;
+        g_prevBufId = currBufId; // remember for next natural switch
         return;
     }
 
-    // Mark for lazy reload
     self->documentSwitched = true;
     self->isCaretPositionEnabled = false;
     self->scannedDelimiterBufferID = currentBufferID;
 
-    // UI cleanup (styles only; does not touch indicator 30)
     self->handleClearColumnMarks();
     self->isColumnHighlighted = false;
 
@@ -11383,14 +11454,13 @@ void MultiReplace::onDocumentSwitched()
 
     self->showStatusMessage(L"", MessageStatus::Info);
 
-    // Reset sort UI
     self->originalLineOrder.clear();
     self->currentSortState = SortDirection::Unsorted;
     self->isSortedColumn = false;
     self->UpdateSortButtonSymbols();
 
-    // Remember current doc for next switch
-    s_prevDocPtr = newDocPtr;
+    // This buffer is now the "previous" for the *next* user switch
+    g_prevBufId = currBufId;
 }
 
 void MultiReplace::pointerToScintilla() {
