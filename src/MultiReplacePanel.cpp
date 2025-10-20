@@ -10935,6 +10935,7 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     outFile << Encoding::wstringToUtf8(L"DockPurge=" + std::to_wstring(ResultDock::purgeEnabled()) + L"\n");
     outFile << Encoding::wstringToUtf8(L"HighlightMatch=" + std::to_wstring(highlightMatchEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"FlowTabsIntroDontShow=" + std::to_wstring(flowTabsIntroDontShowEnabled ? 1 : 0) + L"\n");
+    outFile << Encoding::wstringToUtf8(L"FlowTabsNumericAlign=" + std::to_wstring(flowTabsNumericAlignEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"ExportToBash=" + std::to_wstring(exportToBashEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"Tooltips=" + std::to_wstring(tooltipsEnabled ? 1 : 0) + L"\n");
     outFile << Encoding::wstringToUtf8(L"AlertNotFound=" + std::to_wstring(alertNotFoundEnabled ? 1 : 0) + L"\n");
@@ -11138,6 +11139,7 @@ void MultiReplace::loadSettingsFromIni() {
 
     highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);
     flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
+    flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
 
     exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
     alertNotFoundEnabled = CFG.readBool(L"Options", L"AlertNotFound", true);
