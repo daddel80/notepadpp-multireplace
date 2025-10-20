@@ -135,6 +135,7 @@ namespace ColumnTabs
     void CT_SetCurDocHasPads(HWND hSci, bool has) noexcept;
     bool CT_GetCurDocHasPads(HWND hSci) noexcept;
 
-
+    bool CT_CleanupVisuals(HWND hSci) noexcept;
+    bool CT_CleanupAllForDoc(HWND hSci) noexcept;
 
 } // namespace ColumnTabs

@@ -228,7 +228,7 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
   L"Please note the following before proceeding:\n\n"
   L"•  Tab-delimited files: Existing tabs are reused for alignment.\n"
   L"•  Non-tab delimited files: Real Tabs (\\t) are inserted. Note these may affect Find/Replace.\n"
-  L"•  Reversal: Click the Flow-Tabs button again to remove the inserted tabs." },
+  L"•  Reversal: Click the Flow-Tabs button again to remove the inserted tabs (before saving)." },
 { L"msgbox_flowtabs_intro_checkbox", L"Do not show this message again" },
 { L"msgbox_button_ok",     L"OK" },
 { L"msgbox_button_cancel", L"Cancel" },

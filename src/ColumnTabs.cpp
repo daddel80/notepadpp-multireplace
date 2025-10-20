@@ -515,11 +515,10 @@ namespace ColumnTabs
         const int ind = CT_GetIndicatorId();
         S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
 
-        S(SCI_BEGINUNDOACTION);
-
         bool removedAny = false;
 
-        // 1) Try indicator-based removal (fast path)
+        // --- Fast path: remove by indicator marks
+        S(SCI_BEGINUNDOACTION);
         {
             Sci_Position pos = (Sci_Position)S(SCI_GETLENGTH);
             while (pos > 0) {
@@ -537,21 +536,20 @@ namespace ColumnTabs
                 }
             }
         }
-
         S(SCI_ENDUNDOACTION);
 
-        // 2) Fallback: recorded runs (if indicators were already gone)
+        // --- Fallback: recorded runs (if indicators are gone)
+        const sptr_t doc = (sptr_t)S(SCI_GETDOCPOINTER);
         if (!removedAny) {
-            const sptr_t doc = (sptr_t)S(SCI_GETDOCPOINTER);
             auto it = detail::g_padRunsByDoc.find(doc);
             if (it != detail::g_padRunsByDoc.end() && !it->second.empty()) {
                 auto& runs = it->second;
+
                 // delete from end to start
                 std::sort(runs.begin(), runs.end(),
                     [](const auto& a, const auto& b) { return a.first > b.first; });
 
                 S(SCI_BEGINUNDOACTION);
-
                 const Sci_Position docLen = (Sci_Position)S(SCI_GETLENGTH);
                 for (const auto& r : runs) {
                     const Sci_Position p = r.first;
@@ -568,21 +566,19 @@ namespace ColumnTabs
                     S(SCI_DELETERANGE, (uptr_t)p, (sptr_t)n);
                     removedAny = true;
                 }
-
                 S(SCI_ENDUNDOACTION);
 
                 runs.clear(); // consumed
             }
         }
 
+        // --- Keep doc state & fallback-index in sync
         if (removedAny) {
             ColumnTabs::CT_SetCurDocHasPads(hSci, false);
-            // also clear recorded runs for this doc
-            const sptr_t doc = (sptr_t)SendMessage(hSci, SCI_GETDOCPOINTER, 0, 0);
             detail::g_padRunsByDoc.erase(doc);
         }
 
-        return true;
+        return removedAny; // reflect whether anything was actually removed
     }
 
     // small helpers (file-local)
@@ -673,7 +669,7 @@ namespace ColumnTabs
         auto S = [hwnd](UINT msg, WPARAM w = 0, LPARAM l = 0)->sptr_t { return (sptr_t)::SendMessage(hwnd, msg, w, l); };
         auto ls = [&](int ln)->Sci_Position { return (Sci_Position)S(SCI_POSITIONFROMLINE, (uptr_t)ln); };
         auto le = [&](int ln)->Sci_Position { return (Sci_Position)S(SCI_GETLINEENDPOSITION, (uptr_t)ln); };
-        auto gc = [&](Sci_Position p)->int { return (int)S(SCI_GETCHARAT, (uptr_t)p);  };
+        auto gc = [&](Sci_Position p)->int { return (int)S(SCI_GETCHARAT, (uptr_t)p); };
 
         const bool haveVec = !model.Lines.empty();
         const bool liveInfo = (model.getLineInfo != nullptr);
@@ -745,7 +741,6 @@ namespace ColumnTabs
                     if (ch == ' ' || ch == '\t') ++tokStart; else break;
                 }
                 if (sign && tokStart > s) --tokStart; // include sign so spaces go before it
-
                 return true;
             };
 
@@ -814,10 +809,6 @@ namespace ColumnTabs
                         break;
                     }
                 }
-
-                if (s < base) s = base;
-                if (e > eol)  e = eol;
-                if (s > e)    s = e;
             };
 
         // --- PASS 1: collect maxima and decimal flags per column ---
@@ -825,7 +816,6 @@ namespace ColumnTabs
             const auto L = fetchLine(ln);
             const size_t nField = L.FieldCount();
             Sci_Position dummyDelta = 0;
-
             for (size_t c = 0; c < nField; ++c) {
                 Sci_Position s{}, e{}; sliceBounds(L, ln, c, dummyDelta, s, e);
                 if (s >= e) continue;
@@ -857,11 +847,18 @@ namespace ColumnTabs
                 const bool isNum = findNumberUsingCT(s, e, tokStart, intDigits, hasDec);
                 if (!isNum) continue;
 
-                // Count ASCII spaces *touching* the token on the left (tabs are ignored)
+                // --- NEW: raw field start (without trimming) for counting user spaces
+                const Sci_Position base = ls(ln);
+                const Sci_Position fieldStartRaw =
+                    (c == 0)
+                    ? base
+                    : base + (Sci_Position)L.delimiterOffsets[c - 1] + delta + (Sci_Position)model.delimiterLength;
+
+                // Count ASCII spaces touching the token on the left (user spaces; tabs ignored)
                 int spacesTouching = 0;
                 {
                     Sci_Position p = tokStart;
-                    while (p > s && gc(p - 1) == ' ') { --p; ++spacesTouching; }
+                    while (p > fieldStartRaw && gc(p - 1) == ' ') { --p; ++spacesTouching; }
                 }
 
                 // Base breathing room in front of every number
@@ -878,18 +875,17 @@ namespace ColumnTabs
                 int needUnits = baseGapUnits + (maxIntDigits[c] - intDigits);
                 if (needUnits < 0) needUnits = 0;
 
-                // Signed numbers in decimal columns: one less unit so '.' stays vertically aligned
+                // Signed numbers in decimal columns: reduce one unit so '.' stays aligned
                 if (hasSign && colHasDec[c] && needUnits > 0)
                     --needUnits;
 
-                // NO imaginary decimal for integers (keep integers one cell left of decimals)
-                // (intentionally no: if (colHasDec[c] && !hasDec) ++needUnits;)
-
                 const int diff = needUnits - spacesTouching;
+
                 if (diff > 0) {
-                    // Insert exactly 'diff' spaces and mark them so we can remove later
+                    // Insert exactly 'diff' spaces and mark them
                     std::string pad((size_t)diff, ' ');
                     S(SCI_INSERTTEXT, (uptr_t)tokStart, (sptr_t)pad.c_str());
+                    S(SCI_SETINDICATORCURRENT, (uptr_t)CT_GetIndicatorId());
                     S(SCI_INDICATORFILLRANGE, (uptr_t)tokStart, (sptr_t)diff);
                     delta += (Sci_Position)diff;
                 }
@@ -900,19 +896,22 @@ namespace ColumnTabs
                     S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
 
                     int delAvail = 0;
-                    if (tokStart > s &&
+                    if (tokStart > 0 &&
                         (int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)(tokStart - 1)) != 0)
                     {
                         const Sci_Position runBeg = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)(tokStart - 1));
-                        delAvail = (int)(tokStart - runBeg);
+                        // clamp deletion so we never go before the raw field start
+                        const Sci_Position lower = (runBeg < fieldStartRaw) ? fieldStartRaw : runBeg;
+                        delAvail = (int)(tokStart - lower);
                     }
                     if (delAvail > 0) {
-                        if (toDel > delAvail) toDel = delAvail;     // clamp to what we actually inserted
+                        if (toDel > delAvail) toDel = delAvail;
                         const Sci_Position posDel = tokStart - (Sci_Position)toDel;
                         S(SCI_INDICATORCLEARRANGE, (uptr_t)posDel, (sptr_t)toDel);
                         S(SCI_DELETERANGE, (uptr_t)posDel, (sptr_t)toDel);
                         delta -= (Sci_Position)toDel;
                     }
+                    // If no marked spaces there, do nothing (keep user's spaces)
                 }
             }
         }
@@ -936,5 +935,24 @@ namespace ColumnTabs
         sptr_t doc = (sptr_t)::SendMessage(hSci, SCI_GETDOCPOINTER, 0, 0);
         return CT_GetDocHasPads(doc);
     }
+
+    bool ColumnTabs::CT_CleanupVisuals(HWND hSci) noexcept
+    {
+        if (!hSci) return false;
+        CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);   // visual only
+        CT_ResetFlowVisualState();
+        return true;
+    }
+
+    bool ColumnTabs::CT_CleanupAllForDoc(HWND hSci) noexcept
+    {
+        if (!hSci) return false;
+        // hard cleanup (text + visuals)
+        CT_RemoveAlignedPadding(hSci);                           // marks-only delete (oder Fallback)
+        CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
+        CT_ResetFlowVisualState();
+        return true;
+    }
+
 
 } // namespace ColumnTabs

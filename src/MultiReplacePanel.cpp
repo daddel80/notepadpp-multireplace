@@ -60,7 +60,6 @@ static LanguageManager& LM = LanguageManager::instance();
 static ConfigManager& CFG = ConfigManager::instance();
 static UndoRedoManager& URM = UndoRedoManager::instance();
 namespace SU = StringUtils;
-static sptr_t g_prevDocPtr = 0;
 
 // Pointer-sized BufferID
 using BufferId = UINT_PTR;
@@ -7949,6 +7948,10 @@ void MultiReplace::handleColumnGridTabsButton()
         ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
         ColumnTabs::CT_ResetFlowVisualState();
 
+        // Keep both gates in sync: column-lib doc flag + fast buffer gate
+        ColumnTabs::CT_SetCurDocHasPads(_hScintilla, false);
+        g_padBufs.erase(bufId);                                               // this buffer no longer has pads
+
         findAllDelimitersInDocument(); // offsets changed due to deletions
 
         _flowTabsActive = false;
@@ -7958,8 +7961,6 @@ void MultiReplace::handleColumnGridTabsButton()
         normalizeSelectionAfterCleanup();
         fixHighlightAtDocumentEnd();
         showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
-
-        g_padBufs.erase(bufId); // this buffer no longer has pads
         return;
     }
 
@@ -8021,6 +8022,9 @@ void MultiReplace::handleColumnGridTabsButton()
         return;
     }
 
+    // Keep both gates in sync: column-lib doc flag + fast buffer gate
+    ColumnTabs::CT_SetCurDocHasPads(_hScintilla, true);
+
     // Re-scan once after insertion
     findAllDelimitersInDocument();
 
@@ -8038,9 +8042,7 @@ void MultiReplace::handleColumnGridTabsButton()
     // Mark this buffer as having pads (O(1) gate for leave-clean)
     g_padBufs.insert(bufId);
 
-    // *** KEY FIX ***
     // Ensure the very next switch treats THIS doc as the "previous" to clean.
-    // This fixes the “first switch after insertion doesn’t clean” issue.
     g_prevBufId = bufId;
 }
 
@@ -8058,7 +8060,14 @@ void MultiReplace::clearFlowTabsIfAny()
     if (hadVis) ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
     if (hadVis) ColumnTabs::CT_ResetFlowVisualState();
 
-    if (hadPad) findAllDelimitersInDocument();
+    if (hadPad) {
+        // Keep both gates in sync: column-lib doc flag + fast buffer gate
+        ColumnTabs::CT_SetCurDocHasPads(_hScintilla, false);
+
+        const BufferId bufId = (BufferId)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+        g_padBufs.erase(bufId);
+        findAllDelimitersInDocument(); // offsets changed
+    }
 
     if (hadPad || hadVis) {
         _flowTabsActive = false;
@@ -11400,9 +11409,10 @@ void MultiReplace::onDocumentSwitched()
         const BOOL ro = (BOOL)::SendMessage(hSci, SCI_GETREADONLY, 0, 0);
         if (!ro) {
             ColumnTabs::CT_RemoveAlignedPadding(hSci); // removes only our marked ranges (or fallback)
-        }
-        ColumnTabs::CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
+            ColumnTabs::CT_SetCurDocHasPads(hSci, false);
 
+            ColumnTabs::CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
+        }
         // Update O(1) gate: cleaned
         g_padBufs.erase(currBufId);
 
