@@ -66,11 +66,15 @@ bool LanguageManager::load(const std::wstring& pluginDir,
 bool LanguageManager::loadFromIni(const std::wstring& iniFile,
     const std::wstring& languageCode)
 {
-    _table = languageMap; // fallback: English
-
+    // 1) Defaults (English) -> _table
+    _table.clear();
+    _table.reserve(kEnglishPairsCount);
+    for (size_t i = 0; i < kEnglishPairsCount; ++i) {
+        _table.emplace(std::wstring(kEnglishPairs[i].k),
+            std::wstring(kEnglishPairs[i].v));
+    }
     if (!_cache.load(iniFile))
         return false;
-
     const auto& data = _cache.raw();
     if (auto it = data.find(languageCode); it != data.end())
         for (const auto& kv : it->second)

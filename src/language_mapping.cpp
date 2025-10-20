@@ -14,10 +14,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#include "MultiReplacePanel.h"
+#include "language_mapping.h"
 
 
-std::unordered_map<std::wstring, std::wstring> languageMap = {
+const LangKV kEnglishPairs[] = {
 { L"panel_find_what", L"Find what: "},
 { L"panel_replace_with", L"Replace with: "},
 { L"panel_match_whole_word_only", L"Match whole word only" },
@@ -266,3 +266,5 @@ std::unordered_map<std::wstring, std::wstring> languageMap = {
 { L"dock_line", L"Line" },
 
 };
+
+const size_t kEnglishPairsCount = sizeof(kEnglishPairs) / sizeof(kEnglishPairs[0]);

@@ -15,7 +15,13 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #pragma once
-#include <string>
-#include <unordered_map>
+#include <string_view>
+#include <cstddef>
 
-extern std::unordered_map<std::wstring, std::wstring> languageMap;
+struct LangKV {
+    std::wstring_view k;
+    std::wstring_view v;
+};
+
+extern const LangKV kEnglishPairs[];
+extern const size_t kEnglishPairsCount;
