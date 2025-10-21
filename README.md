@@ -632,6 +632,12 @@ The MultiReplace plugin provides several configuration options, including transp
 - **SafeMode**: Controls which standard Lua libraries are available.
   - **Default**: `SafeMode=0` (disabled).
   - **Description**: For enhanced security, enabling (`1`) disables all libraries (`os`, `io`, `package`, `debug`) and functions (`dofile`, `load`, `loadfile`, `require`, `collectgarbage`) that provide file or system access. This also disables file-dependent commands like `lvars`, `lkp`, and `lcmd`. The `string`, `table`, `math`, `utf8`, and `base` libraries remain available. When disabled (`0`), all standard libraries are loaded.
+ 
+- **FlowTabsNumericAlign**: Controls numeric alignment during column formatting.
+
+  - **Default**: `FlowTabsNumericAlign=1` (enabled).
+  - **Description**: When enabled (1), numeric values in CSV or tab-delimited text are right-aligned (or aligned at the decimal point) within their columns when Flow Tabs are active. When disabled (0), numeric alignment is skipped and spacing remains unchanged.
+
 
 ### Multilingual UI Support
 
