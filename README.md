@@ -117,9 +117,13 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
 - **Available Column Operations:**
   - **Sorting Lines by Columns**: Sort lines based on one or more columns in ascending or descending order. The sorting algorithm correctly handles mixed numeric and text values.  
     - **Smart Undo&nbsp;(Toggle Sort)**: A second click on the same sort button reverts the lines to their original order. This powerful undo works even if rows have been modified, added, or deleted after the initial sort.  
-    - **Exclude Header Lines**: You can protect header rows from being sorted. Configure the number of header rows via the `HeaderLines` parameter in the INI file. For details, see the [`INI File Settings`](#configuration-settings).
+    - **Exclude Header Lines**: You can protect header rows from being sorted. Configure the number of header rows via the `HeaderLines` parameter in the [`INI File`](#configuration-settings).
   - **Deleting Multiple Columns**: Remove specified columns at once, automatically cleaning up obsolete delimiters.
   - **Clipboard Column Copying**: Copy the content of specified columns, including their delimiters, to the clipboard.
+  - **Flow Tabs Alignment**: Visually aligns columns in tab-delimited and CSV files for easier reading and editing.  
+    - For CSV files, temporary tabs are inserted to simulate uniform column spacing. For tab-delimited files, existing tabs are realigned.  
+    - The **Align Columns** button toggles alignment on or off; pressing it again restores the original spacing.
+    - Numeric values are right-aligned by default; this behavior can be turned off in the [`INI File`](#configuration-settings) using `FlowTabsNumericAlign`.
 
 ### Execution Targets  
 Execution targets define **which files** an operation is applied to. They are accessible via the **Replace All** split-button menu.
