@@ -8129,18 +8129,37 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
 
         ColumnTabs::CT_ColumnModelView model{};
         if (buildCTModelFromMatrix(model) && !model.Lines.empty()) {
+
+            // --- CHANGE: Numeric padding must run first on the fresh model ---
+            if (flowTabsNumericAlignEnabled) {
+                ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, (int)model.Lines.size() - 1);
+
+                // After text edits, delimiter offsets are stale → rescan & rebuild
+                findAllDelimitersInDocument();
+                if (!buildCTModelFromMatrix(model)) {
+                    // Robustness: if rebuild fails, stop reflow (keep canonical text)
+                    break;
+                }
+            }
+
+            // Now insert Flow-Tabs (this also computes & sets visual tab stops)
             ColumnTabs::CT_AlignOptions a{};
             a.firstLine = 0;
             a.lastLine = (int)model.Lines.size() - 1;
+
             // Convert pixels -> "cells" (width of one space in the current font)
             const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
             a.gapCells = (spacePx > 0) ? (_flowPaddingPx / spacePx) : 2;
             a.spacesOnlyIfTabDelimiter = true;
             a.oneFlowTabOnly = true;
+
             ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, a);
-            if (flowTabsNumericAlignEnabled) {
-                ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, a.firstLine, a.lastLine);
-            }
+
+            // Keep gate in sync so other paths can make O(1) decisions
+            ColumnTabs::CT_SetCurDocHasPads(_hScintilla, true);
+
+            // Optional hygiene: rescan once so matrix matches the new text
+            findAllDelimitersInDocument();
         }
         break;
     }

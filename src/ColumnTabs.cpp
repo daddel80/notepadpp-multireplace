@@ -718,7 +718,8 @@ namespace ColumnTabs
 
                 // Integer digits
                 Sci_Position j = i;
-                while (j < e && std::isdigit(gc(j))) ++j;
+                // Avoid std::isdigit on arbitrary int; do ASCII digit check instead.
+                while (j < e) { const int ch = gc(j); if (ch >= '0' && ch <= '9') ++j; else break; }
                 intDigits = (int)(j - i);
 
                 // Decimal part (dot or comma, fractional digits optional)
@@ -728,7 +729,8 @@ namespace ColumnTabs
                     if (ch == '.' || ch == ',') {
                         hasDec = true;
                         ++j;
-                        while (j < e && std::isdigit(gc(j))) ++j;
+                        // ASCII digit check for fraction.
+                        while (j < e) { const int ch2 = gc(j); if (ch2 >= '0' && ch2 <= '9') ++j; else break; }
                     }
                 }
 
@@ -757,8 +759,7 @@ namespace ColumnTabs
                     Sci_Position p = tokStart;
                     int ch = gc(p);
                     if (ch == '+' || ch == '-') ++p;
-                    for (;; ++p) {
-                        if (p >= e) break;
+                    for (; p < e; ++p) {
                         ch = gc(p);
                         if (ch >= '0' && ch <= '9') { ++intDigits; continue; }
                         if (ch == '.' || ch == ',') break; // decimal separator ends integer part
@@ -847,7 +848,7 @@ namespace ColumnTabs
                 const bool isNum = findNumberUsingCT(s, e, tokStart, intDigits, hasDec);
                 if (!isNum) continue;
 
-                // --- NEW: raw field start (without trimming) for counting user spaces
+                // Raw field start (without trimming) for counting user spaces
                 const Sci_Position base = ls(ln);
                 const Sci_Position fieldStartRaw =
                     (c == 0)
@@ -857,14 +858,14 @@ namespace ColumnTabs
                 // Count ASCII spaces touching the token on the left (user spaces; tabs ignored)
                 int spacesTouching = 0;
                 {
-                    Sci_Position p = tokStart;
-                    while (p > fieldStartRaw && gc(p - 1) == ' ') { --p; ++spacesTouching; }
+                    Sci_Position p2 = tokStart;
+                    while (p2 > fieldStartRaw && gc(p2 - 1) == ' ') { --p2; ++spacesTouching; }
                 }
 
                 // Base breathing room in front of every number
                 const int baseGapUnits = 1;
 
-                // Sign handling (hanging sign in decimal columns)
+                // Sign handling
                 bool hasSign = false;
                 if (tokStart < e) {
                     const int ch0 = gc(tokStart);
@@ -875,8 +876,8 @@ namespace ColumnTabs
                 int needUnits = baseGapUnits + (maxIntDigits[c] - intDigits);
                 if (needUnits < 0) needUnits = 0;
 
-                // Signed numbers in decimal columns: reduce one unit so '.' stays aligned
-                if (hasSign && colHasDec[c] && needUnits > 0)
+                // CHANGE (sign alignment): always let the sign hang left so digits align equally
+                if (hasSign && needUnits > 0)
                     --needUnits;
 
                 const int diff = needUnits - spacesTouching;
@@ -900,7 +901,7 @@ namespace ColumnTabs
                         (int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)(tokStart - 1)) != 0)
                     {
                         const Sci_Position runBeg = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)(tokStart - 1));
-                        // clamp deletion so we never go before the raw field start
+                        // Clamp deletion so we never go before the raw field start
                         const Sci_Position lower = (runBeg < fieldStartRaw) ? fieldStartRaw : runBeg;
                         delAvail = (int)(tokStart - lower);
                     }
@@ -919,6 +920,8 @@ namespace ColumnTabs
         S(SCI_ENDUNDOACTION);
         return true;
     }
+
+
 
     void ColumnTabs::CT_SetDocHasPads(sptr_t docPtr, bool has) noexcept {
         detail::g_docHasPads[docPtr] = has;
