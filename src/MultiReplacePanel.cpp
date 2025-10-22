@@ -32,7 +32,7 @@
 #include "LanguageManager.h"
 #include "ConfigManager.h"
 #include "UndoRedoManager.h"
-#include "ColumnTabs.h"
+#include "NumericToken.h"
 #include "StringUtils.h"
 #include <algorithm>
 #include <bitset>
@@ -10148,35 +10148,16 @@ sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, b
 }
 
 bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
-    if (str.empty()) {
-        return false;  // An empty string is not a valid number
-    }
-
-    if (str == "." || str == ",") {
+    // Use shared parser to extract the first numeric token (tolerant, like Float Tab).
+    std::string normalized;
+    double value = 0.0;
+    if (!mr::num::try_parse_first_numeric_value(std::string_view(str), value, &normalized)) {
         return false;
     }
 
-    int dotCount = 0;
-    std::string tempStr = str; // Temporary string to hold potentially modified string
-    for (char& c : tempStr) {
-        if (c == '.') {
-            ++dotCount;
-        }
-        else if (c == ',') {
-            ++dotCount;
-            c = '.';  // Potentially replace comma with dot in tempStr
-        }
-        else if (!iswdigit(c)) {
-            return false;  // Contains non-numeric characters
-        }
-
-        if (dotCount > 1) {
-            return false;  // Contains more than one separator
-        }
-    }
-
-    str = tempStr;
-    return true;  // String is a valid number
+    // Keep only the normalized token (suitable for std::stod)
+    str = std::move(normalized);
+    return true;
 }
 
 std::vector<WCHAR> MultiReplace::createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters) {

@@ -120,6 +120,7 @@
     <ClCompile Include="..\src\MultiReplacePanel_BatchUI.cpp" />
     <ClCompile Include="..\src\StringUtils.cpp" />
     <ClCompile Include="..\src\ColumnTabs.cpp" />
+    <ClCompile Include="..\src\NumericToken.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -228,6 +229,7 @@
     <ClInclude Include="..\src\BatchUIGuard.h" />
     <ClInclude Include="..\src\StringUtils.h" />
     <ClInclude Include="..\src\ColumnTabs.h" />
+    <ClInclude Include="..\src\NumericToken.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

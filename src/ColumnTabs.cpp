@@ -1,6 +1,23 @@
-﻿#include "ColumnTabs.h"
+﻿// This file is part of the MultiReplace plugin for Notepad++.
+// Copyright (C) 2023 Thomas Knoefel
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+#include "ColumnTabs.h"
 #include <algorithm>
 #include <unordered_map>
+#include "NumericToken.h" 
 
 // --- Scintilla direct --------------------------------------------------------
 static inline sptr_t S(HWND hSci, UINT m, uptr_t w = 0, sptr_t l = 0)
@@ -612,50 +629,26 @@ namespace ColumnTabs
         CT_GetSubTextUtf8(hSci, fieldPos0, fieldPos1, fld);
         if (fld.empty()) return false;
 
-        // 1) Find start of numeric token: optional sign followed by digit, or digit
-        size_t i = 0;
-        while (i < fld.size()) {
-            const unsigned char c = (unsigned char)fld[i];
-            if ((c == '+' || c == '-') && i + 1 < fld.size() && ::isdigit((unsigned char)fld[i + 1])) break;
-            if (::isdigit(c)) break;
-            ++i;
-        }
-        if (i >= fld.size()) return false;
+        // Use shared string parser (first numeric token wins)
+        mr::num::NumericToken tok = mr::num::parse_first_numeric_token(fld);
+        if (!tok.ok) return false;
 
-        // 2) Consume integer digits
-        size_t j = i;
-        while (j < fld.size() && ::isdigit((unsigned char)fld[j])) ++j;
+        // Pixel width of *integer part* (no sign, up to separator if present)
+        // Compute integer-part substring boundaries inside 'fld'
+        std::size_t intStart = tok.start + (tok.hasSign ? 1u : 0u);
+        std::size_t intLen = (tok.intDigits > 0) ? static_cast<std::size_t>(tok.intDigits) : 0u;
 
-        // 3) Optional decimal separator ('.' or ',')
-        //    IMPORTANT: Treat a separator as "decimal present" EVEN IF no digit follows.
-        //    Examples to accept as decimal:
-        //      "55555."  -> decimal present (fraction length 0)
-        //      "34,"     -> decimal present (fraction length 0)
-        //      "17.666"  -> decimal present (fraction length > 0)
-        size_t dec = std::string::npos;
-        if (j < fld.size() && (fld[j] == '.' || fld[j] == ',')) {
-            const size_t decPos = j;
-            size_t k = j + 1;
-            // optional fractional digits
-            while (k < fld.size() && ::isdigit((unsigned char)fld[k])) ++k;
-
-            dec = decPos;   // count as decimal even if (k == j + 1) => no digit after separator
-            j = k;          // token end includes separator and any following digits
-        }
-
-        if (i == j) return false;
-
-        // 4) Measure pixel width of the integer part (left of separator if present)
-        const std::string left = (dec == std::string::npos)
-            ? fld.substr(i, j - i)
-            : fld.substr(i, dec - i);
+        std::string left;
+        if (intLen > 0 && intStart + intLen <= fld.size())
+            left.assign(fld.data() + intStart, intLen);
+        else
+            left.clear();
 
         outLeftPx = CT_TextWidthPx(hSci, left);
-        outStartDoc = fieldPos0 + (Sci_Position)i;
-        outHasDecimal = (dec != std::string::npos);
+        outStartDoc = fieldPos0 + static_cast<Sci_Position>(tok.start); // doc pos of sign-or-first-digit
+        outHasDecimal = tok.hasDecimal;
         return true;
     }
-
 
     bool ColumnTabs::CT_ApplyNumericPadding(
         HWND hSci,
@@ -704,33 +697,32 @@ namespace ColumnTabs
         std::vector<char> colHasDec(maxCols, 0);
 
         // --- local tokenizer (fallback) ---
+        // ASCII-only digit checks (no ctype) to avoid CRT assertions on UTF-8 bytes.
         auto scanToken = [&](Sci_Position s, Sci_Position e,
             Sci_Position& tokStart, int& intDigits, bool& hasDec)->bool
             {
-                // Skip leading whitespace inside slice
+                // skip internal leading ws
                 Sci_Position i = s;
                 while (i < e) { const int ch = gc(i); if (ch == ' ' || ch == '\t') ++i; else break; }
                 if (i >= e) return false;
 
-                // Optional sign
+                // optional sign
                 const bool sign = (gc(i) == '+' || gc(i) == '-');
                 if (sign) { ++i; if (i >= e) return false; }
 
-                // Integer digits
+                // integer digits
                 Sci_Position j = i;
-                // Avoid std::isdigit on arbitrary int; do ASCII digit check instead.
                 while (j < e) { const int ch = gc(j); if (ch >= '0' && ch <= '9') ++j; else break; }
                 intDigits = (int)(j - i);
 
-                // Decimal part (dot or comma, fractional digits optional)
+                // decimal part ('.' or ',') with optional fraction
                 hasDec = false;
                 if (j < e) {
                     const int ch = gc(j);
                     if (ch == '.' || ch == ',') {
                         hasDec = true;
                         ++j;
-                        // ASCII digit check for fraction.
-                        while (j < e) { const int ch2 = gc(j); if (ch2 >= '0' && ch2 <= '9') ++j; else break; }
+                        while (j < e) { const int d = gc(j); if (d >= '0' && d <= '9') ++j; else break; }
                     }
                 }
 
@@ -742,11 +734,11 @@ namespace ColumnTabs
                     const int ch = gc(tokStart);
                     if (ch == ' ' || ch == '\t') ++tokStart; else break;
                 }
-                if (sign && tokStart > s) --tokStart; // include sign so spaces go before it
+                if (sign && tokStart > s) --tokStart; // include sign so our spaces go before it
                 return true;
             };
 
-        // --- primary tokenizer with CT_FindNumericToken (keeps it referenced) ---
+        // --- prefer CT_FindNumericToken; fallback to our local scanner -----------
         auto findNumberUsingCT = [hwnd, &gc, &scanToken](Sci_Position s, Sci_Position e,
             Sci_Position& tokStart,
             int& intDigits,
@@ -754,27 +746,27 @@ namespace ColumnTabs
             {
                 int dummyPx = 0; hasDec = false;
                 if (ColumnTabs::CT_FindNumericToken(hwnd, s, e, tokStart, dummyPx, hasDec)) {
-                    // Count integer digits (skip optional sign)
+                    // Count integer digits starting at tokStart (skip sign).
                     intDigits = 0;
                     Sci_Position p = tokStart;
                     int ch = gc(p);
                     if (ch == '+' || ch == '-') ++p;
-                    for (; p < e; ++p) {
+
+                    // read-then-advance to count the first digit as well
+                    for (;;) {
+                        if (p >= e) break;
                         ch = gc(p);
-                        if (ch >= '0' && ch <= '9') { ++intDigits; continue; }
-                        if (ch == '.' || ch == ',') break; // decimal separator ends integer part
+                        if (ch >= '0' && ch <= '9') { ++intDigits; ++p; continue; }
+                        if (ch == '.' || ch == ',') break; // separator ends integer part
                         break;
                     }
-                    // Accept tokens like ".5" (intDigits==0 & hasDec==true)
-                    return (intDigits > 0) || hasDec;
+                    return (intDigits > 0) || hasDec; // accept ".5" via hasDec
                 }
-                // Fallback (sign-aware, handles ".5", "5.", etc.)
+                // fallback (handles ".5", "5.", etc.)
                 return scanToken(s, e, tokStart, intDigits, hasDec);
             };
 
         // --- robust field slicing ---
-        // Start: after previous delimiter + ALL whitespace that follows it
-        // End  : before next delimiter − ALL whitespace that precedes it
         auto sliceBounds = [&](const CT_ColumnLineInfo& L, int ln, size_t col,
             Sci_Position delta, Sci_Position& s, Sci_Position& e)
             {
@@ -785,7 +777,7 @@ namespace ColumnTabs
 
                 if (col >= nField) { s = e = base; return; }
 
-                // End: right before the next delimiter, trimming its left padding
+                // end: before next delimiter, trimming left padding in front of it
                 if (col < nDelim) {
                     e = base + (Sci_Position)L.delimiterOffsets[col] + delta;
                     while (e > base) {
@@ -798,7 +790,7 @@ namespace ColumnTabs
                     e = eol;
                 }
 
-                // Start: after previous delimiter + delimiterLength, skip ALL WS
+                // start: after previous delimiter + delimiterLength, skip all WS
                 if (col == 0) {
                     s = base;
                 }
@@ -829,18 +821,18 @@ namespace ColumnTabs
             }
         }
 
-        // --- PASS 2: apply only spaces (mark them with our indicator) ---
+        // --- PASS 2: insert/remove our spaces only (marked by indicator) ---------
         S(SCI_BEGINUNDOACTION);
 
         for (int ln = l0; ln <= l1; ++ln) {
             const auto L0 = fetchLine(ln);
             const size_t nField = L0.FieldCount();
-            Sci_Position delta = 0; // per-line offset shift due to edits
+            Sci_Position delta = 0;
 
             for (size_t c = 0; c < nField; ++c) {
                 if (c >= maxCols || maxIntDigits[c] <= 0) continue;
 
-                const auto L = fetchLine(ln); // live read (processLog keeps fresh)
+                const auto L = fetchLine(ln); // fresh per iteration
                 Sci_Position s{}, e{}; sliceBounds(L, ln, c, delta, s, e);
                 if (s >= e) continue;
 
@@ -848,42 +840,38 @@ namespace ColumnTabs
                 const bool isNum = findNumberUsingCT(s, e, tokStart, intDigits, hasDec);
                 if (!isNum) continue;
 
-                // Raw field start (without trimming) for counting user spaces
+                // raw start of field (for user-space clamp)
                 const Sci_Position base = ls(ln);
                 const Sci_Position fieldStartRaw =
                     (c == 0)
                     ? base
                     : base + (Sci_Position)L.delimiterOffsets[c - 1] + delta + (Sci_Position)model.delimiterLength;
 
-                // Count ASCII spaces touching the token on the left (user spaces; tabs ignored)
+                // count ASCII spaces immediately left of the token
                 int spacesTouching = 0;
                 {
-                    Sci_Position p2 = tokStart;
-                    while (p2 > fieldStartRaw && gc(p2 - 1) == ' ') { --p2; ++spacesTouching; }
+                    Sci_Position p = tokStart;
+                    while (p > fieldStartRaw && gc(p - 1) == ' ') { --p; ++spacesTouching; }
                 }
 
-                // Base breathing room in front of every number
                 const int baseGapUnits = 1;
 
-                // Sign handling
                 bool hasSign = false;
                 if (tokStart < e) {
                     const int ch0 = gc(tokStart);
                     hasSign = (ch0 == '+' || ch0 == '-');
                 }
 
-                // Need = base gap + (maxInt - ownInt), clipped to >= 0
                 int needUnits = baseGapUnits + (maxIntDigits[c] - intDigits);
                 if (needUnits < 0) needUnits = 0;
 
-                // CHANGE (sign alignment): always let the sign hang left so digits align equally
+                // CHANGE: always let the sign "hang" so digits align in integer-only columns too
                 if (hasSign && needUnits > 0)
                     --needUnits;
 
                 const int diff = needUnits - spacesTouching;
 
                 if (diff > 0) {
-                    // Insert exactly 'diff' spaces and mark them
                     std::string pad((size_t)diff, ' ');
                     S(SCI_INSERTTEXT, (uptr_t)tokStart, (sptr_t)pad.c_str());
                     S(SCI_SETINDICATORCURRENT, (uptr_t)CT_GetIndicatorId());
@@ -891,7 +879,6 @@ namespace ColumnTabs
                     delta += (Sci_Position)diff;
                 }
                 else if (diff < 0) {
-                    // Remove only our own (marked) spaces, never user spaces or tabs
                     int toDel = -diff;
                     const int ind = CT_GetIndicatorId();
                     S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
@@ -901,7 +888,6 @@ namespace ColumnTabs
                         (int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)(tokStart - 1)) != 0)
                     {
                         const Sci_Position runBeg = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)(tokStart - 1));
-                        // Clamp deletion so we never go before the raw field start
                         const Sci_Position lower = (runBeg < fieldStartRaw) ? fieldStartRaw : runBeg;
                         delAvail = (int)(tokStart - lower);
                     }
@@ -912,7 +898,6 @@ namespace ColumnTabs
                         S(SCI_DELETERANGE, (uptr_t)posDel, (sptr_t)toDel);
                         delta -= (Sci_Position)toDel;
                     }
-                    // If no marked spaces there, do nothing (keep user's spaces)
                 }
             }
         }
