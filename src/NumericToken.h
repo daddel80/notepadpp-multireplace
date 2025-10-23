@@ -64,4 +64,9 @@ namespace mr { namespace num {
                                        std::string* outNormalized = nullptr,
                                        const ParseOptions& opt = {});
 
+    // Returns true if the whole field is a numeric field with optional affix.
+    bool classify_numeric_field(std::string_view trimmedField,
+        NumericToken& outTok,
+        const ParseOptions& opt = {});
+
 }} // namespace mr::num

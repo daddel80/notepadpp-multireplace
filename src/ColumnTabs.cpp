@@ -629,23 +629,30 @@ namespace ColumnTabs
         CT_GetSubTextUtf8(hSci, fieldPos0, fieldPos1, fld);
         if (fld.empty()) return false;
 
-        // Use shared string parser (first numeric token wins)
-        mr::num::NumericToken tok = mr::num::parse_first_numeric_token(fld);
-        if (!tok.ok) return false;
+        // Trim spaces/tabs around the field slice
+        auto is_space = [](unsigned char c) noexcept { return c == ' ' || c == '\t'; };
+        std::size_t n = fld.size();
+        std::size_t t0 = 0, t1 = n;
+        while (t0 < n && is_space((unsigned char)fld[t0])) ++t0;
+        while (t1 > t0 && is_space((unsigned char)fld[t1 - 1])) --t1;
 
-        // Pixel width of *integer part* (no sign, up to separator if present)
-        // Compute integer-part substring boundaries inside 'fld'
+        if (t1 <= t0) return false;
+        std::string_view trimmed(fld.data() + t0, t1 - t0);
+
+        mr::num::NumericToken tok;
+        if (!mr::num::classify_numeric_field(trimmed, tok))
+            return false;
+
+        // Compute pixel width of integer part (no sign, up to decimal separator)
         std::size_t intStart = tok.start + (tok.hasSign ? 1u : 0u);
-        std::size_t intLen = (tok.intDigits > 0) ? static_cast<std::size_t>(tok.intDigits) : 0u;
+        std::size_t intLen = (tok.intDigits > 0) ? (std::size_t)tok.intDigits : 0u;
 
-        std::string left;
-        if (intLen > 0 && intStart + intLen <= fld.size())
-            left.assign(fld.data() + intStart, intLen);
-        else
-            left.clear();
+        std::string leftDigits;
+        if (intLen > 0 && intStart + intLen <= trimmed.size())
+            leftDigits.assign(trimmed.data() + intStart, intLen);
 
-        outLeftPx = CT_TextWidthPx(hSci, left);
-        outStartDoc = fieldPos0 + static_cast<Sci_Position>(tok.start); // doc pos of sign-or-first-digit
+        outLeftPx = CT_TextWidthPx(hSci, leftDigits);
+        outStartDoc = fieldPos0 + (Sci_Position)(t0 + tok.start);
         outHasDecimal = tok.hasDecimal;
         return true;
     }
@@ -657,8 +664,6 @@ namespace ColumnTabs
         int lastLine)
     {
         const HWND hwnd = hSci;
-
-        // --- light wrappers over Scintilla ---
         auto S = [hwnd](UINT msg, WPARAM w = 0, LPARAM l = 0)->sptr_t { return (sptr_t)::SendMessage(hwnd, msg, w, l); };
         auto ls = [&](int ln)->Sci_Position { return (Sci_Position)S(SCI_POSITIONFROMLINE, (uptr_t)ln); };
         auto le = [&](int ln)->Sci_Position { return (Sci_Position)S(SCI_GETLINEENDPOSITION, (uptr_t)ln); };
@@ -668,18 +673,14 @@ namespace ColumnTabs
         const bool liveInfo = (model.getLineInfo != nullptr);
         if (!haveVec && !liveInfo) return false;
 
-        // --- normalize line range ---
         const int l0 = (firstLine < 0) ? 0 : firstLine;
-        int       l1 = lastLine;
-        if (l1 < 0) l1 = haveVec ? (l0 + (int)model.Lines.size() - 1) : l0;
+        int       l1 = (lastLine < 0) ? (haveVec ? (l0 + (int)model.Lines.size() - 1) : l0) : lastLine;
         if (l0 > l1) return false;
 
-        // Use our indicator; keep it invisible, under text
         S(SCI_SETINDICATORCURRENT, (uptr_t)CT_GetIndicatorId());
         S(SCI_INDICSETSTYLE, (uptr_t)CT_GetIndicatorId(), INDIC_HIDDEN);
         S(SCI_INDICSETUNDER, (uptr_t)CT_GetIndicatorId(), 1);
 
-        // Fetch current line info (live via callback or from model.Lines)
         auto fetchLine = [&](int ln)->CT_ColumnLineInfo {
             if (liveInfo) return model.getLineInfo(ln);
             size_t i = (size_t)(ln - l0);
@@ -687,7 +688,6 @@ namespace ColumnTabs
             return model.Lines[i];
             };
 
-        // --- PASS 0: column count ---
         size_t maxCols = 0;
         for (int ln = l0; ln <= l1; ++ln)
             maxCols = (std::max)(maxCols, fetchLine(ln).FieldCount());
@@ -696,122 +696,58 @@ namespace ColumnTabs
         std::vector<int>  maxIntDigits(maxCols, 0);
         std::vector<char> colHasDec(maxCols, 0);
 
-        // --- local tokenizer (fallback) ---
-        // ASCII-only digit checks (no ctype) to avoid CRT assertions on UTF-8 bytes.
-        auto scanToken = [&](Sci_Position s, Sci_Position e,
-            Sci_Position& tokStart, int& intDigits, bool& hasDec)->bool
-            {
-                // skip internal leading ws
-                Sci_Position i = s;
-                while (i < e) { const int ch = gc(i); if (ch == ' ' || ch == '\t') ++i; else break; }
-                if (i >= e) return false;
-
-                // optional sign
-                const bool sign = (gc(i) == '+' || gc(i) == '-');
-                if (sign) { ++i; if (i >= e) return false; }
-
-                // integer digits
-                Sci_Position j = i;
-                while (j < e) { const int ch = gc(j); if (ch >= '0' && ch <= '9') ++j; else break; }
-                intDigits = (int)(j - i);
-
-                // decimal part ('.' or ',') with optional fraction
-                hasDec = false;
-                if (j < e) {
-                    const int ch = gc(j);
-                    if (ch == '.' || ch == ',') {
-                        hasDec = true;
-                        ++j;
-                        while (j < e) { const int d = gc(j); if (d >= '0' && d <= '9') ++j; else break; }
-                    }
-                }
-
-                if (intDigits <= 0 && !hasDec) return false;
-
-                // token starts at first non-WS of slice; include sign if present
-                tokStart = s;
-                while (tokStart < e) {
-                    const int ch = gc(tokStart);
-                    if (ch == ' ' || ch == '\t') ++tokStart; else break;
-                }
-                if (sign && tokStart > s) --tokStart; // include sign so our spaces go before it
-                return true;
-            };
-
-        // --- prefer CT_FindNumericToken; fallback to our local scanner -----------
-        auto findNumberUsingCT = [hwnd, &gc, &scanToken](Sci_Position s, Sci_Position e,
+        // Detection: rely solely on CT_FindNumericToken (strict numeric fields)
+        auto findNumberUsingCT = [hwnd](Sci_Position s, Sci_Position e,
             Sci_Position& tokStart,
             int& intDigits,
             bool& hasDec) -> bool
             {
                 int dummyPx = 0; hasDec = false;
-                if (ColumnTabs::CT_FindNumericToken(hwnd, s, e, tokStart, dummyPx, hasDec)) {
-                    // Count integer digits starting at tokStart (skip sign).
-                    intDigits = 0;
-                    Sci_Position p = tokStart;
-                    int ch = gc(p);
-                    if (ch == '+' || ch == '-') ++p;
+                if (!ColumnTabs::CT_FindNumericToken(hwnd, s, e, tokStart, dummyPx, hasDec))
+                    return false;
 
-                    // read-then-advance to count the first digit as well
-                    for (;;) {
-                        if (p >= e) break;
-                        ch = gc(p);
-                        if (ch >= '0' && ch <= '9') { ++intDigits; ++p; continue; }
-                        if (ch == '.' || ch == ',') break; // separator ends integer part
-                        break;
-                    }
-                    return (intDigits > 0) || hasDec; // accept ".5" via hasDec
+                // Count integer digits (skip sign) up to separator
+                auto gcLoc = [hwnd](Sci_Position p)->int { return (int)::SendMessage(hwnd, SCI_GETCHARAT, (uptr_t)p, 0); };
+                intDigits = 0;
+                Sci_Position p = tokStart;
+                int ch = gcLoc(p);
+                if (ch == '+' || ch == '-') ++p;
+                for (;;) {
+                    ch = gcLoc(p);
+                    if (ch >= '0' && ch <= '9') { ++intDigits; ++p; continue; }
+                    if (ch == '.' || ch == ',') break;
+                    break;
                 }
-                // fallback (handles ".5", "5.", etc.)
-                return scanToken(s, e, tokStart, intDigits, hasDec);
+                return (intDigits > 0) || hasDec;
             };
 
-        // --- robust field slicing ---
-        auto sliceBounds = [&](const CT_ColumnLineInfo& L, int ln, size_t col,
-            Sci_Position delta, Sci_Position& s, Sci_Position& e)
-            {
-                const Sci_Position base = ls(ln);
-                const Sci_Position eol = le(ln);
-                const size_t nDelim = L.delimiterOffsets.size();
-                const size_t nField = nDelim + 1;
-
-                if (col >= nField) { s = e = base; return; }
-
-                // end: before next delimiter, trimming left padding in front of it
-                if (col < nDelim) {
-                    e = base + (Sci_Position)L.delimiterOffsets[col] + delta;
-                    while (e > base) {
-                        const int chL = gc(e - 1);
-                        if (chL == ' ' || chL == '\t') { --e; continue; }
-                        break;
-                    }
-                }
-                else {
-                    e = eol;
-                }
-
-                // start: after previous delimiter + delimiterLength, skip all WS
-                if (col == 0) {
-                    s = base;
-                }
-                else {
-                    s = base + (Sci_Position)L.delimiterOffsets[col - 1] + delta + (Sci_Position)model.delimiterLength;
-                    while (s < e) {
-                        const int chR = gc(s);
-                        if (chR == ' ' || chR == '\t') { ++s; continue; }
-                        break;
-                    }
-                }
-            };
-
-        // --- PASS 1: collect maxima and decimal flags per column ---
+        // PASS 1: collect maxima and decimal flags per column
         for (int ln = l0; ln <= l1; ++ln) {
             const auto L = fetchLine(ln);
             const size_t nField = L.FieldCount();
             Sci_Position dummyDelta = 0;
             for (size_t c = 0; c < nField; ++c) {
-                Sci_Position s{}, e{}; sliceBounds(L, ln, c, dummyDelta, s, e);
-                if (s >= e) continue;
+                Sci_Position s{}, e{}; // field bounds
+                {
+                    const Sci_Position base = ls(ln);
+                    const size_t nDelim = L.delimiterOffsets.size();
+                    const size_t nField2 = nDelim + 1;
+                    if (c >= nField2) continue;
+
+                    // end
+                    if (c < nDelim) {
+                        e = base + (Sci_Position)L.delimiterOffsets[c] + dummyDelta;
+                        while (e > base) { int chL = gc(e - 1); if (chL == ' ' || chL == '\t') --e; else break; }
+                    }
+                    else e = le(ln);
+
+                    // start
+                    if (c == 0) s = base;
+                    else {
+                        s = base + (Sci_Position)L.delimiterOffsets[c - 1] + dummyDelta + (Sci_Position)model.delimiterLength;
+                        while (s < e) { int chR = gc(s); if (chR == ' ' || chR == '\t') ++s; else break; }
+                    }
+                }
 
                 Sci_Position tokStart{}; int intDigits = 0; bool hasDec = false;
                 if (findNumberUsingCT(s, e, tokStart, intDigits, hasDec)) {
@@ -821,7 +757,7 @@ namespace ColumnTabs
             }
         }
 
-        // --- PASS 2: insert/remove our spaces only (marked by indicator) ---------
+        // PASS 2: apply spaces (only ours, marked by indicator)
         S(SCI_BEGINUNDOACTION);
 
         for (int ln = l0; ln <= l1; ++ln) {
@@ -832,15 +768,31 @@ namespace ColumnTabs
             for (size_t c = 0; c < nField; ++c) {
                 if (c >= maxCols || maxIntDigits[c] <= 0) continue;
 
-                const auto L = fetchLine(ln); // fresh per iteration
-                Sci_Position s{}, e{}; sliceBounds(L, ln, c, delta, s, e);
-                if (s >= e) continue;
+                const auto L = fetchLine(ln);
+                Sci_Position s{}, e{};
+                {
+                    const Sci_Position base = ls(ln);
+                    const size_t nDelim = L.delimiterOffsets.size();
+                    const size_t nField2 = nDelim + 1;
+                    if (c >= nField2) continue;
+
+                    if (c < nDelim) {
+                        e = base + (Sci_Position)L.delimiterOffsets[c] + delta;
+                        while (e > base) { int chL = gc(e - 1); if (chL == ' ' || chL == '\t') --e; else break; }
+                    }
+                    else e = le(ln);
+
+                    if (c == 0) s = base;
+                    else {
+                        s = base + (Sci_Position)L.delimiterOffsets[c - 1] + delta + (Sci_Position)model.delimiterLength;
+                        while (s < e) { int chR = gc(s); if (chR == ' ' || chR == '\t') ++s; else break; }
+                    }
+                }
 
                 Sci_Position tokStart{}; int intDigits = 0; bool hasDec = false;
                 const bool isNum = findNumberUsingCT(s, e, tokStart, intDigits, hasDec);
                 if (!isNum) continue;
 
-                // raw start of field (for user-space clamp)
                 const Sci_Position base = ls(ln);
                 const Sci_Position fieldStartRaw =
                     (c == 0)
@@ -849,25 +801,16 @@ namespace ColumnTabs
 
                 // count ASCII spaces immediately left of the token
                 int spacesTouching = 0;
-                {
-                    Sci_Position p = tokStart;
-                    while (p > fieldStartRaw && gc(p - 1) == ' ') { --p; ++spacesTouching; }
-                }
+                { Sci_Position p = tokStart; while (p > fieldStartRaw && gc(p - 1) == ' ') { --p; ++spacesTouching; } }
 
                 const int baseGapUnits = 1;
 
-                bool hasSign = false;
-                if (tokStart < e) {
-                    const int ch0 = gc(tokStart);
-                    hasSign = (ch0 == '+' || ch0 == '-');
-                }
+                bool hasSign2 = false;
+                if (tokStart < e) { const int ch0 = gc(tokStart); hasSign2 = (ch0 == '+' || ch0 == '-'); }
 
                 int needUnits = baseGapUnits + (maxIntDigits[c] - intDigits);
                 if (needUnits < 0) needUnits = 0;
-
-                // CHANGE: always let the sign "hang" so digits align in integer-only columns too
-                if (hasSign && needUnits > 0)
-                    --needUnits;
+                if (hasSign2 && needUnits > 0) --needUnits; // always let the sign "hang"
 
                 const int diff = needUnits - spacesTouching;
 
@@ -905,6 +848,7 @@ namespace ColumnTabs
         S(SCI_ENDUNDOACTION);
         return true;
     }
+
 
 
 

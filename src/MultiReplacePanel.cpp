@@ -10148,15 +10148,21 @@ sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, b
 }
 
 bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
-    // Use shared parser to extract the first numeric token (tolerant, like Float Tab).
-    std::string normalized;
-    double value = 0.0;
-    if (!mr::num::try_parse_first_numeric_value(std::string_view(str), value, &normalized)) {
-        return false;
-    }
+    // Trim spaces/tabs before classifying
+    auto is_space = [](unsigned char c) noexcept { return c == ' ' || c == '\t'; };
+    std::size_t n = str.size(), t0 = 0, t1 = n;
+    while (t0 < n && is_space((unsigned char)str[t0])) ++t0;
+    while (t1 > t0 && is_space((unsigned char)str[t1 - 1])) --t1;
+    if (t1 <= t0) return false;
 
-    // Keep only the normalized token (suitable for std::stod)
-    str = std::move(normalized);
+    std::string_view trimmed(str.data() + t0, t1 - t0);
+
+    mr::num::NumericToken tok;
+    if (!mr::num::classify_numeric_field(trimmed, tok))
+        return false;
+
+    // Keep only the normalized numeric token ('.' normalized etc.)
+    str = tok.normalized;
     return true;
 }
 
