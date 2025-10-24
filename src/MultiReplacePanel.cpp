@@ -7800,65 +7800,71 @@ void MultiReplace::handleCopyColumnsToClipboard()
         return;
     }
 
+    // Read [start,end) and skip Float-Tab padding (by indicator) if present.
+    auto readRangeSkippingPads = [this](LRESULT startPos, LRESULT endPos) -> std::string {
+        std::string out;
+        out.reserve((size_t)(endPos - startPos));
+        const int indicId = ColumnTabs::CT_GetIndicatorId();      // <-- no arg
+        send(SCI_SETINDICATORCURRENT, indicId, 0);
+
+        for (LRESULT p = startPos; p < endPos; ++p) {
+            if ((int)send(SCI_INDICATORVALUEAT, indicId, p) != 0) continue;
+            const int ch = (int)send(SCI_GETCHARAT, p, 0);
+            if (ch == 0) break;
+            out.push_back((char)ch);
+        }
+        return out;
+        };
+
+    const bool hasAlignedPadding = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
+
     std::string combinedText;
     int copiedFieldsCount = 0;
-    size_t lineCount = lineDelimiterPositions.size();
+    const size_t lineCount = lineDelimiterPositions.size();
 
-
-    // Iterate through each line
     for (size_t i = 0; i < lineCount; ++i) {
         const auto& lineInfo = lineDelimiterPositions[i];
-
-        // Calculate absolute start/end for this line
-        LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
-        LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
+        const LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
+        const LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
 
         bool isFirstCopiedColumn = true;
         std::string lineText;
 
-        // Process each selected column
         for (SIZE_T column : columnDelimiterData.columns) {
             if (column <= lineInfo.positions.size() + 1) {
                 LRESULT startPos = 0;
                 LRESULT endPos = 0;
 
-                // Determine the absolute start position for this column
                 if (column == 1) {
                     startPos = lineStartPos;
                     isFirstCopiedColumn = false;
                 }
                 else if (column - 2 < lineInfo.positions.size()) {
                     startPos = lineStartPos + lineInfo.positions[column - 2].offsetInLine;
-                    // Drop the first delimiter if copied as the first column
                     if (isFirstCopiedColumn) {
-                        startPos += columnDelimiterData.delimiterLength;
+                        startPos += columnDelimiterData.delimiterLength; // drop leading delimiter on first
                         isFirstCopiedColumn = false;
                     }
                 }
-                else {
-                    break; // No more valid columns
-                }
+                else break;
 
-                // Determine the absolute end position for this column
-                if (column - 1 < lineInfo.positions.size()) {
+                if (column - 1 < lineInfo.positions.size())
                     endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
+                else
+                    endPos = lineEndPos;
+
+                if (hasAlignedPadding) {
+                    lineText += readRangeSkippingPads(startPos, endPos);
                 }
                 else {
-                    endPos = lineEndPos;
+                    std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1, '\0');
+                    Sci_TextRangeFull tr;
+                    tr.chrg.cpMin = startPos;
+                    tr.chrg.cpMax = endPos;
+                    tr.lpstrText = buffer.data();
+                    send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
+                    lineText += std::string(buffer.data());
                 }
-
-                // Buffer to hold the extracted text
-                std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1, '\0');
-
-                // Prepare TextRange structure for Scintilla
-                Sci_TextRangeFull tr;
-                tr.chrg.cpMin = startPos;
-                tr.chrg.cpMax = endPos;
-                tr.lpstrText = buffer.data();
-
-                // Extract text for the column
-                send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
-                lineText += std::string(buffer.data());
 
                 ++copiedFieldsCount;
             }
@@ -7866,13 +7872,11 @@ void MultiReplace::handleCopyColumnsToClipboard()
 
         combinedText += lineText;
 
-        // Append standard EOL only if the last column is not included
         if (i < lineCount - 1 && (lineText.empty() || (combinedText.back() != '\n' && combinedText.back() != '\r'))) {
             combinedText += getEOLStyle();
         }
     }
 
-    // Convert to Wide String and copy to clipboard
     std::wstring wstr = Encoding::bytesToWString(combinedText, getCurrentDocCodePage());
     copyTextToClipboard(wstr, copiedFieldsCount);
 }
@@ -7944,15 +7948,14 @@ void MultiReplace::handleColumnGridTabsButton()
     const bool hasPadNow = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
     if (hasPadNow)
     {
-        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);                     // delete only our marked pads
+        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
         ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
         ColumnTabs::CT_ResetFlowVisualState();
 
-        // Keep both gates in sync: column-lib doc flag + fast buffer gate
         ColumnTabs::CT_SetCurDocHasPads(_hScintilla, false);
-        g_padBufs.erase(bufId);                                               // this buffer no longer has pads
+        g_padBufs.erase(bufId);
 
-        findAllDelimitersInDocument(); // offsets changed due to deletions
+        findAllDelimitersInDocument();
 
         _flowTabsActive = false;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
@@ -8022,11 +8025,20 @@ void MultiReplace::handleColumnGridTabsButton()
         return;
     }
 
+    // Rescan once after potential edits
+    findAllDelimitersInDocument();
+
+    // Only proceed if there is actually padding present now
+    if (!ColumnTabs::CT_HasAlignedPadding(_hScintilla)) {
+        if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
+            ::SetWindowText(h, L"⇥");
+        _flowTabsActive = false;
+        showStatusMessage(LM.get(L"status_nothing_to_align"), MessageStatus::Info);
+        return;
+    }
+
     // Keep both gates in sync: column-lib doc flag + fast buffer gate
     ColumnTabs::CT_SetCurDocHasPads(_hScintilla, true);
-
-    // Re-scan once after insertion
-    findAllDelimitersInDocument();
 
     // Apply visuals
     if (!applyFlowTabStops()) {
