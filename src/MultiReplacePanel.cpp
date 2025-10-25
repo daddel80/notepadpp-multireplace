@@ -797,15 +797,21 @@ void MultiReplace::setUIElementVisibility() {
     bool regexChecked = SendMessage(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
     bool columnModeChecked = SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_MODE_RADIO), BM_GETCHECK, 0, 0) == BST_CHECKED;
 
-    // Update the Whole Word checkbox visibility based on the Regex mode
-    EnableWindow(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), !regexChecked);
+    // Whole Word must be disabled in regex mode (and unchecked to avoid stale state)
+    HWND hWholeWord = GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX);
+    if (regexChecked) {
+        EnableWindow(hWholeWord, FALSE);
+        SendMessageW(hWholeWord, BM_SETCHECK, BST_UNCHECKED, 0);
+    }
+    else {
+        EnableWindow(hWholeWord, TRUE);
+    }
 
+    // Column-mode dependent controls
     const std::vector<int> columnRadioDependentElements = {
         IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON,
         IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_COLUMN_GRIDTABS_BUTTON
     };
-
-    // Update the UI elements based on Column mode
     for (int id : columnRadioDependentElements) {
         EnableWindow(GetDlgItem(_hSelf, id), columnModeChecked);
     }
@@ -1838,6 +1844,13 @@ void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
     SendMessageW(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), BM_SETCHECK, (!itemData.regex && !itemData.extended) ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), BM_SETCHECK, itemData.extended ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_SETCHECK, itemData.regex ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    // Enforce UI consistency: when regex is on, whole-word must be off in UI
+    if (itemData.regex) {
+        SendMessageW(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), BM_SETCHECK, BST_UNCHECKED, 0);
+    }
+    // Apply enable/disable rules (disables the checkbox if regex is on)
+    setUIElementVisibility();
 }
 
 void MultiReplace::shiftListItem(const Direction& direction) {
@@ -2231,44 +2244,59 @@ void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
 
 void MultiReplace::toggleBooleanAt(int itemIndex, ColumnID columnID) {
     if (itemIndex < 0 || itemIndex >= static_cast<int>(replaceListData.size())) {
-        return; // Early return for invalid item index
+        return; // invalid row
     }
 
-    // Store the original data
     ReplaceItemData originalData = replaceListData[itemIndex];
-
-    // Create a new data object to represent the modified state
     ReplaceItemData newData = originalData;
 
-    // Toggle the boolean field based on the ColumnID
     switch (columnID) {
     case ColumnID::SELECTION:
         newData.isEnabled = !newData.isEnabled;
         break;
+
     case ColumnID::WHOLE_WORD:
-        newData.wholeWord = !newData.wholeWord;
+        // Ping-pong: if regex is on, turn it off, then toggle whole-word
+        if (originalData.regex) {
+            newData.regex = false;
+        }
+        newData.wholeWord = !originalData.wholeWord;
         break;
+
     case ColumnID::MATCH_CASE:
         newData.matchCase = !newData.matchCase;
         break;
+
     case ColumnID::USE_VARIABLES:
         newData.useVariables = !newData.useVariables;
         break;
+
     case ColumnID::EXTENDED:
         newData.extended = !newData.extended;
+        if (newData.extended) {
+            // Extended and Regex are mutually exclusive
+            newData.regex = false;
+        }
         break;
+
     case ColumnID::REGEX:
         newData.regex = !newData.regex;
+        if (newData.regex) {
+            // Regex disables Whole Word and excludes Extended
+            newData.wholeWord = false;
+            newData.extended = false;
+        }
         break;
+
     default:
-        return; // Not a toggleable boolean column
+        return;
     }
 
-    // Use modifyItemInReplaceList to handle the change and Undo/Redo
+    // Apply change (keeps Undo/Redo behavior)
     modifyItemInReplaceList(static_cast<size_t>(itemIndex), newData);
 
     if (columnID == ColumnID::SELECTION)
-        updateHeaderSelection();   // Re-evaluate all/none/some enabled for the header
+        updateHeaderSelection();
 }
 
 void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
