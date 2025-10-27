@@ -7828,83 +7828,123 @@ void MultiReplace::handleCopyColumnsToClipboard()
         return;
     }
 
-    // Read [start,end) and skip Float-Tab padding (by indicator) if present.
-    auto readRangeSkippingPads = [this](LRESULT startPos, LRESULT endPos) -> std::string {
+    // Check once whether Flow-Tab padding is active.
+    const bool hasAlignedPadding = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
+
+    // Helper to read [startPos, endPos) from Scintilla for one field.
+    // If Flow Tabs padding is active, we skip characters that are marked as padding
+    // (indicator range). Otherwise we just read the raw slice.
+    auto readFieldText = [this, hasAlignedPadding](LRESULT startPos, LRESULT endPos) -> std::string {
         std::string out;
         out.reserve((size_t)(endPos - startPos));
-        const int indicId = ColumnTabs::CT_GetIndicatorId();      // <-- no arg
-        send(SCI_SETINDICATORCURRENT, indicId, 0);
 
-        for (LRESULT p = startPos; p < endPos; ++p) {
-            if ((int)send(SCI_INDICATORVALUEAT, indicId, p) != 0) continue;
-            const int ch = (int)send(SCI_GETCHARAT, p, 0);
-            if (ch == 0) break;
-            out.push_back((char)ch);
+        if (hasAlignedPadding) {
+            const int indicId = ColumnTabs::CT_GetIndicatorId();
+            send(SCI_SETINDICATORCURRENT, indicId, 0);
+
+            for (LRESULT p = startPos; p < endPos; ++p) {
+                if ((int)send(SCI_INDICATORVALUEAT, indicId, p) != 0)
+                    continue; // skip artificial alignment padding
+                const int ch = (int)send(SCI_GETCHARAT, p, 0);
+                if (ch == 0)
+                    break;
+                out.push_back((char)ch);
+            }
         }
+        else {
+            std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1, '\0');
+            Sci_TextRangeFull tr;
+            tr.chrg.cpMin = startPos;
+            tr.chrg.cpMax = endPos;
+            tr.lpstrText = buffer.data();
+            send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
+            out.assign(buffer.data());
+        }
+
         return out;
         };
-
-    const bool hasAlignedPadding = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
 
     std::string combinedText;
     int copiedFieldsCount = 0;
     const size_t lineCount = lineDelimiterPositions.size();
 
+    // Walk each known CSV line
     for (size_t i = 0; i < lineCount; ++i) {
         const auto& lineInfo = lineDelimiterPositions[i];
+
+        // Absolute start/end positions of this physical line in Scintilla
         const LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
         const LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
 
-        bool isFirstCopiedColumn = true;
         std::string lineText;
+        bool firstOutField = true;
 
-        for (SIZE_T column : columnDelimiterData.columns) {
-            if (column <= lineInfo.positions.size() + 1) {
-                LRESULT startPos = 0;
-                LRESULT endPos = 0;
+        // Use the exact column order the user entered (inputColumns),
+        // not the sorted unique set. This preserves e.g. "1,3,2".
+        for (SIZE_T colIdx = 0; colIdx < columnDelimiterData.inputColumns.size(); ++colIdx) {
+            const int column = columnDelimiterData.inputColumns[colIdx]; // 1-based column index
 
-                if (column == 1) {
-                    startPos = lineStartPos;
-                    isFirstCopiedColumn = false;
-                }
-                else if (column - 2 < lineInfo.positions.size()) {
-                    startPos = lineStartPos + lineInfo.positions[column - 2].offsetInLine;
-                    if (isFirstCopiedColumn) {
-                        startPos += columnDelimiterData.delimiterLength; // drop leading delimiter on first
-                        isFirstCopiedColumn = false;
-                    }
-                }
-                else break;
+            // Guard: skip invalid or out-of-range columns.
+            // Number of fields in this line = delimiterCount + 1.
+            if (column <= 0 || column > static_cast<int>(lineInfo.positions.size() + 1)) {
+                continue;
+            }
 
-                if (column - 1 < lineInfo.positions.size())
-                    endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
-                else
-                    endPos = lineEndPos;
+            // Compute [start,end) for the pure field content (no leading delimiter).
+            LRESULT startPos = 0;
+            LRESULT endPos = 0;
 
-                if (hasAlignedPadding) {
-                    lineText += readRangeSkippingPads(startPos, endPos);
+            if (column == 1) {
+                // First field starts at line start
+                startPos = lineStartPos;
+            }
+            else {
+                // Field N>1 starts right AFTER the delimiter that precedes it
+                const SIZE_T delimBeforeIndex = static_cast<SIZE_T>(column - 2);
+                if (delimBeforeIndex < lineInfo.positions.size()) {
+                    startPos = lineStartPos
+                        + lineInfo.positions[delimBeforeIndex].offsetInLine
+                        + (LRESULT)columnDelimiterData.delimiterLength;
                 }
                 else {
-                    std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1, '\0');
-                    Sci_TextRangeFull tr;
-                    tr.chrg.cpMin = startPos;
-                    tr.chrg.cpMax = endPos;
-                    tr.lpstrText = buffer.data();
-                    send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
-                    lineText += std::string(buffer.data());
+                    // Safety: malformed position info, skip this column
+                    continue;
                 }
-
-                ++copiedFieldsCount;
             }
+
+            // Field ends right BEFORE the next delimiter, or at line end
+            if (static_cast<SIZE_T>(column - 1) < lineInfo.positions.size()) {
+                endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
+            }
+            else {
+                endPos = lineEndPos;
+            }
+
+            // Extract the field text (optionally skipping Flow-Tab padding)
+            const std::string fieldText = readFieldText(startPos, endPos);
+
+            // Build output: insert delimiter before every field after the first
+            if (!firstOutField) {
+                lineText += columnDelimiterData.extendedDelimiter;
+            }
+            lineText += fieldText;
+            firstOutField = false;
+
+            ++copiedFieldsCount;
         }
 
         combinedText += lineText;
 
-        if (i < lineCount - 1 && (lineText.empty() || (combinedText.back() != '\n' && combinedText.back() != '\r'))) {
+        // Append the document's EOL style to separate rows,
+        // but avoid adding duplicate EOL if the last char already is \n or \r.
+        if (i < lineCount - 1 &&
+            (lineText.empty() || (combinedText.back() != '\n' && combinedText.back() != '\r')))
+        {
             combinedText += getEOLStyle();
         }
     }
 
+    // Convert to wide string using the current document code page and copy to clipboard
     std::wstring wstr = Encoding::bytesToWString(combinedText, getCurrentDocCodePage());
     copyTextToClipboard(wstr, copiedFieldsCount);
 }
