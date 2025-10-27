@@ -7964,19 +7964,73 @@ void MultiReplace::handleColumnGridTabsButton()
     pointerToScintilla();
     if (!_hScintilla) return;
 
-    // Current buffer id (pointer-sized alias BufferId)
+    // Current buffer id
     const BufferId bufId = (BufferId)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
 
     ColumnTabs::CT_SetIndicatorId(30);
 
-    // Seed prev id so the very first switch can clean the source document
+    // init prev id for cleanup-on-buffer-switch logic
     if (g_prevBufId == 0) g_prevBufId = bufId;
 
-    // If padding already present, treat as "TURN OFF"
+    // Ground truth: does the current doc actually contain Flow-Tab padding?
     const bool hasPadNow = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
+
+    // 1) Desync handling:
+    //    If UI state (_flowTabsActive) and document state (hasPadNow) disagree,
+    //    just resync UI/housekeeping without touching document text.
+    if (hasPadNow != _flowTabsActive)
+    {
+        if (hasPadNow)
+        {
+            // Document still has padding but UI thought it was off.
+            // -> Mark as active, restore visuals, update button to "⇤".
+            ColumnTabs::CT_SetCurDocHasPads(_hScintilla, true);
+            g_padBufs.insert(bufId);
+
+            _flowTabsActive = true;
+            if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
+                ::SetWindowText(h, L"⇤");
+
+            // Rebuild model and re-apply stops (visual only, does not change text)
+            findAllDelimitersInDocument();
+            applyFlowTabStops();
+
+            showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
+        }
+        else
+        {
+            // Document has no padding but UI thought it was on (user undo etc.).
+            // -> Mark as inactive, drop visuals, update button to "⇥".
+            ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
+            ColumnTabs::CT_ResetFlowVisualState();
+
+            ColumnTabs::CT_SetCurDocHasPads(_hScintilla, false);
+            g_padBufs.erase(bufId);
+
+            findAllDelimitersInDocument();
+
+            _flowTabsActive = false;
+            if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
+                ::SetWindowText(h, L"⇥");
+
+            // Selection / highlight cleanup does not change text
+            normalizeSelectionAfterCleanup();
+            fixHighlightAtDocumentEnd();
+
+            showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
+        }
+
+        g_prevBufId = bufId;
+        return;
+    }
+
+    // From here on: states are in sync.
+    // 2) Normal TOGGLE LOGIC
+
+    // CASE A: Padding present (and _flowTabsActive == true) -> TURN OFF fully
     if (hasPadNow)
     {
-        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
+        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);               // remove inserted spaces/tabs
         ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
         ColumnTabs::CT_ResetFlowVisualState();
 
@@ -7991,19 +8045,14 @@ void MultiReplace::handleColumnGridTabsButton()
 
         normalizeSelectionAfterCleanup();
         fixHighlightAtDocumentEnd();
+
         showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
+        g_prevBufId = bufId;
         return;
     }
 
-    // If visuals are already "active", just re-apply and bail
-    if (_flowTabsActive)
-    {
-        if (!applyFlowTabStops())
-            showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
-        return;
-    }
+    // CASE B: Padding not present (and _flowTabsActive == false) -> TURN ON
 
-    // --- TURN ON (insert)
     if (!flowTabsIntroDontShowEnabled) {
         bool dontShow = false;
         if (!showFlowTabsIntroDialog(dontShow))
@@ -8014,7 +8063,7 @@ void MultiReplace::handleColumnGridTabsButton()
         }
     }
 
-    // Need a current delimiter matrix
+    // Need delimiter data
     if (lineDelimiterPositions.empty()) {
         showStatusMessage(LM.get(L"status_no_delimiters"), MessageStatus::Error);
         return;
@@ -8026,7 +8075,7 @@ void MultiReplace::handleColumnGridTabsButton()
         return;
     }
 
-    // 1) Numeric padding first
+    // Optional numeric alignment first (modifies text)
     if (flowTabsNumericAlignEnabled) {
         ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, (int)model.Lines.size() - 1);
         findAllDelimitersInDocument();
@@ -8036,7 +8085,7 @@ void MultiReplace::handleColumnGridTabsButton()
         }
     }
 
-    // 2) Then insert Flow-Tabs
+    // Insert Flow-Tab padding
     ColumnTabs::CT_AlignOptions opt{};
     opt.firstLine = 0;
     opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
@@ -8053,22 +8102,22 @@ void MultiReplace::handleColumnGridTabsButton()
         return;
     }
 
-    // Rescan once after potential edits
+    // Rescan after edit so delimiter info matches new layout
     findAllDelimitersInDocument();
 
-    // Only proceed if there is actually padding present now
+    // If still nothing measurable (e.g. no numeric cols / no alignment needed)
     if (!ColumnTabs::CT_HasAlignedPadding(_hScintilla)) {
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
             ::SetWindowText(h, L"⇥");
         _flowTabsActive = false;
         showStatusMessage(LM.get(L"status_nothing_to_align"), MessageStatus::Info);
+        g_prevBufId = bufId;
         return;
     }
 
-    // Keep both gates in sync: column-lib doc flag + fast buffer gate
+    // Mark active, bind visuals
     ColumnTabs::CT_SetCurDocHasPads(_hScintilla, true);
 
-    // Apply visuals
     if (!applyFlowTabStops()) {
         showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
     }
@@ -8079,10 +8128,8 @@ void MultiReplace::handleColumnGridTabsButton()
 
     showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
 
-    // Mark this buffer as having pads (O(1) gate for leave-clean)
+    // Track active buffer
     g_padBufs.insert(bufId);
-
-    // Ensure the very next switch treats THIS doc as the "previous" to clean.
     g_prevBufId = bufId;
 }
 
