@@ -7861,6 +7861,19 @@ void MultiReplace::handleCopyColumnsToClipboard()
             out.assign(buffer.data());
         }
 
+        // Trim trailing CR/LF that may belong to the physical line ending.
+        // This avoids injecting a line break in the middle of the reordered row
+        // (e.g. when copying columns in order "2,1").
+        while (!out.empty()) {
+            char c = out.back();
+            if (c == '\r' || c == '\n') {
+                out.pop_back();
+            }
+            else {
+                break;
+            }
+        }
+
         return out;
         };
 
@@ -8009,7 +8022,7 @@ void MultiReplace::handleColumnGridTabsButton()
 
     ColumnTabs::CT_SetIndicatorId(30);
 
-    // init prev id for cleanup-on-buffer-switch logic
+    // Seed prev id so the very first switch can clean the source document
     if (g_prevBufId == 0) g_prevBufId = bufId;
 
     // Ground truth: does the current doc actually contain Flow-Tab padding?
@@ -8031,7 +8044,6 @@ void MultiReplace::handleColumnGridTabsButton()
             if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
                 ::SetWindowText(h, L"⇤");
 
-            // Rebuild model and re-apply stops (visual only, does not change text)
             findAllDelimitersInDocument();
             applyFlowTabStops();
 
@@ -8053,7 +8065,6 @@ void MultiReplace::handleColumnGridTabsButton()
             if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
                 ::SetWindowText(h, L"⇥");
 
-            // Selection / highlight cleanup does not change text
             normalizeSelectionAfterCleanup();
             fixHighlightAtDocumentEnd();
 
@@ -8115,17 +8126,21 @@ void MultiReplace::handleColumnGridTabsButton()
         return;
     }
 
-    // Optional numeric alignment first (modifies text)
+    // We want NumericPadding + InsertAlignedPadding to be one single undo step.
+    send(SCI_BEGINUNDOACTION, 0, 0);
+
+    // Step 1: numeric alignment (optional; modifies text, inserts numeric left padding)
     if (flowTabsNumericAlignEnabled) {
         ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, (int)model.Lines.size() - 1);
         findAllDelimitersInDocument();
         if (!buildCTModelFromMatrix(model)) {
+            send(SCI_ENDUNDOACTION, 0, 0);
             showStatusMessage(L"Numeric align: model rebuild failed", MessageStatus::Error);
             return;
         }
     }
 
-    // Insert Flow-Tab padding
+    // Step 2: insert Flow-Tab padding (tabs/spaces between columns, mark padding ranges)
     ColumnTabs::CT_AlignOptions opt{};
     opt.firstLine = 0;
     opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
@@ -8138,9 +8153,13 @@ void MultiReplace::handleColumnGridTabsButton()
     opt.oneFlowTabOnly = true;
 
     if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt)) {
+        send(SCI_ENDUNDOACTION, 0, 0);
         showStatusMessage(LM.get(L"status_padding_insert_failed"), MessageStatus::Error);
         return;
     }
+
+    // All text modifications that belong to this "TURN ON" action are done.
+    send(SCI_ENDUNDOACTION, 0, 0);
 
     // Rescan after edit so delimiter info matches new layout
     findAllDelimitersInDocument();
@@ -8168,7 +8187,7 @@ void MultiReplace::handleColumnGridTabsButton()
 
     showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
 
-    // Track active buffer
+    // Track active buffer for cleanup-on-switch logic
     g_padBufs.insert(bufId);
     g_prevBufId = bufId;
 }
