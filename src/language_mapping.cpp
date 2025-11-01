@@ -177,6 +177,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_visual_fail", L"Flow Tabs: visual tabstops failed." },
 { L"status_tabs_inserted", L"Flow Tabs: INSERTED." },
 { L"status_tabs_removed", L"Flow Tabs: REMOVED." },
+{ L"status_tabs_aligned", L"Flow Tabs: ALIGNED" },
 { L"status_nothing_to_align", L"Flow Tabs: nothing to align." },
 
 // Dynamic Status message entries

@@ -8025,11 +8025,11 @@ void MultiReplace::handleColumnGridTabsButton()
     // Seed prev id so the very first switch can clean the source document
     if (g_prevBufId == 0) g_prevBufId = bufId;
 
-    // Ground truth: does the current doc actually contain Flow-Tab padding?
-    const bool hasPadNow = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
+    // Ground truth (Padding TEXT state only)
+    const bool hasPadNow = ColumnTabs::CT_GetCurDocHasPads(_hScintilla);
 
     // 1) Desync handling:
-    //    If UI state (_flowTabsActive) and document state (hasPadNow) disagree,
+    //    If UI state (_flowTabsActive) and document TEXT state (hasPadNow) disagree,
     //    just resync UI/housekeeping without touching document text.
     if (hasPadNow != _flowTabsActive)
     {
@@ -8143,20 +8143,41 @@ void MultiReplace::handleColumnGridTabsButton()
     // Step 2: insert Flow-Tab padding (tabs/spaces between columns, mark padding ranges)
     ColumnTabs::CT_AlignOptions opt{};
     opt.firstLine = 0;
-    opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
+    opt.lastLine = (int)model.Lines.size() - 1;
 
     const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
     opt.gapCells = 2;
     _flowPaddingPx = spacePx * opt.gapCells;
 
-    opt.spacesOnlyIfTabDelimiter = true;
     opt.oneFlowTabOnly = true;
 
-    if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt)) {
+    // --- ONLY CHANGE START: refine failure branch to account for numeric-only success ---
+    bool nothingToAlign = false;
+    if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt, &nothingToAlign)) {
         send(SCI_ENDUNDOACTION, 0, 0);
-        showStatusMessage(LM.get(L"status_padding_insert_failed"), MessageStatus::Error);
+
+        // If numeric padding already modified text, treat this as success (ON).
+        if (ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
+            _flowTabsActive = true;
+            if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
+                ::SetWindowText(h, L"⇤");
+
+            // Optionally bind visuals (may be a no-op if no delimiters)
+            applyFlowTabStops();
+
+            showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
+            g_padBufs.insert(bufId);
+            g_prevBufId = bufId;
+            return;
+        }
+
+        // Otherwise: report proper status (nothing vs. failed)
+        showStatusMessage(LM.get(nothingToAlign ? L"status_nothing_to_align"
+            : L"status_padding_insert_failed"),
+            nothingToAlign ? MessageStatus::Info : MessageStatus::Error);
         return;
     }
+    // --- ONLY CHANGE END ---
 
     // All text modifications that belong to this "TURN ON" action are done.
     send(SCI_ENDUNDOACTION, 0, 0);
@@ -8164,8 +8185,10 @@ void MultiReplace::handleColumnGridTabsButton()
     // Rescan after edit so delimiter info matches new layout
     findAllDelimitersInDocument();
 
-    // If still nothing measurable (e.g. no numeric cols / no alignment needed)
-    if (!ColumnTabs::CT_HasAlignedPadding(_hScintilla)) {
+    // CHANGE: do not force pads flag; check actual state
+    const bool nowHasPads = ColumnTabs::CT_GetCurDocHasPads(_hScintilla);
+    if (!nowHasPads && !ColumnTabs::CT_HasFlowTabStops()) {
+        // No pads and no visuals → treat as nothing-to-align
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
             ::SetWindowText(h, L"⇥");
         _flowTabsActive = false;
@@ -8175,8 +8198,6 @@ void MultiReplace::handleColumnGridTabsButton()
     }
 
     // Mark active, bind visuals
-    ColumnTabs::CT_SetCurDocHasPads(_hScintilla, true);
-
     if (!applyFlowTabStops()) {
         showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
     }
@@ -8185,10 +8206,12 @@ void MultiReplace::handleColumnGridTabsButton()
     if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
         ::SetWindowText(h, L"⇤");
 
-    showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
+    showStatusMessage(LM.get(nowHasPads ? L"status_tabs_inserted"  // with inserts
+        : L"status_tabs_aligned"), // visuals only
+        MessageStatus::Success );
 
     // Track active buffer for cleanup-on-switch logic
-    g_padBufs.insert(bufId);
+    if (nowHasPads) g_padBufs.insert(bufId); else g_padBufs.erase(bufId);
     g_prevBufId = bufId;
 }
 
@@ -8230,9 +8253,11 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
 
     // Derive mode with UI flag taking precedence
     enum class EtabsMode { Off, Visual, Padding };
+
+    // CHANGE: use CT_GetCurDocHasPads() to detect text padding (not CT_HasAlignedPadding)
     const EtabsMode mode =
         (!_flowTabsActive) ? EtabsMode::Off
-        : (ColumnTabs::CT_HasAlignedPadding(_hScintilla) ? EtabsMode::Padding
+        : (ColumnTabs::CT_GetCurDocHasPads(_hScintilla) ? EtabsMode::Padding
             : EtabsMode::Visual);
 
     // Which ops modify text?
@@ -8240,7 +8265,7 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
         (op == CsvOp::Sort) || (op == CsvOp::DeleteColumns);
 
     // If Padding + modifying op → unpad to get canonical text
-    if (mode == EtabsMode::Padding && modifiesText && ColumnTabs::CT_HasAlignedPadding(_hScintilla)) {
+    if (mode == EtabsMode::Padding && modifiesText && ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
         ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
         findAllDelimitersInDocument(); // offsets changed
     }
@@ -8261,10 +8286,10 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
         if (buildCTModelFromMatrix(model)) {
             if (!model.Lines.empty()) {
                 ColumnTabs::CT_ClearFlowTabStops(_hScintilla); // selective
+
+                // CHANGE: apply doc-absolute range (or simply use *_All)
                 const int gapPx = _flowPaddingPx;
-                const int first = 0;
-                const int last = (int)model.Lines.size() - 1;
-                ColumnTabs::CT_ApplyFlowTabStops(_hScintilla, model, first, last, gapPx);
+                ColumnTabs::CT_ApplyFlowTabStopsAll(_hScintilla, model, gapPx);
             }
         }
         break;
@@ -8276,19 +8301,18 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
         ColumnTabs::CT_ColumnModelView model{};
         if (buildCTModelFromMatrix(model) && !model.Lines.empty()) {
 
-            // --- CHANGE: Numeric padding must run first on the fresh model ---
+            // Numeric padding first (optional)
             if (flowTabsNumericAlignEnabled) {
                 ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, (int)model.Lines.size() - 1);
 
                 // After text edits, delimiter offsets are stale → rescan & rebuild
                 findAllDelimitersInDocument();
                 if (!buildCTModelFromMatrix(model)) {
-                    // Robustness: if rebuild fails, stop reflow (keep canonical text)
-                    break;
+                    break; // keep canonical text if rebuild fails
                 }
             }
 
-            // Now insert Flow-Tabs (this also computes & sets visual tab stops)
+            // Insert Flow-Tabs (this also computes & sets visual tab stops)
             ColumnTabs::CT_AlignOptions a{};
             a.firstLine = 0;
             a.lastLine = (int)model.Lines.size() - 1;
@@ -8296,16 +8320,16 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
             // Convert pixels -> "cells" (width of one space in the current font)
             const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
             a.gapCells = (spacePx > 0) ? (_flowPaddingPx / spacePx) : 2;
-            a.spacesOnlyIfTabDelimiter = true;
             a.oneFlowTabOnly = true;
 
-            ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, a);
+            bool nothingToAlign = false;
+            (void)ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, a, &nothingToAlign);
 
-            // Keep gate in sync so other paths can make O(1) decisions
-            ColumnTabs::CT_SetCurDocHasPads(_hScintilla, true);
-
-            // Optional hygiene: rescan once so matrix matches the new text
-            findAllDelimitersInDocument();
+            // CHANGE: do not force the doc-has-pads flag; read the actual state
+            if (ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
+                // Optional hygiene: rescan once so matrix matches the new text
+                findAllDelimitersInDocument();
+            }
         }
         break;
     }
