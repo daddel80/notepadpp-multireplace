@@ -24,7 +24,6 @@
 // --- Scintilla direct --------------------------------------------------------
 static inline sptr_t S(HWND hSci, UINT m, uptr_t w = 0, sptr_t l = 0)
 {
-    // cache per thread & HWND
     static thread_local HWND         cachedHwnd = nullptr;
     static thread_local SciFnDirect  cachedFn = nullptr;
     static thread_local sptr_t       cachedPtr = 0;
@@ -37,6 +36,9 @@ static inline sptr_t S(HWND hSci, UINT m, uptr_t w = 0, sptr_t l = 0)
     return cachedFn ? cachedFn(cachedPtr, m, w, l) : ::SendMessage(hSci, m, w, l);
 }
 
+// -----------------------------------------------------------------------------
+// File-local helpers (no linkage outside this TU)
+// -----------------------------------------------------------------------------
 struct RedrawGuard {
     HWND h{};
     explicit RedrawGuard(HWND hwnd) : h(hwnd) {
@@ -65,6 +67,65 @@ struct OptionalRedrawGuard {
     }
 };
 
+// small helpers (file-local)
+static int CT_TextWidthPx(HWND hSci, const std::string& s) {
+    const int w = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)s.c_str());
+    if (w > 0) return w;
+    const int sp = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
+    return (int)s.size() * (sp > 0 ? sp : 8);
+}
+
+static void CT_GetSubTextUtf8(HWND hSci, Sci_Position pos0, Sci_Position pos1, std::string& out) {
+    out.clear();
+    if (pos1 <= pos0) return;
+    const ptrdiff_t need = (ptrdiff_t)(pos1 - pos0);
+    out.assign((size_t)need + 1u, '\0');
+    Sci_TextRangeFull tr{}; tr.chrg.cpMin = pos0; tr.chrg.cpMax = pos1; tr.lpstrText = out.data();
+    S(hSci, SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
+    if (!out.empty()) out.pop_back();
+}
+
+// find number in [fieldPos0, fieldPos1): returns doc pos of first digit/sign and px width of left part
+static bool CT_FindNumericToken(HWND hSci,
+    Sci_Position fieldPos0,
+    Sci_Position fieldPos1,
+    Sci_Position& outStartDoc,
+    int& outLeftPx,
+    bool& outHasDecimal)
+{
+    std::string fld;
+    CT_GetSubTextUtf8(hSci, fieldPos0, fieldPos1, fld);
+    if (fld.empty()) return false;
+
+    auto is_space = [](unsigned char c) noexcept { return c == ' ' || c == '\t'; };
+    std::size_t n = fld.size();
+    std::size_t t0 = 0, t1 = n;
+    while (t0 < n && is_space((unsigned char)fld[t0])) ++t0;
+    while (t1 > t0 && is_space((unsigned char)fld[t1 - 1])) --t1;
+
+    if (t1 <= t0) return false;
+    std::string_view trimmed(fld.data() + t0, t1 - t0);
+
+    mr::num::NumericToken tok;
+    if (!mr::num::classify_numeric_field(trimmed, tok))
+        return false;
+
+    std::size_t intStart = tok.start + (tok.hasSign ? 1u : 0u);
+    std::size_t intLen = (tok.intDigits > 0) ? (std::size_t)tok.intDigits : 0u;
+
+    std::string leftDigits;
+    if (intLen > 0 && intStart + intLen <= trimmed.size())
+        leftDigits.assign(trimmed.data() + intStart, intLen);
+
+    outLeftPx = CT_TextWidthPx(hSci, leftDigits);
+    outStartDoc = fieldPos0 + (Sci_Position)(t0 + tok.start);
+    outHasDecimal = tok.hasDecimal;
+    return true;
+}
+
+// -----------------------------------------------------------------------------
+// ColumnTabs::detail – persistent state and helpers  (separater Namespace)
+// -----------------------------------------------------------------------------
 namespace ColumnTabs::detail {
 
     // docPtr -> has pads (for O(1) gate)
@@ -140,8 +201,6 @@ namespace ColumnTabs::detail {
         }
         if (maxCols < 2) { stopPx.clear(); return true; }
         const size_t stopsCount = maxCols - 1;
-
-        // NOTE: Do not clear/apply tab stops here; setter handles per-line clearing.
 
         // Helpers: extract text; measure width in px.
         auto getSubText = [&](Sci_Position pos0, Sci_Position pos1, std::string& out) {
@@ -245,7 +304,7 @@ namespace ColumnTabs::detail {
             }
         }
 
-        // PASS 3: EOL clamps — never beyond preferred (kept as a guard rail).
+        // PASS 3: EOL clamps — never beyond preferred (guard rail).
         std::vector<int> clamp(stopsCount, 0);
         for (const auto& lm : lines) {
             if (lm.lastIdx < 0) continue;
@@ -282,187 +341,22 @@ namespace ColumnTabs::detail {
 
 } // namespace ColumnTabs::detail
 
-namespace ColumnTabs
-{
+// -----------------------------------------------------------------------------
+// ColumnTabs – all public APIs (separater Namespace)
+// -----------------------------------------------------------------------------
+namespace ColumnTabs {
 
-    // ----------------------------------------------------------------------------
-    // Indicator id (tracks inserted padding)
-    // ----------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Indicator (tracks inserted padding)
+    // -------------------------------------------------------------------------
     static int g_CT_IndicatorId = 30;
 
     void CT_SetIndicatorId(int id) noexcept { g_CT_IndicatorId = id; }
     int  CT_GetIndicatorId() noexcept { return g_CT_IndicatorId; }
 
-    // ----------------------------------------------------------------------------
-    // Utilities
-    // ----------------------------------------------------------------------------
-    size_t CT_VisualCellWidth(const char* s, size_t n, int tabWidth)
-    {
-        size_t col = 0;
-        for (size_t i = 0; i < n; ++i) {
-            const unsigned char c = (unsigned char)s[i];
-            if (c == '\t') {
-                if (tabWidth <= 1) { ++col; continue; }
-                const size_t mod = col % (size_t)tabWidth;
-                col += (mod == 0) ? (size_t)tabWidth : ((size_t)tabWidth - mod);
-            }
-            else if (c != '\r' && c != '\n') {
-                ++col;
-            }
-        }
-        return col;
-    }
-
-    // ----------------------------------------------------------------------------
-    // Visual API (non-destructive)
-    // ----------------------------------------------------------------------------
-
-    bool CT_ApplyFlowTabStops(HWND hSci,
-        const CT_ColumnModelView& model,
-        int firstLine,
-        int lastLine,
-        int paddingPx /*pixels*/)
-    {
-        using namespace ColumnTabs::detail;
-
-        ensureCapacity(hSci);
-
-        const bool hasVec = !model.Lines.empty();
-        if (!hasVec && !model.getLineInfo) return false;
-
-        int line0 = firstLine;
-        int effectiveLast = firstLine;
-
-        if (hasVec) {
-            const int modelFirst = static_cast<int>(model.docStartLine);
-            const int modelLast = modelFirst + static_cast<int>(model.Lines.size()) - 1;
-
-            if (line0 < modelFirst) line0 = modelFirst;
-
-            if (lastLine < 0) {
-                effectiveLast = modelLast;
-            }
-            else {
-                effectiveLast = (lastLine < line0) ? line0 : lastLine;
-                if (effectiveLast > modelLast) effectiveLast = modelLast;
-            }
-        }
-        else {
-            // Live provider: clamp start, then decide range
-            const int modelFirst = static_cast<int>(model.docStartLine);
-            if (line0 < modelFirst) line0 = modelFirst;
-
-            if (lastLine < 0) {
-                const int docLast = (int)S(hSci, SCI_GETLINECOUNT, 0, 0) - 1;
-                effectiveLast = (docLast < line0) ? line0 : docLast;
-            }
-            else {
-                effectiveLast = (lastLine < line0) ? line0 : lastLine;
-            }
-        }
-
-        if (line0 > effectiveLast) return false;
-
-        const int gapPx = (paddingPx > 0) ? paddingPx : 0;
-
-        // Compute first; bail out if there is nothing to align
-        std::vector<int> stops;
-        if (!computeStopsFromWidthsPx(hSci, model, line0, effectiveLast, stops, gapPx))
-            return false;
-        if (stops.empty())
-            return false;
-
-        // Snapshot manual tab stops only if we will take ownership
-        for (int ln = line0; ln <= effectiveLast; ++ln) {
-            if ((int)g_hasETSLine.size() > ln &&
-                (int)g_savedManualStopsPx.size() > ln &&
-                g_hasETSLine[(size_t)ln] == 0u)
-            {
-                g_savedManualStopsPx[(size_t)ln] = collectTabStopsPx(hSci, ln);
-            }
-        }
-
-        setTabStopsRangePx(hSci, line0, effectiveLast, stops);
-
-        // Mark ETS ownership
-        for (int ln = line0; ln <= effectiveLast; ++ln) {
-            if ((int)g_hasETSLine.size() > ln)
-                g_hasETSLine[(size_t)ln] = 1u;
-        }
-
-        return true;
-    }
-
-
-
-    bool CT_DisableFlowTabStops(HWND hSci, bool restoreManual)
-    {
-        using namespace detail;
-
-        if (!ColumnTabs::CT_HasFlowTabStops())
-            return true;
-
-        ensureCapacity(hSci);
-
-        // Batch repaint while clearing many lines
-        RedrawGuard rd(hSci);
-
-        const int total = (int)S(hSci, SCI_GETLINECOUNT, 0, 0);
-        const int limit = (std::min)(total, (int)g_hasETSLine.size());
-
-        for (int ln = 0; ln < limit; ++ln) {
-            if (!g_hasETSLine[(size_t)ln]) continue;
-
-            // 1) Remove ETS-owned per-line tab stops (visual only)
-            S(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
-
-            // 2) Optionally restore previously saved manual per-line tab stops
-            if (restoreManual) {
-                const auto& manual = g_savedManualStopsPx[(size_t)ln];
-                for (int px : manual)
-                    S(hSci, SCI_ADDTABSTOP, (uptr_t)ln, (sptr_t)px);
-            }
-
-            // 3) Reset ETS ownership and discard the snapshot for this line
-            g_hasETSLine[(size_t)ln] = 0u;
-            g_savedManualStopsPx[(size_t)ln].clear();
-        }
-        return true;
-    }
-
-    bool CT_ClearAllTabStops(HWND hSci)
-    {
-        const int total = (int)S(hSci, SCI_GETLINECOUNT);
-        OptionalRedrawGuard rg(hSci, /*opCount=*/(size_t)total);
-        for (int ln = 0; ln < total; ++ln)
-            S(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
-        return true;
-    }
-
-    void CT_ResetFlowVisualState() noexcept
-    {
-        detail::g_hasETSLine.clear();
-        detail::g_savedManualStopsPx.clear();
-    }
-
-    bool CT_HasAlignedPadding(HWND hSci) noexcept
-    {
-        return CT_GetCurDocHasPads(hSci);
-    }
-
-    bool ColumnTabs::CT_HasFlowTabStops() noexcept
-    {
-        using namespace detail;
-        // Linear scan in memory; avoids any editor calls.
-        for (size_t i = 0, n = g_hasETSLine.size(); i < n; ++i) {
-            if (g_hasETSLine[i]) return true;
-        }
-        return false;
-    }
-
-    // ----------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Destructive API (edits text)
-    // ----------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     bool ColumnTabs::CT_InsertAlignedPadding(HWND hSci,
         const CT_ColumnModelView& model,
         const CT_AlignOptions& opt,
@@ -481,7 +375,6 @@ namespace ColumnTabs
             return false;
         }
 
-        // robust range mapping with live-provider fallback and clamping
         const int baseDoc = (int)model.docStartLine;
         const int rel0 = (opt.firstLine < 0) ? 0 : opt.firstLine;
 
@@ -528,7 +421,6 @@ namespace ColumnTabs
             return false;
         }
 
-        // snapshot manual stops before taking ownership
         for (int ln = line0; ln <= line1; ++ln) {
             if ((int)g_hasETSLine.size() > ln &&
                 (int)g_savedManualStopsPx.size() > ln &&
@@ -538,20 +430,16 @@ namespace ColumnTabs
             }
         }
 
-        // apply visual stops
         setTabStopsRangePx(hSci, line0, line1, stops);
 
-        // mark ETS ownership
         for (int ln = line0; ln <= line1; ++ln) {
             if ((int)g_hasETSLine.size() > ln)
                 g_hasETSLine[(size_t)ln] = 1u;
         }
 
-        // fast path: TAB delimiter + oneFlowTabOnly → no inserts needed
         if (opt.oneFlowTabOnly && model.delimiterIsTab)
             return true;
 
-        // insert padding (tabs), mark ranges
         RedrawGuard rd(hSci);
         Sci(SCI_BEGINUNDOACTION);
         Sci(SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
@@ -608,7 +496,6 @@ namespace ColumnTabs
 
     bool ColumnTabs::CT_RemoveAlignedPadding(HWND hSci)
     {
-        // O(1) guard: skip if no pads were ever inserted for this doc.
         if (!ColumnTabs::CT_GetCurDocHasPads(hSci))
             return false;
 
@@ -621,7 +508,6 @@ namespace ColumnTabs
 
         bool removedAny = false;
 
-        // Remove all indicator-marked runs in a single undo action.
         S(SCI_BEGINUNDOACTION);
         {
             Sci_Position pos = (Sci_Position)S(SCI_GETLENGTH);
@@ -633,10 +519,9 @@ namespace ColumnTabs
                 const Sci_Position start = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)pos);
                 const Sci_Position end = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)pos);
                 if (end > start) {
-                    // Clear the indicator, then delete the exact marked range.
                     S(SCI_INDICATORCLEARRANGE, (uptr_t)start, (sptr_t)(end - start));
                     S(SCI_DELETERANGE, (uptr_t)start, (sptr_t)(end - start));
-                    pos = start;               // keep scanning backwards safely
+                    pos = start;
                     removedAny = true;
                 }
             }
@@ -644,69 +529,15 @@ namespace ColumnTabs
         S(SCI_ENDUNDOACTION);
 
         if (removedAny) {
-            // Keep the per-doc gate in sync: no pads remain after this sweep.
             ColumnTabs::CT_SetCurDocHasPads(hSci, false);
         }
 
         return removedAny;
     }
 
-    // small helpers (file-local)
-    static int CT_TextWidthPx(HWND hSci, const std::string& s) {
-        const int w = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)s.c_str());
-        if (w > 0) return w;
-        const int sp = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
-        return (int)s.size() * (sp > 0 ? sp : 8);
-    }
-
-    static void CT_GetSubTextUtf8(HWND hSci, Sci_Position pos0, Sci_Position pos1, std::string& out) {
-        out.clear();
-        if (pos1 <= pos0) return;
-        const ptrdiff_t need = (ptrdiff_t)(pos1 - pos0);
-        out.assign((size_t)need + 1u, '\0');
-        Sci_TextRangeFull tr{}; tr.chrg.cpMin = pos0; tr.chrg.cpMax = pos1; tr.lpstrText = out.data();
-        S(hSci, SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
-        if (!out.empty()) out.pop_back();
-    }
-
-    // find number in [fieldPos0, fieldPos1): returns doc pos of first digit/sign and px width of left part
-    static bool CT_FindNumericToken(HWND hSci,
-        Sci_Position fieldPos0,
-        Sci_Position fieldPos1,
-        Sci_Position& outStartDoc,
-        int& outLeftPx,
-        bool& outHasDecimal)
+    bool ColumnTabs::CT_HasAlignedPadding(HWND hSci) noexcept
     {
-        std::string fld;
-        CT_GetSubTextUtf8(hSci, fieldPos0, fieldPos1, fld);
-        if (fld.empty()) return false;
-
-        // Trim spaces/tabs around the field slice
-        auto is_space = [](unsigned char c) noexcept { return c == ' ' || c == '\t'; };
-        std::size_t n = fld.size();
-        std::size_t t0 = 0, t1 = n;
-        while (t0 < n && is_space((unsigned char)fld[t0])) ++t0;
-        while (t1 > t0 && is_space((unsigned char)fld[t1 - 1])) --t1;
-
-        if (t1 <= t0) return false;
-        std::string_view trimmed(fld.data() + t0, t1 - t0);
-
-        mr::num::NumericToken tok;
-        if (!mr::num::classify_numeric_field(trimmed, tok))
-            return false;
-
-        // Compute pixel width of integer part (no sign, up to decimal separator)
-        std::size_t intStart = tok.start + (tok.hasSign ? 1u : 0u);
-        std::size_t intLen = (tok.intDigits > 0) ? (std::size_t)tok.intDigits : 0u;
-
-        std::string leftDigits;
-        if (intLen > 0 && intStart + intLen <= trimmed.size())
-            leftDigits.assign(trimmed.data() + intStart, intLen);
-
-        outLeftPx = CT_TextWidthPx(hSci, leftDigits);
-        outStartDoc = fieldPos0 + (Sci_Position)(t0 + tok.start);
-        outHasDecimal = tok.hasDecimal;
-        return true;
+        return CT_GetCurDocHasPads(hSci);
     }
 
     bool ColumnTabs::CT_ApplyNumericPadding(
@@ -920,39 +751,166 @@ namespace ColumnTabs
         return true;
     }
 
-    bool ColumnTabs::CT_CleanupVisuals(HWND hSci) noexcept
+    // -------------------------------------------------------------------------
+    // Visual API (non-destructive; manages Scintilla tab stops)
+    // -------------------------------------------------------------------------
+    bool CT_ApplyFlowTabStops(HWND hSci,
+        const CT_ColumnModelView& model,
+        int firstLine,
+        int lastLine,
+        int paddingPx /*pixels*/)
     {
-        if (!hSci) return false;
-        CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);   // visual only
-        CT_ResetFlowVisualState();
+        using namespace ColumnTabs::detail;
+
+        ensureCapacity(hSci);
+
+        const bool hasVec = !model.Lines.empty();
+        if (!hasVec && !model.getLineInfo) return false;
+
+        int line0 = firstLine;
+        int effectiveLast = firstLine;
+
+        if (hasVec) {
+            const int modelFirst = static_cast<int>(model.docStartLine);
+            const int modelLast = modelFirst + static_cast<int>(model.Lines.size()) - 1;
+
+            if (line0 < modelFirst) line0 = modelFirst;
+
+            if (lastLine < 0) {
+                effectiveLast = modelLast;
+            }
+            else {
+                effectiveLast = (lastLine < line0) ? line0 : lastLine;
+                if (effectiveLast > modelLast) effectiveLast = modelLast;
+            }
+        }
+        else {
+            const int modelFirst = static_cast<int>(model.docStartLine);
+            if (line0 < modelFirst) line0 = modelFirst;
+
+            if (lastLine < 0) {
+                const int docLast = (int)S(hSci, SCI_GETLINECOUNT, 0, 0) - 1;
+                effectiveLast = (docLast < line0) ? line0 : docLast;
+            }
+            else {
+                effectiveLast = (lastLine < line0) ? line0 : lastLine;
+            }
+        }
+
+        if (line0 > effectiveLast) return false;
+
+        const int gapPx = (paddingPx > 0) ? paddingPx : 0;
+
+        std::vector<int> stops;
+        if (!computeStopsFromWidthsPx(hSci, model, line0, effectiveLast, stops, gapPx))
+            return false;
+        if (stops.empty())
+            return false;
+
+        for (int ln = line0; ln <= effectiveLast; ++ln) {
+            if ((int)g_hasETSLine.size() > ln &&
+                (int)g_savedManualStopsPx.size() > ln &&
+                g_hasETSLine[(size_t)ln] == 0u)
+            {
+                g_savedManualStopsPx[(size_t)ln] = collectTabStopsPx(hSci, ln);
+            }
+        }
+
+        setTabStopsRangePx(hSci, line0, effectiveLast, stops);
+
+        for (int ln = line0; ln <= effectiveLast; ++ln) {
+            if ((int)g_hasETSLine.size() > ln)
+                g_hasETSLine[(size_t)ln] = 1u;
+        }
+
         return true;
     }
 
-    bool ColumnTabs::CT_CleanupAllForDoc(HWND hSci) noexcept
+    bool CT_DisableFlowTabStops(HWND hSci, bool restoreManual)
     {
-        if (!hSci) return false;
+        using namespace detail;
 
-        if (ColumnTabs::CT_GetCurDocHasPads(hSci)) {
-            // Remove all indicator-marked padding in one sweep.
-            CT_RemoveAlignedPadding(hSci);
+        if (!ColumnTabs::CT_HasFlowTabStops())
+            return true;
+
+        ensureCapacity(hSci);
+
+        RedrawGuard rd(hSci);
+
+        const int total = (int)S(hSci, SCI_GETLINECOUNT, 0, 0);
+        const int limit = (std::min)(total, (int)g_hasETSLine.size());
+
+        for (int ln = 0; ln < limit; ++ln) {
+            if (!g_hasETSLine[(size_t)ln]) continue;
+
+            S(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
+
+            if (restoreManual) {
+                const auto& manual = g_savedManualStopsPx[(size_t)ln];
+                for (int px : manual)
+                    S(hSci, SCI_ADDTABSTOP, (uptr_t)ln, (sptr_t)px);
+            }
+
+            g_hasETSLine[(size_t)ln] = 0u;
+            g_savedManualStopsPx[(size_t)ln].clear();
         }
-        if (ColumnTabs::CT_HasFlowTabStops()) {
-            // Clear ETS-owned per-line tab stops; no restore on scope switch.
-            CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
-        }
-        CT_ResetFlowVisualState();
         return true;
     }
 
+    bool CT_ClearAllTabStops(HWND hSci)
+    {
+        const int total = (int)S(hSci, SCI_GETLINECOUNT);
+        OptionalRedrawGuard rg(hSci, /*opCount=*/(size_t)total);
+        for (int ln = 0; ln < total; ++ln)
+            S(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
+        return true;
+    }
+
+    void CT_ResetFlowVisualState() noexcept
+    {
+        detail::g_hasETSLine.clear();
+        detail::g_savedManualStopsPx.clear();
+    }
+
+    bool ColumnTabs::CT_HasFlowTabStops() noexcept
+    {
+        using namespace detail;
+        for (size_t i = 0, n = g_hasETSLine.size(); i < n; ++i) {
+            if (g_hasETSLine[i]) return true;
+        }
+        return false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Utilities (kept for callers)
+    // -------------------------------------------------------------------------
+    size_t CT_VisualCellWidth(const char* s, size_t n, int tabWidth)
+    {
+        size_t col = 0;
+        for (size_t i = 0; i < n; ++i) {
+            const unsigned char c = (unsigned char)s[i];
+            if (c == '\t') {
+                if (tabWidth <= 1) { ++col; continue; }
+                const size_t mod = col % (size_t)tabWidth;
+                col += (mod == 0) ? (size_t)tabWidth : ((size_t)tabWidth - mod);
+            }
+            else if (c != '\r' && c != '\n') {
+                ++col;
+            }
+        }
+        return col;
+    }
+
+    // -------------------------------------------------------------------------
+    // Per-document state
+    // -------------------------------------------------------------------------
     void ColumnTabs::CT_SetDocHasPads(sptr_t docPtr, bool has) noexcept {
-        // shrink: if "false", remove the key
         if (has) detail::g_docHasPads[docPtr] = true;
         else     detail::g_docHasPads.erase(docPtr);
     }
 
     bool ColumnTabs::CT_GetDocHasPads(sptr_t docPtr) noexcept {
         auto it = detail::g_docHasPads.find(docPtr);
-        // since we only store "true": key present == true
         return it != detail::g_docHasPads.end();
     }
 
@@ -966,6 +924,31 @@ namespace ColumnTabs
         const sptr_t doc = (sptr_t)::S(hSci, SCI_GETDOCPOINTER, 0, 0);
         if (!doc) return false;
         return CT_GetDocHasPads(doc);
+    }
+
+    // -------------------------------------------------------------------------
+    // Cleanup
+    // -------------------------------------------------------------------------
+    bool ColumnTabs::CT_CleanupVisuals(HWND hSci) noexcept
+    {
+        if (!hSci) return false;
+        CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
+        CT_ResetFlowVisualState();
+        return true;
+    }
+
+    bool ColumnTabs::CT_CleanupAllForDoc(HWND hSci) noexcept
+    {
+        if (!hSci) return false;
+
+        if (ColumnTabs::CT_GetCurDocHasPads(hSci)) {
+            CT_RemoveAlignedPadding(hSci);
+        }
+        if (ColumnTabs::CT_HasFlowTabStops()) {
+            CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
+        }
+        CT_ResetFlowVisualState();
+        return true;
     }
 
 } // namespace ColumnTabs
