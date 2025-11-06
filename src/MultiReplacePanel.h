@@ -16,6 +16,7 @@
 
 #ifndef MULTI_REPLACE_H
 #define MULTI_REPLACE_H
+#include "NppStyleKit.h"
 
 #include "StaticDialog/resource.h"
 #include "PluginInterface.h"
@@ -542,13 +543,35 @@ private:
        Note: Gaps in the list are intentional.
 
        Styles 0 - 7 are reserved for syntax style.
-       Styles 21 - 29, 31 are reserved by N++ (see SciLexer.h).
        Indicator 30 is reserved for MultiReplace ColumnTabs
     */
-    const std::vector<int> textStyles = { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 };
+
     const std::vector<int> hColumnStyles = { STYLE1, STYLE2, STYLE3, STYLE4, STYLE5, STYLE6, STYLE7, STYLE8, STYLE9, STYLE10 };
     const std::vector<int> lightModeColumnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
     const std::vector<int> darkModeColumnColors  = { 0x553333, 0x335577, 0x225522, 0x553355, 0x335555, 0x555522, 0x774444, 0x225555, 0x553366, 0x336633 };
+
+    // Preferences (input)
+    int preferredColumnTabsStyleId = 30; // preferred ColumnTabs id; -1 = auto
+    int preferredStandardMarkerStyle = 9; // preferred standard marker id; -1 = auto
+
+    // Assigned (output)
+    int standardMarkerStyleId = -1;        // resolved id for non-list marker
+
+    // Pools (runtime)
+    std::vector<int> textStyles;           // highlight pool (excludes ColumnTabs + standard)
+    std::vector<int> textStylesList;       // list-only pool (same as textStyles)
+
+    // Coordinator config
+    inline static constexpr int kPreferredIds[] = {
+        9,10,11,12,13,14,15,16,17,18,19,20,30,
+        32,33,34,35,36,37,38,39,40,41,42,43
+    };
+
+    inline static constexpr int kReservedIds[] = {
+        0,1,2,3,4,5,6,7,       // lexer
+        21,22,23,24,25,26,27,28,29,
+        31                     // N++ mark
+    };
 
     // Data-related variables 
     size_t markedStringsCount = 0;
@@ -684,7 +707,7 @@ private:
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();
-    void initializeMarkerStyle();
+    void ensureIndicatorContext();
     void initializeListView();
     void moveAndResizeControls();
     void updateTwoButtonsVisibility();
@@ -810,7 +833,6 @@ private:
     void handleMarkMatchesButton();
     int markString(const SearchContext& context, Sci_Position initialStart);
     void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
-    int generateColorValue(const std::string& str);
     void handleClearTextMarksButton();
     void handleCopyMarkedTextToClipboardButton();
     void copyTextToClipboard(const std::wstring& text, int textCount);

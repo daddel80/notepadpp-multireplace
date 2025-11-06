@@ -121,6 +121,7 @@
     <ClCompile Include="..\src\StringUtils.cpp" />
     <ClCompile Include="..\src\ColumnTabs.cpp" />
     <ClCompile Include="..\src\NumericToken.cpp" />
+    <ClCompile Include="..\src\NppStyleKit.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -230,6 +231,7 @@
     <ClInclude Include="..\src\StringUtils.h" />
     <ClInclude Include="..\src\ColumnTabs.h" />
     <ClInclude Include="..\src\NumericToken.h" />
+    <ClInclude Include="..\src\NppStyleKit.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

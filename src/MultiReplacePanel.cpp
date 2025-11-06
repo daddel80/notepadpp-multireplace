@@ -47,6 +47,7 @@
 #include <unordered_set>
 #include <vector>
 #include <filesystem>
+#include "NppStyleKit.h"
 
 #include <windows.h>
 #include <Commctrl.h>
@@ -471,16 +472,103 @@ bool MultiReplace::createAndShowWindows() {
     return true;
 }
 
+/*
+void MultiReplace::ensureIndicatorContext()
+{
+    static bool done = false;
+    if (done) return;
+
+    // Scintilla HWNDs
+    HWND hSci0 = nppData._scintillaMainHandle;
+    HWND hSci1 = nppData._scintillaSecondHandle;
+
+    // build vectors from header constants
+    std::vector<int> preferred(std::begin(kPreferredIds), std::end(kPreferredIds));
+    std::vector<int> reserved(std::begin(kReservedIds), std::end(kReservedIds));
+
+    // coordinator init with your pools
+    NppStyleKit::gIndicatorCoord.init(hSci0, hSci1, preferred, reserved);
+
+    // ColumnTabs first (prefer 30)
+    NppStyleKit::gColumnTabsIndicatorId =
+        NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("ColumnTabs", 30);
+
+    // pass id to ColumnTabs API (namespace function)
+    ColumnTabs::CT_SetIndicatorId(NppStyleKit::gColumnTabsIndicatorId);
+
+    // highlights get remaining pool
+    auto remaining = NppStyleKit::gIndicatorCoord.availableIndicatorPool();
+    NppStyleKit::gIndicatorReg.init(hSci0, hSci1, remaining, 100);
+
+    // adopt dynamic indicator pool for text marking
+    textStyles = NppStyleKit::gIndicatorReg.pool();
+
+    done = true;
+}
+
 void MultiReplace::initializeMarkerStyle() {
+    // ensure pool is available
+    if (textStyles.empty())
+        textStyles.push_back(9);
+
     // Initialize for non-list marker
     long standardMarkerColor = MARKER_COLOR;
-    int standardMarkerStyle = textStyles[0];
+    int  standardMarkerStyle = textStyles[0];
     colorToStyleMap[standardMarkerColor] = standardMarkerStyle;
 
     send(SCI_SETINDICATORCURRENT, standardMarkerStyle, 0);
     send(SCI_INDICSETSTYLE, standardMarkerStyle, INDIC_STRAIGHTBOX);
     send(SCI_INDICSETFORE, standardMarkerStyle, standardMarkerColor);
     send(SCI_INDICSETALPHA, standardMarkerStyle, 100);
+}
+*/
+
+void MultiReplace::ensureIndicatorContext()
+{
+    HWND hSci0 = nppData._scintillaMainHandle;
+    HWND hSci1 = nppData._scintillaSecondHandle;
+    if (!hSci0) return;
+
+    std::vector<int> preferred(std::begin(kPreferredIds), std::end(kPreferredIds));
+    std::vector<int> reserved(std::begin(kReservedIds), std::end(kReservedIds));
+
+    // (Re-)init coordinator only if handles changed
+    const bool reinit =
+        NppStyleKit::gIndicatorCoord.ensureIndicatorsInitialized(hSci0, hSci1, preferred, reserved);
+
+    // ColumnTabs: reserve preferred or first free
+    const bool colIdValid =
+        (NppStyleKit::gColumnTabsIndicatorId >= 0) &&
+        NppStyleKit::gIndicatorCoord.isIndicatorReserved(NppStyleKit::gColumnTabsIndicatorId);
+
+    if (!colIdValid) {
+        const int wantCol = preferredColumnTabsStyleId; // -1 = auto
+        NppStyleKit::gColumnTabsIndicatorId =
+            NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("ColumnTabs", wantCol);
+    }
+    ColumnTabs::CT_SetIndicatorId(NppStyleKit::gColumnTabsIndicatorId);
+
+    // Registry gets the full remaining pool (no dedicated standard id)
+    auto remaining = NppStyleKit::gIndicatorCoord.availableIndicatorPool();
+    NppStyleKit::gIndicatorReg.init(hSci0, hSci1, remaining, /*capacityHint*/100);
+
+    textStyles = remaining;
+    textStylesList = remaining;
+
+    // Debug window (zeigt auch Reinit-Status)
+    {
+        std::wstring msg;
+        msg += L"Reinit: " + std::wstring(reinit ? L"yes" : L"no") + L"\n";
+        msg += L"ColumnTabs: " + std::to_wstring(NppStyleKit::gColumnTabsIndicatorId) + L"\n";
+        msg += L"Highlight pool (" + std::to_wstring(textStyles.size()) + L"): ";
+        for (size_t i = 0; i < textStyles.size(); ++i) {
+            if (i) msg += L", ";
+            msg += std::to_wstring(textStyles[i]);
+        }
+        ::MessageBoxW(_hSelf ? _hSelf : nppData._nppHandle,
+            msg.c_str(), L"Indicator assignments",
+            MB_OK | MB_ICONINFORMATION);
+    }
 }
 
 void MultiReplace::initializeListView() {
@@ -3216,7 +3304,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 ));
         }
 
-        initializeMarkerStyle();
+        ensureIndicatorContext();
         initializeCtrlMap();
         initializeFontStyles();
         applyThemePalette();
@@ -3756,8 +3844,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             std::wstring path(n, 0);
             SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, n + 1, reinterpret_cast<LPARAM>(path.data()));
             path += L"\\MultiReplace";
-            BOOL isDarkMode = SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != FALSE;
-            std::wstring filename = isDarkMode ? L"\\help_use_variables_dark.html" : L"\\help_use_variables_light.html";
+            const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+            std::wstring filename = isDark ? L"\\help_use_variables_dark.html" : L"\\help_use_variables_light.html";
             path += filename;
             ShellExecute(NULL, L"open", path.c_str(), NULL, NULL, SW_SHOWNORMAL);
             return TRUE;
@@ -7411,6 +7499,9 @@ void MultiReplace::selectListItem(size_t matchIndex) {
 
 void MultiReplace::handleMarkMatchesButton() {
 
+    // ensure indicator context once per action
+    ensureIndicatorContext();
+
     if (!validateDelimiterData()) {
         return;
     }
@@ -7535,50 +7626,25 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
 
 void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findText)
 {
-    int color = useListEnabled ? generateColorValue(findText) : MARKER_COLOR;
-    auto it = colorToStyleMap.find(color);
-    int indicatorStyle;
+    if (len <= 0) return;
 
-    if (it == colorToStyleMap.end()) {
-        indicatorStyle = useListEnabled ? textStyles[(colorToStyleMap.size() % (textStyles.size() - 1)) + 1] : textStyles[0];
-        colorToStyleMap[color] = indicatorStyle;
-        send(SCI_INDICSETFORE, indicatorStyle, color);
-    }
-    else {
-        indicatorStyle = it->second;
-    }
+    uint32_t rgb = useListEnabled
+        ? NppStyleKit::ColorTools::djb2Color(findText)   // list: per-entry color
+        : static_cast<uint32_t>(MARKER_COLOR);           // non-list: fixed UI color
 
-    send(SCI_SETINDICATORCURRENT, indicatorStyle, 0);
-    send(SCI_INDICSETSTYLE, indicatorStyle, INDIC_STRAIGHTBOX);
-    send(SCI_INDICSETALPHA, indicatorStyle, 100);
-    send(SCI_INDICATORFILLRANGE, pos, len);
-}
+    const int id = NppStyleKit::gIndicatorReg.acquireForColor(rgb);
+    if (id < 0) return;
 
-int MultiReplace::generateColorValue(const std::string& str) {
-    // DJB2 hash
-    unsigned long hash = 5381;
-    for (char c : str) {
-        hash = ((hash << 5) + hash) + c;  // hash * 33 + c
-    }
-
-    // Create an RGB color using the hash
-    int r = (hash >> 16) & 0xFF;
-    int g = (hash >> 8) & 0xFF;
-    int b = hash & 0xFF;
-
-    // Convert RGB to long
-    int color = (r << 16) | (g << 8) | b;
-
-    return color;
+    NppStyleKit::gIndicatorReg.fillRange(_hScintilla, id,
+        (Sci_Position)pos, (Sci_Position)len);
 }
 
 void MultiReplace::handleClearTextMarksButton()
 {
-    for (int style : textStyles)
-    {
-        send(SCI_SETINDICATORCURRENT, style, 0);
-        send(SCI_INDICATORCLEARRANGE, 0, send(SCI_GETLENGTH, 0, 0));
-    }
+    if (HWND hA = nppData._scintillaMainHandle)   NppStyleKit::gIndicatorReg.clearAll(hA);
+    if (HWND hB = nppData._scintillaSecondHandle) NppStyleKit::gIndicatorReg.clearAll(hB);
+
+    NppStyleKit::gIndicatorReg.resetColorMap();
 
     markedStringsCount = 0;
     colorToStyleMap.clear();
@@ -8020,7 +8086,7 @@ void MultiReplace::handleColumnGridTabsButton()
     // Current buffer id
     const BufferId bufId = (BufferId)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
 
-    ColumnTabs::CT_SetIndicatorId(30);
+    ColumnTabs::CT_SetIndicatorId(NppStyleKit::gColumnTabsIndicatorId);
 
     // Seed prev id so the very first switch can clean the source document
     if (g_prevBufId == 0) g_prevBufId = bufId;
@@ -9143,14 +9209,14 @@ void MultiReplace::initializeColumnStyles() {
     LRESULT fgColor = send(SCI_STYLEGETFORE, STYLE_DEFAULT);
 
     // Check if Notepad++ is in dark mode
-    bool isDarkMode = SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0);
+    const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
 
     // Select color scheme based on mode
-    const auto& columnColors = isDarkMode ? darkModeColumnColors : lightModeColumnColors;
+    const auto& columnColors = isDark ? darkModeColumnColors : lightModeColumnColors;
 
     for (SIZE_T column = 0; column < hColumnStyles.size(); ++column) {
         long bgColor = columnColors[column % columnColors.size()];
-        LRESULT adjustedFgColor = isDarkMode ? adjustForegroundForDarkMode(fgColor, bgColor) : fgColor;
+        LRESULT adjustedFgColor = isDark ? adjustForegroundForDarkMode(fgColor, bgColor) : fgColor;
 
         send(SCI_STYLESETBACK, hColumnStyles[column], bgColor);
         send(SCI_STYLESETFORE, hColumnStyles[column], adjustedFgColor);
@@ -10051,10 +10117,10 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageSta
 void MultiReplace::applyThemePalette()
 {
     // Check if Notepad++ is currently in dark mode
-    BOOL isDarkMode = (SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0);
+    const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
 
     // Assign colours from the predefined palettes in the header file
-    if (isDarkMode) {
+    if (isDark) {
         COLOR_SUCCESS = DMODE_SUCCESS;
         COLOR_ERROR = DMODE_ERROR;
         COLOR_INFO = DMODE_INFO;
