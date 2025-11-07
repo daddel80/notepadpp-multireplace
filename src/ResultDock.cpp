@@ -35,8 +35,27 @@
 
 extern NppData nppData;
 
+// #define MR_DEBUG_JUMP 0
+
 namespace {
     LanguageManager& LM = LanguageManager::instance();
+
+    static bool         s_hasPendingJump = false;
+    static std::wstring s_pendingPath;
+    static Sci_Position s_pendingPos = 0;
+    static Sci_Position s_pendingLen = 0;
+
+    static HWND         s_targetEd = nullptr;   // active editor to watch
+    static int          s_jumpState = 0;        // 0=idle, 1=activated, 2=update-seen
+    static const UINT   s_timerId = 1001;       // one-shot timer id
+
+    static void SetPendingJump(const std::wstring& path, Sci_Position pos, Sci_Position len)
+    {
+        s_pendingPath = path;
+        s_pendingPos = pos;
+        s_pendingLen = len;
+        s_hasPendingJump = !s_pendingPath.empty();
+    }
 
     static constexpr uint32_t argb(BYTE a, COLORREF c)
     {
@@ -1880,88 +1899,117 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
     case WM_LBUTTONDBLCLK:
     {
-        // 1) Remember current dock scroll state
-        const LRESULT firstVisible = ::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0);
+        const int firstVisible = (int)::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0);
 
-        // 2) Determine clicked line
         const int x = LOWORD(lp);
         const int y = HIWORD(lp);
-        const Sci_Position posInDock = ::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y);
+        const Sci_Position posInDock = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y);
         if (posInDock < 0) return 0;
+
         const int dispLine = (int)::SendMessage(hwnd, SCI_LINEFROMPOSITION, posInDock, 0);
 
-        // 2a) Header fold toggle unchanged
         const int level = (int)::SendMessage(hwnd, SCI_GETFOLDLEVEL, dispLine, 0);
         if (level & SC_FOLDLEVELHEADERFLAG) {
             ::SendMessage(hwnd, SCI_TOGGLEFOLD, dispLine, 0);
             const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
             ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStartPos, 0);
-            ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
             return 0;
         }
 
-        // 3) Read raw to classify as HitLine
         const int lineLen = (int)::SendMessage(hwnd, SCI_LINELENGTH, dispLine, 0);
+        if (lineLen <= 0) return 0;
+
         std::string raw(lineLen, '\0');
         ::SendMessage(hwnd, SCI_GETLINE, dispLine, (LPARAM)raw.data());
         raw.resize(strnlen(raw.c_str(), lineLen));
         if (ResultDock::classify(raw) != LineKind::HitLine) return 0;
 
-        // 4) Compute hitIndex by counting previous HitLines (unchanged)
         int hitIndex = -1;
-        for (int i = 0; i <= dispLine; ++i) {
-            const int len = (int)::SendMessage(hwnd, SCI_LINELENGTH, i, 0);
-            std::string buf(len, '\0');
-            ::SendMessage(hwnd, SCI_GETLINE, i, (LPARAM)buf.data());
-            buf.resize(strnlen(buf.c_str(), len));
-            if (ResultDock::classify(buf) == LineKind::HitLine)
-                ++hitIndex;
+        {
+            int count = -1;
+            const int totalLines = (int)::SendMessage(hwnd, SCI_GETLINECOUNT, 0, 0);
+            const int last = (dispLine < totalLines) ? dispLine : (totalLines - 1);
+            for (int i = 0; i <= last; ++i) {
+                const int len = (int)::SendMessage(hwnd, SCI_LINELENGTH, i, 0);
+                if (len <= 0) continue;
+                std::string buf(len, '\0');
+                ::SendMessage(hwnd, SCI_GETLINE, i, (LPARAM)buf.data());
+                buf.resize(strnlen(buf.c_str(), len));
+                if (ResultDock::classify(buf) == LineKind::HitLine)
+                    ++count;
+            }
+            hitIndex = count;
         }
-        const std::vector<Hit>& hits = ResultDock::instance().hits();
+
+        const auto& hits = ResultDock::instance().hits();
         if (hitIndex < 0 || hitIndex >= (int)hits.size()) return 0;
         const Hit& hit = hits[(size_t)hitIndex];
 
-        // 5) Convert UTF-8 path to wide
         std::wstring wPath;
-        const int wlen = ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, nullptr, 0);
-        if (wlen > 0) {
-            wPath.resize(wlen - 1);
-            ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, &wPath[0], wlen);
+        if (!hit.fullPathUtf8.empty()) {
+            const int wlen = ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, nullptr, 0);
+            if (wlen > 0) {
+                wPath.resize(wlen - 1);
+                ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, &wPath[0], wlen);
+            }
         }
+        if (wPath.empty()) return 0;
 
-        // 6) Decide pseudo vs real, ensure open, then select
         const bool isPseudo = ResultDock::IsPseudoPath(wPath);
         std::wstring pathToOpen = wPath;
 
-        if (isPseudo) {
-            // First try: if current tab title matches this pseudo label -> just jump
-            if (ResultDock::IsCurrentDocByTitle(wPath)) {
-                ResultDock::JumpSelectCenterActiveEditor(hit.pos, hit.length);
-            }
-            else {
-                // Not open: use generated default path, then same logic as real files
-                pathToOpen = ResultDock::BuildDefaultPathForPseudo(wPath);
-                std::wstring opened;
-                const bool ok = ResultDock::EnsureFileOpenOrOfferCreate(pathToOpen, opened);
-                if (!ok) return 0;
-                ResultDock::JumpSelectCenterActiveEditor(hit.pos, hit.length);
-            }
-        }
-        else {
-            // Real path: try switch, open if needed, or ask to create
-            std::wstring opened;
-            const bool ok = ResultDock::EnsureFileOpenOrOfferCreate(pathToOpen,  opened);
-            if (!ok) return 0;
+        if (!isPseudo && ResultDock::IsCurrentDocByFullPath(pathToOpen)) {
             ResultDock::JumpSelectCenterActiveEditor(hit.pos, hit.length);
+            ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
+            const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
+            ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStartPos, 0);
+            return 0;
+        }
+        if (isPseudo && ResultDock::IsCurrentDocByTitle(wPath)) {
+            ResultDock::JumpSelectCenterActiveEditor(hit.pos, hit.length);
+            ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
+            const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
+            ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStartPos, 0);
+            return 0;
+        }
+        if (isPseudo) {
+            pathToOpen = ResultDock::BuildDefaultPathForPseudo(wPath);
+            if (pathToOpen.empty()) return 0;
         }
 
-        // 7) Restore dock scroll & clear its selection; keep focus on dock (as before)
+        SetPendingJump(pathToOpen, hit.pos, hit.length);
+
+        const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)pathToOpen.c_str());
+        if (!ok) {
+            SetPendingJump(L"", 0, 0);
+            return 0;
+        }
+
         ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
         const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
         ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStartPos, 0);
-        ::SetFocus(hwnd);
         return 0;
     }
+
+    case WM_TIMER:
+    {
+        if (wp == s_timerId)
+        {
+            ::KillTimer(hwnd, s_timerId);
+            if (s_hasPendingJump && s_targetEd && s_jumpState == 2)
+            {
+                JumpSelectCenterActiveEditor(s_pendingPos, s_pendingLen);
+                s_hasPendingJump = false;
+                s_pendingPath.clear();
+                s_targetEd = nullptr;
+                s_jumpState = 0;
+            }
+            return 0;
+        }
+        break;
+    }
+
+
 
     case DMN_CLOSE:
         ::SendMessage(nppData._nppHandle, NPPM_DMMHIDE, 0, (LPARAM)ResultDock::instance()._hDock);
@@ -2088,4 +2136,38 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
     return s_prevSciProc
         ? ::CallWindowProc(s_prevSciProc, hwnd, msg, wp, lp)
         : ::DefWindowProc(hwnd, msg, wp, lp);
+}
+
+void ResultDock::onNppNotification(const SCNotification* notify)
+{
+    if (!notify)
+        return;
+
+    if (!s_hasPendingJump || s_pendingPath.empty())
+        return;
+
+    if (notify->nmhdr.code == NPPN_BUFFERACTIVATED)
+    {
+        wchar_t cur[MAX_PATH] = {};
+        ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, (LPARAM)cur);
+        if (!cur[0] || _wcsicmp(cur, s_pendingPath.c_str()) != 0)
+            return;
+
+        int whichView = 0;
+        ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&whichView);
+        s_targetEd = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+        s_jumpState = 1;
+        return;
+    }
+
+    if (notify->nmhdr.code == SCN_UPDATEUI)
+    {
+        if (!s_targetEd || notify->nmhdr.hwndFrom != s_targetEd || s_jumpState != 1)
+            return;
+
+        s_jumpState = 2;
+        if (_hSci)
+            ::SetTimer(_hSci, s_timerId, 1, nullptr);
+        return;
+    }
 }

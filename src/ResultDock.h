@@ -84,6 +84,8 @@ public:
     void insertFileBlockNow(const FileMap& fm, const SciSendFn& sciSend);
     void insertSearchHeader(const std::wstring& header);
 
+    void onNppNotification(const SCNotification* notify);
+
 private:
     // ---------------- Construction & Core State ---------------
     explicit ResultDock(HINSTANCE hInst);

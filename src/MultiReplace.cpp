@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <vector>
 #include <windows.h>
+#include "ResultDock.h"
 
 extern FuncItem funcItem[nbFunc];
 extern NppData nppData;
@@ -130,6 +131,9 @@ extern "C" __declspec(dllexport) FuncItem * getFuncsArray(int *nbF)
 
 extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
 {
+    // forward notifications for deferred jump handling
+    ResultDock::instance().onNppNotification(notifyCode);
+
     switch (notifyCode->nmhdr.code)
     {
     case NPPN_TBMODIFICATION:
