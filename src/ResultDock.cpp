@@ -1429,28 +1429,55 @@ void ResultDock::JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len
     int whichView = 0; // 0 main, 1 secondary
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&whichView);
     HWND hEd = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
-    if (!hEd) return;
+    if (!hEd)
+        return;
 
     ::SetFocus(hEd);
     ::SendMessage(hEd, SCI_SETFOCUS, TRUE, 0);
 
-    // Ensure line visible, select range, and center
-    const Sci_Position targetLine = (Sci_Position)::SendMessage(hEd, SCI_LINEFROMPOSITION, pos, 0);
-    ::SendMessage(hEd, SCI_ENSUREVISIBLE, targetLine, 0);
-    ::SendMessage(hEd, SCI_GOTOPOS, pos, 0);
-    ::SendMessage(hEd, SCI_SETSEL, pos, pos + len);
-    ::SendMessage(hEd, SCI_SCROLLCARET, 0, 0);
+    // Normalize match range
+    Sci_Position startPos = pos;
+    Sci_Position endPos = (len > 0) ? (pos + len) : pos;
+    if (endPos < startPos)
+        std::swap(startPos, endPos);
 
-    // Center the caret line without extra auto-scrolling
-    const size_t firstVisibleDocLine =
-        (size_t)::SendMessage(hEd, SCI_DOCLINEFROMVISIBLE, (WPARAM)::SendMessage(hEd, SCI_GETFIRSTVISIBLELINE, 0, 0), 0);
-    size_t linesOnScreen = (size_t)::SendMessage(hEd, SCI_LINESONSCREEN, (WPARAM)firstVisibleDocLine, 0);
-    if (linesOnScreen == 0) linesOnScreen = 1;
-    const size_t caretLine = (size_t)::SendMessage(hEd, SCI_LINEFROMPOSITION, pos, 0);
-    const size_t midDisplay = firstVisibleDocLine + linesOnScreen / 2;
-    const ptrdiff_t deltaLines = (ptrdiff_t)caretLine - (ptrdiff_t)midDisplay;
-    ::SendMessage(hEd, SCI_LINESCROLL, 0, deltaLines);
-    ::SendMessage(hEd, SCI_ENSUREVISIBLEENFORCEPOLICY, (WPARAM)caretLine, 0);
+    // Make sure target lines are visible (unfold / scroll into view)
+    const Sci_Position startLine = (Sci_Position)::SendMessage(hEd, SCI_LINEFROMPOSITION, startPos, 0);
+    const Sci_Position endLine = (Sci_Position)::SendMessage(hEd, SCI_LINEFROMPOSITION, endPos, 0);
+    ::SendMessage(hEd, SCI_ENSUREVISIBLE, startLine, 0);
+    ::SendMessage(hEd, SCI_ENSUREVISIBLE, endLine, 0);
+
+    // Set selection on the match
+    ::SendMessage(hEd, SCI_GOTOPOS, startPos, 0);
+    ::SendMessage(hEd, SCI_SETSEL, startPos, endPos);
+
+    // Ensure full range is visible horizontally as well
+    ::SendMessage(hEd, SCI_SCROLLRANGE, (WPARAM)startPos, (LPARAM)endPos);
+
+    // --- Vertical centering (wrap-aware) ---
+    // Use y-position of the match relative to the current viewport.
+    const int yCaret = (int)::SendMessage(hEd, SCI_POINTYFROMPOSITION, 0, (LPARAM)startPos);
+    int lineHeight = (int)::SendMessage(hEd, SCI_TEXTHEIGHT, 0, 0);
+    int linesOnScr = (int)::SendMessage(hEd, SCI_LINESONSCREEN, 0, 0);
+
+    if (lineHeight <= 0) lineHeight = 1;
+    if (linesOnScr <= 0) linesOnScr = 1;
+
+    // Current visible subline index of the match
+    const int sublineFromTop = yCaret / lineHeight;
+    const int middleSubline = linesOnScr / 2;
+    const int deltaSubLines = sublineFromTop - middleSubline;
+
+    if (deltaSubLines != 0)
+    {
+        // Scroll by sublines; Scintilla treats the second arg as display lines (wrap-aware).
+        ::SendMessage(hEd, SCI_LINESCROLL, 0, (WPARAM)deltaSubLines);
+    }
+
+    // Keep caret selection consistent after scroll
+    ::SendMessage(hEd, SCI_GOTOPOS, endPos, 0);
+    ::SendMessage(hEd, SCI_SETANCHOR, startPos, 0);
+    ::SendMessage(hEd, SCI_CHOOSECARETX, 0, 0);
 }
 
 void ResultDock::rebuildHitLineIndex()
