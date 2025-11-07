@@ -11172,8 +11172,8 @@ void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
     int inSub = IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED ? 1 : 0;
     int inHidden = IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED ? 1 : 0;
     outFile << Encoding::wstringToUtf8(L"[ReplaceInFiles]\n");
-    outFile << Encoding::wstringToUtf8(L"Filter=\"" + filterText + L"\"\n");
-    outFile << Encoding::wstringToUtf8(L"Directory=\"" + dirText + L"\"\n");
+    outFile << Encoding::wstringToUtf8(L"Filter=\"" + escapeCsvValue(filterText) + L"\"\n");
+    outFile << Encoding::wstringToUtf8(L"Directory=\"" + escapeCsvValue(dirText) + L"\"\n");
     outFile << Encoding::wstringToUtf8(L"InSubfolders=" + std::to_wstring(inSub) + L"\n");
     outFile << Encoding::wstringToUtf8(L"InHiddenFolders=" + std::to_wstring(inHidden) + L"\n");
 
