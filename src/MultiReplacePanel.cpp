@@ -472,57 +472,6 @@ bool MultiReplace::createAndShowWindows() {
     return true;
 }
 
-/*
-void MultiReplace::ensureIndicatorContext()
-{
-    static bool done = false;
-    if (done) return;
-
-    // Scintilla HWNDs
-    HWND hSci0 = nppData._scintillaMainHandle;
-    HWND hSci1 = nppData._scintillaSecondHandle;
-
-    // build vectors from header constants
-    std::vector<int> preferred(std::begin(kPreferredIds), std::end(kPreferredIds));
-    std::vector<int> reserved(std::begin(kReservedIds), std::end(kReservedIds));
-
-    // coordinator init with your pools
-    NppStyleKit::gIndicatorCoord.init(hSci0, hSci1, preferred, reserved);
-
-    // ColumnTabs first (prefer 30)
-    NppStyleKit::gColumnTabsIndicatorId =
-        NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("ColumnTabs", 30);
-
-    // pass id to ColumnTabs API (namespace function)
-    ColumnTabs::CT_SetIndicatorId(NppStyleKit::gColumnTabsIndicatorId);
-
-    // highlights get remaining pool
-    auto remaining = NppStyleKit::gIndicatorCoord.availableIndicatorPool();
-    NppStyleKit::gIndicatorReg.init(hSci0, hSci1, remaining, 100);
-
-    // adopt dynamic indicator pool for text marking
-    textStyles = NppStyleKit::gIndicatorReg.pool();
-
-    done = true;
-}
-
-void MultiReplace::initializeMarkerStyle() {
-    // ensure pool is available
-    if (textStyles.empty())
-        textStyles.push_back(9);
-
-    // Initialize for non-list marker
-    long standardMarkerColor = MARKER_COLOR;
-    int  standardMarkerStyle = textStyles[0];
-    colorToStyleMap[standardMarkerColor] = standardMarkerStyle;
-
-    send(SCI_SETINDICATORCURRENT, standardMarkerStyle, 0);
-    send(SCI_INDICSETSTYLE, standardMarkerStyle, INDIC_STRAIGHTBOX);
-    send(SCI_INDICSETFORE, standardMarkerStyle, standardMarkerColor);
-    send(SCI_INDICSETALPHA, standardMarkerStyle, 100);
-}
-*/
-
 void MultiReplace::ensureIndicatorContext()
 {
     HWND hSci0 = nppData._scintillaMainHandle;
@@ -533,8 +482,7 @@ void MultiReplace::ensureIndicatorContext()
     std::vector<int> reserved(std::begin(kReservedIds), std::end(kReservedIds));
 
     // (Re-)init coordinator only if handles changed
-    const bool reinit =
-        NppStyleKit::gIndicatorCoord.ensureIndicatorsInitialized(hSci0, hSci1, preferred, reserved);
+    NppStyleKit::gIndicatorCoord.ensureIndicatorsInitialized(hSci0, hSci1, preferred, reserved);
 
     // ColumnTabs: reserve preferred or first free
     const bool colIdValid =
@@ -555,20 +503,6 @@ void MultiReplace::ensureIndicatorContext()
     textStyles = remaining;
     textStylesList = remaining;
 
-    // Debug window (zeigt auch Reinit-Status)
-    {
-        std::wstring msg;
-        msg += L"Reinit: " + std::wstring(reinit ? L"yes" : L"no") + L"\n";
-        msg += L"ColumnTabs: " + std::to_wstring(NppStyleKit::gColumnTabsIndicatorId) + L"\n";
-        msg += L"Highlight pool (" + std::to_wstring(textStyles.size()) + L"): ";
-        for (size_t i = 0; i < textStyles.size(); ++i) {
-            if (i) msg += L", ";
-            msg += std::to_wstring(textStyles[i]);
-        }
-        ::MessageBoxW(_hSelf ? _hSelf : nppData._nppHandle,
-            msg.c_str(), L"Indicator assignments",
-            MB_OK | MB_ICONINFORMATION);
-    }
 }
 
 void MultiReplace::initializeListView() {
@@ -6254,10 +6188,13 @@ void MultiReplace::trimHitToFirstLine(
 
     // Read raw line including EOL
     int rawLen = (int)sciSend(SCI_LINELENGTH, lineZero, 0);
+
+    // Allocate +1 for the terminating NUL written by SCI_GETLINE
+    // (keep full rawLen bytes; do NOT stop at embedded NULs)
     std::string raw;
-    raw.resize(rawLen);
+    raw.resize(rawLen + 1, '\0');                     // NEW: length-aware buffer
     sciSend(SCI_GETLINE, lineZero, (LPARAM)raw.data());
-    raw.resize(strnlen(raw.c_str(), rawLen));
+    raw.resize(rawLen);                                // NEW: keep exact line length
 
     // Find EOL position
     size_t eolPos = raw.find(eolSeq);
@@ -6776,20 +6713,40 @@ void MultiReplace::handleFindInFiles() {
         std::string original;
         if (!guard.loadFile(fp, original)) { continue; }
 
-        // detect and convert to UTF-8 for the hidden buffer
-        Encoding::DetectOptions dopts;
-        const std::vector<char> raw(original.begin(), original.end());
-        const Encoding::EncodingInfo enc = Encoding::detectEncoding(raw.data(), raw.size(), dopts);
-        std::string u8;
-        if (!Encoding::convertBufferToUtf8(raw, enc, u8)) { continue; }
+        // quick binary heuristic (raw bytes, no encoding decision needed)
+        auto isLikelyBinary = [](const std::string& s) -> bool {
+            if (s.find('\0') != std::string::npos) return true; // NUL present => binary
+            // simple control-char ratio (exclude CR/LF/TAB)
+            size_t ctrl = 0;
+            for (unsigned char c : s) {
+                if ((c < 0x20 && c != '\r' && c != '\n' && c != '\t') || c == 0x7F) ++ctrl;
+            }
+            return (s.size() >= 1024 && ctrl > s.size() / 16); // > ~6% controls on bigger files
+            };
 
         // Bind hidden buffer for the whole per-file scope
         SciBindingGuard bind(this, guard);
 
-        // set text into hidden buffer
         send(SCI_CLEARALL, 0, 0);
-        send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
-        send(SCI_ADDTEXT, (WPARAM)u8.length(), reinterpret_cast<sptr_t>(u8.data()));
+
+        if (isLikelyBinary(original)) {
+            // Binary: keep raw bytes and ANSI codepage → positions/lines = on-disk
+            send(SCI_SETCODEPAGE, 0 /* SC_CP_ANSI */, 0);
+            send(SCI_ADDTEXT, (WPARAM)original.size(), reinterpret_cast<sptr_t>(original.data()));
+        }
+        else {
+            // Text: detect + convert to UTF-8 for robust searching
+            Encoding::DetectOptions dopts;
+            const std::vector<char> raw(original.begin(), original.end());
+            const Encoding::EncodingInfo enc = Encoding::detectEncoding(raw.data(), raw.size(), dopts);
+
+            std::string u8;
+            if (!Encoding::convertBufferToUtf8(raw, enc, u8)) { continue; }
+
+            send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
+            send(SCI_ADDTEXT, (WPARAM)u8.length(), reinterpret_cast<sptr_t>(u8.data()));
+        }
+
 
         // delimiters snapshot
         handleDelimiterPositions(DelimiterOperation::LoadAll);
