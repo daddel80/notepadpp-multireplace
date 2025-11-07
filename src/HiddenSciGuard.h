@@ -30,34 +30,54 @@ extern NppData nppData;       // From your plugin definition
 class HiddenSciGuard {
 public:
     HiddenSciGuard() = default;
-    ~HiddenSciGuard() {
-        ::DestroyWindow(hSci);
+    HiddenSciGuard::~HiddenSciGuard()
+    {
         if (hSci) {
+            ::DestroyWindow(hSci);
             hSci = nullptr;
-            fn = nullptr;
-            pData = 0;
         }
+        fn = nullptr;
+        pData = 0;
     }
+
     HiddenSciGuard(const HiddenSciGuard&) = delete;
     HiddenSciGuard& operator=(const HiddenSciGuard&) = delete;
 
     // 0) Create the hidden Scintilla buffer
-    bool create() {
-        ::DestroyWindow(hSci);
+    bool HiddenSciGuard::create()
+    {
+        // Destroy existing hidden Scintilla if any (safe when null)
+        if (hSci) {
+            ::DestroyWindow(hSci);
+            hSci = nullptr;
+            fn = nullptr;
+            pData = 0;
+        }
+
+        // Create new hidden Scintilla via Notepad++
         hSci = reinterpret_cast<HWND>(
             ::SendMessage(nppData._nppHandle,
                 NPPM_CREATESCINTILLAHANDLE,
                 0, 0));
-        if (!hSci) return false;
+        if (!hSci)
+            return false;
+
         fn = reinterpret_cast<SciFnDirect>(
             ::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0));
         pData = ::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0);
-        
+
         if (fn && pData)
-            fn(pData, SCI_SETCODEPAGE, SC_CP_UTF8, 0);     // set safe default
+        {
+            // set safe default and avoid unnecessary memory usage
+            fn(pData, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
+            fn(pData, SCI_SETUNDOCOLLECTION, 0, 0);
+            fn(pData, SCI_EMPTYUNDOBUFFER, 0, 0);
+            fn(pData, SCI_CLEARALL, 0, 0);
+        }
 
         return fn && pData;
     }
+
 
     // 1) Filter parsing
     void parseFilter(const std::wstring& filterString) {
