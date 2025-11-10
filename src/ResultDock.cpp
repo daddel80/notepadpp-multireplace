@@ -2089,46 +2089,70 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         {
             // ── fold / unfold ─────────────────────────────
         case IDM_RD_FOLD_ALL:
-            ::SendMessage(hwnd, SCI_FOLDALL, SC_FOLDACTION_CONTRACT, 0);
-            break;
+        {
+            const int lineCount = (int)::SendMessage(hwnd, SCI_GETLINECOUNT, 0, 0);
+
+            for (int line = lineCount - 1; line >= 0; --line)
+            {
+                const int level = (int)::SendMessage(hwnd, SCI_GETFOLDLEVEL, line, 0);
+                if (level & SC_FOLDLEVELHEADERFLAG)
+                {
+                    if (::SendMessage(hwnd, SCI_GETFOLDEXPANDED, line, 0))
+                    {
+                        ::SendMessage(hwnd, SCI_SETFOLDEXPANDED, line, FALSE);
+                        ::SendMessage(hwnd, SCI_FOLDLINE, line, SC_FOLDACTION_CONTRACT);
+                    }
+                }
+            }
+            return 0;
+        }
 
         case IDM_RD_UNFOLD_ALL:
             ::SendMessage(hwnd, SCI_FOLDALL, SC_FOLDACTION_EXPAND, 0);
-            break;
+            return 0;
 
+            // ── copy ──────────────────────────────────────
         case IDM_RD_COPY_STD:
             ::SendMessage(hwnd, SCI_COPY, 0, 0);
-            break;
+            return 0;
+
+        case IDM_RD_COPY_LINES:
+            copySelectedLines(hwnd);
+            return 0;
+
+        case IDM_RD_COPY_PATHS:
+            copySelectedPaths(hwnd);
+            return 0;
 
             // ── select / clear ────────────────────────────
         case IDM_RD_SELECT_ALL:
             ::SendMessage(hwnd, SCI_SELECTALL, 0, 0);
-            break;
+            return 0;
 
         case IDM_RD_CLEAR_ALL:
             ResultDock::instance().clear();
-            break;
-
-            // ── clipboard actions ─────────────────────────
-        case IDM_RD_COPY_LINES:  copySelectedLines(hwnd);  break;
-        case IDM_RD_COPY_PATHS:  copySelectedPaths(hwnd);  break;
+            return 0;
 
             // ── open paths in N++ ─────────────────────────
-        case IDM_RD_OPEN_PATHS:  openSelectedPaths(hwnd);  break;
+        case IDM_RD_OPEN_PATHS:
+            openSelectedPaths(hwnd);
+            return 0;
 
-            // ── toggle word‑wrap ──────────────────────────
+            // ── toggle word-wrap ──────────────────────────
         case IDM_RD_TOGGLE_WRAP:
             ResultDock::_wrapEnabled = !ResultDock::_wrapEnabled;
             ::SendMessage(hwnd, SCI_SETWRAPMODE,
                 ResultDock::_wrapEnabled ? SC_WRAP_WORD : SC_WRAP_NONE, 0);
-            break;
+            return 0;
 
-            // ── toggle purge‑flag ─────────────────────────
+            // ── toggle purge-flag ─────────────────────────
         case IDM_RD_TOGGLE_PURGE:
             ResultDock::_purgeOnNextSearch = !ResultDock::_purgeOnNextSearch;
-            break;
+            return 0;
         }
-        return 0;          // WM_COMMAND handled
+
+        // Unknown command: not ours → let Scintilla / default proc handle it.
+        break;
     }
 
     }
