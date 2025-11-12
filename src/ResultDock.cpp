@@ -448,6 +448,36 @@ ResultDock::ResultDock(HINSTANCE hInst)
     // no further code needed here – everything else happens in create()
 }
 
+// Map control chars to a visible blank in our dock (display only).
+static void applyControlRepresentations(HWND hSci)
+{
+    auto setRep = [&](const char* key, const char* rep)
+        {
+            ::SendMessage(hSci, SCI_SETREPRESENTATION, (WPARAM)key, (LPARAM)rep);
+        };
+
+    // C0 controls except \t, \n, \r
+    for (int c = 0x00; c <= 0x1F; ++c)
+    {
+        if (c == '\t' || c == '\n' || c == '\r')
+            continue;
+
+        char key[2] = { (char)c, 0 };
+        setRep(key, " ");
+    }
+
+    // DEL
+    setRep("\x7F", " ");
+
+    // C1 controls U+0080..U+009F -> UTF-8: C2 80 .. C2 9F
+    for (int c = 0x80; c <= 0x9F; ++c)
+    {
+        unsigned char key[3] = { 0xC2u, (unsigned char)c, 0u };
+        setRep(reinterpret_cast<const char*>(key), " ");
+    }
+}
+
+
 void ResultDock::create(const NppData& npp)
 {
     // 1) Create the Scintilla window that will become our dock client
@@ -480,6 +510,7 @@ void ResultDock::create(const NppData& npp)
     // 3a) **Performance/caching**: keep layout cached for whole doc + buffered drawing
     ::SendMessageW(_hSci, SCI_SETBUFFEREDDRAW, TRUE, 0);
     ::SendMessageW(_hSci, SCI_SETLAYOUTCACHE, SC_CACHE_DOCUMENT, 0); // critical for fast fold open on older blocks
+    applyControlRepresentations(_hSci);
 
     // 3b) DirectFunction (hot path)
     _sciFn = reinterpret_cast<SciFnDirect_t>(::SendMessage(_hSci, SCI_GETDIRECTFUNCTION, 0, 0));
@@ -969,28 +1000,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     static const size_t kLineU8 = Encoding::wstringToUtf8(kLineW).size();
     constexpr size_t    kColonSpaceU8 = 2; // ": "
 
-    // Display cap for very long lines
     constexpr size_t kMaxHitTextUtf8 = 2048;
 
-    // Remove C0 controls (except TAB) and DEL from UTF-8 string (display only).
-    auto removeControlsUtf8 = [](const std::string& s) -> std::string {
-        std::string out;
-        out.reserve(s.size());
-        for (size_t i = 0; i < s.size();) {
-            unsigned char c = (unsigned char)s[i];
-            size_t clen = 1;
-            if ((c & 0x80) == 0x00) clen = 1;
-            else if ((c & 0xE0) == 0xC0) clen = 2;
-            else if ((c & 0xF0) == 0xE0) clen = 3;
-            else clen = 4;
-            bool remove = (clen == 1) && (c == 0x00 || (c < 0x20 && c != '\t') || c == 0x7F);
-            if (!remove) out.append(s, i, clen);
-            i += clen;
-        }
-        return out;
-    };
-
-    // Cap UTF-8 string to maxBytes, add "..."
     auto capUtf8WithEllipsis = [](std::string& s, size_t maxBytes) {
         if (s.size() <= maxBytes) return;
         if (maxBytes <= 3) { s.assign("..."); return; }
@@ -998,9 +1009,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
         s.resize(cut);
         s.append("...");
-    };
+        };
 
-    // 1) Precompute line numbers + max digits
     std::vector<int> lineNumbers; lineNumbers.reserve(hits.size());
     size_t maxDigits = 0;
     for (const Hit& h : hits) {
@@ -1013,107 +1023,153 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         std::wstring numStr = std::to_wstring(number);
         size_t pad = (width > numStr.size() ? width - numStr.size() : 0);
         return std::wstring(pad, L' ') + numStr;
-    };
+        };
 
     int   prevDocLine = -1;
-    Hit*  firstHitOnRow = nullptr;
+    Hit* firstHitOnRow = nullptr;
     size_t hitIdx = 0;
     size_t currentRowLenU8 = 0;
 
-    // ---- Per line cache (reduces conversions for multi-hit lines) ----
-    std::string  cachedRaw;         // original bytes (line without CRLF)
-    std::string  origU8;            // original line as UTF-8 (for mapping)
-    std::string  displayU8;         // display line after filtering/capping
-    std::wstring displayW;          // display as wide string
+    std::string  cachedRaw;
+    std::string  origU8;
+    std::string  displayU8;
+    std::wstring displayW;
     Sci_Position cachedAbsLineStart = 0;
 
-    // Mapping table: origU8 byte offset -> displayU8 byte offset (size = origU8.size()+1)
     std::vector<size_t> mapOrigToDisp;
-
-    // byte→utf8 prefix length cache for this line (only for needed offsets)
     std::unordered_map<size_t, size_t> u8PrefixLenByByte;
 
     auto loadLineIfNeeded = [&](int line0)
-    {
-        if (line0 == prevDocLine) return;
+        {
+            if (line0 == prevDocLine)
+                return;
 
-        int rawLen = (int)sciSend(SCI_LINELENGTH, line0, 0);
-        cachedRaw.assign(rawLen + 1, '\0');                  // +1 for terminator
-        sciSend(SCI_GETLINE, line0, (LPARAM)cachedRaw.data());
-        cachedRaw.resize(rawLen);                             // exact line length
-        while (!cachedRaw.empty() && (cachedRaw.back() == '\r' || cachedRaw.back() == '\n'))
-            cachedRaw.pop_back();
+            // raw line
+            const int rawLen = (int)sciSend(SCI_LINELENGTH, line0, 0);
+            cachedRaw.assign(rawLen + 1, '\0');
+            sciSend(SCI_GETLINE, line0, (LPARAM)cachedRaw.data());
+            cachedRaw.resize(rawLen);
+            while (!cachedRaw.empty() && (cachedRaw.back() == '\r' || cachedRaw.back() == '\n'))
+                cachedRaw.pop_back();
 
-        cachedAbsLineStart = sciSend(SCI_POSITIONFROMLINE, line0, 0);
+            cachedAbsLineStart = sciSend(SCI_POSITIONFROMLINE, line0, 0);
 
-        // Convert full raw line to UTF-8 once (for original offsets)
-        origU8 = Encoding::bytesToUtf8(cachedRaw, docCp);
+            // original as UTF-8 (for mapping)
+            origU8 = Encoding::bytesToUtf8(cachedRaw, docCp);
 
-        // Build display string + mapping
-        displayU8.clear();
-        mapOrigToDisp.clear();
-        mapOrigToDisp.resize(origU8.size() + 1, 0);
+            // classify helpers
+            auto isCtlWide = [](wchar_t ch)->bool {
+                const unsigned u = (unsigned)ch;
+                if (u == 0x0000) return true;                            // NUL
+                if ((u <= 0x1Fu) && ch != L'\t' && ch != L'\n' && ch != L'\r') return true; // C0
+                if (u == 0x007Fu) return true;                            // DEL
+                if (u >= 0x0080u && u <= 0x009Fu) return true;            // C1 (incl. NEL)
+                if (u == 0x2028 || u == 0x2029) return true;              // LS/PS
+                return false;
+                };
+            auto isCtlCp = [](uint32_t cp)->bool {
+                if (cp == 0x0000) return true;
+                if ((cp <= 0x1Fu) && cp != 0x09 && cp != 0x0A && cp != 0x0D) return true;
+                if (cp == 0x007Fu) return true;
+                if (cp >= 0x80u && cp <= 0x9Fu) return true;
+                if (cp == 0x2028 || cp == 0x2029) return true;
+                return false;
+                };
+            auto isNbspWide = [](wchar_t ch)->bool { return (unsigned)ch == 0x00A0; };
+            auto isNbspCp = [](uint32_t cp)->bool { return cp == 0x00A0; };
 
-        if (docCp == 0 /* SC_CP_ANSI */) {
-            // ANSI/binary path: filter controls at raw-byte level before conversion
-            // and build mapping by walking raw bytes and their UTF-8 contribution.
-            size_t oU8 = 0; // running original-UTF8 offset
-            size_t dU8 = 0; // running display-UTF8 offset
-            for (size_t i = 0; i < cachedRaw.size(); ++i) {
-                unsigned char b = (unsigned char)cachedRaw[i];
-
-                // UTF-8 contributed by this byte in original string:
-                // (convert this single byte according to CP_ACP)
-                wchar_t wch = 0;
-                int wlen = ::MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS,
-                                                (LPCSTR)&b, 1, &wch, 1);
-                // Fallback: treat as raw byte if not convertible
-                if (wlen == 0) { wch = (wchar_t)b; }
-
-                char u8buf[4]; int u8len = ::WideCharToMultiByte(CP_UTF8, 0,
-                                                                 &wch, 1, u8buf, 4, nullptr, nullptr);
-                if (u8len <= 0) { u8len = 1; u8buf[0] = (char)b; } // fallback
-
-                // Write mapping for the generated original UTF-8 span
-                for (int k = 0; k < u8len; ++k) mapOrigToDisp[oU8 + k] = dU8;
-                oU8 += (size_t)u8len;
-
-                // Keep for display?
-                bool keep = !(b == 0x00 || (b < 0x20 && b != '\t') || b == 0x7F);
-                if (keep) {
-                    displayU8.append(u8buf, u8len);
-                    dU8 += (size_t)u8len;
+            // build display (safe replacement on Wide)
+            std::wstring wide;
+            {
+                const UINT cp = (UINT)docCp;
+                const UINT wcp = (cp == 0 ? CP_ACP : cp);
+                if (cp == SC_CP_UTF8) {
+                    wide = Encoding::utf8ToWString(cachedRaw);
+                }
+                else {
+                    int wlen = ::MultiByteToWideChar(wcp, MB_ERR_INVALID_CHARS,
+                        cachedRaw.data(), (int)cachedRaw.size(), nullptr, 0);
+                    if (wlen <= 0)
+                        wlen = ::MultiByteToWideChar(wcp, 0,
+                            cachedRaw.data(), (int)cachedRaw.size(), nullptr, 0);
+                    wide.resize((size_t)wlen);
+                    if (wlen > 0)
+                        ::MultiByteToWideChar(wcp, 0,
+                            cachedRaw.data(), (int)cachedRaw.size(),
+                            &wide[0], wlen);
                 }
             }
-            // Map end position
-            if (!mapOrigToDisp.empty()) mapOrigToDisp.back() = dU8;
-        } else {
-            // UTF-8/text path: filter controls at UTF-8 level (old behavior)
-            displayU8 = removeControlsUtf8(origU8);
 
-            // Build mapping by scanning origU8 codepoint-wise
+            std::wstring wideClean;
+            wideClean.reserve(wide.size());
+            for (wchar_t ch : wide) {
+                const unsigned u = (unsigned)ch;
+                if (u == 0x00AD) {
+                    // SHY → drop
+                    continue;
+                }
+                if (isNbspWide(ch) || isCtlWide(ch)) {
+                    wideClean.push_back(L' ');   // one ASCII space per codepoint
+                }
+                else {
+                    wideClean.push_back(ch);
+                }
+            }
+            displayU8 = Encoding::wstringToUtf8(wideClean);
+
+            // mapping origU8 → displayU8 (exact same rule)
+            mapOrigToDisp.assign(origU8.size() + 1, 0);
+
             size_t o = 0, d = 0;
-            while (o < origU8.size()) {
+            while (o < origU8.size())
+            {
                 unsigned char c = (unsigned char)origU8[o];
-                size_t clen = 1;
+                size_t clen;
                 if ((c & 0x80) == 0x00) clen = 1;
-                else if ((c & 0xE0) == 0xC0) clen = 2;
-                else if ((c & 0xF0) == 0xE0) clen = 3;
-                else clen = 4;
-                bool remove = (clen == 1) && (c == 0x00 || (c < 0x20 && c != '\t') || c == 0x7F);
-                for (size_t k = 0; k < clen; ++k) mapOrigToDisp[o + k] = d;
-                if (!remove) d += clen;
+                else if ((c & 0xE0) == 0xC0 && o + 1 < origU8.size()) clen = 2;
+                else if ((c & 0xF0) == 0xE0 && o + 2 < origU8.size()) clen = 3;
+                else if ((c & 0xF8) == 0xF0 && o + 3 < origU8.size()) clen = 4;
+                else clen = 1;
+
+                uint32_t cp = 0;
+                if (clen == 1) cp = c;
+                else if (clen == 2) cp = ((c & 0x1Fu) << 6) | (uint32_t(origU8[o + 1]) & 0x3Fu);
+                else if (clen == 3) cp = ((c & 0x0Fu) << 12) |
+                    ((uint32_t(origU8[o + 1]) & 0x3Fu) << 6) |
+                    (uint32_t(origU8[o + 2]) & 0x3Fu);
+                else cp = ((c & 0x07u) << 18) |
+                    ((uint32_t(origU8[o + 1]) & 0x3Fu) << 12) |
+                    ((uint32_t(origU8[o + 2]) & 0x3Fu) << 6) |
+                    (uint32_t(origU8[o + 3]) & 0x3Fu);
+
+                if (cp == 0x00AD) {
+                    // SHY drop
+                    for (size_t k = 0; k < clen && (o + k) < origU8.size(); ++k)
+                        mapOrigToDisp[o + k] = d;
+                    // no d++
+                }
+                else if (isNbspCp(cp) || isCtlCp(cp)) {
+                    for (size_t k = 0; k < clen && (o + k) < origU8.size(); ++k)
+                        mapOrigToDisp[o + k] = d;
+                    ++d; // one visible ASCII space per replaced codepoint
+                }
+                else {
+                    for (size_t k = 0; k < clen && (o + k) < origU8.size(); ++k)
+                        mapOrigToDisp[o + k] = d + k;
+                    d += clen;
+                }
+
                 o += clen;
             }
             if (!mapOrigToDisp.empty()) mapOrigToDisp.back() = d;
-        }
 
-        // Cap display length and then convert to wide for painting
-        capUtf8WithEllipsis(displayU8, kMaxHitTextUtf8);
-        displayW = Encoding::utf8ToWString(displayU8);
+            // finalize
+            capUtf8WithEllipsis(displayU8, kMaxHitTextUtf8);
+            displayW = Encoding::utf8ToWString(displayU8);
 
-        u8PrefixLenByByte.clear(); // reset cache for this new line
-    };
+            u8PrefixLenByByte.clear();
+            // prevDocLine is set by the caller when the row is actually written
+        };
 
     auto u8PrefixFromRawBytes = [&](size_t byteCount)->size_t {
         auto it = u8PrefixLenByByte.find(byteCount);
@@ -1121,7 +1177,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         size_t val = Encoding::bytesToUtf8(cachedRaw.substr(0, byteCount), docCp).size();
         u8PrefixLenByByte.emplace(byteCount, val);
         return val;
-    };
+        };
 
     for (Hit& h : hits) {
         int line1 = lineNumbers[hitIdx++];
@@ -1129,19 +1185,17 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 
         loadLineIfNeeded(line0);
 
-        // Compute offsets relative to the raw line bytes (as original UTF-8 offsets)
         size_t relBytes = (size_t)(h.pos - cachedAbsLineStart);
         size_t hitStartU8_orig = u8PrefixFromRawBytes(relBytes);
-        size_t hitLenU8_orig   = Encoding::bytesToUtf8(cachedRaw.substr(relBytes, h.length), docCp).size();
+        size_t hitLenU8_orig = Encoding::bytesToUtf8(cachedRaw.substr(relBytes, h.length), docCp).size();
 
-        // Map original offsets to display offsets using the prebuilt table
         auto mapToDisp = [&](size_t offU8) -> size_t {
             if (offU8 >= mapOrigToDisp.size()) return mapOrigToDisp.empty() ? 0 : mapOrigToDisp.back();
             return mapOrigToDisp[offU8];
-        };
+            };
         size_t dispStart = mapToDisp(hitStartU8_orig);
-        size_t dispEnd   = mapToDisp(hitStartU8_orig + hitLenU8_orig);
-        size_t dispLen   = (dispEnd > dispStart ? dispEnd - dispStart : 0);
+        size_t dispEnd = mapToDisp(hitStartU8_orig + hitLenU8_orig);
+        size_t dispLen = (dispEnd > dispStart ? dispEnd - dispStart : 0);
 
         if (line0 != prevDocLine) {
             std::wstring paddedNumW = padNumber(line1, maxDigits);
@@ -1153,11 +1207,10 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 
             h.displayLineStart = (int)utf8Pos;
             h.numberStart = (int)(indentHitU8 + kLineU8 + paddedNumW.size() - std::to_wstring(line1).size());
-            h.numberLen   = (int)std::to_wstring(line1).size();
+            h.numberLen = (int)std::to_wstring(line1).size();
             h.matchStarts.clear();
             h.matchLens.clear();
 
-            // Clamp match to visible range
             if (dispStart < currentRowLenU8) {
                 size_t safeLen = dispLen;
                 if (dispStart + safeLen > currentRowLenU8) safeLen = currentRowLenU8 - dispStart;
@@ -1168,12 +1221,10 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             }
 
             utf8Pos += prefixU8Len + currentRowLenU8 + 2; // + CRLF
-
             firstHitOnRow = &h;
             prevDocLine = line0;
         }
         else {
-            // Additional hit on same visible row: extend ranges
             if (firstHitOnRow) {
                 const size_t prefixU8Len = indentHitU8 + kLineU8
                     + std::to_wstring(line1).size()
@@ -1189,15 +1240,15 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                     }
                 }
             }
-            h.displayLineStart = -1; // dummy
+            h.displayLineStart = -1;
         }
     }
 
-    // Drop dummy entries
     hits.erase(std::remove_if(hits.begin(), hits.end(),
         [](const Hit& e) { return e.displayLineStart < 0; }),
         hits.end());
 }
+
 
 
 // --------------------- Line helpers -----------------------

@@ -5551,6 +5551,9 @@ void MultiReplace::handleReplaceInFiles() {
         return;
     }
 
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FILTER_EDIT), wFilter);
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), wDir);
+
     std::vector<std::filesystem::path> files;
     try {
         namespace fs = std::filesystem;
@@ -6575,48 +6578,58 @@ void MultiReplace::handleFindAllInDocsButton()
 }
 
 void MultiReplace::handleFindInFiles() {
-    // 1) sanity + hidden buffer
-    if (!validateDelimiterData())
-        return;
-
     HiddenSciGuard guard;
     if (!guard.create()) {
         showStatusMessage(LM.get(L"status_error_hidden_buffer"), MessageStatus::Error);
         return;
     }
 
-    // Read all inputs once at the beginning.
+    // Read inputs
     auto wDir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
     auto wFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
     const bool recurse = (IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED);
     const bool hide = (IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED);
 
-    // If the filter is empty, default to "*.*" and update the UI.
+    // Default filter if empty
     if (wFilter.empty()) {
         wFilter = L"*.*";
         SetDlgItemTextW(_hSelf, IDC_FILTER_EDIT, wFilter.c_str());
     }
-    guard.parseFilter(wFilter);
 
+    // History must be updated unconditionally
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FILTER_EDIT), wFilter);
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), wDir);
+
+    // Validate directory
     if (wDir.empty() || !std::filesystem::exists(wDir)) {
         showStatusMessage(LM.get(L"status_error_invalid_directory"), MessageStatus::Error);
         return;
     }
 
-    // Build the file list using the same traversal and matching logic as ReplaceInFiles.
+    // Fast-fail CSV settings only if Column Mode is on
+    if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
+        if (!parseColumnAndDelimiterData()) { // clear, early user feedback
+            return;
+        }
+    }
+
+    // Parse filter after UI/defaults
+    guard.parseFilter(wFilter);
+
+    // Build file list
     std::vector<std::filesystem::path> files;
     try {
         namespace fs = std::filesystem;
         if (recurse) {
             for (auto& e : fs::recursive_directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
                 if (_isShuttingDown) return;
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) files.push_back(e.path());
             }
         }
         else {
             for (auto& e : fs::directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
                 if (_isShuttingDown) return;
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) files.push_back(e.path());
             }
         }
     }
@@ -6631,39 +6644,30 @@ void MultiReplace::handleFindInFiles() {
         return;
     }
 
-    // 2) result dock
+    // Result dock
     ResultDock& dock = ResultDock::instance();
-    dock.ensureCreatedAndVisible(nppData);  // ok if already visible  :contentReference[oaicite:0]{index=0}
+    dock.ensureCreatedAndVisible(nppData);
 
-    // counters
     int totalHits = 0;
-    std::unordered_set<std::string> uniqueFiles; // files *with* hits only
-
+    std::unordered_set<std::string> uniqueFiles;
     if (useListEnabled) resetCountColumns();
     std::vector<int> listHitTotals(useListEnabled ? replaceListData.size() : 0, 0);
 
-    // placeholder header (updated in closeSearchBlock)
     std::wstring placeholder = useListEnabled
         ? LM.get(L"dock_list_header", { L"0", L"0" })
         : LM.get(L"dock_single_header", {
             sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
             L"0", L"0" });
 
-    // Open the search block (pending buffer; committed in closeSearchBlock)
-    dock.startSearchBlock(placeholder,
-        useListEnabled ? groupResultsEnabled : false,
-        dock.purgeEnabled());  // may clear view first  :contentReference[oaicite:1]{index=1}
+    dock.startSearchBlock(placeholder, useListEnabled ? groupResultsEnabled : false, dock.purgeEnabled());
 
-    // 3) RAII-based UI lock identical to ReplaceInFiles
     BatchUIGuard uiGuard(this, _hSelf);
     _isCancelRequested = false;
 
-    // Progress
     int idx = 0;
     const int total = static_cast<int>(files.size());
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
 
-    // Small RAII guard to bind/unbind the hidden Scintilla safely per file
     struct SciBindingGuard {
         MultiReplace* self;
         HWND oldSci; SciFnDirect oldFn; sptr_t oldData;
@@ -6677,27 +6681,17 @@ void MultiReplace::handleFindInFiles() {
         }
     };
 
-    // 4) per-file processing
     bool aborted = false;
 
-    for (const auto& fp : files)
-    {
-        // Pump messages to keep UI responsive and allow cancel clicks
+    for (const auto& fp : files) {
         MSG m;
-        while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) {
-            ::TranslateMessage(&m);
-            ::DispatchMessage(&m);
-        }
-
+        while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) { ::TranslateMessage(&m); ::DispatchMessage(&m); }
         if (_isShuttingDown) { aborted = true; break; }
         if (_isCancelRequested) { aborted = true; break; }
-
         ++idx;
 
-        // progress line with shortened path
         const int percent = static_cast<int>((static_cast<double>(idx) / (std::max)(1, total)) * 100.0);
         const std::wstring prefix = L"Progress: [" + std::to_wstring(percent) + L"%] ";
-
         HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
         HDC hdc = GetDC(hStatus);
         HFONT hFont = (HFONT)SendMessage(hStatus, WM_GETFONT, 0, 0);
@@ -6709,99 +6703,72 @@ void MultiReplace::handleFindInFiles() {
         ReleaseDC(hStatus, hdc);
         showStatusMessage(prefix + shortPath, MessageStatus::Info);
 
-        // read file; read-only/not-readable files are simply skipped
         std::string original;
         if (!guard.loadFile(fp, original)) { continue; }
 
-        // quick binary heuristic (raw bytes, no encoding decision needed)
         auto isLikelyBinary = [](const std::string& s) -> bool {
-            if (s.find('\0') != std::string::npos) return true; // NUL present => binary
-            // simple control-char ratio (exclude CR/LF/TAB)
+            if (s.find('\0') != std::string::npos) return true;
             size_t ctrl = 0;
-            for (unsigned char c : s) {
-                if ((c < 0x20 && c != '\r' && c != '\n' && c != '\t') || c == 0x7F) ++ctrl;
-            }
-            return (s.size() >= 1024 && ctrl > s.size() / 16); // > ~6% controls on bigger files
+            for (unsigned char c : s) if ((c < 0x20 && c != '\r' && c != '\n' && c != '\t') || c == 0x7F) ++ctrl;
+            return (s.size() >= 1024 && ctrl > s.size() / 16);
             };
 
-        // Bind hidden buffer for the whole per-file scope
         SciBindingGuard bind(this, guard);
-
         send(SCI_CLEARALL, 0, 0);
 
         if (isLikelyBinary(original)) {
-            // Binary: keep raw bytes and ANSI codepage → positions/lines = on-disk
             send(SCI_SETCODEPAGE, 0 /* SC_CP_ANSI */, 0);
             send(SCI_ADDTEXT, (WPARAM)original.size(), reinterpret_cast<sptr_t>(original.data()));
         }
         else {
-            // Text: detect + convert to UTF-8 for robust searching
             Encoding::DetectOptions dopts;
             const std::vector<char> raw(original.begin(), original.end());
             const Encoding::EncodingInfo enc = Encoding::detectEncoding(raw.data(), raw.size(), dopts);
-
             std::string u8;
             if (!Encoding::convertBufferToUtf8(raw, enc, u8)) { continue; }
-
             send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
             send(SCI_ADDTEXT, (WPARAM)u8.length(), reinterpret_cast<sptr_t>(u8.data()));
         }
 
+        // Computes/refreshes CSV delimiters if Column Mode is on (it parses internally)
+        handleDelimiterPositions(DelimiterOperation::LoadAll); // parses + rescans if needed :contentReference[oaicite:3]{index=3}
 
-        // delimiters snapshot
-        handleDelimiterPositions(DelimiterOperation::LoadAll);
-
-        // Aggregation for *this* file only
         const std::wstring wPath = fp.wstring();
         const std::string  u8Path = Encoding::wstringToUtf8(wPath);
-
         bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
-        ResultDock::FileMap fileMap;   // one file entry
+        ResultDock::FileMap fileMap;
         int hitsInFile = 0;
 
         auto collect = [&](size_t critIdx, const std::wstring& pattW, SearchContext& ctx) {
             std::vector<ResultDock::Hit> raw;
             LRESULT pos = 0;
-
             while (true) {
                 SearchResult r = performSearchForward(ctx, pos);
                 if (r.pos < 0) break;
                 pos = advanceAfterMatch(r);
-
                 ResultDock::Hit h{};
                 h.fullPathUtf8 = u8Path;
                 h.pos = r.pos;
                 h.length = r.length;
-
-                // Trim to first line for the dock (operates on currently bound hidden buffer)
                 this->trimHitToFirstLine([this](UINT m, WPARAM w, LPARAM l)->LRESULT { return send(m, w, l); }, h);
-
                 if (h.length > 0) raw.push_back(std::move(h));
             }
-
             const int n = (int)raw.size();
             if (n == 0) return;
-
             auto& agg = fileMap[u8Path];
             agg.wPath = wPath;
             agg.hitCount += n;
             agg.crits.push_back({ sanitizeSearchPattern(pattW), std::move(raw) });
-
             hitsInFile += n;
             totalHits += n;
-            if (useListEnabled && critIdx < listHitTotals.size())
-                listHitTotals[critIdx] += n;
+            if (useListEnabled && critIdx < listHitTotals.size()) listHitTotals[critIdx] += n;
             };
 
-        // search setup
-        if (useListEnabled)
-        {
-            for (size_t i = 0; i < replaceListData.size(); ++i)
-            {
+        if (useListEnabled) {
+            for (size_t i = 0; i < replaceListData.size(); ++i) {
                 const auto& it = replaceListData[i];
                 if (!it.isEnabled || it.findText.empty()) continue;
-
                 SearchContext ctx{};
                 ctx.docLength = send(SCI_GETLENGTH);
                 ctx.isColumnMode = columnMode;
@@ -6814,11 +6781,9 @@ void MultiReplace::handleFindInFiles() {
                 collect(i, it.findText, ctx);
             }
         }
-        else
-        {
+        else {
             std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-            if (!findW.empty())
-            {
+            if (!findW.empty()) {
                 SearchContext ctx{};
                 ctx.docLength = send(SCI_GETLENGTH);
                 ctx.isColumnMode = columnMode;
@@ -6832,47 +6797,30 @@ void MultiReplace::handleFindInFiles() {
             }
         }
 
-        // Commit per-file block
         if (hitsInFile > 0) {
             auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT { return send(m, w, l); };
-            dock.appendFileBlock(fileMap, sciSend);  // adds to pending text  :contentReference[oaicite:2]{index=2}
-            uniqueFiles.insert(u8Path);              // count only files with hits
+            dock.appendFileBlock(fileMap, sciSend);
+            uniqueFiles.insert(u8Path);
         }
     }
 
-    // 5) finalize: ALWAYS close the search block, even with zero hits or cancel
-    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));  // commits header + pending text  :contentReference[oaicite:3]{index=3}
+    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
 
-    // update list counters + UI
-    if (useListEnabled)
-    {
-        for (size_t i = 0; i < listHitTotals.size(); ++i)
-        {
-            if (!replaceListData[i].isEnabled || replaceListData[i].findText.empty())
-                continue;
+    if (useListEnabled) {
+        for (size_t i = 0; i < listHitTotals.size(); ++i) {
+            if (!replaceListData[i].isEnabled || replaceListData[i].findText.empty()) continue;
             replaceListData[i].findCount = std::to_wstring(listHitTotals[i]);
             updateCountColumns(i, listHitTotals[i]);
         }
         refreshUIListView();
     }
 
-    // status line
-// --- status line (+ optional " - Canceled" suffix from LM) ---
     const bool wasCanceled = (_isCancelRequested || aborted);
     const std::wstring canceledSuffix = wasCanceled ? (L" - " + LM.get(L"status_canceled")) : L"";
-
     std::wstring msg = (totalHits == 0)
         ? LM.get(L"status_no_matches_found")
         : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) });
-
-    MessageStatus ms = MessageStatus::Success;
-    if (wasCanceled) {
-        ms = MessageStatus::Info;
-    }
-    else if (totalHits == 0) {
-        ms = MessageStatus::Error;
-    }
-
+    MessageStatus ms = wasCanceled ? MessageStatus::Info : (totalHits == 0 ? MessageStatus::Error : MessageStatus::Success);
     showStatusMessage(msg + canceledSuffix, ms, true);
     _isCancelRequested = false;
 }
