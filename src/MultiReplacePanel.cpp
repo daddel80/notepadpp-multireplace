@@ -11322,7 +11322,7 @@ void MultiReplace::loadSettingsFromIni() {
     CSVheaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
 
     // --- Load “Replace in Files” settings --------------------------
-    std::wstring filter = CFG.readString(L"ReplaceInFiles", L"Filter", L"");
+    std::wstring filter = CFG.readString(L"ReplaceInFiles", L"Filter", L"*.*");
     setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, filter);
 
     std::wstring dir = CFG.readString(L"ReplaceInFiles", L"Directory", L"");
