@@ -4024,8 +4024,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 std::wstring filter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
                 std::wstring dir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
 
-                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FILTER_EDIT), filter);
-                addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), dir);
                 handleReplaceInFiles();
             }
             else
@@ -4498,14 +4496,14 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
         itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
+
         send(SCI_BEGINUNDOACTION, 0, 0);
         int findCount = 0;
         replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount);
         send(SCI_ENDUNDOACTION, 0, 0);
 
-        // Add the entered text to the combo box history
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
     }
     // Display status message
     if (replaceSuccess && showCompletionMessage) {
@@ -4646,6 +4644,9 @@ void MultiReplace::handleReplaceButton() {
         replaceItem.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
         replaceItem.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), replaceItem.findText);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceItem.replaceText);
+
         context.findText = convertAndExtendW(replaceItem.findText, replaceItem.extended);
         context.searchFlags = (replaceItem.wholeWord * SCFIND_WHOLEWORD) |
             (replaceItem.matchCase * SCFIND_MATCHCASE) |
@@ -4655,10 +4656,6 @@ void MultiReplace::handleReplaceButton() {
         send(SCI_SETSEARCHFLAGS, context.searchFlags);
 
         bool wasReplaced = replaceOne(replaceItem, selection, searchResult, newPos, SIZE_MAX, context);
-
-        // Add the entered text to the combo box history
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), replaceItem.findText);
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceItem.replaceText);
 
         if (!(wasReplaced && stayAfterReplaceEnabled)) {
             if (searchResult.pos < 0 && wrapAroundEnabled) {
@@ -5544,15 +5541,29 @@ void MultiReplace::handleReplaceInFiles() {
         wFilter = L"*.*";
         SetDlgItemTextW(_hSelf, IDC_FILTER_EDIT, wFilter.c_str());
     }
-    guard.parseFilter(wFilter);
 
+    // history first (always)
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FILTER_EDIT), wFilter);
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), wDir);
+
+    if (!useListEnabled) {
+        std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        std::wstring replW = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replW);
+    }
+
+    // validate directory
     if (wDir.empty() || !std::filesystem::exists(wDir)) {
         showStatusMessage(LM.get(L"status_error_invalid_directory"), MessageStatus::Error);
         return;
     }
 
-    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FILTER_EDIT), wFilter);
-    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), wDir);
+    // CSV config (no-op if column mode is off)
+    if (!validateDelimiterData()) return;
+
+    // parse filter after UI/defaults/checks
+    guard.parseFilter(wFilter);
 
     std::vector<std::filesystem::path> files;
     try {
@@ -5690,10 +5701,10 @@ void MultiReplace::handleReplaceInFiles() {
             // Write back only if content changed
             std::string u8out = guard.getText();
             if (u8out != u8in) {
-                Encoding::ConvertOptions copt;           // strict: no best-fit (default)
+                Encoding::ConvertOptions copt;           // strict: no best-fit
                 std::vector<char> outBytes;
                 if (Encoding::convertUtf8ToOriginal(u8out, enc, outBytes, copt)) {
-                    std::string finalBuf(outBytes.begin(), outBytes.end());  // kein 'const' nötig
+                    std::string finalBuf(outBytes.begin(), outBytes.end());
                     if (guard.writeFile(fp, finalBuf)) {
                         ++changed;
                     }
@@ -5724,14 +5735,12 @@ void MultiReplace::handleReplaceInFiles() {
 
         MessageStatus ms = MessageStatus::Success;
         if (wasCanceled || changed == 0) {
-            // neutral if canceled or no changes were written
             ms = MessageStatus::Info;
         }
 
         showStatusMessage(msg, ms);
     }
     _isCancelRequested = false;
-
 }
 
 #pragma endregion
@@ -6236,6 +6245,11 @@ void MultiReplace::handleFindAllButton()
     if (!validateDelimiterData())
         return;
 
+    if (!useListEnabled) {
+        std::wstring earlyFind = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), earlyFind);
+    }
+
     // 2) result dock 
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
@@ -6333,7 +6347,6 @@ void MultiReplace::handleFindAllButton()
     else
     {
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
 
         // Prepare header pattern & flags
         std::wstring headerPattern = this->sanitizeSearchPattern(findW);
@@ -6408,6 +6421,11 @@ void MultiReplace::handleFindAllInDocsButton()
     if (!validateDelimiterData())
         return;
 
+    if (!useListEnabled) {
+        std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
+    }
+
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
 
@@ -6427,7 +6445,7 @@ void MultiReplace::handleFindAllInDocsButton()
 
     // open block (pending text; commit happens in closeSearchBlock)
     dock.startSearchBlock(placeholder,
-        groupResultsEnabled,
+        useListEnabled ? groupResultsEnabled : false,
         dock.purgeEnabled());
 
     // 4) scan each tab
@@ -6596,9 +6614,14 @@ void MultiReplace::handleFindInFiles() {
         SetDlgItemTextW(_hSelf, IDC_FILTER_EDIT, wFilter.c_str());
     }
 
-    // History must be updated unconditionally
+    // History first (always)
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FILTER_EDIT), wFilter);
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), wDir);
+
+    if (!useListEnabled) {
+        std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
+    }
 
     // Validate directory
     if (wDir.empty() || !std::filesystem::exists(wDir)) {
@@ -6606,30 +6629,26 @@ void MultiReplace::handleFindInFiles() {
         return;
     }
 
-    // Fast-fail CSV settings only if Column Mode is on
-    if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED) {
-        if (!parseColumnAndDelimiterData()) { // clear, early user feedback
-            return;
-        }
-    }
+    // CSV config check (does work only in Column Mode; otherwise returns true)
+    if (!validateDelimiterData()) return;
 
-    // Parse filter after UI/defaults
+    // Parse filter after defaults / checks
     guard.parseFilter(wFilter);
 
-    // Build file list
+    // --- Build file list (unchanged) ---
     std::vector<std::filesystem::path> files;
     try {
         namespace fs = std::filesystem;
         if (recurse) {
             for (auto& e : fs::recursive_directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
                 if (_isShuttingDown) return;
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) files.push_back(e.path());
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
             }
         }
         else {
             for (auto& e : fs::directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
                 if (_isShuttingDown) return;
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) files.push_back(e.path());
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
             }
         }
     }
@@ -6644,12 +6663,13 @@ void MultiReplace::handleFindInFiles() {
         return;
     }
 
-    // Result dock
+    // --- Result dock (unchanged) ---
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
 
     int totalHits = 0;
     std::unordered_set<std::string> uniqueFiles;
+
     if (useListEnabled) resetCountColumns();
     std::vector<int> listHitTotals(useListEnabled ? replaceListData.size() : 0, 0);
 
@@ -6659,7 +6679,9 @@ void MultiReplace::handleFindInFiles() {
             sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
             L"0", L"0" });
 
-    dock.startSearchBlock(placeholder, useListEnabled ? groupResultsEnabled : false, dock.purgeEnabled());
+    dock.startSearchBlock(placeholder,
+        useListEnabled ? groupResultsEnabled : false,
+        dock.purgeEnabled());
 
     BatchUIGuard uiGuard(this, _hSelf);
     _isCancelRequested = false;
@@ -6692,6 +6714,7 @@ void MultiReplace::handleFindInFiles() {
 
         const int percent = static_cast<int>((static_cast<double>(idx) / (std::max)(1, total)) * 100.0);
         const std::wstring prefix = L"Progress: [" + std::to_wstring(percent) + L"%] ";
+
         HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
         HDC hdc = GetDC(hStatus);
         HFONT hFont = (HFONT)SendMessage(hStatus, WM_GETFONT, 0, 0);
@@ -6730,8 +6753,8 @@ void MultiReplace::handleFindInFiles() {
             send(SCI_ADDTEXT, (WPARAM)u8.length(), reinterpret_cast<sptr_t>(u8.data()));
         }
 
-        // Computes/refreshes CSV delimiters if Column Mode is on (it parses internally)
-        handleDelimiterPositions(DelimiterOperation::LoadAll); // parses + rescans if needed :contentReference[oaicite:3]{index=3}
+        // Per-file delimiter positions are computed here against validated settings
+        handleDelimiterPositions(DelimiterOperation::LoadAll);
 
         const std::wstring wPath = fp.wstring();
         const std::string  u8Path = Encoding::wstringToUtf8(wPath);
@@ -6954,11 +6977,6 @@ void MultiReplace::handleFindPrevButton() {
 
     // Create a fully initialized `SearchContext`
     SearchContext context;
-    context.findText = convertAndExtendW(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT),
-        IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-    context.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) |
-        (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) |
-        (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
     context.docLength = send(SCI_GETLENGTH, 0, 0);
     context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
     context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
@@ -7004,6 +7022,15 @@ void MultiReplace::handleFindPrevButton() {
         }
     }
     else {
+        // Single-Mode: lesen → History → Flags → Suche
+        std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+
+        context.findText = convertAndExtendW(findText, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+        context.searchFlags =
+            (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) |
+            (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) |
+            (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
 
         // Set search flags before calling 'performSearchBackward'
         send(SCI_SETSEARCHFLAGS, context.searchFlags);
@@ -7031,7 +7058,7 @@ void MultiReplace::handleFindPrevButton() {
             }
         }
         else {
-            showStatusMessage(LM.get(L"status_no_matches_found_for", { getTextFromDialogItem(_hSelf, IDC_FIND_EDIT) }),
+            showStatusMessage(LM.get(L"status_no_matches_found_for", { findText }),
                 MessageStatus::Error, true);
         }
     }
