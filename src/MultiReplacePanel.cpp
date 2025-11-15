@@ -8462,6 +8462,27 @@ bool MultiReplace::showFlowTabsIntroDialog(bool& dontShowFlag) const
     return (rc == IDOK);
 }
 
+ViewState MultiReplace::saveViewState() const {
+    ViewState s{};
+    s.firstVisibleLine = (int)send(SCI_GETFIRSTVISIBLELINE);
+    s.xOffset = (int)send(SCI_GETXOFFSET);
+    s.caret = (Sci_Position)send(SCI_GETCURRENTPOS);
+    s.anchor = (Sci_Position)send(SCI_GETANCHOR);
+    s.wrapMode = (int)send(SCI_GETWRAPMODE);
+    return s;
+}
+
+void MultiReplace::restoreViewStateExact(const ViewState& s) {
+    // restore selection/caret first to avoid re-centering side effects
+    send(SCI_SETSEL, s.anchor, s.caret);
+    send(SCI_SETXOFFSET, s.xOffset, 0);
+
+    const int curFirst = (int)send(SCI_GETFIRSTVISIBLELINE);
+    if (curFirst != s.firstVisibleLine) {
+        send(SCI_LINESCROLL, 0, s.firstVisibleLine - curFirst);
+    }
+}
+
 #pragma endregion
 
 
@@ -8753,13 +8774,20 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
         return;
     }
 
+    // Snapshot view state once for this sort/unsort toggle
+    const ViewState vs = saveViewState();
+
     if ((direction == SortDirection::Ascending && currentSortState == SortDirection::Ascending) ||
         (direction == SortDirection::Descending && currentSortState == SortDirection::Descending)) {
         isSortedColumn = false; //Disable logging of changes
-        runCsvWithFlowTabs(CsvOp::Sort, [&]() -> bool {
-            restoreOriginalLineOrder(originalLineOrder);
-            return true;
-        });
+        if (!originalLineOrder.empty()) {
+            runCsvWithFlowTabs(CsvOp::Sort, [&]() -> bool {
+                send(SCI_BEGINUNDOACTION, 0, 0);
+                restoreOriginalLineOrder(originalLineOrder);
+                send(SCI_ENDUNDOACTION, 0, 0);
+                return true;
+                });
+        }
         currentSortState = SortDirection::Unsorted;
         originalLineOrder.clear();
     }
@@ -8769,6 +8797,8 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
             sortRowsByColumn(direction);
         }
     }
+    // Restore view state so the viewport stays on the same top line
+    restoreViewStateExact(vs);
 }
 
 void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType) {
@@ -9160,6 +9190,9 @@ void MultiReplace::handleHighlightColumnsInDocument() {
         return;
     }
 
+    // --- Viewport snapshot (vertical + horizontal + selection)
+    const ViewState vs = saveViewState();
+
     int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
     highlightedTabs.mark(currentBufferID);
     initializeColumnStyles();
@@ -9176,6 +9209,9 @@ void MultiReplace::handleHighlightColumnsInDocument() {
 
     isColumnHighlighted = true;
     isCaretPositionEnabled = true;
+
+    // --- Viewport restore
+    restoreViewStateExact(vs);
 }
 
 void MultiReplace::fixHighlightAtDocumentEnd() {
@@ -9264,6 +9300,9 @@ void MultiReplace::handleClearColumnMarks() {
         return;
     }
 
+    // --- Save viewport
+    const ViewState vs = saveViewState();
+
     // Get total document length
     LRESULT textLength = send(SCI_GETLENGTH);
 
@@ -9283,6 +9322,9 @@ void MultiReplace::handleClearColumnMarks() {
 
     // Remove tab from tracked highlighted tabs
     highlightedTabs.clear(currentBufferID);
+
+    // --- Restore viewport
+    restoreViewStateExact(vs);
 }
 
 std::wstring MultiReplace::addLineAndColumnMessage(LRESULT pos) {

@@ -295,6 +295,14 @@ struct ResizableColWidths {
     int margin;
 };
 
+struct ViewState {
+    int firstVisibleLine = 0;
+    int xOffset = 0;
+    Sci_Position caret = 0;
+    Sci_Position anchor = 0;
+    int wrapMode = 0; // not strictly required for restore
+};
+
 struct LuaVariable {
     std::string name;
     LuaVariableType type;
@@ -847,6 +855,8 @@ private:
     bool applyFlowTabStops();
     bool runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& body);
     bool showFlowTabsIntroDialog(bool& dontShowFlag) const;
+    ViewState MultiReplace::saveViewState() const;
+    void MultiReplace::restoreViewStateExact(const ViewState& s);
 
     //CSV Sort
     std::vector<CombinedColumns> extractColumnData(SIZE_T startLine, SIZE_T lineCount);
