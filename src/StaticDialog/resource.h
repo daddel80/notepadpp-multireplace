@@ -255,6 +255,9 @@
 #define STYLE10                         69
 
 
+#define IDD_MULTIREPLACE_CONFIG         7000
+#define IDC_CONFIG_CATEGORY_LIST        7010
+
 
 // ===================================================================
 //  Hard-coded defaults & custom messages

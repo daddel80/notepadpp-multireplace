@@ -68,6 +68,7 @@
     <ClInclude Include="..\src\lua\lundump.h" />
     <ClInclude Include="..\src\lua\lvm.h" />
     <ClInclude Include="..\src\lua\lzio.h" />
+    <ClInclude Include="..\src\MultiReplaceConfigDialog.h" />
     <ClInclude Include="..\src\MultiReplacePanel.h" />
     <ClInclude Include="..\src\Notepad_plus_msgs.h" />
     <ClInclude Include="..\src\NppStyleKit.h" />
@@ -158,6 +159,7 @@
     <ClCompile Include="..\src\lua\lundump.c" />
     <ClCompile Include="..\src\lua\lutf8lib.c" />
     <ClCompile Include="..\src\lua\lzio.c" />
+    <ClCompile Include="..\src\MultiReplaceConfigDialog.cpp" />
     <ClCompile Include="..\src\MultiReplacePanel.cpp" />
     <ClCompile Include="..\src\MultiReplace.cpp" />
     <ClCompile Include="..\src\MultiReplacePanel_BatchUI.cpp" />

@@ -18,9 +18,11 @@
 #include "PluginDefinition.h"
 #include "MultiReplacePanel.h"
 #include "AboutDialog.h"
+#include "MultiReplaceConfigDialog.h"
 
 
 MultiReplace _MultiReplace;
+MultiReplaceConfigDialog _MultiReplaceConfig;
 
 //INT_PTR CALLBACK DialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
@@ -42,6 +44,7 @@ HINSTANCE hInst;
 void pluginInit(HINSTANCE hModule)
 {
     _MultiReplace.init((HINSTANCE)hModule, NULL);
+    _MultiReplaceConfig.init((HINSTANCE)hModule, NULL);
     hInst = (HINSTANCE)hModule;
 }
 
@@ -70,8 +73,9 @@ void commandMenuInit()
     //            );
     setCommand(0, TEXT("&Multiple Replacement ..."), multiReplace, NULL, false);
     setCommand(1, TEXT("SEPARATOR"), NULL, NULL, false);
-    setCommand(2, TEXT("&Documentation"), openHelpLink, NULL, false);
-    setCommand(3, TEXT("&About"), about, NULL, false);
+    setCommand(2, TEXT("&Settings..."), multiReplaceConfig, NULL, false);
+    setCommand(3, TEXT("&Documentation"), openHelpLink, NULL, false);
+    setCommand(4, TEXT("&About"), about, NULL, false);
 }
 
 //
@@ -125,6 +129,19 @@ void openHelpLink()
 void about()
 {
     ShowAboutDialog(nppData._nppHandle);
+}
+
+void multiReplaceConfig()
+{
+    // Ensure correct parent window (Notepad++ main window)
+    _MultiReplaceConfig.init(hInst, nppData._nppHandle);
+
+    if (!_MultiReplaceConfig.isCreated())
+    {
+        _MultiReplaceConfig.create(IDD_MULTIREPLACE_CONFIG);
+    }
+
+    _MultiReplaceConfig.display(true);
 }
 
 
