@@ -546,8 +546,8 @@ void MultiReplace::moveAndResizeControls() {
         IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_ALL_BUTTON, IDC_FIND_NEXT_BUTTON,
         IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
         IDC_USE_LIST_BUTTON, IDC_CANCEL_REPLACE_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-        IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, 
-        IDC_PATH_DISPLAY, IDC_STATS_DISPLAY, IDC_FILTER_EDIT, IDC_FILTER_HELP, IDC_SUBFOLDERS_CHECKBOX, 
+        IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON,
+        IDC_PATH_DISPLAY, IDC_STATS_DISPLAY, IDC_FILTER_EDIT, IDC_FILTER_HELP, IDC_SUBFOLDERS_CHECKBOX,
         IDC_HIDDENFILES_CHECKBOX, IDC_DIR_EDIT, IDC_BROWSE_DIR_BUTTON, IDC_FILE_OPS_GROUP, IDC_DIR_PROGRESS_BAR, IDC_STATUS_MESSAGE
     };
 
@@ -563,7 +563,7 @@ void MultiReplace::moveAndResizeControls() {
         GetClientRect(resizeHwnd, &rc);
 
         DWORD startSelection = 0, endSelection = 0;
-        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT 
+        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT
             || ctrlId == IDC_DIR_EDIT || ctrlId == IDC_FILTER_EDIT) {
             SendMessage(resizeHwnd, CB_GETEDITSEL, (WPARAM)&startSelection, (LPARAM)&endSelection);
         }
@@ -1822,31 +1822,28 @@ void MultiReplace::updateListViewItem(size_t index) {
 }
 
 void MultiReplace::updateListViewTooltips() {
+    if (!_replaceListView) return;
 
+    // when disabled: ensure header tooltip is gone
     if (!tooltipsEnabled) {
+        if (_hHeaderTooltip) { DestroyWindow(_hHeaderTooltip); _hHeaderTooltip = nullptr; }
         return;
     }
 
     HWND hwndHeader = ListView_GetHeader(_replaceListView);
-    if (!hwndHeader)
-        return;
+    if (!hwndHeader) return;
 
-    // Destroy the old tooltip window to ensure all previous tooltips are removed
-    if (_hHeaderTooltip) {
-        DestroyWindow(_hHeaderTooltip);
-        _hHeaderTooltip = nullptr;
-    }
+    if (_hHeaderTooltip) { DestroyWindow(_hHeaderTooltip); _hHeaderTooltip = nullptr; }
 
-    // Create a new tooltip window
     _hHeaderTooltip = CreateHeaderTooltip(hwndHeader);
 
-    // Re-add tooltips for columns 6 to 10
     AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::WHOLE_WORD], LM.getLPW(L"tooltip_header_whole_word"));
     AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::MATCH_CASE], LM.getLPW(L"tooltip_header_match_case"));
     AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::USE_VARIABLES], LM.getLPW(L"tooltip_header_use_variables"));
     AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::EXTENDED], LM.getLPW(L"tooltip_header_extended"));
     AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::REGEX], LM.getLPW(L"tooltip_header_regex"));
 }
+
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
 
@@ -2017,12 +2014,12 @@ void MultiReplace::sortReplaceListData(int columnID) {
     auto safeToInt = [](const std::wstring& s) -> int {
         try { return s.empty() ? -1 : std::stoi(s); }
         catch (...) { return -1; }
-    };
+        };
 
     // Perform the sorting
     std::sort(replaceListData.begin(), replaceListData.end(),
         [this, columnID, direction, safeToInt]
-    (const ReplaceItemData& a, const ReplaceItemData& b) -> bool
+        (const ReplaceItemData& a, const ReplaceItemData& b) -> bool
         {
             switch (columnID)
             {
@@ -2257,6 +2254,119 @@ void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
 
     // Destroy the menu after use
     DestroyMenu(hMenu);
+}
+
+#pragma endregion
+
+
+#pragma region UI
+
+void MultiReplace::onTooltipsToggled(bool enable)
+{
+    if (!instance) return;
+
+    if (!enable)
+    {
+        destroyAllTooltipWindows();
+        return;
+    }
+
+    rebuildAllTooltips();
+}
+
+// MultiReplacePanel.cpp
+void MultiReplace::destroyAllTooltipWindows()
+{
+    if (!_hSelf) return;
+
+    // destroy known singletons
+    if (_hHeaderTooltip) { DestroyWindow(_hHeaderTooltip);        _hHeaderTooltip = nullptr; }
+    if (_hUseListButtonTooltip) { DestroyWindow(_hUseListButtonTooltip); _hUseListButtonTooltip = nullptr; }
+
+    const DWORD tid = GetCurrentThreadId();
+    EnumThreadWindows(tid,
+        [](HWND hwnd, LPARAM lParam)->BOOL
+        {
+            auto pThis = reinterpret_cast<MultiReplace*>(lParam);
+            if (!pThis || !pThis->_hSelf) return TRUE;
+
+            wchar_t cls[64]{};
+            GetClassNameW(hwnd, cls, 64);
+            if (_wcsicmp(cls, TOOLTIPS_CLASS) != 0)
+                return TRUE;
+
+            // only tooltips owned by this panel (or its children)
+            HWND hOwner = GetWindow(hwnd, GW_OWNER);
+            if (hOwner != pThis->_hSelf && !IsChild(pThis->_hSelf, hOwner))
+                return TRUE;
+
+            // keep the "(?)" filter help tooltip if present among tools
+            HWND hFilterHelp = GetDlgItem(pThis->_hSelf, IDC_FILTER_HELP);
+            if (hFilterHelp) {
+                TOOLINFO ti{}; ti.cbSize = sizeof(ti);
+                for (int i = 0; SendMessage(hwnd, TTM_ENUMTOOLS, (WPARAM)i, (LPARAM)&ti); ++i) {
+                    if ((ti.uFlags & TTF_IDISHWND) && (HWND)ti.uId == hFilterHelp) {
+                        return TRUE; // keep this tooltip window
+                    }
+                }
+            }
+
+            DestroyWindow(hwnd);
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(this));
+}
+
+void MultiReplace::rebuildAllTooltips()
+{
+    if (!_hSelf) return;
+
+    // always remove leftovers first
+    destroyAllTooltipWindows();
+
+    if (!tooltipsEnabled)
+        return;
+
+    // Rebuild control tooltips from ctrlMap
+    for (const auto& pair : ctrlMap)
+    {
+        const int ctrlId = pair.first;
+        const auto& info = pair.second;
+        if (!info.tooltipText || !info.tooltipText[0]) continue;
+
+        HWND hCtrl = GetDlgItem(_hSelf, ctrlId);
+        if (!hCtrl) continue;
+
+        HWND hwndTooltip = CreateWindowEx(
+            0,
+            TOOLTIPS_CLASS,
+            nullptr,
+            WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON | TTS_NOPREFIX,
+            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+            _hSelf,
+            nullptr,
+            hInstance,
+            nullptr
+        );
+        if (!hwndTooltip) continue;
+
+        DWORD maxWidth = (ctrlId == IDC_FILTER_HELP) ? 200 : 0;
+        SendMessage(hwndTooltip, TTM_SETMAXTIPWIDTH, 0, maxWidth);
+
+        TOOLINFO ti{};
+        ti.cbSize = sizeof(TOOLINFO);
+        ti.hwnd = _hSelf;
+        ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        ti.uId = (UINT_PTR)hCtrl;
+        ti.lpszText = const_cast<LPWSTR>(info.tooltipText);
+
+        SendMessage(hwndTooltip, TTM_ADDTOOL, 0, (LPARAM)&ti);
+        SendMessage(hwndTooltip, TTM_ACTIVATE, TRUE, 0);
+    }
+
+    // Update special tooltips
+    updateUseListState(false);
+    updateListViewTooltips();
 }
 
 #pragma endregion
@@ -3083,15 +3193,15 @@ void MultiReplace::pasteItemsIntoList() {
 
         ReplaceItemData item;
         try {
-            item.isEnabled    = std::stoi(columns[0]) != 0;
-            item.findText     = columns[1];
-            item.replaceText  = columns[2];
-            item.wholeWord    = std::stoi(columns[3]) != 0;
-            item.matchCase    = std::stoi(columns[4]) != 0;
+            item.isEnabled = std::stoi(columns[0]) != 0;
+            item.findText = columns[1];
+            item.replaceText = columns[2];
+            item.wholeWord = std::stoi(columns[3]) != 0;
+            item.matchCase = std::stoi(columns[4]) != 0;
             item.useVariables = std::stoi(columns[5]) != 0;
-            item.extended     = std::stoi(columns[6]) != 0;
-            item.regex        = std::stoi(columns[7]) != 0;
-            item.comments     = (columns.size() == 9 ? columns[8] : L"");
+            item.extended = std::stoi(columns[6]) != 0;
+            item.regex = std::stoi(columns[7]) != 0;
+            item.comments = (columns.size() == 9 ? columns[8] : L"");
         }
         catch (const std::exception&) {
             continue; // Silently ignore lines with conversion errors
@@ -3635,7 +3745,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         performItemAction(_contextMenuClickPoint, ItemAction::Add);
                         break;
                     }
-                } 
+                }
                 else {
                     switch (pnkd->wVKey) {
                     case VK_DELETE: // Delete key for deleting selected lines
@@ -3958,7 +4068,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case ID_FIND_ALL_IN_ALL_DOCS_OPTION: 
+        case ID_FIND_ALL_IN_ALL_DOCS_OPTION:
         {
             SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getLPW(L"split_button_find_all_in_docs"));
             isFindAllInDocs = true;
@@ -4762,7 +4872,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 newPos = itemData.regex
                     ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
                     : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
-                
+
                 // Only skip advancing when we deleted a non-empty match:
                 if (searchResult.length == 0 || newPos != searchResult.pos) {
                     newPos = ensureForwardProgress(newPos, searchResult);
@@ -5210,7 +5320,7 @@ bool MultiReplace::compileLuaReplaceCode(const std::string& luaCode)
     return true;
 }
 
-bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex) 
+bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
 {
     // 1) Stack-checkpoint
     const int stackBase = lua_gettop(_luaState);
@@ -5247,7 +5357,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             if (len > 0) {
                 std::vector<char> buf(len + 1, '\0');
                 if (send(SCI_GETTAG, i,
-                         reinterpret_cast<sptr_t>(buf.data()), false) >= 0)
+                    reinterpret_cast<sptr_t>(buf.data()), false) >= 0)
                     capVal.assign(buf.data());
             }
             std::string capName = "CAP" + std::to_string(i);
@@ -5262,9 +5372,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         const char* err = lua_tostring(_luaState, -1);
         if (err && isLuaErrorDialogEnabled) {
             MessageBox(nppData._nppHandle,
-                       Encoding::utf8ToWString(err).c_str(),
-                       LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
-                       MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+                Encoding::utf8ToWString(err).c_str(),
+                LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
+                MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
         }
         restoreStack();
         return false;
@@ -5276,10 +5386,10 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         if (isLuaErrorDialogEnabled) {
             std::wstring msg =
                 LM.get(L"msgbox_use_variables_execution_error",
-                       { Encoding::utf8ToWString(inputString.c_str()) });
+                    { Encoding::utf8ToWString(inputString.c_str()) });
             MessageBox(nppData._nppHandle, msg.c_str(),
-                       LM.get(L"msgbox_title_use_variables_execution_error").c_str(),
-                       MB_OK);
+                LM.get(L"msgbox_title_use_variables_execution_error").c_str(),
+                MB_OK);
         }
         restoreStack();
         return false;
@@ -5289,7 +5399,8 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     lua_getfield(_luaState, -1, "result");                 // push result
     if (lua_isnil(_luaState, -1)) {
         inputString.clear();
-    } else if (lua_isstring(_luaState, -1) || lua_isnumber(_luaState, -1)) {
+    }
+    else if (lua_isstring(_luaState, -1) || lua_isnumber(_luaState, -1)) {
         std::string res = lua_tostring(_luaState, -1);
         if (regex) { res = escapeForRegex(res); }
         inputString = res;
@@ -5311,12 +5422,15 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             double n = lua_tonumber(_luaState, -1);
             std::ostringstream os; os << std::fixed << std::setprecision(8) << n;
             capVariablesStr += capName + "\tNumber\t" + os.str() + "\n\n";
-        } else if (lua_isboolean(_luaState, -1)) {
+        }
+        else if (lua_isboolean(_luaState, -1)) {
             bool b = lua_toboolean(_luaState, -1);
             capVariablesStr += capName + "\tBoolean\t" + (b ? "true" : "false") + "\n\n";
-        } else if (lua_isstring(_luaState, -1)) {
+        }
+        else if (lua_isstring(_luaState, -1)) {
             capVariablesStr += capName + "\tString\t" + lua_tostring(_luaState, -1) + "\n\n";
-        } else {
+        }
+        else {
             capVariablesStr += capName + "\t<nil>\n\n";
         }
         lua_pop(_luaState, 1);                             // pop CAP value
@@ -5339,10 +5453,12 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             const LuaVariable& v = p.second;
             if (v.type == LuaVariableType::String) {
                 globalsStr += v.name + "\tString\t" + v.stringValue + "\n\n";
-            } else if (v.type == LuaVariableType::Number) {
+            }
+            else if (v.type == LuaVariableType::Number) {
                 std::ostringstream os; os << std::fixed << std::setprecision(8) << v.numberValue;
                 globalsStr += v.name + "\tNumber\t" + os.str() + "\n\n";
-            } else if (v.type == LuaVariableType::Boolean) {
+            }
+            else if (v.type == LuaVariableType::Boolean) {
                 globalsStr += v.name + "\tBoolean\t" + (v.booleanValue ? "true" : "false") + "\n\n";
             }
         }
@@ -8206,7 +8322,7 @@ void MultiReplace::handleColumnGridTabsButton()
 
     showStatusMessage(LM.get(nowHasPads ? L"status_tabs_inserted"  // with inserts
         : L"status_tabs_aligned"), // visuals only
-        MessageStatus::Success );
+        MessageStatus::Success);
 
     // Track active buffer for cleanup-on-switch logic
     if (nowHasPads) g_padBufs.insert(bufId); else g_padBufs.erase(bufId);
@@ -8618,7 +8734,7 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
             size_t e = s.size();
             while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t')) --e;
             return s.substr(b, e - b);
-        };
+            };
         std::vector<CombinedColumns> sortable = combinedData;
         for (auto& row : sortable)
             for (auto& col : row.columns) {
@@ -8733,7 +8849,7 @@ void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalO
         send(SCI_APPENDTEXT, sortedLines[i].length(), reinterpret_cast<sptr_t>(sortedLines[i].c_str()));
         // Add a line break after each line except the last one
         if (i < sortedLines.size() - 1) {
-            send(SCI_APPENDTEXT, lineBreak.length(),reinterpret_cast<sptr_t>(lineBreak.c_str()));
+            send(SCI_APPENDTEXT, lineBreak.length(), reinterpret_cast<sptr_t>(lineBreak.c_str()));
         }
     }
 }
@@ -8816,7 +8932,7 @@ void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, 
         newIndices.reserve(blockCount);
 
         for (SIZE_T i = 0; i < blockCount; ++i) {
-            newIndices.push_back(maxIndex + i); 
+            newIndices.push_back(maxIndex + i);
         }
 
         // Insert them at the specified position
@@ -9402,7 +9518,7 @@ void MultiReplace::processLogForDelimiters() {
             break;
         }
 
-        case ChangeType::Delete: 
+        case ChangeType::Delete:
         {
             Sci_Position deletePos = logEntry.lineNumber;
             Sci_Position blockCount = logEntry.blockSize;
@@ -9441,7 +9557,7 @@ void MultiReplace::processLogForDelimiters() {
             break;
         }
 
-        case ChangeType::Modify: 
+        case ChangeType::Modify:
         {
             modifyLogEntries.push_back(logEntry);
             break;
@@ -9714,7 +9830,7 @@ void MultiReplace::displayLogChangesInMessageBox() {
 
 #pragma region Utilities
 
-static inline bool decodeNumericEscape(const std::wstring& src,size_t pos, int  base, int digits,wchar_t& out)
+static inline bool decodeNumericEscape(const std::wstring& src, size_t pos, int  base, int digits, wchar_t& out)
 {
     if (pos + digits > src.size())           // not enough characters
         return false;
@@ -10494,7 +10610,7 @@ UINT MultiReplace::getCurrentDocCodePage()
     return static_cast<UINT>(cp != 0 ? cp : CP_ACP);
 }
 
-Sci_Position MultiReplace::advanceAfterMatch(const SearchResult& r)  {
+Sci_Position MultiReplace::advanceAfterMatch(const SearchResult& r) {
     if (r.length > 0) return r.pos + r.length;
     const Sci_Position after = static_cast<Sci_Position>(send(SCI_POSITIONAFTER, r.pos, 0));
     const Sci_Position next = (after > r.pos) ? after : (r.pos + 1);
@@ -10502,7 +10618,7 @@ Sci_Position MultiReplace::advanceAfterMatch(const SearchResult& r)  {
     return (next > docLen) ? docLen : next;
 }
 
-Sci_Position MultiReplace::ensureForwardProgress(Sci_Position candidate, const SearchResult& last)  {
+Sci_Position MultiReplace::ensureForwardProgress(Sci_Position candidate, const SearchResult& last) {
     if (candidate > last.pos) return candidate;
     const Sci_Position after = static_cast<Sci_Position>(send(SCI_POSITIONAFTER, last.pos, 0));
     const Sci_Position next = (after > last.pos) ? after : (last.pos + 1);
@@ -10861,7 +10977,7 @@ std::wstring MultiReplace::escapeCsvValue(const std::wstring& value) {
         }
     }
 
-    escapedValue += L"\""; 
+    escapedValue += L"\"";
 
     return escapedValue;
 }
@@ -11443,15 +11559,17 @@ void MultiReplace::loadSettings() {
     showListFilePath();
 }
 
-void MultiReplace::loadUIConfigFromIni() {
-    auto [iniFilePath, _] = generateConfigFilePaths(); // Generating config file paths
-    CFG.load(iniFilePath); (iniFilePath);
+void MultiReplace::loadUIConfigFromIni()
+{
+    auto [iniFilePath, _] = generateConfigFilePaths();
+    CFG.load(iniFilePath);
+    if (!dpiMgr) return;
 
-    // Load DPI Scaling factor from INI file
+    // --- scale -------------------------------------------------
     float customScaleFactor = CFG.readFloat(L"Window", L"ScaleFactor", 1.0f);
     dpiMgr->setCustomScaleFactor(customScaleFactor);
 
-    // Scale Window and List Size after loading ScaleFactor
+    // --- scaled constants --------------------------------------
     MIN_WIDTH_scaled = sx(MIN_WIDTH);
     MIN_HEIGHT_scaled = sy(MIN_HEIGHT);
     SHRUNK_HEIGHT_scaled = sy(SHRUNK_HEIGHT);
@@ -11462,57 +11580,213 @@ void MultiReplace::loadUIConfigFromIni() {
     DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled = sx(DEFAULT_COLUMN_WIDTH_REPLACE_COUNT);
     MIN_GENERAL_WIDTH_scaled = sx(MIN_GENERAL_WIDTH);
 
-    // Load window position (using CFG.readInt)
+    // --- pos ---------------------------------------------------
     windowRect.left = CFG.readInt(L"Window", L"PosX", POS_X);
     windowRect.top = CFG.readInt(L"Window", L"PosY", POS_Y);
 
-    // Load the state of UseList
+    // --- use list ----------------------------------------------
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     updateUseListState(false);
 
-    // add extra width to align right edge of List/Edit with Scope group box at initial startup
-    int DEFAULT_WIDTH_EXTRA = 23;
-
-    // Load window width
+    // --- size --------------------------------------------------
+    const int DEFAULT_WIDTH_EXTRA = 23;
     int savedWidth = CFG.readInt(L"Window", L"Width", sx(MIN_WIDTH + DEFAULT_WIDTH_EXTRA));
-    int width = std::max(savedWidth, MIN_WIDTH_scaled);
+    int width = (savedWidth < MIN_WIDTH_scaled) ? MIN_WIDTH_scaled : savedWidth;
 
-    // Load useListOnHeight
     useListOnHeight = CFG.readInt(L"Window", L"Height", MIN_HEIGHT_scaled);
-    useListOnHeight = std::max(useListOnHeight, MIN_HEIGHT_scaled);
+    if (useListOnHeight < MIN_HEIGHT_scaled) useListOnHeight = MIN_HEIGHT_scaled;
 
     int height = useListEnabled ? useListOnHeight : useListOffHeight;
     windowRect.right = windowRect.left + width;
     windowRect.bottom = windowRect.top + height;
 
-    // Read column widths
+    // --- columns width -----------------------------------------
     findColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindWidth", DEFAULT_COLUMN_WIDTH_FIND_scaled), MIN_GENERAL_WIDTH_scaled);
     replaceColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceWidth", DEFAULT_COLUMN_WIDTH_REPLACE_scaled), MIN_GENERAL_WIDTH_scaled);
     commentsColumnWidth = std::max(CFG.readInt(L"ListColumns", L"CommentsWidth", DEFAULT_COLUMN_WIDTH_COMMENTS_scaled), MIN_GENERAL_WIDTH_scaled);
     findCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
     replaceCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceCountWidth", DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
 
-    // Load column visibility states
+    // --- columns visible ---------------------------------------
     isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
     isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
     isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
     isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
 
-    // Load column lock states
+    // --- locks -------------------------------------------------
     findColumnLockedEnabled = CFG.readBool(L"ListColumns", L"FindColumnLocked", true);
     replaceColumnLockedEnabled = CFG.readBool(L"ListColumns", L"ReplaceColumnLocked", false);
     commentsColumnLockedEnabled = CFG.readBool(L"ListColumns", L"CommentsColumnLocked", true);
 
-    // Load transparency settings (readByteFromIniCache)
-    foregroundTransparency = std::clamp(CFG.readByte(L"Window", L"ForegroundTransparency", DEFAULT_FOREGROUND_TRANSPARENCY), MIN_TRANSPARENCY, MAX_TRANSPARENCY);
-    backgroundTransparency = std::clamp(CFG.readByte(L"Window", L"BackgroundTransparency", DEFAULT_BACKGROUND_TRANSPARENCY), MIN_TRANSPARENCY, MAX_TRANSPARENCY);
+    // --- transparency ------------------------------------------
+    int fg = (int)CFG.readByte(L"Window", L"ForegroundTransparency", 255);
+    int bg = (int)CFG.readByte(L"Window", L"BackgroundTransparency", 190);
+    if (fg < 0) fg = 0; if (fg > 255) fg = 255;
+    if (bg < 0) bg = 0; if (bg > 255) bg = 255;
+    foregroundTransparency = (BYTE)fg;
+    backgroundTransparency = (BYTE)bg;
 
-    // Load Tooltip setting
+    // --- tooltips flag (state only) ----------------------------
     tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
+    isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true); // keep aligned with ConfigDialog apply
+
+    // --- apply to UI -------------------------------------------
+    if (_replaceListView)
+    {
+        // full rebuild so visibility flags take effect
+        createListViewColumns();
+
+        // keep list data and visuals in sync
+        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
+
+        // infotips reflect current hover flag
+        DWORD ex = ListView_GetExtendedListViewStyle(_replaceListView);
+        if (isHoverTextEnabled) ex |= LVS_EX_INFOTIP; else ex &= ~LVS_EX_INFOTIP;
+        ListView_SetExtendedListViewStyle(_replaceListView, ex);
+
+        // refresh header icons/checkmarks after rebuild
+        updateHeaderSelection();
+    }
+
+    if (_hSelf)
+        SetWindowTransparency(_hSelf, foregroundTransparency);
 }
+
 
 void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {
     ::SetDlgItemTextW(hDlg, itemID, text.c_str());
+}
+
+
+MultiReplace::Settings MultiReplace::getSettings()
+{
+    Settings s{};
+
+    // Return live values when panel is running
+    if (instance) {
+        s.tooltipsEnabled = tooltipsEnabled;
+        s.exportToBashEnabled = exportToBashEnabled;
+        s.alertNotFoundEnabled = alertNotFoundEnabled;
+        s.doubleClickEditsEnabled = doubleClickEditsEnabled;
+        s.highlightMatchEnabled = highlightMatchEnabled;
+        s.flowTabsIntroDontShowEnabled = flowTabsIntroDontShowEnabled;
+        s.flowTabsNumericAlignEnabled = flowTabsNumericAlignEnabled;
+        s.isHoverTextEnabled = isHoverTextEnabled;
+        s.listStatisticsEnabled = listStatisticsEnabled;
+        s.stayAfterReplaceEnabled = stayAfterReplaceEnabled;
+        s.groupResultsEnabled = groupResultsEnabled;
+        s.luaSafeModeEnabled = luaSafeModeEnabled;
+        s.allFromCursorEnabled = allFromCursorEnabled;
+        s.editFieldSize = editFieldSize;
+        s.csvHeaderLinesCount = static_cast<int>(instance->CSVheaderLinesCount);
+        return s;
+    }
+
+    // Ensure INI is loaded when panel is not running
+    {
+        auto [iniFilePath, _] = generateConfigFilePaths();
+        CFG.load(iniFilePath); // no-op if already loaded
+    }
+
+    // Align defaults with loadUIConfigFromIni()
+    s.tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
+    s.exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
+    s.alertNotFoundEnabled = CFG.readBool(L"Options", L"AlertNotFound", true);   // was false
+    s.doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);
+    s.highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);  // was false
+    s.flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
+    s.flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true); // was false
+    s.isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);       // was false
+    s.listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
+    s.stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
+    s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
+    s.luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
+    s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
+    s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
+    s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
+    return s;
+}
+
+void MultiReplace::applySettings(const Settings& s)
+{
+    // keep previous master states
+    const bool prevTooltips = tooltipsEnabled;
+
+    // assign new settings
+    tooltipsEnabled = s.tooltipsEnabled;
+    exportToBashEnabled = s.exportToBashEnabled;
+    alertNotFoundEnabled = s.alertNotFoundEnabled;
+    doubleClickEditsEnabled = s.doubleClickEditsEnabled;
+    highlightMatchEnabled = s.highlightMatchEnabled;
+    flowTabsIntroDontShowEnabled = s.flowTabsIntroDontShowEnabled;
+    flowTabsNumericAlignEnabled = s.flowTabsNumericAlignEnabled;
+    isHoverTextEnabled = s.isHoverTextEnabled;
+    listStatisticsEnabled = s.listStatisticsEnabled;
+    stayAfterReplaceEnabled = s.stayAfterReplaceEnabled;
+    groupResultsEnabled = s.groupResultsEnabled;
+    luaSafeModeEnabled = s.luaSafeModeEnabled;
+    allFromCursorEnabled = s.allFromCursorEnabled;
+    editFieldSize = s.editFieldSize;
+
+    if (instance)
+    {
+        // clamp header lines
+        int h = s.csvHeaderLinesCount;
+        if (h < 0)   h = 0;
+        if (h > 999) h = 999;
+        instance->CSVheaderLinesCount = static_cast<SIZE_T>(h);
+
+        // per-control tooltips
+        if (prevTooltips != tooltipsEnabled)
+        {
+            instance->onTooltipsToggled(tooltipsEnabled); // rebuild or destroy
+        }
+        else if (tooltipsEnabled)
+        {
+            // still on: refresh bindings/texts
+            instance->updateListViewTooltips();
+        }
+
+        // ListView hover tips (INFOTIP) depend on master + hover flag
+        if (instance->_replaceListView)
+        {
+            DWORD ex = ListView_GetExtendedListViewStyle(instance->_replaceListView);
+            const bool wantInfoTip = tooltipsEnabled && isHoverTextEnabled;
+            const bool hasInfoTip = (ex & LVS_EX_INFOTIP) != 0;
+
+            if (wantInfoTip != hasInfoTip)
+            {
+                if (wantInfoTip) ex |= LVS_EX_INFOTIP;
+                else             ex &= ~LVS_EX_INFOTIP;
+                ListView_SetExtendedListViewStyle(instance->_replaceListView, ex);
+            }
+        }
+    }
+}
+
+void MultiReplace::persistSettings(const Settings& s)
+{
+    // use global CFG alias (already defined in this TU)
+    CFG.writeInt(L"Options", L"Tooltips", s.tooltipsEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"ExportToBash", s.exportToBashEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"AlertNotFound", s.alertNotFoundEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"DoubleClickEdits", s.doubleClickEditsEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"HighlightMatch", s.highlightMatchEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"FlowTabsIntroDontShow", s.flowTabsIntroDontShowEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"FlowTabsNumericAlign", s.flowTabsNumericAlignEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"HoverText", s.isHoverTextEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"ListStatistics", s.listStatisticsEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"StayAfterReplace", s.stayAfterReplaceEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"GroupResults", s.groupResultsEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"AllFromCursor", s.allFromCursorEnabled ? 1 : 0);
+
+    CFG.writeInt(L"Lua", L"SafeMode", s.luaSafeModeEnabled ? 1 : 0);
+
+    CFG.writeInt(L"Options", L"EditFieldSize", s.editFieldSize);
+    CFG.writeInt(L"Scope", L"HeaderLines", s.csvHeaderLinesCount);
+
+    CFG.save(L"");
 }
 
 #pragma endregion
@@ -11539,7 +11813,7 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
             LogEntry insertEntry;
             insertEntry.changeType = ChangeType::Insert;
             insertEntry.lineNumber = lineNumber;
-            insertEntry.blockSize  = static_cast<Sci_Position>(std::abs(addedLines));
+            insertEntry.blockSize = static_cast<Sci_Position>(std::abs(addedLines));
             logChanges.push_back(insertEntry);
         }
         else {
@@ -11563,7 +11837,7 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
 
             deleteEntry.changeType = ChangeType::Delete;
             deleteEntry.lineNumber = lineNumber;
-            deleteEntry.blockSize  = static_cast<Sci_Position>(std::abs(addedLines));
+            deleteEntry.blockSize = static_cast<Sci_Position>(std::abs(addedLines));
             logChanges.push_back(deleteEntry);
         }
         else {

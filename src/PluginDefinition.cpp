@@ -95,16 +95,21 @@ bool setCommand(size_t index, TCHAR* cmdName, PFUNCPLUGINCMD pFunc, ShortcutKey*
     if (index >= nbFunc)
         return false;
 
-    if (!pFunc)
+    const bool isSeparator = (cmdName && lstrcmpi(cmdName, TEXT("SEPARATOR")) == 0);
+    if (!pFunc && !isSeparator)
         return false;
 
-    lstrcpy(funcItem[index]._itemName, cmdName);
+    if (cmdName)
+        lstrcpy(funcItem[index]._itemName, cmdName);
+    else
+        funcItem[index]._itemName[0] = 0;
+
     funcItem[index]._pFunc = pFunc;
     funcItem[index]._init2Check = check0nInit;
     funcItem[index]._pShKey = sk;
-
     return true;
 }
+
 
 //----------------------------------------------//
 //-- STEP 4. DEFINE YOUR ASSOCIATED FUNCTIONS --//

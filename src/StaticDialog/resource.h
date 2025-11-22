@@ -258,6 +258,89 @@
 #define IDD_MULTIREPLACE_CONFIG         7000
 #define IDC_CONFIG_CATEGORY_LIST        7010
 
+// ===================================================================
+//  Config dialog control IDs (dynamic controls)
+// ===================================================================
+
+// -------------------------------------------------------------------
+//  Search & Replace panel
+// -------------------------------------------------------------------
+#define IDC_CFG_GRP_SEARCH_BEHAVIOUR      79000
+#define IDC_CFG_STAY_AFTER_REPLACE        79001
+#define IDC_CFG_ALL_FROM_CURSOR           79002
+#define IDC_CFG_ALERT_NOT_FOUND           79003
+#define IDC_CFG_GRP_HIGHLIGHT             79004
+#define IDC_CFG_HIGHLIGHT_MATCH           79005
+
+// -------------------------------------------------------------------
+//  List View & Layout panel
+// -------------------------------------------------------------------
+#define IDC_CFG_GRP_LIST_COLUMNS          79020
+#define IDC_CFG_FINDCOUNT_VISIBLE         79021
+#define IDC_CFG_REPLACECOUNT_VISIBLE      79022
+#define IDC_CFG_COMMENTS_VISIBLE          79023
+#define IDC_CFG_DELETEBUTTON_VISIBLE      79024
+
+#define IDC_CFG_GRP_LIST_STATS            79030
+#define IDC_CFG_LISTSTATISTICS_ENABLED    79031
+#define IDC_CFG_GROUPRESULTS_ENABLED      79032
+
+#define IDC_CFG_GRP_FLOWTABS              79040
+#define IDC_CFG_FLOWTABS_NUMERIC_ALIGN    79041
+#define IDC_CFG_FLOWTABS_INTRO_DONTSHOW   79042
+
+#define IDC_CFG_GRP_SORTING               79050
+#define IDC_CFG_HEADERLINES_LABEL         79051
+#define IDC_CFG_HEADERLINES_EDIT          79052
+
+// -------------------------------------------------------------------
+//  Interface and Tooltips panel
+// -------------------------------------------------------------------
+#define IDC_CFG_GRP_INTERACTION           79060
+#define IDC_CFG_DOUBLECLICK_EDITS         79061
+#define IDC_CFG_HOVER_TEXT_ENABLED        79062
+
+#define IDC_CFG_GRP_TOOLTIPS              79070
+#define IDC_CFG_TOOLTIPS_ENABLED          79071
+#define IDC_CFG_HOVER_DELAY_LABEL         79072
+#define IDC_CFG_HOVER_DELAY_EDIT          79073
+
+// -------------------------------------------------------------------
+//  Appearance panel
+// -------------------------------------------------------------------
+#define IDC_CFG_GRP_EDITFIELD             79080
+#define IDC_CFG_EDITFIELD_LABEL           79081
+#define IDC_CFG_EDITFIELD_SIZE_COMBO      79082
+
+#define IDC_CFG_GRP_TRANSPARENCY          79090
+#define IDC_CFG_FOREGROUND_LABEL          79091
+#define IDC_CFG_FOREGROUND_SLIDER         79092
+#define IDC_CFG_BACKGROUND_LABEL          79093
+#define IDC_CFG_BACKGROUND_SLIDER         79094
+
+// -------------------------------------------------------------------
+//  Variables and Automation panel
+// -------------------------------------------------------------------
+#define IDC_CFG_GRP_VARIABLES_AUTOMATION  79100
+#define IDC_CFG_USE_LUA_VARIABLES         79101
+#define IDC_CFG_AUTO_APPLY_VARIABLES      79102
+#define IDC_CFG_RUN_SCRIPT_BEFORE_REPLACE 79103
+
+//  (Lua specific controls, same panel)
+#define IDC_CFG_GRP_LUA                   79130
+#define IDC_CFG_LUA_SAFEMODE_ENABLED      79131
+#define IDC_CFG_LUA_PLACEHOLDER_LABEL     79132
+
+
+// -------------------------------------------------------------------
+//  Import and Scope panel
+// -------------------------------------------------------------------
+#define IDC_CFG_GRP_IMPORT_SCOPE          79120
+#define IDC_CFG_SCOPE_USE_LIST            79121
+#define IDC_CFG_IMPORT_ON_STARTUP         79122
+#define IDC_CFG_REMEMBER_IMPORT_PATH      79123
+#define IDC_CFG_IMPORT_SCOPE_PLACEHOLDER  79124
+
 
 // ===================================================================
 //  Hard-coded defaults & custom messages

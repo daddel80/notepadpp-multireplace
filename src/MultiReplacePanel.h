@@ -396,7 +396,7 @@ public:
     static inline HWND getDialogHandle() {
         return s_hDlg;
     }
-    
+
     struct DMDARKMODECOLORS {
         COLORREF bkgColor;
         COLORREF foreColor;
@@ -410,6 +410,33 @@ public:
         Error
     };
 
+    struct Settings
+    {
+        bool tooltipsEnabled;
+        bool exportToBashEnabled;
+        bool alertNotFoundEnabled;
+        bool doubleClickEditsEnabled;
+        bool highlightMatchEnabled;
+        bool flowTabsIntroDontShowEnabled;
+        bool flowTabsNumericAlignEnabled;
+        bool isHoverTextEnabled;
+        bool listStatisticsEnabled;
+        bool stayAfterReplaceEnabled;
+        bool groupResultsEnabled;
+        bool luaSafeModeEnabled;
+        bool allFromCursorEnabled;
+        int  editFieldSize;
+        int  csvHeaderLinesCount;
+    };
+
+    static Settings getSettings();
+    static void applySettings(const Settings& settings);
+    static void persistSettings(const Settings& settings);
+
+    void loadUIConfigFromIni();
+    void saveSettingsToIni(const std::wstring& iniFilePath);
+    static  std::pair<std::wstring, std::wstring> generateConfigFilePaths();
+
     // Light Mode Colors for Message
     static constexpr COLORREF LMODE_SUCCESS = RGB(0, 128, 0);
     static constexpr COLORREF LMODE_ERROR = RGB(200, 0, 0);
@@ -417,7 +444,7 @@ public:
     static constexpr COLORREF LMODE_FILTER_HELP = RGB(0, 0, 255);
 
     // Dark Mode Colors for Message
-    static constexpr COLORREF DMODE_SUCCESS = RGB(120, 220, 120); 
+    static constexpr COLORREF DMODE_SUCCESS = RGB(120, 220, 120);
     static constexpr COLORREF DMODE_ERROR = RGB(255, 110, 110);
     static constexpr COLORREF DMODE_INFO = RGB(180, 180, 255);
     static constexpr COLORREF DMODE_FILTER_HELP = RGB(255, 235, 59);
@@ -461,7 +488,7 @@ public:
     void loadListFromCsv(const std::wstring& filePath); // used in DropTarget.cpp
     void showListFilePath();
     void initializeDragAndDrop();
-   // std::wstring getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements = {});
+    // std::wstring getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements = {});
 
     inline static HWND       hwndExpandBtn = nullptr;
     lua_State* _luaState = nullptr;   // Reused Lua state
@@ -556,7 +583,7 @@ private:
 
     const std::vector<int> hColumnStyles = { STYLE1, STYLE2, STYLE3, STYLE4, STYLE5, STYLE6, STYLE7, STYLE8, STYLE9, STYLE10 };
     const std::vector<int> lightModeColumnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
-    const std::vector<int> darkModeColumnColors  = { 0x553333, 0x335577, 0x225522, 0x553355, 0x335555, 0x555522, 0x774444, 0x225555, 0x553366, 0x336633 };
+    const std::vector<int> darkModeColumnColors = { 0x553333, 0x335577, 0x225522, 0x553355, 0x335555, 0x555522, 0x774444, 0x225555, 0x553366, 0x336633 };
 
     // Preferences (input)
     int preferredColumnTabsStyleId = 30; // preferred ColumnTabs id; -1 = auto
@@ -707,7 +734,7 @@ private:
     int DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled;
     int DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled;
 
-    
+
     //Initialization
     void initializeWindowSize();
     RECT calculateMinWindowFrame(HWND hwnd);
@@ -767,6 +794,11 @@ private:
 
     //Contextmenu Display Columns
     void showColumnVisibilityMenu(HWND hWnd, POINT pt);
+
+    //UI
+    void onTooltipsToggled(bool enable);
+    void destroyAllTooltipWindows();
+    void rebuildAllTooltips();
 
     //Contextmenu List
     void toggleBooleanAt(int itemIndex, ColumnID columnID);
@@ -931,13 +963,10 @@ private:
     void exportToBashScript(const std::wstring& fileName);
 
     //INI
-    std::pair<std::wstring, std::wstring> generateConfigFilePaths();
-    void saveSettingsToIni(const std::wstring& iniFilePath);
     void saveSettings();
     int checkForUnsavedChanges();
     void loadSettingsFromIni();
     void loadSettings();
-    void loadUIConfigFromIni();
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
 
     // Debug DPI Information
