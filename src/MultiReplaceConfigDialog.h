@@ -47,10 +47,10 @@ private:
     // Build controls for each category panel
     void createSearchReplacePanelControls();
     void createListViewLayoutPanelControls();
-    void createInterfaceTooltipsPanelControls();
     void createAppearancePanelControls();
     void createVariablesAutomationPanelControls();
     void createImportScopePanelControls();
+    void createCsvFlowTabsPanelControls();
 
     // Settings binding
     void loadSettingsFromConfig();
@@ -64,6 +64,7 @@ private:
     HWND _hAppearancePanel = nullptr;
     HWND _hVariablesAutomationPanel = nullptr;
     HWND _hImportScopePanel = nullptr;
+    HWND _hCsvFlowTabsPanel = nullptr;
 
     HWND _hCloseButton = nullptr;
 

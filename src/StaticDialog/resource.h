@@ -318,6 +318,16 @@
 #define IDC_CFG_BACKGROUND_LABEL          79093
 #define IDC_CFG_BACKGROUND_SLIDER         79094
 
+#define IDC_CFG_GRP_SCALE                 79095
+#define IDC_CFG_SCALE_LABEL               79096
+#define IDC_CFG_SCALE_SLIDER              79097
+
+// Appearance – Scale
+#define IDC_CFG_GRP_SCALE                 79095
+#define IDC_CFG_SCALE_LABEL               79096
+#define IDC_CFG_SCALE_SLIDER              79097
+
+
 // -------------------------------------------------------------------
 //  Variables and Automation panel
 // -------------------------------------------------------------------
