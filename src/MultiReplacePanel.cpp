@@ -2274,7 +2274,6 @@ void MultiReplace::onTooltipsToggled(bool enable)
     rebuildAllTooltips();
 }
 
-// MultiReplacePanel.cpp
 void MultiReplace::destroyAllTooltipWindows()
 {
     if (!_hSelf) return;

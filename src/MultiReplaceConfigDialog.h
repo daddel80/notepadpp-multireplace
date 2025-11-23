@@ -6,6 +6,9 @@
 #include <vector>
 #include <cstddef>
 
+// ID for Reset Button
+#define IDC_BTN_RESET 3001
+
 class MultiReplaceConfigDialog : public StaticDialog
 {
 public:
@@ -18,6 +21,7 @@ protected:
     intptr_t CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 
 private:
+    // UI Creation Methods
     void createUI();
     void initUI();
     void applyPanelFonts();
@@ -25,11 +29,14 @@ private:
     void showCategory(int index);
     HWND createPanel();
 
-    // DPI helpers
+    // Logic
+    void resetToDefaults();
+
+    // DPI / Scaling Helpers
     int scaleX(int value) const;
     int scaleY(int value) const;
 
-    // Control helpers for config UI
+    // Control Creation Helpers
     HWND createGroupBox(HWND parent, int left, int top, int width, int height,
         int id, const TCHAR* text);
     HWND createCheckBox(HWND parent, int left, int top, int width,
@@ -43,10 +50,12 @@ private:
     HWND createTrackbarHorizontal(HWND parent, int left, int top, int width, int height,
         int id);
     HWND createSlider(HWND parent, int left, int top, int width, int height,
-        int id, int minValue, int maxValue);
+        int id, int minValue, int maxValue, int tickMark = -1);
+
+    // Message Handlers
     INT_PTR handleCtlColorStatic(WPARAM wParam, LPARAM lParam);
 
-    // Build controls for each category panel
+    // Build controls for specific panels
     void createSearchReplacePanelControls();
     void createListViewLayoutPanelControls();
     void createAppearancePanelControls();
@@ -54,11 +63,14 @@ private:
     void createImportScopePanelControls();
     void createCsvFlowTabsPanelControls();
 
-    // Settings binding
-    void loadSettingsFromConfig();
+    // Settings Binding Logic
+    void loadSettingsFromConfig(bool reloadFile = true);
     void applyConfigToSettings();
 
+    // Member Variables (UI Handles)
     HWND _hCategoryList = nullptr;
+    HWND _hCloseButton = nullptr;
+    HWND _hResetButton = nullptr;
 
     HWND _hSearchReplacePanel = nullptr;
     HWND _hListViewLayoutPanel = nullptr;
@@ -67,22 +79,21 @@ private:
     HWND _hImportScopePanel = nullptr;
     HWND _hCsvFlowTabsPanel = nullptr;
 
-    HWND _hCloseButton = nullptr;
-
+    // State Variables
     int _currentCategory = -1;
     DPIManager* dpiMgr = nullptr;
-
-    // Store user scale locally since DPIManager is read-only/system-only
-    double _userScaleFactor = 1.0;
-
     HFONT _hCategoryFont = nullptr;
 
-    // ---- Minimal layout helper ----
+    // Store user scale locally (from INI) to combine with System DPI
+    double _userScaleFactor = 1.0;
+
+    // ---- Minimal Layout Helper Struct ----
     struct LayoutBuilder {
         MultiReplaceConfigDialog* dlg;
         HWND parent;
         int x, y, width;
         int stepY;
+
         LayoutBuilder(MultiReplaceConfigDialog* d, HWND p, int px, int py, int w, int step)
             : dlg(d), parent(p), x(px), y(py), width(w), stepY(step) {
         }
@@ -91,43 +102,42 @@ private:
             dlg->createCheckBox(parent, x, y, width, id, text);
             y += stepY;
         }
+
         void AddLabel(int id, const TCHAR* text, int w = 160, int h = 18) {
             dlg->createStaticText(parent, x, y, w, h, id, text);
         }
+
         void AddNumberEdit(int id, int ex, int ey, int ew, int eh) {
             dlg->createNumberEdit(parent, x + ex, y + ey, ew, eh, id);
         }
+
         void AddSpace(int pixels) { y += pixels; }
 
         LayoutBuilder BeginGroup(int gx, int gy, int gw, int gh, int padX, int padTop, int id, const TCHAR* title) {
-            // group container
             dlg->createGroupBox(parent, gx, gy, gw, gh, id, title);
-            // inner content builder
             return LayoutBuilder(dlg, parent, gx + padX, gy + padTop, gw - 2 * padX, stepY);
         }
-        void AddGroupBox(int id, const TCHAR* title, int gx, int gy, int gw, int gh) {
-            dlg->createGroupBox(parent, gx, gy, gw, gh, id, title);
-        }
 
-
-        // slider helpers
-        HWND AddSlider(int id, int ex, int ey, int ew, int eh, int minV, int maxV) {
-            return dlg->createSlider(parent, x + ex, y + ey, ew, eh, id, minV, maxV);
-        }
         void AddLabeledSlider(int labelId, const TCHAR* text, int sliderId,
             int sliderX, int sliderW, int minV, int maxV,
             int rowAdvance = 40,
-            int labelW = 150, int labelH = 18,
-            int sliderH = 26, int sliderYOffset = -4) {
+            int labelW = 150,
+            int sliderH = 18,
+            int sliderYOffset = -4,
+            int tickMark = -1)
+        {
+            int labelH = 18;
             AddLabel(labelId, text, labelW, labelH);
-            AddSlider(sliderId, sliderX, sliderYOffset, sliderW, sliderH, minV, maxV);
+            HWND hTrack = dlg->createSlider(parent, x + sliderX, y + sliderYOffset, sliderW, sliderH, sliderId, minV, maxV, tickMark);
+            (void)hTrack;
             y += rowAdvance;
         }
     };
 
-    // ---- Binding (type-erased; implemented in .cpp) ----
+    // ---- Binding Structs & Methods ----
     enum class ControlType { Checkbox, IntEdit };
     enum class ValueType { Bool, Int };
+
     struct Binding {
         HWND* panelHandlePtr;
         int controlID;
@@ -137,10 +147,11 @@ private:
         int minVal;
         int maxVal;
     };
+
     std::vector<Binding> _bindings;
     bool _bindingsRegistered = false;
+
     void registerBindingsOnce();
     void applyBindingsToUI_Generic(void* settingsPtr);
     void readBindingsFromUI_Generic(void* settingsPtr);
-
 };
