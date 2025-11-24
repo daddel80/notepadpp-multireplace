@@ -739,6 +739,7 @@ private:
     void initializeWindowSize();
     RECT calculateMinWindowFrame(HWND hwnd);
     void initializeFontStyles();
+    void cleanupFontStyles();
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();

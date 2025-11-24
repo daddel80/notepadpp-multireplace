@@ -201,6 +201,20 @@ void MultiReplace::initializeFontStyles() {
     deleteButtonColumnWidth = crossWidth_scaled;
 }
 
+void MultiReplace::cleanupFontStyles() {
+    // Safely delete all GDI font objects to prevent resource leaks
+    if (_hStandardFont) { DeleteObject(_hStandardFont); _hStandardFont = nullptr; }
+    if (_hNormalFont1) { DeleteObject(_hNormalFont1);  _hNormalFont1 = nullptr; }
+    if (_hNormalFont2) { DeleteObject(_hNormalFont2);  _hNormalFont2 = nullptr; }
+    if (_hNormalFont3) { DeleteObject(_hNormalFont3);  _hNormalFont3 = nullptr; }
+    if (_hNormalFont4) { DeleteObject(_hNormalFont4);  _hNormalFont4 = nullptr; }
+    if (_hNormalFont5) { DeleteObject(_hNormalFont5);  _hNormalFont5 = nullptr; }
+    if (_hNormalFont6) { DeleteObject(_hNormalFont6);  _hNormalFont6 = nullptr; }
+    if (_hNormalFont7) { DeleteObject(_hNormalFont7);  _hNormalFont7 = nullptr; }
+    if (_hBoldFont1) { DeleteObject(_hBoldFont1);    _hBoldFont1 = nullptr; }
+    if (_hBoldFont2) { DeleteObject(_hBoldFont2);    _hBoldFont2 = nullptr; }
+}
+
 RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     // Use local variables to avoid modifying windowRect
     RECT tempWindowRect;
@@ -540,65 +554,45 @@ void MultiReplace::initializeDragAndDrop() {
 }
 
 void MultiReplace::moveAndResizeControls() {
-    // IDs of controls to be moved or resized
-    const int controlIds[] = {
-        IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_SWAP_BUTTON, IDC_STATIC_FRAME, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON,
-        IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_ALL_BUTTON, IDC_FIND_NEXT_BUTTON,
-        IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
-        IDC_USE_LIST_BUTTON, IDC_CANCEL_REPLACE_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-        IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON,
-        IDC_PATH_DISPLAY, IDC_STATS_DISPLAY, IDC_FILTER_EDIT, IDC_FILTER_HELP, IDC_SUBFOLDERS_CHECKBOX,
-        IDC_HIDDENFILES_CHECKBOX, IDC_DIR_EDIT, IDC_BROWSE_DIR_BUTTON, IDC_FILE_OPS_GROUP, IDC_DIR_PROGRESS_BAR, IDC_STATUS_MESSAGE
-    };
+    for (const auto& pair : ctrlMap) {
+        int ctrlId = pair.first;
+        const ControlInfo& ctrlInfo = pair.second;
 
-    std::unordered_map<int, HWND> hwndMap;  // Store HWNDs to avoid multiple calls to GetDlgItem
-
-    // Move and resize controls
-    for (int ctrlId : controlIds) {
-        const ControlInfo& ctrlInfo = ctrlMap[ctrlId];
         HWND resizeHwnd = GetDlgItem(_hSelf, ctrlId);
-        hwndMap[ctrlId] = resizeHwnd;  // Store HWND
+        if (!resizeHwnd) continue;
 
-        RECT rc;
-        GetClientRect(resizeHwnd, &rc);
+        // Helper to identify ComboBoxes for special handling
+        bool isComboBox = (ctrlInfo.className && wcscmp(ctrlInfo.className, WC_COMBOBOX) == 0);
 
+        // Save selection for ComboBoxes/Edit fields to prevent cursor jumping during resize
         DWORD startSelection = 0, endSelection = 0;
-        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT
-            || ctrlId == IDC_DIR_EDIT || ctrlId == IDC_FILTER_EDIT) {
+        if (isComboBox || ctrlId == IDC_REPLACE_HIT_EDIT || ctrlId == IDC_COLUMN_NUM_EDIT || ctrlId == IDC_DELIMITER_EDIT || ctrlId == IDC_QUOTECHAR_EDIT) {
             SendMessage(resizeHwnd, CB_GETEDITSEL, (WPARAM)&startSelection, (LPARAM)&endSelection);
         }
 
         int height = ctrlInfo.cy;
-        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT
-            || ctrlId == IDC_DIR_EDIT || ctrlId == IDC_FILTER_EDIT) {
+
+        // Special height calculation for specific ComboBoxes to match existing behavior
+        // (Preserves the visual style of the dropdowns)
+        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT ||
+            ctrlId == IDC_DIR_EDIT || ctrlId == IDC_FILTER_EDIT) {
             COMBOBOXINFO cbi = { sizeof(COMBOBOXINFO) };
             if (GetComboBoxInfo(resizeHwnd, &cbi)) {
                 height = cbi.rcItem.bottom - cbi.rcItem.top;
             }
         }
 
+        // Apply the new position and size
         MoveWindow(resizeHwnd, ctrlInfo.x, ctrlInfo.y, ctrlInfo.cx, height, TRUE);
 
-        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT
-            || ctrlId == IDC_DIR_EDIT || ctrlId == IDC_FILTER_EDIT) {
+        // Restore selection
+        if (isComboBox || ctrlId == IDC_REPLACE_HIT_EDIT || ctrlId == IDC_COLUMN_NUM_EDIT || ctrlId == IDC_DELIMITER_EDIT || ctrlId == IDC_QUOTECHAR_EDIT) {
             SendMessage(resizeHwnd, CB_SETEDITSEL, 0, MAKELPARAM(startSelection, endSelection));
         }
     }
 
+    // Refresh the path display if list is active
     showListFilePath();
-
-    /*
-    // IDs of controls to be redrawn
-    const int redrawIds[] = {
-        IDC_USE_LIST_BUTTON, IDC_COPY_TO_LIST_BUTTON, IDC_REPLACE_ALL_BUTTON, IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON,
-        IDC_2_BUTTONS_MODE, IDC_FIND_BUTTON, IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON,
-        IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT
-    };
-
-    // Redraw controls using stored HWNDs
-    for (int ctrlId : redrawIds) {
-        InvalidateRect(hwndMap[ctrlId], NULL, TRUE);
-    }*/
 }
 
 void MultiReplace::updateTwoButtonsVisibility() {
@@ -11564,6 +11558,9 @@ void MultiReplace::loadUIConfigFromIni()
     CFG.load(iniFilePath);
     if (!dpiMgr) return;
 
+    // Capture the previous scale factor to detect changes
+    float oldScale = dpiMgr->getCustomScaleFactor();
+
     // --- scale -------------------------------------------------
     float customScaleFactor = CFG.readFloat(L"Window", L"ScaleFactor", 1.0f);
     dpiMgr->setCustomScaleFactor(customScaleFactor);
@@ -11578,6 +11575,39 @@ void MultiReplace::loadUIConfigFromIni()
     DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled = sx(DEFAULT_COLUMN_WIDTH_FIND_COUNT);
     DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled = sx(DEFAULT_COLUMN_WIDTH_REPLACE_COUNT);
     MIN_GENERAL_WIDTH_scaled = sx(MIN_GENERAL_WIDTH);
+
+    // --- Hot-Reload Logic for Scaling --------------------------
+    // If the scale factor has changed significantly, rebuild fonts and resize window
+    if (std::abs(oldScale - customScaleFactor) > 0.001f)
+    {
+        // 1. Clean up old GDI resources
+        cleanupFontStyles();
+
+        // 2. Create new fonts at the new scale
+        initializeFontStyles();
+
+        // 3. Resize the window frame proportionally
+        RECT rc;
+        if (GetWindowRect(_hSelf, &rc))
+        {
+            int currentW = rc.right - rc.left;
+            int currentH = rc.bottom - rc.top;
+
+            // Calculate ratio
+            float ratio = customScaleFactor / oldScale;
+
+            int newW = static_cast<int>(currentW * ratio);
+            int newH = static_cast<int>(currentH * ratio);
+
+            // Apply new dimensions. This triggers WM_SIZE, which calls positionAndResizeControls
+            // positionAndResizeControls will use the NEW fonts created in step 2.
+            SetWindowPos(_hSelf, NULL, 0, 0, newW, newH,
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+
+            // 4. Force adjustment to adhere to min/max constraints
+            adjustWindowSize();
+        }
+    }
 
     // --- pos ---------------------------------------------------
     windowRect.left = CFG.readInt(L"Window", L"PosX", POS_X);
@@ -11627,7 +11657,7 @@ void MultiReplace::loadUIConfigFromIni()
 
     // --- tooltips flag (state only) ----------------------------
     tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
-    isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true); // keep aligned with ConfigDialog apply
+    isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
 
     // --- apply to UI -------------------------------------------
     if (_replaceListView)
@@ -11651,7 +11681,6 @@ void MultiReplace::loadUIConfigFromIni()
     if (_hSelf)
         SetWindowTransparency(_hSelf, foregroundTransparency);
 }
-
 
 void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {
     ::SetDlgItemTextW(hDlg, itemID, text.c_str());
