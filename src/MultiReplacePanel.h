@@ -111,6 +111,7 @@ struct ControlInfo
     LPCWSTR windowName;
     DWORD style;
     LPCWSTR tooltipText;
+    bool isStatic = false;
 };
 
 struct SearchContext {
@@ -430,10 +431,10 @@ public:
     };
 
     static Settings getSettings();
-    static void applySettings(const Settings& settings);
-    static void persistSettings(const Settings& settings);
+    static void writeStructToConfig(const Settings& settings);
 
     void loadUIConfigFromIni();
+    void loadSettingsFromIni();
     void saveSettingsToIni(const std::wstring& iniFilePath);
     static  std::pair<std::wstring, std::wstring> generateConfigFilePaths();
 
@@ -745,7 +746,7 @@ private:
     bool createAndShowWindows();
     void ensureIndicatorContext();
     void initializeListView();
-    void moveAndResizeControls();
+    void moveAndResizeControls(bool moveStatic);
     void updateTwoButtonsVisibility();
     void updateListViewFrame();
     void repaintPanelContents(HWND hGrp, const std::wstring& title);
@@ -966,7 +967,6 @@ private:
     //INI
     void saveSettings();
     int checkForUnsavedChanges();
-    void loadSettingsFromIni();
     void loadSettings();
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
 

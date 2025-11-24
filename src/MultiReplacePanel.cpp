@@ -280,90 +280,101 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int useListButtonY = windowHeight - sy(34);
 
     // Apply scaling only when assigning to ctrlMap
-    ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_find_what"), SS_RIGHT, NULL };
-    ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_replace_with"), SS_RIGHT };
+    ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_find_what"), SS_RIGHT, NULL, true };
+    ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_replace_with"), SS_RIGHT, NULL, true };
 
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(112), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(176), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,  LM.getLPCW(L"tooltip_replace_at_matches") };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true };
+    ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL, true };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true };
+    ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(112), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true };
+    ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(176), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,  LM.getLPCW(L"tooltip_replace_at_matches"), true };
 
-    ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(173), sy(104), WC_BUTTON, LM.getLPCW(L"panel_search_mode"), BS_GROUPBOX, NULL };
-    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(173), sy(104), WC_BUTTON, LM.getLPCW(L"panel_search_mode"), BS_GROUPBOX, NULL, true };
+    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL, true };
+    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true };
+    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true };
 
-    ctrlMap[IDC_SCOPE_GROUP] = { sx(367), sy(79), sx(252), sy(125), WC_BUTTON, LM.getLPCW(L"panel_scope"), BS_GROUPBOX, NULL };
-    ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(375), sy(101), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SELECTION_RADIO] = { sx(375), sy(126), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(375), sy(150), sx(45), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SCOPE_GROUP] = { sx(367), sy(79), sx(252), sy(125), WC_BUTTON, LM.getLPCW(L"panel_scope"), BS_GROUPBOX, NULL, true };
+    ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(375), sy(101), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL, true };
+    ctrlMap[IDC_SELECTION_RADIO] = { sx(375), sy(126), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true };
+    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(375), sy(150), sx(45), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true };
 
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(412), sy(151), sx(30), sy(20), WC_STATIC, LM.getLPCW(L"panel_cols"), SS_RIGHT, NULL };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(443), sy(151), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_columns") };
-    ctrlMap[IDC_DELIMITER_STATIC] = { sx(485), sy(151), sx(38), sy(20), WC_STATIC, LM.getLPCW(L"panel_delim"), SS_RIGHT, NULL };
-    ctrlMap[IDC_DELIMITER_EDIT] = { sx(524), sy(151), sx(25), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_delimiter") };
-    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(549), sy(151), sx(37), sy(20), WC_STATIC, LM.getLPCW(L"panel_quote"), SS_RIGHT, NULL };
-    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(587), sy(151), sx(15), sy(16), WC_EDIT, NULL, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_quote") };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(412), sy(151), sx(30), sy(20), WC_STATIC, LM.getLPCW(L"panel_cols"), SS_RIGHT, NULL, true };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(443), sy(151), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_columns"), true };
+    ctrlMap[IDC_DELIMITER_STATIC] = { sx(485), sy(151), sx(38), sy(20), WC_STATIC, LM.getLPCW(L"panel_delim"), SS_RIGHT, NULL, true };
+    ctrlMap[IDC_DELIMITER_EDIT] = { sx(524), sy(151), sx(25), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_delimiter"), true };
+    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(549), sy(151), sx(37), sy(20), WC_STATIC, LM.getLPCW(L"panel_quote"), SS_RIGHT, NULL, true };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(587), sy(151), sx(15), sy(16), WC_EDIT, NULL, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_quote"), true };
 
-    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(373), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_descending") };
-    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(410), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_ascending") };
-    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(453), sy(176), sx(34), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_drop_columns") };
-    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(490), sy(176), sx(34), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_columns") }; // 
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(533), sy(176), sx(34), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_highlight") };
-    ctrlMap[IDC_COLUMN_GRIDTABS_BUTTON] = { sx(570), sy(176), sx(34), sy(20), WC_BUTTON, L"⇥", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_tabs") };
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(373), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_descending"), true };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(410), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_ascending"), true };
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(453), sy(176), sx(34), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_drop_columns"), true };
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(490), sy(176), sx(34), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_columns"), true };
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(533), sy(176), sx(34), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_highlight"), true };
+    ctrlMap[IDC_COLUMN_GRIDTABS_BUTTON] = { sx(570), sy(176), sx(34), sy(20), WC_BUTTON, L"⇥", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_tabs"), true };
 
-    // Dynamic positions and sizes
-    ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(44), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(14), sx(128), sy(52), WC_BUTTON, LM.getLPCW(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(91), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_replace_all") };
-    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, LM.getLPCW(L"tooltip_2_buttons_mode") };
-    ctrlMap[IDC_FIND_ALL_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_find_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL };
+    // --- DYNAMIC CONTROLS (isStatic = false) ---
+    ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(44), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+
+    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(14), sx(128), sy(52), WC_BUTTON, LM.getLPCW(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(91), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_replace_all"), false };
+    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, LM.getLPCW(L"tooltip_2_buttons_mode"), false };
+
+    ctrlMap[IDC_FIND_ALL_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_find_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL, false };
 
     findNextButtonText = L"▼ " + LM.get(L"panel_find_next_small");
-    ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
 
-    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_marked_text") }; // 
-    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(205) + filesOffsetY, listWidth - sx(5), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, NULL };
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_new_list") };
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save") };
-    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
-    ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(4), sy(323) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
-    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL };
-    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11) + filesOffsetY, sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL };
-    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16) + filesOffsetY, sx(96), sy(16), WC_STATIC, LM.getLPCW(L"panel_move_lines"), SS_LEFT, NULL };
-    ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227) + filesOffsetY, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL };
-    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5) + filesOffsetY, listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
-    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, sy(225) + listHeight + sy(5) + filesOffsetY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL };
-    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY , sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_marked_text"), false };
+    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
 
-    ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(205) + filesOffsetY, listWidth - sx(5), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, NULL, false };
 
-    ctrlMap[IDC_FILE_OPS_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, NULL };
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_new_list"), false };
 
-    ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_filter"), SS_RIGHT, NULL };
-    ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
-    ctrlMap[IDC_FILTER_HELP] = { sx(96) + comboWidth - sx(170) + sx(5), sy(228), sx(20), sy(20), WC_STATIC, L"(?)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_filter_help") };
-    ctrlMap[IDC_DIR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_directory"), SS_RIGHT, NULL };
-    ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL };
-    ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, NULL };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save"), false };
+    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
 
-    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(21), sy(230), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
-    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(21), sy(257), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, NULL };
+    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+
+    ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(4), sy(323) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL, false };
+    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL, false };
+
+    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11) + filesOffsetY, sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL, false };
+    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16) + filesOffsetY, sx(96), sy(16), WC_STATIC, LM.getLPCW(L"panel_move_lines"), SS_LEFT, NULL, false };
+
+    ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227) + filesOffsetY, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL, false };
+
+    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5) + filesOffsetY, listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL, false };
+    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, sy(225) + listHeight + sy(5) + filesOffsetY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL, false };
+
+    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY , sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+
+    ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+
+    ctrlMap[IDC_FILE_OPS_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, NULL, false };
+
+    ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_filter"), SS_RIGHT, NULL, false };
+    ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_FILTER_HELP] = { sx(96) + comboWidth - sx(170) + sx(5), sy(228), sx(20), sy(20), WC_STATIC, L"(?)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_filter_help"), false };
+    ctrlMap[IDC_DIR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_directory"), SS_RIGHT, NULL, false };
+    ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+
+    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(21), sy(230), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(21), sy(257), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, NULL, false };
 }
 
 void MultiReplace::initializeCtrlMap() {
@@ -553,7 +564,18 @@ void MultiReplace::initializeDragAndDrop() {
     }
 }
 
-void MultiReplace::moveAndResizeControls() {
+void MultiReplace::moveAndResizeControls(bool moveStatic) {
+    int moveCount = 0;
+    for (const auto& pair : ctrlMap) {
+        if (GetDlgItem(_hSelf, pair.first)) moveCount++;
+    }
+    if (moveCount == 0) return;
+
+    HDWP hdwp = BeginDeferWindowPos(moveCount);
+    if (!hdwp) return;
+
+    bool anyLayoutChanged = false;
+
     for (const auto& pair : ctrlMap) {
         int ctrlId = pair.first;
         const ControlInfo& ctrlInfo = pair.second;
@@ -561,40 +583,59 @@ void MultiReplace::moveAndResizeControls() {
         HWND resizeHwnd = GetDlgItem(_hSelf, ctrlId);
         if (!resizeHwnd) continue;
 
-        // Helper to identify ComboBoxes for special handling
-        bool isComboBox = (ctrlInfo.className && wcscmp(ctrlInfo.className, WC_COMBOBOX) == 0);
-
-        // Save selection for ComboBoxes/Edit fields to prevent cursor jumping during resize
-        DWORD startSelection = 0, endSelection = 0;
-        if (isComboBox || ctrlId == IDC_REPLACE_HIT_EDIT || ctrlId == IDC_COLUMN_NUM_EDIT || ctrlId == IDC_DELIMITER_EDIT || ctrlId == IDC_QUOTECHAR_EDIT) {
-            SendMessage(resizeHwnd, CB_GETEDITSEL, (WPARAM)&startSelection, (LPARAM)&endSelection);
+        // CRITICAL FIX: If we are not allowed to move static controls (e.g., during resize),
+        // we skip them entirely. This mimics the behavior of the old function where
+        // static controls were simply not in the list.
+        if (!moveStatic && ctrlInfo.isStatic) {
+            continue;
         }
 
-        int height = ctrlInfo.cy;
+        // 1. Target Geometry
+        int targetX = ctrlInfo.x;
+        int targetY = ctrlInfo.y;
+        int targetW = ctrlInfo.cx;
+        int targetH = ctrlInfo.cy;
 
-        // Special height calculation for specific ComboBoxes to match existing behavior
-        // (Preserves the visual style of the dropdowns)
-        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT ||
-            ctrlId == IDC_DIR_EDIT || ctrlId == IDC_FILTER_EDIT) {
+        // Special height for ComboBoxes
+        bool isDynamicHeightCombo = (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT ||
+            ctrlId == IDC_DIR_EDIT || ctrlId == IDC_FILTER_EDIT);
+
+        if (isDynamicHeightCombo) {
             COMBOBOXINFO cbi = { sizeof(COMBOBOXINFO) };
             if (GetComboBoxInfo(resizeHwnd, &cbi)) {
-                height = cbi.rcItem.bottom - cbi.rcItem.top;
+                targetH = cbi.rcItem.bottom - cbi.rcItem.top;
             }
         }
 
-        // Apply the new position and size
-        MoveWindow(resizeHwnd, ctrlInfo.x, ctrlInfo.y, ctrlInfo.cx, height, TRUE);
+        // Save selection
+        bool isComboBox = (ctrlInfo.className && wcscmp(ctrlInfo.className, WC_COMBOBOX) == 0);
+        bool isSelectionSensitive = isComboBox || ctrlId == IDC_REPLACE_HIT_EDIT ||
+            ctrlId == IDC_COLUMN_NUM_EDIT || ctrlId == IDC_DELIMITER_EDIT ||
+            ctrlId == IDC_QUOTECHAR_EDIT;
+
+        DWORD startSelection = 0, endSelection = 0;
+        if (isSelectionSensitive) {
+            SendMessage(resizeHwnd, CB_GETEDITSEL, (WPARAM)&startSelection, (LPARAM)&endSelection);
+        }
+
+        // Queue Move
+        hdwp = DeferWindowPos(hdwp, resizeHwnd, NULL, targetX, targetY, targetW, targetH,
+            SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
 
         // Restore selection
-        if (isComboBox || ctrlId == IDC_REPLACE_HIT_EDIT || ctrlId == IDC_COLUMN_NUM_EDIT || ctrlId == IDC_DELIMITER_EDIT || ctrlId == IDC_QUOTECHAR_EDIT) {
+        if (isSelectionSensitive) {
             SendMessage(resizeHwnd, CB_SETEDITSEL, 0, MAKELPARAM(startSelection, endSelection));
         }
+
+        anyLayoutChanged = true;
     }
 
-    // Refresh the path display if list is active
-    showListFilePath();
-}
+    EndDeferWindowPos(hdwp);
 
+    if (anyLayoutChanged) {
+        showListFilePath();
+    }
+}
 void MultiReplace::updateTwoButtonsVisibility() {
     BOOL twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
 
@@ -741,7 +782,7 @@ void MultiReplace::updateFilesPanel()
         RECT rcClient; GetClientRect(_hSelf, &rcClient);
         positionAndResizeControls(rcClient.right - rcClient.left, rcClient.bottom - rcClient.top);
         updateListViewFrame();
-        moveAndResizeControls();
+        moveAndResizeControls(false);
         adjustWindowSize();
         onSelectionChanged();
 
@@ -3503,7 +3544,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             updateListViewAndColumns();
 
             // Move all Elements
-            moveAndResizeControls();
+            moveAndResizeControls(false);
 
             // Refresh UI and gripper by invalidating window
             InvalidateRect(_hSelf, NULL, TRUE);
@@ -11469,7 +11510,17 @@ void MultiReplace::loadSettingsFromIni() {
     exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
     alertNotFoundEnabled = CFG.readBool(L"Options", L"AlertNotFound", true);
     doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);
-    isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
+
+    // Side Effect: Update Hover Text Logic
+    bool newHover = CFG.readBool(L"Options", L"HoverText", true);
+    if (isHoverTextEnabled != newHover) {
+        isHoverTextEnabled = newHover;
+        if (instance && instance->_replaceListView) {
+            DWORD ex = ListView_GetExtendedListViewStyle(instance->_replaceListView);
+            if (isHoverTextEnabled) ex |= LVS_EX_INFOTIP; else ex &= ~LVS_EX_INFOTIP;
+            ListView_SetExtendedListViewStyle(instance->_replaceListView, ex);
+        }
+    }
 
     // CFG.readInt for editFieldSize
     editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
@@ -11529,6 +11580,27 @@ void MultiReplace::loadSettingsFromIni() {
     }
 
     setUIElementVisibility();
+
+    // Side Effects: Ensure UI reflects logic state changes (e.g. from Config Dialog)
+    if (instance) {
+        // 1. Apply Tooltips state
+        bool currentTooltips = CFG.readBool(L"Options", L"Tooltips", true);
+        if (tooltipsEnabled != currentTooltips) {
+            tooltipsEnabled = currentTooltips;
+            instance->onTooltipsToggled(tooltipsEnabled);
+        }
+        else {
+            tooltipsEnabled = currentTooltips; // Ensure sync
+        }
+
+        // 2. Update Stats/Path UI
+        instance->updateUseListState(false);
+        instance->showListFilePath();
+
+        // 3. Update Export Button visibility
+        HWND hBash = GetDlgItem(instance->_hSelf, IDC_EXPORT_BASH_BUTTON);
+        if (hBash) ShowWindow(hBash, exportToBashEnabled ? SW_SHOW : SW_HIDE);
+    }
 }
 
 void MultiReplace::loadSettings() {
@@ -11558,10 +11630,8 @@ void MultiReplace::loadUIConfigFromIni()
     CFG.load(iniFilePath);
     if (!dpiMgr) return;
 
-    // Capture the previous scale factor to detect changes
     float oldScale = dpiMgr->getCustomScaleFactor();
 
-    // --- scale -------------------------------------------------
     float customScaleFactor = CFG.readFloat(L"Window", L"ScaleFactor", 1.0f);
     dpiMgr->setCustomScaleFactor(customScaleFactor);
 
@@ -11577,47 +11647,40 @@ void MultiReplace::loadUIConfigFromIni()
     MIN_GENERAL_WIDTH_scaled = sx(MIN_GENERAL_WIDTH);
 
     // --- Hot-Reload Logic for Scaling --------------------------
-    // If the scale factor has changed significantly, rebuild fonts and resize window
     if (std::abs(oldScale - customScaleFactor) > 0.001f)
     {
-        // 1. Clean up old GDI resources
         cleanupFontStyles();
-
-        // 2. Create new fonts at the new scale
         initializeFontStyles();
 
-        // 3. Resize the window frame proportionally
         RECT rc;
         if (GetWindowRect(_hSelf, &rc))
         {
             int currentW = rc.right - rc.left;
             int currentH = rc.bottom - rc.top;
 
-            // Calculate ratio
             float ratio = customScaleFactor / oldScale;
 
             int newW = static_cast<int>(currentW * ratio);
             int newH = static_cast<int>(currentH * ratio);
 
-            // Apply new dimensions. This triggers WM_SIZE, which calls positionAndResizeControls
-            // positionAndResizeControls will use the NEW fonts created in step 2.
+            // This triggers WM_SIZE -> moveAndResizeControls(false)
+            // Static controls will NOT move yet.
             SetWindowPos(_hSelf, NULL, 0, 0, newW, newH,
                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
 
-            // 4. Force adjustment to adhere to min/max constraints
             adjustWindowSize();
+
+            // We pass 'true' to override the static filter.
+            moveAndResizeControls(true);
         }
     }
 
-    // --- pos ---------------------------------------------------
     windowRect.left = CFG.readInt(L"Window", L"PosX", POS_X);
     windowRect.top = CFG.readInt(L"Window", L"PosY", POS_Y);
 
-    // --- use list ----------------------------------------------
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     updateUseListState(false);
 
-    // --- size --------------------------------------------------
     const int DEFAULT_WIDTH_EXTRA = 23;
     int savedWidth = CFG.readInt(L"Window", L"Width", sx(MIN_WIDTH + DEFAULT_WIDTH_EXTRA));
     int width = (savedWidth < MIN_WIDTH_scaled) ? MIN_WIDTH_scaled : savedWidth;
@@ -11629,25 +11692,21 @@ void MultiReplace::loadUIConfigFromIni()
     windowRect.right = windowRect.left + width;
     windowRect.bottom = windowRect.top + height;
 
-    // --- columns width -----------------------------------------
     findColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindWidth", DEFAULT_COLUMN_WIDTH_FIND_scaled), MIN_GENERAL_WIDTH_scaled);
     replaceColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceWidth", DEFAULT_COLUMN_WIDTH_REPLACE_scaled), MIN_GENERAL_WIDTH_scaled);
     commentsColumnWidth = std::max(CFG.readInt(L"ListColumns", L"CommentsWidth", DEFAULT_COLUMN_WIDTH_COMMENTS_scaled), MIN_GENERAL_WIDTH_scaled);
     findCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
     replaceCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceCountWidth", DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
 
-    // --- columns visible ---------------------------------------
     isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
     isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
     isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
     isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
 
-    // --- locks -------------------------------------------------
     findColumnLockedEnabled = CFG.readBool(L"ListColumns", L"FindColumnLocked", true);
     replaceColumnLockedEnabled = CFG.readBool(L"ListColumns", L"ReplaceColumnLocked", false);
     commentsColumnLockedEnabled = CFG.readBool(L"ListColumns", L"CommentsColumnLocked", true);
 
-    // --- transparency ------------------------------------------
     int fg = (int)CFG.readByte(L"Window", L"ForegroundTransparency", 255);
     int bg = (int)CFG.readByte(L"Window", L"BackgroundTransparency", 190);
     if (fg < 0) fg = 0; if (fg > 255) fg = 255;
@@ -11655,26 +11714,19 @@ void MultiReplace::loadUIConfigFromIni()
     foregroundTransparency = (BYTE)fg;
     backgroundTransparency = (BYTE)bg;
 
-    // --- tooltips flag (state only) ----------------------------
     tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
     isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
 
-    // --- apply to UI -------------------------------------------
     if (_replaceListView)
     {
-        // full rebuild so visibility flags take effect
         createListViewColumns();
-
-        // keep list data and visuals in sync
         ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, nullptr, TRUE);
 
-        // infotips reflect current hover flag
         DWORD ex = ListView_GetExtendedListViewStyle(_replaceListView);
         if (isHoverTextEnabled) ex |= LVS_EX_INFOTIP; else ex &= ~LVS_EX_INFOTIP;
         ListView_SetExtendedListViewStyle(_replaceListView, ex);
 
-        // refresh header icons/checkmarks after rebuild
         updateHeaderSelection();
     }
 
@@ -11736,66 +11788,9 @@ MultiReplace::Settings MultiReplace::getSettings()
     return s;
 }
 
-void MultiReplace::applySettings(const Settings& s)
+void MultiReplace::writeStructToConfig(const Settings& s)
 {
-    // keep previous master states
-    const bool prevTooltips = tooltipsEnabled;
-
-    // assign new settings
-    tooltipsEnabled = s.tooltipsEnabled;
-    exportToBashEnabled = s.exportToBashEnabled;
-    alertNotFoundEnabled = s.alertNotFoundEnabled;
-    doubleClickEditsEnabled = s.doubleClickEditsEnabled;
-    highlightMatchEnabled = s.highlightMatchEnabled;
-    flowTabsIntroDontShowEnabled = s.flowTabsIntroDontShowEnabled;
-    flowTabsNumericAlignEnabled = s.flowTabsNumericAlignEnabled;
-    isHoverTextEnabled = s.isHoverTextEnabled;
-    listStatisticsEnabled = s.listStatisticsEnabled;
-    stayAfterReplaceEnabled = s.stayAfterReplaceEnabled;
-    groupResultsEnabled = s.groupResultsEnabled;
-    luaSafeModeEnabled = s.luaSafeModeEnabled;
-    allFromCursorEnabled = s.allFromCursorEnabled;
-    editFieldSize = s.editFieldSize;
-
-    if (instance)
-    {
-        // clamp header lines
-        int h = s.csvHeaderLinesCount;
-        if (h < 0)   h = 0;
-        if (h > 999) h = 999;
-        instance->CSVheaderLinesCount = static_cast<SIZE_T>(h);
-
-        // per-control tooltips
-        if (prevTooltips != tooltipsEnabled)
-        {
-            instance->onTooltipsToggled(tooltipsEnabled); // rebuild or destroy
-        }
-        else if (tooltipsEnabled)
-        {
-            // still on: refresh bindings/texts
-            instance->updateListViewTooltips();
-        }
-
-        // ListView hover tips (INFOTIP) depend on master + hover flag
-        if (instance->_replaceListView)
-        {
-            DWORD ex = ListView_GetExtendedListViewStyle(instance->_replaceListView);
-            const bool wantInfoTip = tooltipsEnabled && isHoverTextEnabled;
-            const bool hasInfoTip = (ex & LVS_EX_INFOTIP) != 0;
-
-            if (wantInfoTip != hasInfoTip)
-            {
-                if (wantInfoTip) ex |= LVS_EX_INFOTIP;
-                else             ex &= ~LVS_EX_INFOTIP;
-                ListView_SetExtendedListViewStyle(instance->_replaceListView, ex);
-            }
-        }
-    }
-}
-
-void MultiReplace::persistSettings(const Settings& s)
-{
-    // use global CFG alias (already defined in this TU)
+    // Write all logic options to ConfigManager
     CFG.writeInt(L"Options", L"Tooltips", s.tooltipsEnabled ? 1 : 0);
     CFG.writeInt(L"Options", L"ExportToBash", s.exportToBashEnabled ? 1 : 0);
     CFG.writeInt(L"Options", L"AlertNotFound", s.alertNotFoundEnabled ? 1 : 0);
@@ -11813,8 +11808,6 @@ void MultiReplace::persistSettings(const Settings& s)
 
     CFG.writeInt(L"Options", L"EditFieldSize", s.editFieldSize);
     CFG.writeInt(L"Scope", L"HeaderLines", s.csvHeaderLinesCount);
-
-    CFG.save(L"");
 }
 
 #pragma endregion
