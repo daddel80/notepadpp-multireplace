@@ -38,6 +38,7 @@
 #include <set>
 #include <filesystem>
 #include <commctrl.h>
+#include <array>
 #include <lua.hpp>
 
 extern NppData nppData;
@@ -104,6 +105,20 @@ struct WindowSettings {
     int height;
 };
 
+enum class FontRole {
+    Standard = 0,
+    Normal1, // 14px MS Shell Dlg 2
+    Normal2, // 12px Courier New
+    Normal3, // 14px Courier New
+    Normal4, // 16px Courier New
+    Normal5, // 18px Courier New
+    Normal6, // 22px Courier New
+    Normal7, // 26px Courier New
+    Bold1,   // 22px Courier New Bold
+    Bold2,   // 12px MS Shell Dlg 2 Bold
+    Count    // Keep this last to determine array size
+};
+
 struct ControlInfo
 {
     int x, y, cx, cy;
@@ -112,6 +127,7 @@ struct ControlInfo
     DWORD style;
     LPCWSTR tooltipText;
     bool isStatic = false;
+    FontRole fontRole = FontRole::Standard;
 };
 
 struct SearchContext {
@@ -356,21 +372,12 @@ public:
         _hMarkMatchesButton(nullptr),
         _hReplaceAllButton(nullptr),
         _replaceListView(NULL),
-        _hStandardFont(nullptr),
-        _hBoldFont1(nullptr),
-        _hBoldFont2(nullptr),
-        _hNormalFont1(nullptr),
-        _hNormalFont2(nullptr),
-        _hNormalFont3(nullptr),
-        _hNormalFont4(nullptr),
-        _hNormalFont5(nullptr),
-        _hNormalFont6(nullptr),
-        _hNormalFont7(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
     {
         setInstance(this);
     };
+
     inline static MultiReplace* instance = nullptr; // Static instance of the class
 
     // Helper functions for scaling
@@ -426,6 +433,10 @@ public:
         bool groupResultsEnabled;
         bool luaSafeModeEnabled;
         bool allFromCursorEnabled;
+        bool isFindCountVisible;
+        bool isReplaceCountVisible;
+        bool isCommentsColumnVisible;
+        bool isDeleteButtonVisible;
         int  editFieldSize;
         int  csvHeaderLinesCount;
     };
@@ -550,16 +561,7 @@ private:
     HWND _hReplaceAllButton;
     HWND _replaceListView;
     HWND _hStatusMessage;
-    HFONT _hStandardFont;
-    HFONT _hBoldFont1;
-    HFONT _hBoldFont2;
-    HFONT _hNormalFont1;
-    HFONT _hNormalFont2;
-    HFONT _hNormalFont3;
-    HFONT _hNormalFont4;
-    HFONT _hNormalFont5;
-    HFONT _hNormalFont6;
-    HFONT _hNormalFont7;
+    std::array<HFONT, static_cast<size_t>(FontRole::Count)> _fontHandles{};
     COLORREF COLOR_SUCCESS;
     COLORREF COLOR_ERROR;
     COLORREF COLOR_INFO;
@@ -739,8 +741,10 @@ private:
     //Initialization
     void initializeWindowSize();
     RECT calculateMinWindowFrame(HWND hwnd);
-    void initializeFontStyles();
-    void cleanupFontStyles();
+    void createFonts();
+    void cleanupFonts();
+    void applyFonts();
+    HFONT font(FontRole role) const;
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();

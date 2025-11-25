@@ -34,6 +34,12 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     // Appearance
     _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_TOOLTIPS_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, tooltipsEnabled), 0, 0 });
 
+    // Columns
+    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_FINDCOUNT_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isFindCountVisible), 0, 0 });
+    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_REPLACECOUNT_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isReplaceCountVisible), 0, 0 });
+    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_COMMENTS_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isCommentsColumnVisible), 0, 0 });
+    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_DELETEBUTTON_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isDeleteButtonVisible), 0, 0 });
+
     // Search
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_STAY_AFTER_REPLACE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, stayAfterReplaceEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_ALL_FROM_CURSOR, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, allFromCursorEnabled), 0, 0 });
@@ -145,20 +151,10 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         createUI();
         initUI();
         loadSettingsFromConfig();
+
+        createFonts();
+        applyFonts();
         resizeUI();
-
-        if (_hCategoryFont) { ::DeleteObject(_hCategoryFont); _hCategoryFont = nullptr; }
-
-        // --- FONT ERSTELLUNG ---
-        int fontHeight = dpiMgr->scaleY(13);
-        _hCategoryFont = ::CreateFont(
-            fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-            DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
-            TEXT("MS Shell Dlg 2")
-        );
-
-        applyPanelFonts();
 
         // Dark Mode
         WPARAM mode = (WPARAM)NppDarkMode::dmfInit;
@@ -200,6 +196,12 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         resizeUI();
         return TRUE;
 
+    case WM_SHOWWINDOW:
+        if (wParam == TRUE) {
+            loadSettingsFromConfig(false);
+        }
+        return TRUE;
+
     case WM_COMMAND:
         switch (LOWORD(wParam))
         {
@@ -227,21 +229,12 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
             dpiMgr->updateDPI(_hSelf);
             dpiMgr->setCustomScaleFactor((float)_userScaleFactor);
         }
-
-        if (_hCategoryFont) { ::DeleteObject(_hCategoryFont); _hCategoryFont = nullptr; }
-
-        int fontHeight = dpiMgr->scaleY(13);
-        _hCategoryFont = ::CreateFont(
-            fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-            DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
-            TEXT("MS Shell Dlg 2")
-        );
-
-        applyPanelFonts();
+        createFonts();
+        applyFonts();
         resizeUI();
         return TRUE;
     }
+
     case WM_CLOSE:
         applyConfigToSettings();
         display(false);
@@ -280,7 +273,7 @@ void MultiReplaceConfigDialog::showCategory(int index) {
     ShowWindow(_hCsvFlowTabsPanel, index == 2 ? SW_SHOW : SW_HIDE);
     ShowWindow(_hAppearancePanel, index == 3 ? SW_SHOW : SW_HIDE);
     ShowWindow(_hVariablesAutomationPanel, index == 4 ? SW_SHOW : SW_HIDE);
-    if (_hCategoryFont) applyPanelFonts();
+    if (_hCategoryFont) applyFonts();
 }
 
 void MultiReplaceConfigDialog::createUI() {
@@ -314,22 +307,59 @@ void MultiReplaceConfigDialog::initUI() {
     showCategory(catToSelect);
 }
 
-void MultiReplaceConfigDialog::applyPanelFonts() {
-    auto applyFontToChildren = [this](HWND parent) {
+void MultiReplaceConfigDialog::createFonts() {
+    // Ensure DPI manager exists
+    if (!dpiMgr) return;
+
+    // Cleanup existing font to avoid leaks
+    cleanupFonts();
+
+    // Helper to create font with fallback
+    auto create = [&](int height, int weight, const wchar_t* fontName) -> HFONT {
+        HFONT hf = ::CreateFont(
+            dpiMgr->scaleY(height), 0, 0, 0, weight, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, fontName
+        );
+        return hf ? hf : (HFONT)::GetStockObject(DEFAULT_GUI_FONT);
+        };
+
+    // Create the standard category font (Size 13)
+    _hCategoryFont = create(13, FW_NORMAL, L"MS Shell Dlg 2");
+}
+
+void MultiReplaceConfigDialog::cleanupFonts() {
+    if (_hCategoryFont) {
+        ::DeleteObject(_hCategoryFont);
+        _hCategoryFont = nullptr;
+    }
+}
+
+void MultiReplaceConfigDialog::applyFonts() {
+    // Helper to apply font to a specific window and its children
+    auto applyToHierarchy = [this](HWND parent) {
         if (!parent) return;
+        // Apply to the panel itself
+        ::SendMessage(parent, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
+
+        // Iterate and apply to all children
         for (HWND child = ::GetWindow(parent, GW_CHILD); child != nullptr; child = ::GetWindow(child, GW_HWNDNEXT)) {
-            ::SendMessage(child, WM_SETFONT, (WPARAM)_hCategoryFont, FALSE);
+            ::SendMessage(child, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
         }
         };
-    applyFontToChildren(_hSearchReplacePanel);
-    applyFontToChildren(_hListViewLayoutPanel);
-    applyFontToChildren(_hAppearancePanel);
-    applyFontToChildren(_hVariablesAutomationPanel);
-    applyFontToChildren(_hImportScopePanel);
-    applyFontToChildren(_hCsvFlowTabsPanel);
-    if (_hCategoryList) ::SendMessage(_hCategoryList, WM_SETFONT, (WPARAM)_hCategoryFont, FALSE);
-    if (_hCloseButton)  ::SendMessage(_hCloseButton, WM_SETFONT, (WPARAM)_hCategoryFont, FALSE);
-    if (_hResetButton)  ::SendMessage(_hResetButton, WM_SETFONT, (WPARAM)_hCategoryFont, FALSE);
+
+    // Apply to all structural panels
+    applyToHierarchy(_hSearchReplacePanel);
+    applyToHierarchy(_hListViewLayoutPanel);
+    applyToHierarchy(_hAppearancePanel);
+    applyToHierarchy(_hVariablesAutomationPanel);
+    applyToHierarchy(_hImportScopePanel);
+    applyToHierarchy(_hCsvFlowTabsPanel);
+
+    // Apply to main dialog controls
+    if (_hCategoryList) ::SendMessage(_hCategoryList, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
+    if (_hCloseButton)  ::SendMessage(_hCloseButton, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
+    if (_hResetButton)  ::SendMessage(_hResetButton, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
 }
 
 void MultiReplaceConfigDialog::resizeUI() {
@@ -538,7 +568,7 @@ void MultiReplaceConfigDialog::createCsvFlowTabsPanelControls() {
     lb.AddLabel(IDC_STATIC, TEXT("Header lines to skip when sorting CSV"), 240);
     lb.AddNumberEdit(IDC_CFG_HEADERLINES_EDIT, 250, -2, 60, 22);
 
-    if (_hCategoryFont) applyPanelFonts();
+    if (_hCategoryFont) applyFonts();
 }
 
 void MultiReplaceConfigDialog::loadSettingsFromConfig(bool reloadFile)
@@ -672,11 +702,8 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
                 createUI(); _currentCategory = -1; initUI();
                 loadSettingsFromConfig(false);
 
-                if (_hCategoryFont) { ::DeleteObject(_hCategoryFont); _hCategoryFont = nullptr; }
-                int fontHeight = dpiMgr->scaleY(13);
-                _hCategoryFont = ::CreateFont(fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, TEXT("MS Shell Dlg 2"));
-
-                applyPanelFonts();
+                createFonts();
+                applyFonts();
                 resizeUI();
 
                 // Re-apply Dark Mode themes
@@ -777,11 +804,8 @@ void MultiReplaceConfigDialog::resetToDefaults()
         initUI();
         loadSettingsFromConfig(false);
 
-        if (_hCategoryFont) { ::DeleteObject(_hCategoryFont); _hCategoryFont = nullptr; }
-        int fontHeight = dpiMgr->scaleY(13);
-        _hCategoryFont = ::CreateFont(fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, TEXT("MS Shell Dlg 2"));
-
-        applyPanelFonts();
+        createFonts();
+        applyFonts();
         resizeUI();
 
         WPARAM mode = (WPARAM)NppDarkMode::dmfInit;

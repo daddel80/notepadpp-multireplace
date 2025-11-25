@@ -131,88 +131,76 @@ void MultiReplace::initializeWindowSize()
     );
 }
 
-void MultiReplace::initializeFontStyles() {
+void MultiReplace::createFonts() {
     if (!dpiMgr) return;
+    cleanupFonts(); // Clean up before recreation
 
-    // Helper lambda to create a font
-    auto createFont = [&](int height, int weight, const wchar_t* fontName) {
-        return ::CreateFont(
-            dpiMgr->scaleY(height),  // Scale font height
-            0,                       // Default font width
-            0,                       // Escapement
-            0,                       // Orientation
-            weight,                  // Font weight
-            FALSE,                   // Italic
-            FALSE,                   // Underline
-            FALSE,                   // Strikeout
-            DEFAULT_CHARSET,         // Character set
-            OUT_DEFAULT_PRECIS,
-            CLIP_DEFAULT_PRECIS,
-            DEFAULT_QUALITY,
-            DEFAULT_PITCH | FF_DONTCARE,
-            fontName                 // Font name
+    // Helper lambda with fallback
+    auto create = [&](int height, int weight, const wchar_t* fontName) -> HFONT {
+        HFONT hf = ::CreateFont(
+            dpiMgr->scaleY(height), 0, 0, 0, weight, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, fontName
         );
+        return hf ? hf : (HFONT)::GetStockObject(DEFAULT_GUI_FONT);
         };
 
-    // Define standard and normal fonts
-    _hStandardFont = createFont(13, FW_NORMAL, L"MS Shell Dlg 2");
-    _hNormalFont1 = createFont(14, FW_NORMAL, L"MS Shell Dlg 2");
-    _hNormalFont2 = createFont(12, FW_NORMAL, L"Courier New");
-    _hNormalFont3 = createFont(14, FW_NORMAL, L"Courier New");
-    _hNormalFont4 = createFont(16, FW_NORMAL, L"Courier New");
-    _hNormalFont5 = createFont(18, FW_NORMAL, L"Courier New");
-    _hNormalFont6 = createFont(22, FW_NORMAL, L"Courier New");
-    _hNormalFont7 = createFont(26, FW_NORMAL, L"Courier New");
+    // Populate Registry
+    using FR = FontRole;
+    _fontHandles[(size_t)FR::Standard] = create(13, FW_NORMAL, L"MS Shell Dlg 2");
+    _fontHandles[(size_t)FR::Normal1] = create(14, FW_NORMAL, L"MS Shell Dlg 2");
+    _fontHandles[(size_t)FR::Normal2] = create(12, FW_NORMAL, L"Courier New");
+    _fontHandles[(size_t)FR::Normal3] = create(14, FW_NORMAL, L"Courier New");
+    _fontHandles[(size_t)FR::Normal4] = create(16, FW_NORMAL, L"Courier New");
+    _fontHandles[(size_t)FR::Normal5] = create(18, FW_NORMAL, L"Courier New");
+    _fontHandles[(size_t)FR::Normal6] = create(22, FW_NORMAL, L"Courier New");
+    _fontHandles[(size_t)FR::Normal7] = create(26, FW_NORMAL, L"Courier New");
+    _fontHandles[(size_t)FR::Bold1] = create(22, FW_BOLD, L"Courier New");
+    _fontHandles[(size_t)FR::Bold2] = create(12, FW_BOLD, L"MS Shell Dlg 2");
 
-    // Apply standard font to all controls in ctrlMap
-    for (const auto& pair : ctrlMap) {
-        SendMessage(GetDlgItem(_hSelf, pair.first), WM_SETFONT, (WPARAM)_hStandardFont, TRUE);
+    // Calculate metrics (Using Screen DC to allow running before window creation)
+    HDC hdc = GetDC(NULL);
+    if (hdc) {
+        auto measure = [&](const wchar_t* text) -> int {
+            SIZE size;
+            HGDIOBJ oldFont = SelectObject(hdc, font(FontRole::Standard));
+            GetTextExtentPoint32W(hdc, text, 1, &size);
+            SelectObject(hdc, oldFont);
+            return size.cx;
+            };
+
+        checkMarkWidth_scaled = measure(L"\u2714") + 15;
+        crossWidth_scaled = measure(L"\u2716") + 15;
+        boxWidth_scaled = measure(L"\u2610") + 15;
+
+        ReleaseDC(NULL, hdc);
     }
-
-    // Specific controls using normal fonts
-    for (int controlId : { IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_STATUS_MESSAGE, IDC_PATH_DISPLAY, IDC_STATS_DISPLAY }) {
-        SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hNormalFont1, TRUE);
-    }
-    for (int controlId : { IDC_COLUMN_DROP_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON }) {
-        SendMessage(GetDlgItem(_hSelf, controlId), WM_SETFONT, (WPARAM)_hNormalFont2, TRUE);
-    }
-
-    SendMessage(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont3, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_COPY_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont3, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_COPY_MARKED_TEXT_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont4, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont5, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_ALL_SMALL_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont6, TRUE);
-    SendMessage(GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON), WM_SETFONT, (WPARAM)_hNormalFont7, TRUE);
-
-    // Define bold fonts
-    _hBoldFont1 = createFont(22, FW_BOLD, L"Courier New");
-    _hBoldFont2 = createFont(12, FW_BOLD, L"MS Shell Dlg 2");
-
-    // Specific controls using bold fonts, adjusted to match the correct sizes
-    SendMessage(GetDlgItem(_hSelf, IDC_SWAP_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont1, TRUE);
-    SendMessage(GetDlgItem(_hSelf, ID_EDIT_EXPAND_BUTTON), WM_SETFONT, (WPARAM)_hBoldFont2, TRUE);
-
-    // For ListView: calculate widths of special characters and add padding
-    checkMarkWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2714") + 15;
-    crossWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2716") + 15;
-    boxWidth_scaled = getCharacterWidth(IDC_REPLACE_LIST, L"\u2610") + 15;
-
-    // Set delete button column width
     deleteButtonColumnWidth = crossWidth_scaled;
 }
 
-void MultiReplace::cleanupFontStyles() {
-    // Safely delete all GDI font objects to prevent resource leaks
-    if (_hStandardFont) { DeleteObject(_hStandardFont); _hStandardFont = nullptr; }
-    if (_hNormalFont1) { DeleteObject(_hNormalFont1);  _hNormalFont1 = nullptr; }
-    if (_hNormalFont2) { DeleteObject(_hNormalFont2);  _hNormalFont2 = nullptr; }
-    if (_hNormalFont3) { DeleteObject(_hNormalFont3);  _hNormalFont3 = nullptr; }
-    if (_hNormalFont4) { DeleteObject(_hNormalFont4);  _hNormalFont4 = nullptr; }
-    if (_hNormalFont5) { DeleteObject(_hNormalFont5);  _hNormalFont5 = nullptr; }
-    if (_hNormalFont6) { DeleteObject(_hNormalFont6);  _hNormalFont6 = nullptr; }
-    if (_hNormalFont7) { DeleteObject(_hNormalFont7);  _hNormalFont7 = nullptr; }
-    if (_hBoldFont1) { DeleteObject(_hBoldFont1);    _hBoldFont1 = nullptr; }
-    if (_hBoldFont2) { DeleteObject(_hBoldFont2);    _hBoldFont2 = nullptr; }
+void MultiReplace::cleanupFonts() {
+    for (auto& hFont : _fontHandles) {
+        if (hFont) {
+            DeleteObject(hFont);
+            hFont = nullptr;
+        }
+    }
+}
+
+void MultiReplace::applyFonts() {
+    for (const auto& pair : ctrlMap) {
+        HWND hCtrl = GetDlgItem(_hSelf, pair.first);
+        if (hCtrl) {
+            FontRole role = pair.second.fontRole;
+
+            // FIX: Direktzugriff auf das Array statt getFont()
+            HFONT hFont = _fontHandles[static_cast<size_t>(role)];
+
+            if (hFont) {
+                SendMessage(hCtrl, WM_SETFONT, (WPARAM)hFont, TRUE);
+            }
+        }
+    }
 }
 
 RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
@@ -260,7 +248,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int radioButtonBaseHeight = dpiMgr->getCustomMetricOrFallback(SM_CYMENUCHECK, dpi, 14);
 
     // Get the font height from the standard font
-    int fontHeight = getFontHeight(_hSelf, _hStandardFont);
+    int fontHeight = getFontHeight(_hSelf, font(FontRole::Standard));
     fontHeight = fontHeight + sy(8); // Padding Font
 
     // Choose the larger value between the font height and the base height
@@ -280,101 +268,123 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int useListButtonY = windowHeight - sy(34);
 
     // Apply scaling only when assigning to ctrlMap
-    ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_find_what"), SS_RIGHT, NULL, true };
-    ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_replace_with"), SS_RIGHT, NULL, true };
+   // --- STATIC CONTROLS ---
 
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true };
-    ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL, true };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true };
-    ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(112), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true };
-    ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(176), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,  LM.getLPCW(L"tooltip_replace_at_matches"), true };
+    // Default Font (Standard)
+    ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_find_what"), SS_RIGHT, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_replace_with"), SS_RIGHT, NULL, true, FontRole::Standard };
 
-    ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(173), sy(104), WC_BUTTON, LM.getLPCW(L"panel_search_mode"), BS_GROUPBOX, NULL, true };
-    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL, true };
-    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true };
-    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(112), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true, FontRole::Standard };
 
-    ctrlMap[IDC_SCOPE_GROUP] = { sx(367), sy(79), sx(252), sy(125), WC_BUTTON, LM.getLPCW(L"panel_scope"), BS_GROUPBOX, NULL, true };
-    ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(375), sy(101), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL, true };
-    ctrlMap[IDC_SELECTION_RADIO] = { sx(375), sy(126), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true };
-    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(375), sy(150), sx(45), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true };
+    // Note: Replace Hit Edit uses Standard Font implicitly
+    ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(176), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,  LM.getLPCW(L"tooltip_replace_at_matches"), true, FontRole::Standard };
 
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(412), sy(151), sx(30), sy(20), WC_STATIC, LM.getLPCW(L"panel_cols"), SS_RIGHT, NULL, true };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(443), sy(151), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_columns"), true };
-    ctrlMap[IDC_DELIMITER_STATIC] = { sx(485), sy(151), sx(38), sy(20), WC_STATIC, LM.getLPCW(L"panel_delim"), SS_RIGHT, NULL, true };
-    ctrlMap[IDC_DELIMITER_EDIT] = { sx(524), sy(151), sx(25), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_delimiter"), true };
-    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(549), sy(151), sx(37), sy(20), WC_STATIC, LM.getLPCW(L"panel_quote"), SS_RIGHT, NULL, true };
-    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(587), sy(151), sx(15), sy(16), WC_EDIT, NULL, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_quote"), true };
+    ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(173), sy(104), WC_BUTTON, LM.getLPCW(L"panel_search_mode"), BS_GROUPBOX, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true, FontRole::Standard };
 
-    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(373), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_descending"), true };
-    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(410), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_ascending"), true };
-    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(453), sy(176), sx(34), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_drop_columns"), true };
-    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(490), sy(176), sx(34), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_columns"), true };
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(533), sy(176), sx(34), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_highlight"), true };
-    ctrlMap[IDC_COLUMN_GRIDTABS_BUTTON] = { sx(570), sy(176), sx(34), sy(20), WC_BUTTON, L"⇥", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_tabs"), true };
+    ctrlMap[IDC_SCOPE_GROUP] = { sx(367), sy(79), sx(252), sy(125), WC_BUTTON, LM.getLPCW(L"panel_scope"), BS_GROUPBOX, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(375), sy(101), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_SELECTION_RADIO] = { sx(375), sy(126), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(375), sy(150), sx(45), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true, FontRole::Standard };
 
-    // --- DYNAMIC CONTROLS (isStatic = false) ---
-    ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(44), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(412), sy(151), sx(30), sy(20), WC_STATIC, LM.getLPCW(L"panel_cols"), SS_RIGHT, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(443), sy(151), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_columns"), true, FontRole::Standard };
+    ctrlMap[IDC_DELIMITER_STATIC] = { sx(485), sy(151), sx(38), sy(20), WC_STATIC, LM.getLPCW(L"panel_delim"), SS_RIGHT, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_DELIMITER_EDIT] = { sx(524), sy(151), sx(25), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_delimiter"), true, FontRole::Standard };
+    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(549), sy(151), sx(37), sy(20), WC_STATIC, LM.getLPCW(L"panel_quote"), SS_RIGHT, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(587), sy(151), sx(15), sy(16), WC_EDIT, NULL, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_quote"), true, FontRole::Standard };
 
-    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(14), sx(128), sy(52), WC_BUTTON, LM.getLPCW(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(91), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_replace_all"), false };
-    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, LM.getLPCW(L"tooltip_2_buttons_mode"), false };
+    // Special Fonts for Buttons
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(373), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_descending"), true, FontRole::Standard };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(410), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_ascending"), true, FontRole::Standard };
 
-    ctrlMap[IDC_FIND_ALL_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_find_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(453), sy(176), sx(34), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_drop_columns"), true, FontRole::Normal2 };
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(490), sy(176), sx(34), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_columns"), true, FontRole::Normal3 };
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(533), sy(176), sx(34), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_highlight"), true, FontRole::Normal2 };
+    ctrlMap[IDC_COLUMN_GRIDTABS_BUTTON] = { sx(570), sy(176), sx(34), sy(20), WC_BUTTON, L"⇥", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_tabs"), true, FontRole::Normal7 };
+
+    // --- DYNAMIC CONTROLS ---
+
+    // Edit Controls -> Normal1
+    ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false, FontRole::Normal1 };
+    ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(44), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false, FontRole::Normal1 };
+
+    // Swap Button -> Bold1
+    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Bold1 };
+
+    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(14), sx(128), sy(52), WC_BUTTON, LM.getLPCW(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(91), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+
+    // Replace All Small -> Normal6
+    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_replace_all"), false, FontRole::Normal6 };
+
+    ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, LM.getLPCW(L"tooltip_2_buttons_mode"), false, FontRole::Standard };
+
+    ctrlMap[IDC_FIND_ALL_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_find_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
 
     findNextButtonText = L"▼ " + LM.get(L"panel_find_next_small");
-    ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
 
-    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_marked_text"), false };
-    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
 
-    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(205) + filesOffsetY, listWidth - sx(5), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, NULL, false };
+    // Copy Marked -> Normal4
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_marked_text"), false, FontRole::Normal4 };
 
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_new_list"), false };
+    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
 
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save"), false };
-    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    // Status Message -> Normal1
+    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(205) + filesOffsetY, listWidth - sx(5), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, NULL, false, FontRole::Normal1 };
 
-    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_new_list"), false, FontRole::Standard };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
 
-    ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(4), sy(323) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL, false };
-    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL, false };
+    // Save -> Normal3
+    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save"), false, FontRole::Normal3 };
 
-    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11) + filesOffsetY, sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL, false };
-    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16) + filesOffsetY, sx(96), sy(16), WC_STATIC, LM.getLPCW(L"panel_move_lines"), SS_LEFT, NULL, false };
+    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(4), sy(323) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11) + filesOffsetY, sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16) + filesOffsetY, sx(96), sy(16), WC_STATIC, LM.getLPCW(L"panel_move_lines"), SS_LEFT, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227) + filesOffsetY, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL, false, FontRole::Standard };
 
-    ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227) + filesOffsetY, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL, false };
+    // Path/Stats -> Normal1
+    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5) + filesOffsetY, listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL, false, FontRole::Normal1 };
+    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, sy(225) + listHeight + sy(5) + filesOffsetY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL, false, FontRole::Normal1 };
 
-    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5) + filesOffsetY, listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL, false };
-    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, sy(225) + listHeight + sy(5) + filesOffsetY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL, false };
+    // Use List -> Normal5
+    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY , sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Normal5 };
 
-    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY , sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_FILE_OPS_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_filter"), SS_RIGHT, NULL, false, FontRole::Standard };
 
-    ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
+    // Filter/Dir Edits -> Normal1
+    ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false, FontRole::Normal1 };
+    ctrlMap[IDC_FILTER_HELP] = { sx(96) + comboWidth - sx(170) + sx(5), sy(228), sx(20), sy(20), WC_STATIC, L"(?)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_filter_help"), false, FontRole::Standard };
+    ctrlMap[IDC_DIR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_directory"), SS_RIGHT, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false, FontRole::Normal1 };
 
-    ctrlMap[IDC_FILE_OPS_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, NULL, false };
+    ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(21), sy(230), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(21), sy(257), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, NULL, false, FontRole::Standard };
+}
 
-    ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_filter"), SS_RIGHT, NULL, false };
-    ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_FILTER_HELP] = { sx(96) + comboWidth - sx(170) + sx(5), sy(228), sx(20), sy(20), WC_STATIC, L"(?)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_filter_help"), false };
-    ctrlMap[IDC_DIR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_directory"), SS_RIGHT, NULL, false };
-    ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, NULL, false };
-
-    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(21), sy(230), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, false };
-    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(21), sy(257), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, NULL, false };
+HFONT MultiReplace::font(FontRole role) const {
+    return _fontHandles[static_cast<size_t>(role)];
 }
 
 void MultiReplace::initializeCtrlMap() {
@@ -636,6 +646,7 @@ void MultiReplace::moveAndResizeControls(bool moveStatic) {
         showListFilePath();
     }
 }
+
 void MultiReplace::updateTwoButtonsVisibility() {
     BOOL twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
 
@@ -2216,23 +2227,33 @@ void MultiReplace::refreshUIListView()
 }
 
 void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
-    // Toggle the corresponding visibility flag
+    // Toggle the corresponding visibility flag AND update ConfigManager
+    // This ensures the Config Dialog reflects changes made here.
     switch (menuId) {
     case IDM_TOGGLE_FIND_COUNT:
         isFindCountVisible = !isFindCountVisible;
+        CFG.writeInt(L"ListColumns", L"FindCountVisible", isFindCountVisible ? 1 : 0);
         break;
     case IDM_TOGGLE_REPLACE_COUNT:
         isReplaceCountVisible = !isReplaceCountVisible;
+        CFG.writeInt(L"ListColumns", L"ReplaceCountVisible", isReplaceCountVisible ? 1 : 0);
         break;
     case IDM_TOGGLE_COMMENTS:
         isCommentsColumnVisible = !isCommentsColumnVisible;
+        CFG.writeInt(L"ListColumns", L"CommentsVisible", isCommentsColumnVisible ? 1 : 0);
         break;
     case IDM_TOGGLE_DELETE:
         isDeleteButtonVisible = !isDeleteButtonVisible;
+        CFG.writeInt(L"ListColumns", L"DeleteButtonVisible", isDeleteButtonVisible ? 1 : 0);
         break;
     default:
         return; // Unhandled menu ID
     }
+
+    // IMPORTANT: Save to disk immediately.
+    // The ConfigDialog reloads from disk when opening. If we don't save here,
+    // opening the ConfigDialog would revert these changes to the old disk state.
+    CFG.save(L"");
 
     // Recreate the ListView columns to reflect the changes
     HWND listView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
@@ -2241,7 +2262,6 @@ void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
     // Refresh the ListView (if necessary)
     InvalidateRect(listView, NULL, TRUE);
 }
-
 ColumnID MultiReplace::getColumnIDFromIndex(int columnIndex) const {
     auto it = std::find_if(
         columnIndices.begin(),
@@ -2534,8 +2554,8 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
     );
 
     // Set the _hBoldFont2 to the expand/collapse button
-    if (_hBoldFont2) {
-        SendMessage(hwndExpandBtn, WM_SETFONT, (WPARAM)_hBoldFont2, TRUE);
+    if (font(FontRole::Bold2)) {
+        SendMessage(hwndExpandBtn, WM_SETFONT, (WPARAM)font(FontRole::Bold2), TRUE);
     }
 
     // Set the initial text of the edit control
@@ -2893,7 +2913,7 @@ void MultiReplace::toggleEditExpand()
     _editIsExpanded = !_editIsExpanded;
 
     // Set the _hBoldFont2 to the expand/collapse button
-    SendMessage(hwndExpandBtn, WM_SETFONT, (WPARAM)_hBoldFont2, TRUE);
+    SendMessage(hwndExpandBtn, WM_SETFONT, (WPARAM)font(FontRole::Bold2), TRUE);
 
     // Update position and size of edit control and button
     MoveWindow(hwndEdit, ptLT.x, ptLT.y, curWidth, newHeight, TRUE);
@@ -3383,8 +3403,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
 
         ensureIndicatorContext();
+        createFonts();
         initializeCtrlMap();
-        initializeFontStyles();
+        applyFonts();
         applyThemePalette();
         loadSettings();
         updateTwoButtonsVisibility();
@@ -3486,15 +3507,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             DestroyWindow(hwndEdit);
         }
 
-        DeleteObject(_hStandardFont);
-        DeleteObject(_hBoldFont1);
-        DeleteObject(_hNormalFont1);
-        DeleteObject(_hNormalFont2);
-        DeleteObject(_hNormalFont3);
-        DeleteObject(_hNormalFont4);
-        DeleteObject(_hNormalFont5);
-        DeleteObject(_hNormalFont6);
-        DeleteObject(_hNormalFont7);
+        cleanupFonts();
 
         // Close the debug window if open
         if (hDebugWnd != NULL) {
@@ -11563,6 +11576,23 @@ void MultiReplace::loadSettingsFromIni() {
     bool inHidden = CFG.readBool(L"ReplaceInFiles", L"InHiddenFolders", false);
     SendMessage(GetDlgItem(_hSelf, IDC_HIDDENFILES_CHECKBOX), BM_SETCHECK, inHidden ? BST_CHECKED : BST_UNCHECKED, 0);
 
+    // --- Load Column Settings (Widths & Visibility) ---
+    // NOTE: We read them here, and apply them in the 'instance' block below
+    findCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
+    replaceCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceCountWidth", DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
+    findColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindWidth", DEFAULT_COLUMN_WIDTH_FIND_scaled), MIN_GENERAL_WIDTH_scaled);
+    replaceColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceWidth", DEFAULT_COLUMN_WIDTH_REPLACE_scaled), MIN_GENERAL_WIDTH_scaled);
+    commentsColumnWidth = std::max(CFG.readInt(L"ListColumns", L"CommentsWidth", DEFAULT_COLUMN_WIDTH_COMMENTS_scaled), MIN_GENERAL_WIDTH_scaled);
+
+    isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
+    isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
+    isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
+    isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
+
+    findColumnLockedEnabled = CFG.readBool(L"ListColumns", L"FindColumnLocked", true);
+    replaceColumnLockedEnabled = CFG.readBool(L"ListColumns", L"ReplaceColumnLocked", false);
+    commentsColumnLockedEnabled = CFG.readBool(L"ListColumns", L"CommentsColumnLocked", true);
+
 
     // Load file path and original hash
     listFilePath = CFG.readString(L"File", L"ListFilePath", L"");
@@ -11581,7 +11611,7 @@ void MultiReplace::loadSettingsFromIni() {
 
     setUIElementVisibility();
 
-    // Side Effects: Ensure UI reflects logic state changes (e.g. from Config Dialog)
+    // --- FINAL UI REFRESH / SIDE EFFECTS ---
     if (instance) {
         // 1. Apply Tooltips state
         bool currentTooltips = CFG.readBool(L"Options", L"Tooltips", true);
@@ -11600,9 +11630,20 @@ void MultiReplace::loadSettingsFromIni() {
         // 3. Update Export Button visibility
         HWND hBash = GetDlgItem(instance->_hSelf, IDC_EXPORT_BASH_BUTTON);
         if (hBash) ShowWindow(hBash, exportToBashEnabled ? SW_SHOW : SW_HIDE);
+
+        // 4. CRITICAL: Rebuild ListView Columns to reflect visibility changes
+        if (instance->_replaceListView) {
+            instance->createListViewColumns(); // Applies isFindCountVisible etc.
+
+            // Refresh data and redraw
+            ListView_SetItemCountEx(instance->_replaceListView, instance->replaceListData.size(), LVSICF_NOINVALIDATEALL);
+            InvalidateRect(instance->_replaceListView, NULL, TRUE);
+
+            // Update Header Icons (Checkmarks)
+            instance->updateHeaderSelection();
+        }
     }
 }
-
 void MultiReplace::loadSettings() {
     auto [_, csvFilePath] = generateConfigFilePaths();
 
@@ -11649,8 +11690,8 @@ void MultiReplace::loadUIConfigFromIni()
     // --- Hot-Reload Logic for Scaling --------------------------
     if (std::abs(oldScale - customScaleFactor) > 0.001f)
     {
-        cleanupFontStyles();
-        initializeFontStyles();
+        createFonts();
+        applyFonts();
 
         RECT rc;
         if (GetWindowRect(_hSelf, &rc))
@@ -11758,6 +11799,10 @@ MultiReplace::Settings MultiReplace::getSettings()
         s.groupResultsEnabled = groupResultsEnabled;
         s.luaSafeModeEnabled = luaSafeModeEnabled;
         s.allFromCursorEnabled = allFromCursorEnabled;
+        s.isFindCountVisible = instance->isFindCountVisible;
+        s.isReplaceCountVisible = instance->isReplaceCountVisible;
+        s.isCommentsColumnVisible = instance->isCommentsColumnVisible;
+        s.isDeleteButtonVisible = instance->isDeleteButtonVisible;
         s.editFieldSize = editFieldSize;
         s.csvHeaderLinesCount = static_cast<int>(instance->CSVheaderLinesCount);
         return s;
@@ -11783,6 +11828,10 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
     s.luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
+    s.isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
+    s.isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
+    s.isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
+    s.isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
     s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
     return s;
@@ -11805,7 +11854,10 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeInt(L"Options", L"AllFromCursor", s.allFromCursorEnabled ? 1 : 0);
 
     CFG.writeInt(L"Lua", L"SafeMode", s.luaSafeModeEnabled ? 1 : 0);
-
+    CFG.writeInt(L"ListColumns", L"FindCountVisible", s.isFindCountVisible ? 1 : 0);
+    CFG.writeInt(L"ListColumns", L"ReplaceCountVisible", s.isReplaceCountVisible ? 1 : 0);
+    CFG.writeInt(L"ListColumns", L"CommentsVisible", s.isCommentsColumnVisible ? 1 : 0);
+    CFG.writeInt(L"ListColumns", L"DeleteButtonVisible", s.isDeleteButtonVisible ? 1 : 0);
     CFG.writeInt(L"Options", L"EditFieldSize", s.editFieldSize);
     CFG.writeInt(L"Scope", L"HeaderLines", s.csvHeaderLinesCount);
 }
@@ -12154,7 +12206,7 @@ void MultiReplace::showDPIAndFontInfo()
         TEXTMETRIC tmCurrent;
         GetTextMetrics(hDC, &tmCurrent);  // Retrieve text metrics for current font
 
-        SelectObject(hDC, _hStandardFont);  // Select standard font into the DC
+        SelectObject(hDC, font(FontRole::Standard));  // Select standard font into the DC
         TEXTMETRIC tmStandard;
         GetTextMetrics(hDC, &tmStandard);  // Retrieve text metrics for standard font
 

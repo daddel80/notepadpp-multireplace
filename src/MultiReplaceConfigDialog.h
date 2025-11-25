@@ -24,7 +24,9 @@ private:
     // UI Creation Methods
     void createUI();
     void initUI();
-    void applyPanelFonts();
+    void createFonts();
+    void cleanupFonts();
+    void applyFonts();
     void resizeUI();
     void showCategory(int index);
     HWND createPanel();
