@@ -114,6 +114,7 @@ BOOL APIENTRY DllMain(HINSTANCE hModule, DWORD  reasonForCall, LPVOID /*lpReserv
 extern "C" __declspec(dllexport) void setInfo(NppData notpadPlusData)
 {
 	nppData = notpadPlusData;
+    MultiReplace::loadLanguageGlobal();  // loading language Information for Plugin
 	commandMenuInit();
 }
 

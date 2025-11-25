@@ -508,6 +508,8 @@ public:
     bool _keepOnTopDuringBatch = false;
     void setBatchUIState(HWND hDlg, bool inProgress);
 
+    static void loadLanguageGlobal();
+
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 

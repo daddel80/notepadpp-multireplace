@@ -30,6 +30,7 @@ private:
     void resizeUI();
     void showCategory(int index);
     HWND createPanel();
+    void applyInternalTheme();
 
     // Logic
     void resetToDefaults();
@@ -63,7 +64,7 @@ private:
     void createAppearancePanelControls();
     void createVariablesAutomationPanelControls();
     void createImportScopePanelControls();
-    void createCsvFlowTabsPanelControls();
+    void createCsvOptionsPanelControls();
 
     // Settings Binding Logic
     void loadSettingsFromConfig(bool reloadFile = true);

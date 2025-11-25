@@ -267,6 +267,56 @@ const LangKV kEnglishPairs[] = {
 { L"dock_hits_suffix", L"($REPLACE_STRING hits)" },
 { L"dock_line", L"Line" },
 
+// Configuration Dialog
+{ L"config_btn_close", L"Close" },
+{ L"config_btn_reset", L"Reset" },
+
+// Config Categories
+{ L"config_cat_search_replace", L"Search and Replace" },
+{ L"config_cat_list_view", L"List View and Layout" },
+{ L"config_cat_csv", L"CSV Options" },
+{ L"config_cat_appearance", L"Appearance" },
+{ L"config_cat_automation", L"Variables and Automation" },
+
+// Search & Replace Settings
+{ L"config_grp_search_behaviour", L"Search behaviour" },
+{ L"config_chk_stay_after_replace", L"Replace: Don't move to the following occurrence" },
+{ L"config_chk_all_from_cursor", L"Find: Search from cursor position" },
+{ L"config_chk_alert_not_found", L"Flash window and beep if not found" },
+
+// List View Settings
+{ L"config_grp_list_columns", L"List columns" },
+{ L"config_chk_find_count", L"Show Find Count" },
+{ L"config_chk_replace_count", L"Show Replace Count" },
+{ L"config_chk_comments", L"Show Comments column" },
+{ L"config_chk_delete_btn", L"Show Delete button column" },
+{ L"config_grp_list_results", L"List Results" },
+{ L"config_chk_list_stats", L"Show list statistics" },
+{ L"config_chk_group_results", L"Find All: Group hits by list entry" },
+{ L"config_grp_list_interaction", L"List Interaction && View" },
+{ L"config_chk_highlight_match", L"Highlight current match in list" },
+{ L"config_chk_doubleclick", L"Edit in-place on double-click" },
+{ L"config_chk_hover_text", L"Show full text on hover" },
+{ L"config_lbl_edit_height", L"Expanded edit height (lines):" },
+
+// CSV Settings
+{ L"config_grp_csv_settings", L"CSV Settings" },
+{ L"config_chk_numeric_align", L"Flow Tabs: Right-align numeric columns" },
+{ L"config_lbl_csv_sort", L"CSV Sort: Header lines to exclude:" },
+
+// Appearance Settings
+{ L"config_grp_transparency", L"Transparency" },
+{ L"config_lbl_foreground", L"Foreground (0–255)" },
+{ L"config_lbl_background", L"Background (0–255)" },
+{ L"config_grp_scale", L"Scale" },
+{ L"config_lbl_scale_factor", L"Scale factor" },
+{ L"config_grp_tooltips", L"Tooltips" },
+{ L"config_chk_enable_tooltips", L"Enable tooltips" },
+
+// Variables & Automation Settings
+{ L"config_grp_lua", L"Lua" },
+{ L"config_chk_lua_safemode", L"Enable Lua safe mode" },
+
 };
 
 const size_t kEnglishPairsCount = sizeof(kEnglishPairs) / sizeof(kEnglishPairs[0]);

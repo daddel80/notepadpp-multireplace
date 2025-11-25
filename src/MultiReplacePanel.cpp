@@ -54,7 +54,6 @@
 #include <iomanip>
 #include <lua.hpp>
 #include <sdkddkver.h>
-#include <unordered_set>
 
 
 static LanguageManager& LM = LanguageManager::instance();
@@ -1007,6 +1006,19 @@ void MultiReplace::updateUseListState(bool isUpdate)
 
     // Add or update the tooltip
     SendMessage(_hUseListButtonTooltip, TTM_ADDTOOL, 0, (LPARAM)&ti);
+}
+
+void MultiReplace::loadLanguageGlobal() {
+    if (!nppData._nppHandle) return;
+
+    wchar_t pluginDir[MAX_PATH] = {};
+    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, MAX_PATH, reinterpret_cast<LPARAM>(pluginDir));
+
+    wchar_t langXml[MAX_PATH] = {};
+    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, reinterpret_cast<LPARAM>(langXml));
+    wcscat_s(langXml, L"\\..\\..\\nativeLang.xml");
+
+    LanguageManager::instance().load(pluginDir, langXml);
 }
 
 #pragma endregion
@@ -3377,19 +3389,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         // checkFullStackInfo();
         dpiMgr = new DPIManager(_hSelf);
-        //loadLanguage();
-
-        //  a) extract paths
-        wchar_t pluginDir[MAX_PATH] = {};
-        SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, MAX_PATH,
-            reinterpret_cast<LPARAM>(pluginDir));
-
-        wchar_t langXml[MAX_PATH] = {};
-        SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH,
-            reinterpret_cast<LPARAM>(langXml));
-        wcscat_s(langXml, L"\\..\\..\\nativeLang.xml");
-
-        LanguageManager::instance().load(pluginDir, langXml);
         initializeWindowSize();
 
         pointerToScintilla();
@@ -10238,12 +10237,13 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageSta
 
     if (isNotFound && alertNotFoundEnabled)
     {
+        ::MessageBeep(MB_ICONASTERISK);
         FLASHWINFO fwInfo = { 0 };
         fwInfo.cbSize = sizeof(FLASHWINFO);
         fwInfo.hwnd = _hSelf;
-        fwInfo.dwFlags = FLASHW_ALL | FLASHW_TIMERNOFG;
-        fwInfo.uCount = 0;
-        fwInfo.dwTimeout = 0;
+        fwInfo.dwFlags = FLASHW_ALL;
+        fwInfo.uCount = 2;
+        fwInfo.dwTimeout = 100;
         FlashWindowEx(&fwInfo);
     }
 }
