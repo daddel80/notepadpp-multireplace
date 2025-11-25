@@ -128,10 +128,10 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         int baseWidth = 810;
         int baseHeight = 380;
 
-        int newW = scaleX(baseWidth);
-        int newH = scaleY(baseHeight);
+        int clientW = scaleX(baseWidth);
+        int clientH = scaleY(baseHeight);
 
-        RECT rc = { 0, 0, newW, newH };
+        RECT rc = { 0, 0, clientW, clientH };
         DWORD style = GetWindowLong(_hSelf, GWL_STYLE);
         DWORD exStyle = GetWindowLong(_hSelf, GWL_EXSTYLE);
         AdjustWindowRectEx(&rc, style, FALSE, exStyle);
@@ -637,6 +637,10 @@ void MultiReplaceConfigDialog::loadSettingsFromConfig(bool reloadFile)
 
 void MultiReplaceConfigDialog::applyConfigToSettings()
 {
+
+    // HIDE FIRST (The "Anti-Glitch" Strategy)
+    ::ShowWindow(_hSelf, SW_HIDE);
+
     // 1. Load current state from INI to memory (base)
     {
         auto [iniFilePath, _csv] = MultiReplace::generateConfigFilePaths();
@@ -785,8 +789,20 @@ void MultiReplaceConfigDialog::resetToDefaults()
     // 7. Rebuild Config UI if scale changed (Existing Logic)
     if (std::abs(oldScale - 1.0) > 0.001) {
         int baseWidth = 810; int baseHeight = 380;
-        int newW = scaleX(baseWidth); int newH = scaleY(baseHeight);
-        SetWindowPos(_hSelf, NULL, 0, 0, newW, newH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        int clientW = scaleX(baseWidth);
+        int clientH = scaleY(baseHeight);
+
+        RECT rc = { 0, 0, clientW, clientH };
+        DWORD style = GetWindowLong(_hSelf, GWL_STYLE);
+        DWORD exStyle = GetWindowLong(_hSelf, GWL_EXSTYLE);
+
+        // Adjust rectangle to include borders and caption
+        AdjustWindowRectEx(&rc, style, FALSE, exStyle);
+
+        int finalW = rc.right - rc.left;
+        int finalH = rc.bottom - rc.top;
+
+        SetWindowPos(_hSelf, NULL, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
         safeDestroy(_hCategoryList);

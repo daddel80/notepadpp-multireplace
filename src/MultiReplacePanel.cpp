@@ -192,10 +192,7 @@ void MultiReplace::applyFonts() {
         HWND hCtrl = GetDlgItem(_hSelf, pair.first);
         if (hCtrl) {
             FontRole role = pair.second.fontRole;
-
-            // FIX: Direktzugriff auf das Array statt getFont()
             HFONT hFont = _fontHandles[static_cast<size_t>(role)];
-
             if (hFont) {
                 SendMessage(hCtrl, WM_SETFONT, (WPARAM)hFont, TRUE);
             }
