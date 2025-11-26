@@ -2432,6 +2432,16 @@ void MultiReplace::rebuildAllTooltips()
     updateListViewTooltips();
 }
 
+bool MultiReplace::isUseListEnabled() const {
+    return useListEnabled;
+}
+
+bool MultiReplace::isTwoButtonsModeEnabled() const {
+    // Check if window handle is valid
+    if (!_hSelf || !::IsWindow(_hSelf)) return false;
+    return (::IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED);
+}
+
 #pragma endregion
 
 

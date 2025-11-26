@@ -1,3 +1,19 @@
+// This file is part of the MultiReplace plugin for Notepad++.
+// Copyright (C) 2023 Thomas Knoefel
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 #pragma once
 #include "StaticDialog/StaticDialog.h"
 #include "DPIManager.h"
@@ -6,7 +22,6 @@
 #include <vector>
 #include <cstddef>
 
-// ID for Reset Button
 #define IDC_BTN_RESET 3001
 
 class MultiReplaceConfigDialog : public StaticDialog
@@ -21,25 +36,35 @@ protected:
     intptr_t CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 
 private:
-    // UI Creation Methods
+    // -------------------------------------------------------------------------
+    // UI Creation & Management
+    // -------------------------------------------------------------------------
     void createUI();
     void initUI();
-    void createFonts();
-    void cleanupFonts();
-    void applyFonts();
     void resizeUI();
     void showCategory(int index);
     HWND createPanel();
     void applyInternalTheme();
 
-    // Logic
-    void resetToDefaults();
-
-    // DPI / Scaling Helpers
+    // -------------------------------------------------------------------------
+    // Font & DPI Handling
+    // -------------------------------------------------------------------------
+    void createFonts();
+    void cleanupFonts();
+    void applyFonts();
     int scaleX(int value) const;
     int scaleY(int value) const;
 
+    // -------------------------------------------------------------------------
+    // Business Logic
+    // -------------------------------------------------------------------------
+    void resetToDefaults();
+    void loadSettingsFromConfig(bool reloadFile = true);
+    void applyConfigToSettings();
+
+    // -------------------------------------------------------------------------
     // Control Creation Helpers
+    // -------------------------------------------------------------------------
     HWND createGroupBox(HWND parent, int left, int top, int width, int height,
         int id, const TCHAR* text);
     HWND createCheckBox(HWND parent, int left, int top, int width,
@@ -58,19 +83,19 @@ private:
     // Message Handlers
     INT_PTR handleCtlColorStatic(WPARAM wParam, LPARAM lParam);
 
-    // Build controls for specific panels
+    // -------------------------------------------------------------------------
+    // Specific Panel Builders
+    // -------------------------------------------------------------------------
     void createSearchReplacePanelControls();
     void createListViewLayoutPanelControls();
     void createAppearancePanelControls();
     void createVariablesAutomationPanelControls();
-    void createImportScopePanelControls();
     void createCsvOptionsPanelControls();
 
-    // Settings Binding Logic
-    void loadSettingsFromConfig(bool reloadFile = true);
-    void applyConfigToSettings();
-
-    // Member Variables (UI Handles)
+    // -------------------------------------------------------------------------
+    // Members
+    // -------------------------------------------------------------------------
+    // UI Handles
     HWND _hCategoryList = nullptr;
     HWND _hCloseButton = nullptr;
     HWND _hResetButton = nullptr;
@@ -82,7 +107,7 @@ private:
     HWND _hImportScopePanel = nullptr;
     HWND _hCsvFlowTabsPanel = nullptr;
 
-    // State Variables
+    // State
     int _currentCategory = -1;
     DPIManager* dpiMgr = nullptr;
     HFONT _hCategoryFont = nullptr;
@@ -90,7 +115,11 @@ private:
     // Store user scale locally (from INI) to combine with System DPI
     double _userScaleFactor = 1.0;
 
-    // ---- Minimal Layout Helper Struct ----
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    // Simplified layout manager for grid-like positioning
     struct LayoutBuilder {
         MultiReplaceConfigDialog* dlg;
         HWND parent;
@@ -137,7 +166,7 @@ private:
         }
     };
 
-    // ---- Binding Structs & Methods ----
+    // Data Binding System
     enum class ControlType { Checkbox, IntEdit };
     enum class ValueType { Bool, Int };
 

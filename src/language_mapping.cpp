@@ -269,7 +269,7 @@ const LangKV kEnglishPairs[] = {
 
 // Configuration Dialog
 { L"config_btn_close", L"Close" },
-{ L"config_btn_reset", L"Reset" },
+{ L"config_btn_reset", L"Reset All Settings" },
 
 // Config Categories
 { L"config_cat_search_replace", L"Search and Replace" },

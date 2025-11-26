@@ -443,6 +443,9 @@ public:
 
     static Settings getSettings();
     static void writeStructToConfig(const Settings& settings);
+    // Getters for ConfigDialog
+    bool isUseListEnabled() const;
+    bool isTwoButtonsModeEnabled() const;
 
     void loadUIConfigFromIni();
     void loadSettingsFromIni();

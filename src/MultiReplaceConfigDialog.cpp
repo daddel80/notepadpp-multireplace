@@ -1,4 +1,20 @@
-﻿#include "MultiReplaceConfigDialog.h"
+﻿// This file is part of the MultiReplace plugin for Notepad++.
+// Copyright (C) 2023 Thomas Knoefel
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+#include "MultiReplaceConfigDialog.h"
 #include "PluginDefinition.h"
 #include "Notepad_plus_msgs.h"
 #include "StaticDialog/resource.h"
@@ -12,8 +28,11 @@ extern NppData nppData;
 
 static LanguageManager& LM = LanguageManager::instance();
 
-// --- Binding helpers ---
 static int clampInt(int v, int lo, int hi) { return (v < lo) ? lo : (v > hi ? hi : v); }
+
+// ============================================================================
+// DATA BINDINGS
+// ============================================================================
 
 void MultiReplaceConfigDialog::registerBindingsOnce()
 {
@@ -89,6 +108,10 @@ void MultiReplaceConfigDialog::readBindingsFromUI_Generic(void* settingsPtr)
     }
 }
 
+// ============================================================================
+// LIFECYCLE
+// ============================================================================
+
 MultiReplaceConfigDialog::~MultiReplaceConfigDialog()
 {
     delete dpiMgr;
@@ -112,7 +135,7 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         dpiMgr = new DPIManager(_hSelf);
         _userScaleFactor = 1.0;
 
-        // Load Scale
+        // Load custom scale
         {
             auto paths = MultiReplace::generateConfigFilePaths();
             ConfigManager::instance().load(paths.first);
@@ -123,10 +146,9 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
             if (_userScaleFactor > 2.0) _userScaleFactor = 2.0;
         }
 
-        // Custom Scale Factor -> DPIManager
         dpiMgr->setCustomScaleFactor((float)_userScaleFactor);
 
-        // --- BASE DIMENSIONS ---
+        // Calculate dimensions based on scale
         int baseWidth = 810;
         int baseHeight = 380;
 
@@ -158,7 +180,7 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         applyFonts();
         resizeUI();
 
-        // Dark Mode
+        // Initial Dark Mode application
         WPARAM mode = (WPARAM)NppDarkMode::dmfInit;
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSelf);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSearchReplacePanel);
@@ -245,6 +267,10 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
     return FALSE;
 }
 
+// ============================================================================
+// GRAPHICS & HELPERS
+// ============================================================================
+
 int MultiReplaceConfigDialog::scaleX(int value) const {
     int sysScaled = dpiMgr ? dpiMgr->scaleX(value) : value;
     return sysScaled;
@@ -304,18 +330,14 @@ void MultiReplaceConfigDialog::initUI() {
 
     int catToSelect = (_currentCategory >= 0) ? _currentCategory : 0;
     ::SendMessage(_hCategoryList, LB_SETCURSEL, catToSelect, 0);
-    _currentCategory = -1; // Force refresh
+    _currentCategory = -1;
     showCategory(catToSelect);
 }
 
 void MultiReplaceConfigDialog::createFonts() {
-    // Ensure DPI manager exists
     if (!dpiMgr) return;
-
-    // Cleanup existing font to avoid leaks
     cleanupFonts();
 
-    // Helper to create font with fallback
     auto create = [&](int height, int weight, const wchar_t* fontName) -> HFONT {
         HFONT hf = ::CreateFont(
             dpiMgr->scaleY(height), 0, 0, 0, weight, FALSE, FALSE, FALSE,
@@ -325,7 +347,6 @@ void MultiReplaceConfigDialog::createFonts() {
         return hf ? hf : (HFONT)::GetStockObject(DEFAULT_GUI_FONT);
         };
 
-    // Create the standard category font (Size 13)
     _hCategoryFont = create(13, FW_NORMAL, L"MS Shell Dlg 2");
 }
 
@@ -337,19 +358,14 @@ void MultiReplaceConfigDialog::cleanupFonts() {
 }
 
 void MultiReplaceConfigDialog::applyFonts() {
-    // Helper to apply font to a specific window and its children
     auto applyToHierarchy = [this](HWND parent) {
         if (!parent) return;
-        // Apply to the panel itself
         ::SendMessage(parent, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
-
-        // Iterate and apply to all children
         for (HWND child = ::GetWindow(parent, GW_CHILD); child != nullptr; child = ::GetWindow(child, GW_HWNDNEXT)) {
             ::SendMessage(child, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
         }
         };
 
-    // Apply to all structural panels
     applyToHierarchy(_hSearchReplacePanel);
     applyToHierarchy(_hListViewLayoutPanel);
     applyToHierarchy(_hAppearancePanel);
@@ -357,7 +373,6 @@ void MultiReplaceConfigDialog::applyFonts() {
     applyToHierarchy(_hImportScopePanel);
     applyToHierarchy(_hCsvFlowTabsPanel);
 
-    // Apply to main dialog controls
     if (_hCategoryList) ::SendMessage(_hCategoryList, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
     if (_hCloseButton)  ::SendMessage(_hCloseButton, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
     if (_hResetButton)  ::SendMessage(_hResetButton, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
@@ -374,16 +389,9 @@ void MultiReplaceConfigDialog::resizeUI() {
     const int catW = scaleX(140);
     const int buttonHeight = scaleY(24);
     const int bottomMargin = scaleY(10);
-    const int buttonWidth = scaleX(80);
-
-    // Close Button (Right)
-    const int closeX = clientW - margin - buttonWidth;
+    const int closeButtonWidth = scaleX(80);
+    const int resetButtonWidth = scaleX(100);
     const int buttonY = clientH - bottomMargin - buttonHeight;
-    MoveWindow(_hCloseButton, closeX, buttonY, buttonWidth, buttonHeight, TRUE);
-
-    // Reset Button (Left of Close Button)
-    const int resetX = closeX - margin - buttonWidth;
-    MoveWindow(_hResetButton, resetX, buttonY, buttonWidth, buttonHeight, TRUE);
 
     const int contentTop = margin;
     const int contentBottom = buttonY - margin;
@@ -393,6 +401,12 @@ void MultiReplaceConfigDialog::resizeUI() {
     const int panelLeft = margin + catW + margin;
     const int panelWidth = clientW - panelLeft - margin;
     const int panelHeight = contentHeight;
+
+    const int closeX = panelLeft + (panelWidth - closeButtonWidth) / 2;
+    MoveWindow(_hCloseButton, closeX, buttonY, closeButtonWidth, buttonHeight, TRUE);
+
+    const int resetX = margin + (catW - resetButtonWidth) / 2;
+    MoveWindow(_hResetButton, resetX, buttonY, resetButtonWidth, buttonHeight, TRUE);
 
     MoveWindow(_hSearchReplacePanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
     MoveWindow(_hListViewLayoutPanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
@@ -420,7 +434,7 @@ HWND MultiReplaceConfigDialog::createComboDropDownList(HWND parent, int left, in
     return ::CreateWindowEx(0, WC_COMBOBOX, TEXT(""), WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, (HMENU)(INT_PTR)id, _hInst, nullptr);
 }
 HWND MultiReplaceConfigDialog::createTrackbarHorizontal(HWND parent, int left, int top, int width, int height, int id) {
-    return ::CreateWindowEx(0, TRACKBAR_CLASS, TEXT(""), WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_BOTTOM , scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, (HMENU)(INT_PTR)id, _hInst, nullptr);
+    return ::CreateWindowEx(0, TRACKBAR_CLASS, TEXT(""), WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_BOTTOM, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, (HMENU)(INT_PTR)id, _hInst, nullptr);
 }
 HWND MultiReplaceConfigDialog::createSlider(HWND parent, int left, int top, int width, int height, int id, int minValue, int maxValue, int tickMark) {
     HWND hTrack = createTrackbarHorizontal(parent, left, top, width, height, id);
@@ -431,9 +445,9 @@ HWND MultiReplaceConfigDialog::createSlider(HWND parent, int left, int top, int 
     return hTrack;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // PANEL LAYOUTS
-// ---------------------------------------------------------------------------
+// ============================================================================
 
 void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
     if (!_hSearchReplacePanel) return;
@@ -458,14 +472,12 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
 
     const int marginX = 30; const int marginY = 10; const int columnWidth = 260; const int columnSpacing = 20;
 
-    // Adjusted heights for symmetrical padding
     const int leftGroupH = 140;
     const int rightGroupH = 85;
     const int gapAfterTop = 10;
-    const int bottomGroupH = 140; // Reduced
+    const int bottomGroupH = 140;
     const int topRowY = marginY;
 
-    // Left Group
     createGroupBox(_hListViewLayoutPanel, marginX, topRowY, columnWidth, leftGroupH, IDC_CFG_GRP_LIST_COLUMNS, LM.getLPCW(L"config_grp_list_columns"));
     {
         LayoutBuilder lb(this, _hListViewLayoutPanel, marginX + 22, topRowY + 25, columnWidth - 24, 24);
@@ -475,7 +487,6 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
         lb.AddCheckbox(IDC_CFG_DELETEBUTTON_VISIBLE, LM.getLPCW(L"config_chk_delete_btn"));
     }
 
-    // Right Group
     const int rightColX = marginX + columnWidth + columnSpacing;
     createGroupBox(_hListViewLayoutPanel, rightColX, topRowY, columnWidth, rightGroupH, IDC_CFG_GRP_LIST_STATS, LM.getLPCW(L"config_grp_list_results"));
     {
@@ -484,7 +495,6 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
         lb.AddCheckbox(IDC_CFG_GROUPRESULTS_ENABLED, LM.getLPCW(L"config_chk_group_results"));
     }
 
-    // Bottom Group
     const int bottomY = topRowY + (leftGroupH > rightGroupH ? leftGroupH : rightGroupH) + gapAfterTop;
 
     createGroupBox(_hListViewLayoutPanel, marginX, bottomY, columnWidth + columnSpacing + columnWidth, bottomGroupH, IDC_STATIC, LM.getLPCW(L"config_grp_list_interaction"));
@@ -553,9 +563,12 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
     if (_hCategoryFont) applyFonts();
 }
 
+// ============================================================================
+// CONFIG LOADING / SAVING
+// ============================================================================
+
 void MultiReplaceConfigDialog::loadSettingsFromConfig(bool reloadFile)
 {
-    // 1. Refresh base data from file if requested
     if (reloadFile)
     {
         auto [iniFilePath, _csv] = MultiReplace::generateConfigFilePaths();
@@ -563,19 +576,15 @@ void MultiReplaceConfigDialog::loadSettingsFromConfig(bool reloadFile)
     }
     const auto& CFG = ConfigManager::instance();
 
-    // 2. Get LIVE settings from Main Panel (RAM)
     const MultiReplace::Settings s = MultiReplace::getSettings();
 
-    // 3. Apply to UI via Binding System
     registerBindingsOnce();
     applyBindingsToUI_Generic((void*)&s);
 
-    // 4. Handle Controls NOT in Binding System (Sliders)
     if (_hAppearancePanel) {
         int fg = CFG.readInt(L"Window", L"ForegroundTransparency", 255);
         int bg = CFG.readInt(L"Window", L"BackgroundTransparency", 190);
 
-        // Validation
         if (fg < 0) fg = 0; if (fg > 255) fg = 255;
         if (bg < 0) bg = 0; if (bg > 255) bg = 255;
 
@@ -588,7 +597,6 @@ void MultiReplaceConfigDialog::loadSettingsFromConfig(bool reloadFile)
             ::SendMessage(h, TBM_SETPOS, TRUE, bg);
         }
 
-        // Scale Slider
         double sf = 1.0;
         {
             std::wstring sScale = CFG.readString(L"Window", L"ScaleFactor", L"1.0");
@@ -608,24 +616,19 @@ void MultiReplaceConfigDialog::loadSettingsFromConfig(bool reloadFile)
 
 void MultiReplaceConfigDialog::applyConfigToSettings()
 {
-    // 1. HIDE FIRST
     ::ShowWindow(_hSelf, SW_HIDE);
 
-    // 2. ConfigManager Init
     {
         auto [iniFilePath, _] = MultiReplace::generateConfigFilePaths();
         ConfigManager::instance().load(iniFilePath);
     }
 
-    // 3. UI -> Struct
     MultiReplace::Settings s = MultiReplace::getSettings();
     readBindingsFromUI_Generic((void*)&s);
 
-    // 4. Manual Controls
     if (_hVariablesAutomationPanel)
         s.luaSafeModeEnabled = (::IsDlgButtonChecked(_hVariablesAutomationPanel, IDC_CFG_LUA_SAFEMODE_ENABLED) == BST_CHECKED);
 
-    // Transparency & Scale
     double newScaleFactor = _userScaleFactor;
     if (_hAppearancePanel) {
         if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_FOREGROUND_SLIDER))
@@ -644,22 +647,26 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         }
     }
 
-    // 5. SAVE EVERYTHING NOW
     MultiReplace::writeStructToConfig(s);
+
+    // Preserve live UI state before saving (prevents resetting layout on save)
+    if (MultiReplace::instance && ::IsWindow(MultiReplace::instance->getDialogHandle())) {
+        auto& cm = ConfigManager::instance();
+        cm.writeInt(L"Options", L"UseList", MultiReplace::instance->isUseListEnabled() ? 1 : 0);
+        cm.writeInt(L"Options", L"ButtonsMode", MultiReplace::instance->isTwoButtonsModeEnabled() ? 1 : 0);
+    }
+
     ConfigManager::instance().save(L"");
 
-    // 6. NOTIFY MAIN PANEL NOW
     if (MultiReplace::instance) {
-        MultiReplace::instance->loadSettingsFromIni(); 
+        MultiReplace::instance->loadSettingsFromIni();
         MultiReplace::instance->loadUIConfigFromIni();
     }
 
-    // 7. CHECK FOR RESIZE
     if (std::abs(newScaleFactor - _userScaleFactor) > 0.001) {
         _userScaleFactor = newScaleFactor;
         dpiMgr->setCustomScaleFactor((float)_userScaleFactor);
 
-        // --- Window Resize ---
         int baseWidth = 810; int baseHeight = 380;
         int clientW = scaleX(baseWidth);
         int clientH = scaleY(baseHeight);
@@ -673,7 +680,6 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         int finalH = rc.bottom - rc.top;
         SetWindowPos(_hSelf, NULL, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
-        // --- UI Rebuild ---
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
         safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
         safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
@@ -690,7 +696,6 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         applyFonts();
         resizeUI();
 
-        // Dark Mode Re-Apply
         WPARAM mode = (WPARAM)NppDarkMode::dmfInit;
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSelf);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSearchReplacePanel);
@@ -702,10 +707,9 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
     }
 }
 
-// --- RESET LOGIC ---
 void MultiReplaceConfigDialog::resetToDefaults()
 {
-    // 1. Create Defaults
+    // Create defaults
     MultiReplace::Settings def{};
     def.tooltipsEnabled = true;
     def.editFieldSize = 5;
@@ -720,12 +724,10 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.csvHeaderLinesCount = 1;
     def.flowTabsNumericAlignEnabled = true;
     def.luaSafeModeEnabled = false;
-    def.exportToBashEnabled = false; // Ensure all fields are covered
+    def.exportToBashEnabled = false;
 
-    // 2. Write Defaults to ConfigManager (instead of applying directly)
     MultiReplace::writeStructToConfig(def);
 
-    // 3. Reset other INI values (manually managed ones)
     auto& cm = ConfigManager::instance();
     cm.writeInt(L"Window", L"ForegroundTransparency", 255);
     cm.writeInt(L"Window", L"BackgroundTransparency", 190);
@@ -736,23 +738,25 @@ void MultiReplaceConfigDialog::resetToDefaults()
     cm.writeInt(L"ListColumns", L"CommentsVisible", 0);
     cm.writeInt(L"ListColumns", L"DeleteButtonVisible", 1);
 
-    // 4. Save to Disk
+    // Preserve live UI state before saving (prevents resetting layout on reset)
+    if (MultiReplace::instance && ::IsWindow(MultiReplace::instance->getDialogHandle())) {
+        cm.writeInt(L"Options", L"UseList", MultiReplace::instance->isUseListEnabled() ? 1 : 0);
+        cm.writeInt(L"Options", L"ButtonsMode", MultiReplace::instance->isTwoButtonsModeEnabled() ? 1 : 0);
+    }
+
     cm.save(L"");
 
-    // 5. Update Config Dialog UI (Sliders, Local State)
     double oldScale = _userScaleFactor;
     _userScaleFactor = 1.0;
     dpiMgr->setCustomScaleFactor(1.0f);
 
-    loadSettingsFromConfig(true); // Reload Dialog UI from the INI we just saved
+    loadSettingsFromConfig(true);
 
-    // 6. Update Main Panel (The Single Point of Truth Flow)
     if (MultiReplace::instance) {
-        MultiReplace::instance->loadSettingsFromIni(); // Logic
-        MultiReplace::instance->loadUIConfigFromIni(); // Scaling/Visuals
+        MultiReplace::instance->loadSettingsFromIni();
+        MultiReplace::instance->loadUIConfigFromIni();
     }
 
-    // 7. Rebuild Config UI if scale changed (Existing Logic)
     if (std::abs(oldScale - 1.0) > 0.001) {
         int baseWidth = 810; int baseHeight = 380;
         int clientW = scaleX(baseWidth);
@@ -761,25 +765,17 @@ void MultiReplaceConfigDialog::resetToDefaults()
         RECT rc = { 0, 0, clientW, clientH };
         DWORD style = GetWindowLong(_hSelf, GWL_STYLE);
         DWORD exStyle = GetWindowLong(_hSelf, GWL_EXSTYLE);
-
-        // Adjust rectangle to include borders and caption
         AdjustWindowRectEx(&rc, style, FALSE, exStyle);
-
         int finalW = rc.right - rc.left;
         int finalH = rc.bottom - rc.top;
 
         SetWindowPos(_hSelf, NULL, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
-        safeDestroy(_hCategoryList);
-        safeDestroy(_hCloseButton);
-        safeDestroy(_hResetButton);
-        safeDestroy(_hSearchReplacePanel);
-        safeDestroy(_hListViewLayoutPanel);
-        safeDestroy(_hAppearancePanel);
-        safeDestroy(_hVariablesAutomationPanel);
-        safeDestroy(_hImportScopePanel);
-        safeDestroy(_hCsvFlowTabsPanel);
+        safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
+        safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
+        safeDestroy(_hAppearancePanel); safeDestroy(_hVariablesAutomationPanel);
+        safeDestroy(_hImportScopePanel); safeDestroy(_hCsvFlowTabsPanel);
 
         createUI();
         _currentCategory = -1;
@@ -802,13 +798,10 @@ void MultiReplaceConfigDialog::resetToDefaults()
 }
 
 void MultiReplaceConfigDialog::applyInternalTheme() {
-    // 1. Holen des Dark Mode Status (für die Zukunft, falls wir Logik brauchen)
     WPARAM mode = (WPARAM)NppDarkMode::dmfInit;
 
-    // 2. Hauptfenster themen
     SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSelf);
 
-    // 3. Alle Panels themen (WICHTIG für die Slider-Hintergründe!)
     HWND panels[] = {
         _hSearchReplacePanel,
         _hListViewLayoutPanel,
@@ -824,7 +817,6 @@ void MultiReplaceConfigDialog::applyInternalTheme() {
         }
     }
 
-    // 4. Listen und Buttons
     if (_hCategoryList) SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hCategoryList);
     if (_hCloseButton) SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hCloseButton);
     if (_hResetButton) SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hResetButton);
