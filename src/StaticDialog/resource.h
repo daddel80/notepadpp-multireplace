@@ -268,7 +268,7 @@
 #define IDC_CFG_GRP_SEARCH_BEHAVIOUR      79000
 #define IDC_CFG_STAY_AFTER_REPLACE        79001
 #define IDC_CFG_ALL_FROM_CURSOR           79002
-#define IDC_CFG_ALERT_NOT_FOUND           79003
+#define IDC_CFG_MUTE_SOUNDS               79003
 #define IDC_CFG_GRP_HIGHLIGHT             79004
 #define IDC_CFG_HIGHLIGHT_MATCH           79005
 

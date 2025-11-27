@@ -51,7 +51,7 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     // CSV
     _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_HEADERLINES_EDIT, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, csvHeaderLinesCount), 0, 999 });
     _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_FLOWTABS_NUMERIC_ALIGN, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, flowTabsNumericAlignEnabled), 0, 0 });
-
+    _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_FLOWTABS_INTRO_DONTSHOW, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, flowTabsIntroDontShowEnabled), 0, 0 });  // NEU
     // Appearance
     _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_TOOLTIPS_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, tooltipsEnabled), 0, 0 });
 
@@ -64,7 +64,7 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     // Search
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_STAY_AFTER_REPLACE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, stayAfterReplaceEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_ALL_FROM_CURSOR, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, allFromCursorEnabled), 0, 0 });
-    _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_ALERT_NOT_FOUND, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, alertNotFoundEnabled), 0, 0 });
+    _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_MUTE_SOUNDS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, muteSounds), 0, 0 });
 }
 
 void MultiReplaceConfigDialog::applyBindingsToUI_Generic(void* settingsPtr)
@@ -464,7 +464,7 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
     LayoutBuilder lb(this, _hSearchReplacePanel, innerLeft, innerTop, innerWidth, 26);
     lb.AddCheckbox(IDC_CFG_STAY_AFTER_REPLACE, LM.getLPCW(L"config_chk_stay_after_replace"));
     lb.AddCheckbox(IDC_CFG_ALL_FROM_CURSOR, LM.getLPCW(L"config_chk_all_from_cursor"));
-    lb.AddCheckbox(IDC_CFG_ALERT_NOT_FOUND, LM.getLPCW(L"config_chk_alert_not_found"));
+    lb.AddCheckbox(IDC_CFG_MUTE_SOUNDS, LM.getLPCW(L"config_chk_mute_sounds"));
 }
 
 void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
@@ -484,7 +484,7 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
         lb.AddCheckbox(IDC_CFG_FINDCOUNT_VISIBLE, LM.getLPCW(L"config_chk_find_count"));
         lb.AddCheckbox(IDC_CFG_REPLACECOUNT_VISIBLE, LM.getLPCW(L"config_chk_replace_count"));
         lb.AddCheckbox(IDC_CFG_COMMENTS_VISIBLE, LM.getLPCW(L"config_chk_comments"));
-        lb.AddCheckbox(IDC_CFG_DELETEBUTTON_VISIBLE, LM.getLPCW(L"config_chk_delete_btn"));
+        lb.AddCheckbox(IDC_CFG_DELETEBUTTON_VISIBLE, LM.getLPCW(L"config_chk_delete_button"));
     }
 
     const int rightColX = marginX + columnWidth + columnSpacing;
@@ -548,7 +548,7 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
     const int left = 70;
     int top = 20;
     const int groupW = 440;
-    const int groupH = 120;
+    const int groupH = 150;  // Erhöht von 120 auf 150 für die zusätzliche Checkbox
 
     createGroupBox(_hCsvFlowTabsPanel, left, top, groupW, groupH, IDC_CFG_GRP_CSV_SETTINGS, TEXT("CSV Settings"));
     const int innerLeft = left + 22;
@@ -557,6 +557,7 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
 
     LayoutBuilder lb(this, _hCsvFlowTabsPanel, innerLeft, innerTop, innerWidth, 32);
     lb.AddCheckbox(IDC_CFG_FLOWTABS_NUMERIC_ALIGN, LM.getLPCW(L"config_chk_numeric_align"));
+    lb.AddCheckbox(IDC_CFG_FLOWTABS_INTRO_DONTSHOW, LM.getLPCW(L"config_chk_flowtabs_intro_dontshow"));  // NEU
     lb.AddLabel(IDC_STATIC, LM.getLPCW(L"config_lbl_csv_sort"), 240);
     lb.AddNumberEdit(IDC_CFG_HEADERLINES_EDIT, 250, -2, 60, 22);
 
@@ -569,13 +570,9 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
 
 void MultiReplaceConfigDialog::loadSettingsFromConfig(bool reloadFile)
 {
-    if (reloadFile)
-    {
-        auto [iniFilePath, _csv] = MultiReplace::generateConfigFilePaths();
-        ConfigManager::instance().load(iniFilePath);
-    }
-    const auto& CFG = ConfigManager::instance();
+    (void)reloadFile;  // Parameter no longer used - cache is always current
 
+    const auto& CFG = ConfigManager::instance();
     const MultiReplace::Settings s = MultiReplace::getSettings();
 
     registerBindingsOnce();
@@ -618,9 +615,15 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
 {
     ::ShowWindow(_hSelf, SW_HIDE);
 
-    {
-        auto [iniFilePath, _] = MultiReplace::generateConfigFilePaths();
-        ConfigManager::instance().load(iniFilePath);
+    auto [iniFilePath, _] = MultiReplace::generateConfigFilePaths();
+
+    // Sync or reload to get latest state
+    if (MultiReplace::instance && ::IsWindow(MultiReplace::instance->getDialogHandle())) {
+        MultiReplace::instance->syncUIToCache();
+    }
+    else {
+        // MPanel closed - reload INI to get any changes it wrote
+        ConfigManager::instance().forceReload(iniFilePath);
     }
 
     MultiReplace::Settings s = MultiReplace::getSettings();
@@ -648,18 +651,10 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
     }
 
     MultiReplace::writeStructToConfig(s);
-
-    // Preserve live UI state before saving (prevents resetting layout on save)
-    if (MultiReplace::instance && ::IsWindow(MultiReplace::instance->getDialogHandle())) {
-        auto& cm = ConfigManager::instance();
-        cm.writeInt(L"Options", L"UseList", MultiReplace::instance->isUseListEnabled() ? 1 : 0);
-        cm.writeInt(L"Options", L"ButtonsMode", MultiReplace::instance->isTwoButtonsModeEnabled() ? 1 : 0);
-    }
-
     ConfigManager::instance().save(L"");
 
     if (MultiReplace::instance) {
-        MultiReplace::instance->loadSettingsFromIni();
+        MultiReplace::instance->applyConfigSettingsOnly();
         MultiReplace::instance->loadUIConfigFromIni();
     }
 
@@ -706,9 +701,18 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hCsvFlowTabsPanel);
     }
 }
-
 void MultiReplaceConfigDialog::resetToDefaults()
 {
+    auto [iniFilePath, _] = MultiReplace::generateConfigFilePaths();
+
+    // Sync or reload to preserve session state
+    if (MultiReplace::instance && ::IsWindow(MultiReplace::instance->getDialogHandle())) {
+        MultiReplace::instance->syncUIToCache();
+    }
+    else {
+        ConfigManager::instance().forceReload(iniFilePath);
+    }
+
     // Create defaults
     MultiReplace::Settings def{};
     def.tooltipsEnabled = true;
@@ -717,7 +721,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.groupResultsEnabled = false;
     def.stayAfterReplaceEnabled = false;
     def.allFromCursorEnabled = false;
-    def.alertNotFoundEnabled = true;
+    def.muteSounds = false;
     def.highlightMatchEnabled = true;
     def.doubleClickEditsEnabled = true;
     def.isHoverTextEnabled = true;
@@ -725,6 +729,10 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.flowTabsNumericAlignEnabled = true;
     def.luaSafeModeEnabled = false;
     def.exportToBashEnabled = false;
+    def.isFindCountVisible = false;
+    def.isReplaceCountVisible = false;
+    def.isCommentsColumnVisible = false;
+    def.isDeleteButtonVisible = true;
 
     MultiReplace::writeStructToConfig(def);
 
@@ -733,29 +741,18 @@ void MultiReplaceConfigDialog::resetToDefaults()
     cm.writeInt(L"Window", L"BackgroundTransparency", 190);
     cm.writeString(L"Window", L"ScaleFactor", L"1.0");
 
-    cm.writeInt(L"ListColumns", L"FindCountVisible", 0);
-    cm.writeInt(L"ListColumns", L"ReplaceCountVisible", 0);
-    cm.writeInt(L"ListColumns", L"CommentsVisible", 0);
-    cm.writeInt(L"ListColumns", L"DeleteButtonVisible", 1);
-
-    // Preserve live UI state before saving (prevents resetting layout on reset)
-    if (MultiReplace::instance && ::IsWindow(MultiReplace::instance->getDialogHandle())) {
-        cm.writeInt(L"Options", L"UseList", MultiReplace::instance->isUseListEnabled() ? 1 : 0);
-        cm.writeInt(L"Options", L"ButtonsMode", MultiReplace::instance->isTwoButtonsModeEnabled() ? 1 : 0);
-    }
-
     cm.save(L"");
 
     double oldScale = _userScaleFactor;
     _userScaleFactor = 1.0;
     dpiMgr->setCustomScaleFactor(1.0f);
 
-    loadSettingsFromConfig(true);
-
     if (MultiReplace::instance) {
-        MultiReplace::instance->loadSettingsFromIni();
+        MultiReplace::instance->applyConfigSettingsOnly();
         MultiReplace::instance->loadUIConfigFromIni();
     }
+
+    loadSettingsFromConfig(false);
 
     if (std::abs(oldScale - 1.0) > 0.001) {
         int baseWidth = 810; int baseHeight = 380;

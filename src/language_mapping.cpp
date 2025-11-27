@@ -282,14 +282,14 @@ const LangKV kEnglishPairs[] = {
 { L"config_grp_search_behaviour", L"Search behaviour" },
 { L"config_chk_stay_after_replace", L"Replace: Don't move to the following occurrence" },
 { L"config_chk_all_from_cursor", L"Find: Search from cursor position" },
-{ L"config_chk_alert_not_found", L"Flash window and beep if not found" },
+{ L"config_chk_mute_sounds", L"Mute all sounds" },
 
 // List View Settings
-{ L"config_grp_list_columns", L"List columns" },
-{ L"config_chk_find_count", L"Show Find Count" },
-{ L"config_chk_replace_count", L"Show Replace Count" },
-{ L"config_chk_comments", L"Show Comments column" },
-{ L"config_chk_delete_btn", L"Show Delete button column" },
+{ L"config_grp_list_columns", L"Visible Columns" },
+{ L"config_chk_find_count", L"Find Count" },
+{ L"config_chk_replace_count", L"Replace Count" },
+{ L"config_chk_comments", L"Comments" },
+{ L"config_chk_delete_button", L"Delete Button" },
 { L"config_grp_list_results", L"List Results" },
 { L"config_chk_list_stats", L"Show list statistics" },
 { L"config_chk_group_results", L"Find All: Group hits by list entry" },
@@ -302,6 +302,7 @@ const LangKV kEnglishPairs[] = {
 // CSV Settings
 { L"config_grp_csv_settings", L"CSV Settings" },
 { L"config_chk_numeric_align", L"Flow Tabs: Right-align numeric columns" },
+{ L"config_chk_flowtabs_intro_dontshow", L"Flow Tabs: Don't show intro message" },
 { L"config_lbl_csv_sort", L"CSV Sort: Header lines to exclude:" },
 
 // Appearance Settings

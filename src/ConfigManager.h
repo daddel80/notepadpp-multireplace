@@ -17,7 +17,7 @@
 #pragma once
 // --------------------------------------------------------------
 //  ConfigManager  (singleton)
-//  • Handles user‑configurable settings stored in MultiReplace.ini
+//  • Handles user-configurable settings stored in MultiReplace.ini
 //  • Uses IniFileCache for parsing / writing
 // --------------------------------------------------------------
 
@@ -34,11 +34,13 @@ public:
     // ---------------------------------------------------------------------
     // Load / Save
     // ---------------------------------------------------------------------
-    bool load(const std::wstring& iniFile);        // fills cache
-    bool save(const std::wstring& iniFile) const;  // writes current state
+    bool load(const std::wstring& iniFile);
+    void forceReload(const std::wstring& iniFile);
+    bool save(const std::wstring& iniFile) const;
+    bool isLoaded() const { return _isLoaded; }
 
     // ---------------------------------------------------------------------
-    // Typed getters / setters
+    // Typed getters
     // ---------------------------------------------------------------------
     std::wstring readString(const std::wstring& sec,
         const std::wstring& key,
@@ -68,11 +70,13 @@ public:
         return _cache.readSizeT(s, k, d);
     }
 
-    // Future setters -------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // Typed setters
+    // ---------------------------------------------------------------------
     void writeString(const std::wstring& sec, const std::wstring& key,
         const std::wstring& val);
     void writeInt(const std::wstring& sec, const std::wstring& key, int val);
-    // … add as needed
+    void writeSizeT(const std::wstring& sec, const std::wstring& key, size_t val);
 
     // Raw access if absolutely necessary
     const IniFileCache& ini() const { return _cache; }
@@ -85,4 +89,5 @@ private:
 
     IniFileCache _cache;
     std::wstring _iniPath;
+    bool _isLoaded = false;
 };

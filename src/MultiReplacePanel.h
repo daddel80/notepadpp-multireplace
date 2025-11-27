@@ -121,11 +121,14 @@ enum class FontRole {
 
 struct ControlInfo
 {
-    int x, y, cx, cy;
-    LPCWSTR className;
-    LPCWSTR windowName;
-    DWORD style;
-    LPCWSTR tooltipText;
+    int x = 0;
+    int y = 0;
+    int cx = 0;
+    int cy = 0;
+    LPCWSTR className = nullptr;
+    LPCWSTR windowName = nullptr;
+    DWORD style = 0;
+    LPCWSTR tooltipText = nullptr;
     bool isStatic = false;
     FontRole fontRole = FontRole::Standard;
 };
@@ -422,7 +425,7 @@ public:
     {
         bool tooltipsEnabled;
         bool exportToBashEnabled;
-        bool alertNotFoundEnabled;
+        bool muteSounds;
         bool doubleClickEditsEnabled;
         bool highlightMatchEnabled;
         bool flowTabsIntroDontShowEnabled;
@@ -449,7 +452,8 @@ public:
 
     void loadUIConfigFromIni();
     void loadSettingsFromIni();
-    void saveSettingsToIni(const std::wstring& iniFilePath);
+    void syncUIToCache();
+    void applyConfigSettingsOnly();
     static  std::pair<std::wstring, std::wstring> generateConfigFilePaths();
 
     // Light Mode Colors for Message
@@ -486,6 +490,7 @@ public:
     static void onCaretPositionChanged();
     static void onThemeChanged();
     static void signalShutdown();
+    static void loadConfigOnce();
 
     enum class ChangeType { Insert, Delete, Modify };
     enum class ReplaceMode { Normal, Extended, Regex };
@@ -672,7 +677,7 @@ private:
     int lastMouseY;
 
     inline static bool tooltipsEnabled = true;            // Status for showing Tooltips on Panel
-    inline static bool alertNotFoundEnabled = true;       // Status for Bell if String hasn't been found
+    inline static bool muteSounds = false;                // Status for Bell if String hasn't been found
     inline static bool doubleClickEditsEnabled = true;    // Double click to Edit List entries
     inline static bool highlightMatchEnabled = true;      // HighlightMatch during Find in List
     inline static bool exportToBashEnabled = false;      // shows/hides the "Export to Bash" button
@@ -958,6 +963,7 @@ private:
     // --- Zero-length / no-progress helpers ---
     Sci_Position advanceAfterMatch(const SearchResult& r);
     Sci_Position ensureForwardProgress(Sci_Position nextPos, const SearchResult& r);
+    void syncHistoryToCache(HWND hComboBox, const std::wstring& keyPrefix);
 
     //FileOperations
     std::wstring promptSaveListToCsv();
@@ -968,6 +974,7 @@ private:
     void checkForFileChangesAtStartup();
     std::wstring escapeCsvValue(const std::wstring& value);
     std::wstring unescapeCsvValue(const std::wstring& value);
+    std::wstring unescapeOnlySequences(const std::wstring& value);
     std::vector<std::wstring> parseCsvLine(const std::wstring& line);
 
     //Export

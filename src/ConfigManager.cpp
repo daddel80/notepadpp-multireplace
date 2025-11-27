@@ -41,8 +41,22 @@ ConfigManager& ConfigManager::instance()
 //
 bool ConfigManager::load(const std::wstring& iniFile)
 {
+    // Skip if already loaded with same path
+    if (_isLoaded && !_iniPath.empty() && _iniPath == iniFile) {
+        return true;
+    }
+
     _iniPath = iniFile;
-    return _cache.load(iniFile);
+    bool result = _cache.load(iniFile);
+    _isLoaded = result;
+    return result;
+}
+
+void ConfigManager::forceReload(const std::wstring& iniFile)
+{
+    _isLoaded = false;
+    _iniPath.clear();
+    load(iniFile);
 }
 
 //
@@ -53,17 +67,11 @@ bool ConfigManager::save(const std::wstring& file) const
     std::wstring path = file.empty() ? _iniPath : file;
     if (path.empty()) return false;
 
-    // to UTF‑8 narrow path
-    int sz8 = WideCharToMultiByte(CP_UTF8, 0, path.c_str(), (int)path.size(),
-        nullptr, 0, nullptr, nullptr);
-    std::string narrow(sz8, 0);
-    WideCharToMultiByte(CP_UTF8, 0, path.c_str(), (int)path.size(),
-        narrow.data(), sz8, nullptr, nullptr);
-
-    std::ofstream out(narrow, std::ios::binary);
+    // Use wstring path directly (Windows MSVC supports this)
+    std::ofstream out(path, std::ios::binary);
     if (!out.is_open()) return false;
 
-    // UTF‑8 BOM
+    // UTF-8 BOM
     out.write("\xEF\xBB\xBF", 3);
 
     const auto& data = _cache.raw();
@@ -92,6 +100,12 @@ void ConfigManager::writeString(const std::wstring& sec, const std::wstring& key
 
 void ConfigManager::writeInt(const std::wstring& sec, const std::wstring& key,
     int val)
+{
+    writeString(sec, key, std::to_wstring(val));
+}
+
+void ConfigManager::writeSizeT(const std::wstring& sec, const std::wstring& key,
+    size_t val)
 {
     writeString(sec, key, std::to_wstring(val));
 }

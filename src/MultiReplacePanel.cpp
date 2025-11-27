@@ -10245,9 +10245,8 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageSta
     InvalidateRect(GetParent(hStatusMessage), &rect, TRUE); // TRUE means "erase background"
     UpdateWindow(GetParent(hStatusMessage));
 
-    if (isNotFound && alertNotFoundEnabled)
+    if (isNotFound)
     {
-        ::MessageBeep(MB_ICONASTERISK);
         FLASHWINFO fwInfo = { 0 };
         fwInfo.cbSize = sizeof(FLASHWINFO);
         fwInfo.hwnd = _hSelf;
@@ -10255,6 +10254,9 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageSta
         fwInfo.uCount = 2;
         fwInfo.dwTimeout = 100;
         FlashWindowEx(&fwInfo);
+        if (!muteSounds) {
+            ::MessageBeep(MB_ICONASTERISK);
+        }
     }
 }
 
@@ -11068,6 +11070,24 @@ std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
     return unescapedValue;
 }
 
+std::wstring MultiReplace::unescapeOnlySequences(const std::wstring& value) {
+    std::wstring result;
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i < value.size() - 1 && value[i] == L'\\') {
+            switch (value[i + 1]) {
+            case L'n': result += L'\n'; ++i; break;
+            case L'r': result += L'\r'; ++i; break;
+            case L'\\': result += L'\\'; ++i; break;
+            default: result += value[i]; break;
+            }
+        }
+        else {
+            result += value[i];
+        }
+    }
+    return result;
+}
+
 std::vector<std::wstring> MultiReplace::parseCsvLine(const std::wstring& line) {
     std::vector<std::wstring> columns;
     std::wstring currentValue;
@@ -11088,17 +11108,16 @@ std::vector<std::wstring> MultiReplace::parseCsvLine(const std::wstring& line) {
         }
         else if (ch == L',' && !insideQuotes) {
             // When not inside quotes, treat comma as column separator
-            columns.push_back(unescapeCsvValue(currentValue));
+            columns.push_back(unescapeOnlySequences(currentValue));  // ÄNDERUNG
             currentValue.clear();
         }
         else {
             currentValue += ch; // Append the character to the current value
         }
     }
-    columns.push_back(unescapeCsvValue(currentValue)); // Add the last value
+    columns.push_back(unescapeOnlySequences(currentValue));  // ÄNDERUNG
     return columns;
 }
-
 #pragma endregion
 
 
@@ -11226,221 +11245,24 @@ std::pair<std::wstring, std::wstring> MultiReplace::generateConfigFilePaths() {
     return { iniFilePath, csvFilePath };
 }
 
-void MultiReplace::saveSettingsToIni(const std::wstring& iniFilePath) {
-    std::ofstream outFile(iniFilePath, std::ios::binary);
-
-    if (!outFile.is_open()) {
-        throw std::runtime_error("Could not open settings file for writing.");
-    }
-
-    // [BOM] Write UTF-8 BOM so that editors/parsers recognize UTF-8
-    outFile.write("\xEF\xBB\xBF", 3);
-
-    // Get the current window rectangle
-    RECT currentRect;
-    GetWindowRect(_hSelf, &currentRect);
-    int width = currentRect.right - currentRect.left;
-    int height = currentRect.bottom - currentRect.top;
-    int posX = currentRect.left;
-    int posY = currentRect.top;
-
-
-    // Update useListOnHeight if Use List is checked
-    if (useListEnabled) {
-        useListOnHeight = height;
-    }
-
-    outFile << Encoding::wstringToUtf8(L"[Window]\n");
-    outFile << Encoding::wstringToUtf8(L"PosX=" + std::to_wstring(posX) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"PosY=" + std::to_wstring(posY) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"Width=" + std::to_wstring(width) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"Height=" + std::to_wstring(useListOnHeight) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ScaleFactor=" + std::to_wstring(dpiMgr->getCustomScaleFactor()).substr(0, std::to_wstring(dpiMgr->getCustomScaleFactor()).find(L'.') + 2) + L"\n");
-
-    // Save transparency settings
-    outFile << Encoding::wstringToUtf8(L"ForegroundTransparency=" + std::to_wstring(foregroundTransparency) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"BackgroundTransparency=" + std::to_wstring(backgroundTransparency) + L"\n");
-
-    // Store column widths for "Find Count", "Replace Count", and "Comments"
-    findCountColumnWidth = (columnIndices[ColumnID::FIND_COUNT] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::FIND_COUNT]) : findCountColumnWidth;
-    replaceCountColumnWidth = (columnIndices[ColumnID::REPLACE_COUNT] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::REPLACE_COUNT]) : replaceCountColumnWidth;
-    findColumnWidth = (columnIndices[ColumnID::FIND_TEXT] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::FIND_TEXT]) : findColumnWidth;
-    replaceColumnWidth = (columnIndices[ColumnID::REPLACE_TEXT] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::REPLACE_TEXT]) : replaceColumnWidth;
-    commentsColumnWidth = (columnIndices[ColumnID::COMMENTS] != -1) ? ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::COMMENTS]) : commentsColumnWidth;
-
-    outFile << Encoding::wstringToUtf8(L"[ListColumns]\n");
-    outFile << Encoding::wstringToUtf8(L"FindCountWidth=" + std::to_wstring(findCountColumnWidth) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ReplaceCountWidth=" + std::to_wstring(replaceCountColumnWidth) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"FindWidth=" + std::to_wstring(findColumnWidth) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ReplaceWidth=" + std::to_wstring(replaceColumnWidth) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"CommentsWidth=" + std::to_wstring(commentsColumnWidth) + L"\n");
-
-    // Save column visibility states
-    outFile << Encoding::wstringToUtf8(L"FindCountVisible=" + std::to_wstring(isFindCountVisible) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ReplaceCountVisible=" + std::to_wstring(isReplaceCountVisible) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"CommentsVisible=" + std::to_wstring(isCommentsColumnVisible) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"DeleteButtonVisible=" + std::to_wstring(isDeleteButtonVisible ? 1 : 0) + L"\n");
-
-    // Save column lock states
-    outFile << Encoding::wstringToUtf8(L"FindColumnLocked=" + std::to_wstring(findColumnLockedEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ReplaceColumnLocked=" + std::to_wstring(replaceColumnLockedEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"CommentsColumnLocked=" + std::to_wstring(commentsColumnLockedEnabled ? 1 : 0) + L"\n");
-
-    // Convert and Store the current "Find what" and "Replace with" texts
-    std::wstring currentFindTextData = escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
-    std::wstring currentReplaceTextData = escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT));
-
-    outFile << Encoding::wstringToUtf8(L"[Current]\n");
-    outFile << Encoding::wstringToUtf8(L"FindText=" + currentFindTextData + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ReplaceText=" + currentReplaceTextData + L"\n");
-
-    // Prepare and Store the current options
-    int wholeWord = IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? 1 : 0;
-    int matchCase = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? 1 : 0;
-    int extended = IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED ? 1 : 0;
-    int regex = IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0;
-    int replaceAtMatches = IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED ? 1 : 0;
-    std::wstring editAtMatchesText = L"\"" + getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT) + L"\"";
-    int wrapAround = IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED ? 1 : 0;
-    int useVariables = IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED ? 1 : 0;
-    int ButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0;
-    int useList = useListEnabled ? 1 : 0;
-
-    outFile << Encoding::wstringToUtf8(L"[Options]\n");
-    outFile << Encoding::wstringToUtf8(L"WholeWord=" + std::to_wstring(wholeWord) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"MatchCase=" + std::to_wstring(matchCase) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"Extended=" + std::to_wstring(extended) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"Regex=" + std::to_wstring(regex) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ReplaceAtMatches=" + std::to_wstring(replaceAtMatches) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"EditAtMatches=" + editAtMatchesText + L"\n");
-    outFile << Encoding::wstringToUtf8(L"WrapAround=" + std::to_wstring(wrapAround) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"UseVariables=" + std::to_wstring(useVariables) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ButtonsMode=" + std::to_wstring(ButtonsMode) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"UseList=" + std::to_wstring(useList) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"DockWrap=" + std::to_wstring(ResultDock::wrapEnabled()) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"DockPurge=" + std::to_wstring(ResultDock::purgeEnabled()) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"HighlightMatch=" + std::to_wstring(highlightMatchEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"FlowTabsIntroDontShow=" + std::to_wstring(flowTabsIntroDontShowEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"FlowTabsNumericAlign=" + std::to_wstring(flowTabsNumericAlignEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ExportToBash=" + std::to_wstring(exportToBashEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"Tooltips=" + std::to_wstring(tooltipsEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"AlertNotFound=" + std::to_wstring(alertNotFoundEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"DoubleClickEdits=" + std::to_wstring(doubleClickEditsEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"HoverText=" + std::to_wstring(isHoverTextEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"EditFieldSize=" + std::to_wstring(editFieldSize) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ListStatistics=" + std::to_wstring(listStatisticsEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"StayAfterReplace=" + std::to_wstring(stayAfterReplaceEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"AllFromCursor=" + std::to_wstring(allFromCursorEnabled ? 1 : 0) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"GroupResults=" + std::to_wstring(groupResultsEnabled) + L"\n");
-
-    // Lua runtime options
-    outFile << Encoding::wstringToUtf8(L"[Lua]\n");
-    outFile << Encoding::wstringToUtf8(L"SafeMode=" + std::to_wstring(luaSafeModeEnabled ? 1 : 0) + L"\n");
-
-    // Convert and Store the scope options
-    int selection = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0;
-    int columnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED ? 1 : 0;
-    std::wstring columnNum = L"\"" + getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT) + L"\"";
-    std::wstring delimiter = L"\"" + getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT) + L"\"";
-    std::wstring quoteChar = L"\"" + getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT) + L"\"";
-    std::wstring headerLines = std::to_wstring(CSVheaderLinesCount);
-
-    outFile << Encoding::wstringToUtf8(L"[Scope]\n");
-    outFile << Encoding::wstringToUtf8(L"Selection=" + std::to_wstring(selection) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ColumnMode=" + std::to_wstring(columnMode) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"ColumnNum=" + columnNum + L"\n");
-    outFile << Encoding::wstringToUtf8(L"Delimiter=" + delimiter + L"\n");
-    outFile << Encoding::wstringToUtf8(L"QuoteChar=" + quoteChar + L"\n");
-    outFile << Encoding::wstringToUtf8(L"HeaderLines=" + headerLines + L"\n");
-
-    // Save “Replace in Files” settings
-    std::wstring filterText = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
-    std::wstring dirText = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
-    int inSub = IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED ? 1 : 0;
-    int inHidden = IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED ? 1 : 0;
-    outFile << Encoding::wstringToUtf8(L"[ReplaceInFiles]\n");
-    outFile << Encoding::wstringToUtf8(L"Filter=" + escapeCsvValue(filterText) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"Directory=" + escapeCsvValue(dirText) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"InSubfolders=" + std::to_wstring(inSub) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"InHiddenFolders=" + std::to_wstring(inHidden) + L"\n");
-
-    // Save the list file path and original hash
-    outFile << Encoding::wstringToUtf8(L"[File]\n");
-    outFile << Encoding::wstringToUtf8(L"ListFilePath=" + escapeCsvValue(listFilePath) + L"\n");
-    outFile << Encoding::wstringToUtf8(L"OriginalListHash=" + std::to_wstring(originalListHash) + L"\n");
-
-    // Save the "Find what" history
-    LRESULT findWhatCount = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETCOUNT, 0, 0);
-    int itemsToSave = std::min(static_cast<int>(findWhatCount), maxHistoryItems);
-    outFile << Encoding::wstringToUtf8(L"[History]\n");
-    outFile << Encoding::wstringToUtf8(L"FindTextHistoryCount=" + std::to_wstring(itemsToSave) + L"\n");
-
-    // Save only the newest maxHistoryItems entries (starting from index 0)
-    for (LRESULT i = 0; i < itemsToSave; ++i) {
-        LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXTLEN, i, 0);
-        std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
-        SendMessage(GetDlgItem(_hSelf, IDC_FIND_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
-        std::wstring findTextData = escapeCsvValue(std::wstring(buffer.data()));
-        outFile << Encoding::wstringToUtf8(L"FindTextHistory" + std::to_wstring(i) + L"=" + findTextData + L"\n");
-    }
-
-    // Save the "Replace with" history
-    LRESULT replaceWithCount = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETCOUNT, 0, 0);
-    int replaceItemsToSave = std::min(static_cast<int>(replaceWithCount), maxHistoryItems);
-    outFile << Encoding::wstringToUtf8(L"ReplaceTextHistoryCount=" + std::to_wstring(replaceItemsToSave) + L"\n");
-
-    // Save only the newest maxHistoryItems entries (starting from index 0)
-    for (LRESULT i = 0; i < replaceItemsToSave; ++i) {
-        LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXTLEN, i, 0);
-        std::vector<wchar_t> buffer(static_cast<size_t>(len + 1)); // +1 for the null terminator
-        SendMessage(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
-        std::wstring replaceTextData = escapeCsvValue(std::wstring(buffer.data()));
-        outFile << Encoding::wstringToUtf8(L"ReplaceTextHistory" + std::to_wstring(i) + L"=" + replaceTextData + L"\n");
-    }
-
-    // Save Filter history
-    LRESULT filterCount = SendMessage(GetDlgItem(_hSelf, IDC_FILTER_EDIT), CB_GETCOUNT, 0, 0);
-    int filterItemsToSave = std::min(static_cast<int>(filterCount), maxHistoryItems);
-    outFile << Encoding::wstringToUtf8(L"FilterHistoryCount=" + std::to_wstring(filterItemsToSave) + L"\n");
-    for (int i = 0; i < filterItemsToSave; ++i) {
-        LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_FILTER_EDIT), CB_GETLBTEXTLEN, i, 0);
-        std::vector<wchar_t> buf(len + 1);
-        SendMessage(GetDlgItem(_hSelf, IDC_FILTER_EDIT), CB_GETLBTEXT, i, (LPARAM)buf.data());
-        outFile << Encoding::wstringToUtf8(L"FilterHistory" + std::to_wstring(i) + L"=" + escapeCsvValue(buf.data()) + L"\n");
-    }
-
-    //  Save Dir history
-    LRESULT dirCount = SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_GETCOUNT, 0, 0);
-    int dirItemsToSave = std::min(static_cast<int>(dirCount), maxHistoryItems);
-    outFile << Encoding::wstringToUtf8(L"DirHistoryCount=" + std::to_wstring(dirItemsToSave) + L"\n");
-    for (int i = 0; i < dirItemsToSave; ++i) {
-        LRESULT len = SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_GETLBTEXTLEN, i, 0);
-        std::vector<wchar_t> buf(len + 1);
-        SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_GETLBTEXT, i, (LPARAM)buf.data());
-        outFile << Encoding::wstringToUtf8(L"DirHistory" + std::to_wstring(i) + L"=" + escapeCsvValue(buf.data()) + L"\n");
-    }
-
-    outFile.close();
-}
-
 void MultiReplace::saveSettings() {
     static bool settingsSaved = false;
     if (settingsSaved) {
-        return;  // Check as WM_DESTROY will be 28 times triggered
+        return;
     }
 
-    // Generate the paths to the configuration files
     auto [iniFilePath, csvFilePath] = generateConfigFilePaths();
 
-    // Try to save the settings in the INI file
     try {
-        saveSettingsToIni(iniFilePath);
+        syncUIToCache();
+        CFG.save(iniFilePath);
         saveListToCsvSilent(csvFilePath, replaceListData);
     }
     catch (const std::exception& ex) {
-        // If an error occurs while writing to the INI file, we show an error message
-        std::wstring errorMessage = LM.get(L"msgbox_error_saving_settings", { std::wstring(ex.what(), ex.what() + strlen(ex.what())) });
-        MessageBox(nppData._nppHandle, errorMessage.c_str(), LM.get(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+        std::wstring errorMessage = LM.get(L"msgbox_error_saving_settings",
+            { std::wstring(ex.what(), ex.what() + strlen(ex.what())) });
+        MessageBox(nppData._nppHandle, errorMessage.c_str(),
+            LM.get(L"msgbox_title_error").c_str(), MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
     }
     settingsSaved = true;
 }
@@ -11528,7 +11350,7 @@ void MultiReplace::loadSettingsFromIni() {
     flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
 
     exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
-    alertNotFoundEnabled = CFG.readBool(L"Options", L"AlertNotFound", true);
+    muteSounds = CFG.readBool(L"Options", L"MuteSounds", false);
     doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);
 
     // Side Effect: Update Hover Text Logic
@@ -11651,6 +11473,7 @@ void MultiReplace::loadSettingsFromIni() {
         }
     }
 }
+
 void MultiReplace::loadSettings() {
     auto [_, csvFilePath] = generateConfigFilePaths();
 
@@ -11674,8 +11497,6 @@ void MultiReplace::loadSettings() {
 
 void MultiReplace::loadUIConfigFromIni()
 {
-    auto [iniFilePath, _] = generateConfigFilePaths();
-    CFG.load(iniFilePath);
     if (!dpiMgr) return;
 
     float oldScale = dpiMgr->getCustomScaleFactor();
@@ -11786,7 +11607,6 @@ void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring
     ::SetDlgItemTextW(hDlg, itemID, text.c_str());
 }
 
-
 MultiReplace::Settings MultiReplace::getSettings()
 {
     Settings s{};
@@ -11795,7 +11615,7 @@ MultiReplace::Settings MultiReplace::getSettings()
     if (instance) {
         s.tooltipsEnabled = tooltipsEnabled;
         s.exportToBashEnabled = exportToBashEnabled;
-        s.alertNotFoundEnabled = alertNotFoundEnabled;
+        s.muteSounds = muteSounds;
         s.doubleClickEditsEnabled = doubleClickEditsEnabled;
         s.highlightMatchEnabled = highlightMatchEnabled;
         s.flowTabsIntroDontShowEnabled = flowTabsIntroDontShowEnabled;
@@ -11818,18 +11638,17 @@ MultiReplace::Settings MultiReplace::getSettings()
     // Ensure INI is loaded when panel is not running
     {
         auto [iniFilePath, _] = generateConfigFilePaths();
-        CFG.load(iniFilePath); // no-op if already loaded
     }
 
     // Align defaults with loadUIConfigFromIni()
     s.tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
     s.exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
-    s.alertNotFoundEnabled = CFG.readBool(L"Options", L"AlertNotFound", true);   // was false
+    s.muteSounds = CFG.readBool(L"Options", L"MuteSounds", false);
     s.doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);
-    s.highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);  // was false
+    s.highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);
     s.flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
-    s.flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true); // was false
-    s.isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);       // was false
+    s.flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
+    s.isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
     s.listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
     s.stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
     s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
@@ -11849,7 +11668,7 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     // Write all logic options to ConfigManager
     CFG.writeInt(L"Options", L"Tooltips", s.tooltipsEnabled ? 1 : 0);
     CFG.writeInt(L"Options", L"ExportToBash", s.exportToBashEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"AlertNotFound", s.alertNotFoundEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"MuteSounds", s.muteSounds ? 1 : 0);
     CFG.writeInt(L"Options", L"DoubleClickEdits", s.doubleClickEditsEnabled ? 1 : 0);
     CFG.writeInt(L"Options", L"HighlightMatch", s.highlightMatchEnabled ? 1 : 0);
     CFG.writeInt(L"Options", L"FlowTabsIntroDontShow", s.flowTabsIntroDontShowEnabled ? 1 : 0);
@@ -11867,6 +11686,212 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeInt(L"ListColumns", L"DeleteButtonVisible", s.isDeleteButtonVisible ? 1 : 0);
     CFG.writeInt(L"Options", L"EditFieldSize", s.editFieldSize);
     CFG.writeInt(L"Scope", L"HeaderLines", s.csvHeaderLinesCount);
+}
+
+void MultiReplace::loadConfigOnce()
+{
+    auto [iniFilePath, _] = generateConfigFilePaths();
+    CFG.load(iniFilePath);
+}
+
+void MultiReplace::syncUIToCache()
+{
+    // Window Position & Size
+    RECT currentRect;
+    GetWindowRect(_hSelf, &currentRect);
+    CFG.writeInt(L"Window", L"PosX", currentRect.left);
+    CFG.writeInt(L"Window", L"PosY", currentRect.top);
+    CFG.writeInt(L"Window", L"Width", currentRect.right - currentRect.left);
+
+    int height = currentRect.bottom - currentRect.top;
+    if (useListEnabled) {
+        useListOnHeight = height;
+    }
+    CFG.writeInt(L"Window", L"Height", useListOnHeight);
+
+    // ScaleFactor: truncate to 1 decimal place like original code
+    std::wstring scaleStr = std::to_wstring(dpiMgr->getCustomScaleFactor());
+    size_t dotPos = scaleStr.find(L'.');
+    if (dotPos != std::wstring::npos && dotPos + 2 < scaleStr.length()) {
+        scaleStr = scaleStr.substr(0, dotPos + 2);
+    }
+    CFG.writeString(L"Window", L"ScaleFactor", scaleStr);
+
+    CFG.writeInt(L"Window", L"ForegroundTransparency", foregroundTransparency);
+    CFG.writeInt(L"Window", L"BackgroundTransparency", backgroundTransparency);
+
+    // Column Widths
+    if (_replaceListView) {
+        if (columnIndices[ColumnID::FIND_COUNT] != -1)
+            findCountColumnWidth = ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::FIND_COUNT]);
+        if (columnIndices[ColumnID::REPLACE_COUNT] != -1)
+            replaceCountColumnWidth = ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::REPLACE_COUNT]);
+        if (columnIndices[ColumnID::FIND_TEXT] != -1)
+            findColumnWidth = ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::FIND_TEXT]);
+        if (columnIndices[ColumnID::REPLACE_TEXT] != -1)
+            replaceColumnWidth = ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::REPLACE_TEXT]);
+        if (columnIndices[ColumnID::COMMENTS] != -1)
+            commentsColumnWidth = ListView_GetColumnWidth(_replaceListView, columnIndices[ColumnID::COMMENTS]);
+    }
+
+    CFG.writeInt(L"ListColumns", L"FindCountWidth", findCountColumnWidth);
+    CFG.writeInt(L"ListColumns", L"ReplaceCountWidth", replaceCountColumnWidth);
+    CFG.writeInt(L"ListColumns", L"FindWidth", findColumnWidth);
+    CFG.writeInt(L"ListColumns", L"ReplaceWidth", replaceColumnWidth);
+    CFG.writeInt(L"ListColumns", L"CommentsWidth", commentsColumnWidth);
+
+    CFG.writeInt(L"ListColumns", L"FindCountVisible", isFindCountVisible ? 1 : 0);
+    CFG.writeInt(L"ListColumns", L"ReplaceCountVisible", isReplaceCountVisible ? 1 : 0);
+    CFG.writeInt(L"ListColumns", L"CommentsVisible", isCommentsColumnVisible ? 1 : 0);
+    CFG.writeInt(L"ListColumns", L"DeleteButtonVisible", isDeleteButtonVisible ? 1 : 0);
+    CFG.writeInt(L"ListColumns", L"FindColumnLocked", findColumnLockedEnabled ? 1 : 0);
+    CFG.writeInt(L"ListColumns", L"ReplaceColumnLocked", replaceColumnLockedEnabled ? 1 : 0);
+    CFG.writeInt(L"ListColumns", L"CommentsColumnLocked", commentsColumnLockedEnabled ? 1 : 0);
+
+    // Current Find/Replace Text
+    CFG.writeString(L"Current", L"FindText", escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)));
+    CFG.writeString(L"Current", L"ReplaceText", escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT)));
+
+    // Search Options
+    CFG.writeInt(L"Options", L"WholeWord", IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? 1 : 0);
+    CFG.writeInt(L"Options", L"MatchCase", IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? 1 : 0);
+    CFG.writeInt(L"Options", L"Extended", IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED ? 1 : 0);
+    CFG.writeInt(L"Options", L"Regex", IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0);
+    CFG.writeInt(L"Options", L"WrapAround", IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED ? 1 : 0);
+    CFG.writeInt(L"Options", L"UseVariables", IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED ? 1 : 0);
+    CFG.writeInt(L"Options", L"ReplaceAtMatches", IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED ? 1 : 0);
+    CFG.writeInt(L"Options", L"ButtonsMode", IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0);
+    CFG.writeInt(L"Options", L"UseList", useListEnabled ? 1 : 0);
+    CFG.writeString(L"Options", L"EditAtMatches", L"\"" + getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT) + L"\"");
+
+    // Config-managed Options
+    CFG.writeInt(L"Options", L"Tooltips", tooltipsEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"HighlightMatch", highlightMatchEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"FlowTabsIntroDontShow", flowTabsIntroDontShowEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"FlowTabsNumericAlign", flowTabsNumericAlignEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"ExportToBash", exportToBashEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"MuteSounds", muteSounds ? 1 : 0);
+    CFG.writeInt(L"Options", L"DoubleClickEdits", doubleClickEditsEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"HoverText", isHoverTextEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"EditFieldSize", editFieldSize);
+    CFG.writeInt(L"Options", L"ListStatistics", listStatisticsEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"StayAfterReplace", stayAfterReplaceEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"AllFromCursor", allFromCursorEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"GroupResults", groupResultsEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"DockWrap", ResultDock::wrapEnabled() ? 1 : 0);
+    CFG.writeInt(L"Options", L"DockPurge", ResultDock::purgeEnabled() ? 1 : 0);
+
+    // Lua Options
+    CFG.writeInt(L"Lua", L"SafeMode", luaSafeModeEnabled ? 1 : 0);
+
+    // Scope Settings
+    CFG.writeInt(L"Scope", L"Selection", IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0);
+    CFG.writeInt(L"Scope", L"ColumnMode", IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED ? 1 : 0);
+    CFG.writeString(L"Scope", L"ColumnNum", L"\"" + getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT) + L"\"");
+    CFG.writeString(L"Scope", L"Delimiter", L"\"" + getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT) + L"\"");
+    CFG.writeString(L"Scope", L"QuoteChar", L"\"" + getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT) + L"\"");
+    CFG.writeInt(L"Scope", L"HeaderLines", static_cast<int>(CSVheaderLinesCount));
+
+    // Replace in Files Settings
+    CFG.writeString(L"ReplaceInFiles", L"Filter", escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT)));
+    CFG.writeString(L"ReplaceInFiles", L"Directory", escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_DIR_EDIT)));
+    CFG.writeInt(L"ReplaceInFiles", L"InSubfolders", IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED ? 1 : 0);
+    CFG.writeInt(L"ReplaceInFiles", L"InHiddenFolders", IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED ? 1 : 0);
+
+    // File Info
+    CFG.writeString(L"File", L"ListFilePath", escapeCsvValue(listFilePath));
+    CFG.writeSizeT(L"File", L"OriginalListHash", originalListHash);
+
+    // History 
+    syncHistoryToCache(GetDlgItem(_hSelf, IDC_FIND_EDIT), L"FindTextHistory");
+    syncHistoryToCache(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), L"ReplaceTextHistory");
+    syncHistoryToCache(GetDlgItem(_hSelf, IDC_FILTER_EDIT), L"FilterHistory");
+    syncHistoryToCache(GetDlgItem(_hSelf, IDC_DIR_EDIT), L"DirHistory");
+}
+
+void MultiReplace::syncHistoryToCache(HWND hComboBox, const std::wstring& keyPrefix)
+{
+    LRESULT count = SendMessage(hComboBox, CB_GETCOUNT, 0, 0);
+    int itemsToSave = std::min(static_cast<int>(count), maxHistoryItems);
+
+    CFG.writeInt(L"History", keyPrefix + L"Count", itemsToSave);
+
+    for (int i = 0; i < itemsToSave; ++i) {
+        LRESULT len = SendMessage(hComboBox, CB_GETLBTEXTLEN, i, 0);
+        std::vector<wchar_t> buffer(static_cast<size_t>(len + 1));
+        SendMessage(hComboBox, CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
+        std::wstring text = escapeCsvValue(std::wstring(buffer.data()));
+        CFG.writeString(L"History", keyPrefix + std::to_wstring(i), text);
+    }
+}
+
+void MultiReplace::applyConfigSettingsOnly()
+{
+    // Tooltip
+    bool newTooltips = CFG.readBool(L"Options", L"Tooltips", true);
+    if (tooltipsEnabled != newTooltips) {
+        tooltipsEnabled = newTooltips;
+        onTooltipsToggled(tooltipsEnabled);
+    }
+
+    // Boolean Options
+    muteSounds = CFG.readBool(L"Options", L"MuteSounds", false);
+    doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);
+    highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);
+    listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
+    stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
+    allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
+    groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
+    flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
+    flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
+    exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
+    luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
+
+    // Hover Text
+    bool newHover = CFG.readBool(L"Options", L"HoverText", true);
+    if (isHoverTextEnabled != newHover) {
+        isHoverTextEnabled = newHover;
+        if (_replaceListView) {
+            DWORD ex = ListView_GetExtendedListViewStyle(_replaceListView);
+            if (isHoverTextEnabled) ex |= LVS_EX_INFOTIP; else ex &= ~LVS_EX_INFOTIP;
+            ListView_SetExtendedListViewStyle(_replaceListView, ex);
+        }
+    }
+
+    // Integer Options
+    editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
+    editFieldSize = std::clamp(editFieldSize, MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
+
+    CSVheaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
+
+    // Column Visibility
+    isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
+    isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
+    isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
+    isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
+
+    // Transparency
+    int fg = CFG.readInt(L"Window", L"ForegroundTransparency", 255);
+    int bg = CFG.readInt(L"Window", L"BackgroundTransparency", 190);
+    fg = std::clamp(fg, 0, 255);
+    bg = std::clamp(bg, 0, 255);
+    foregroundTransparency = static_cast<BYTE>(fg);
+    backgroundTransparency = static_cast<BYTE>(bg);
+    if (_hSelf) SetWindowTransparency(_hSelf, foregroundTransparency);
+
+    // UI Updates
+    HWND hBash = GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON);
+    if (hBash) ShowWindow(hBash, exportToBashEnabled ? SW_SHOW : SW_HIDE);
+
+    updateUseListState(false);
+    showListFilePath();
+
+    if (_replaceListView) {
+        createListViewColumns();
+        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, NULL, TRUE);
+        updateHeaderSelection();
+    }
 }
 
 #pragma endregion
