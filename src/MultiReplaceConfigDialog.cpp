@@ -470,7 +470,15 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
 void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     if (!_hListViewLayoutPanel) return;
 
-    const int marginX = 30; const int marginY = 10; const int columnWidth = 260; const int columnSpacing = 20;
+    const int marginX = 30;
+    const int marginY = 10;
+
+    // LAYOUT ANPASSUNG:
+    // Links schmaler (kurze Texte), Rechts breiter (lange Sätze in DE/RU/FR).
+    // Gesamtbreite ca. 540px + Spacing.
+    const int leftColWidth = 210;  // Vorher 260
+    const int rightColWidth = 330; // Vorher 260 (Verhältnis ~1:1.6 - Goldener Schnitt)
+    const int columnSpacing = 20;
 
     const int leftGroupH = 140;
     const int rightGroupH = 85;
@@ -478,28 +486,35 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     const int bottomGroupH = 140;
     const int topRowY = marginY;
 
-    createGroupBox(_hListViewLayoutPanel, marginX, topRowY, columnWidth, leftGroupH, IDC_CFG_GRP_LIST_COLUMNS, LM.getLPCW(L"config_grp_list_columns"));
+    // --- Linke Box (Visible Columns) ---
+    createGroupBox(_hListViewLayoutPanel, marginX, topRowY, leftColWidth, leftGroupH, IDC_CFG_GRP_LIST_COLUMNS, LM.getLPCW(L"config_grp_list_columns"));
     {
-        LayoutBuilder lb(this, _hListViewLayoutPanel, marginX + 22, topRowY + 25, columnWidth - 24, 24);
+        LayoutBuilder lb(this, _hListViewLayoutPanel, marginX + 22, topRowY + 25, leftColWidth - 24, 24);
         lb.AddCheckbox(IDC_CFG_FINDCOUNT_VISIBLE, LM.getLPCW(L"config_chk_find_count"));
         lb.AddCheckbox(IDC_CFG_REPLACECOUNT_VISIBLE, LM.getLPCW(L"config_chk_replace_count"));
         lb.AddCheckbox(IDC_CFG_COMMENTS_VISIBLE, LM.getLPCW(L"config_chk_comments"));
         lb.AddCheckbox(IDC_CFG_DELETEBUTTON_VISIBLE, LM.getLPCW(L"config_chk_delete_button"));
     }
 
-    const int rightColX = marginX + columnWidth + columnSpacing;
-    createGroupBox(_hListViewLayoutPanel, rightColX, topRowY, columnWidth, rightGroupH, IDC_CFG_GRP_LIST_STATS, LM.getLPCW(L"config_grp_list_results"));
+    // --- Rechte Box (List Results) ---
+    const int rightColX = marginX + leftColWidth + columnSpacing;
+
+    createGroupBox(_hListViewLayoutPanel, rightColX, topRowY, rightColWidth, rightGroupH, IDC_CFG_GRP_LIST_STATS, LM.getLPCW(L"config_grp_list_results"));
     {
-        LayoutBuilder lb(this, _hListViewLayoutPanel, rightColX + 22, topRowY + 25, columnWidth - 24, 24);
+        LayoutBuilder lb(this, _hListViewLayoutPanel, rightColX + 22, topRowY + 25, rightColWidth - 24, 24);
         lb.AddCheckbox(IDC_CFG_LISTSTATISTICS_ENABLED, LM.getLPCW(L"config_chk_list_stats"));
         lb.AddCheckbox(IDC_CFG_GROUPRESULTS_ENABLED, LM.getLPCW(L"config_chk_group_results"));
     }
 
+    // --- Untere Box (List Interaction) ---
     const int bottomY = topRowY + (leftGroupH > rightGroupH ? leftGroupH : rightGroupH) + gapAfterTop;
 
-    createGroupBox(_hListViewLayoutPanel, marginX, bottomY, columnWidth + columnSpacing + columnWidth, bottomGroupH, IDC_STATIC, LM.getLPCW(L"config_grp_list_interaction"));
+    // Die untere Box spannt sich über die gesamte Breite beider oberer Boxen
+    const int totalWidth = leftColWidth + columnSpacing + rightColWidth;
+
+    createGroupBox(_hListViewLayoutPanel, marginX, bottomY, totalWidth, bottomGroupH, IDC_STATIC, LM.getLPCW(L"config_grp_list_interaction"));
     {
-        LayoutBuilder lb(this, _hListViewLayoutPanel, marginX + 22, bottomY + 25, (columnWidth + columnSpacing + columnWidth) - 24, 24);
+        LayoutBuilder lb(this, _hListViewLayoutPanel, marginX + 22, bottomY + 25, totalWidth - 24, 24);
         lb.AddCheckbox(IDC_CFG_HIGHLIGHT_MATCH, LM.getLPCW(L"config_chk_highlight_match"));
         lb.AddCheckbox(IDC_CFG_DOUBLECLICK_EDITS, LM.getLPCW(L"config_chk_doubleclick"));
         lb.AddCheckbox(IDC_CFG_HOVER_TEXT_ENABLED, LM.getLPCW(L"config_chk_hover_text"));
@@ -701,6 +716,7 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hCsvFlowTabsPanel);
     }
 }
+
 void MultiReplaceConfigDialog::resetToDefaults()
 {
     auto [iniFilePath, _] = MultiReplace::generateConfigFilePaths();

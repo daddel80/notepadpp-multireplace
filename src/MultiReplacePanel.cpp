@@ -1024,7 +1024,7 @@ void MultiReplace::loadLanguageGlobal() {
 #pragma endregion
 
 
-#pragma region Undo stack
+#pragma region List Data Operations
 
 void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& items, size_t insertPosition = std::numeric_limits<size_t>::max()) {
     // Determine the insert position
@@ -1666,28 +1666,6 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     updateHeaderSelection();
 }
 
-int MultiReplace::getCharacterWidth(int elementID, const wchar_t* character) {
-    // Get the HWND of the element by its ID
-    HWND hwndElement = GetDlgItem(_hSelf, elementID);
-
-    // Get the font used by the element
-    HFONT hFont = (HFONT)SendMessage(hwndElement, WM_GETFONT, 0, 0);
-
-    // Get the device context for measuring text
-    HDC hdc = GetDC(hwndElement);
-    SelectObject(hdc, hFont);  // Use the font of the given element
-
-    // Measure the width of the character
-    SIZE size;
-    GetTextExtentPoint32W(hdc, character, 1, &size);
-
-    // Release the device context
-    ReleaseDC(hwndElement, hdc);
-
-    // Return the width of the character
-    return size.cx;
-}
-
 std::wstring getColumnIDText(ColumnID columnID) {
     switch (columnID) {
     case ColumnID::INVALID:          return L"INVALID";
@@ -1898,7 +1876,6 @@ void MultiReplace::updateListViewTooltips() {
     AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::EXTENDED], LM.getLPW(L"tooltip_header_extended"));
     AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::REGEX], LM.getLPW(L"tooltip_header_regex"));
 }
-
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
 
@@ -2218,17 +2195,6 @@ void MultiReplace::clearList() {
     originalListHash = 0;
 }
 
-std::size_t MultiReplace::computeListHash(const std::vector<ReplaceItemData>& list) {
-    std::size_t combinedHash = 0;
-    ReplaceItemDataHasher hasher;
-
-    for (const auto& item : list) {
-        combinedHash ^= hasher(item) + golden_ratio_constant + (combinedHash << 6) + (combinedHash >> 2);
-    }
-
-    return combinedHash;
-}
-
 void MultiReplace::refreshUIListView()
 {
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
@@ -2271,6 +2237,7 @@ void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
     // Refresh the ListView (if necessary)
     InvalidateRect(listView, NULL, TRUE);
 }
+
 ColumnID MultiReplace::getColumnIDFromIndex(int columnIndex) const {
     auto it = std::find_if(
         columnIndices.begin(),
@@ -2298,10 +2265,209 @@ void MultiReplace::onPathDisplayDoubleClick()
     ShellExecuteW(nullptr, L"open", L"explorer.exe", cmdParam.c_str(), nullptr, SW_SHOWNORMAL);
 }
 
+void MultiReplace::updateHeaderSelection() {
+    bool anySelected = false;
+    allSelected = !replaceListData.empty();
+
+    // Check if any or all items in the replaceListData vector are selected
+    for (const auto& itemData : replaceListData) {
+        if (itemData.isEnabled) {
+            anySelected = true;
+        }
+        else {
+            allSelected = false;
+        }
+    }
+
+    // Initialize the LVCOLUMN structure
+    LVCOLUMN lvc = { 0 };
+    lvc.mask = LVCF_TEXT;
+
+    // Determine the symbol to show in the header
+    if (allSelected) {
+        lvc.pszText = L"\u25A0"; // Ballot box with check
+    }
+    else if (anySelected) {
+        lvc.pszText = L"\u25A3"; // Black square containing small white square
+    }
+    else {
+        lvc.pszText = L"\u2610"; // Ballot box without check
+    }
+
+    // Update the Selection column header dynamically, if it's enabled
+    if (columnIndices[ColumnID::SELECTION] != -1) {
+        ListView_SetColumn(_replaceListView, columnIndices[ColumnID::SELECTION], &lvc);
+    }
+
+}
+
+void MultiReplace::updateHeaderSortDirection() {
+    const wchar_t* ascendingSymbol = L" ▲";
+    const wchar_t* descendingSymbol = L" ▼";
+    const wchar_t* lockedSymbol = L" 🔒"; // Lock symbol for locked columns
+
+    // Iterate through all columns in columnIndices
+    for (const auto& [columnID, columnIndex] : columnIndices) {
+        // Skip columns that are not visible (columnIndex == -1)
+        if (columnIndex == -1) {
+            continue;
+        }
+
+        // Only update headers for sortable columns
+        if (columnID != ColumnID::FIND_COUNT &&
+            columnID != ColumnID::REPLACE_COUNT &&
+            columnID != ColumnID::FIND_TEXT &&
+            columnID != ColumnID::REPLACE_TEXT &&
+            columnID != ColumnID::COMMENTS) {
+            continue;
+        }
+
+        // Get the base header text
+        std::wstring headerText;
+        switch (columnID) {
+        case ColumnID::FIND_COUNT:
+            headerText = LM.get(L"header_find_count");
+            break;
+        case ColumnID::REPLACE_COUNT:
+            headerText = LM.get(L"header_replace_count");
+            break;
+        case ColumnID::FIND_TEXT:
+            headerText = LM.get(L"header_find");
+            // Append lock symbol if the FIND_TEXT column is locked
+            if (findColumnLockedEnabled) {
+                headerText += lockedSymbol;
+            }
+            break;
+        case ColumnID::REPLACE_TEXT:
+            headerText = LM.get(L"header_replace");
+            // Append lock symbol if the REPLACE_TEXT column is locked
+            if (replaceColumnLockedEnabled) {
+                headerText += lockedSymbol;
+            }
+            break;
+        case ColumnID::COMMENTS:
+            headerText = LM.get(L"header_comments");
+            if (commentsColumnLockedEnabled) {
+                headerText += lockedSymbol;
+            }
+            break;
+        default:
+            continue; // Skip if it's not a sortable column
+        }
+
+        // Append sort symbol if the column is currently sorted
+        auto sortIt = columnSortOrder.find(columnID);
+        if (sortIt != columnSortOrder.end()) {
+            SortDirection direction = sortIt->second;
+            if (direction == SortDirection::Ascending) {
+                headerText += ascendingSymbol;
+            }
+            else if (direction == SortDirection::Descending) {
+                headerText += descendingSymbol;
+            }
+            // Do not append any symbol if direction is Unsorted
+        }
+
+        // Prepare the LVCOLUMN structure for updating the header
+        LVCOLUMN lvc = {};
+        lvc.mask = LVCF_TEXT;
+        lvc.pszText = const_cast<LPWSTR>(headerText.c_str());
+
+        // Update the column header using the correct index
+        ListView_SetColumn(_replaceListView, columnIndex, &lvc);
+    }
+}
+
+void MultiReplace::showListFilePath()
+{
+    HWND hPathDisplay = GetDlgItem(_hSelf, IDC_PATH_DISPLAY);
+    HWND hStatsDisplay = GetDlgItem(_hSelf, IDC_STATS_DISPLAY);
+    HWND hListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+
+    if (!hPathDisplay || !hListView)
+        return;
+
+    HDC hDC = GetDC(hPathDisplay);
+    HFONT hFont = (HFONT)SendMessage(hPathDisplay, WM_GETFONT, 0, 0);
+    SelectObject(hDC, hFont);
+
+    // Get ListView dimensions
+    RECT rcListView;
+    GetWindowRect(hListView, &rcListView);
+    MapWindowPoints(NULL, _hSelf, reinterpret_cast<LPPOINT>(&rcListView), 2);
+    int listWidth = rcListView.right - rcListView.left;
+
+    const int spacing = sx(10);
+    const int verticalOffset = sy(2);
+
+    // Calculate Y positions (keeping original heights)
+    RECT rcPathDisplay;
+    GetClientRect(hPathDisplay, &rcPathDisplay);
+    int fieldHeight = rcPathDisplay.bottom - rcPathDisplay.top;
+    int fieldY = rcListView.bottom + verticalOffset;
+
+    int statsWidth = 0;
+
+    if (listStatisticsEnabled && hStatsDisplay)
+    {
+        // Gather statistics
+        int totalItems = static_cast<int>(replaceListData.size());
+        int selectedItems = ListView_GetSelectedCount(_replaceListView);
+        int activatedCount = static_cast<int>(std::count_if(replaceListData.begin(), replaceListData.end(),
+            [](const ReplaceItemData& item) { return item.isEnabled; }));
+        int focusedRow = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
+        int displayRow = (selectedItems > 0 && focusedRow != -1) ? (focusedRow + 1) : 0;
+
+        // Compose stats string
+        std::wstring statsString = L"A:" + std::to_wstring(activatedCount)
+            + L"  L:" + std::to_wstring(totalItems)
+            + L"  |  R:" + std::to_wstring(displayRow)
+            + L"  S:" + std::to_wstring(selectedItems);
+
+        // Measure stats string width
+        SIZE sz;
+        GetTextExtentPoint32(hDC, statsString.c_str(), static_cast<int>(statsString.size()), &sz);
+        statsWidth = sz.cx + sx(5); // padding
+
+        // Position stats field
+        int statsX = rcListView.left + listWidth - statsWidth;
+        MoveWindow(hStatsDisplay, statsX, fieldY, statsWidth, fieldHeight, TRUE);
+        SetWindowTextW(hStatsDisplay, statsString.c_str());
+        ShowWindow(hStatsDisplay, SW_SHOW);
+    }
+    else if (hStatsDisplay)
+    {
+        // Pragmatic solution: Set width to zero instead of hiding
+        statsWidth = 0;
+        MoveWindow(hStatsDisplay, rcListView.right, fieldY, 0, fieldHeight, TRUE);
+        SetWindowTextW(hStatsDisplay, L"");
+        ShowWindow(hStatsDisplay, SW_HIDE);
+    }
+
+    // Adjust path field to use remaining space
+    int pathWidth = listWidth - statsWidth - (listStatisticsEnabled ? spacing : 0);
+    pathWidth = std::max(pathWidth, 0);
+    MoveWindow(hPathDisplay, rcListView.left, fieldY, pathWidth, fieldHeight, TRUE);
+
+    // Update path display text
+    std::wstring shortenedPath = getShortenedFilePath(listFilePath, pathWidth, hDC);
+    SetWindowTextW(hPathDisplay, shortenedPath.c_str());
+
+    ReleaseDC(hPathDisplay, hDC);
+
+    // Immediate redraw
+    InvalidateRect(hPathDisplay, NULL, TRUE);
+    UpdateWindow(hPathDisplay);
+    if (hStatsDisplay) {
+        InvalidateRect(hStatsDisplay, NULL, TRUE);
+        UpdateWindow(hStatsDisplay);
+    }
+}
+
 #pragma endregion
 
 
-#pragma region Contextmenu Display Columns
+#pragma region ListView Dialog
 
 void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
     // Create a popup menu
@@ -2323,7 +2489,7 @@ void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
 #pragma endregion
 
 
-#pragma region UI
+#pragma region UI Settings
 
 void MultiReplace::onTooltipsToggled(bool enable)
 {
@@ -5183,6 +5349,21 @@ SelectionInfo MultiReplace::getSelectionInfo(bool isBackward) {
     return SelectionInfo{ selectedStart, correspondingEnd, selectionLength };
 }
 
+Sci_Position MultiReplace::computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled)
+{
+    SelectionInfo selInfo = getSelectionInfo(false);
+    if (context.isSelectionMode) {
+        return selInfo.startPos;
+    }
+    const Sci_Position caretPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
+    return wrapEnabled ? 0 : (fromCursorEnabled ? caretPos : 0);
+}
+
+#pragma endregion
+
+
+#pragma region Lua Engine
+
 void MultiReplace::captureLuaGlobals(lua_State* L) {
     lua_pushglobaltable(L);
     lua_pushnil(L);
@@ -5615,307 +5796,11 @@ void MultiReplace::applyLuaSafeMode(lua_State* L)
     // Keep string/table/math/utf8/base intact.
 }
 
-Sci_Position MultiReplace::computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled)
-{
-    SelectionInfo selInfo = getSelectionInfo(false);
-    if (context.isSelectionMode) {
-        return selInfo.startPos;
-    }
-    const Sci_Position caretPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
-    return wrapEnabled ? 0 : (fromCursorEnabled ? caretPos : 0);
-}
 
 #pragma endregion
 
 
-#pragma region Replace in Files
-
-bool MultiReplace::selectDirectoryDialog(HWND owner, std::wstring& outPath)
-{
-    // Initialize COM and store the result.
-    HRESULT hrInit = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
-    if (FAILED(hrInit)) {
-        // If critical COM error, we cannot proceed at all.
-        return false;
-    }
-
-    IFileDialog* pfd = nullptr;
-    // Use a different HRESULT variable for the instance creation.
-    HRESULT hrCreate = CoCreateInstance(
-        CLSID_FileOpenDialog, nullptr,
-        CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd)
-    );
-
-    // Only proceed if the dialog instance was created successfully.
-    if (SUCCEEDED(hrCreate)) {
-        // Tell it to pick folders only.
-        FILEOPENDIALOGOPTIONS opts;
-        pfd->GetOptions(&opts);
-        pfd->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
-
-        // Show the dialog.
-        if (SUCCEEDED(pfd->Show(owner)))
-        {
-            IShellItem* psi = nullptr;
-            if (SUCCEEDED(pfd->GetResult(&psi)) && psi)
-            {
-                // Retrieve the selected folder’s file system path.
-                PWSTR pszPath = nullptr;
-                if (SUCCEEDED(psi->GetDisplayName(SIGDN_FILESYSPATH, &pszPath)))
-                {
-                    outPath = pszPath;
-                    CoTaskMemFree(pszPath);
-                }
-                psi->Release();
-            }
-        }
-        pfd->Release();
-    }
-
-    // Uninitialize COM only if our initial call was the one that actually
-    // initialized it (returned S_OK).
-    if (hrInit == S_OK) {
-        CoUninitialize();
-    }
-
-    return !outPath.empty();
-}
-
-bool MultiReplace::handleBrowseDirectoryButton()
-{
-    std::wstring dir;
-    if (selectDirectoryDialog(_hSelf, dir))
-    {
-        // User picked one — set the combo-box text & keep history
-        SetDlgItemTextW(_hSelf, IDC_DIR_EDIT, dir.c_str());
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), dir);
-    }
-    return true;  // always return TRUE so the dialog proc knows we handled it
-}
-
-void MultiReplace::handleReplaceInFiles() {
-    HiddenSciGuard guard;
-    if (!guard.create()) {
-        showStatusMessage(LM.get(L"status_error_hidden_buffer"), MessageStatus::Error);
-        return;
-    }
-
-    // Read all inputs once at the beginning.
-    auto wDir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
-    auto wFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
-    const bool recurse = (IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED);
-    const bool hide = (IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED);
-
-    if (wFilter.empty()) {
-        wFilter = L"*.*";
-        SetDlgItemTextW(_hSelf, IDC_FILTER_EDIT, wFilter.c_str());
-    }
-
-    // history first (always)
-    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FILTER_EDIT), wFilter);
-    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), wDir);
-
-    if (!useListEnabled) {
-        std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-        std::wstring replW = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replW);
-    }
-
-    // validate directory
-    if (wDir.empty() || !std::filesystem::exists(wDir)) {
-        showStatusMessage(LM.get(L"status_error_invalid_directory"), MessageStatus::Error);
-        return;
-    }
-
-    // CSV config (no-op if column mode is off)
-    if (!validateDelimiterData()) return;
-
-    // parse filter after UI/defaults/checks
-    guard.parseFilter(wFilter);
-
-    std::vector<std::filesystem::path> files;
-    try {
-        namespace fs = std::filesystem;
-        if (recurse) {
-            for (auto& e : fs::recursive_directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
-                if (_isShuttingDown) return;
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
-            }
-        }
-        else {
-            for (auto& e : fs::directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
-                if (_isShuttingDown) return;
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
-            }
-        }
-    }
-    catch (const std::exception& ex) {
-        std::wstring wideReason = Encoding::utf8ToWString(ex.what());
-        showStatusMessage(LM.get(L"status_error_scanning_directory", { wideReason }), MessageStatus::Error);
-        return;
-    }
-
-    if (files.empty()) {
-        MessageBox(_hSelf, LM.getLPW(L"msgbox_no_files"), LM.getLPW(L"msgbox_title_confirm"), MB_OK);
-        return;
-    }
-
-    // --- Confirmation Dialog Setup ---
-    // Manually shorten the directory path to prevent ugly wrapping.
-    HDC dialogHdc = GetDC(_hSelf);
-    HFONT dialogHFont = (HFONT)SendMessage(_hSelf, WM_GETFONT, 0, 0);
-    SelectObject(dialogHdc, dialogHFont);
-    std::wstring shortenedDirectory = getShortenedFilePath(wDir, 400, dialogHdc);
-    ReleaseDC(_hSelf, dialogHdc);
-
-    std::wstring message = LM.get(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()), shortenedDirectory, wFilter });
-    if (MessageBox(_hSelf, message.c_str(), LM.getLPW(L"msgbox_title_confirm"), MB_OKCANCEL | MB_SETFOREGROUND) != IDOK)
-        return;
-
-    // RAII-based UI State Management
-    BatchUIGuard uiGuard(this, _hSelf);
-    _isCancelRequested = false;
-
-    if (useListEnabled) {
-        resetCountColumns();
-    }
-
-    std::vector<int> listFindTotals;
-    std::vector<int> listReplaceTotals;
-    if (useListEnabled) {
-        listFindTotals.assign(replaceListData.size(), 0);
-        listReplaceTotals.assign(replaceListData.size(), 0);
-    }
-
-    int total = static_cast<int>(files.size()), idx = 0, changed = 0;
-    showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
-
-    // Per-file binding guard
-    struct SciBindingGuard {
-        MultiReplace* self;
-        HWND oldSci; SciFnDirect oldFn; sptr_t oldData;
-        HiddenSciGuard& g;
-        SciBindingGuard(MultiReplace* s, HiddenSciGuard& guard) : self(s), g(guard) {
-            oldSci = s->_hScintilla; oldFn = s->pSciMsg; oldData = s->pSciWndData;
-            s->_hScintilla = g.hSci; s->pSciMsg = g.fn; s->pSciWndData = g.pData;
-        }
-        ~SciBindingGuard() {
-            self->_hScintilla = oldSci; self->pSciMsg = oldFn; self->pSciWndData = oldData;
-        }
-    };
-
-    bool aborted = false;
-
-    for (const auto& fp : files) {
-        MSG m;
-        while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) {
-            ::TranslateMessage(&m);
-            ::DispatchMessage(&m);
-        }
-
-        if (_isShuttingDown) { aborted = true; break; }
-        if (_isCancelRequested) { aborted = true; break; }
-
-        ++idx;
-
-        int percent = static_cast<int>((static_cast<double>(idx) / (std::max)(1, total)) * 100.0);
-        std::wstring prefix = L"Progress: [" + std::to_wstring(percent) + L"%] ";
-        HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
-        HDC hdc = GetDC(hStatus);
-        HFONT hFont = (HFONT)SendMessage(hStatus, WM_GETFONT, 0, 0);
-        SelectObject(hdc, hFont);
-        SIZE sz{}; GetTextExtentPoint32W(hdc, prefix.c_str(), (int)prefix.length(), &sz);
-        RECT rc{}; GetClientRect(hStatus, &rc);
-        int avail = (rc.right - rc.left) - sz.cx;
-        std::wstring shortPath = getShortenedFilePath(fp.wstring(), avail, hdc);
-        ReleaseDC(hStatus, hdc);
-        showStatusMessage(prefix + shortPath, MessageStatus::Info);
-
-        std::string original;
-        if (!guard.loadFile(fp, original)) { continue; }
-
-        DWORD attrs = GetFileAttributesW(fp.c_str());
-        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) { continue; }
-
-        Encoding::DetectOptions dopts;
-        const std::vector<char> raw(original.begin(), original.end());
-        const Encoding::EncodingInfo enc = Encoding::detectEncoding(raw.data(), raw.size(), dopts);
-        std::string u8in;
-        if (!Encoding::convertBufferToUtf8(raw, enc, u8in)) { continue; }
-
-        // Bind hidden buffer for the file scope
-        {
-            SciBindingGuard bind(this, guard);
-
-            send(SCI_CLEARALL, 0, 0);
-            send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
-            send(SCI_ADDTEXT, (WPARAM)u8in.length(), reinterpret_cast<sptr_t>(u8in.data()));
-
-            handleDelimiterPositions(DelimiterOperation::LoadAll);
-
-            if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; aborted = true; }
-
-            // Keep list counters in sync (per-item find/replace tallies)
-            if (useListEnabled) {
-                for (size_t i = 0; i < replaceListData.size(); ++i) {
-                    if (!replaceListData[i].isEnabled) continue;
-                    const int f = replaceListData[i].findCount.empty() ? 0 : std::stoi(replaceListData[i].findCount);
-                    const int r = replaceListData[i].replaceCount.empty() ? 0 : std::stoi(replaceListData[i].replaceCount);
-                    listFindTotals[i] += f;
-                    listReplaceTotals[i] += r;
-                }
-            }
-
-            // Write back only if content changed
-            std::string u8out = guard.getText();
-            if (u8out != u8in) {
-                Encoding::ConvertOptions copt;           // strict: no best-fit
-                std::vector<char> outBytes;
-                if (Encoding::convertUtf8ToOriginal(u8out, enc, outBytes, copt)) {
-                    std::string finalBuf(outBytes.begin(), outBytes.end());
-                    if (guard.writeFile(fp, finalBuf)) {
-                        ++changed;
-                    }
-                }
-            }
-        }
-
-        if (aborted) break; // ensures RAII restored before leaving loop
-    }
-
-    if (useListEnabled) {
-        for (size_t i = 0; i < replaceListData.size(); ++i) {
-            if (!replaceListData[i].isEnabled) continue;
-            updateCountColumns(i, listFindTotals[i], listReplaceTotals[i]);
-        }
-        refreshUIListView();
-    }
-
-    // status line
-    if (!_isShuttingDown) {
-        const bool wasCanceled = (_isCancelRequested || aborted);
-
-        std::wstring msg = LM.get(L"status_replace_summary",
-            { std::to_wstring(changed), std::to_wstring(files.size()) });
-        if (wasCanceled) {
-            msg += L" - " + LM.get(L"status_canceled");
-        }
-
-        MessageStatus ms = MessageStatus::Success;
-        if (wasCanceled || changed == 0) {
-            ms = MessageStatus::Info;
-        }
-
-        showStatusMessage(msg, ms);
-    }
-    _isCancelRequested = false;
-}
-
-#pragma endregion
-
-
-#pragma region DebugWindow from resolveLuaSyntax
+#pragma region Lua Debug Window
 
 int MultiReplace::ShowDebugWindow(const std::string& message) {
     const int buffer_size = 4096;
@@ -6333,6 +6218,293 @@ void MultiReplace::CloseDebugWindow()
     }
 
     SendMessage(hDebugWnd, WM_CLOSE, 0, 0);  // synchronous → window really gone
+}
+
+#pragma endregion
+
+
+#pragma region Replace in Files
+
+bool MultiReplace::selectDirectoryDialog(HWND owner, std::wstring& outPath)
+{
+    // Initialize COM and store the result.
+    HRESULT hrInit = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    if (FAILED(hrInit)) {
+        // If critical COM error, we cannot proceed at all.
+        return false;
+    }
+
+    IFileDialog* pfd = nullptr;
+    // Use a different HRESULT variable for the instance creation.
+    HRESULT hrCreate = CoCreateInstance(
+        CLSID_FileOpenDialog, nullptr,
+        CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd)
+    );
+
+    // Only proceed if the dialog instance was created successfully.
+    if (SUCCEEDED(hrCreate)) {
+        // Tell it to pick folders only.
+        FILEOPENDIALOGOPTIONS opts;
+        pfd->GetOptions(&opts);
+        pfd->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+
+        // Show the dialog.
+        if (SUCCEEDED(pfd->Show(owner)))
+        {
+            IShellItem* psi = nullptr;
+            if (SUCCEEDED(pfd->GetResult(&psi)) && psi)
+            {
+                // Retrieve the selected folder’s file system path.
+                PWSTR pszPath = nullptr;
+                if (SUCCEEDED(psi->GetDisplayName(SIGDN_FILESYSPATH, &pszPath)))
+                {
+                    outPath = pszPath;
+                    CoTaskMemFree(pszPath);
+                }
+                psi->Release();
+            }
+        }
+        pfd->Release();
+    }
+
+    // Uninitialize COM only if our initial call was the one that actually
+    // initialized it (returned S_OK).
+    if (hrInit == S_OK) {
+        CoUninitialize();
+    }
+
+    return !outPath.empty();
+}
+
+bool MultiReplace::handleBrowseDirectoryButton()
+{
+    std::wstring dir;
+    if (selectDirectoryDialog(_hSelf, dir))
+    {
+        // User picked one — set the combo-box text & keep history
+        SetDlgItemTextW(_hSelf, IDC_DIR_EDIT, dir.c_str());
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), dir);
+    }
+    return true;  // always return TRUE so the dialog proc knows we handled it
+}
+
+void MultiReplace::handleReplaceInFiles() {
+    HiddenSciGuard guard;
+    if (!guard.create()) {
+        showStatusMessage(LM.get(L"status_error_hidden_buffer"), MessageStatus::Error);
+        return;
+    }
+
+    // Read all inputs once at the beginning.
+    auto wDir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
+    auto wFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+    const bool recurse = (IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED);
+    const bool hide = (IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED);
+
+    if (wFilter.empty()) {
+        wFilter = L"*.*";
+        SetDlgItemTextW(_hSelf, IDC_FILTER_EDIT, wFilter.c_str());
+    }
+
+    // history first (always)
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FILTER_EDIT), wFilter);
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), wDir);
+
+    if (!useListEnabled) {
+        std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        std::wstring replW = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replW);
+    }
+
+    // validate directory
+    if (wDir.empty() || !std::filesystem::exists(wDir)) {
+        showStatusMessage(LM.get(L"status_error_invalid_directory"), MessageStatus::Error);
+        return;
+    }
+
+    // CSV config (no-op if column mode is off)
+    if (!validateDelimiterData()) return;
+
+    // parse filter after UI/defaults/checks
+    guard.parseFilter(wFilter);
+
+    std::vector<std::filesystem::path> files;
+    try {
+        namespace fs = std::filesystem;
+        if (recurse) {
+            for (auto& e : fs::recursive_directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
+                if (_isShuttingDown) return;
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
+            }
+        }
+        else {
+            for (auto& e : fs::directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
+                if (_isShuttingDown) return;
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
+            }
+        }
+    }
+    catch (const std::exception& ex) {
+        std::wstring wideReason = Encoding::utf8ToWString(ex.what());
+        showStatusMessage(LM.get(L"status_error_scanning_directory", { wideReason }), MessageStatus::Error);
+        return;
+    }
+
+    if (files.empty()) {
+        MessageBox(_hSelf, LM.getLPW(L"msgbox_no_files"), LM.getLPW(L"msgbox_title_confirm"), MB_OK);
+        return;
+    }
+
+    // --- Confirmation Dialog Setup ---
+    // Manually shorten the directory path to prevent ugly wrapping.
+    HDC dialogHdc = GetDC(_hSelf);
+    HFONT dialogHFont = (HFONT)SendMessage(_hSelf, WM_GETFONT, 0, 0);
+    SelectObject(dialogHdc, dialogHFont);
+    std::wstring shortenedDirectory = getShortenedFilePath(wDir, 400, dialogHdc);
+    ReleaseDC(_hSelf, dialogHdc);
+
+    std::wstring message = LM.get(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()), shortenedDirectory, wFilter });
+    if (MessageBox(_hSelf, message.c_str(), LM.getLPW(L"msgbox_title_confirm"), MB_OKCANCEL | MB_SETFOREGROUND) != IDOK)
+        return;
+
+    // RAII-based UI State Management
+    BatchUIGuard uiGuard(this, _hSelf);
+    _isCancelRequested = false;
+
+    if (useListEnabled) {
+        resetCountColumns();
+    }
+
+    std::vector<int> listFindTotals;
+    std::vector<int> listReplaceTotals;
+    if (useListEnabled) {
+        listFindTotals.assign(replaceListData.size(), 0);
+        listReplaceTotals.assign(replaceListData.size(), 0);
+    }
+
+    int total = static_cast<int>(files.size()), idx = 0, changed = 0;
+    showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
+
+    // Per-file binding guard
+    struct SciBindingGuard {
+        MultiReplace* self;
+        HWND oldSci; SciFnDirect oldFn; sptr_t oldData;
+        HiddenSciGuard& g;
+        SciBindingGuard(MultiReplace* s, HiddenSciGuard& guard) : self(s), g(guard) {
+            oldSci = s->_hScintilla; oldFn = s->pSciMsg; oldData = s->pSciWndData;
+            s->_hScintilla = g.hSci; s->pSciMsg = g.fn; s->pSciWndData = g.pData;
+        }
+        ~SciBindingGuard() {
+            self->_hScintilla = oldSci; self->pSciMsg = oldFn; self->pSciWndData = oldData;
+        }
+    };
+
+    bool aborted = false;
+
+    for (const auto& fp : files) {
+        MSG m;
+        while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) {
+            ::TranslateMessage(&m);
+            ::DispatchMessage(&m);
+        }
+
+        if (_isShuttingDown) { aborted = true; break; }
+        if (_isCancelRequested) { aborted = true; break; }
+
+        ++idx;
+
+        int percent = static_cast<int>((static_cast<double>(idx) / (std::max)(1, total)) * 100.0);
+        std::wstring prefix = L"Progress: [" + std::to_wstring(percent) + L"%] ";
+        HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
+        HDC hdc = GetDC(hStatus);
+        HFONT hFont = (HFONT)SendMessage(hStatus, WM_GETFONT, 0, 0);
+        SelectObject(hdc, hFont);
+        SIZE sz{}; GetTextExtentPoint32W(hdc, prefix.c_str(), (int)prefix.length(), &sz);
+        RECT rc{}; GetClientRect(hStatus, &rc);
+        int avail = (rc.right - rc.left) - sz.cx;
+        std::wstring shortPath = getShortenedFilePath(fp.wstring(), avail, hdc);
+        ReleaseDC(hStatus, hdc);
+        showStatusMessage(prefix + shortPath, MessageStatus::Info);
+
+        std::string original;
+        if (!guard.loadFile(fp, original)) { continue; }
+
+        DWORD attrs = GetFileAttributesW(fp.c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) { continue; }
+
+        Encoding::DetectOptions dopts;
+        const std::vector<char> raw(original.begin(), original.end());
+        const Encoding::EncodingInfo enc = Encoding::detectEncoding(raw.data(), raw.size(), dopts);
+        std::string u8in;
+        if (!Encoding::convertBufferToUtf8(raw, enc, u8in)) { continue; }
+
+        // Bind hidden buffer for the file scope
+        {
+            SciBindingGuard bind(this, guard);
+
+            send(SCI_CLEARALL, 0, 0);
+            send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
+            send(SCI_ADDTEXT, (WPARAM)u8in.length(), reinterpret_cast<sptr_t>(u8in.data()));
+
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
+
+            if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; aborted = true; }
+
+            // Keep list counters in sync (per-item find/replace tallies)
+            if (useListEnabled) {
+                for (size_t i = 0; i < replaceListData.size(); ++i) {
+                    if (!replaceListData[i].isEnabled) continue;
+                    const int f = replaceListData[i].findCount.empty() ? 0 : std::stoi(replaceListData[i].findCount);
+                    const int r = replaceListData[i].replaceCount.empty() ? 0 : std::stoi(replaceListData[i].replaceCount);
+                    listFindTotals[i] += f;
+                    listReplaceTotals[i] += r;
+                }
+            }
+
+            // Write back only if content changed
+            std::string u8out = guard.getText();
+            if (u8out != u8in) {
+                Encoding::ConvertOptions copt;           // strict: no best-fit
+                std::vector<char> outBytes;
+                if (Encoding::convertUtf8ToOriginal(u8out, enc, outBytes, copt)) {
+                    std::string finalBuf(outBytes.begin(), outBytes.end());
+                    if (guard.writeFile(fp, finalBuf)) {
+                        ++changed;
+                    }
+                }
+            }
+        }
+
+        if (aborted) break; // ensures RAII restored before leaving loop
+    }
+
+    if (useListEnabled) {
+        for (size_t i = 0; i < replaceListData.size(); ++i) {
+            if (!replaceListData[i].isEnabled) continue;
+            updateCountColumns(i, listFindTotals[i], listReplaceTotals[i]);
+        }
+        refreshUIListView();
+    }
+
+    // status line
+    if (!_isShuttingDown) {
+        const bool wasCanceled = (_isCancelRequested || aborted);
+
+        std::wstring msg = LM.get(L"status_replace_summary",
+            { std::to_wstring(changed), std::to_wstring(files.size()) });
+        if (wasCanceled) {
+            msg += L" - " + LM.get(L"status_canceled");
+        }
+
+        MessageStatus ms = MessageStatus::Success;
+        if (wasCanceled || changed == 0) {
+            ms = MessageStatus::Info;
+        }
+
+        showStatusMessage(msg, ms);
+    }
+    _isCancelRequested = false;
 }
 
 #pragma endregion
@@ -7472,35 +7644,63 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
     closestMatch.length = 0;
     closestMatch.foundText = "";
 
-    closestMatchIndex = std::numeric_limits<size_t>::max(); // Initialize with a value that represents "no index".
+    closestMatchIndex = std::numeric_limits<size_t>::max();
+
+    // Dynamic start boundary - moves forward as we find closer matches
+    LRESULT searchStartPos = 0;
 
     for (size_t i = 0; i < list.size(); ++i) {
         if (!list[i].isEnabled) {
-            continue; // Skip disabled entries
+            continue;
         }
 
-        // Use the existing search context and only override `findText` and `searchFlags`
         SearchContext localContext = context;
         localContext.findText = convertAndExtendW(list[i].findText, list[i].extended);
         localContext.searchFlags = (list[i].wholeWord ? SCFIND_WHOLEWORD : 0) |
             (list[i].matchCase ? SCFIND_MATCHCASE : 0) |
             (list[i].regex ? SCFIND_REGEXP : 0);
+        localContext.retrieveFoundText = false;
+        localContext.highlightMatch = false;
 
-        // Set search flags before calling 'performSearchBackward'
         send(SCI_SETSEARCHFLAGS, localContext.searchFlags);
 
-        // Perform backward search using the updated search context
-        SearchResult result = performSearchBackward(localContext, cursorPos);
+        // Backward search: from cursorPos down to searchStartPos
+        send(SCI_SETTARGETRANGE, cursorPos, searchStartPos);
+        Sci_Position pos = send(SCI_SEARCHINTARGET, localContext.findText.size(),
+            reinterpret_cast<sptr_t>(localContext.findText.c_str()));
 
-        // If a match was found and it's closer to the cursor than the current closest match, update the closest match
-        if (result.pos >= 0 && (closestMatch.pos < 0 || (result.pos + result.length) >(closestMatch.pos + closestMatch.length))) {
-            closestMatch = result;
-            closestMatchIndex = i; // Update the index of the closest match
+        if (pos >= 0) {
+            Sci_Position matchEnd = send(SCI_GETTARGETEND);
+
+            if (closestMatch.pos < 0 || pos > closestMatch.pos) {
+                closestMatch.pos = pos;
+                closestMatch.length = matchEnd - pos;
+                closestMatchIndex = i;
+
+                // Raise start boundary for subsequent entries
+                searchStartPos = matchEnd;
+            }
         }
     }
 
-    if (closestMatch.pos >= 0) { // Check if a match was found
-        displayResultCentered(closestMatch.pos, closestMatch.pos + closestMatch.length, false);
+    // Retrieve text and highlight only for the final closest match
+    if (closestMatch.pos >= 0) {
+        if (context.retrieveFoundText) {
+            send(SCI_SETTARGETRANGE, closestMatch.pos, closestMatch.pos + closestMatch.length);
+            const int codepage = static_cast<int>(send(SCI_GETCODEPAGE));
+            const size_t bytesPerChar = (codepage == SC_CP_UTF8) ? 4u : 1u;
+            const size_t cap = static_cast<size_t>(closestMatch.length) * bytesPerChar + 1;
+            std::string buf(cap, '\0');
+            LRESULT textLength = send(SCI_GETTARGETTEXT, 0, reinterpret_cast<LPARAM>(buf.data()));
+            if (textLength < 0) textLength = 0;
+            if (static_cast<size_t>(textLength) >= cap) textLength = static_cast<LRESULT>(cap - 1);
+            buf.resize(static_cast<size_t>(textLength));
+            closestMatch.foundText = std::move(buf);
+        }
+
+        if (context.highlightMatch) {
+            displayResultCentered(closestMatch.pos, closestMatch.pos + closestMatch.length, false);
+        }
     }
 
     return closestMatch;
@@ -7512,35 +7712,65 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
     closestMatch.length = 0;
     closestMatch.foundText = "";
 
-    closestMatchIndex = std::numeric_limits<size_t>::max(); // Initialize with a value representing "no index".
+    closestMatchIndex = std::numeric_limits<size_t>::max();
+
+    // Dynamic end boundary - shrinks as we find closer matches
+    LRESULT searchEndPos = context.docLength;
 
     for (size_t i = 0; i < list.size(); ++i) {
         if (!list[i].isEnabled) {
-            continue; // Skip disabled entries
+            continue;
         }
 
-        // Use the existing search context and only override `findText` and `searchFlags`
         SearchContext localContext = context;
         localContext.findText = convertAndExtendW(list[i].findText, list[i].extended);
         localContext.searchFlags = (list[i].wholeWord ? SCFIND_WHOLEWORD : 0) |
             (list[i].matchCase ? SCFIND_MATCHCASE : 0) |
             (list[i].regex ? SCFIND_REGEXP : 0);
 
-        // Set search flags before calling `performSearchForward`
+        // Disable text retrieval during search - we'll get it only for the final result
+        localContext.retrieveFoundText = false;
+        localContext.highlightMatch = false;
+
         send(SCI_SETSEARCHFLAGS, localContext.searchFlags);
 
-        // Perform forward search using the updated search context
-        SearchResult result = performSearchForward(localContext, cursorPos);
+        // Search only in the restricted range [cursorPos, searchEndPos]
+        send(SCI_SETTARGETRANGE, cursorPos, searchEndPos);
+        Sci_Position pos = send(SCI_SEARCHINTARGET, localContext.findText.size(),
+            reinterpret_cast<sptr_t>(localContext.findText.c_str()));
 
-        // If a match is found that is closer to the cursor than the current closest match, update the closest match
-        if (result.pos >= 0 && (closestMatch.pos < 0 || result.pos < closestMatch.pos)) {
-            closestMatch = result;
-            closestMatchIndex = i; // Update the index of the closest match
+        if (pos >= 0) {
+            Sci_Position matchEnd = send(SCI_GETTARGETEND);
+
+            if (closestMatch.pos < 0 || pos < closestMatch.pos) {
+                closestMatch.pos = pos;
+                closestMatch.length = matchEnd - pos;
+                closestMatchIndex = i;
+
+                // Shrink search boundary for subsequent entries
+                searchEndPos = pos;
+            }
         }
     }
 
-    if (closestMatch.pos >= 0) { // Check if a match was found
-        displayResultCentered(closestMatch.pos, closestMatch.pos + closestMatch.length, true);
+    // retrieve text and highlight only for the final closest match
+    if (closestMatch.pos >= 0) {
+        if (context.retrieveFoundText) {
+            send(SCI_SETTARGETRANGE, closestMatch.pos, closestMatch.pos + closestMatch.length);
+            const int codepage = static_cast<int>(send(SCI_GETCODEPAGE));
+            const size_t bytesPerChar = (codepage == SC_CP_UTF8) ? 4u : 1u;
+            const size_t cap = static_cast<size_t>(closestMatch.length) * bytesPerChar + 1;
+            std::string buf(cap, '\0');
+            LRESULT textLength = send(SCI_GETTARGETTEXT, 0, reinterpret_cast<LPARAM>(buf.data()));
+            if (textLength < 0) textLength = 0;
+            if (static_cast<size_t>(textLength) >= cap) textLength = static_cast<LRESULT>(cap - 1);
+            buf.resize(static_cast<size_t>(textLength));
+            closestMatch.foundText = std::move(buf);
+        }
+
+        if (context.highlightMatch) {
+            displayResultCentered(closestMatch.pos, closestMatch.pos + closestMatch.length, true);
+        }
     }
 
     return closestMatch;
@@ -10088,119 +10318,6 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
     showListFilePath();
 }
 
-void MultiReplace::updateHeaderSelection() {
-    bool anySelected = false;
-    allSelected = !replaceListData.empty();
-
-    // Check if any or all items in the replaceListData vector are selected
-    for (const auto& itemData : replaceListData) {
-        if (itemData.isEnabled) {
-            anySelected = true;
-        }
-        else {
-            allSelected = false;
-        }
-    }
-
-    // Initialize the LVCOLUMN structure
-    LVCOLUMN lvc = { 0 };
-    lvc.mask = LVCF_TEXT;
-
-    // Determine the symbol to show in the header
-    if (allSelected) {
-        lvc.pszText = L"\u25A0"; // Ballot box with check
-    }
-    else if (anySelected) {
-        lvc.pszText = L"\u25A3"; // Black square containing small white square
-    }
-    else {
-        lvc.pszText = L"\u2610"; // Ballot box without check
-    }
-
-    // Update the Selection column header dynamically, if it's enabled
-    if (columnIndices[ColumnID::SELECTION] != -1) {
-        ListView_SetColumn(_replaceListView, columnIndices[ColumnID::SELECTION], &lvc);
-    }
-
-}
-
-void MultiReplace::updateHeaderSortDirection() {
-    const wchar_t* ascendingSymbol = L" ▲";
-    const wchar_t* descendingSymbol = L" ▼";
-    const wchar_t* lockedSymbol = L" 🔒"; // Lock symbol for locked columns
-
-    // Iterate through all columns in columnIndices
-    for (const auto& [columnID, columnIndex] : columnIndices) {
-        // Skip columns that are not visible (columnIndex == -1)
-        if (columnIndex == -1) {
-            continue;
-        }
-
-        // Only update headers for sortable columns
-        if (columnID != ColumnID::FIND_COUNT &&
-            columnID != ColumnID::REPLACE_COUNT &&
-            columnID != ColumnID::FIND_TEXT &&
-            columnID != ColumnID::REPLACE_TEXT &&
-            columnID != ColumnID::COMMENTS) {
-            continue;
-        }
-
-        // Get the base header text
-        std::wstring headerText;
-        switch (columnID) {
-        case ColumnID::FIND_COUNT:
-            headerText = LM.get(L"header_find_count");
-            break;
-        case ColumnID::REPLACE_COUNT:
-            headerText = LM.get(L"header_replace_count");
-            break;
-        case ColumnID::FIND_TEXT:
-            headerText = LM.get(L"header_find");
-            // Append lock symbol if the FIND_TEXT column is locked
-            if (findColumnLockedEnabled) {
-                headerText += lockedSymbol;
-            }
-            break;
-        case ColumnID::REPLACE_TEXT:
-            headerText = LM.get(L"header_replace");
-            // Append lock symbol if the REPLACE_TEXT column is locked
-            if (replaceColumnLockedEnabled) {
-                headerText += lockedSymbol;
-            }
-            break;
-        case ColumnID::COMMENTS:
-            headerText = LM.get(L"header_comments");
-            if (commentsColumnLockedEnabled) {
-                headerText += lockedSymbol;
-            }
-            break;
-        default:
-            continue; // Skip if it's not a sortable column
-        }
-
-        // Append sort symbol if the column is currently sorted
-        auto sortIt = columnSortOrder.find(columnID);
-        if (sortIt != columnSortOrder.end()) {
-            SortDirection direction = sortIt->second;
-            if (direction == SortDirection::Ascending) {
-                headerText += ascendingSymbol;
-            }
-            else if (direction == SortDirection::Descending) {
-                headerText += descendingSymbol;
-            }
-            // Do not append any symbol if direction is Unsorted
-        }
-
-        // Prepare the LVCOLUMN structure for updating the header
-        LVCOLUMN lvc = {};
-        lvc.mask = LVCF_TEXT;
-        lvc.pszText = const_cast<LPWSTR>(headerText.c_str());
-
-        // Update the column header using the correct index
-        ListView_SetColumn(_replaceListView, columnIndex, &lvc);
-    }
-}
-
 void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound)
 {
     const size_t MAX_DISPLAY_LENGTH = 150;
@@ -10376,92 +10493,6 @@ std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int ma
     return displayPath;
 }
 
-void MultiReplace::showListFilePath()
-{
-    HWND hPathDisplay = GetDlgItem(_hSelf, IDC_PATH_DISPLAY);
-    HWND hStatsDisplay = GetDlgItem(_hSelf, IDC_STATS_DISPLAY);
-    HWND hListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
-
-    if (!hPathDisplay || !hListView)
-        return;
-
-    HDC hDC = GetDC(hPathDisplay);
-    HFONT hFont = (HFONT)SendMessage(hPathDisplay, WM_GETFONT, 0, 0);
-    SelectObject(hDC, hFont);
-
-    // Get ListView dimensions
-    RECT rcListView;
-    GetWindowRect(hListView, &rcListView);
-    MapWindowPoints(NULL, _hSelf, reinterpret_cast<LPPOINT>(&rcListView), 2);
-    int listWidth = rcListView.right - rcListView.left;
-
-    const int spacing = sx(10);
-    const int verticalOffset = sy(2);
-
-    // Calculate Y positions (keeping original heights)
-    RECT rcPathDisplay;
-    GetClientRect(hPathDisplay, &rcPathDisplay);
-    int fieldHeight = rcPathDisplay.bottom - rcPathDisplay.top;
-    int fieldY = rcListView.bottom + verticalOffset;
-
-    int statsWidth = 0;
-
-    if (listStatisticsEnabled && hStatsDisplay)
-    {
-        // Gather statistics
-        int totalItems = static_cast<int>(replaceListData.size());
-        int selectedItems = ListView_GetSelectedCount(_replaceListView);
-        int activatedCount = static_cast<int>(std::count_if(replaceListData.begin(), replaceListData.end(),
-            [](const ReplaceItemData& item) { return item.isEnabled; }));
-        int focusedRow = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
-        int displayRow = (selectedItems > 0 && focusedRow != -1) ? (focusedRow + 1) : 0;
-
-        // Compose stats string
-        std::wstring statsString = L"A:" + std::to_wstring(activatedCount)
-            + L"  L:" + std::to_wstring(totalItems)
-            + L"  |  R:" + std::to_wstring(displayRow)
-            + L"  S:" + std::to_wstring(selectedItems);
-
-        // Measure stats string width
-        SIZE sz;
-        GetTextExtentPoint32(hDC, statsString.c_str(), static_cast<int>(statsString.size()), &sz);
-        statsWidth = sz.cx + sx(5); // padding
-
-        // Position stats field
-        int statsX = rcListView.left + listWidth - statsWidth;
-        MoveWindow(hStatsDisplay, statsX, fieldY, statsWidth, fieldHeight, TRUE);
-        SetWindowTextW(hStatsDisplay, statsString.c_str());
-        ShowWindow(hStatsDisplay, SW_SHOW);
-    }
-    else if (hStatsDisplay)
-    {
-        // Pragmatic solution: Set width to zero instead of hiding
-        statsWidth = 0;
-        MoveWindow(hStatsDisplay, rcListView.right, fieldY, 0, fieldHeight, TRUE);
-        SetWindowTextW(hStatsDisplay, L"");
-        ShowWindow(hStatsDisplay, SW_HIDE);
-    }
-
-    // Adjust path field to use remaining space
-    int pathWidth = listWidth - statsWidth - (listStatisticsEnabled ? spacing : 0);
-    pathWidth = std::max(pathWidth, 0);
-    MoveWindow(hPathDisplay, rcListView.left, fieldY, pathWidth, fieldHeight, TRUE);
-
-    // Update path display text
-    std::wstring shortenedPath = getShortenedFilePath(listFilePath, pathWidth, hDC);
-    SetWindowTextW(hPathDisplay, shortenedPath.c_str());
-
-    ReleaseDC(hPathDisplay, hDC);
-
-    // Immediate redraw
-    InvalidateRect(hPathDisplay, NULL, TRUE);
-    UpdateWindow(hPathDisplay);
-    if (hStatsDisplay) {
-        InvalidateRect(hStatsDisplay, NULL, TRUE);
-        UpdateWindow(hStatsDisplay);
-    }
-}
-
 std::wstring MultiReplace::getSelectedText()
 {
     Sci_Position lengthWithNul = static_cast<Sci_Position>(SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, 0));
@@ -10586,6 +10617,28 @@ int MultiReplace::getFontHeight(HWND hwnd, HFONT hFont) {
     return fontHeight;  // Return the font height
 }
 
+int MultiReplace::getCharacterWidth(int elementID, const wchar_t* character) {
+    // Get the HWND of the element by its ID
+    HWND hwndElement = GetDlgItem(_hSelf, elementID);
+
+    // Get the font used by the element
+    HFONT hFont = (HFONT)SendMessage(hwndElement, WM_GETFONT, 0, 0);
+
+    // Get the device context for measuring text
+    HDC hdc = GetDC(hwndElement);
+    SelectObject(hdc, hFont);  // Use the font of the given element
+
+    // Measure the width of the character
+    SIZE size;
+    GetTextExtentPoint32W(hdc, character, 1, &size);
+
+    // Release the device context
+    ReleaseDC(hwndElement, hdc);
+
+    // Return the width of the character
+    return size.cx;
+}
+
 std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage)
 {
     std::vector<int> result;
@@ -10682,10 +10735,20 @@ Sci_Position MultiReplace::ensureForwardProgress(Sci_Position candidate, const S
     return (next > docLen) ? docLen : next;
 }
 
-#pragma endregion
+std::size_t MultiReplace::computeListHash(const std::vector<ReplaceItemData>& list) {
+    std::size_t combinedHash = 0;
+    ReplaceItemDataHasher hasher;
 
+    for (const auto& item : list) {
+        combinedHash ^= hasher(item) + golden_ratio_constant + (combinedHash << 6) + (combinedHash >> 2);
+    }
 
-#pragma region StringHandling
+    return combinedHash;
+}
+
+void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {
+    ::SetDlgItemTextW(hDlg, itemID, text.c_str());
+}
 
 #pragma endregion
 
@@ -11118,10 +11181,6 @@ std::vector<std::wstring> MultiReplace::parseCsvLine(const std::wstring& line) {
     columns.push_back(unescapeOnlySequences(currentValue));  // ÄNDERUNG
     return columns;
 }
-#pragma endregion
-
-
-#pragma region Export
 
 void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     std::ofstream file(fileName);
@@ -11601,10 +11660,6 @@ void MultiReplace::loadUIConfigFromIni()
 
     if (_hSelf)
         SetWindowTransparency(_hSelf, foregroundTransparency);
-}
-
-void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {
-    ::SetDlgItemTextW(hDlg, itemID, text.c_str());
 }
 
 MultiReplace::Settings MultiReplace::getSettings()

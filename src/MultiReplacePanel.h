@@ -771,7 +771,7 @@ private:
     void adjustWindowSize();
     void updateUseListState(bool isUpdate);
 
-    // Undo
+    //List Data Operations
     void addItemsToReplaceList(const std::vector<ReplaceItemData>& items, size_t insertPosition);
     void removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove);
     void modifyItemInReplaceList(size_t index, const ReplaceItemData& newData);
@@ -787,7 +787,11 @@ private:
     int  getColumnWidth(ColumnID columnID);
     int  calcDynamicColWidth(const ResizableColWidths& widths);
     void updateListViewAndColumns();
+    void updateListViewItem(size_t index);
     void updateListViewTooltips();
+    void updateHeaderSelection();
+    void updateHeaderSortDirection();
+    void showColumnVisibilityMenu(HWND hWnd, POINT pt);
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void shiftListItem(const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);
@@ -800,18 +804,13 @@ private:
     void resetCountColumns();
     void updateCountColumns(const size_t itemIndex, const int findCount, int replaceCount = -1);
     void clearList();
-    std::size_t computeListHash(const std::vector<ReplaceItemData>& list);
     void refreshUIListView();
+    void onPathDisplayDoubleClick();
     void handleColumnVisibilityToggle(UINT menuId);
     ColumnID getColumnIDFromIndex(int columnIndex) const;
     int getColumnIndexFromID(ColumnID columnID) const;
-    void updateListViewItem(size_t index);
-    void onPathDisplayDoubleClick();
 
-    //Contextmenu Display Columns
-    void showColumnVisibilityMenu(HWND hWnd, POINT pt);
-
-    //UI
+    //UI Settings
     void onTooltipsToggled(bool enable);
     void destroyAllTooltipWindows();
     void rebuildAllTooltips();
@@ -843,6 +842,9 @@ private:
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     bool preProcessListForReplace(bool highlight);
     SelectionInfo getSelectionInfo(bool isBackward);
+    Sci_Position computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled);
+
+    //Lua Engine
     void captureLuaGlobals(lua_State* L);
     std::string escapeForRegex(const std::string& input);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
@@ -853,18 +855,17 @@ private:
     bool compileLuaReplaceCode(const std::string& luaCode);
     static int safeLoadFileSandbox(lua_State* L);
     static void applyLuaSafeMode(lua_State* L);
-    Sci_Position computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled);
 
-    //Replace in files
-    bool handleBrowseDirectoryButton();
-    bool selectDirectoryDialog(HWND owner, std::wstring& outPath);
-    void handleReplaceInFiles();
-
-    //DebugWindow
+    //Lua Debug Window
     int ShowDebugWindow(const std::string& message);
     static LRESULT CALLBACK DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     static void CopyListViewToClipboard(HWND hListView);
     static void CloseDebugWindow();
+
+    //Replace in Files
+    bool handleBrowseDirectoryButton();
+    bool selectDirectoryDialog(HWND owner, std::wstring& outPath);
+    void handleReplaceInFiles();
 
     //Find All
     std::wstring sanitizeSearchPattern(const std::wstring& raw);
@@ -883,6 +884,7 @@ private:
     SearchResult performSearchSelection(const SearchContext& context, LRESULT start, bool isBackward);
     SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
     SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
+    void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     void selectListItem(size_t matchIndex);
 
     //Mark
@@ -903,8 +905,8 @@ private:
     bool applyFlowTabStops();
     bool runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& body);
     bool showFlowTabsIntroDialog(bool& dontShowFlag) const;
-    ViewState MultiReplace::saveViewState() const;
-    void MultiReplace::restoreViewStateExact(const ViewState& s);
+    ViewState saveViewState() const;
+    void restoreViewStateExact(const ViewState& s);
 
     //CSV Sort
     std::vector<CombinedColumns> extractColumnData(SIZE_T startLine, SIZE_T lineCount);
@@ -938,18 +940,16 @@ private:
     void normalizeSelectionAfterCleanup();
 
     //Utilities
-    std::string convertAndExtendW(const std::wstring& input, bool extended, UINT cp /*docCp or CP_UTF8*/) const;
+    std::string convertAndExtendW(const std::wstring& input, bool extended, UINT cp) const;
     std::string convertAndExtendW(const std::wstring& input, bool extended);
     static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 100);
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
+    void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
     void setSelections(bool select, bool onlySelected = false);
-    void updateHeaderSelection();
-    void updateHeaderSortDirection();
     void showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound = false);
     void applyThemePalette();
     void refreshColumnStylesIfNeeded();
     std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
-    void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     std::wstring getSelectedText();
     LRESULT getEOLLengthForLine(LRESULT line);
     std::string getEOLStyle();
@@ -960,10 +960,9 @@ private:
     int getFontHeight(HWND hwnd, HFONT hFont);
     std::vector<int> parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
     UINT getCurrentDocCodePage();
-    // --- Zero-length / no-progress helpers ---
+    std::size_t computeListHash(const std::vector<ReplaceItemData>& list);
     Sci_Position advanceAfterMatch(const SearchResult& r);
     Sci_Position ensureForwardProgress(Sci_Position nextPos, const SearchResult& r);
-    void syncHistoryToCache(HWND hComboBox, const std::wstring& keyPrefix);
 
     //FileOperations
     std::wstring promptSaveListToCsv();
@@ -976,17 +975,15 @@ private:
     std::wstring unescapeCsvValue(const std::wstring& value);
     std::wstring unescapeOnlySequences(const std::wstring& value);
     std::vector<std::wstring> parseCsvLine(const std::wstring& line);
-
-    //Export
     void exportToBashScript(const std::wstring& fileName);
 
     //INI
     void saveSettings();
     int checkForUnsavedChanges();
     void loadSettings();
-    void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
+    void syncHistoryToCache(HWND hComboBox, const std::wstring& keyPrefix);
 
-    // Debug DPI Information
+    //Debug DPI Information
     void showDPIAndFontInfo();
 
 };
