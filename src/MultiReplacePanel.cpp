@@ -5583,6 +5583,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     // 6) CAP# globals (regex only)
     std::vector<std::string> capNames;
     if (regex) {
+        // get documentCodepage for Encoding
+        const int docCp = static_cast<int>(send(SCI_GETCODEPAGE));
+
         for (int i = 1; i <= MAX_CAP_GROUPS; ++i) {
             sptr_t len = send(SCI_GETTAG, i, 0, true);
             if (len < 0) { break; }
@@ -5591,8 +5594,14 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             if (len > 0) {
                 std::vector<char> buf(len + 1, '\0');
                 if (send(SCI_GETTAG, i,
-                    reinterpret_cast<sptr_t>(buf.data()), false) >= 0)
+                    reinterpret_cast<sptr_t>(buf.data()), false) >= 0) {
                     capVal.assign(buf.data());
+
+                    if (docCp != SC_CP_UTF8) {
+                        capVal = Encoding::wstringToUtf8(
+                            Encoding::bytesToWString(capVal, docCp));
+                    }
+                }
             }
             std::string capName = "CAP" + std::to_string(i);
             setLuaVariable(_luaState, capName, capVal);
