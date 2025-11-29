@@ -8471,7 +8471,6 @@ void MultiReplace::handleColumnGridTabsButton()
             if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
                 ::SetWindowText(h, L"⇥");
 
-            normalizeSelectionAfterCleanup();
             fixHighlightAtDocumentEnd();
 
             showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
@@ -8500,7 +8499,6 @@ void MultiReplace::handleColumnGridTabsButton()
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
             ::SetWindowText(h, L"⇥");
 
-        normalizeSelectionAfterCleanup();
         fixHighlightAtDocumentEnd();
 
         showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
@@ -9424,7 +9422,6 @@ void MultiReplace::findAllDelimitersInDocument() {
 void MultiReplace::findDelimitersInLine(LRESULT line) {
     // Initialize line information
     LineInfo lineInfo;
-    lineInfo.lineIndex = static_cast<size_t>(line);
 
     // Get line length
     LRESULT lineLength = send(SCI_LINELENGTH, line, 0);
@@ -9909,7 +9906,6 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, SIZE_T blockCou
 
         for (SIZE_T i = 0; i < blockCount; ++i) {
             LineInfo newLine;
-            newLine.lineIndex = lineNumber;
             newLine.lineLength = 0; // New line has no content initially
             newLine.positions.clear();
             newLines.push_back(newLine);
@@ -9922,10 +9918,6 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, SIZE_T blockCou
             newLines.end()
         );
 
-        // Update the indices of all subsequent lines
-        for (SIZE_T i = lineNumber; i < lineDelimiterPositions.size(); ++i) {
-            lineDelimiterPositions[i].lineIndex = i;
-        }
     }
     break;
 
@@ -9943,10 +9935,6 @@ void MultiReplace::updateDelimitersInDocument(SIZE_T lineNumber, SIZE_T blockCou
                 lineDelimiterPositions.begin() + endPos
             );
 
-            // Update the indices of all subsequent lines
-            for (SIZE_T i = lineNumber; i < lineDelimiterPositions.size(); ++i) {
-                lineDelimiterPositions[i].lineIndex = i;
-            }
         }
     }
     break;
@@ -10035,23 +10023,8 @@ void MultiReplace::handleClearDelimiterState() {
     }
     clearFlowTabsIfAny();
     isCaretPositionEnabled = false;
-    normalizeSelectionAfterCleanup();
 }
 
-void MultiReplace::normalizeSelectionAfterCleanup()
-{
-    // Normalize selection to avoid EOL-fill artifacts after destructive/visual cleanup.
-    const int  prevSelMode = (int)SendMessage(_hScintilla, SCI_GETSELECTIONMODE, 0, 0); // SC_SEL_*
-    const BOOL prevEolFilled = (BOOL)SendMessage(_hScintilla, SCI_GETSELEOLFILLED, 0, 0);
-
-    SendMessage(_hScintilla, SCI_SETSELECTIONMODE, SC_SEL_STREAM, 0);
-    SendMessage(_hScintilla, SCI_SETSELEOLFILLED, FALSE, 0);
-    SendMessage(_hScintilla, SCI_CLEARSELECTIONS, 0, 0); // clears multi/rect selections as well
-
-    SendMessage(_hScintilla, SCI_SETSELECTIONMODE, prevSelMode, 0);
-    SendMessage(_hScintilla, SCI_SETSELEOLFILLED, prevEolFilled, 0);
-    SendMessage(_hScintilla, SCI_COLOURISE, 0, -1);
-}
 
 /* For testing purposes only
 void MultiReplace::displayLogChangesInMessageBox() {

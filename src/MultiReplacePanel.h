@@ -194,7 +194,6 @@ struct DelimiterPosition {
 struct LineInfo {
     std::vector<DelimiterPosition> positions;
     LRESULT lineLength = 0; // how many chars total in this line
-    size_t lineIndex = 0;   // which line it is (for Fenwicksum queries)
 };
 
 struct ColumnInfo {
@@ -937,7 +936,6 @@ private:
     void processLogForDelimiters();
     void handleDelimiterPositions(DelimiterOperation operation);
     void handleClearDelimiterState();
-    void normalizeSelectionAfterCleanup();
 
     //Utilities
     std::string convertAndExtendW(const std::wstring& input, bool extended, UINT cp) const;
