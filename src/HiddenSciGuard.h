@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+#pragma once
+
 #include <windows.h>
 #include <shlwapi.h>           // For PathMatchSpecW
 #include <string>
@@ -30,7 +32,7 @@ extern NppData nppData;       // From your plugin definition
 class HiddenSciGuard {
 public:
     HiddenSciGuard() = default;
-    HiddenSciGuard::~HiddenSciGuard()
+    ~HiddenSciGuard()
     {
         if (hSci) {
             ::DestroyWindow(hSci);
@@ -44,7 +46,7 @@ public:
     HiddenSciGuard& operator=(const HiddenSciGuard&) = delete;
 
     // 0) Create the hidden Scintilla buffer
-    bool HiddenSciGuard::create()
+    bool create()
     {
         // Destroy existing hidden Scintilla if any (safe when null)
         if (hSci) {
@@ -126,7 +128,7 @@ public:
         const std::wstring fname = path.filename().wstring();
         const std::filesystem::path parentPath = path.parent_path();
 
-        // 2) Non-recursive folder excludes (!)  – only the *direct* parent folder
+        // 2) Non-recursive folder excludes (!) – only the *direct* parent folder
         if (!parentPath.empty()) {
             const std::wstring parentName = parentPath.filename().wstring();
             for (const auto& pat : exclude_folders)
@@ -134,7 +136,7 @@ public:
                     return false;
         }
 
-        // 3) Recursive folder excludes (!+)  – walk every ancestor folder
+        // 3) Recursive folder excludes (!+) – walk every ancestor folder
         for (auto dir = parentPath; !dir.empty() && dir != dir.root_path(); dir = dir.parent_path()) {
             const std::wstring dirName = dir.filename().wstring();
 
@@ -154,7 +156,7 @@ public:
             if (PathMatchSpecW(fname.c_str(), pat.c_str()))
                 return false;
 
-        // 5) File-level includes (*.cpp…)  – if no include pattern, everything left is in
+        // 5) File-level includes (*.cpp…) – if no include pattern, everything left is in
         if (include_patterns.empty())
             return true;
 
@@ -165,32 +167,47 @@ public:
         return false;
     }
 
-    // 3) Read file into string
+    // 3) Read file into string with size check and error handling
     bool loadFile(const std::filesystem::path& fp, std::string& out) const {
-        std::ifstream in(fp, std::ios::binary);
-        if (!in) return false;
-        out.assign(std::istreambuf_iterator<char>(in),
-            std::istreambuf_iterator<char>());
-        return true;
+        try {
+            // Skip files > 100 MB to prevent memory issues
+            std::error_code ec;
+            auto fileSize = std::filesystem::file_size(fp, ec);
+            if (ec || fileSize > 100 * 1024 * 1024) {
+                return false;
+            }
+
+            std::ifstream in(fp, std::ios::binary);
+            if (!in) return false;
+
+            out.reserve(static_cast<size_t>(fileSize));
+            out.assign(std::istreambuf_iterator<char>(in),
+                std::istreambuf_iterator<char>());
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
     }
 
-    // 4) Write string back to disk
+    // 4) Write string back to disk with success check
     bool writeFile(const std::filesystem::path& fp, const std::string& data) const {
         std::ofstream o(fp, std::ios::binary | std::ios::trunc);
         if (!o) return false;
         o.write(data.data(), data.size());
-        return true;
+        return o.good(); // Fixed: Check if write succeeded
     }
 
     // 5) Hidden-buffer helpers
-    // FIX: Null-safe method for setting the text
     void setText(const std::string& txt) {
+        if (!fn || !pData) return; // Basic null check
         fn(pData, SCI_CLEARALL, 0, 0);
         fn(pData, SCI_ADDTEXT, txt.length(), reinterpret_cast<sptr_t>(txt.data()));
     }
 
     std::string getText() const
     {
+        if (!fn || !pData) return {};
         Sci_Position len = fn(pData, SCI_GETLENGTH, 0, 0);
         if (len <= 0) return {};
         std::string buf(static_cast<size_t>(len), '\0');
@@ -206,6 +223,8 @@ public:
         const std::string& replUtf8,
         int searchFlags)
     {
+        if (!fn || !pData) return;
+
         fn(pData, SCI_SETSEARCHFLAGS, searchFlags, 0);
         fn(pData, SCI_BEGINUNDOACTION, 0, 0);
 

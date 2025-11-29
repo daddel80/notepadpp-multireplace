@@ -5585,18 +5585,18 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     if (regex) {
         // get documentCodepage for Encoding
         const int docCp = static_cast<int>(send(SCI_GETCODEPAGE));
-
         for (int i = 1; i <= MAX_CAP_GROUPS; ++i) {
             sptr_t len = send(SCI_GETTAG, i, 0, true);
             if (len < 0) { break; }
-
             std::string capVal;
             if (len > 0) {
-                std::vector<char> buf(len + 1, '\0');
+                if (tagBuffer.size() < static_cast<size_t>(len + 1)) {
+                    tagBuffer.resize(len + 1);
+                }
+                tagBuffer[0] = '\0';  // Ensure null-termination on short reads
                 if (send(SCI_GETTAG, i,
-                    reinterpret_cast<sptr_t>(buf.data()), false) >= 0) {
-                    capVal.assign(buf.data());
-
+                    reinterpret_cast<sptr_t>(tagBuffer.data()), false) >= 0) {
+                    capVal.assign(tagBuffer.data());
                     if (docCp != SC_CP_UTF8) {
                         capVal = Encoding::wstringToUtf8(
                             Encoding::bytesToWString(capVal, docCp));
