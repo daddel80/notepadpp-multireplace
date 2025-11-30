@@ -36,17 +36,22 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
   - [If-Then Logic](#if-then-logic)
   - [DEBUG option](#debug-option)
   - [Examples](#more-examples)
+  - [Engine Overview](#engine-overview)
 - [User Interaction and List Management](#user-interaction-and-list-management)
+  - [Entry Interaction and Limits](#entry-interaction-and-limits)
   - [Context Menu and Keyboard Shortcuts](#context-menu-and-keyboard-shortcuts)
   - [List Columns](#list-columns)
   - [List Toggling](#list-toggling)
+- [Column Locking](#column-locking)
 - [Data Handling](#data-handling)
   - [List Saving and Loading](#list-saving-and-loading)
-  - [Bash Script Export (optional)](#bash-script-export-optional)
-- [UI and Behavior Settings](#ui-and-behavior-settings)
-  - [Column Locking](#column-locking)
-  - [Configuration Settings](#configuration-settings)
-  - [Multilingual UI Support](#multilingual-ui-support)
+- [Settings and Customization](#settings-and-customization)
+  - [1. Search and Replace](#1-search-and-replace)
+  - [2. List View and Layout](#2-list-view-and-layout)
+  - [3. CSV Options](#3-csv-options)
+  - [4. Appearance](#4-appearance)
+  - [5. Variables and Automation](#5-variables-and-automation)
+- [Multilingual UI Support](#multilingual-ui-support)
 
 ## Key Features
 
@@ -56,8 +61,8 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
 - **Rule-Driven & Variable Replacements** – Lua-powered variables, conditions, and calculations enable dynamic, context-aware substitutions.
 - **External Lookup Tables** – Swap matches with values from external hash/lookup files—ideal for large or frequently updated mapping tables.
 - **Open Scripting API** – Add your own Lua functions to handle advanced formatting, data logging, and fully custom replacement logic.
-- **Precision Scopes & Selections** – Rectangle and multi-selection support, column scopes, and “replace at specific match” for pinpoint operations.
-- **Multi-Colour Highlighting** – Highlight search hits in up to 20 distinct colours for rapid visual confirmation.
+- **Precision Scopes & Selections** – Rectangle and multi-selection support, column scopes, and "replace at specific match" for pinpoint operations.
+- **Multi-Color Highlighting** – Highlight search hits in up to 20 distinct colors for rapid visual confirmation.
 
 <br>
 
@@ -117,13 +122,13 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
 - **Available Column Operations:**
   - **Sorting Lines by Columns**: Sort lines based on one or more columns in ascending or descending order. The sorting algorithm correctly handles mixed numeric and text values.  
     - **Smart Undo&nbsp;(Toggle Sort)**: A second click on the same sort button reverts the lines to their original order. This powerful undo works even if rows have been modified, added, or deleted after the initial sort.  
-    - **Exclude Header Lines**: You can protect header rows from being sorted. Configure the number of header rows via the `HeaderLines` parameter in the [`INI File`](#configuration-settings).
+    - **Exclude Header Lines**: You can protect header rows from being sorted. Configure the number of header rows in [Settings > CSV Options](#3-csv-options).
   - **Deleting Multiple Columns**: Remove specified columns at once, automatically cleaning up obsolete delimiters.
   - **Clipboard Column Copying**: Copy the content of specified columns, including their delimiters, to the clipboard.
   - **Flow Tabs Alignment**: Visually aligns columns in tab-delimited and CSV files for easier reading and editing.  
     - For CSV files, temporary tabs are inserted to simulate uniform column spacing. For tab-delimited files, existing tabs are realigned.  
     - The **Align Columns** button toggles alignment on or off; pressing it again restores the original spacing.
-    - Numeric values are right-aligned by default; this behavior can be turned off in the [`INI File`](#configuration-settings) using `FlowTabsNumericAlign`.
+    - Numeric values are right-aligned by default; this behavior can be turned off in [Settings > CSV Options](#3-csv-options).
 
 ### Execution Targets  
 Execution targets define **which files** an operation is applied to. They are accessible via the **Replace All** split-button menu.
@@ -137,7 +142,7 @@ Execution targets define **which files** an operation is applied to. They are ac
     - **Directory:** The starting folder for the file search.
     - **Filters:** Space-separated list of patterns to include or exclude files and folders.
     - **In Subfolders:** Recursively include all subdirectories.
-    - **In Hidden Files;** Include hidden files and folders.
+    - **In Hidden Files:** Include hidden files and folders.
 
 **Filter Syntax**
 
@@ -203,7 +208,7 @@ Enable the '**Use Variables**' option to enhance replacements with calculations 
 | **MATCH**| Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
 | **FNAME**| Filename or window title for new, unsaved files. |
 | **FPATH**| Full path including the filename, or empty for new, unsaved files. |
-| **CAP1**, **CAP2**, ...  | These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.|
+| **CAP1**, **CAP2**, ...  | These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations. Note that their standard counterparts (`$1`, `$2`, ...) cannot be used in this environment.|
 
 **Note:**
 - `FNAME` and `FPATH` are updated for each file processed by `Replace All in All Open Docs` and `Replace All in Files`. This ensures that variables always refer to the file currently being modified.
@@ -407,7 +412,6 @@ return {
     return match
   end,
 }
-
 ```
 
 <br>
@@ -449,13 +453,13 @@ If-then logic is integral for dynamic replacements, allowing users to set custom
 
 **Note**: Do not embed `cond()`, `set()`, or `vars()` within if statements; `if statements` are exclusively for adjusting custom variables.
 
-##### Syntax Combinations
+#### Syntax Combinations
 - `if condition then ... end`
 - `if condition then ... else ... end`
 - `if condition then ... elseif another_condition then ... end`
 - `if condition then ... elseif another_condition then ... else ... end`
 
-##### Example
+#### Example
 This example shows how to use `if` statements with `cond()` to manage variables based on conditions:
 
 `vars({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end`
@@ -486,38 +490,44 @@ The `DEBUG` option lets you inspect global variables during replacements. When e
 | `-`              | `cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), "*", " ")`                    | No    | No        | Draws a sine wave across a canvas of '-' characters spanning at least 20 lines and 80 characters per line. |
 | `^(.*)$`         | `vars({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;`                                   | Yes   | No        | Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses `MATCH_PREV` to identify and remove consecutive duplicates. |
 
-#### Engine Overview
+<br>
+
+### Engine Overview
 MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math operations and string methods. Refer to [Lua String Manipulation](https://www.lua.org/manual/5.4/manual.html#6.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.4/manual.html#6.6) for more information.
 
 <br>
 
-### User Interaction and List Management
-Manage search and replace strings within the list using the context menu, which provides comprehensive functionalities accessible by right-clicking on an entry, using direct keyboard shortcuts, or mouse interactions. Here are the detailed actions available:
+## User Interaction and List Management
+Manage search and replace strings within the list using the context menu, which provides comprehensive functionalities accessible by right-clicking on an entry, using direct keyboard shortcuts, or mouse interactions.
 
-#### Context Menu and Keyboard Shortcuts
+### Entry Interaction and Limits
+- **Manage Entries**: Manage search and replace strings in a list, and enable or disable entries for replacement, highlighting or searching within the list.
+- **Highlighting**: Highlight multiple find words in unique colors for better visual distinction, with over 20 distinct colors available.
+- **Character Limit**: Find and replace texts have no fixed length limit. Very long texts may slow down processing.
+
+### Context Menu and Keyboard Shortcuts
 Right-click on any entry in the list or use the corresponding keyboard shortcuts to access these options:
 
-| Menu Item                | Shortcut      | Description                                     |
-|--------------------------|---------------|-------------------------------------------------|
+| Menu Item                | Shortcut      | Description                                                 |
+|--------------------------|---------------|-------------------------------------------------------------|
 | Undo                     | Ctrl+Z        | Reverts the last change made to the list, including sorting and moving rows. |
 | Redo                     | Ctrl+Y        | Reapplies the last action that was undone, restoring previous changes. |
 | Transfer to Input Fields | Alt+Up        | Transfers the selected entry to the input fields for editing.|
-| Search in List           | Ctrl+F        | Initiates a search within the list entries. Inputs are entered in the "Find what" and "Replace with" fields.|
-| Cut                      | Ctrl+X        | Cuts the selected entry to the clipboard.       |
-| Copy                     | Ctrl+C        | Copies the selected entry to the clipboard.     |
-| Paste                    | Ctrl+V        | Pastes content from the clipboard into the list.|
-| Edit Field               |               | Opens the selected list entry for direct editing.|
-| Delete                   | Del           | Removes the selected entry from the list.       |
-| Select All               | Ctrl+A        | Selects all entries in the list.                |
+| Search in List           | Ctrl+F        | Initiates a search within the list entries. Inputs are entered in the "Find what" and "Replace with" fields. |
+| Cut                      | Ctrl+X        | Cuts the selected entry to the clipboard.                   |
+| Copy                     | Ctrl+C        | Copies the selected entry to the clipboard.                 |
+| Paste                    | Ctrl+V        | Pastes content from the clipboard into the list.            |
+| Edit Field               |               | Opens the selected list entry for direct editing.           |
+| Delete                   | Del           | Removes the selected entry from the list.                   |
+| Select All               | Ctrl+A        | Selects all entries in the list.                            |
 | Enable                   | Alt+E         | Enables the selected entries, making them active for operations. |
 | Disable                  | Alt+D         | Disables the selected entries to prevent them from being included in operations. |
 
-**Note on the 'Edit Field' option:**
-The edit field supports multiple lines, preserving text with line breaks. This simplifies inserting and managing complex, structured 'Use Variables' statements.
+**Note on 'Edit Field':** The edit field supports multiple lines, simplifying the management of complex 'Use Variables' statements.
 
-Additional Interactions:
-- **Space Key**: Toggles the activation state of selected entries, similar to using Alt+A to enable or Alt+D to disable.
-- **Double-Click**: Double-clicking on a list entry allows direct in-place editing. This behavior can be adjusted via the [`DoubleClickEdits`](#configuration-settings) parameter.
+**Additional Interactions:**
+- **Space Key**: Toggles the activation state of selected entries.
+- **Double-Click**: Allows direct in-place editing (configurable in Settings).
 
 ### List Columns
 - **Find**: The text or pattern to search for.
@@ -529,123 +539,105 @@ Additional Interactions:
   - **E**: Extended search mode.
   - **R**: Regular expression mode.
 - **Additional Columns**:
-  - **Find Count**: Displays the number of times each 'Find what' string is detected.
-  - **Replace Count**: Shows the number of replacements made for each 'Replace with' string.
+  - **Matches**: Displays the number of times each 'Find what' string is detected.
+  - **Replaced**: Shows the number of replacements made for each 'Replace with' string.
   - **Comments**: Add custom comments to entries for annotations or additional context.
   - **Delete**: Contains a delete button for each entry, allowing quick removal from the list.
 
 You can manage the visibility of the additional columns via the **Header Column Menu** by right-clicking on the header row.
 
 ### List Toggling
-- "Use List" checkbox toggles operation application between all list entries or the "Find what:" and "Replace with:" fields.
+- The **"Use List"** button toggles between processing the entire list or just the single "Find what" / "Replace with" fields.
 
-### Entry Interaction and Limits
-- **Manage Entries**: Manage search and replace strings in a list, and enable or disable entries for replacement, highlighting or searching within the list.
-- **Highlighting**: Highlight multiple find words in unique colors for better visual distinction, with over 20 distinct colors available.
-- **Character Limit**: Find and replace texts have no fixed length limit. Very long texts may slow down processing.
+## Column Locking
 
-<br>
+You can lock specific column widths to prevent them from resizing automatically when the window layout changes. This is particularly useful for keeping key columns like **Find**, **Replace**, or **Comments** visible at a fixed size.
+
+- **How to Lock:** Double-click the column divider line in the list header.
+- **Visual Feedback:** A lock icon (🔒) appears in the header of the locked column.
+- **Effect:** Locked columns maintain their exact pixel width, while unlocked columns adjust dynamically to fill the remaining space.
 
 ## Data Handling
 
 ### List Saving and Loading
--   **Save List** and **Load List** buttons allow you to store and reload your current list of search and replace entries (including all options and states) as a CSV file.
--   List files can also be loaded by dragging and dropping them onto the list area.
--   The CSV files follow RFC 4180 standards for compatibility with other tools.
--   Saved lists make it easy to reuse and share search/replace workflows across sessions and projects.
+- **Save List** / **Load List**: Store and reload your search/replace entries as CSV files.
+- **Drag & Drop**: You can load lists by dragging CSV files onto the plugin window.
+- **Format**: Files follow RFC 4180 CSV standards.
 
-### Bash Script Export (optional)
--   You can export your search and replace list as a standalone bash script for use outside of Notepad++.
--   **Note:** This feature is disabled by default for most users. To enable it, set `BashExport=1` in the [`INI file`](#configuration-settings).
--   List entries using the "Use Variables" option are skipped, as variables are not supported in bash scripts.
--   The bash export does not support the value `\0` in Extended mode.
--   The script aims to reproduce the replacement logic as closely as possible, but some limitations exist due to differences in scripting environments.
+## Settings and Customization
+
+You can customize the behavior and appearance of MultiReplace via the dedicated **Settings Panel**. To open it, click the **Settings** entry in the plugin menu or the context menu.
+
+### 1. Search and Replace
+Control the behavior of search operations and cursor movement.
+
+- **Replace: Don't move to the following occurrence**
+  - If checked, the cursor remains on the current match after clicking "Replace".
+  - If unchecked, it automatically jumps to the next match (standard behavior).
+- **Find: Search from cursor position**
+  - If checked, "Find All" and "Replace All" start from the current cursor position.
+  - If unchecked, operations always process the entire defined scope (e.g., the whole document).
+- **Mute all sounds**
+  - Disables the notification sound (beep) when a search yields no results. The window will still flash visually to indicate "not found".
+
+### 2. List View and Layout
+Manage the visual elements and behavior of the replacement list to save screen space or increase information density.
+
+- **Visible Columns**
+  - **Matches**: Toggles the column displaying the number of hits for each entry.
+  - **Replaced**: Toggles the column displaying the number of replacements made.
+  - **Comments**: Toggles the user comment column.
+  - **Delete Button**: Toggles the column containing the 'X' button for deleting rows.
+- **List Results**
+  - **Show list statistics**: Displays a summary line below the list (Active entries, Total items, Selected items).
+  - **Find All: Group hits by list entry**:
+    - **On**: Search results in the docking window are grouped hierarchically by the list entry that found them.
+    - **Off**: Results are displayed as a flat list sorted by their position in the document.
+- **List Interaction & View**
+  - **Highlight current match in list**: Automatically highlights the list row corresponding to the current find/replace operation.
+  - **Edit in-place on double-click**:
+    - **On**: Double-clicking a cell allows editing the text directly in the list.
+    - **Off**: Double-clicking transfers the entry content to the top input fields.
+  - **Show full text on hover**: Displays a tooltip with the complete text for long entries that are truncated in the view.
+  - **Expanded edit height (lines)**: Defines how many lines the in-place edit box expands to when modifying multiline text (Range: 2–20).
+
+### 3. CSV Options
+Settings specific to the CSV column manipulation and alignment features.
+
+- **Flow Tabs: Right-align numeric columns**
+  - When using the **Flow Tabs** feature (Column Alignment), numeric values will be right-aligned within their columns for better readability. Text remains left-aligned.
+- **Flow Tabs: Don't show intro message**
+  - Suppresses the informational dialog that appears when activating Flow Tabs for the first time.
+- **CSV Sort: Header lines to exclude**
+  - Specifies the number of lines at the top of the file to protect from sorting operations (e.g., set to `1` to keep the header row fixed at the top).
+
+### 4. Appearance
+Customize the look and feel of the plugin window.
+
+- **Transparency**
+  - **Foreground**: Sets the window opacity when the plugin is active/focused.
+  - **Background**: Sets the window opacity when the plugin loses focus (e.g., when you click back into the editor).
+- **Interface Scaling**
+  - **Zoom Level**: Scales the entire plugin UI (buttons, text, list size). Useful for high-DPI monitors or accessibility preferences (Range: 50% to 200%).
+- **Tooltips**
+  - **Enable tooltips**: Toggles the helper popups that appear when hovering over buttons and options.
+
+### 5. Variables and Automation
+Advanced settings for scripting.
+
+- **Enable Lua safe mode**
+  - **Checked**: Disables Lua libraries that access the file system (`os`, `io`, `package`, `dofile`, etc.) for security.
+  - **Unchecked**: Full Lua functionality is enabled (required for advanced commands like `lvars`, `lkp`, and `lcmd`).
 
 <br>
 
-## UI and Behavior Settings
+> **Note:** All settings configured in this panel are automatically saved to `MultiReplace.ini` in your Notepad++ plugins configuration directory.
 
-### Column Locking
+## Multilingual UI Support
 
-Lock column widths to prevent resizing during window adjustments. This is useful for key columns like **Find**, **Replace**, and **Comments**.
-- **How to Lock**: Double-click the column divider in the header to toggle locking. A lock icon appears in the header for locked columns.
-- **Effect**: Locked columns keep their width fixed, while unlocked ones adjust dynamically.
+MultiReplace supports multiple languages. The plugin automatically detects the language selected in Notepad++ and applies the corresponding translation if available.
 
-### Configuration Settings
+You can customize the translations by editing the `languages.ini` file located in:
+`C:\Program Files\Notepad++\plugins\MultiReplace\` (or your specific installation path).
 
-The MultiReplace plugin provides several configuration options, including transparency, scaling, and behavior settings, that can be adjusted via the INI file located at:
-`C:\Users\<Username>\AppData\Roaming\Notepad++\plugins\Config\MultiReplace.ini`
-
-#### INI File Settings:
-
-- **ScaleFactor**: Controls the scaling of the plugin window and UI elements.
-  - **Default**: `ScaleFactor=1.0` (normal size).
-  - **Range**: 0.5 to 2.0.
-  - **Description**: Adjust this value to resize the plugin window and UI elements. A lower value shrinks the interface, while a higher value enlarges it.
-
-- **Transparency Settings**: Controls the transparency of the plugin window depending on focus.
-  - `ForegroundTransparency`: Transparency level when in focus (0-255, default 255).
-  - `BackgroundTransparency`: Transparency level when not in focus (0-255, default 190).
-
-- **EditFieldSize**: Configures the size adjustment of the edit field in the list during toggling.
-  - **Default**: `EditFieldSize=5` (normal size).
-  - **Range**: 2 to 20.
-  - **Description**: Sets the factor by which the edit field in the list expands or collapses when toggling its size.
-
-- **HeaderLines**: Specifies the number of top lines to exclude from sorting as headers.
-  - **Default**: `HeaderLines=1` (first line is excluded from sorting).
-  - **Description**: Set this value to exclude a specific number of lines at the top of the file from being sorted during CSV operations. Useful for preserving header rows in CSV files.
-  - **Note**: If set to `0`, no lines are excluded from sorting.
-
-- **HoverText**: Enables or disables the display of full text for truncated list entries when hovering over them.
-  - **Default**: `HoverText=1` (enabled).
-  - **Description**: When enabled (`1`), hovering over a truncated entry shows its full content in a pop-up. Set to `0` to disable this functionality.
-
-- **Tooltips**: Controls the display of tooltips in the UI.
-  - **Default**: `Tooltips=1` (enabled).
-  - **Description**: To disable tooltips, set `Tooltips=0` in the INI file.
-
-- **DoubleClickEdits**: Controls the behavior of double-clicking on list entries.
-  - **Default**: `DoubleClickEdits=1` (enabled).
-  - **Description**: When enabled (`1`), double-clicking on a list entry allows direct in-place editing. When disabled (`0`), double-clicking transfers the entry to the input fields for editing.
-
-- **AlertNotFound**: Controls notifications for unsuccessful searches.
-  - **Default**: `AlertNotFound=1` (enabled).
-  - **Description**: To disable the bell sound for unsuccessful searches, set `AlertNotFound=0` in the INI file.
-
-- **ListStatistics**: Controls whether list statistics are displayed below the list.
-  - **Default**: `ListStatistics=0` (disabled).
-  - **Description**: When enabled (`1`), a compact statistics field appears below the list, showing:
-    - **A**: Number of activated entries
-    - **L**: Total number of list items
-    - **R**: Index of the currently focused row
-    - **S**: Number of selected items
-
-- **StayAfterReplace**: Controls whether it jumps to the next match after pressing Replace.
-  - **Default**: `StayAfterReplace=0` (disabled).
-  - **Description**: When enabled (`1`), pressing the **Replace** button replaces the current match without jumping to the next one. When disabled (`0`), it automatically jumps to the next match after replacing.
-
-- **AllFromCursor**: Controls whether “Find All”, “Replace All”, and “Mark” start from the beginning or from the current cursor position.
-  - **Default**: `AllFromCursor=0` (disabled).
-  - **Description**: When enabled (`1`) these “All” actions start at the current cursor position. With **Wrap Around** enabled, they always start at the beginning of the document and cover the entire file.
-
-- **GroupResults**: Controls how 'Find All' search results are displayed.
-  - **Default**: `GroupResults=0` (disabled).
-  - **Description**: This option changes how 'Find All' results are presented. When enabled (`1`), results are grouped by their source list entry, creating a categorized view. When disabled (`0`), all results are displayed as a single, flat list, sorted by their position in the document, without any categorization.
-
-- **SafeMode**: Controls which standard Lua libraries are available.
-  - **Default**: `SafeMode=0` (disabled).
-  - **Description**: For enhanced security, enabling (`1`) disables all libraries (`os`, `io`, `package`, `debug`) and functions (`dofile`, `load`, `loadfile`, `require`, `collectgarbage`) that provide file or system access. This also disables file-dependent commands like `lvars`, `lkp`, and `lcmd`. The `string`, `table`, `math`, `utf8`, and `base` libraries remain available. When disabled (`0`), all standard libraries are loaded.
- 
-- **FlowTabsNumericAlign**: Controls numeric alignment during column formatting.
-
-  - **Default**: `FlowTabsNumericAlign=1` (enabled).
-  - **Description**: When enabled (1), numeric values in CSV or tab-delimited text are right-aligned (or aligned at the decimal point) within their columns when Flow Tabs are active. When disabled (0), numeric alignment is skipped and spacing remains unchanged.
-
-
-### Multilingual UI Support
-
-The UI language settings for the MultiReplace plugin can be customized by adjusting the `languages.ini` file located in `C:\Program Files\Notepad++\plugins\MultiReplace\`. These adjustments will ensure that the selected language in Notepad++ is applied within the plugin. 
-
-Contributions to the `languages.ini` file on GitHub are welcome for future versions. Find the file [here](https://github.com/daddel80/notepadpp-multireplace/blob/main/languages.ini).
-
+Contributions to the `languages.ini` file on GitHub are welcome!
