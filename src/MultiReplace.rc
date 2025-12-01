@@ -21,10 +21,10 @@
 #define STR(x) STR_HELPER(x)
 
 /* VERSION DEFINITIONS */
-#define VER_MAJOR   4
-#define VER_MINOR   6
+#define VER_MAJOR   5
+#define VER_MINOR   0
 #define VER_RELEASE 0
-#define VER_BUILD   33
+#define VER_BUILD   34
 #define VER_STRING  STR(VER_MAJOR) "." STR(VER_MINOR) "." STR(VER_RELEASE) "." STR(VER_BUILD)
 
 VS_VERSION_INFO VERSIONINFO

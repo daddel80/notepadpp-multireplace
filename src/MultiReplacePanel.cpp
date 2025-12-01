@@ -8457,7 +8457,7 @@ void MultiReplace::handleColumnGridTabsButton()
         }
         else
         {
-            // Document has no padding but UI thought it was on (user undo etc.).
+            // Document has no padding but UI thought it was on (visuals-only mode).
             // -> Mark as inactive, drop visuals, update button to "⇥".
             ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
             ColumnTabs::CT_ResetFlowVisualState();
@@ -8473,6 +8473,9 @@ void MultiReplace::handleColumnGridTabsButton()
 
             fixHighlightAtDocumentEnd();
 
+            // Force Scintilla to recalculate word wrapping after visual changes
+            forceWrapRecalculation();
+
             showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
         }
 
@@ -8486,7 +8489,7 @@ void MultiReplace::handleColumnGridTabsButton()
     // CASE A: Padding present (and _flowTabsActive == true) -> TURN OFF fully
     if (hasPadNow)
     {
-        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);               // remove inserted spaces/tabs
+        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
         ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
         ColumnTabs::CT_ResetFlowVisualState();
 
@@ -8500,6 +8503,9 @@ void MultiReplace::handleColumnGridTabsButton()
             ::SetWindowText(h, L"⇥");
 
         fixHighlightAtDocumentEnd();
+
+        // Force Scintilla to recalculate word wrapping after padding removal
+        forceWrapRecalculation();
 
         showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
         g_prevBufId = bufId;
@@ -8555,7 +8561,6 @@ void MultiReplace::handleColumnGridTabsButton()
 
     opt.oneFlowTabOnly = true;
 
-    // --- ONLY CHANGE START: refine failure branch to account for numeric-only success ---
     bool nothingToAlign = false;
     if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt, &nothingToAlign)) {
         send(SCI_ENDUNDOACTION, 0, 0);
@@ -8581,7 +8586,6 @@ void MultiReplace::handleColumnGridTabsButton()
             nothingToAlign ? MessageStatus::Info : MessageStatus::Error);
         return;
     }
-    // --- ONLY CHANGE END ---
 
     // All text modifications that belong to this "TURN ON" action are done.
     send(SCI_ENDUNDOACTION, 0, 0);
@@ -8610,8 +8614,8 @@ void MultiReplace::handleColumnGridTabsButton()
     if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
         ::SetWindowText(h, L"⇤");
 
-    showStatusMessage(LM.get(nowHasPads ? L"status_tabs_inserted"  // with inserts
-        : L"status_tabs_aligned"), // visuals only
+    showStatusMessage(LM.get(nowHasPads ? L"status_tabs_inserted"
+        : L"status_tabs_aligned"),
         MessageStatus::Success);
 
     // Track active buffer for cleanup-on-switch logic
@@ -8646,6 +8650,7 @@ void MultiReplace::clearFlowTabsIfAny()
         _flowTabsActive = false;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
             ::SetWindowText(h, L"⇥");
+        forceWrapRecalculation();
     }
 }
 
@@ -9719,11 +9724,7 @@ void MultiReplace::handleClearColumnMarks() {
     isCaretPositionEnabled = false;
 
     // Force Scintilla to recalculate word wrapping if highlighting affected layout
-    int originalWrapMode = static_cast<int>(send(SCI_GETWRAPMODE));
-    if (originalWrapMode != SC_WRAP_NONE) {
-        send(SCI_SETWRAPMODE, SC_WRAP_NONE, 0);
-        send(SCI_SETWRAPMODE, originalWrapMode, 0);
-    }
+    forceWrapRecalculation();
 
     // Remove tab from tracked highlighted tabs
     highlightedTabs.clear(currentBufferID);
@@ -10730,6 +10731,14 @@ std::size_t MultiReplace::computeListHash(const std::vector<ReplaceItemData>& li
 
 void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {
     ::SetDlgItemTextW(hDlg, itemID, text.c_str());
+}
+
+void MultiReplace::forceWrapRecalculation() {
+    int originalWrapMode = static_cast<int>(send(SCI_GETWRAPMODE));
+    if (originalWrapMode != SC_WRAP_NONE) {
+        send(SCI_SETWRAPMODE, SC_WRAP_NONE, 0);
+        send(SCI_SETWRAPMODE, originalWrapMode, 0);
+    }
 }
 
 #pragma endregion

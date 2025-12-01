@@ -962,6 +962,7 @@ private:
     std::size_t computeListHash(const std::vector<ReplaceItemData>& list);
     Sci_Position advanceAfterMatch(const SearchResult& r);
     Sci_Position ensureForwardProgress(Sci_Position nextPos, const SearchResult& r);
+    void MultiReplace::forceWrapRecalculation();
 
     //FileOperations
     std::wstring promptSaveListToCsv();
