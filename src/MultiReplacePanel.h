@@ -852,7 +852,7 @@ private:
     void updateFilePathCache(const std::filesystem::path* explicitPath = nullptr);
     void setLuaFileVars(LuaVariables& vars);
     bool initLuaState();
-    bool compileLuaReplaceCode(const std::string& luaCode);
+    bool ensureLuaCodeCompiled(const std::string& luaCode);
     static int safeLoadFileSandbox(lua_State* L);
     static void applyLuaSafeMode(lua_State* L);
 

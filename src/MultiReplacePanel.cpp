@@ -5049,7 +5049,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             // --- Lua Variable Expansion ---
             if (itemData.useVariables) {
                 std::string luaTemplateUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
-                if (!compileLuaReplaceCode(luaTemplateUtf8)) {
+                if (!ensureLuaCodeCompiled(luaTemplateUtf8)) {
                     return false;
                 }
 
@@ -5156,7 +5156,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     std::string luaTemplateUtf8;
     if (itemData.useVariables) {
         luaTemplateUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
-        if (!compileLuaReplaceCode(luaTemplateUtf8)) {
+        if (!ensureLuaCodeCompiled(luaTemplateUtf8)) {
             return false;
         }
     }
@@ -5290,7 +5290,7 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                     std::string localReplaceTextUtf8 = Encoding::wstringToUtf8(replaceListData[i].replaceText);
 
                     // Compile the Lua code once and cache it
-                    if (!compileLuaReplaceCode(localReplaceTextUtf8)) {
+                    if (!ensureLuaCodeCompiled(localReplaceTextUtf8)) {
                         return false;
                     }
 
@@ -5522,7 +5522,7 @@ bool MultiReplace::initLuaState()
     return true;
 }
 
-bool MultiReplace::compileLuaReplaceCode(const std::string& luaCode)
+bool MultiReplace::ensureLuaCodeCompiled(const std::string& luaCode)
 {
     // Compile only if changed or not compiled yet
     if (luaCode == _lastCompiledLuaCode && _luaCompiledReplaceRef != LUA_NOREF) {
