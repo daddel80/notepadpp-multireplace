@@ -5048,8 +5048,10 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
             // --- Lua Variable Expansion ---
             if (itemData.useVariables) {
-                // Direct conversion for single replace
-                std::string luaWorkingUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
+                std::string luaTemplateUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
+                if (!compileLuaReplaceCode(luaTemplateUtf8)) {
+                    return false;
+                }
 
                 LuaVariables vars;
                 // Fill vars struct with context for the current match.
@@ -5072,12 +5074,12 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                     vars.MATCH = Encoding::wstringToUtf8(Encoding::bytesToWString(vars.MATCH, documentCodepage));
                 }
 
-                if (!resolveLuaSyntax(luaWorkingUtf8, vars, skipReplace, itemData.regex)) {
+                if (!resolveLuaSyntax(luaTemplateUtf8, vars, skipReplace, itemData.regex)) {
                     return false;
                 }
 
                 // Convert the result from Lua (UTF-8) to the final document codepage.
-                finalReplaceText = convertAndExtendW(Encoding::utf8ToWString(luaWorkingUtf8), itemData.extended, documentCodepage);
+                finalReplaceText = convertAndExtendW(Encoding::utf8ToWString(luaTemplateUtf8), itemData.extended, documentCodepage);
             }
             else {
                 // Case without variables: convert once using the safe helper.
@@ -5109,7 +5111,6 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
     }
     return false; // No replacement was made.
 }
-
 bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, size_t itemIndex)
 {
     if (itemData.findText.empty() && !itemData.useVariables) {
