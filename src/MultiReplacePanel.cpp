@@ -5048,10 +5048,8 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
             // --- Lua Variable Expansion ---
             if (itemData.useVariables) {
-                std::string luaTemplateUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
-                if (!compileLuaReplaceCode(luaTemplateUtf8)) {
-                    return false;
-                }
+                // Direct conversion for single replace
+                std::string luaWorkingUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
 
                 LuaVariables vars;
                 // Fill vars struct with context for the current match.
@@ -5074,12 +5072,12 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                     vars.MATCH = Encoding::wstringToUtf8(Encoding::bytesToWString(vars.MATCH, documentCodepage));
                 }
 
-                if (!resolveLuaSyntax(luaTemplateUtf8, vars, skipReplace, itemData.regex)) {
+                if (!resolveLuaSyntax(luaWorkingUtf8, vars, skipReplace, itemData.regex)) {
                     return false;
                 }
 
                 // Convert the result from Lua (UTF-8) to the final document codepage.
-                finalReplaceText = convertAndExtendW(Encoding::utf8ToWString(luaTemplateUtf8), itemData.extended, documentCodepage);
+                finalReplaceText = convertAndExtendW(Encoding::utf8ToWString(luaWorkingUtf8), itemData.extended, documentCodepage);
             }
             else {
                 // Case without variables: convert once using the safe helper.
@@ -5188,37 +5186,39 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
             // --- Lua Variable Expansion ---
             if (itemData.useVariables) {
-                std::string luaWorkingUtf8 = luaTemplateUtf8; // Use a fresh copy of the template.
-                LuaVariables vars;
-                // (Fill vars struct - this part is identical in both functions)
+                // Track line position for LCNT (needed even for skipped hits to maintain correct count)
                 int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
-                int previousLineStartPos = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
-                setLuaFileVars(vars);
-                if (context.isColumnMode) {
-                    ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
-                    vars.COL = static_cast<int>(columnInfo.startColumnIndex);
-                }
                 if (currentLineIndex != prevLineIdx) { lineFindCount = 0; prevLineIdx = currentLineIndex; }
                 ++lineFindCount;
-                vars.CNT = findCount;
-                vars.LCNT = lineFindCount;
-                vars.APOS = static_cast<int>(searchResult.pos) + 1;
-                vars.LINE = currentLineIndex + 1;
-                vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPos + 1;
 
-                // Convert the MATCH variable to UTF-8 for Lua if the document is ANSI.
-                vars.MATCH = searchResult.foundText;
-                if (documentCodepage != SC_CP_UTF8) {
-                    vars.MATCH = Encoding::wstringToUtf8(Encoding::bytesToWString(vars.MATCH, documentCodepage));
-                }
+                // Only run Lua if we actually intend to replace this hit
+                if (replaceThisHit) {
+                    std::string luaWorkingUtf8 = luaTemplateUtf8;
+                    LuaVariables vars;
+                    int previousLineStartPos = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
+                    setLuaFileVars(vars);
+                    if (context.isColumnMode) {
+                        ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
+                        vars.COL = static_cast<int>(columnInfo.startColumnIndex);
+                    }
+                    vars.CNT = findCount;
+                    vars.LCNT = lineFindCount;  // Jetzt korrekt!
+                    vars.APOS = static_cast<int>(searchResult.pos) + 1;
+                    vars.LINE = currentLineIndex + 1;
+                    vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPos + 1;
 
-                if (!resolveLuaSyntax(luaWorkingUtf8, vars, skipReplace, itemData.regex)) {
-                    return false;
-                }
+                    vars.MATCH = searchResult.foundText;
+                    if (documentCodepage != SC_CP_UTF8) {
+                        vars.MATCH = Encoding::wstringToUtf8(Encoding::bytesToWString(vars.MATCH, documentCodepage));
+                    }
 
-                // Convert the result from Lua (UTF-8) to the final document codepage.
-                if (replaceThisHit && !skipReplace) {
-                    finalReplaceText = convertAndExtendW(Encoding::utf8ToWString(luaWorkingUtf8), itemData.extended, documentCodepage);
+                    if (!resolveLuaSyntax(luaWorkingUtf8, vars, skipReplace, itemData.regex)) {
+                        return false;
+                    }
+
+                    if (!skipReplace) {
+                        finalReplaceText = convertAndExtendW(Encoding::utf8ToWString(luaWorkingUtf8), itemData.extended, documentCodepage);
+                    }
                 }
             }
 
