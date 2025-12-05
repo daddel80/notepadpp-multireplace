@@ -24,6 +24,7 @@
 
 MultiReplace _MultiReplace;
 MultiReplaceConfigDialog _MultiReplaceConfig;
+AboutDialog _AboutDialog;
 
 //INT_PTR CALLBACK DialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
@@ -62,6 +63,7 @@ void pluginCleanUp()
 void commandMenuInit()
 {
     LanguageManager& LM = LanguageManager::instance();
+
     //--------------------------------------------//
     //-- STEP 3. CUSTOMIZE YOUR PLUGIN COMMANDS --//
     //--------------------------------------------//
@@ -134,7 +136,8 @@ void openHelpLink()
 
 void about()
 {
-    ShowAboutDialog(nppData._nppHandle);
+    _AboutDialog.init(hInst, nppData._nppHandle);
+    _AboutDialog.doDialog();
 }
 
 void multiReplaceConfig()
@@ -149,5 +152,3 @@ void multiReplaceConfig()
 
     _MultiReplaceConfig.display(true);
 }
-
-

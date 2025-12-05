@@ -14,67 +14,91 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#include <windows.h>
-#include <windowsx.h>
-#include <commctrl.h>
-#include "StaticDialog/resource.h"
 #include "AboutDialog.h"
+#include "StaticDialog/resource.h"
 #include "LanguageManager.h"
+#include "NppStyleKit.h"
+#include <commctrl.h>
+#include <shellapi.h>
 
 const char eT[] = { 102, 111, 114, 32, 65, 100, 114, 105, 97, 110, 32, 97, 110, 100, 32, 74, 117, 108, 105, 97, 110, 0 };
-bool isDT = false;
+static bool isDT = false;
+static TCHAR oT[MAX_PATH] = { 0 };
 
-LRESULT CALLBACK WebsiteLinkProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+static const COLORREF LINK_COLOR_LIGHT = RGB(0, 102, 204);    // Blue for light mode
+static const COLORREF LINK_COLOR_DARK = RGB(100, 149, 237);   // Cornflower blue for dark mode
+
+AboutDialog::~AboutDialog()
 {
-    UNREFERENCED_PARAMETER(dwRefData);
+    if (_hFont) {
+        DeleteObject(_hFont);
+        _hFont = nullptr;
+    }
+    if (_hUnderlineFont) {
+        DeleteObject(_hUnderlineFont);
+        _hUnderlineFont = nullptr;
+    }
+}
 
-    PAINTSTRUCT ps;
-    HDC hdc = NULL;
-    HFONT hOldFont = NULL;
-    HFONT hUnderlineFont = NULL;
-    LOGFONT lf = { 0 };
-    TCHAR szWinText[MAX_PATH];
-    RECT rect;
+void AboutDialog::doDialog()
+{
+    if (!isCreated()) {
+        create(IDD_ABOUT_DIALOG);
+    }
+    goToCenter();
+    display(true);
+}
+
+LRESULT CALLBACK AboutDialog::WebsiteLinkProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+{
+    (void)dwRefData;
 
     switch (uMsg)
     {
     case WM_PAINT:
     {
-        hdc = BeginPaint(hwnd, &ps);
-        SetTextColor(hdc, RGB(0, 0, 255));
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+
+        // Determine if dark mode
+        bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+        COLORREF linkColor = isDark ? LINK_COLOR_DARK : LINK_COLOR_LIGHT;
+
+        SetTextColor(hdc, linkColor);
         SetBkMode(hdc, TRANSPARENT);
 
-        hOldFont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
-        if (hOldFont)
-        {
-            GetObject(hOldFont, sizeof(LOGFONT), &lf);
-            hUnderlineFont = CreateFontIndirect(&lf);
-            SelectObject(hdc, hUnderlineFont);
+        // Get the font
+        HFONT hFont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+        HFONT hOldFont = nullptr;
+        if (hFont) {
+            hOldFont = (HFONT)SelectObject(hdc, hFont);
         }
 
-        GetWindowText(hwnd, szWinText, _countof(szWinText));
+        // Get text and rect
+        TCHAR szText[MAX_PATH];
+        GetWindowText(hwnd, szText, _countof(szText));
+        RECT rect;
         GetClientRect(hwnd, &rect);
-        DrawText(hdc, szWinText, -1, &rect, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
 
-        hOldFont&& SelectObject(hdc, hOldFont);
-        hUnderlineFont&& DeleteObject(hUnderlineFont);
+        // Draw centered text
+        DrawText(hdc, szText, -1, &rect, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+
+        if (hOldFont) {
+            SelectObject(hdc, hOldFont);
+        }
 
         EndPaint(hwnd, &ps);
         return 0;
     }
-    case WM_CTLCOLORSTATIC:
-    {
-        HDC hdcStatic = (HDC)wParam;
-        SetTextColor(hdcStatic, RGB(0, 0, 255));
-        SetBkMode(hdcStatic, TRANSPARENT);
-        return (LRESULT)GetStockObject(NULL_BRUSH);
-    }
+
     case WM_SETCURSOR:
         SetCursor(LoadCursor(NULL, IDC_HAND));
         return TRUE;
+
     case WM_LBUTTONUP:
         ShellExecute(NULL, TEXT("open"), IDC_WEBSITE_LINK_VALUE, NULL, NULL, SW_SHOWNORMAL);
         return TRUE;
+
     case WM_NCDESTROY:
         RemoveWindowSubclass(hwnd, WebsiteLinkProc, uIdSubclass);
         break;
@@ -83,11 +107,12 @@ LRESULT CALLBACK WebsiteLinkProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
     return DefSubclassProc(hwnd, uMsg, wParam, lParam);
 }
 
-LRESULT CALLBACK NameStaticProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+LRESULT CALLBACK AboutDialog::NameStaticProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
 {
-    UNREFERENCED_PARAMETER(dwRefData); 
+    (void)dwRefData;
+    (void)wParam;
+    (void)lParam;
 
-    static TCHAR oT[MAX_PATH] = { 0 };
     switch (uMsg)
     {
     case WM_LBUTTONDBLCLK:
@@ -97,14 +122,12 @@ LRESULT CALLBACK NameStaticProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             {
                 wchar_t dT[MAX_PATH];
                 int i = 0;
-                for (; eT[i] != '\0'; ++i)
-                {
+                for (; eT[i] != '\0'; ++i) {
                     dT[i] = static_cast<wchar_t>(eT[i]);
                 }
                 dT[i] = L'\0';
 
-                if (oT[0] == 0)
-                {
+                if (oT[0] == 0) {
                     GetWindowText(hwnd, oT, _countof(oT));
                 }
 
@@ -123,93 +146,117 @@ LRESULT CALLBACK NameStaticProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         RemoveWindowSubclass(hwnd, NameStaticProc, uIdSubclass);
         break;
     }
+
     return DefSubclassProc(hwnd, uMsg, wParam, lParam);
 }
 
-INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
+
+intptr_t CALLBACK AboutDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
-    switch (uMsg)
+    switch (message)
     {
     case WM_INITDIALOG:
     {
-        // =====================================================================
-        // Translate UI Elements
-        // =====================================================================
+        // Translate UI Elements=
         LanguageManager& LM = LanguageManager::instance();
 
-        SetWindowText(hwnd, LM.getLPCW(L"about_title"));
-        SetDlgItemText(hwnd, IDC_VERSION_LABEL, LM.getLPCW(L"about_version"));
-        SetDlgItemText(hwnd, IDC_AUTHOR_LABEL, LM.getLPCW(L"about_author"));
-        SetDlgItemText(hwnd, IDC_LICENSE_LABEL, LM.getLPCW(L"about_license"));
-        SetDlgItemText(hwnd, IDC_WEBSITE_LINK, LM.getLPCW(L"about_help_support"));
-        SetDlgItemText(hwnd, IDOK, LM.getLPCW(L"about_ok"));
+        SetWindowText(_hSelf, LM.getLPCW(L"about_title"));
+        SetDlgItemText(_hSelf, IDC_VERSION_LABEL, LM.getLPCW(L"about_version"));
+        SetDlgItemText(_hSelf, IDC_AUTHOR_LABEL, LM.getLPCW(L"about_author"));
+        SetDlgItemText(_hSelf, IDC_LICENSE_LABEL, LM.getLPCW(L"about_license"));
+        SetDlgItemText(_hSelf, IDC_WEBSITE_LINK, LM.getLPCW(L"about_help_support"));
+        SetDlgItemText(_hSelf, IDOK, LM.getLPCW(L"about_ok"));
 
-        // =====================================================================
         // Font Setup
-        // =====================================================================
-        HDC hdc = GetDC(hwnd);
+        HDC hdc = GetDC(_hSelf);
         int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
-        ReleaseDC(hwnd, hdc);
+        ReleaseDC(_hSelf, hdc);
 
         int baseSize = 13;
         int fontSize = -MulDiv(baseSize, dpi, 96);
 
-        static HFONT hFont = CreateFont(fontSize, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        _hFont = CreateFont(fontSize, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY, VARIABLE_PITCH, L"MS Shell Dlg");
 
-        static HFONT hUnderlineFont = CreateFont(fontSize, 0, 0, 0, FW_NORMAL, FALSE, TRUE, FALSE,
+        _hUnderlineFont = CreateFont(fontSize, 0, 0, 0, FW_NORMAL, FALSE, TRUE, FALSE,
             DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY, VARIABLE_PITCH, L"MS Shell Dlg");
 
-        HWND hwndWebsiteLink = GetDlgItem(hwnd, IDC_WEBSITE_LINK);
-        SendMessage(hwndWebsiteLink, WM_SETFONT, (WPARAM)hUnderlineFont, TRUE);
-        RedrawWindow(hwndWebsiteLink, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
+        // Apply Fonts and Setup Subclasses
+        HWND hwndWebsiteLink = GetDlgItem(_hSelf, IDC_WEBSITE_LINK);
+        if (hwndWebsiteLink) {
+            SendMessage(hwndWebsiteLink, WM_SETFONT, (WPARAM)_hUnderlineFont, TRUE);
+            SetWindowSubclass(hwndWebsiteLink, WebsiteLinkProc, 0, 0);
+        }
 
-        SetWindowSubclass(hwndWebsiteLink, WebsiteLinkProc, 0, reinterpret_cast<DWORD_PTR>(IDC_WEBSITE_LINK_VALUE));
-
-        HWND controls[] = {
-            GetDlgItem(hwnd, IDC_VERSION_STATIC),
-            GetDlgItem(hwnd, IDC_AUTHOR_STATIC),
-            GetDlgItem(hwnd, IDC_LICENSE_STATIC),
-            GetDlgItem(hwnd, IDC_NAME_STATIC),
-            GetDlgItem(hwnd, IDC_VERSION_LABEL),
-            GetDlgItem(hwnd, IDC_AUTHOR_LABEL),
-            GetDlgItem(hwnd, IDC_LICENSE_LABEL)
+        const int controlCount = 7;
+        int controlIDs[controlCount] = {
+            IDC_VERSION_STATIC,
+            IDC_AUTHOR_STATIC,
+            IDC_LICENSE_STATIC,
+            IDC_NAME_STATIC,
+            IDC_VERSION_LABEL,
+            IDC_AUTHOR_LABEL,
+            IDC_LICENSE_LABEL
         };
 
-        for (HWND hControl : controls)
-        {
-            if (hControl)
-            {
-                SendMessage(hControl, WM_SETFONT, (WPARAM)hFont, TRUE);
-                RedrawWindow(hControl, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
+        for (int i = 0; i < controlCount; ++i) {
+            HWND hControl = GetDlgItem(_hSelf, controlIDs[i]);
+            if (hControl) {
+                SendMessage(hControl, WM_SETFONT, (WPARAM)_hFont, TRUE);
             }
         }
 
-        SetWindowSubclass(GetDlgItem(hwnd, IDC_NAME_STATIC), NameStaticProc, 0, 0);
+        HWND hwndName = GetDlgItem(_hSelf, IDC_NAME_STATIC);
+        if (hwndName) {
+            SetWindowSubclass(hwndName, NameStaticProc, 0, 0);
+        }
+
+        // Dark Mode
+        ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
+            static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
 
         return TRUE;
     }
+
+    case WM_CTLCOLORSTATIC:
+    {
+        HDC hdcStatic = reinterpret_cast<HDC>(wParam);
+        HWND hwndStatic = reinterpret_cast<HWND>(lParam);
+
+        // Color the website link blue
+        if (hwndStatic == GetDlgItem(_hSelf, IDC_WEBSITE_LINK)) {
+            bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+            COLORREF linkColor = isDark ? LINK_COLOR_DARK : LINK_COLOR_LIGHT;
+            SetTextColor(hdcStatic, linkColor);
+            SetBkMode(hdcStatic, TRANSPARENT);
+            return (LRESULT)GetStockObject(NULL_BRUSH);
+        }
+        break;
+    }
+
     case WM_COMMAND:
         switch (LOWORD(wParam))
         {
         case IDOK:
         case IDCANCEL:
-            EndDialog(hwnd, 0);
+            display(false);
             return TRUE;
         }
         break;
 
-    case WM_CLOSE:
-        EndDialog(hwnd, 0);
-        return TRUE;
+    case WM_DESTROY:
+        if (_hFont) {
+            DeleteObject(_hFont);
+            _hFont = nullptr;
+        }
+        if (_hUnderlineFont) {
+            DeleteObject(_hUnderlineFont);
+            _hUnderlineFont = nullptr;
+        }
+        break;
     }
 
     return FALSE;
-}
-
-void ShowAboutDialog(HWND hwndParent)
-{
-    DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUT_DIALOG), hwndParent, AboutDialogProc);
 }

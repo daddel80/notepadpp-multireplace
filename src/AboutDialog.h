@@ -16,7 +16,27 @@
 
 #pragma once
 
-#include <windows.h>
+#include "StaticDialog/StaticDialog.h"
+#include "PluginInterface.h"
+
+extern NppData nppData;
 extern HINSTANCE hInst;
 
-void ShowAboutDialog(HWND parent);
+class AboutDialog : public StaticDialog
+{
+public:
+    AboutDialog() = default;
+    ~AboutDialog();
+
+    void doDialog();
+
+protected:
+    intptr_t CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
+
+private:
+    static LRESULT CALLBACK WebsiteLinkProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+    static LRESULT CALLBACK NameStaticProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+
+    HFONT _hFont = nullptr;
+    HFONT _hUnderlineFont = nullptr;
+};
