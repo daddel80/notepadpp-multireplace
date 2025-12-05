@@ -19,6 +19,7 @@
 #include <commctrl.h>
 #include "StaticDialog/resource.h"
 #include "AboutDialog.h"
+#include "LanguageManager.h"
 
 const char eT[] = { 102, 111, 114, 32, 65, 100, 114, 105, 97, 110, 32, 97, 110, 100, 32, 74, 117, 108, 105, 97, 110, 0 };
 bool isDT = false;
@@ -131,6 +132,21 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM /*l
     {
     case WM_INITDIALOG:
     {
+        // =====================================================================
+        // Translate UI Elements
+        // =====================================================================
+        LanguageManager& LM = LanguageManager::instance();
+
+        SetWindowText(hwnd, LM.getLPCW(L"about_title"));
+        SetDlgItemText(hwnd, IDC_VERSION_LABEL, LM.getLPCW(L"about_version"));
+        SetDlgItemText(hwnd, IDC_AUTHOR_LABEL, LM.getLPCW(L"about_author"));
+        SetDlgItemText(hwnd, IDC_LICENSE_LABEL, LM.getLPCW(L"about_license"));
+        SetDlgItemText(hwnd, IDC_WEBSITE_LINK, LM.getLPCW(L"about_help_support"));
+        SetDlgItemText(hwnd, IDOK, LM.getLPCW(L"about_ok"));
+
+        // =====================================================================
+        // Font Setup
+        // =====================================================================
         HDC hdc = GetDC(hwnd);
         int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
         ReleaseDC(hwnd, hdc);
@@ -175,7 +191,6 @@ INT_PTR CALLBACK AboutDialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM /*l
 
         return TRUE;
     }
-
     case WM_COMMAND:
         switch (LOWORD(wParam))
         {

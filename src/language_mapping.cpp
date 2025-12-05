@@ -329,6 +329,14 @@ const LangKV kEnglishPairs[] = {
 { L"menu_documentation", L"&Documentation" },
 { L"menu_about", L"&About" },
 
+// About Dialog
+{ L"about_title", L"MultiReplace Plugin" },
+{ L"about_version", L"Version:" },
+{ L"about_author", L"Author:" },
+{ L"about_license", L"License:" },
+{ L"about_help_support", L"Help and Support" },
+{ L"about_ok", L"OK" },
+
 };
 
 const size_t kEnglishPairsCount = sizeof(kEnglishPairs) / sizeof(kEnglishPairs[0]);
