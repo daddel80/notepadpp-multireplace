@@ -19,6 +19,7 @@
 #include "MultiReplacePanel.h"
 #include "AboutDialog.h"
 #include "MultiReplaceConfigDialog.h"
+#include "LanguageManager.h"
 
 
 MultiReplace _MultiReplace;
@@ -60,7 +61,7 @@ void pluginCleanUp()
 // You should fill your plugins commands here
 void commandMenuInit()
 {
-
+    LanguageManager& LM = LanguageManager::instance();
     //--------------------------------------------//
     //-- STEP 3. CUSTOMIZE YOUR PLUGIN COMMANDS --//
     //--------------------------------------------//
@@ -71,11 +72,11 @@ void commandMenuInit()
     //            ShortcutKey *shortcut,          // optional. Define a shortcut to trigger this command
     //            bool check0nInit                // optional. Make this menu item be checked visually
     //            );
-    setCommand(0, TEXT("&Multiple Replacement ..."), multiReplace, NULL, false);
+    setCommand(0, const_cast<TCHAR*>(LM.getLPCW(L"menu_multiple_replacement")), multiReplace, NULL, false);
     setCommand(1, TEXT("SEPARATOR"), NULL, NULL, false);
-    setCommand(2, TEXT("&Settings..."), multiReplaceConfig, NULL, false);
-    setCommand(3, TEXT("&Documentation"), openHelpLink, NULL, false);
-    setCommand(4, TEXT("&About"), about, NULL, false);
+    setCommand(2, const_cast<TCHAR*>(LM.getLPCW(L"menu_settings")), multiReplaceConfig, NULL, false);
+    setCommand(3, const_cast<TCHAR*>(LM.getLPCW(L"menu_documentation")), openHelpLink, NULL, false);
+    setCommand(4, const_cast<TCHAR*>(LM.getLPCW(L"menu_about")), about, NULL, false);
 }
 
 //

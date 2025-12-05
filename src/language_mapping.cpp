@@ -323,6 +323,12 @@ const LangKV kEnglishPairs[] = {
 { L"config_grp_lua", L"Lua" },
 { L"config_chk_lua_safemode", L"Enable Lua safe mode" },
 
+// Plugin Menu
+{ L"menu_multiple_replacement", L"&Multiple Replacement..." },
+{ L"menu_settings", L"&Settings..." },
+{ L"menu_documentation", L"&Documentation" },
+{ L"menu_about", L"&About" },
+
 };
 
 const size_t kEnglishPairsCount = sizeof(kEnglishPairs) / sizeof(kEnglishPairs[0]);
