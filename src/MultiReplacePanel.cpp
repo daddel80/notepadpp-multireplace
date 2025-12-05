@@ -326,7 +326,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_FIND_ALL_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_find_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
 
-    findNextButtonText = L"▼ " + LM.get(L"panel_find_next_small");
+    findNextButtonText = L"▼ " + LM.get(L"panel_find_next");
     ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
 
     ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
@@ -5524,6 +5524,8 @@ bool MultiReplace::initLuaState()
 
 bool MultiReplace::ensureLuaCodeCompiled(const std::string& luaCode)
 {
+    if (!_luaState) { return false; }
+
     // Compile only if changed or not compiled yet
     if (luaCode == _lastCompiledLuaCode && _luaCompiledReplaceRef != LUA_NOREF) {
         return true; // already compiled, reuse
@@ -6339,6 +6341,10 @@ void MultiReplace::handleReplaceInFiles() {
     // parse filter after UI/defaults/checks
     guard.parseFilter(wFilter);
 
+    // Apply file size limit settings
+    guard.setFileSizeLimitEnabled(limitFileSizeEnabled);
+    guard.setMaxFileSizeMB(maxFileSizeMB);
+
     std::vector<std::filesystem::path> files;
     try {
         namespace fs = std::filesystem;
@@ -6986,6 +6992,10 @@ void MultiReplace::handleFindInFiles() {
     // Parse filter after defaults / checks
     guard.parseFilter(wFilter);
 
+    // Apply file size limit settings
+    guard.setFileSizeLimitEnabled(limitFileSizeEnabled);
+    guard.setMaxFileSizeMB(maxFileSizeMB);
+
     // --- Build file list (unchanged) ---
     std::vector<std::filesystem::path> files;
     try {
@@ -7195,7 +7205,7 @@ void MultiReplace::handleFindInFiles() {
         ? LM.get(L"status_no_matches_found")
         : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) });
     MessageStatus ms = wasCanceled ? MessageStatus::Info : (totalHits == 0 ? MessageStatus::Error : MessageStatus::Success);
-    showStatusMessage(msg + canceledSuffix, ms, true);
+    showStatusMessage(msg + canceledSuffix, ms);
     _isCancelRequested = false;
 }
 
@@ -11318,7 +11328,7 @@ void MultiReplace::saveSettings() {
     settingsSaved = true;
 }
 
-void MultiReplace::loadSettingsFromIni() {
+void MultiReplace::loadSettingsToPanelUI() {
 
     // Loading the history for the Find text field in reverse order
     int findHistoryCount = CFG.readInt(L"History", L"FindTextHistoryCount", 0);
@@ -11456,6 +11466,9 @@ void MultiReplace::loadSettingsFromIni() {
     bool inHidden = CFG.readBool(L"ReplaceInFiles", L"InHiddenFolders", false);
     SendMessage(GetDlgItem(_hSelf, IDC_HIDDENFILES_CHECKBOX), BM_SETCHECK, inHidden ? BST_CHECKED : BST_UNCHECKED, 0);
 
+    limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
+    maxFileSizeMB = static_cast<size_t>(CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100));
+
     // --- Load Column Settings (Widths & Visibility) ---
     // NOTE: We read them here, and apply them in the 'instance' block below
     findCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
@@ -11529,7 +11542,7 @@ void MultiReplace::loadSettings() {
     auto [_, csvFilePath] = generateConfigFilePaths();
 
     // Read all settings from the cache
-    loadSettingsFromIni();
+    loadSettingsToPanelUI();
 
     try {
         loadListFromCsvSilent(csvFilePath, replaceListData);
@@ -11656,38 +11669,8 @@ void MultiReplace::loadUIConfigFromIni()
 
 MultiReplace::Settings MultiReplace::getSettings()
 {
+    // Always read from INI cache (single source of truth)
     Settings s{};
-
-    // Return live values when panel is running
-    if (instance) {
-        s.tooltipsEnabled = tooltipsEnabled;
-        s.exportToBashEnabled = exportToBashEnabled;
-        s.muteSounds = muteSounds;
-        s.doubleClickEditsEnabled = doubleClickEditsEnabled;
-        s.highlightMatchEnabled = highlightMatchEnabled;
-        s.flowTabsIntroDontShowEnabled = flowTabsIntroDontShowEnabled;
-        s.flowTabsNumericAlignEnabled = flowTabsNumericAlignEnabled;
-        s.isHoverTextEnabled = isHoverTextEnabled;
-        s.listStatisticsEnabled = listStatisticsEnabled;
-        s.stayAfterReplaceEnabled = stayAfterReplaceEnabled;
-        s.groupResultsEnabled = groupResultsEnabled;
-        s.luaSafeModeEnabled = luaSafeModeEnabled;
-        s.allFromCursorEnabled = allFromCursorEnabled;
-        s.isFindCountVisible = instance->isFindCountVisible;
-        s.isReplaceCountVisible = instance->isReplaceCountVisible;
-        s.isCommentsColumnVisible = instance->isCommentsColumnVisible;
-        s.isDeleteButtonVisible = instance->isDeleteButtonVisible;
-        s.editFieldSize = editFieldSize;
-        s.csvHeaderLinesCount = static_cast<int>(instance->CSVheaderLinesCount);
-        return s;
-    }
-
-    // Ensure INI is loaded when panel is not running
-    {
-        auto [iniFilePath, _] = generateConfigFilePaths();
-    }
-
-    // Align defaults with loadUIConfigFromIni()
     s.tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
     s.exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
     s.muteSounds = CFG.readBool(L"Options", L"MuteSounds", false);
@@ -11701,6 +11684,8 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
     s.luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
+    s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
+    s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
     s.isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
     s.isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
     s.isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
@@ -11725,7 +11710,8 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeInt(L"Options", L"StayAfterReplace", s.stayAfterReplaceEnabled ? 1 : 0);
     CFG.writeInt(L"Options", L"GroupResults", s.groupResultsEnabled ? 1 : 0);
     CFG.writeInt(L"Options", L"AllFromCursor", s.allFromCursorEnabled ? 1 : 0);
-
+    CFG.writeInt(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled ? 1 : 0);
+    CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", s.maxFileSizeMB);
     CFG.writeInt(L"Lua", L"SafeMode", s.luaSafeModeEnabled ? 1 : 0);
     CFG.writeInt(L"ListColumns", L"FindCountVisible", s.isFindCountVisible ? 1 : 0);
     CFG.writeInt(L"ListColumns", L"ReplaceCountVisible", s.isReplaceCountVisible ? 1 : 0);
@@ -11844,6 +11830,8 @@ void MultiReplace::syncUIToCache()
     CFG.writeString(L"ReplaceInFiles", L"Directory", escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_DIR_EDIT)));
     CFG.writeInt(L"ReplaceInFiles", L"InSubfolders", IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"ReplaceInFiles", L"InHiddenFolders", IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED ? 1 : 0);
+    CFG.writeInt(L"ReplaceInFiles", L"LimitFileSize", limitFileSizeEnabled ? 1 : 0);
+    CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", static_cast<int>(maxFileSizeMB));
 
     // File Info
     CFG.writeString(L"File", L"ListFilePath", escapeCsvValue(listFilePath));
@@ -11893,6 +11881,8 @@ void MultiReplace::applyConfigSettingsOnly()
     flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
     exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
     luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
+    limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
+    maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
 
     // Hover Text
     bool newHover = CFG.readBool(L"Options", L"HoverText", true);

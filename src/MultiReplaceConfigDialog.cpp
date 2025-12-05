@@ -23,6 +23,7 @@
 #include <cstddef>
 #include <algorithm>
 #include <cmath>
+#include <commctrl.h>
 
 extern NppData nppData;
 
@@ -65,6 +66,8 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_STAY_AFTER_REPLACE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, stayAfterReplaceEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_ALL_FROM_CURSOR, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, allFromCursorEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_MUTE_SOUNDS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, muteSounds), 0, 0 });
+    _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_LIMIT_FILESIZE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, limitFileSizeEnabled), 0, 0 });
+    _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_MAX_FILESIZE_EDIT, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, maxFileSizeMB), 1, 10000 });
 }
 
 void MultiReplaceConfigDialog::applyBindingsToUI_Generic(void* settingsPtr)
@@ -93,17 +96,29 @@ void MultiReplaceConfigDialog::readBindingsFromUI_Generic(void* settingsPtr)
         if (!b.panelHandlePtr) continue;
         HWND panel = *b.panelHandlePtr;
         if (!panel) continue;
+
+        // Find the control - use FindWindowEx for WC_STATIC panels
+        HWND hCtrl = nullptr;
+        HWND hChild = ::GetWindow(panel, GW_CHILD);
+        while (hChild) {
+            if (::GetDlgCtrlID(hChild) == b.controlID) {
+                hCtrl = hChild;
+                break;
+            }
+            hChild = ::GetWindow(hChild, GW_HWNDNEXT);
+        }
+        if (!hCtrl) continue;
+
         if (b.value == ValueType::Bool) {
-            bool v = (::IsDlgButtonChecked(panel, b.controlID) == BST_CHECKED);
+            bool v = (::SendMessage(hCtrl, BM_GETCHECK, 0, 0) == BST_CHECKED);
             *reinterpret_cast<bool*>(base + b.offset) = v;
         }
         else {
-            BOOL ok = FALSE;
-            UINT v = ::GetDlgItemInt(panel, b.controlID, &ok, FALSE);
-            if (ok) {
-                int vi = clampInt((int)v, b.minVal, b.maxVal);
-                *reinterpret_cast<int*>(base + b.offset) = vi;
-            }
+            wchar_t buf[32] = { 0 };
+            ::GetWindowText(hCtrl, buf, 32);
+            int vi = _wtoi(buf);
+            vi = clampInt(vi, b.minVal, b.maxVal);
+            *reinterpret_cast<int*>(base + b.offset) = vi;
         }
     }
 }
@@ -174,7 +189,7 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
 
         createUI();
         initUI();
-        loadSettingsFromConfig();
+        loadSettingsToConfigUI();
 
         createFonts();
         applyFonts();
@@ -222,7 +237,7 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
 
     case WM_SHOWWINDOW:
         if (wParam == TRUE) {
-            loadSettingsFromConfig(false);
+            loadSettingsToConfigUI(false);
         }
         return TRUE;
 
@@ -415,6 +430,59 @@ void MultiReplaceConfigDialog::resizeUI() {
     MoveWindow(_hVariablesAutomationPanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
 }
 
+LRESULT CALLBACK MultiReplaceConfigDialog::CheckboxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    (void)uIdSubclass;
+    (void)dwRefData;
+
+    // Intercept left button up - this is when checkbox state changes
+    if (uMsg == WM_LBUTTONUP) {
+        // First let the checkbox handle the click (state changes)
+        LRESULT result = ::DefSubclassProc(hWnd, uMsg, wParam, lParam);
+
+        // Now get the new checkbox state and enable/disable the edit field
+        HWND hPanel = ::GetParent(hWnd);
+        if (hPanel) {
+            BOOL checked = (::SendMessage(hWnd, BM_GETCHECK, 0, 0) == BST_CHECKED);
+            HWND hEdit = ::GetDlgItem(hPanel, IDC_CFG_MAX_FILESIZE_EDIT);
+            if (hEdit) {
+                ::EnableWindow(hEdit, checked);
+            }
+        }
+        return result;
+    }
+
+    return ::DefSubclassProc(hWnd, uMsg, wParam, lParam);
+}
+
+void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
+    if (!_hSearchReplacePanel) return;
+    const int groupW = 420;
+    const int left = 70;
+    int y = 20;
+
+    createGroupBox(_hSearchReplacePanel, left, y, groupW, 160, IDC_CFG_GRP_SEARCH_BEHAVIOUR, LM.getLPCW(L"config_grp_search_behaviour"));
+
+    int innerLeft = left + 22;
+    int innerTop = y + 35;
+    int innerWidth = groupW - 34;
+
+    LayoutBuilder lb(this, _hSearchReplacePanel, innerLeft, innerTop, innerWidth, 26);
+    lb.AddCheckbox(IDC_CFG_STAY_AFTER_REPLACE, LM.getLPCW(L"config_chk_stay_after_replace"));
+    lb.AddCheckbox(IDC_CFG_ALL_FROM_CURSOR, LM.getLPCW(L"config_chk_all_from_cursor"));
+    lb.AddCheckbox(IDC_CFG_MUTE_SOUNDS, LM.getLPCW(L"config_chk_mute_sounds"));
+
+    // File size limit: Checkbox + Edit + "MB" label
+    HWND hChkLimit = createCheckBox(_hSearchReplacePanel, innerLeft, lb.y, innerWidth, IDC_CFG_LIMIT_FILESIZE, LM.getLPCW(L"config_chk_limit_filesize"));
+    lb.y += lb.stepY;
+
+    // Subclass the checkbox to notify dialog on click
+    if (hChkLimit) {
+        ::SetWindowSubclass(hChkLimit, CheckboxSubclassProc, 0, reinterpret_cast<DWORD_PTR>(_hSelf));
+    }
+
+    lb.AddNumberEdit(IDC_CFG_MAX_FILESIZE_EDIT, 270, -24, 50, 20);
+    createStaticText(_hSearchReplacePanel, innerLeft + 325, lb.y - 22, 30, 18, IDC_CFG_FILESIZE_MB_LABEL, L"MB");
+}
 HWND MultiReplaceConfigDialog::createPanel() {
     return ::CreateWindowEx(0, WC_STATIC, TEXT(""), WS_CHILD, 0, 0, 0, 0, _hSelf, nullptr, _hInst, nullptr);
 }
@@ -448,24 +516,6 @@ HWND MultiReplaceConfigDialog::createSlider(HWND parent, int left, int top, int 
 // ============================================================================
 // PANEL LAYOUTS
 // ============================================================================
-
-void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
-    if (!_hSearchReplacePanel) return;
-    const int groupW = 420;
-    const int left = 70;
-    int y = 20;
-
-    createGroupBox(_hSearchReplacePanel, left, y, groupW, 130, IDC_CFG_GRP_SEARCH_BEHAVIOUR, LM.getLPCW(L"config_grp_search_behaviour"));
-
-    int innerLeft = left + 22;
-    int innerTop = y + 35;
-    int innerWidth = groupW - 34;
-
-    LayoutBuilder lb(this, _hSearchReplacePanel, innerLeft, innerTop, innerWidth, 26);
-    lb.AddCheckbox(IDC_CFG_STAY_AFTER_REPLACE, LM.getLPCW(L"config_chk_stay_after_replace"));
-    lb.AddCheckbox(IDC_CFG_ALL_FROM_CURSOR, LM.getLPCW(L"config_chk_all_from_cursor"));
-    lb.AddCheckbox(IDC_CFG_MUTE_SOUNDS, LM.getLPCW(L"config_chk_mute_sounds"));
-}
 
 void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     if (!_hListViewLayoutPanel) return;
@@ -583,12 +633,33 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
 // CONFIG LOADING / SAVING
 // ============================================================================
 
-void MultiReplaceConfigDialog::loadSettingsFromConfig(bool reloadFile)
+void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
 {
     (void)reloadFile;  // Parameter no longer used - cache is always current
 
     const auto& CFG = ConfigManager::instance();
-    const MultiReplace::Settings s = MultiReplace::getSettings();
+    MultiReplace::Settings s{};
+    s.tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
+    s.exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
+    s.muteSounds = CFG.readBool(L"Options", L"MuteSounds", false);
+    s.doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);
+    s.highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);
+    s.flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
+    s.flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
+    s.isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
+    s.listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
+    s.stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
+    s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
+    s.luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
+    s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
+    s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
+    s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
+    s.isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
+    s.isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
+    s.isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
+    s.isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
+    s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
+    s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
 
     registerBindingsOnce();
     applyBindingsToUI_Generic((void*)&s);
@@ -623,6 +694,12 @@ void MultiReplaceConfigDialog::loadSettingsFromConfig(bool reloadFile)
             ::SendMessage(h, TBM_SETRANGE, TRUE, MAKELPARAM(50, 200));
             ::SendMessage(h, TBM_SETPOS, TRUE, pos);
         }
+    }
+
+    // Enable/Disable file size edit based on checkbox state
+    if (_hSearchReplacePanel) {
+        BOOL checked = (::IsDlgButtonChecked(_hSearchReplacePanel, IDC_CFG_LIMIT_FILESIZE) == BST_CHECKED);
+        ::EnableWindow(::GetDlgItem(_hSearchReplacePanel, IDC_CFG_MAX_FILESIZE_EDIT), checked);
     }
 }
 
@@ -700,7 +777,7 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         _currentCategory = -1;
         initUI();
 
-        loadSettingsFromConfig(false);
+        loadSettingsToConfigUI(false);
 
         createFonts();
         applyFonts();
@@ -738,6 +815,9 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.stayAfterReplaceEnabled = false;
     def.allFromCursorEnabled = false;
     def.muteSounds = false;
+    def.isDeleteButtonVisible = true;
+    def.limitFileSizeEnabled = false;
+    def.maxFileSizeMB = 100;
     def.highlightMatchEnabled = true;
     def.doubleClickEditsEnabled = true;
     def.isHoverTextEnabled = true;
@@ -768,7 +848,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
         MultiReplace::instance->loadUIConfigFromIni();
     }
 
-    loadSettingsFromConfig(false);
+    loadSettingsToConfigUI(false);
 
     if (std::abs(oldScale - 1.0) > 0.001) {
         int baseWidth = 810; int baseHeight = 380;
@@ -793,7 +873,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
         createUI();
         _currentCategory = -1;
         initUI();
-        loadSettingsFromConfig(false);
+        loadSettingsToConfigUI(false);
 
         createFonts();
         applyFonts();

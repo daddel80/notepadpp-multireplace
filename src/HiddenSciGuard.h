@@ -31,6 +31,39 @@ extern NppData nppData;       // From your plugin definition
 
 class HiddenSciGuard {
 public:
+    // ========================================================================
+    // Configuration
+    // ========================================================================
+
+    // Bytes to check for binary detection (8 KB - sufficient and fast)
+    static constexpr size_t BINARY_CHECK_SIZE = 8192;
+
+    // Default max file size in MB (0 = unlimited, same as N++)
+    static constexpr size_t DEFAULT_MAX_FILE_SIZE_MB = 0;
+
+    // ========================================================================
+    // Configuration setters/getters (for INI/Config Panel)
+    // ========================================================================
+
+    // Enable/disable file size limit (default: disabled = unlimited)
+    void setFileSizeLimitEnabled(bool enabled) { _limitFileSize = enabled; }
+    bool isFileSizeLimitEnabled() const { return _limitFileSize; }
+
+    // Set max file size in MB (only applies if limit is enabled)
+    void setMaxFileSizeMB(size_t sizeMB) { _maxFileSizeMB = sizeMB; }
+    size_t getMaxFileSizeMB() const { return _maxFileSizeMB; }
+
+    // Get effective max size in bytes (0 if unlimited)
+    size_t getEffectiveMaxFileSize() const {
+        if (!_limitFileSize || _maxFileSizeMB == 0)
+            return 0;  // unlimited
+        return _maxFileSizeMB * 1024 * 1024;
+    }
+
+    // ========================================================================
+    // Constructor / Destructor
+    // ========================================================================
+
     HiddenSciGuard() = default;
     ~HiddenSciGuard()
     {
@@ -45,7 +78,10 @@ public:
     HiddenSciGuard(const HiddenSciGuard&) = delete;
     HiddenSciGuard& operator=(const HiddenSciGuard&) = delete;
 
+    // ========================================================================
     // 0) Create the hidden Scintilla buffer
+    // ========================================================================
+
     bool create()
     {
         // Destroy existing hidden Scintilla if any (safe when null)
@@ -77,11 +113,17 @@ public:
             fn(pData, SCI_CLEARALL, 0, 0);
         }
 
+        // Reset skip counters
+        _skippedBinaryCount = 0;
+        _skippedLargeCount = 0;
+
         return fn && pData;
     }
 
-
+    // ========================================================================
     // 1) Filter parsing
+    // ========================================================================
+
     void parseFilter(const std::wstring& filterString) {
         include_patterns.clear();
         exclude_patterns.clear();
@@ -114,11 +156,13 @@ public:
         }
     }
 
+    // ========================================================================
     // 2) Test a path against the filter
-    // Requires <ranges> (C++20) for clarity; switch to a loop if C++17.
+    // ========================================================================
+
     bool matchPath(const std::filesystem::path& path, bool includeHidden) const
     {
-        // 1) Hidden attribute ----------------------------------------------------
+        // 1) Hidden attribute
         if (!includeHidden) {
             const DWORD a = GetFileAttributesW(path.c_str());
             if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_HIDDEN))
@@ -141,7 +185,6 @@ public:
             const std::wstring dirName = dir.filename().wstring();
 
             for (const auto& rawPat : exclude_folders_recursive) {
-                // Strip an optional leading backslash the user may have typed
                 std::wstring_view pat = rawPat;
                 if (!pat.empty() && (pat.front() == L'\\' || pat.front() == L'/'))
                     pat.remove_prefix(1);
@@ -156,7 +199,7 @@ public:
             if (PathMatchSpecW(fname.c_str(), pat.c_str()))
                 return false;
 
-        // 5) File-level includes (*.cpp…) – if no include pattern, everything left is in
+        // 5) File-level includes (*.cpp…)
         if (include_patterns.empty())
             return true;
 
@@ -167,22 +210,105 @@ public:
         return false;
     }
 
-    // 3) Read file into string with size check and error handling
-    bool loadFile(const std::filesystem::path& fp, std::string& out) const {
+    // ========================================================================
+    // 3) Binary Detection
+    // ========================================================================
+
+    // Check for BOM (Byte Order Mark) - files with BOM are definitely text
+    bool hasBOM(const char* data, size_t len) const
+    {
+        if (len < 2) return false;
+
+        const unsigned char* u = reinterpret_cast<const unsigned char*>(data);
+
+        // UTF-8 BOM: EF BB BF
+        if (len >= 3 && u[0] == 0xEF && u[1] == 0xBB && u[2] == 0xBF)
+            return true;
+
+        // UTF-16 LE BOM: FF FE
+        if (u[0] == 0xFF && u[1] == 0xFE)
+            return true;
+
+        // UTF-16 BE BOM: FE FF
+        if (u[0] == 0xFE && u[1] == 0xFF)
+            return true;
+
+        return false;
+    }
+
+    // Check if content is binary by looking for NULL bytes
+    // This is the industry standard approach (same as grep)
+    bool hasNullBytes(const char* data, size_t len) const
+    {
+        const size_t checkLen = (len < BINARY_CHECK_SIZE) ? len : BINARY_CHECK_SIZE;
+
+        for (size_t i = 0; i < checkLen; ++i)
+        {
+            if (data[i] == 0x00)
+                return true;
+        }
+
+        return false;
+    }
+
+    // Combined check: returns true if file should be skipped as binary
+    bool shouldSkipAsBinary(const char* data, size_t len) const
+    {
+        // 1. Files with BOM are definitely text files
+        if (hasBOM(data, len))
+            return false;
+
+        // 2. Check for NULL bytes (binary indicator)
+        return hasNullBytes(data, len);
+    }
+
+    // ========================================================================
+    // 4) File Loading with Binary Detection
+    // ========================================================================
+
+    // Load file with automatic binary detection
+    // Returns true on success, false on any failure (including binary skip)
+    bool loadFile(const std::filesystem::path& fp, std::string& out)
+    {
+        out.clear();
+
         try {
-            // Skip files > 100 MB to prevent memory issues
+            // Get file size
             std::error_code ec;
             auto fileSize = std::filesystem::file_size(fp, ec);
-            if (ec || fileSize > 100 * 1024 * 1024) {
+            if (ec) return false;
+
+            // Check file size limit (if enabled)
+            size_t maxSize = getEffectiveMaxFileSize();
+            if (maxSize > 0 && fileSize > maxSize)
+            {
+                ++_skippedLargeCount;
                 return false;
             }
 
             std::ifstream in(fp, std::ios::binary);
             if (!in) return false;
 
+            // Read header for binary detection
+            char header[BINARY_CHECK_SIZE];
+            in.read(header, sizeof(header));
+            std::streamsize headerLen = in.gcount();
+
+            // Check if binary - skip if so
+            if (headerLen > 0 && shouldSkipAsBinary(header, static_cast<size_t>(headerLen)))
+            {
+                ++_skippedBinaryCount;
+                return false;
+            }
+
+            // Not binary - read full file
+            in.clear();
+            in.seekg(0, std::ios::beg);
+
             out.reserve(static_cast<size_t>(fileSize));
             out.assign(std::istreambuf_iterator<char>(in),
                 std::istreambuf_iterator<char>());
+
             return true;
         }
         catch (...) {
@@ -190,17 +316,35 @@ public:
         }
     }
 
-    // 4) Write string back to disk with success check
+    // Get count of skipped binary files (for status messages)
+    size_t getSkippedBinaryCount() const { return _skippedBinaryCount; }
+
+    // Get count of skipped large files (for status messages)
+    size_t getSkippedLargeCount() const { return _skippedLargeCount; }
+
+    // Reset the skip counters
+    void resetSkipCounters() {
+        _skippedBinaryCount = 0;
+        _skippedLargeCount = 0;
+    }
+
+    // ========================================================================
+    // 5) Write file to disk
+    // ========================================================================
+
     bool writeFile(const std::filesystem::path& fp, const std::string& data) const {
         std::ofstream o(fp, std::ios::binary | std::ios::trunc);
         if (!o) return false;
         o.write(data.data(), data.size());
-        return o.good(); // Fixed: Check if write succeeded
+        return o.good();
     }
 
-    // 5) Hidden-buffer helpers
+    // ========================================================================
+    // 6) Hidden-buffer helpers
+    // ========================================================================
+
     void setText(const std::string& txt) {
-        if (!fn || !pData) return; // Basic null check
+        if (!fn || !pData) return;
         fn(pData, SCI_CLEARALL, 0, 0);
         fn(pData, SCI_ADDTEXT, txt.length(), reinterpret_cast<sptr_t>(txt.data()));
     }
@@ -251,6 +395,10 @@ public:
         fn(pData, SCI_ENDUNDOACTION, 0, 0);
     }
 
+    // ========================================================================
+    // 7) Debug helpers
+    // ========================================================================
+
     std::wstring getFilterDebugString() const {
         std::wstringstream dbg;
         dbg << L"--- Internal Filter State ---\n";
@@ -271,8 +419,24 @@ public:
         if (exclude_folders_recursive.empty()) dbg << L"  (none)\n";
         for (const auto& p : exclude_folders_recursive) dbg << L"  '!+" << p << L"'\n";
 
+        dbg << L"\n--- File Size Limit ---\n";
+        if (_limitFileSize) {
+            dbg << L"  Enabled: " << _maxFileSizeMB << L" MB\n";
+        }
+        else {
+            dbg << L"  Disabled (unlimited)\n";
+        }
+
+        dbg << L"\n--- Skip Statistics ---\n";
+        dbg << L"  Binary Files: " << _skippedBinaryCount << L"\n";
+        dbg << L"  Large Files:  " << _skippedLargeCount << L"\n";
+
         return dbg.str();
     }
+
+    // ========================================================================
+    // Public members
+    // ========================================================================
 
     HWND        hSci = nullptr;
     SciFnDirect fn = nullptr;
@@ -283,4 +447,14 @@ private:
     std::vector<std::wstring> exclude_patterns;
     std::vector<std::wstring> exclude_folders;
     std::vector<std::wstring> exclude_folders_recursive;
+
+    // Counter for skipped binary files
+    size_t _skippedBinaryCount = 0;
+
+    // Counter for skipped large files (when limit enabled)
+    size_t _skippedLargeCount = 0;
+
+    // Configurable max file size (0 = unlimited)
+    size_t _maxFileSizeMB = DEFAULT_MAX_FILE_SIZE_MB;
+    bool _limitFileSize = false;  // false = unlimited (default)
 };

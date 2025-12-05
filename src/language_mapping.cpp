@@ -40,7 +40,7 @@ const LangKV kEnglishPairs[] = {
 { L"panel_replace_all", L"Replace All" },
 { L"panel_replace", L"Replace" },
 { L"panel_find_all", L"Find All" },
-{ L"panel_find_next_small", L"Find Next"},
+{ L"panel_find_next", L"Find Next"},
 { L"panel_mark_matches", L"Mark Matches" },
 { L"panel_mark_matches_small", L"Mark Matches"},
 { L"panel_clear_all_marks", L"Clear all marks" },
@@ -253,9 +253,10 @@ const LangKV kEnglishPairs[] = {
 // Result Dock Menu
 { L"rdmenu_fold_all",            L"Fold all" },
 { L"rdmenu_unfold_all",          L"Unfold all" },
+{ L"rdmenu_copy_std",            L"&Copy\tCtrl+C" },
 { L"rdmenu_copy_lines",          L"Copy selected line(s)" },
 { L"rdmenu_copy_paths",          L"Copy selected pathname(s)" },
-{ L"rdmenu_select_all",          L"Select all" },
+{ L"rdmenu_select_all",          L"Select all\tCtrl+A" },
 { L"rdmenu_clear_all",           L"Clear all" },
 { L"rdmenu_open_paths",          L"Open selected pathname(s)" },
 { L"rdmenu_wrap",                L"Word wrap long lines" },
@@ -283,6 +284,10 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_stay_after_replace", L"Replace: Don't move to the following occurrence" },
 { L"config_chk_all_from_cursor", L"Find: Search from cursor position" },
 { L"config_chk_mute_sounds", L"Mute all sounds" },
+
+// File size limit
+{ L"config_chk_limit_filesize", L"Find/Replace in Files: Skip files larger than" },
+{ L"config_lbl_max_filesize_mb", L"MB" },
 
 // List View Settings
 { L"config_grp_list_columns", L"Visible Columns" },

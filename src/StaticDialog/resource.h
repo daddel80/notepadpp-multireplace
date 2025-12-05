@@ -269,8 +269,11 @@
 #define IDC_CFG_STAY_AFTER_REPLACE        79001
 #define IDC_CFG_ALL_FROM_CURSOR           79002
 #define IDC_CFG_MUTE_SOUNDS               79003
-#define IDC_CFG_GRP_HIGHLIGHT             79004
-#define IDC_CFG_HIGHLIGHT_MATCH           79005
+#define IDC_CFG_LIMIT_FILESIZE            79004
+#define IDC_CFG_MAX_FILESIZE_EDIT         79005
+#define IDC_CFG_FILESIZE_MB_LABEL         79006
+#define IDC_CFG_GRP_HIGHLIGHT             79007
+#define IDC_CFG_HIGHLIGHT_MATCH           79008
 
 // -------------------------------------------------------------------
 //  List View & Layout panel

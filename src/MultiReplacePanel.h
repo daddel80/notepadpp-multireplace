@@ -435,6 +435,8 @@ public:
         bool groupResultsEnabled;
         bool luaSafeModeEnabled;
         bool allFromCursorEnabled;
+        bool limitFileSizeEnabled;
+        int  maxFileSizeMB;
         bool isFindCountVisible;
         bool isReplaceCountVisible;
         bool isCommentsColumnVisible;
@@ -450,7 +452,7 @@ public:
     bool isTwoButtonsModeEnabled() const;
 
     void loadUIConfigFromIni();
-    void loadSettingsFromIni();
+    void loadSettingsToPanelUI();
     void syncUIToCache();
     void applyConfigSettingsOnly();
     static  std::pair<std::wstring, std::wstring> generateConfigFilePaths();
@@ -680,16 +682,18 @@ private:
     inline static bool muteSounds = false;                // Status for Bell if String hasn't been found
     inline static bool doubleClickEditsEnabled = true;    // Double click to Edit List entries
     inline static bool highlightMatchEnabled = true;      // HighlightMatch during Find in List
-    inline static bool exportToBashEnabled = false;      // shows/hides the "Export to Bash" button
-    inline static bool isHoverTextEnabled = true;        // Important to set on false as TIMER will be triggered at startup.
-    inline static int  editFieldSize = 5;                // Size of the edit field for find/replace input
-    inline static bool listStatisticsEnabled = false;    // Status for showing list statistics
-    inline static bool stayAfterReplaceEnabled = false;  // Status for keeping panel open after replace
-    inline static bool groupResultsEnabled = false;      // Status for flat list view
-    inline static bool luaSafeModeEnabled = false;       // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
-    inline static bool allFromCursorEnabled = false; // Controls the starting point for Replace All, Find All and Mark when wrap is OFF.
+    inline static bool exportToBashEnabled = false;       // shows/hides the "Export to Bash" button
+    inline static bool isHoverTextEnabled = true;         // Important to set on false as TIMER will be triggered at startup.
+    inline static int  editFieldSize = 5;                 // Size of the edit field for find/replace input
+    inline static bool listStatisticsEnabled = false;     // Status for showing list statistics
+    inline static bool stayAfterReplaceEnabled = false;   // Status for keeping panel open after replace
+    inline static bool groupResultsEnabled = false;       // Status for flat list view
+    inline static bool luaSafeModeEnabled = false;        // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
+    inline static bool allFromCursorEnabled = false;      // Controls the starting point for Replace All, Find All and Mark when wrap is OFF.
     inline static bool flowTabsIntroDontShowEnabled = false;
     inline static bool flowTabsNumericAlignEnabled = true;
+    inline static bool limitFileSizeEnabled = false;
+    inline static size_t maxFileSizeMB = 100;
 
     bool isHoverTextSuppressed = false;    // Temporarily suppress HoverText to avoid flickering when Edit in list is open
 

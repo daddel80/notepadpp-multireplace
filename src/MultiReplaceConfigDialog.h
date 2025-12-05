@@ -59,7 +59,7 @@ private:
     // Business Logic
     // -------------------------------------------------------------------------
     void resetToDefaults();
-    void loadSettingsFromConfig(bool reloadFile = true);
+    void loadSettingsToConfigUI(bool reloadFile = true);
     void applyConfigToSettings();
 
     // -------------------------------------------------------------------------
@@ -106,6 +106,9 @@ private:
     HWND _hVariablesAutomationPanel = nullptr;
     HWND _hImportScopePanel = nullptr;
     HWND _hCsvFlowTabsPanel = nullptr;
+
+    // Subclass procedure for checkbox to notify dialog on click
+    static LRESULT CALLBACK CheckboxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
 
     // State
     int _currentCategory = -1;
