@@ -4401,13 +4401,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             if (!filePath.empty()) {
                 saveListToCsv(filePath, replaceListData);
-
-                // For "Save As", update the global listFilePath to the new file path
-                if (wParam == IDC_SAVE_AS_BUTTON) {
-                    listFilePath = filePath;
-                }
             }
-            ;
 
             return TRUE;
         }
@@ -4431,12 +4425,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_LOAD_LIST_BUTTON:
         case IDC_LOAD_FROM_CSV_BUTTON:
         {
-            // Check for unsaved changes before proceeding
-            int userChoice = checkForUnsavedChanges();
-            if (userChoice == IDCANCEL) {
-                return TRUE;
-            }
-
             std::wstring csvDescription = LM.get(L"filetype_csv");  // "CSV Files (*.csv)"
             std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
 
@@ -10859,7 +10847,7 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
 
     outFile.close();
 
-    return !outFile.fail();;
+    return !outFile.fail();
 }
 
 void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
@@ -11010,6 +10998,11 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 }
 
 void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
+    // Check for unsaved changes before loading new list
+    if (checkForUnsavedChanges() == IDCANCEL) {
+        return;
+    }
+
     try {
         loadListFromCsvSilent(filePath, replaceListData);
 
@@ -11058,23 +11051,26 @@ void MultiReplace::checkForFileChangesAtStartup() {
             if (response == IDYES) {
                 replaceListData = tempListFromFile;
                 originalListHash = newFileHash;
+                ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+                InvalidateRect(_replaceListView, NULL, TRUE);
             }
         }
     }
-    catch (const CsvLoadException& ex) {
-        showStatusMessage(Encoding::utf8ToWString(ex.what()), MessageStatus::Error);
+    catch (const CsvLoadException&) {
+        // File no longer accessible - silently clear reference, keep temp data
+        listFilePath.clear();
+        originalListHash = computeListHash(replaceListData);
+        showListFilePath();
     }
 
+    // Status message for loaded list (from temp storage)
     if (replaceListData.empty()) {
         showStatusMessage(LM.get(L"status_no_valid_items_in_csv"), MessageStatus::Error);
     }
     else {
         showStatusMessage(LM.get(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), MessageStatus::Success);
-        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
     }
 }
-
 std::wstring MultiReplace::escapeCsvValue(const std::wstring& value) {
     std::wstring escapedValue = L"\"";
 
