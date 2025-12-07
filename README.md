@@ -579,7 +579,8 @@ Control the behavior of search operations and cursor movement.
   - If unchecked, operations always process the entire defined scope (e.g., the whole document).
 - **Mute all sounds**
   - Disables the notification sound (beep) when a search yields no results. The window will still flash visually to indicate "not found".
-
+- **Limit file size for 'In Files' operations**
+  - Defines a maximum size (in MB) for **Find/Replace in Files**. Skips larger files to ensure responsiveness and prevent high memory usage (e.g., huge logs or database dumps).
 ### 2. List View and Layout
 Manage the visual elements and behavior of the replacement list to save screen space or increase information density.
 
