@@ -49,8 +49,8 @@ enum class Direction { Up, Down };
 struct ReplaceItemData
 {
     size_t id = 0;
-    std::wstring findCount = L"";
-    std::wstring replaceCount = L"";
+    int findCount = -1;
+    int replaceCount = -1;
     bool isEnabled = true;
     std::wstring findText;
     std::wstring replaceText;

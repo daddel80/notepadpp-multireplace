@@ -2042,28 +2042,18 @@ void MultiReplace::sortReplaceListData(int columnID) {
     columnSortOrder.clear();
     columnSortOrder[columnID] = direction;
 
-    // return -1 for empty or non-numeric strings
-    auto safeToInt = [](const std::wstring& s) -> int {
-        try { return s.empty() ? -1 : std::stoi(s); }
-        catch (...) { return -1; }
-        };
-
     // Perform the sorting
     std::sort(replaceListData.begin(), replaceListData.end(),
-        [this, columnID, direction, safeToInt]
+        [this, columnID, direction]
         (const ReplaceItemData& a, const ReplaceItemData& b) -> bool
         {
             switch (columnID)
             {
             case ColumnID::FIND_COUNT: {
-                int numA = safeToInt(a.findCount);
-                int numB = safeToInt(b.findCount);
-                return direction == SortDirection::Ascending ? numA < numB : numA > numB;
+                return direction == SortDirection::Ascending ? a.findCount < b.findCount : a.findCount > b.findCount;
             }
             case ColumnID::REPLACE_COUNT: {
-                int numA = safeToInt(a.replaceCount);
-                int numB = safeToInt(b.replaceCount);
-                return direction == SortDirection::Ascending ? numA < numB : numA > numB;
+                return direction == SortDirection::Ascending ? a.replaceCount < b.replaceCount : a.replaceCount > b.replaceCount;
             }
             case ColumnID::FIND_TEXT:
                 return direction == SortDirection::Ascending ? a.findText < b.findText : a.findText > b.findText;
@@ -2147,8 +2137,8 @@ void MultiReplace::handleCopyToListButton() {
 void MultiReplace::resetCountColumns() {
     // Reset the find and replace count columns in the list data
     for (auto& itemData : replaceListData) {
-        itemData.findCount = L"";
-        itemData.replaceCount = L"";
+        itemData.findCount = -1;
+        itemData.replaceCount = -1;
     }
 
     // Update the list view to immediately reflect the changes
@@ -2158,17 +2148,18 @@ void MultiReplace::resetCountColumns() {
 
 void MultiReplace::updateCountColumns(const size_t itemIndex, const int findCount, int replaceCount)
 {
+    if (itemIndex >= replaceListData.size()) return;
     ReplaceItemData& itemData = replaceListData[itemIndex];
 
     if (findCount == -2) {
-        itemData.findCount.clear();
+        itemData.findCount = -1;
     }
     else if (findCount != -1) {
-        itemData.findCount = std::to_wstring(findCount);
+        itemData.findCount = findCount;
     }
 
     if (replaceCount != -1) {
-        itemData.replaceCount = std::to_wstring(replaceCount);
+        itemData.replaceCount = replaceCount;
     }
 }
 
@@ -3854,10 +3845,16 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
                 // Fill text depending on which column is asking
                 if (columnIndices[ColumnID::FIND_COUNT] != -1 && subItem == columnIndices[ColumnID::FIND_COUNT]) {
-                    (void)lstrcpynW(plvdi->item.pszText, d.findCount.c_str(), plvdi->item.cchTextMax);
+                    if (d.findCount >= 0)
+                        (void)lstrcpynW(plvdi->item.pszText, std::to_wstring(d.findCount).c_str(), plvdi->item.cchTextMax);
+                    else
+                        plvdi->item.pszText[0] = L'\0';
                 }
                 else if (columnIndices[ColumnID::REPLACE_COUNT] != -1 && subItem == columnIndices[ColumnID::REPLACE_COUNT]) {
-                    (void)lstrcpynW(plvdi->item.pszText, d.replaceCount.c_str(), plvdi->item.cchTextMax);
+                    if (d.replaceCount >= 0)
+                        (void)lstrcpynW(plvdi->item.pszText, std::to_wstring(d.replaceCount).c_str(), plvdi->item.cchTextMax);
+                    else
+                        plvdi->item.pszText[0] = L'\0';
                 }
                 else if (columnIndices[ColumnID::SELECTION] != -1 && subItem == columnIndices[ColumnID::SELECTION]) {
                     (void)lstrcpynW(plvdi->item.pszText, d.isEnabled ? L"\u25A0" : L"\u2610", plvdi->item.cchTextMax);
@@ -4657,8 +4654,8 @@ void MultiReplace::replaceAllInOpenedDocs()
 
         // Accumulate the per-list-entry counters from the UI
         for (size_t j = 0; j < replaceListData.size(); ++j) {
-            int f = replaceListData[j].findCount.empty() ? 0 : std::stoi(replaceListData[j].findCount);
-            int r = replaceListData[j].replaceCount.empty() ? 0 : std::stoi(replaceListData[j].replaceCount);
+            int f = (replaceListData[j].findCount > -1) ? replaceListData[j].findCount : 0;
+            int r = (replaceListData[j].replaceCount > -1) ? replaceListData[j].replaceCount : 0;
             listFindTotals[j] += f;
             listReplaceTotals[j] += r;
         }
@@ -6459,8 +6456,8 @@ void MultiReplace::handleReplaceInFiles() {
             if (useListEnabled) {
                 for (size_t i = 0; i < replaceListData.size(); ++i) {
                     if (!replaceListData[i].isEnabled) continue;
-                    const int f = replaceListData[i].findCount.empty() ? 0 : std::stoi(replaceListData[i].findCount);
-                    const int r = replaceListData[i].replaceCount.empty() ? 0 : std::stoi(replaceListData[i].replaceCount);
+                    const int f = (replaceListData[i].findCount > -1) ? replaceListData[i].findCount : 0;
+                    const int r = (replaceListData[i].replaceCount > -1) ? replaceListData[i].replaceCount : 0;
                     listFindTotals[i] += f;
                     listReplaceTotals[i] += r;
                 }
@@ -6673,7 +6670,7 @@ void MultiReplace::handleFindAllButton()
 
             // (c) Write per-criterion counters (even if zero)
             const int hitCnt = static_cast<int>(rawHits.size());
-            item.findCount = std::to_wstring(hitCnt);
+            item.findCount = hitCnt;
             updateCountColumns(idx, hitCnt);
 
             // (d) Aggregate only when there are hits
@@ -6923,7 +6920,7 @@ void MultiReplace::handleFindAllInDocsButton()
         {
             if (!replaceListData[i].isEnabled || replaceListData[i].findText.empty())
                 continue;
-            replaceListData[i].findCount = std::to_wstring(listHitTotals[i]);
+            replaceListData[i].findCount = listHitTotals[i];
             updateCountColumns(i, listHitTotals[i]);
         }
         refreshUIListView();
@@ -7178,10 +7175,13 @@ void MultiReplace::handleFindInFiles() {
 
     dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
 
-    if (useListEnabled) {
-        for (size_t i = 0; i < listHitTotals.size(); ++i) {
-            if (!replaceListData[i].isEnabled || replaceListData[i].findText.empty()) continue;
-            replaceListData[i].findCount = std::to_wstring(listHitTotals[i]);
+    if (useListEnabled)
+    {
+        for (size_t i = 0; i < listHitTotals.size(); ++i)
+        {
+            if (!replaceListData[i].isEnabled || replaceListData[i].findText.empty())
+                continue;
+            replaceListData[i].findCount = listHitTotals[i];
             updateCountColumns(i, listHitTotals[i]);
         }
         refreshUIListView();
