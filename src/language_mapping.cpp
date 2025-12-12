@@ -310,14 +310,20 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_flowtabs_intro_dontshow", L"Flow Tabs: Don't show intro message" },
 { L"config_lbl_csv_sort", L"CSV Sort: Header lines to exclude:" },
 
+// Highlighting Settings
+{ L"config_grp_highlighting", L"Highlighting" },
+{ L"config_chk_result_dock_entry_colors", L"Color matches by list entry in Result Dock" },
+{ L"config_chk_use_list_colors_marking", L"Use different colors for each list entry when marking" },
+
 // Appearance Settings
-{ L"config_grp_transparency", L"Transparency" },
-{ L"config_lbl_foreground", L"Foreground (0–255)" },
-{ L"config_lbl_background", L"Background (0–255)" },
-{ L"config_grp_scale", L"Scale" },
+{ L"config_grp_interface", L"Interface" },
+{ L"config_lbl_foreground", L"Foreground transparency" },
+{ L"config_lbl_background", L"Background transparency" },
 { L"config_lbl_scale_factor", L"Scale factor" },
-{ L"config_grp_tooltips", L"Tooltips" },
+{ L"config_grp_display_options", L"Display Options" },
 { L"config_chk_enable_tooltips", L"Enable tooltips" },
+{ L"config_chk_result_dock_entry_colors", L"Use list colors in search results" },
+{ L"config_chk_use_list_colors_marking", L"Use list colors for text marking" },
 
 // Variables & Automation Settings
 { L"config_grp_lua", L"Lua" },

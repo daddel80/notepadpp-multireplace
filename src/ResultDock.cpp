@@ -116,6 +116,12 @@ void ResultDock::clear()
         S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
     }
 
+    // Clear per-entry background color indicators
+    for (int i = 0; i < COLOR_PALETTE_SIZE; ++i) {
+        S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + i);
+        S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
+    }
+
     // reset caret/scroll position
     S(SCI_GOTOPOS, 0);
     S(SCI_SETFIRSTVISIBLELINE, 0);
@@ -210,6 +216,12 @@ void ResultDock::applyStyling() const
         S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
     }
 
+    // Clear per-entry background color indicators
+    for (int i = 0; i < COLOR_PALETTE_SIZE; ++i) {
+        S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + i);
+        S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
+    }
+
     // 2) Base styles per line (indentation-only, zero string parsing)
     S(SCI_STARTSTYLING, 0, 0);
 
@@ -261,18 +273,31 @@ void ResultDock::applyStyling() const
         if (hit.displayLineStart >= 0)
             S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.numberStart, hit.numberLen);
 
-    // 3c) exact match substrings (BG + FG)
-    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_BG);
-    for (const auto& hit : _hits) {
-        if (hit.displayLineStart < 0) continue;
-        for (size_t i = 0; i < hit.matchStarts.size(); ++i)
-            S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
-    }
+    // 3c) exact match substrings
+    // Always apply standard text color (INDIC_MATCH_FORE)
     S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
     for (const auto& hit : _hits) {
         if (hit.displayLineStart < 0) continue;
-        for (size_t i = 0; i < hit.matchStarts.size(); ++i)
+        for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
             S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
+        }
+    }
+
+    // 3d) per-entry background colors (optional)
+    if (_perEntryColorsEnabled) {
+        for (const auto& hit : _hits) {
+            if (hit.displayLineStart < 0) continue;
+            // Each match has its own color index
+            for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
+                const int colorIdx = (i < hit.matchColorIndices.size())
+                    ? hit.matchColorIndices[i]
+                    : hit.colorIndex;  // fallback to hit's colorIndex
+                if (colorIdx >= 0 && colorIdx < COLOR_PALETTE_SIZE) {
+                    S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + colorIdx);
+                    S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
+                }
+            }
+        }
     }
 }
 
@@ -705,6 +730,22 @@ void ResultDock::applyTheme()
     S(SCI_INDICSETFORE, INDIC_MATCH_FORE, theme.matchFg);
     S(SCI_INDICSETUNDER, INDIC_MATCH_FORE, TRUE);
 
+    // Per-entry background color indicators (10 distinct colors)
+    // Text color remains standard (matchFg), only background varies per entry
+    // Determine alpha based on mode
+    const int bgAlpha = dark ? ENTRY_BG_ALPHA_DARK : ENTRY_BG_ALPHA_LIGHT;
+    const int outlineAlpha = dark ? ENTRY_OUTLINE_ALPHA_DARK : ENTRY_OUTLINE_ALPHA_LIGHT;
+
+    for (int i = 0; i < COLOR_PALETTE_SIZE; ++i) {
+        const COLORREF color = getEntryColor(i, dark);
+        const int indicId = INDIC_ENTRY_BG_BASE + i;
+        S(SCI_INDICSETSTYLE, indicId, INDIC_ROUNDBOX);
+        S(SCI_INDICSETFORE, indicId, color);
+        S(SCI_INDICSETALPHA, indicId, bgAlpha);           // Background fill alpha
+        S(SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);    // Border alpha
+        S(SCI_INDICSETUNDER, indicId, TRUE);
+    }
+
     // Header style
     S(SCI_STYLESETFORE, STYLE_HEADER, theme.headerFg);
     S(SCI_STYLESETBACK, STYLE_HEADER, theme.headerBg);
@@ -777,17 +818,30 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
         if (h.displayLineStart >= 0)
             S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.numberStart, h.numberLen);
 
-    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_BG);
-    for (const auto& h : newHits) {
-        if (h.displayLineStart < 0) continue;
-        for (size_t i = 0; i < h.matchStarts.size(); ++i)
-            S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
-    }
+    // Apply standard text color for all matches
     S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
     for (const auto& h : newHits) {
         if (h.displayLineStart < 0) continue;
-        for (size_t i = 0; i < h.matchStarts.size(); ++i)
+        for (size_t i = 0; i < h.matchStarts.size(); ++i) {
             S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
+        }
+    }
+
+    // Apply per-entry background colors (optional)
+    if (_perEntryColorsEnabled) {
+        for (const auto& h : newHits) {
+            if (h.displayLineStart < 0) continue;
+            // Each match has its own color index
+            for (size_t i = 0; i < h.matchStarts.size(); ++i) {
+                const int colorIdx = (i < h.matchColorIndices.size())
+                    ? h.matchColorIndices[i]
+                    : h.colorIndex;  // fallback
+                if (colorIdx >= 0 && colorIdx < COLOR_PALETTE_SIZE) {
+                    S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + colorIdx);
+                    S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
+                }
+            }
+        }
     }
 }
 
@@ -954,8 +1008,9 @@ void ResultDock::buildListText(
             {
                 appendIndented(LineLevel::CritHdr, LM.get(L"dock_crit_header", { c.text, std::to_wstring(c.hits.size()) }));
 
-                // make a mutable copy of c.hits
+                // make a mutable copy of c.hits (colorIndex already set per-hit)
                 auto hitsCopy = c.hits;
+
                 // pass the copy to formatHitsLines instead of const c.hits
                 formatHitsLines(sciSend, hitsCopy, body, utf8Len);
                 // move results from hitsCopy into outHits
@@ -968,12 +1023,27 @@ void ResultDock::buildListText(
         {
             // flat: collect all hits per file and sort by position
             std::vector<Hit> merged;
-            for (auto& c : f.crits)
-                merged.insert(merged.end(),
-                    std::make_move_iterator(c.hits.begin()),
-                    std::make_move_iterator(c.hits.end()));
+            for (const auto& c : f.crits) {
+                // Make a copy and assign colorIndex from CritAgg
+                for (const auto& hit : c.hits) {
+                    Hit hitCopy = hit;
+                    // colorIndex is already set per-hit based on matched text
+                    merged.push_back(std::move(hitCopy));
+                }
+            }
+            // Sort by position
             std::sort(merged.begin(), merged.end(),
-                [](auto const& a, auto const& b) { return a.pos < b.pos; });
+    [](auto const& a, auto const& b) {
+        if (a.pos != b.pos) return a.pos < b.pos;
+        if (a.length != b.length) return a.length < b.length;
+        return a.colorIndex < b.colorIndex;  // Immer niedrigster colorIndex zuerst
+    });
+
+            // Remove duplicate hits at same position (keep first occurrence)
+            merged.erase(
+                std::unique(merged.begin(), merged.end(),
+                    [](const Hit& a, const Hit& b) { return a.pos == b.pos && a.length == b.length; }),
+                merged.end());
 
             formatHitsLines(sciSend, merged, body, utf8Len);
             outHits.insert(outHits.end(),
@@ -1210,6 +1280,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             h.numberLen = (int)std::to_wstring(line1).size();
             h.matchStarts.clear();
             h.matchLens.clear();
+            h.matchColorIndices.clear();
 
             if (dispStart < currentRowLenU8) {
                 size_t safeLen = dispLen;
@@ -1217,6 +1288,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                 if (safeLen > 0) {
                     h.matchStarts.push_back((int)(prefixU8Len + dispStart));
                     h.matchLens.push_back((int)safeLen);
+                    h.matchColorIndices.push_back(h.colorIndex);
                 }
             }
 
@@ -1237,6 +1309,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                     if (safeLen > 0) {
                         firstHitOnRow->matchStarts.push_back((int)(prefixU8Len + dispStart));
                         firstHitOnRow->matchLens.push_back((int)safeLen);
+                        firstHitOnRow->matchColorIndices.push_back(h.colorIndex);  // Use THIS hit's colorIndex
                     }
                 }
             }
@@ -2245,4 +2318,15 @@ void ResultDock::onNppNotification(const SCNotification* notify)
             ::SetTimer(_hSci, s_timerId, 1, nullptr);
         return;
     }
+}
+
+// ------------------- Color Utilities ----------------------
+int ResultDock::colorIndexFromText(const std::wstring& text)
+{
+    // djb2 hash algorithm
+    unsigned long hash = 5381;
+    for (wchar_t c : text) {
+        hash = ((hash << 5) + hash) + static_cast<unsigned long>(c);
+    }
+    return static_cast<int>(hash % COLOR_PALETTE_SIZE);
 }

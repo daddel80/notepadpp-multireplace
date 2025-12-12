@@ -53,8 +53,11 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_HEADERLINES_EDIT, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, csvHeaderLinesCount), 0, 999 });
     _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_FLOWTABS_NUMERIC_ALIGN, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, flowTabsNumericAlignEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_FLOWTABS_INTRO_DONTSHOW, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, flowTabsIntroDontShowEnabled), 0, 0 });  // NEU
+    
     // Appearance
     _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_TOOLTIPS_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, tooltipsEnabled), 0, 0 });
+    _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_RESULT_DOCK_ENTRY_COLORS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, resultDockPerEntryColorsEnabled), 0, 0 });
+    _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_USE_LIST_COLORS_MARKING, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, useListColorsForMarking), 0, 0 });
 
     // Columns
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_FINDCOUNT_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isFindCountVisible), 0, 0 });
@@ -578,22 +581,23 @@ void MultiReplaceConfigDialog::createAppearancePanelControls() {
     if (!_hAppearancePanel) return;
 
     const int left = 70;
-    int top = 20;
+    int top = 15;
     const int groupW = 460;
 
     LayoutBuilder root(this, _hAppearancePanel, left, top, groupW, 20);
 
-    auto trans = root.BeginGroup(left, top, groupW, 115, 22, 30, IDC_CFG_GRP_TRANSPARENCY, LM.getLPCW(L"config_grp_transparency"));
-    trans.AddLabeledSlider(IDC_CFG_FOREGROUND_LABEL, LM.getLPCW(L"config_lbl_foreground"), IDC_CFG_FOREGROUND_SLIDER, 190, 160, 0, 255, 40, 170, 18, -4);
-    trans.AddLabeledSlider(IDC_CFG_BACKGROUND_LABEL, LM.getLPCW(L"config_lbl_background"), IDC_CFG_BACKGROUND_SLIDER, 190, 160, 0, 255, 40, 170, 18, -4);
-    top += 125;
+    // Combined Interface GroupBox (Transparency + Zoom)
+    auto iface = root.BeginGroup(left, top, groupW, 145, 22, 30, IDC_CFG_GRP_INTERFACE, LM.getLPCW(L"config_grp_interface"));
+    iface.AddLabeledSlider(IDC_CFG_FOREGROUND_LABEL, LM.getLPCW(L"config_lbl_foreground"), IDC_CFG_FOREGROUND_SLIDER, 190, 160, 0, 255, 40, 170, 18, -4);
+    iface.AddLabeledSlider(IDC_CFG_BACKGROUND_LABEL, LM.getLPCW(L"config_lbl_background"), IDC_CFG_BACKGROUND_SLIDER, 190, 160, 0, 255, 40, 170, 18, -4);
+    iface.AddLabeledSlider(IDC_CFG_SCALE_LABEL, LM.getLPCW(L"config_lbl_scale_factor"), IDC_CFG_SCALE_SLIDER, 190, 160, 50, 200, 40, 170, 18, -4, 100);
+    top += 155;
 
-    auto scaleGrp = root.BeginGroup(left, top, groupW, 75, 22, 30, IDC_CFG_GRP_SCALE, LM.getLPCW(L"config_grp_scale"));
-    scaleGrp.AddLabeledSlider(IDC_CFG_SCALE_LABEL, LM.getLPCW(L"config_lbl_scale_factor"), IDC_CFG_SCALE_SLIDER, 190, 160, 50, 200, 40, 170, 18, -4, 100);
-    top += 85;
-
-    auto tips = root.BeginGroup(left, top, groupW, 65, 22, 30, IDC_STATIC, LM.getLPCW(L"config_grp_tooltips"));
-    tips.AddCheckbox(IDC_CFG_TOOLTIPS_ENABLED, LM.getLPCW(L"config_chk_enable_tooltips"));
+    // Display Options GroupBox (Tooltips + Highlighting)
+    auto display = root.BeginGroup(left, top, groupW, 115, 22, 30, IDC_CFG_GRP_DISPLAY_OPTIONS, LM.getLPCW(L"config_grp_display_options"));
+    display.AddCheckbox(IDC_CFG_TOOLTIPS_ENABLED, LM.getLPCW(L"config_chk_enable_tooltips"));
+    display.AddCheckbox(IDC_CFG_RESULT_DOCK_ENTRY_COLORS, LM.getLPCW(L"config_chk_result_dock_entry_colors"));
+    display.AddCheckbox(IDC_CFG_USE_LIST_COLORS_MARKING, LM.getLPCW(L"config_chk_use_list_colors_marking"));
 }
 
 void MultiReplaceConfigDialog::createVariablesAutomationPanelControls() {
@@ -660,6 +664,8 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     s.isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
     s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
+    s.resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
+    s.useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
 
     registerBindingsOnce();
     applyBindingsToUI_Generic((void*)&s);
@@ -829,6 +835,8 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.isReplaceCountVisible = false;
     def.isCommentsColumnVisible = false;
     def.isDeleteButtonVisible = true;
+    def.resultDockPerEntryColorsEnabled = true;
+    def.useListColorsForMarking = true;
 
     MultiReplace::writeStructToConfig(def);
 

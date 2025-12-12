@@ -315,21 +315,17 @@
 #define IDC_CFG_EDITFIELD_LABEL           79081
 #define IDC_CFG_EDITFIELD_SIZE_COMBO      79082
 
-#define IDC_CFG_GRP_TRANSPARENCY          79090
+#define IDC_CFG_GRP_INTERFACE             79090
 #define IDC_CFG_FOREGROUND_LABEL          79091
 #define IDC_CFG_FOREGROUND_SLIDER         79092
 #define IDC_CFG_BACKGROUND_LABEL          79093
 #define IDC_CFG_BACKGROUND_SLIDER         79094
-
-#define IDC_CFG_GRP_SCALE                 79095
 #define IDC_CFG_SCALE_LABEL               79096
 #define IDC_CFG_SCALE_SLIDER              79097
 
-// Appearance – Scale
-#define IDC_CFG_GRP_SCALE                 79095
-#define IDC_CFG_SCALE_LABEL               79096
-#define IDC_CFG_SCALE_SLIDER              79097
-
+#define IDC_CFG_GRP_DISPLAY_OPTIONS       79111
+#define IDC_CFG_RESULT_DOCK_ENTRY_COLORS  79112
+#define IDC_CFG_USE_LIST_COLORS_MARKING   79113
 
 // -------------------------------------------------------------------
 //  Variables and Automation panel
@@ -343,7 +339,6 @@
 #define IDC_CFG_GRP_LUA                   79130
 #define IDC_CFG_LUA_SAFEMODE_ENABLED      79131
 #define IDC_CFG_LUA_PLACEHOLDER_LABEL     79132
-
 
 // -------------------------------------------------------------------
 //  Import and Scope panel

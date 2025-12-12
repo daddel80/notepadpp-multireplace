@@ -3554,7 +3554,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
     case WM_INITDIALOG:
     {
-        // checkFullStackInfo();
+        ResultDock::setPerEntryColorsEnabled(true);  // Enable per-entry coloring for testing
+
         dpiMgr = new DPIManager(_hSelf);
         initializeWindowSize();
 
@@ -6664,8 +6665,11 @@ void MultiReplace::handleFindAllButton()
                 h.pos = (Sci_Position)r.pos;
                 h.length = (Sci_Position)r.length;
                 this->trimHitToFirstLine(sciSend, h);
-                if (h.length > 0)
+                if (h.length > 0) {
+                    // Calculate colorIndex from search pattern (same as text marking)
+                    h.colorIndex = ResultDock::colorIndexFromText(item.findText);
                     rawHits.push_back(std::move(h));
+                }
             }
 
             // (c) Write per-criterion counters (even if zero)
@@ -7967,23 +7971,47 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::strin
 {
     if (len <= 0) return;
 
-    uint32_t rgb = useListEnabled
-        ? NppStyleKit::ColorTools::djb2Color(findText)   // list: per-entry color
-        : static_cast<uint32_t>(MARKER_COLOR);           // non-list: fixed UI color
+    // Ensure markers are initialized
+    if (!_textMarkersInitialized) {
+        initTextMarkerIndicators();
+    }
+    if (_textMarkerIds.empty()) return;
 
-    const int id = NppStyleKit::gIndicatorReg.acquireForColor(rgb);
-    if (id < 0) return;
+    int markerIndex = 10;  // Default: Single marker
 
-    NppStyleKit::gIndicatorReg.fillRange(_hScintilla, id,
-        (Sci_Position)pos, (Sci_Position)len);
+    if (useListEnabled && useListColorsForMarking) {
+        UINT cp = getCurrentDocCodePage();
+        std::wstring wText = Encoding::bytesToWString(findText, cp);
+        unsigned long hash = 5381;
+        for (wchar_t c : wText) {
+            hash = ((hash << 5) + hash) + static_cast<unsigned long>(c);
+        }
+        markerIndex = static_cast<int>(hash % 10);
+    }
+
+    if (markerIndex >= static_cast<int>(_textMarkerIds.size())) return;
+    int indicId = _textMarkerIds[markerIndex];
+    if (indicId < 0) return;
+
+    // Direkt Scintilla aufrufen - NICHT über gIndicatorReg!
+    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicId, 0);
+    ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, pos, len);
 }
 
 void MultiReplace::handleClearTextMarksButton()
 {
-    if (HWND hA = nppData._scintillaMainHandle)   NppStyleKit::gIndicatorReg.clearAll(hA);
-    if (HWND hB = nppData._scintillaSecondHandle) NppStyleKit::gIndicatorReg.clearAll(hB);
+    // Clear our fixed marker indicators
+    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+        if (!hSci) continue;
+        Sci_Position docLen = static_cast<Sci_Position>(::SendMessage(hSci, SCI_GETLENGTH, 0, 0));
 
-    NppStyleKit::gIndicatorReg.resetColorMap();
+        for (int id : _textMarkerIds) {
+            if (id >= 0) {
+                ::SendMessage(hSci, SCI_SETINDICATORCURRENT, id, 0);
+                ::SendMessage(hSci, SCI_INDICATORCLEARRANGE, 0, docLen);
+            }
+        }
+    }
 
     markedStringsCount = 0;
     colorToStyleMap.clear();
@@ -8091,6 +8119,59 @@ void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
 
     CloseClipboard();
     showStatusMessage(LM.get(L"status_items_copied_to_clipboard", { std::to_wstring(textCount) }), MessageStatus::Success);
+}
+
+void MultiReplace::initTextMarkerIndicators()
+{
+    if (_textMarkersInitialized) return;  // Nur einmal!
+
+    HWND hSci0 = nppData._scintillaMainHandle;
+    if (!hSci0) return;
+
+    _textMarkerIds.clear();
+    for (int i = 0; i <= 10; ++i) {
+        std::string name = "MR_TextMark_" + std::to_string(i);
+        int id = NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator(name.c_str(), -1);
+        if (id >= 0) {
+            _textMarkerIds.push_back(id);
+        }
+    }
+
+    _textMarkersInitialized = true;
+    updateTextMarkerStyles();  // Initiale Farben setzen
+}
+
+void MultiReplace::updateTextMarkerStyles()
+{
+    if (_textMarkerIds.empty()) return;
+
+    bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+    int alpha = isDark ? EDITOR_MARK_ALPHA_DARK : EDITOR_MARK_ALPHA_LIGHT;
+    int outlineAlpha = isDark ? EDITOR_OUTLINE_ALPHA_DARK : EDITOR_OUTLINE_ALPHA_LIGHT;
+
+    auto applyStyle = [&](HWND hSci, int id, COLORREF color) {
+        if (!hSci || id < 0) return;
+        ::SendMessage(hSci, SCI_INDICSETSTYLE, id, INDIC_ROUNDBOX);
+        ::SendMessage(hSci, SCI_INDICSETFORE, id, color);
+        ::SendMessage(hSci, SCI_INDICSETALPHA, id, alpha);
+        ::SendMessage(hSci, SCI_INDICSETOUTLINEALPHA, id, outlineAlpha);
+        ::SendMessage(hSci, SCI_INDICSETUNDER, id, TRUE);
+        };
+
+    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+        if (!hSci) continue;
+
+        // List colors (Index 0-9) - use ResultDock palette (single source of truth)
+        for (int i = 0; i < ResultDock::COLOR_PALETTE_SIZE && i < static_cast<int>(_textMarkerIds.size()); ++i) {
+            COLORREF color = ResultDock::getEntryColor(i, isDark);
+            applyStyle(hSci, _textMarkerIds[i], color);
+        }
+
+        // Single marker (Index 10)
+        if (_textMarkerIds.size() > 10) {
+            applyStyle(hSci, _textMarkerIds[10], MARKER_COLOR);
+        }
+    }
 }
 
 #pragma endregion
@@ -11646,6 +11727,10 @@ void MultiReplace::loadUIConfigFromIni()
     tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
     isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
 
+    resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
+    useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
+    ResultDock::setPerEntryColorsEnabled(resultDockPerEntryColorsEnabled);
+
     if (_replaceListView)
     {
         createListViewColumns();
@@ -11688,6 +11773,8 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
     s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
+    s.resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
+    s.useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
     return s;
 }
 
@@ -11715,6 +11802,8 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeInt(L"ListColumns", L"DeleteButtonVisible", s.isDeleteButtonVisible ? 1 : 0);
     CFG.writeInt(L"Options", L"EditFieldSize", s.editFieldSize);
     CFG.writeInt(L"Scope", L"HeaderLines", s.csvHeaderLinesCount);
+    CFG.writeInt(L"Options", L"ResultDockPerEntryColors", s.resultDockPerEntryColorsEnabled ? 1 : 0);
+    CFG.writeInt(L"Options", L"UseListColorsForMarking", s.useListColorsForMarking ? 1 : 0);
 }
 
 void MultiReplace::loadConfigOnce()
@@ -11879,6 +11968,10 @@ void MultiReplace::applyConfigSettingsOnly()
     luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
     limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
+
+    resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
+    useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
+    ResultDock::setPerEntryColorsEnabled(resultDockPerEntryColorsEnabled);
 
     // Hover Text
     bool newHover = CFG.readBool(L"Options", L"HoverText", true);
@@ -12199,12 +12292,10 @@ void MultiReplace::onCaretPositionChanged()
 
 void MultiReplace::onThemeChanged()
 {
-    // Update all theme-related colors (status messages and columns)
     if (instance) {
-        {
-            instance->applyThemePalette();          // status colours, tooltip repaint
-            instance->refreshColumnStylesIfNeeded(); // guarded lexer reset
-        }
+        instance->applyThemePalette();
+        instance->refreshColumnStylesIfNeeded();
+        instance->updateTextMarkerStyles();
     }
 }
 

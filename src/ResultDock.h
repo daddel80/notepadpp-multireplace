@@ -50,8 +50,12 @@ public:
         int displayLineStart{ -1 }; // Absolute char pos of "Line N:"
         int numberStart{ 0 };       // Offset of digits
         int numberLen{ 0 };         // Length of digits
-        std::vector<int> matchStarts; // Offsets of match substrings
-        std::vector<int> matchLens;   // Lengths of match substrings
+        std::vector<int> matchStarts;      // Offsets of match substrings
+        std::vector<int> matchLens;        // Lengths of match substrings
+        std::vector<int> matchColorIndices; // Color index per match (0-9, parallel to matchStarts/matchLens)
+
+        // Color index for this hit's search entry (used when adding to matchColorIndices)
+        int colorIndex{ -1 };
     };
 
     struct CritAgg { std::wstring text; std::vector<Hit> hits; };
@@ -75,6 +79,10 @@ public:
     static void  setWrapEnabled(bool v) { _wrapEnabled = v; }
     static void  setPurgeEnabled(bool v) { _purgeOnNextSearch = v; }
 
+    // Per-entry coloring option (colors matches based on list entry)
+    static bool  perEntryColorsEnabled() { return _perEntryColorsEnabled; }
+    static void  setPerEntryColorsEnabled(bool v) { _perEntryColorsEnabled = v; }
+
     // ------------------- Search Block API ---------------------
     void startSearchBlock(const std::wstring& header, bool  groupView, bool purge);
     void appendFileBlock(const FileMap& fm, const SciSendFn& sciSend);
@@ -85,6 +93,57 @@ public:
     void insertSearchHeader(const std::wstring& header);
 
     void onNppNotification(const SCNotification* notify);
+
+    // ------------------- Color Utilities ----------------------
+    // Generate a deterministic color index from text (djb2 hash based)
+    static int colorIndexFromText(const std::wstring& text);
+
+    // ------------------- Per-Entry Color Palette --------------
+   // 10 distinct colors for per-entry highlighting
+    static constexpr int COLOR_PALETTE_SIZE = 10;
+
+    // Light Mode: Medium saturation pastels
+    static constexpr COLORREF LightPalette[COLOR_PALETTE_SIZE] = {
+        0x8C8CFF,  // 0: Medium Red
+        0x82BEFF,  // 1: Medium Orange
+        0x96FF96,  // 2: Medium Green
+        0xFFD2A0,  // 3: Medium Blue
+        0xE6AAE6,  // 4: Medium Purple
+        0xF0F082,  // 5: Medium Teal
+        0x82F0FF,  // 6: Medium Yellow
+        0xD2A0FF,  // 7: Medium Pink
+        0xFFB4B4,  // 8: Medium Indigo
+        0x96FFC8   // 9: Medium Lime
+    };
+
+    // Dark Mode: Vibrant colors (high saturation)
+    static constexpr COLORREF DarkPalette[COLOR_PALETTE_SIZE] = {
+        0x6E6EFF,  // 0: Vibrant Red
+        0x5AAAFF,  // 1: Vibrant Orange
+        0x64E664,  // 2: Vibrant Green
+        0xFFA064,  // 3: Vibrant Blue
+        0xDC78DC,  // 4: Vibrant Purple
+        0xDCDC50,  // 5: Vibrant Teal
+        0x64E6F0,  // 6: Vibrant Yellow
+        0xBE82FF,  // 7: Vibrant Pink
+        0xFA8C8C,  // 8: Vibrant Indigo
+        0x64F0B4   // 9: Vibrant Lime
+    };
+
+    // Alpha values for ResultDock
+    static constexpr int ENTRY_BG_ALPHA_LIGHT = 150;
+    static constexpr int ENTRY_OUTLINE_ALPHA_LIGHT = 0;
+    static constexpr int ENTRY_BG_ALPHA_DARK = 130;
+    static constexpr int ENTRY_OUTLINE_ALPHA_DARK = 0;
+
+    // Per-entry background indicators (15-24)
+    static constexpr int INDIC_ENTRY_BG_BASE = 15;
+
+    static COLORREF getEntryColor(int colorIndex, bool darkMode) {
+        if (colorIndex < 0 || colorIndex >= COLOR_PALETTE_SIZE)
+            return darkMode ? DarkDockTheme.matchFg : LightDockTheme.matchFg;
+        return darkMode ? DarkPalette[colorIndex] : LightPalette[colorIndex];
+    }
 
 private:
     // ---------------- Construction & Core State ---------------
@@ -189,6 +248,7 @@ private:
         45                     // caretLineAlpha
     };
 
+
     static constexpr DockThemeColors DarkDockTheme = {
         RGB(0x3A, 0x3D, 0x33), // lineBg
         RGB(0x80, 0xC0, 0xFF), // lineNr
@@ -210,7 +270,7 @@ private:
         return darkMode ? DarkDockTheme : LightDockTheme;
     }
 
-    // ------------------- Command & style IDs ------------------
+     // ------------------- Command & style IDs ------------------
     enum : UINT {
         IDM_RD_FOLD_ALL = 60001,
         IDM_RD_UNFOLD_ALL = 60002,
@@ -228,6 +288,7 @@ private:
     static constexpr int INDIC_LINENUMBER_FORE = 9;
     static constexpr int INDIC_MATCH_FORE = 10;
     static constexpr int INDIC_MATCH_BG = 14;
+
     static constexpr int STYLE_HEADER = 33;
     static constexpr int STYLE_CRITHDR = 34;
     static constexpr int STYLE_FILEPATH = 35;
@@ -255,6 +316,7 @@ private:
     // UI Option Flags
     inline static bool _wrapEnabled = false;
     inline static bool _purgeOnNextSearch = false;
+    inline static bool _perEntryColorsEnabled = false;  // Per-entry coloring option
 
     // --- Call acceleration (Scintilla DirectFunction) ---
     using SciFnDirect_t = sptr_t(__cdecl*)(sptr_t, unsigned int, uptr_t, sptr_t);
