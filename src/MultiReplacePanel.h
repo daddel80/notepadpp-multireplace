@@ -908,8 +908,8 @@ private:
 
     //Mark
     void handleMarkMatchesButton();
-    int markString(const SearchContext& context, Sci_Position initialStart);
-    void highlightTextRange(LRESULT pos, LRESULT len, const std::string& findTextUtf8);
+    int markString(const SearchContext& context, Sci_Position initialStart, int forcedColorIndex = -1);
+    void highlightTextRange(LRESULT pos, LRESULT len, int forcedColorIndex = -1);
     void handleClearTextMarksButton();
     void handleCopyMarkedTextToClipboardButton();
     void copyTextToClipboard(const std::wstring& text, int textCount);

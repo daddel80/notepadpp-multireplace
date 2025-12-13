@@ -7892,7 +7892,10 @@ void MultiReplace::handleMarkMatchesButton() {
                 startPos = allFromCursorEnabled ? caretPos : 0;
             }
 
-            const int matchCount = markString(context, startPos);
+            // Calculate color from raw list text to match ResultDock colors
+            const int colorIdx = ResultDock::colorIndexFromText(item.findText);
+
+            const int matchCount = markString(context, startPos, colorIdx);
             if (matchCount > 0) {
                 totalMatchCount += matchCount;
                 updateCountColumns(i, matchCount);
@@ -7942,7 +7945,7 @@ void MultiReplace::handleMarkMatchesButton() {
     showStatusMessage(LM.get(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), MessageStatus::Info);
 }
 
-int MultiReplace::markString(const SearchContext& context, Sci_Position initialStart)
+int MultiReplace::markString(const SearchContext& context, Sci_Position initialStart, int forcedColorIndex)
 {
     if (context.findText.empty()) return 0;
 
@@ -7955,7 +7958,8 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
         r = performSearchForward(context, pos))
     {
         if (r.length > 0) {
-            highlightTextRange(r.pos, r.length, context.findText);
+            // Pass forcedColorIndex to highlighter
+            highlightTextRange(r.pos, r.length, forcedColorIndex);
             ++markCount;
         }
         pos = advanceAfterMatch(r);
@@ -7967,33 +7971,30 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
     return markCount;
 }
 
-void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::string& findText)
+void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, int forcedColorIndex)
 {
     if (len <= 0) return;
 
-    // Ensure markers are initialized
     if (!_textMarkersInitialized) {
         initTextMarkerIndicators();
     }
     if (_textMarkerIds.empty()) return;
 
-    int markerIndex = 10;  // Default: Single marker
+    int markerIndex = 10;  // Default: Single marker (green)
 
-    if (useListEnabled && useListColorsForMarking) {
-        UINT cp = getCurrentDocCodePage();
-        std::wstring wText = Encoding::bytesToWString(findText, cp);
-        unsigned long hash = 5381;
-        for (wchar_t c : wText) {
-            hash = ((hash << 5) + hash) + static_cast<unsigned long>(c);
-        }
-        markerIndex = static_cast<int>(hash % 10);
+    // Use colorful markers ONLY when:
+    // 1. List mode is active AND
+    // 2. "Use list colors for marking" option is enabled AND
+    // 3. A valid color index was provided
+    if (useListEnabled && useListColorsForMarking &&
+        forcedColorIndex >= 0 && forcedColorIndex < 10) {
+        markerIndex = forcedColorIndex;
     }
 
     if (markerIndex >= static_cast<int>(_textMarkerIds.size())) return;
     int indicId = _textMarkerIds[markerIndex];
     if (indicId < 0) return;
 
-    // Direkt Scintilla aufrufen - NICHT über gIndicatorReg!
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicId, 0);
     ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, pos, len);
 }

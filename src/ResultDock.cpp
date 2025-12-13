@@ -302,6 +302,7 @@ void ResultDock::applyStyling() const
         }
     }
 }
+
 void ResultDock::onThemeChanged() {
     applyTheme();
 }

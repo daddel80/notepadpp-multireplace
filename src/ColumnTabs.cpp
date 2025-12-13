@@ -869,7 +869,9 @@ namespace ColumnTabs {
     void CT_ResetFlowVisualState() noexcept
     {
         detail::g_hasETSLine.clear();
+        detail::g_hasETSLine.shrink_to_fit();
         detail::g_savedManualStopsPx.clear();
+        detail::g_savedManualStopsPx.shrink_to_fit();
     }
 
     bool ColumnTabs::CT_HasFlowTabStops() noexcept
