@@ -579,8 +579,9 @@ Control the behavior of search operations and cursor movement.
   - If unchecked, operations always process the entire defined scope (e.g., the whole document).
 - **Mute all sounds**
   - Disables the notification sound (beep) when a search yields no results. The window will still flash visually to indicate "not found".
-- **Limit file size for 'In Files' operations**
+- **File Search: Skip files larger than**
   - Defines a maximum size (in MB) for **Find/Replace in Files**. Skips larger files to ensure responsiveness and prevent high memory usage (e.g., huge logs or database dumps).
+
 ### 2. List View and Layout
 Manage the visual elements and behavior of the replacement list to save screen space or increase information density.
 
@@ -615,13 +616,18 @@ Settings specific to the CSV column manipulation and alignment features.
 ### 4. Appearance
 Customize the look and feel of the plugin window.
 
-- **Transparency**
-  - **Foreground**: Sets the window opacity when the plugin is active/focused.
-  - **Background**: Sets the window opacity when the plugin loses focus (e.g., when you click back into the editor).
-- **Interface Scaling**
-  - **Zoom Level**: Scales the entire plugin UI (buttons, text, list size). Useful for high-DPI monitors or accessibility preferences (Range: 50% to 200%).
-- **Tooltips**
+- **Interface**
+  - **Foreground transparency**: Sets the window opacity when the plugin is active/focused.
+  - **Background transparency**: Sets the window opacity when the plugin loses focus (e.g., when you click back into the editor).
+  - **Scale factor**: Scales the entire plugin UI (buttons, text, list size). Useful for high-DPI monitors or accessibility preferences (Range: 50% to 200%).
+- **Display Options**
   - **Enable tooltips**: Toggles the helper popups that appear when hovering over buttons and options.
+  - **Use list colors in search results**:
+    - **Checked**: Search hits in the result docking window are color-coded matching the specific color assigned to their list entry.
+    - **Unchecked**: All search results in the docking window are displayed using a uniform standard color.
+  - **Use list colors for text marking**:
+    - **Checked**: Highlights matches in the editor using the specific color defined in the list entry.
+    - **Unchecked**: All marked text in the editor uses a single standard highlight color.
 
 ### 5. Variables and Automation
 Advanced settings for scripting.

@@ -286,7 +286,7 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_mute_sounds", L"Mute all sounds" },
 
 // File size limit
-{ L"config_chk_limit_filesize", L"Find/Replace in Files: Skip files larger than" },
+{ L"config_chk_limit_filesize", L"File Search: Skip files larger than" },
 { L"config_lbl_max_filesize_mb", L"MB" },
 
 // List View Settings
@@ -333,7 +333,7 @@ const LangKV kEnglishPairs[] = {
 { L"menu_multiple_replacement", L"&Multiple Replacement..." },
 { L"menu_settings", L"&Settings..." },
 { L"menu_documentation", L"&Documentation" },
-{ L"menu_about", L"&About" },
+{ L"menu_about", L"&About MultiReplace" },
 
 // About Dialog
 { L"about_title", L"MultiReplace Plugin" },

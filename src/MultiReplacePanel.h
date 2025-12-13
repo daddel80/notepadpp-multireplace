@@ -525,7 +525,8 @@ protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 
 private:
-    static constexpr int MARKER_COLOR = 0x32CD32; // Color for non-list Marker
+    static constexpr int MARKER_COLOR_LIGHT = 0x00A5FF; // Color for non-list Marker
+    static constexpr int MARKER_COLOR_DARK = 0x0050D2;  // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     static constexpr int REPLACE_FILES_PANEL_HEIGHT = 88;
     bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.

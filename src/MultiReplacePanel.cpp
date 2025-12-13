@@ -8169,7 +8169,8 @@ void MultiReplace::updateTextMarkerStyles()
 
         // Single marker (Index 10)
         if (_textMarkerIds.size() > 10) {
-            applyStyle(hSci, _textMarkerIds[10], MARKER_COLOR);
+            COLORREF markerColor = isDark ? MARKER_COLOR_DARK : MARKER_COLOR_LIGHT;
+            applyStyle(hSci, _textMarkerIds[10], markerColor);
         }
     }
 }

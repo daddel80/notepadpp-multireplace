@@ -102,32 +102,32 @@ public:
    // 10 distinct colors for per-entry highlighting
     static constexpr int COLOR_PALETTE_SIZE = 10;
 
-    // Light Mode: Medium saturation pastels
+    // Light Mode: Bright/Vibrant colors (matching MARKER_COLOR_LIGHT intensity)
     static constexpr COLORREF LightPalette[COLOR_PALETTE_SIZE] = {
-        0x8C8CFF,  // 0: Medium Red
-        0x82BEFF,  // 1: Medium Orange
-        0x96FF96,  // 2: Medium Green
-        0xFFD2A0,  // 3: Medium Blue
-        0xE6AAE6,  // 4: Medium Purple
-        0xF0F082,  // 5: Medium Teal
-        0x82F0FF,  // 6: Medium Yellow
-        0xD2A0FF,  // 7: Medium Pink
-        0xFFB4B4,  // 8: Medium Indigo
-        0x96FFC8   // 9: Medium Lime
+        0x6666FF,  // 0: Bright Red
+        0x00A5FF,  // 1: Bright Orange (Matches Standard Marker)
+        0x66FF66,  // 2: Bright Green
+        0xFFA040,  // 3: Bright Blue
+        0xFF66FF,  // 4: Bright Purple
+        0xD0E040,  // 5: Bright Teal
+        0x00D7FF,  // 6: Bright Gold/Yellow
+        0xCB85FF,  // 7: Bright Pink
+        0xFF8080,  // 8: Bright Indigo
+        0x50FF90   // 9: Bright Lime
     };
 
-    // Dark Mode: Vibrant colors (high saturation)
+    // Dark Mode: Deeper/Saturated colors (matching MARKER_COLOR_DARK intensity)
     static constexpr COLORREF DarkPalette[COLOR_PALETTE_SIZE] = {
-        0x6E6EFF,  // 0: Vibrant Red
-        0x5AAAFF,  // 1: Vibrant Orange
-        0x64E664,  // 2: Vibrant Green
-        0xFFA064,  // 3: Vibrant Blue
-        0xDC78DC,  // 4: Vibrant Purple
-        0xDCDC50,  // 5: Vibrant Teal
-        0x64E6F0,  // 6: Vibrant Yellow
-        0xBE82FF,  // 7: Vibrant Pink
-        0xFA8C8C,  // 8: Vibrant Indigo
-        0x64F0B4   // 9: Vibrant Lime
+        0x4040D0,  // 0: Deep Red
+        0x0050D2,  // 1: Deep Orange (Matches Standard Marker)
+        0x40D040,  // 2: Deep Green
+        0xD08040,  // 3: Deep Blue
+        0xD040D0,  // 4: Deep Purple
+        0x90A000,  // 5: Deep Teal
+        0x00C0C0,  // 6: Deep Yellow/Ochre
+        0x9040D0,  // 7: Deep Pink
+        0xD04080,  // 8: Deep Indigo
+        0x40D080   // 9: Deep Lime
     };
 
     // Alpha values for ResultDock

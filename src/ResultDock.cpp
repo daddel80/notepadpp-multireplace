@@ -273,25 +273,17 @@ void ResultDock::applyStyling() const
         if (hit.displayLineStart >= 0)
             S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.numberStart, hit.numberLen);
 
-    // 3c) exact match substrings
-    // Always apply standard text color (INDIC_MATCH_FORE)
-    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
-    for (const auto& hit : _hits) {
-        if (hit.displayLineStart < 0) continue;
-        for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
-            S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
-        }
-    }
-
-    // 3d) per-entry background colors (optional)
+    // 3c/3d) Match Highlighting (Exclusive Logic)
     if (_perEntryColorsEnabled) {
+        // CASE A: Colorful Backgrounds -> Apply ONLY background indicators (Text remains standard/white)
         for (const auto& hit : _hits) {
             if (hit.displayLineStart < 0) continue;
-            // Each match has its own color index
             for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
+                // Determine color index
                 const int colorIdx = (i < hit.matchColorIndices.size())
                     ? hit.matchColorIndices[i]
-                    : hit.colorIndex;  // fallback to hit's colorIndex
+                    : hit.colorIndex;  // fallback
+
                 if (colorIdx >= 0 && colorIdx < COLOR_PALETTE_SIZE) {
                     S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + colorIdx);
                     S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
@@ -299,8 +291,17 @@ void ResultDock::applyStyling() const
             }
         }
     }
+    else {
+        // CASE B: Standard Mode -> Apply ONLY text color indicator (e.g. Orange/Green)
+        S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
+        for (const auto& hit : _hits) {
+            if (hit.displayLineStart < 0) continue;
+            for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
+                S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
+            }
+        }
+    }
 }
-
 void ResultDock::onThemeChanged() {
     applyTheme();
 }
@@ -786,7 +787,7 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
 
     for (int line = firstLine; line <= lastLine; ++line) {
         const Sci_Position ls = S(SCI_POSITIONFROMLINE, line);
-        const int ll = (int)S(SCI_LINELENGTH, line);
+        const int          ll = (int)S(SCI_LINELENGTH, line);
 
         int style = STYLE_DEFAULT;
         if (ll > 0) {
@@ -799,7 +800,7 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
 
         // Keep EOL visuals aligned with default
         const Sci_Position lineEnd = S(SCI_GETLINEENDPOSITION, line);
-        const int eolLen = (int)(lineEnd - (ls + ll));
+        const int          eolLen = (int)(lineEnd - (ls + ll));
         if (eolLen > 0) S(SCI_SETSTYLING, eolLen, STYLE_DEFAULT);
     }
 
@@ -818,24 +819,17 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
         if (h.displayLineStart >= 0)
             S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.numberStart, h.numberLen);
 
-    // Apply standard text color for all matches
-    S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
-    for (const auto& h : newHits) {
-        if (h.displayLineStart < 0) continue;
-        for (size_t i = 0; i < h.matchStarts.size(); ++i) {
-            S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
-        }
-    }
-
-    // Apply per-entry background colors (optional)
+    // 3c/3d) Match Highlighting (Exclusive Logic for Partial Updates)
     if (_perEntryColorsEnabled) {
+        // CASE A: Colorful Backgrounds -> Apply ONLY background indicators (Text remains standard/white)
         for (const auto& h : newHits) {
             if (h.displayLineStart < 0) continue;
-            // Each match has its own color index
             for (size_t i = 0; i < h.matchStarts.size(); ++i) {
+                // Determine color index
                 const int colorIdx = (i < h.matchColorIndices.size())
                     ? h.matchColorIndices[i]
                     : h.colorIndex;  // fallback
+
                 if (colorIdx >= 0 && colorIdx < COLOR_PALETTE_SIZE) {
                     S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + colorIdx);
                     S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
@@ -843,8 +837,17 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
             }
         }
     }
+    else {
+        // CASE B: Standard Mode -> Apply ONLY text color indicator (e.g. Orange/Green)
+        S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
+        for (const auto& h : newHits) {
+            if (h.displayLineStart < 0) continue;
+            for (size_t i = 0; i < h.matchStarts.size(); ++i) {
+                S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
+            }
+        }
+    }
 }
-
 void ResultDock::rebuildFoldingRange(int firstLine, int lastLine) const
 {
     if (!_hSci || lastLine < firstLine) return;

@@ -457,6 +457,54 @@ LRESULT CALLBACK MultiReplaceConfigDialog::CheckboxSubclassProc(HWND hWnd, UINT 
     return ::DefSubclassProc(hWnd, uMsg, wParam, lParam);
 }
 
+LRESULT CALLBACK MultiReplaceConfigDialog::PanelSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    (void)uIdSubclass;
+    (void)dwRefData;
+
+    if (uMsg == WM_CTLCOLORSTATIC) {
+        HDC hdc = reinterpret_cast<HDC>(wParam);
+        HWND hCtrl = reinterpret_cast<HWND>(lParam);
+
+        // Check if the control is a Trackbar (Slider)
+        TCHAR className[64];
+        if (::GetClassName(hCtrl, className, 64)) {
+            // FIX: Use lstrcmpi instead of _tcsicmp to avoid missing include error
+            if (lstrcmpi(className, TRACKBAR_CLASS) == 0) {
+
+                // TRACKBARS NEED SOLID BACKGROUNDS (Fixes the black box issue)
+                bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+
+                static HBRUSH hBrushDark = ::CreateSolidBrush(RGB(45, 45, 48)); // Dark Mode Background
+                static HBRUSH hBrushLight = ::CreateSolidBrush(::GetSysColor(COLOR_WINDOW)); // Light Mode Background (White)
+
+                if (isDark) {
+                    ::SetTextColor(hdc, RGB(220, 220, 220));
+                    ::SetBkColor(hdc, RGB(45, 45, 48)); // Match the brush
+                    return (LRESULT)hBrushDark;
+                }
+                else {
+                    ::SetTextColor(hdc, RGB(0, 0, 0));
+                    ::SetBkColor(hdc, ::GetSysColor(COLOR_WINDOW)); // Match the brush
+                    return (LRESULT)hBrushLight;
+                }
+            }
+        }
+
+        // Standard handling for Labels (Transparent)
+        ::SetBkMode(hdc, TRANSPARENT);
+        if (NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle)) {
+            ::SetTextColor(hdc, RGB(220, 220, 220));
+        }
+        else {
+            ::SetTextColor(hdc, RGB(0, 0, 0));
+        }
+
+        return (LRESULT)::GetStockObject(NULL_BRUSH);
+    }
+
+    return ::DefSubclassProc(hWnd, uMsg, wParam, lParam);
+}
+
 void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
     if (!_hSearchReplacePanel) return;
     const int groupW = 420;
@@ -483,11 +531,18 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
         ::SetWindowSubclass(hChkLimit, CheckboxSubclassProc, 0, reinterpret_cast<DWORD_PTR>(_hSelf));
     }
 
-    lb.AddNumberEdit(IDC_CFG_MAX_FILESIZE_EDIT, 270, -24, 50, 20);
+    lb.AddNumberEdit(IDC_CFG_MAX_FILESIZE_EDIT, 270, -24, 45, 20);
     createStaticText(_hSearchReplacePanel, innerLeft + 325, lb.y - 22, 30, 18, IDC_CFG_FILESIZE_MB_LABEL, L"MB");
 }
+
 HWND MultiReplaceConfigDialog::createPanel() {
-    return ::CreateWindowEx(0, WC_STATIC, TEXT(""), WS_CHILD, 0, 0, 0, 0, _hSelf, nullptr, _hInst, nullptr);
+    HWND hPanel = ::CreateWindowEx(0, WC_STATIC, TEXT(""), WS_CHILD, 0, 0, 0, 0, _hSelf, nullptr, _hInst, nullptr);
+
+    if (hPanel) {
+        ::SetWindowSubclass(hPanel, PanelSubclassProc, 0, 0);
+    }
+
+    return hPanel;
 }
 HWND MultiReplaceConfigDialog::createGroupBox(HWND parent, int left, int top, int width, int height, int id, const TCHAR* text) {
     return ::CreateWindowEx(0, WC_BUTTON, text, WS_CHILD | WS_VISIBLE | BS_GROUPBOX, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, (HMENU)(INT_PTR)id, _hInst, nullptr);
@@ -572,8 +627,8 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
         lb.AddCheckbox(IDC_CFG_DOUBLECLICK_EDITS, LM.getLPCW(L"config_chk_doubleclick"));
         lb.AddCheckbox(IDC_CFG_HOVER_TEXT_ENABLED, LM.getLPCW(L"config_chk_hover_text"));
         lb.AddSpace(6);
-        lb.AddLabel(IDC_CFG_EDITFIELD_LABEL, LM.getLPCW(L"config_lbl_edit_height"));
-        lb.AddNumberEdit(IDC_CFG_EDITFIELD_SIZE_COMBO, 170, -2, 60, 22);
+        lb.AddLabel(IDC_CFG_EDITFIELD_LABEL, LM.getLPCW(L"config_lbl_edit_height"), 190, 18);
+        lb.AddNumberEdit(IDC_CFG_EDITFIELD_SIZE_COMBO, 195, -2, 45, 22);
     }
 }
 
@@ -581,20 +636,25 @@ void MultiReplaceConfigDialog::createAppearancePanelControls() {
     if (!_hAppearancePanel) return;
 
     const int left = 70;
-    int top = 15;
+    const int top = 15;
     const int groupW = 460;
 
-    LayoutBuilder root(this, _hAppearancePanel, left, top, groupW, 20);
+    const int groupH_Interface = 135;
+    const int groupH_Display = 130;
+    const int gap = 25;
 
-    // Combined Interface GroupBox (Transparency + Zoom)
-    auto iface = root.BeginGroup(left, top, groupW, 145, 22, 30, IDC_CFG_GRP_INTERFACE, LM.getLPCW(L"config_grp_interface"));
-    iface.AddLabeledSlider(IDC_CFG_FOREGROUND_LABEL, LM.getLPCW(L"config_lbl_foreground"), IDC_CFG_FOREGROUND_SLIDER, 190, 160, 0, 255, 40, 170, 18, -4);
-    iface.AddLabeledSlider(IDC_CFG_BACKGROUND_LABEL, LM.getLPCW(L"config_lbl_background"), IDC_CFG_BACKGROUND_SLIDER, 190, 160, 0, 255, 40, 170, 18, -4);
-    iface.AddLabeledSlider(IDC_CFG_SCALE_LABEL, LM.getLPCW(L"config_lbl_scale_factor"), IDC_CFG_SCALE_SLIDER, 190, 160, 50, 200, 40, 170, 18, -4, 100);
-    top += 155;
+    LayoutBuilder root(this, _hAppearancePanel, left, top, groupW, 28);
 
-    // Display Options GroupBox (Tooltips + Highlighting)
-    auto display = root.BeginGroup(left, top, groupW, 115, 22, 30, IDC_CFG_GRP_DISPLAY_OPTIONS, LM.getLPCW(L"config_grp_display_options"));
+    auto iface = root.BeginGroup(left, top, groupW, groupH_Interface, 22, 35, IDC_CFG_GRP_INTERFACE, LM.getLPCW(L"config_grp_interface"));
+
+    iface.AddLabeledSlider(IDC_CFG_FOREGROUND_LABEL, LM.getLPCW(L"config_lbl_foreground"), IDC_CFG_FOREGROUND_SLIDER, 190, 160, 0, 255, 34, 170, 18, -4);
+    iface.AddLabeledSlider(IDC_CFG_BACKGROUND_LABEL, LM.getLPCW(L"config_lbl_background"), IDC_CFG_BACKGROUND_SLIDER, 190, 160, 0, 255, 34, 170, 18, -4);
+    iface.AddLabeledSlider(IDC_CFG_SCALE_LABEL, LM.getLPCW(L"config_lbl_scale_factor"), IDC_CFG_SCALE_SLIDER, 190, 160, 50, 200, 34, 170, 18, -4, 100);
+
+    int nextTop = top + groupH_Interface + gap;
+
+    auto display = root.BeginGroup(left, nextTop, groupW, groupH_Display, 22, 30, IDC_CFG_GRP_DISPLAY_OPTIONS, LM.getLPCW(L"config_grp_display_options"));
+
     display.AddCheckbox(IDC_CFG_TOOLTIPS_ENABLED, LM.getLPCW(L"config_chk_enable_tooltips"));
     display.AddCheckbox(IDC_CFG_RESULT_DOCK_ENTRY_COLORS, LM.getLPCW(L"config_chk_result_dock_entry_colors"));
     display.AddCheckbox(IDC_CFG_USE_LIST_COLORS_MARKING, LM.getLPCW(L"config_chk_use_list_colors_marking"));
@@ -628,7 +688,7 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
     lb.AddCheckbox(IDC_CFG_FLOWTABS_NUMERIC_ALIGN, LM.getLPCW(L"config_chk_numeric_align"));
     lb.AddCheckbox(IDC_CFG_FLOWTABS_INTRO_DONTSHOW, LM.getLPCW(L"config_chk_flowtabs_intro_dontshow"));  // NEU
     lb.AddLabel(IDC_STATIC, LM.getLPCW(L"config_lbl_csv_sort"), 240);
-    lb.AddNumberEdit(IDC_CFG_HEADERLINES_EDIT, 250, -2, 60, 22);
+    lb.AddNumberEdit(IDC_CFG_HEADERLINES_EDIT, 250, -2, 45, 22);
 
     if (_hCategoryFont) applyFonts();
 }

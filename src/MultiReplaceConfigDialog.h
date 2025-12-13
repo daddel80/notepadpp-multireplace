@@ -110,6 +110,9 @@ private:
     // Subclass procedure for checkbox to notify dialog on click
     static LRESULT CALLBACK CheckboxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
 
+    // Subclass for Panels
+    static LRESULT CALLBACK PanelSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+
     // State
     int _currentCategory = -1;
     DPIManager* dpiMgr = nullptr;
