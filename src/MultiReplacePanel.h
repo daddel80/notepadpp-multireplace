@@ -734,6 +734,10 @@ private:
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
 
+    // Coloring Slot for marking
+    std::unordered_map<std::wstring, int> textToSlot;
+    int nextSlot = 0;
+
     // Window related settings
     RECT windowRect; // Structure to store window position and size
     BYTE foregroundTransparency;     // Default Foreground transparency
@@ -908,13 +912,14 @@ private:
 
     //Mark
     void handleMarkMatchesButton();
-    int markString(const SearchContext& context, Sci_Position initialStart, int forcedColorIndex = -1);
-    void highlightTextRange(LRESULT pos, LRESULT len, int forcedColorIndex = -1);
+    int markString(const SearchContext& context, Sci_Position initialStart, const std::wstring& findText = L"");
+    void highlightTextRange(LRESULT pos, LRESULT len, const std::wstring& findText = L"");
     void handleClearTextMarksButton();
     void handleCopyMarkedTextToClipboardButton();
     void copyTextToClipboard(const std::wstring& text, int textCount);
     void initTextMarkerIndicators();
     void updateTextMarkerStyles();
+    std::vector<size_t> getIndicesOfUniqueEnabledItems(bool removeDuplicates) const;
 
     //CSV
     void handleCopyColumnsToClipboard();

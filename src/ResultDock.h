@@ -42,19 +42,21 @@ public:
     // Represents one visible "Line N:" entry in the dock
     struct Hit
     {
-        std::string  fullPathUtf8;  // File path (UTF-8)
-        Sci_Position pos{};         // Match start in original file
-        Sci_Position length{};      // Match length
+        std::string  fullPathUtf8;
+        Sci_Position pos{};
+        Sci_Position length{};
 
-        // Styling offsets in dock buffer
-        int displayLineStart{ -1 }; // Absolute char pos of "Line N:"
-        int numberStart{ 0 };       // Offset of digits
-        int numberLen{ 0 };         // Length of digits
-        std::vector<int> matchStarts;      // Offsets of match substrings
-        std::vector<int> matchLens;        // Lengths of match substrings
-        std::vector<int> matchColorIndices; // Color index per match (0-9, parallel to matchStarts/matchLens)
+        std::wstring findTextW;
 
-        // Color index for this hit's search entry (used when adding to matchColorIndices)
+        int displayLineStart{ -1 };
+        int numberStart{ 0 };
+        int numberLen{ 0 };
+
+        std::vector<int> matchStarts;
+        std::vector<int> matchLens;
+
+        std::vector<int> matchColors;
+
         int colorIndex{ -1 };
     };
 
@@ -95,40 +97,33 @@ public:
     void onNppNotification(const SCNotification* notify);
 
     // ------------------- Color Utilities ----------------------
-    // Generate a deterministic color index from text (djb2 hash based)
-    static int colorIndexFromText(const std::wstring& text);
+    static COLORREF generateColorFromText(const std::wstring& text, bool darkMode);
+    static COLORREF hslToRgb(double hue01, double saturation, double lightness);
+    void defineSlotColor(int slotIndex, COLORREF color);
 
-    // ------------------- Per-Entry Color Palette --------------
-   // 10 distinct colors for per-entry highlighting
-    static constexpr int COLOR_PALETTE_SIZE = 10;
+    // =================== COLOR TUNING PARAMETERS ===================
+    // Adjust these values to fine-tune the generated colors
 
-    // Light Mode: Bright/Vibrant colors (matching MARKER_COLOR_LIGHT intensity)
-    static constexpr COLORREF LightPalette[COLOR_PALETTE_SIZE] = {
-        0x6666FF,  // 0: Bright Red
-        0x00A5FF,  // 1: Bright Orange (Matches Standard Marker)
-        0x66FF66,  // 2: Bright Green
-        0xFFA040,  // 3: Bright Blue
-        0xFF66FF,  // 4: Bright Purple
-        0xD0E040,  // 5: Bright Teal
-        0x00D7FF,  // 6: Bright Gold/Yellow
-        0xCB85FF,  // 7: Bright Pink
-        0xFF8080,  // 8: Bright Indigo
-        0x50FF90   // 9: Bright Lime
-    };
+    // Base Saturation (0.0 - 1.0): Higher = more vivid/intense colors
+    static constexpr double TUNE_SAT_LIGHT = 0.75;    // Light mode
+    static constexpr double TUNE_SAT_DARK = 0.70;    // Dark mode
 
-    // Dark Mode: Deeper/Saturated colors (matching MARKER_COLOR_DARK intensity)
-    static constexpr COLORREF DarkPalette[COLOR_PALETTE_SIZE] = {
-        0x4040D0,  // 0: Deep Red
-        0x0050D2,  // 1: Deep Orange (Matches Standard Marker)
-        0x40D040,  // 2: Deep Green
-        0xD08040,  // 3: Deep Blue
-        0xD040D0,  // 4: Deep Purple
-        0x90A000,  // 5: Deep Teal
-        0x00C0C0,  // 6: Deep Yellow/Ochre
-        0x9040D0,  // 7: Deep Pink
-        0xD04080,  // 8: Deep Indigo
-        0x40D080   // 9: Deep Lime
-    };
+    // Base Lightness (0.0 - 1.0): Higher = brighter
+    static constexpr double TUNE_LIT_LIGHT = 0.85;    // Light mode
+    static constexpr double TUNE_LIT_DARK = 0.0;    // Dark mode
+
+    // Lightness bounds (prevents too dark or too pale)
+    static constexpr double TUNE_LIT_MIN = 0.40;    // Minimum lightness
+    static constexpr double TUNE_LIT_MAX = 0.65;    // Maximum lightness
+
+    // Saturation bounds
+    static constexpr double TUNE_SAT_MIN = 0.50;    // Minimum saturation
+    static constexpr double TUNE_SAT_MAX = 0.90;    // Maximum saturation
+
+    // Variation range (uses hash bits for slight per-color variation)
+    static constexpr double TUNE_SAT_VAR = 0.15;    // Saturation variation ±
+    static constexpr double TUNE_LIT_VAR = 0.08;    // Lightness variation ±
+    // ===============================================================
 
     // Alpha values for ResultDock
     static constexpr int ENTRY_BG_ALPHA_LIGHT = 150;
@@ -136,20 +131,18 @@ public:
     static constexpr int ENTRY_BG_ALPHA_DARK = 130;
     static constexpr int ENTRY_OUTLINE_ALPHA_DARK = 0;
 
-    // Per-entry background indicators (15-24)
-    static constexpr int INDIC_ENTRY_BG_BASE = 15;
+    // Maximum number of distinct colors (limited by Scintilla indicators)
+    static constexpr int MAX_ENTRY_COLORS = 28;
 
-    static COLORREF getEntryColor(int colorIndex, bool darkMode) {
-        if (colorIndex < 0 || colorIndex >= COLOR_PALETTE_SIZE)
-            return darkMode ? DarkDockTheme.matchFg : LightDockTheme.matchFg;
-        return darkMode ? DarkPalette[colorIndex] : LightPalette[colorIndex];
-    }
+    // Per-entry background indicators (15-30)
+    static constexpr int INDIC_ENTRY_BG_BASE = 0;
 
 private:
     // ---------------- Construction & Core State ---------------
     explicit ResultDock(HINSTANCE hInst);
     ResultDock(const ResultDock&) = delete;
     ResultDock& operator=(const ResultDock&) = delete;
+    std::unordered_map<int, int> _slotToColor;
 
     void create(const NppData& npp);
     void initFolding() const;
@@ -270,7 +263,7 @@ private:
         return darkMode ? DarkDockTheme : LightDockTheme;
     }
 
-     // ------------------- Command & style IDs ------------------
+    // ------------------- Command & style IDs ------------------
     enum : UINT {
         IDM_RD_FOLD_ALL = 60001,
         IDM_RD_UNFOLD_ALL = 60002,
@@ -284,10 +277,10 @@ private:
         IDM_RD_TOGGLE_PURGE = 60010
     };
 
-    static constexpr int INDIC_LINE_BACKGROUND = 8;
-    static constexpr int INDIC_LINENUMBER_FORE = 9;
-    static constexpr int INDIC_MATCH_FORE = 10;
-    static constexpr int INDIC_MATCH_BG = 14;
+    static constexpr int INDIC_LINE_BACKGROUND = 28;
+    static constexpr int INDIC_LINENUMBER_FORE = 29;
+    static constexpr int INDIC_MATCH_FORE = 30;
+    static constexpr int INDIC_MATCH_BG = 31;
 
     static constexpr int STYLE_HEADER = 33;
     static constexpr int STYLE_CRITHDR = 34;

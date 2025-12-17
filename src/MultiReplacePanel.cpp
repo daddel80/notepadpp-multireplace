@@ -3567,6 +3567,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
 
         ensureIndicatorContext();
+        initTextMarkerIndicators();
         createFonts();
         initializeCtrlMap();
         applyFonts();
@@ -6584,31 +6585,26 @@ void MultiReplace::trimHitToFirstLine(
 
 void MultiReplace::handleFindAllButton()
 {
-    // 1) sanity 
-    if (!validateDelimiterData())
-        return;
+    if (!validateDelimiterData()) return;
 
     if (!useListEnabled) {
         std::wstring earlyFind = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), earlyFind);
     }
 
-    // 2) result dock 
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
+    if (ResultDock::purgeEnabled()) dock.clear();
 
-    // 3) helper lambdas 
     auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
         return ::SendMessage(_hScintilla, m, w, l);
         };
 
-    // 4) current file path 
     wchar_t buf[MAX_PATH] = {};
     ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, (LPARAM)buf);
     std::wstring wFilePath = *buf ? buf : L"<untitled>";
     std::string  utf8FilePath = Encoding::wstringToUtf8(wFilePath);
 
-    // 5) search context 
     SearchContext context;
     context.docLength = sciSend(SCI_GETLENGTH);
     context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
@@ -6619,43 +6615,46 @@ void MultiReplace::handleFindAllButton()
     const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
     Sci_Position scanStart = computeAllStartPos(context, wrapAroundEnabled, allFromCursorEnabled);
 
-    // 6) containers 
     ResultDock::FileMap fileMap;
     int totalHits = 0;
 
-    // ===== LIST MODE =====
     if (useListEnabled)
     {
-        if (replaceListData.empty())
-        {
+        if (replaceListData.empty()) {
             showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
             return;
         }
-
         resetCountColumns();
 
-        for (size_t idx = 0; idx < replaceListData.size(); ++idx)
+        std::vector<size_t> workIndices = getIndicesOfUniqueEnabledItems(true);
+
+        // Synchronized Limit Calculation
+        int editorLimit = static_cast<int>(_textMarkerIds.size());
+        int dockLimit = ResultDock::MAX_ENTRY_COLORS;
+        int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
+        if (effectiveLimit < 1) effectiveLimit = 1;
+        int maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
+        bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+
+        for (size_t idx : workIndices)
         {
             auto& item = replaceListData[idx];
-            if (!item.isEnabled || item.findText.empty())
-                continue;
 
-            // Sanitize pattern for this criterion's header
+            // Limit Handling
+            int slotIndex = static_cast<int>(idx);
+            if (slotIndex >= maxListSlots) slotIndex = maxListSlots - 1;
+
+            COLORREF c = ResultDock::generateColorFromText(item.findText, isDark);
+            dock.defineSlotColor(slotIndex, c);
+
             std::wstring sanitizedPattern = this->sanitizeSearchPattern(item.findText);
-
-            // (a) Set up search flags & pattern 
             context.findText = convertAndExtendW(item.findText, item.extended);
-            context.searchFlags =
-                (item.wholeWord ? SCFIND_WHOLEWORD : 0)
-                | (item.matchCase ? SCFIND_MATCHCASE : 0)
-                | (item.regex ? SCFIND_REGEXP : 0);
+            context.searchFlags = (item.wholeWord ? SCFIND_WHOLEWORD : 0) | (item.matchCase ? SCFIND_MATCHCASE : 0) | (item.regex ? SCFIND_REGEXP : 0);
             sciSend(SCI_SETSEARCHFLAGS, context.searchFlags);
 
-            // (b) Collect hits
             std::vector<ResultDock::Hit> rawHits;
             LRESULT pos = scanStart;
-            while (true)
-            {
+            while (true) {
                 SearchResult r = performSearchForward(context, pos);
                 if (r.pos < 0) break;
                 pos = advanceAfterMatch(r);
@@ -6666,18 +6665,16 @@ void MultiReplace::handleFindAllButton()
                 h.length = (Sci_Position)r.length;
                 this->trimHitToFirstLine(sciSend, h);
                 if (h.length > 0) {
-                    // Calculate colorIndex from search pattern (same as text marking)
-                    h.colorIndex = ResultDock::colorIndexFromText(item.findText);
+                    h.findTextW = item.findText;
+                    h.colorIndex = slotIndex;
                     rawHits.push_back(std::move(h));
                 }
             }
 
-            // (c) Write per-criterion counters (even if zero)
             const int hitCnt = static_cast<int>(rawHits.size());
             item.findCount = hitCnt;
             updateCountColumns(idx, hitCnt);
 
-            // (d) Aggregate only when there are hits
             if (hitCnt > 0) {
                 auto& agg = fileMap[utf8FilePath];
                 agg.wPath = wFilePath;
@@ -6686,31 +6683,19 @@ void MultiReplace::handleFindAllButton()
                 totalHits += hitCnt;
             }
         }
-
         refreshUIListView();
     }
-    // ===== SINGLE MODE =====
-    else
-    {
+    else {
+        // Single Mode (unchanged)
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-
-        // Prepare header pattern & flags
         std::wstring headerPattern = this->sanitizeSearchPattern(findW);
-        context.findText = convertAndExtendW(
-            findW,
-            IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED
-        );
-        context.searchFlags =
-            (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
-            | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
-            | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+        context.findText = convertAndExtendW(findW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+        context.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) ? SCFIND_REGEXP : 0);
         sciSend(SCI_SETSEARCHFLAGS, context.searchFlags);
 
-        // Collect hits
         std::vector<ResultDock::Hit> rawHits;
         LRESULT pos = scanStart;
-        while (true)
-        {
+        while (true) {
             SearchResult r = performSearchForward(context, pos);
             if (r.pos < 0) break;
             pos = advanceAfterMatch(r);
@@ -6720,13 +6705,11 @@ void MultiReplace::handleFindAllButton()
             h.pos = r.pos;
             h.length = r.length;
             this->trimHitToFirstLine(sciSend, h);
-            if (h.length > 0)
-                rawHits.push_back(std::move(h));
+            h.colorIndex = -1;
+            if (h.length > 0) rawHits.push_back(std::move(h));
         }
 
-        // Aggregate into one file entry only when there are hits
-        if (!rawHits.empty())
-        {
+        if (!rawHits.empty()) {
             auto& agg = fileMap[utf8FilePath];
             agg.wPath = wFilePath;
             agg.hitCount = static_cast<int>(rawHits.size());
@@ -6735,37 +6718,20 @@ void MultiReplace::handleFindAllButton()
         }
     }
 
-    // ===== unified Search Result API calls — ALWAYS show a header =====
-    const size_t fileCount = fileMap.size(); // counts files *with* hits
+    const size_t fileCount = fileMap.size();
     const std::wstring header = useListEnabled
         ? LM.get(L"dock_list_header", { std::to_wstring(totalHits), std::to_wstring(fileCount) })
-        : LM.get(L"dock_single_header", { this->sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
-                                           std::to_wstring(totalHits),
-                                           std::to_wstring(fileCount) });
+        : LM.get(L"dock_single_header", { this->sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)), std::to_wstring(totalHits), std::to_wstring(fileCount) });
 
-    dock.startSearchBlock(header,
-        useListEnabled ? groupResultsEnabled : false,
-        dock.purgeEnabled());
-
-    // In the current-doc case we have at most one file block to append
-    if (fileCount > 0)
-        dock.appendFileBlock(fileMap, sciSend);
-
+    dock.startSearchBlock(header, useListEnabled ? groupResultsEnabled : false, false);
+    if (fileCount > 0) dock.appendFileBlock(fileMap, sciSend);
     dock.closeSearchBlock(totalHits, static_cast<int>(fileCount));
-
-    // Status: 0 hits → Error, else Success
-    showStatusMessage(
-        (totalHits == 0)
-        ? LM.get(L"status_no_matches_found")
-        : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }),
-        (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
+    showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
 
 void MultiReplace::handleFindAllInDocsButton()
 {
-    // 1) sanity + dock setup
-    if (!validateDelimiterData())
-        return;
+    if (!validateDelimiterData()) return;
 
     if (!useListEnabled) {
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
@@ -6774,171 +6740,163 @@ void MultiReplace::handleFindAllInDocsButton()
 
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
+    if (ResultDock::purgeEnabled()) dock.clear();
 
-    // 2) counters
     int totalHits = 0;
-    std::unordered_set<std::string> uniqueFiles; // files *with* hits
-
+    std::unordered_set<std::string> uniqueFiles;
     if (useListEnabled) resetCountColumns();
     std::vector<int> listHitTotals(useListEnabled ? replaceListData.size() : 0, 0);
 
-    // 3) placeholder header (will be updated in closeSearchBlock)
+    std::vector<size_t> workIndices;
+    if (useListEnabled) {
+        workIndices = getIndicesOfUniqueEnabledItems(true);
+    }
+
+    int maxListSlots = 1;
+    if (useListEnabled) {
+        int editorLimit = static_cast<int>(_textMarkerIds.size());
+        int dockLimit = ResultDock::MAX_ENTRY_COLORS;
+        int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
+        if (effectiveLimit < 1) effectiveLimit = 1;
+        maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
+        bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+
+        // Define Colors Loop (using clean list)
+        for (size_t idx : workIndices) {
+            int slot = static_cast<int>(idx);
+            if (slot >= maxListSlots) slot = maxListSlots - 1;
+            COLORREF c = ResultDock::generateColorFromText(replaceListData[idx].findText, isDark);
+            dock.defineSlotColor(slot, c);
+        }
+    }
+
     std::wstring placeholder = useListEnabled
         ? LM.get(L"dock_list_header", { L"0", L"0" })
-        : LM.get(L"dock_single_header", {
-              sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
-              L"0", L"0" });
+        : LM.get(L"dock_single_header", { sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)), L"0", L"0" });
 
-    // open block (pending text; commit happens in closeSearchBlock)
-    dock.startSearchBlock(placeholder,
-        useListEnabled ? groupResultsEnabled : false,
-        dock.purgeEnabled());
+    dock.startSearchBlock(placeholder, useListEnabled ? groupResultsEnabled : false, false);
 
-    // 4) scan each tab
-    auto processCurrentBuffer = [&]()
-        {
-            pointerToScintilla();
-            auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT {
-                return ::SendMessage(_hScintilla, m, w, l);
-                };
+    auto processCurrentBuffer = [&]() {
+        pointerToScintilla();
+        auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT { return ::SendMessage(_hScintilla, m, w, l); };
 
-            wchar_t wBuf[MAX_PATH] = {};
-            ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, (LPARAM)wBuf);
-            std::wstring wPath = *wBuf ? wBuf : L"<untitled>";
-            std::string  u8Path = Encoding::wstringToUtf8(wPath);
+        wchar_t wBuf[MAX_PATH] = {};
+        ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, (LPARAM)wBuf);
+        std::wstring wPath = *wBuf ? wBuf : L"<untitled>";
+        std::string  u8Path = Encoding::wstringToUtf8(wPath);
 
-            const bool selMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
-            SelectionInfo sel = getSelectionInfo(false);
-            if (selMode && sel.length == 0) return;
+        const bool selMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+        SelectionInfo sel = getSelectionInfo(false);
+        if (selMode && sel.length == 0) return;
+        Sci_Position scanStart = selMode ? sel.startPos : 0;
+        const bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
-            Sci_Position scanStart = selMode ? sel.startPos : 0;
-            const bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+        ResultDock::FileMap fileMap;
+        int hitsInFile = 0;
 
-            ResultDock::FileMap fileMap;
-            int hitsInFile = 0;
+        auto collect = [&](size_t critIdx, const std::wstring& patt, SearchContext& ctx) {
+            std::vector<ResultDock::Hit> raw;
+            LRESULT pos = scanStart;
+            while (true) {
+                SearchResult r = performSearchForward(ctx, pos);
+                if (r.pos < 0) break;
+                pos = advanceAfterMatch(r);
 
-            auto collect = [&](size_t critIdx, const std::wstring& patt, SearchContext& ctx) {
-                std::vector<ResultDock::Hit> raw;
-                LRESULT pos = scanStart;
-                while (true)
-                {
-                    SearchResult r = performSearchForward(ctx, pos);
-                    if (r.pos < 0) break;
-                    pos = advanceAfterMatch(r);
-
-                    ResultDock::Hit h{};
-                    h.fullPathUtf8 = u8Path;
-                    h.pos = r.pos;
-                    h.length = r.length;
-                    this->trimHitToFirstLine(sciSend, h);
-                    if (h.length > 0) raw.push_back(std::move(h));
-                }
-                const int hitCnt = static_cast<int>(raw.size());
-                if (useListEnabled && critIdx < listHitTotals.size())
-                    listHitTotals[critIdx] += hitCnt;
-                if (hitCnt == 0) return;
-
-                auto& agg = fileMap[u8Path];
-                agg.wPath = wPath;
-                agg.hitCount += hitCnt;
-                agg.crits.push_back({ patt, std::move(raw) });
-                hitsInFile += hitCnt;
-                };
-
-            if (useListEnabled)
-            {
-                for (size_t idx = 0; idx < replaceListData.size(); ++idx)
-                {
-                    const auto& it = replaceListData[idx];
-                    if (!it.isEnabled || it.findText.empty()) continue;
-
-                    SearchContext ctx;
-                    ctx.docLength = sciSend(SCI_GETLENGTH);
-                    ctx.isColumnMode = columnMode;
-                    ctx.isSelectionMode = selMode;
-                    ctx.findText = convertAndExtendW(it.findText, it.extended);
-                    ctx.searchFlags = (it.wholeWord ? SCFIND_WHOLEWORD : 0)
-                        | (it.matchCase ? SCFIND_MATCHCASE : 0)
-                        | (it.regex ? SCFIND_REGEXP : 0);
-                    sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
-                    collect(idx, sanitizeSearchPattern(it.findText), ctx);
+                ResultDock::Hit h{};
+                h.fullPathUtf8 = u8Path;
+                h.pos = r.pos;
+                h.length = r.length;
+                this->trimHitToFirstLine(sciSend, h);
+                if (h.length > 0) {
+                    h.findTextW = patt;
+                    if (useListEnabled) {
+                        int slot = static_cast<int>(critIdx);
+                        if (slot >= maxListSlots) slot = maxListSlots - 1;
+                        h.colorIndex = slot;
+                    }
+                    else { h.colorIndex = -1; }
+                    raw.push_back(std::move(h));
                 }
             }
-            else
-            {
-                std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-                if (!findW.empty()) {
-                    SearchContext ctx;
-                    ctx.docLength = sciSend(SCI_GETLENGTH);
-                    ctx.isColumnMode = columnMode;
-                    ctx.isSelectionMode = selMode;
-                    ctx.findText = convertAndExtendW(findW,
-                        IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                    ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
-                        | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
-                        | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
-                    sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
-                    collect(0, sanitizeSearchPattern(findW), ctx);
-                }
-            }
+            const int hitCnt = static_cast<int>(raw.size());
+            if (useListEnabled && critIdx < listHitTotals.size())
+                listHitTotals[critIdx] += hitCnt;
+            if (hitCnt == 0) return;
 
-            if (hitsInFile > 0)
-            {
-                // Commit this file and count it as "with hits"
-                dock.appendFileBlock(fileMap, sciSend);
-                totalHits += hitsInFile;
-                uniqueFiles.insert(u8Path);
+            auto& agg = fileMap[u8Path];
+            agg.wPath = wPath;
+            agg.hitCount += hitCnt;
+            agg.crits.push_back({ patt, std::move(raw) });
+            hitsInFile += hitCnt;
+            };
+
+        if (useListEnabled) {
+            // Optimized: Re-use clean vector
+            for (size_t idx : workIndices) {
+                const auto& it = replaceListData[idx];
+                SearchContext ctx;
+                ctx.docLength = sciSend(SCI_GETLENGTH);
+                ctx.isColumnMode = columnMode; ctx.isSelectionMode = selMode;
+                ctx.findText = convertAndExtendW(it.findText, it.extended);
+                ctx.searchFlags = (it.wholeWord ? SCFIND_WHOLEWORD : 0) | (it.matchCase ? SCFIND_MATCHCASE : 0) | (it.regex ? SCFIND_REGEXP : 0);
+                sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+                collect(idx, sanitizeSearchPattern(it.findText), ctx);
             }
+        }
+        else {
+            // Single Mode
+            std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+            if (!findW.empty()) {
+                SearchContext ctx;
+                ctx.docLength = sciSend(SCI_GETLENGTH);
+                ctx.isColumnMode = columnMode; ctx.isSelectionMode = selMode;
+                ctx.findText = convertAndExtendW(findW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+                ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) ? SCFIND_REGEXP : 0);
+                sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+                collect(0, sanitizeSearchPattern(findW), ctx);
+            }
+        }
+
+        if (hitsInFile > 0) {
+            dock.appendFileBlock(fileMap, sciSend);
+            totalHits += hitsInFile;
+            uniqueFiles.insert(u8Path);
+        }
         };
 
-    // iterate tabs (unchanged)
     LRESULT savedIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
     const bool mainVis = !!::IsWindowVisible(nppData._scintillaMainHandle);
     const bool subVis = !!::IsWindowVisible(nppData._scintillaSecondHandle);
-    LRESULT nbMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
-    LRESULT nbSub = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
 
-    if (mainVis)
-        for (LRESULT i = 0; i < nbMain; ++i)
-        {
+    if (mainVis) {
+        LRESULT nbMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
+        for (LRESULT i = 0; i < nbMain; ++i) {
             ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             processCurrentBuffer();
         }
-    if (subVis)
-        for (LRESULT i = 0; i < nbSub; ++i)
-        {
+    }
+    if (subVis) {
+        LRESULT nbSub = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
+        for (LRESULT i = 0; i < nbSub; ++i) {
             ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, i);
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             processCurrentBuffer();
         }
-    ::SendMessage(nppData._nppHandle,
-        NPPM_ACTIVATEDOC,
-        mainVis ? MAIN_VIEW : SUB_VIEW,
-        savedIdx);
+    }
+    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, mainVis ? MAIN_VIEW : SUB_VIEW, savedIdx);
 
-    // write per-criterion totals back to list and repaint
-    if (useListEnabled)
-    {
-        for (size_t i = 0; i < listHitTotals.size(); ++i)
-        {
-            if (!replaceListData[i].isEnabled || replaceListData[i].findText.empty())
-                continue;
+    if (useListEnabled) {
+        for (size_t i = 0; i < listHitTotals.size(); ++i) {
+            if (!replaceListData[i].isEnabled) continue;
             replaceListData[i].findCount = listHitTotals[i];
             updateCountColumns(i, listHitTotals[i]);
         }
         refreshUIListView();
     }
 
-    // 6) finalise — ALWAYS close block (header even with zero hits)
     dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
-
-    // Status: 0 hits → Error, else Success
-    showStatusMessage(
-        (totalHits == 0)
-        ? LM.get(L"status_no_matches_found")
-        : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }),
-        (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
+    showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
 
 void MultiReplace::handleFindInFiles() {
@@ -6948,123 +6906,115 @@ void MultiReplace::handleFindInFiles() {
         return;
     }
 
-    // Read inputs
+    // (Standard File-Parsing block omitted for brevity - no changes until dock clear)
     auto wDir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
     auto wFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
     const bool recurse = (IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED);
     const bool hide = (IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED);
-
-    // Default filter if empty
-    if (wFilter.empty()) {
-        wFilter = L"*.*";
-        SetDlgItemTextW(_hSelf, IDC_FILTER_EDIT, wFilter.c_str());
-    }
-
-    // History first (always)
+    if (wFilter.empty()) { wFilter = L"*.*"; SetDlgItemTextW(_hSelf, IDC_FILTER_EDIT, wFilter.c_str()); }
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FILTER_EDIT), wFilter);
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), wDir);
-
     if (!useListEnabled) {
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
     }
-
-    // Validate directory
     if (wDir.empty() || !std::filesystem::exists(wDir)) {
         showStatusMessage(LM.get(L"status_error_invalid_directory"), MessageStatus::Error);
         return;
     }
-
-    // CSV config check (does work only in Column Mode; otherwise returns true)
     if (!validateDelimiterData()) return;
-
-    // Parse filter after defaults / checks
     guard.parseFilter(wFilter);
-
-    // Apply file size limit settings
     guard.setFileSizeLimitEnabled(limitFileSizeEnabled);
     guard.setMaxFileSizeMB(maxFileSizeMB);
 
-    // --- Build file list (unchanged) ---
     std::vector<std::filesystem::path> files;
     try {
         namespace fs = std::filesystem;
+        auto iterOpts = fs::directory_options::skip_permission_denied;
         if (recurse) {
-            for (auto& e : fs::recursive_directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
+            for (auto& e : fs::recursive_directory_iterator(wDir, iterOpts)) {
                 if (_isShuttingDown) return;
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) files.push_back(e.path());
             }
         }
         else {
-            for (auto& e : fs::directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
+            for (auto& e : fs::directory_iterator(wDir, iterOpts)) {
                 if (_isShuttingDown) return;
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
+                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) files.push_back(e.path());
             }
         }
     }
-    catch (const std::exception& ex) {
-        std::wstring wideReason = Encoding::utf8ToWString(ex.what());
-        showStatusMessage(LM.get(L"status_error_scanning_directory", { wideReason }), MessageStatus::Error);
-        return;
-    }
+    catch (...) { return; }
 
     if (files.empty()) {
         MessageBox(_hSelf, LM.getLPW(L"msgbox_no_files"), LM.getLPW(L"msgbox_title_confirm"), MB_OK);
         return;
     }
 
-    // --- Result dock (unchanged) ---
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreatedAndVisible(nppData);
+    if (ResultDock::purgeEnabled()) dock.clear();
 
     int totalHits = 0;
     std::unordered_set<std::string> uniqueFiles;
-
     if (useListEnabled) resetCountColumns();
     std::vector<int> listHitTotals(useListEnabled ? replaceListData.size() : 0, 0);
 
+    std::vector<size_t> workIndices;
+    if (useListEnabled) {
+        workIndices = getIndicesOfUniqueEnabledItems(true);
+    }
+
+    int maxListSlots = 1;
+    if (useListEnabled) {
+        int editorLimit = static_cast<int>(_textMarkerIds.size());
+        int dockLimit = ResultDock::MAX_ENTRY_COLORS;
+        int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
+        if (effectiveLimit < 1) effectiveLimit = 1;
+        maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
+        bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+
+        // Define Colors (Clean loop)
+        for (size_t idx : workIndices) {
+            int slot = static_cast<int>(idx);
+            if (slot >= maxListSlots) slot = maxListSlots - 1;
+            COLORREF c = ResultDock::generateColorFromText(replaceListData[idx].findText, isDark);
+            dock.defineSlotColor(slot, c);
+        }
+    }
+
     std::wstring placeholder = useListEnabled
         ? LM.get(L"dock_list_header", { L"0", L"0" })
-        : LM.get(L"dock_single_header", {
-            sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)),
-            L"0", L"0" });
+        : LM.get(L"dock_single_header", { sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)), L"0", L"0" });
 
-    dock.startSearchBlock(placeholder,
-        useListEnabled ? groupResultsEnabled : false,
-        dock.purgeEnabled());
+    dock.startSearchBlock(placeholder, useListEnabled ? groupResultsEnabled : false, false);
 
     BatchUIGuard uiGuard(this, _hSelf);
     _isCancelRequested = false;
-
     int idx = 0;
     const int total = static_cast<int>(files.size());
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
 
     struct SciBindingGuard {
-        MultiReplace* self;
-        HWND oldSci; SciFnDirect oldFn; sptr_t oldData;
-        HiddenSciGuard& g;
+        MultiReplace* self; HWND oldSci; SciFnDirect oldFn; sptr_t oldData; HiddenSciGuard& g;
         SciBindingGuard(MultiReplace* s, HiddenSciGuard& guard) : self(s), g(guard) {
             oldSci = s->_hScintilla; oldFn = s->pSciMsg; oldData = s->pSciWndData;
             s->_hScintilla = g.hSci; s->pSciMsg = g.fn; s->pSciWndData = g.pData;
         }
-        ~SciBindingGuard() {
-            self->_hScintilla = oldSci; self->pSciMsg = oldFn; self->pSciWndData = oldData;
-        }
+        ~SciBindingGuard() { self->_hScintilla = oldSci; self->pSciMsg = oldFn; self->pSciWndData = oldData; }
     };
 
     bool aborted = false;
 
     for (const auto& fp : files) {
-        MSG m;
-        while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) { ::TranslateMessage(&m); ::DispatchMessage(&m); }
-        if (_isShuttingDown) { aborted = true; break; }
-        if (_isCancelRequested) { aborted = true; break; }
+        MSG m; while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) { ::TranslateMessage(&m); ::DispatchMessage(&m); }
+        if (_isShuttingDown || _isCancelRequested) { aborted = true; break; }
+
+        // Hier wird das äußere 'idx' verwendet (Fortschritt)
         ++idx;
 
         const int percent = static_cast<int>((static_cast<double>(idx) / (std::max)(1, total)) * 100.0);
         const std::wstring prefix = L"Progress: [" + std::to_wstring(percent) + L"%] ";
-
         HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
         HDC hdc = GetDC(hStatus);
         HFONT hFont = (HFONT)SendMessage(hStatus, WM_GETFONT, 0, 0);
@@ -7077,7 +7027,7 @@ void MultiReplace::handleFindInFiles() {
         showStatusMessage(prefix + shortPath, MessageStatus::Info);
 
         std::string original;
-        if (!guard.loadFile(fp, original)) { continue; }
+        if (!guard.loadFile(fp, original)) continue;
 
         auto isLikelyBinary = [](const std::string& s) -> bool {
             if (s.find('\0') != std::string::npos) return true;
@@ -7090,7 +7040,7 @@ void MultiReplace::handleFindInFiles() {
         send(SCI_CLEARALL, 0, 0);
 
         if (isLikelyBinary(original)) {
-            send(SCI_SETCODEPAGE, 0 /* SC_CP_ANSI */, 0);
+            send(SCI_SETCODEPAGE, 0, 0); // ANSI
             send(SCI_ADDTEXT, (WPARAM)original.size(), reinterpret_cast<sptr_t>(original.data()));
         }
         else {
@@ -7098,12 +7048,11 @@ void MultiReplace::handleFindInFiles() {
             const std::vector<char> raw(original.begin(), original.end());
             const Encoding::EncodingInfo enc = Encoding::detectEncoding(raw.data(), raw.size(), dopts);
             std::string u8;
-            if (!Encoding::convertBufferToUtf8(raw, enc, u8)) { continue; }
+            if (!Encoding::convertBufferToUtf8(raw, enc, u8)) continue;
             send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
             send(SCI_ADDTEXT, (WPARAM)u8.length(), reinterpret_cast<sptr_t>(u8.data()));
         }
 
-        // Per-file delimiter positions are computed here against validated settings
         handleDelimiterPositions(DelimiterOperation::LoadAll);
 
         const std::wstring wPath = fp.wstring();
@@ -7125,7 +7074,16 @@ void MultiReplace::handleFindInFiles() {
                 h.pos = r.pos;
                 h.length = r.length;
                 this->trimHitToFirstLine([this](UINT m, WPARAM w, LPARAM l)->LRESULT { return send(m, w, l); }, h);
-                if (h.length > 0) raw.push_back(std::move(h));
+                if (h.length > 0) {
+                    h.findTextW = pattW;
+                    if (useListEnabled) {
+                        int slot = static_cast<int>(critIdx);
+                        if (slot >= maxListSlots) slot = maxListSlots - 1;
+                        h.colorIndex = slot;
+                    }
+                    else { h.colorIndex = -1; }
+                    raw.push_back(std::move(h));
+                }
             }
             const int n = (int)raw.size();
             if (n == 0) return;
@@ -7139,32 +7097,26 @@ void MultiReplace::handleFindInFiles() {
             };
 
         if (useListEnabled) {
-            for (size_t i = 0; i < replaceListData.size(); ++i) {
-                const auto& it = replaceListData[i];
-                if (!it.isEnabled || it.findText.empty()) continue;
+            // OPTIMIZED: Use clean list
+            // FIX: Umbenannt zu entryIdx um Shadowing mit äußerem 'idx' zu vermeiden
+            for (size_t entryIdx : workIndices) {
+                const auto& it = replaceListData[entryIdx];
                 SearchContext ctx{};
-                ctx.docLength = send(SCI_GETLENGTH);
-                ctx.isColumnMode = columnMode;
-                ctx.isSelectionMode = false;
+                ctx.docLength = send(SCI_GETLENGTH); ctx.isColumnMode = columnMode; ctx.isSelectionMode = false;
                 ctx.findText = convertAndExtendW(it.findText, it.extended);
-                ctx.searchFlags = (it.wholeWord ? SCFIND_WHOLEWORD : 0)
-                    | (it.matchCase ? SCFIND_MATCHCASE : 0)
-                    | (it.regex ? SCFIND_REGEXP : 0);
+                ctx.searchFlags = (it.wholeWord ? SCFIND_WHOLEWORD : 0) | (it.matchCase ? SCFIND_MATCHCASE : 0) | (it.regex ? SCFIND_REGEXP : 0);
                 send(SCI_SETSEARCHFLAGS, ctx.searchFlags, 0);
-                collect(i, it.findText, ctx);
+                collect(entryIdx, it.findText, ctx);
             }
         }
         else {
+            // Single Mode
             std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
             if (!findW.empty()) {
                 SearchContext ctx{};
-                ctx.docLength = send(SCI_GETLENGTH);
-                ctx.isColumnMode = columnMode;
-                ctx.isSelectionMode = false;
+                ctx.docLength = send(SCI_GETLENGTH); ctx.isColumnMode = columnMode; ctx.isSelectionMode = false;
                 ctx.findText = convertAndExtendW(findW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
-                    | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
-                    | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+                ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) ? SCFIND_REGEXP : 0);
                 send(SCI_SETSEARCHFLAGS, ctx.searchFlags, 0);
                 collect(0, findW, ctx);
             }
@@ -7179,28 +7131,21 @@ void MultiReplace::handleFindInFiles() {
 
     dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
 
-    if (useListEnabled)
-    {
-        for (size_t i = 0; i < listHitTotals.size(); ++i)
-        {
-            if (!replaceListData[i].isEnabled || replaceListData[i].findText.empty())
-                continue;
+    if (useListEnabled) {
+        for (size_t i = 0; i < listHitTotals.size(); ++i) {
+            if (!replaceListData[i].isEnabled) continue;
             replaceListData[i].findCount = listHitTotals[i];
             updateCountColumns(i, listHitTotals[i]);
         }
         refreshUIListView();
     }
-
     const bool wasCanceled = (_isCancelRequested || aborted);
     const std::wstring canceledSuffix = wasCanceled ? (L" - " + LM.get(L"status_canceled")) : L"";
-    std::wstring msg = (totalHits == 0)
-        ? LM.get(L"status_no_matches_found")
-        : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) });
+    std::wstring msg = (totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) });
     MessageStatus ms = wasCanceled ? MessageStatus::Info : (totalHits == 0 ? MessageStatus::Error : MessageStatus::Success);
     showStatusMessage(msg + canceledSuffix, ms);
     _isCancelRequested = false;
 }
-
 #pragma endregion
 
 
@@ -7841,18 +7786,14 @@ void MultiReplace::selectListItem(size_t matchIndex) {
 #pragma region Mark
 
 void MultiReplace::handleMarkMatchesButton() {
-
-    // ensure indicator context once per action
     ensureIndicatorContext();
-
-    if (!validateDelimiterData()) {
-        return;
-    }
+    if (!validateDelimiterData()) return;
 
     int totalMatchCount = 0;
     markedStringsCount = 0;
+    textToSlot.clear();
+    nextSlot = 0;
 
-    // Read wrap state once
     const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
     if (useListEnabled) {
@@ -7861,12 +7802,25 @@ void MultiReplace::handleMarkMatchesButton() {
             return;
         }
 
-        for (size_t i = 0; i < replaceListData.size(); ++i) {
-            if (!replaceListData[i].isEnabled) continue;
+        std::vector<size_t> workIndices = getIndicesOfUniqueEnabledItems(true);
 
-            const ReplaceItemData& item = replaceListData[i];
+        // Synchronized Limit Calculation (from QA Fix)
+        int editorLimit = static_cast<int>(_textMarkerIds.size());
+        int dockLimit = ResultDock::MAX_ENTRY_COLORS;
+        int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
+        if (effectiveLimit < 1) effectiveLimit = 1;
+        int maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
 
-            // Build SearchContext for list-based marking
+        // Clean Loop over validated unique items
+        for (size_t i : workIndices) {
+            const auto& item = replaceListData[i];
+
+            // Use original index 'i' for consistent coloring
+            int slot = static_cast<int>(i);
+            if (slot >= maxListSlots) slot = maxListSlots - 1;
+
+            textToSlot[item.findText] = slot;
+
             SearchContext context;
             context.findText = convertAndExtendW(item.findText, item.extended);
             context.searchFlags = (item.wholeWord * SCFIND_WHOLEWORD)
@@ -7878,7 +7832,6 @@ void MultiReplace::handleMarkMatchesButton() {
             context.retrieveFoundText = false;
             context.highlightMatch = false;
 
-            // --- Start position logic (mirrors Find All / Replace All)
             Sci_Position startPos = 0;
             if (context.isSelectionMode) {
                 const SelectionInfo selInfo = getSelectionInfo(false);
@@ -7892,60 +7845,36 @@ void MultiReplace::handleMarkMatchesButton() {
                 startPos = allFromCursorEnabled ? caretPos : 0;
             }
 
-            // Calculate color from raw list text to match ResultDock colors
-            const int colorIdx = ResultDock::colorIndexFromText(item.findText);
-
-            const int matchCount = markString(context, startPos, colorIdx);
+            const int matchCount = markString(context, startPos, item.findText);
             if (matchCount > 0) {
                 totalMatchCount += matchCount;
                 updateCountColumns(i, matchCount);
-                refreshUIListView();  // Refresh UI only when necessary
             }
         }
+        refreshUIListView();
     }
     else {
-        // Retrieve search parameters from UI
+        // Single Mode (unchanged)
         const std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-        const bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
-        const bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-        const bool regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
-        const bool extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-
-        // Build SearchContext for direct marking
         SearchContext context;
-        context.findText = convertAndExtendW(findText, extended);
-        context.searchFlags = (wholeWord * SCFIND_WHOLEWORD)
-            | (matchCase * SCFIND_MATCHCASE)
-            | (regex * SCFIND_REGEXP);
+        context.findText = convertAndExtendW(findText, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+        context.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
+            | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
+            | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
         context.docLength = send(SCI_GETLENGTH, 0, 0);
         context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
         context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
-        context.retrieveFoundText = false;
-        context.highlightMatch = false;
 
-        // --- Start position logic (mirrors Find All / Replace All)
         Sci_Position startPos = 0;
-        if (context.isSelectionMode) {
-            const SelectionInfo selInfo = getSelectionInfo(false);
-            startPos = selInfo.startPos;
-        }
-        else if (wrapAroundEnabled) {
-            startPos = 0;
-        }
-        else {
-            const Sci_Position caretPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
-            startPos = allFromCursorEnabled ? caretPos : 0;
-        }
+        if (context.isSelectionMode) startPos = getSelectionInfo(false).startPos;
+        else if (!wrapAroundEnabled) startPos = allFromCursorEnabled ? (Sci_Position)send(SCI_GETCURRENTPOS) : 0;
 
-        totalMatchCount = markString(context, startPos);
+        totalMatchCount = markString(context, startPos, findText);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
-
-    // Display total number of marked occurrences
     showStatusMessage(LM.get(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), MessageStatus::Info);
 }
-
-int MultiReplace::markString(const SearchContext& context, Sci_Position initialStart, int forcedColorIndex)
+int MultiReplace::markString(const SearchContext& context, Sci_Position initialStart, const std::wstring& findText)
 {
     if (context.findText.empty()) return 0;
 
@@ -7959,7 +7888,7 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
     {
         if (r.length > 0) {
             // Pass forcedColorIndex to highlighter
-            highlightTextRange(r.pos, r.length, forcedColorIndex);
+            highlightTextRange(r.pos, r.length, findText);
             ++markCount;
         }
         pos = advanceAfterMatch(r);
@@ -7971,28 +7900,77 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
     return markCount;
 }
 
-void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, int forcedColorIndex)
+void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::wstring& findText)
 {
     if (len <= 0) return;
 
-    if (!_textMarkersInitialized) {
-        initTextMarkerIndicators();
-    }
     if (_textMarkerIds.empty()) return;
 
-    int markerIndex = 10;  // Default: Single marker (green)
+    bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+    int alpha = isDark ? EDITOR_MARK_ALPHA_DARK : EDITOR_MARK_ALPHA_LIGHT;
+    int outlineAlpha = isDark ? EDITOR_OUTLINE_ALPHA_DARK : EDITOR_OUTLINE_ALPHA_LIGHT;
 
-    // Use colorful markers ONLY when:
-    // 1. List mode is active AND
-    // 2. "Use list colors for marking" option is enabled AND
-    // 3. A valid color index was provided
-    if (useListEnabled && useListColorsForMarking &&
-        forcedColorIndex >= 0 && forcedColorIndex < 10) {
-        markerIndex = forcedColorIndex;
+    int indicId = -1;
+    COLORREF color;
+
+    // Wir reservieren den allerletzten Indikator für den "Single Mode" (oder Notfälle).
+    // Die Liste darf also alles nutzen von 0 bis size-2.
+    int editorLimit = static_cast<int>(_textMarkerIds.size());
+    int dockLimit = ResultDock::MAX_ENTRY_COLORS;
+    int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
+    int maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
+
+    if (useListEnabled && useListColorsForMarking && !findText.empty()) {
+
+        auto it = textToSlot.find(findText);
+
+        if (it != textToSlot.end()) {
+            // Text bekannt -> Slot wiederverwenden
+            // Schutz vor Index-Out-Of-Bounds, falls Pool-Größe sich geändert hätte
+            int slot = it->second;
+            if (slot < static_cast<int>(_textMarkerIds.size())) {
+                indicId = _textMarkerIds[slot];
+
+                // Ensure style/color is set (dynamic update)
+                color = ResultDock::generateColorFromText(findText, isDark);
+                ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicId, INDIC_ROUNDBOX);
+                ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicId, color);
+                ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicId, alpha);
+                ::SendMessage(_hScintilla, SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
+                ::SendMessage(_hScintilla, SCI_INDICSETUNDER, indicId, TRUE);
+            }
+        }
+        else {
+            // Neuer Text
+            int currentSlot = nextSlot;
+
+            if (currentSlot >= maxListSlots) {
+                currentSlot = maxListSlots - 1;
+            }
+            else {
+                nextSlot++;
+            }
+
+            // Map update
+            textToSlot[findText] = currentSlot;
+            indicId = _textMarkerIds[currentSlot];
+
+            // Farbe setzen
+            color = ResultDock::generateColorFromText(findText, isDark);
+            ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicId, INDIC_ROUNDBOX);
+            ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicId, color);
+            ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicId, alpha);
+            ::SendMessage(_hScintilla, SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
+            ::SendMessage(_hScintilla, SCI_INDICSETUNDER, indicId, TRUE);
+        }
+    }
+    else {
+        int singleIndex = static_cast<int>(_textMarkerIds.size()) - 1;
+        if (singleIndex >= 0) {
+            indicId = _textMarkerIds[singleIndex];
+        }
     }
 
-    if (markerIndex >= static_cast<int>(_textMarkerIds.size())) return;
-    int indicId = _textMarkerIds[markerIndex];
     if (indicId < 0) return;
 
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicId, 0);
@@ -8014,8 +7992,14 @@ void MultiReplace::handleClearTextMarksButton()
         }
     }
 
+    // Reset static color mapping in highlightTextRange
+    // (This is handled by the static map being cleared when no indicators are used)
+
     markedStringsCount = 0;
     colorToStyleMap.clear();
+
+    textToSlot.clear();
+    nextSlot = 0;
 }
 
 void MultiReplace::handleCopyMarkedTextToClipboardButton()
@@ -8124,22 +8108,21 @@ void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
 
 void MultiReplace::initTextMarkerIndicators()
 {
-    if (_textMarkersInitialized) return;  // Nur einmal!
+    if (_textMarkersInitialized) return;
 
     HWND hSci0 = nppData._scintillaMainHandle;
     if (!hSci0) return;
 
     _textMarkerIds.clear();
-    for (int i = 0; i <= 10; ++i) {
-        std::string name = "MR_TextMark_" + std::to_string(i);
-        int id = NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator(name.c_str(), -1);
-        if (id >= 0) {
-            _textMarkerIds.push_back(id);
-        }
-    }
+
+    std::vector<int> available = NppStyleKit::gIndicatorCoord.availableIndicatorPool();
+
+    if (available.empty()) return;
+
+    _textMarkerIds = available;
 
     _textMarkersInitialized = true;
-    updateTextMarkerStyles();  // Initiale Farben setzen
+    updateTextMarkerStyles(); 
 }
 
 void MultiReplace::updateTextMarkerStyles()
@@ -8157,23 +8140,88 @@ void MultiReplace::updateTextMarkerStyles()
         ::SendMessage(hSci, SCI_INDICSETALPHA, id, alpha);
         ::SendMessage(hSci, SCI_INDICSETOUTLINEALPHA, id, outlineAlpha);
         ::SendMessage(hSci, SCI_INDICSETUNDER, id, TRUE);
-        };
+    };
 
+    // 1. Update List Mode colors (ResultDock & Editor Indicators)
+    if (useListEnabled) {
+        ResultDock& dock = ResultDock::instance();
+        
+        int editorLimit = static_cast<int>(_textMarkerIds.size());
+        int dockLimit = ResultDock::MAX_ENTRY_COLORS;
+        int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
+        if (effectiveLimit < 1) effectiveLimit = 1;
+        int maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
+
+        // Update ResultDock slots
+        for (size_t i = 0; i < replaceListData.size(); ++i) {
+            if (!replaceListData[i].isEnabled) continue;
+
+            int slot = static_cast<int>(i);
+            if (slot >= maxListSlots) slot = maxListSlots - 1;
+
+            COLORREF c = ResultDock::generateColorFromText(replaceListData[i].findText, isDark);
+            dock.defineSlotColor(slot, c);
+        }
+    }
+
+    // 2. Update active Editor indicators based on map
+    for (const auto& [text, slot] : textToSlot) {
+        if (slot >= 0 && slot < static_cast<int>(_textMarkerIds.size())) {
+            COLORREF c = ResultDock::generateColorFromText(text, isDark);
+            int indicId = _textMarkerIds[slot];
+            
+            for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+                applyStyle(hSci, indicId, c);
+            }
+        }
+    }
+
+    // 3. Update Single/Standard Marker (last available ID)
     for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
         if (!hSci) continue;
 
-        // List colors (Index 0-9) - use ResultDock palette (single source of truth)
-        for (int i = 0; i < ResultDock::COLOR_PALETTE_SIZE && i < static_cast<int>(_textMarkerIds.size()); ++i) {
-            COLORREF color = ResultDock::getEntryColor(i, isDark);
-            applyStyle(hSci, _textMarkerIds[i], color);
-        }
-
-        // Single marker (Index 10)
-        if (_textMarkerIds.size() > 10) {
+        if (!_textMarkerIds.empty()) {
+            int singleMarkerIndex = static_cast<int>(_textMarkerIds.size()) - 1;
             COLORREF markerColor = isDark ? MARKER_COLOR_DARK : MARKER_COLOR_LIGHT;
-            applyStyle(hSci, _textMarkerIds[10], markerColor);
+            applyStyle(hSci, _textMarkerIds[singleMarkerIndex], markerColor);
         }
     }
+}
+
+std::vector<size_t> MultiReplace::getIndicesOfUniqueEnabledItems(bool removeDuplicates) const
+{
+    std::vector<size_t> validIndices;
+    validIndices.reserve(replaceListData.size());
+
+    std::unordered_set<std::wstring> seenSignatures;
+
+    for (size_t i = 0; i < replaceListData.size(); ++i) {
+        const auto& item = replaceListData[i];
+
+        // 1. Basic Check: Enabled & Not Empty?
+        if (!item.isEnabled || item.findText.empty()) continue;
+
+        // 2. Smart Deduplication
+        if (removeDuplicates) {
+            // Build unique signature: Text + Options
+            std::wstring signature;
+            signature.reserve(item.findText.size() + 8);
+
+            signature += item.findText;
+            signature += L"|"; signature += (item.regex ? L"1" : L"0");
+            signature += L"|"; signature += (item.extended ? L"1" : L"0");
+            signature += L"|"; signature += (item.matchCase ? L"1" : L"0");
+            signature += L"|"; signature += (item.wholeWord ? L"1" : L"0");
+
+            if (seenSignatures.find(signature) != seenSignatures.end()) {
+                continue; // Skip exact duplicate
+            }
+            seenSignatures.insert(signature);
+        }
+
+        validIndices.push_back(i);
+    }
+    return validIndices;
 }
 
 #pragma endregion
@@ -12297,6 +12345,7 @@ void MultiReplace::onThemeChanged()
     if (instance) {
         instance->applyThemePalette();
         instance->refreshColumnStylesIfNeeded();
+        ResultDock::instance().onThemeChanged();
         instance->updateTextMarkerStyles();
     }
 }

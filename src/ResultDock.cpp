@@ -94,11 +94,13 @@ void ResultDock::clear()
     _hits.clear();
     _lineStartToHitIndex.clear();
 
+    _searchHeaderLines.clear();
+    _slotToColor.clear();
 
     if (!_hSci)
         return;
 
-    // ----- reset Scintilla‑Puffer completly --------------------------
+    // ----- Reset Scintilla buffer completely --------------------------
     S(SCI_SETREADONLY, FALSE);
     S(SCI_CLEARALL);                                      // Text & styles
     S(SCI_SETREADONLY, TRUE);
@@ -117,7 +119,7 @@ void ResultDock::clear()
     }
 
     // Clear per-entry background color indicators
-    for (int i = 0; i < COLOR_PALETTE_SIZE; ++i) {
+    for (int i = 0; i < MAX_ENTRY_COLORS; ++i) {
         S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + i);
         S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
     }
@@ -126,7 +128,7 @@ void ResultDock::clear()
     S(SCI_GOTOPOS, 0);
     S(SCI_SETFIRSTVISIBLELINE, 0);
 
-    // ----- Styles & Folding neu aufbauen -----------------------------------
+    // ----- Rebuild Styles & Folding -----------------------------------
     rebuildFolding();
     applyStyling();
 
@@ -207,7 +209,7 @@ void ResultDock::applyStyling() const
 {
     if (!_hSci) return;
 
-    // 1) Clear all indicators used by this view
+    // 1) Clear fixed indicators (New IDs at end of range)
     const std::vector<int> indicatorsToClear = {
         INDIC_LINE_BACKGROUND, INDIC_LINENUMBER_FORE, INDIC_MATCH_FORE, INDIC_MATCH_BG
     };
@@ -216,83 +218,53 @@ void ResultDock::applyStyling() const
         S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
     }
 
-    // Clear per-entry background color indicators
-    for (int i = 0; i < COLOR_PALETTE_SIZE; ++i) {
+    // 2) Clear dynamic entry indicators (Range 0 to MAX_ENTRY_COLORS)
+    // FIX: Clear the full dynamic range we now support
+    for (int i = 0; i < MAX_ENTRY_COLORS; ++i) {
         S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + i);
         S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
     }
 
-    // 2) Base styles per line (indentation-only, zero string parsing)
-    S(SCI_STARTSTYLING, 0, 0);
+    // 3) Configure Dynamic Indicators based on _slotToColor map
+    const bool dark = ::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0;
+    const int bgAlpha = dark ? ENTRY_BG_ALPHA_DARK : ENTRY_BG_ALPHA_LIGHT;
+    const int outlineAlpha = dark ? ENTRY_OUTLINE_ALPHA_DARK : ENTRY_OUTLINE_ALPHA_LIGHT;
 
-    const int lineCount = (int)S(SCI_GETLINECOUNT);
-    const int IND_SRCH = INDENT_SPACES[(int)LineLevel::SearchHdr];
-    const int IND_FILE = INDENT_SPACES[(int)LineLevel::FileHdr];
-    const int IND_CRIT = INDENT_SPACES[(int)LineLevel::CritHdr];
-
-    for (int line = 0; line < lineCount; ++line) {
-        const Sci_Position lineStart = S(SCI_POSITIONFROMLINE, line);
-        const int          lineLength = (int)S(SCI_LINELENGTH, line);
-        if (lineLength <= 0) continue;
-
-        int style = STYLE_DEFAULT;
-        if (hasContentBeyondIndent(_hSci, line)) {
-            const int indent = (int)S(SCI_GETLINEINDENTATION, line);
-            if (indent == IND_SRCH) style = STYLE_HEADER;
-            else if (indent == IND_CRIT) style = STYLE_CRITHDR;
-            else if (indent == IND_FILE) style = STYLE_FILEPATH;
-        }
-
-        S(SCI_SETSTYLING, lineLength, style);
-
-        // Keep EOL visuals consistent
-        const Sci_Position lineEnd = S(SCI_GETLINEENDPOSITION, line);
-        const int          eolLen = (int)(lineEnd - (lineStart + lineLength));
-        if (eolLen > 0) S(SCI_SETSTYLING, eolLen, STYLE_DEFAULT);
-    }
-
-    // 3) Overlay indicators
-    auto indicStyle = [&](int id) { return (int)S(SCI_INDICGETSTYLE, id); };
-
-    // 3a) whole hit line background (do nothing if hidden in theme)
-    if (indicStyle(INDIC_LINE_BACKGROUND) != INDIC_HIDDEN) {
-        S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
-        for (const auto& hit : _hits) {
-            if (hit.displayLineStart < 0) continue;
-            const int          l = (int)S(SCI_LINEFROMPOSITION, hit.displayLineStart);
-            const Sci_Position ls = S(SCI_POSITIONFROMLINE, l);
-            const Sci_Position le = S(SCI_GETLINEENDPOSITION, l);
-            const Sci_Position n = le - ls;
-            if (n > 0) S(SCI_INDICATORFILLRANGE, ls, n);
-        }
-    }
-
-    // 3b) digits of the line number inside hit lines
-    S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
-    for (const auto& hit : _hits)
-        if (hit.displayLineStart >= 0)
-            S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.numberStart, hit.numberLen);
-
-    // 3c/3d) Match Highlighting (Exclusive Logic)
     if (_perEntryColorsEnabled) {
-        // CASE A: Colorful Backgrounds -> Apply ONLY background indicators (Text remains standard/white)
+        // Configure only slots that are actually used
+        for (const auto& [slotIdx, rgbColor] : _slotToColor) {
+            // Safety check
+            if (slotIdx < 0 || slotIdx >= MAX_ENTRY_COLORS) continue;
+
+            const int indicId = INDIC_ENTRY_BG_BASE + slotIdx;
+            S(SCI_INDICSETSTYLE, indicId, INDIC_ROUNDBOX);
+            S(SCI_INDICSETFORE, indicId, static_cast<COLORREF>(rgbColor));
+            S(SCI_INDICSETALPHA, indicId, bgAlpha);
+            S(SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
+            S(SCI_INDICSETUNDER, indicId, TRUE);
+        }
+
+        // Apply Colors to hits
         for (const auto& hit : _hits) {
             if (hit.displayLineStart < 0) continue;
-            for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
-                // Determine color index
-                const int colorIdx = (i < hit.matchColorIndices.size())
-                    ? hit.matchColorIndices[i]
-                    : hit.colorIndex;  // fallback
 
-                if (colorIdx >= 0 && colorIdx < COLOR_PALETTE_SIZE) {
-                    S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + colorIdx);
+            for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
+                if (i >= hit.matchColors.size()) break;
+
+                // Retrieve the slot index we stored in matchColors
+                int slotIdx = hit.matchColors[i];
+
+                if (slotIdx >= 0 && slotIdx < MAX_ENTRY_COLORS) {
+                    const int indicId = INDIC_ENTRY_BG_BASE + slotIdx;
+                    S(SCI_SETINDICATORCURRENT, indicId);
                     S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
                 }
             }
         }
     }
     else {
-        // CASE B: Standard Mode -> Apply ONLY text color indicator (e.g. Orange/Green)
+        // Standard Mode (Single Color)
+        // Red Match Color
         S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
         for (const auto& hit : _hits) {
             if (hit.displayLineStart < 0) continue;
@@ -302,7 +274,6 @@ void ResultDock::applyStyling() const
         }
     }
 }
-
 void ResultDock::onThemeChanged() {
     applyTheme();
 }
@@ -317,6 +288,7 @@ void ResultDock::startSearchBlock(const std::wstring& header, bool groupView, bo
     if (purge) {
         clear();
         _searchHeaderLines.clear();
+        _slotToColor.clear();
     }
 
     _pendingText.clear();
@@ -523,6 +495,14 @@ void ResultDock::create(const NppData& npp)
         return;
     }
 
+    // This ensures colors and transparency match the main editor (DirectWrite vs GDI)
+    int tech = (int)::SendMessage(npp._scintillaMainHandle, SCI_GETTECHNOLOGY, 0, 0);
+    ::SendMessage(_hSci, SCI_SETTECHNOLOGY, tech, 0);
+
+    // Optional: Synchronize bidirectional text settings
+    int bidi = (int)::SendMessage(npp._scintillaMainHandle, SCI_GETBIDIRECTIONAL, 0, 0);
+    ::SendMessage(_hSci, SCI_SETBIDIRECTIONAL, bidi, 0);
+
     // 2) Subclass Scintilla so we receive double-clicks and other messages
     s_prevSciProc = reinterpret_cast<WNDPROC>(
         ::SetWindowLongPtrW(_hSci, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(sciSubclassProc)));
@@ -727,7 +707,7 @@ void ResultDock::applyTheme()
     S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_HIDDEN);
     S(SCI_INDICSETUNDER, INDIC_MATCH_BG, TRUE);
 
-    // Rote Match-Farbe
+    // Red match color
     S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
     S(SCI_INDICSETFORE, INDIC_MATCH_FORE, theme.matchFg);
     S(SCI_INDICSETUNDER, INDIC_MATCH_FORE, TRUE);
@@ -738,13 +718,11 @@ void ResultDock::applyTheme()
     const int bgAlpha = dark ? ENTRY_BG_ALPHA_DARK : ENTRY_BG_ALPHA_LIGHT;
     const int outlineAlpha = dark ? ENTRY_OUTLINE_ALPHA_DARK : ENTRY_OUTLINE_ALPHA_LIGHT;
 
-    for (int i = 0; i < COLOR_PALETTE_SIZE; ++i) {
-        const COLORREF color = getEntryColor(i, dark);
+    for (int i = 0; i < MAX_ENTRY_COLORS; ++i) {
         const int indicId = INDIC_ENTRY_BG_BASE + i;
         S(SCI_INDICSETSTYLE, indicId, INDIC_ROUNDBOX);
-        S(SCI_INDICSETFORE, indicId, color);
-        S(SCI_INDICSETALPHA, indicId, bgAlpha);           // Background fill alpha
-        S(SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);    // Border alpha
+        S(SCI_INDICSETALPHA, indicId, bgAlpha);
+        S(SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
         S(SCI_INDICSETUNDER, indicId, TRUE);
     }
 
@@ -827,11 +805,13 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
             if (h.displayLineStart < 0) continue;
             for (size_t i = 0; i < h.matchStarts.size(); ++i) {
                 // Determine color index
-                const int colorIdx = (i < h.matchColorIndices.size())
-                    ? h.matchColorIndices[i]
+                // FIX: Use 'matchColors' instead of 'matchColorIndices'
+                const int colorIdx = (i < h.matchColors.size())
+                    ? h.matchColors[i]
                     : h.colorIndex;  // fallback
 
-                if (colorIdx >= 0 && colorIdx < COLOR_PALETTE_SIZE) {
+                // FIX: Use 'MAX_ENTRY_COLORS' instead of 'COLOR_PALETTE_SIZE'
+                if (colorIdx >= 0 && colorIdx < MAX_ENTRY_COLORS) {
                     S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + colorIdx);
                     S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
                 }
@@ -849,6 +829,7 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
         }
     }
 }
+
 void ResultDock::rebuildFoldingRange(int firstLine, int lastLine) const
 {
     if (!_hSci || lastLine < firstLine) return;
@@ -921,7 +902,7 @@ void ResultDock::prependBlock(const std::wstring& dockText, std::vector<Hit>& ne
         if (sepPos <= lenAfterBlock) {
             S(SCI_INSERTTEXT, (uptr_t)sepPos, (sptr_t)"\r\n");
         }
-        // Wenn das nicht passt, kein Insert -> verhindert invalid position.
+        // If that doesn't fit, no insert -> avoids invalid position.
     }
 
     S(SCI_SETREADONLY, TRUE);
@@ -1037,11 +1018,12 @@ void ResultDock::buildListText(
             }
             // Sort by position
             std::sort(merged.begin(), merged.end(),
-    [](auto const& a, auto const& b) {
-        if (a.pos != b.pos) return a.pos < b.pos;
-        if (a.length != b.length) return a.length < b.length;
-        return a.colorIndex < b.colorIndex;  // Immer niedrigster colorIndex zuerst
-    });
+                [](auto const& a, auto const& b) {
+                    if (a.pos != b.pos) return a.pos < b.pos;
+                    if (a.length != b.length) return a.length < b.length;
+
+                    return a.findTextW < b.findTextW;
+                });
 
             // Remove duplicate hits at same position (keep first occurrence)
             merged.erase(
@@ -1271,6 +1253,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         size_t dispEnd = mapToDisp(hitStartU8_orig + hitLenU8_orig);
         size_t dispLen = (dispEnd > dispStart ? dispEnd - dispStart : 0);
 
+
         if (line0 != prevDocLine) {
             std::wstring paddedNumW = padNumber(line1, maxDigits);
             std::wstring prefixW = indentHitW + kLineW + paddedNumW + L": ";
@@ -1282,22 +1265,25 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             h.displayLineStart = (int)utf8Pos;
             h.numberStart = (int)(indentHitU8 + kLineU8 + paddedNumW.size() - std::to_wstring(line1).size());
             h.numberLen = (int)std::to_wstring(line1).size();
+
             h.matchStarts.clear();
             h.matchLens.clear();
-            h.matchColorIndices.clear();
+            h.matchColors.clear();
 
-            if (dispStart < currentRowLenU8) {
+            firstHitOnRow = &h;
+
+            if (dispStart < displayU8.size()) {
                 size_t safeLen = dispLen;
-                if (dispStart + safeLen > currentRowLenU8) safeLen = currentRowLenU8 - dispStart;
+                if (dispStart + safeLen > displayU8.size()) safeLen = displayU8.size() - dispStart;
                 if (safeLen > 0) {
                     h.matchStarts.push_back((int)(prefixU8Len + dispStart));
                     h.matchLens.push_back((int)safeLen);
-                    h.matchColorIndices.push_back(h.colorIndex);
+
+                    h.matchColors.push_back(h.colorIndex);
                 }
             }
 
-            utf8Pos += prefixU8Len + currentRowLenU8 + 2; // + CRLF
-            firstHitOnRow = &h;
+            utf8Pos += prefixU8Len + currentRowLenU8 + 2;
             prevDocLine = line0;
         }
         else {
@@ -1313,11 +1299,12 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                     if (safeLen > 0) {
                         firstHitOnRow->matchStarts.push_back((int)(prefixU8Len + dispStart));
                         firstHitOnRow->matchLens.push_back((int)safeLen);
-                        firstHitOnRow->matchColorIndices.push_back(h.colorIndex);  // Use THIS hit's colorIndex
+
+                        firstHitOnRow->matchColors.push_back(h.colorIndex);
                     }
                 }
             }
-            h.displayLineStart = -1;
+            h.displayLineStart = -1; // Markieren zum Löschen
         }
     }
 
@@ -2325,12 +2312,97 @@ void ResultDock::onNppNotification(const SCNotification* notify)
 }
 
 // ------------------- Color Utilities ----------------------
-int ResultDock::colorIndexFromText(const std::wstring& text)
+
+COLORREF ResultDock::hslToRgb(double hue01, double s, double l)
 {
-    // djb2 hash algorithm
-    unsigned long hash = 5381;
-    for (wchar_t c : text) {
-        hash = ((hash << 5) + hash) + static_cast<unsigned long>(c);
+    // Clamp saturation and lightness
+    s = (std::max)(TUNE_SAT_MIN, (std::min)(TUNE_SAT_MAX, s));
+    l = (std::max)(TUNE_LIT_MIN, (std::min)(TUNE_LIT_MAX, l));
+
+    auto hueToRgb = [](double p, double q, double t) -> double {
+        if (t < 0.0) t += 1.0;
+        if (t > 1.0) t -= 1.0;
+        if (t < 1.0 / 6.0) return p + (q - p) * 6.0 * t;
+        if (t < 1.0 / 2.0) return q;
+        if (t < 2.0 / 3.0) return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+        return p;
+        };
+
+    double r, g, b;
+    if (s < 0.001) {
+        r = g = b = l;
     }
-    return static_cast<int>(hash % COLOR_PALETTE_SIZE);
+    else {
+        double q = l < 0.5 ? l * (1.0 + s) : l + s - l * s;
+        double p = 2.0 * l - q;
+        r = hueToRgb(p, q, hue01 + 1.0 / 3.0);
+        g = hueToRgb(p, q, hue01);
+        b = hueToRgb(p, q, hue01 - 1.0 / 3.0);
+    }
+
+    return RGB(
+        static_cast<BYTE>(r * 255.0 + 0.5),
+        static_cast<BYTE>(g * 255.0 + 0.5),
+        static_cast<BYTE>(b * 255.0 + 0.5)
+    );
+}
+
+COLORREF ResultDock::generateColorFromText(const std::wstring& text, bool darkMode)
+{
+    // MurmurHash3-inspired mixing for excellent bit distribution
+    unsigned long h = 0;
+    for (wchar_t c : text) {
+        h ^= static_cast<unsigned long>(c);
+        h *= 0x5bd1e995UL;
+        h ^= h >> 15;
+    }
+    // Final mixing
+    h ^= h >> 16;
+    h *= 0x85ebca6bUL;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35UL;
+    h ^= h >> 16;
+
+    // Golden Ratio for optimal hue distribution
+    // This guarantees that consecutive hashes produce well-spaced hues
+    constexpr double GOLDEN_RATIO = 0.618033988749895;
+    double hue01 = fmod(h * GOLDEN_RATIO, 1.0);
+
+    // Base saturation and lightness
+    double saturation = darkMode ? TUNE_SAT_DARK : TUNE_SAT_LIGHT;
+    double lightness = darkMode ? TUNE_LIT_DARK : TUNE_LIT_LIGHT;
+
+    // Add slight variation based on different hash bits (makes colors more unique)
+    double satVar = (((h >> 8) & 0xFF) / 255.0 - 0.5) * 2.0 * TUNE_SAT_VAR;
+    double litVar = (((h >> 16) & 0xFF) / 255.0 - 0.5) * 2.0 * TUNE_LIT_VAR;
+
+    saturation += satVar;
+    lightness += litVar;
+
+    return hslToRgb(hue01, saturation, lightness);
+}
+
+void ResultDock::defineSlotColor(int slotIndex, COLORREF color)
+{
+    // 1. Save to internal map
+    if (slotIndex < 0 || slotIndex >= MAX_ENTRY_COLORS) return;  // Bounds check
+    _slotToColor[slotIndex] = static_cast<int>(color);
+
+    // 2. Apply configuration immediately to Scintilla
+    // This is crucial because clear() might have reset the indicators,
+    // and we need them ready BEFORE we start adding text.
+    if (!_hSci) return;
+
+    const int indicId = INDIC_ENTRY_BG_BASE + slotIndex;
+
+    // Check dark mode for alpha values (reusing logic from applyTheme)
+    const bool dark = (::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0);
+    const int bgAlpha = dark ? ENTRY_BG_ALPHA_DARK : ENTRY_BG_ALPHA_LIGHT;
+    const int outlineAlpha = dark ? ENTRY_OUTLINE_ALPHA_DARK : ENTRY_OUTLINE_ALPHA_LIGHT;
+
+    S(SCI_INDICSETSTYLE, indicId, INDIC_ROUNDBOX);
+    S(SCI_INDICSETFORE, indicId, color);
+    S(SCI_INDICSETALPHA, indicId, bgAlpha);
+    S(SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
+    S(SCI_INDICSETUNDER, indicId, TRUE);
 }
