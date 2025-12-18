@@ -333,18 +333,20 @@
     <a href="#Introduction">Introduction</a>
     <a href="#QuickStart">Quick Start</a>
     <a href="#Variables">Variables</a>
-    <a href="#Commands">Commands</a>
+    <a href="#AvailableFunctions">Available Functions</a>
+    <a href="#Commands">Command Reference</a>
     <a href="#setstrorcalc" class="sub-item">set()</a>
     <a href="#condcondition-trueval-falseval" class="sub-item">cond()</a>
     <a href="#varsvariable1value1-variable2value2-" class="sub-item">vars()</a>
     <a href="#lvarsfilepath" class="sub-item">lvars()</a>
     <a href="#lkpkey-hpath-inner" class="sub-item">lkp()</a>
     <a href="#fmtnnum-maxdecimals-fixeddecimals" class="sub-item">fmtN()</a>
-    <a href="#lcmdpath" class="sub-item">lcmd(path)</a>
-    <a href="#preload-variables--helpers">Preload variables &amp; helpers</a>
+    <a href="#lcmdpath" class="sub-item">lcmd()</a>
+    <a href="#StringHelpers">String Formatting Helpers</a>
+    <a href="#preload-variables--helpers">Preload Variables &amp; Helpers</a>
     <a href="#Operators">Operators</a>
     <a href="#IfThenLogic">If-Then Logic</a>
-    <a href="#DebugOption">Debug Option</a>
+    <a href="#DebugOption">DEBUG Option</a>
     <a href="#FurtherFunctions">Math &amp; String Functions</a>
     <a href="#Examples">Examples</a>
 </nav>
@@ -394,7 +396,7 @@
           <li><strong><code>CAP1</code>, <code>CAP2</code>, etc.:</strong> Holds captured groups when Regex is enabled.<br>
             <blockquote>
               <strong>Capture Groups:</strong><br>
-              With a regex in parentheses <code>(...)</code>, matched text is stored in <code>CAP</code> variables (e.g., <code>(\d+)</code> in <code>Item 123</code> stores <code>123</code> in <code>CAP1</code>).  For more details, refer to regex documentation.
+              With a regex in parentheses <code>(...)</code>, matched text is stored in <code>CAP</code> variables (e.g., <code>(\d+)</code> in <code>Item 123</code> stores <code>123</code> in <code>CAP1</code>). For more details, refer to regex documentation.
             </blockquote>
           </li>
         </ul>
@@ -450,11 +452,11 @@
       </tr>
       <tr>
         <td><strong>CAP1</strong>, <strong>CAP2</strong>, ...</td>
-        <td>These variables are equivalents to regex capture groups, designed for use in the 'Use Variables' environment. They are specifically suited for calculations and conditional operations within this environment. Although their counterparts ($1, $2, ...) cannot be used here.</td>
+        <td>Equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Suited for calculations and conditional operations. Note: Standard counterparts (<code>$1</code>, <code>$2</code>, ...) cannot be used in this environment.</td>
       </tr>
     </table>
 
-    <p><strong>Note:</strong></p>
+    <p><strong>Notes:</strong></p>
     <ul>
       <li><code>FNAME</code> and <code>FPATH</code> are updated for each file processed by <code>Replace All in All Open Docs</code> and <code>Replace All in Files</code>. This ensures that variables always refer to the file currently being modified.</li>
       <li><strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.</li>
@@ -463,8 +465,72 @@
 
   <br>
 
+  <section id="AvailableFunctions">
+    <h2>Available Functions</h2>
+    <p>The following functions are available for use in the Replace field:</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Function</th>
+        <th>Description</th>
+        <th>Example</th>
+      </tr>
+      <tr>
+        <td><code>set(v)</code></td>
+        <td>Returns <code>v</code> as the replacement string. If <code>v</code> is <code>nil</code>, the replacement is skipped.</td>
+        <td><code>set("Value: " .. CNT)</code></td>
+      </tr>
+      <tr>
+        <td><code>cond(c, t, f)</code></td>
+        <td>If <code>c</code> is true, returns <code>t</code>. If false, returns <code>f</code>. If <code>f</code> is omitted, skips replacement on false.</td>
+        <td><code>cond(CNT > 5, "Over 5")</code></td>
+      </tr>
+      <tr>
+        <td><code>fmtN(n, d, f)</code></td>
+        <td>Formats number <code>n</code> with <code>d</code> decimal places and optional fixed flag <code>f</code>.</td>
+        <td><code>fmtN(math.pi, 2)</code> → <code>"3.14"</code></td>
+      </tr>
+      <tr>
+        <td><code>trim(s)</code></td>
+        <td>Removes leading and trailing whitespace from string <code>s</code>.</td>
+        <td><code>trim("  abc  ")</code> → <code>"abc"</code></td>
+      </tr>
+      <tr>
+        <td><code>padL(s, w, c)</code></td>
+        <td>Pads string <code>s</code> on the <strong>left</strong> to width <code>w</code> with char <code>c</code>.</td>
+        <td><code>padL(CNT, 3, "0")</code> → <code>"001"</code></td>
+      </tr>
+      <tr>
+        <td><code>padR(s, w, c)</code></td>
+        <td>Pads string <code>s</code> on the <strong>right</strong> to width <code>w</code> with char <code>c</code>.</td>
+        <td><code>padR(MATCH, 10, ".")</code> → <code>"Val......."</code></td>
+      </tr>
+      <tr>
+        <td><code>vars(t)</code></td>
+        <td>Declares custom variables for use across replacements.</td>
+        <td><code>vars({sum=0})</code></td>
+      </tr>
+      <tr>
+        <td><code>lkp(k, p, c)</code></td>
+        <td>Looks up key <code>k</code> in file <code>p</code> and returns the value.</td>
+        <td><code>set(lkp(MATCH, "C:\\list.lkp"))</code></td>
+      </tr>
+      <tr>
+        <td><code>lvars(p)</code></td>
+        <td>Loads all key-value pairs from file <code>p</code> as global variables.</td>
+        <td><code>lvars("C:\\config.vars")</code></td>
+      </tr>
+      <tr>
+        <td><code>lcmd(p)</code></td>
+        <td>Loads external Lua functions from file <code>p</code> to extend functionality.</td>
+        <td><code>lcmd("C:\\helpers.lcmd")</code></td>
+      </tr>
+    </table>
+  </section>
+
+  <br>
+
   <section id="Commands">
-    <h2>Commands</h2>
+    <h2>Command Reference</h2>
 
     <h3>String Composition</h3>
     <p><code>..</code> is employed for concatenation.<br>
@@ -520,9 +586,9 @@
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>cond(CAP1&gt;100, "Large number", cond(CAP1&gt;50, "Medium number", "Small number"))</code></td>
+        <td><code>cond(CAP1&gt;100, "Large", cond(CAP1&gt;50, "Medium", "Small"))</code></td>
         <td>Yes</td>
-        <td>For a numeric match: if &gt; 100 → <code>"Large number"</code>, if &gt; 50 → <code>"Medium number"</code>, otherwise → <code>"Small number"</code>.</td>
+        <td>If &gt; 100 → <code>"Large"</code>, if &gt; 50 → <code>"Medium"</code>, otherwise → <code>"Small"</code>.</td>
       </tr>
       <tr>
         <td><code>anymatch</code></td>
@@ -538,7 +604,7 @@
     <p><strong>Note:</strong> This command was previously named <code>init()</code> and has been renamed to <code>vars()</code>. For compatibility, <code>init()</code> still works.</p>
     <p>Initializes custom variables for use in various commands, extending beyond standard variables like <code>CNT</code>, <code>MATCH</code>, <code>CAP1</code>. These variables can carry the status of previous find-and-replace operations to subsequent ones.</p>
     <p>Custom variables maintain their values throughout a single Replace-All or within a list of multiple Replace operations. Thus, they can transfer values from one list entry to subsequent ones. They reset at the start of each new document in <strong>'Replace All in All Open Documents'</strong>.</p>
-    <p><strong>Init usage:</strong> can be used as an init entry (empty Find) to preload before replacements; not mandatory. See <a href="#preload-variables--helpers">Preload variables &amp; helpers</a> for workflow and examples.</p>
+    <p><strong>Init usage:</strong> Can be used as an init entry (empty Find) to preload before replacements; not mandatory. See <a href="#preload-variables--helpers">Preload Variables &amp; Helpers</a> for workflow and examples.</p>
 
     <table class="optionsTable">
       <tr>
@@ -583,18 +649,18 @@
 
     <p><strong>File:</strong></p>
     <pre><code>-- Local variables remain private
-local PATH = [[C:\Data\Projects\\]]
+local PATH = [[C:\Data\Projects\]]
 
 -- Only the returned variables are accessible in Replace operations
 return {
     userName = "Alice",
     threshold = 10,
     enableFeature = true,
-    fullPath = PATH .. "dataFile.lkp" -- Combine a local variable with a string
+    fullPath = PATH .. "dataFile.lkp"
 }
 </code></pre>
 
-    <p><strong>Init usage:</strong> can be used as an init entry (empty Find) to preload before replacements; not mandatory. See <a href="#preload-variables--helpers">Preload variables &amp; helpers</a> for workflow and examples.</p>
+    <p><strong>Init usage:</strong> Can be used as an init entry (empty Find) to preload before replacements; not mandatory. See <a href="#preload-variables--helpers">Preload Variables &amp; Helpers</a> for workflow and examples.</p>
 
     <table class="optionsTable">
       <tr>
@@ -606,10 +672,10 @@ return {
       </tr>
       <tr>
         <td><em>(empty)</em></td>
-        <td><code>lvars([[C:\tmp\m\Vars.vars]])</code></td>
+        <td><code>lvars([[C:\tmp\myVars.vars]])</code></td>
         <td>No</td>
         <td>No</td>
-        <td>Loads variables such as <code>userName = "Alice"</code> and <code>threshold = 10</code> from <code>myVars.vars</code>.</td>
+        <td>Loads variables such as <code>userName = "Alice"</code> and <code>threshold = 10</code>.</td>
       </tr>
       <tr>
         <td><code>Hello</code></td>
@@ -627,10 +693,10 @@ return {
       </tr>
     </table>
 
-    <p><strong>Key Points</strong></p>
+    <p><strong>Key Points:</strong></p>
     <ul>
-      <li><strong>Conditional Loading</strong>: Variables can be loaded conditionally by placing <code>lvars()</code> alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.</li>
-      <li><strong>Local vs. Returned Variables</strong>: Only variables explicitly included in the return table of the .vars file are available for use. Any local variables remain private to the file.</li>
+      <li><strong>Conditional Loading:</strong> Variables can be loaded conditionally by placing <code>lvars()</code> alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.</li>
+      <li><strong>Local vs. Returned Variables:</strong> Only variables explicitly included in the return table of the .vars file are available for use. Any local variables remain private to the file.</li>
     </ul>
 
     <br>
@@ -640,9 +706,9 @@ return {
 
     <h4>Key and File Path</h4>
     <ul>
-      <li><strong>Key</strong>:<br>The <strong>key</strong> can be either a string or a number. Numbers are automatically converted to strings to ensure compatibility in the lookup process.</li>
-      <li><strong>File Path (hpath)</strong>:<br>The <strong>hpath</strong> must point to a valid <code>.lkp</code> file that returns a table of data.<br>
-        <strong>Supported Path Formats</strong>:
+      <li><strong>Key:</strong> The <strong>key</strong> can be either a string or a number. Numbers are automatically converted to strings to ensure compatibility in the lookup process.</li>
+      <li><strong>File Path (hpath):</strong> The <strong>hpath</strong> must point to a valid <code>.lkp</code> file that returns a table of data.<br>
+        <strong>Supported Path Formats:</strong>
         <ul>
           <li>Escaped Backslashes: <code>"C:\\path\\to\\file.lkp"</code></li>
           <li>Forward Slashes: <code>"C:/path/to/file.lkp"</code></li>
@@ -677,8 +743,8 @@ return {
 
     <h4>inner Flag</h4>
     <ul>
-      <li><strong><code>false</code> (default, can be omitted)</strong>: If the key is not found, <code>lkp()</code> returns the <strong>search term itself</strong> (e.g., <code>MATCH</code>, <code>CAP1</code>), instead of a mapped value.</li>
-      <li><strong><code>true</code></strong>: If the key is not found, <code>lkp()</code> returns <code>nil</code>, allowing conditional handling.</li>
+      <li><strong><code>false</code> (default, can be omitted):</strong> If the key is not found, <code>lkp()</code> returns the <strong>search term itself</strong> (e.g., <code>MATCH</code>, <code>CAP1</code>), instead of a mapped value.</li>
+      <li><strong><code>true</code>:</strong> If the key is not found, <code>lkp()</code> returns <code>nil</code>, allowing conditional handling.</li>
     </ul>
 
     <h4>Examples</h4>
@@ -695,28 +761,28 @@ return {
         <td><code>lkp(MATCH, [[C:\tmp\hash.lkp]], true)</code></td>
         <td>Yes</td>
         <td>No</td>
-        <td>Uses <strong>inner = true</strong>: If a match is found in the lookup file, replaces it with the mapped value. If no match is found, the original word is removed.</td>
+        <td>Uses <strong>inner = true</strong>: If found, replaces with mapped value. If not found, original word is removed.</td>
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
         <td><code>lkp(CAP1, "C:/path/to/myLookupFile.lkp")</code></td>
         <td>Yes</td>
         <td>No</td>
-        <td>Uses <strong>inner = false</strong> (default): If a match is found, replaces it with the mapped value. If no match is found, the original text (<code>CAP1</code>) is returned.</td>
+        <td>Uses <strong>inner = false</strong> (default): If found, replaces with mapped value. If not, returns <code>CAP1</code>.</td>
       </tr>
       <tr>
         <td><code>\b\w+\b</code></td>
-        <td><code>output = lkp(MATCH, [[C:\tmp\hash.lkp]], true).result; set(output or "NoKey")</code></td>
+        <td><code>output = lkp(MATCH, [[C:\tmp\hash.lkp]], true); set(output or "NoKey")</code></td>
         <td>Yes</td>
         <td>No</td>
-        <td>Uses <strong>inner = true</strong>: If the lookup result is non-<code>nil</code>, replaces with the mapped value. Otherwise, replaces with <code>"NoKey"</code>.</td>
+        <td>Uses <strong>inner = true</strong>: If lookup result is non-<code>nil</code>, replaces with mapped value; otherwise <code>"NoKey"</code>.</td>
       </tr>
       <tr>
         <td><code>\b\w+\b</code></td>
         <td><code>cond(COL==3, lkp(MATCH, [[C:/tmp/col3_hash.lkp]]))</code></td>
         <td>No</td>
         <td>Yes</td>
-        <td>Looks up values in the third column (<code>COL==3</code>) using a separate lookup file (<code>col3_hash.lkp</code>). If a match is found, replaces it; otherwise, leaves it unchanged.</td>
+        <td>Looks up values in the third column (<code>COL==3</code>) using a separate lookup file.</td>
       </tr>
     </table>
 
@@ -724,7 +790,7 @@ return {
 
     <h3 id="fmtnnum-maxdecimals-fixeddecimals">fmtN(num, maxDecimals, fixedDecimals)</h3>
     <p>Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).</p>
-    <p><strong>Note</strong>: The <code>fmtN()</code> command can exclusively be used within the <code>set()</code> and <code>cond()</code> commands.</p>
+    <p><strong>Note:</strong> The <code>fmtN()</code> command can exclusively be used within the <code>set()</code> and <code>cond()</code> commands.</p>
     <table class="optionsTable">
       <tr>
         <th>Example</th>
@@ -752,8 +818,8 @@ return {
 
     <h3 id="lcmdpath">lcmd(path)</h3>
     <p>Load user-defined helper functions from a Lua file. The file must <code>return</code> a table of functions. <code>lcmd</code> registers those functions as globals for the current run.</p>
-    <p><strong>Purpose:</strong> add reusable helper functions (formatters, slugifiers, padding, small logic). Helpers <strong>must return a string or number</strong> and are intended to be called from <strong>action</strong> commands (e.g. <code>set(...)</code>, <code>cond(...)</code>).<br>
-    <strong>Init usage:</strong> can be used as an init entry (empty Find) to preload before replacements; not mandatory. See <a href="#preload-variables--helpers">Preload variables &amp; helpers</a> for workflow and examples.</p>
+    <p><strong>Purpose:</strong> Add reusable helper functions (formatters, converters, logging, small logic). Helpers <strong>must return a string or number</strong> and are intended to be called from <strong>action</strong> commands (e.g. <code>set(...)</code>, <code>cond(...)</code>).</p>
+    <p><strong>Init usage:</strong> Can be used as an init entry (empty Find) to preload before replacements; not mandatory. See <a href="#preload-variables--helpers">Preload Variables &amp; Helpers</a> for workflow and examples.</p>
 
     <table class="optionsTable">
       <tr>
@@ -764,15 +830,9 @@ return {
       </tr>
       <tr>
         <td><em>(empty)</em></td>
-        <td><code>lcmd([[C:\tmp\mycmds.lcmd]])</code></td>
+        <td><code>lcmd([[C:\tmp\helpers.lcmd]])</code></td>
         <td>No</td>
         <td>Load helpers from file (init row — no replacement).</td>
-      </tr>
-      <tr>
-        <td><code>(\d+)</code></td>
-        <td><code>set(padLeft(CAP1, 6, '0'))</code></td>
-        <td>Yes</td>
-        <td>Zero-pad captured number to width 6 using <code>padLeft</code>.</td>
       </tr>
       <tr>
         <td><code>(.+)</code></td>
@@ -781,41 +841,64 @@ return {
         <td>Create a URL-safe slug from the whole line using <code>slug</code>.</td>
       </tr>
       <tr>
-        <td><code>\{\{<br>(.*?)<br>\}\}</code></td>
-        <td><code>set(file_log_simple(MATCH, [[C:\tmp\out.txt]]))</code></td>
+        <td><code>([a-z_]+)</code></td>
+        <td><code>set(titleCase(CAP1))</code></td>
         <td>Yes</td>
-        <td>Logs the entire search hit (the full <code>{{...}}</code> placeholder) to a custom file, leaving the original text unchanged.</td>
+        <td>Convert snake_case to Title Case using <code>titleCase</code>.</td>
+      </tr>
+      <tr>
+        <td><code>\{\{(.*?)\}\}</code></td>
+        <td><code>set(file_log(MATCH, [[C:\tmp\out.txt]]))</code></td>
+        <td>Yes</td>
+        <td>Logs the search hit to a file, leaving original text unchanged.</td>
       </tr>
     </table>
 
     <p><strong>File format:</strong></p>
-    <pre><code>
--- C:\tmp\helpers.lcmd
+    <pre><code>-- C:\tmp\helpers.lcmd
 return {
-  -- padLeft: left-pad string with a given character, return padded string
-  -- Usage: set(padLeft("42", 5, "0"))   → "00042"
-  padLeft = function(s, w, ch)
-    s = tostring(s or "")
-    ch = ch or " "
-    w = tonumber(w) or 0
-    if #s >= w then return s end
-    return string.rep(ch, w - #s) .. s
-  end,
-
-  -- slug: create a URL-friendly slug, return the slug
-  -- Usage: set(slug("Hello World!"))    → "hello-world"
+  -- slug: create a URL-friendly slug
+  -- Usage: set(slug("Hello World!"))  → "hello-world"
   slug = function(s)
     s = tostring(s or ""):lower()
     s = s:gsub("%s+", "-"):gsub("[^%w%-]", "")
     return s
   end,
 
-  -- file_log_simple: append the exact match to file, return the original match
-  -- Usage: set(file_log_simple(MATCH)) or set(file_log_simple(CAP1, [[C:\tmp\out.txt]]))
-  file_log_simple = function(match, path)
+  -- titleCase: convert snake_case or space-separated to Title Case
+  -- Usage: set(titleCase("hello_world"))  → "Hello World"
+  titleCase = function(s)
+    s = tostring(s or "")
+    s = s:gsub("_", " ")
+    s = s:gsub("(%a)([%w]*)", function(first, rest)
+      return first:upper() .. rest:lower()
+    end)
+    return s
+  end,
+
+  -- wrap: wrap text at specified width
+  -- Usage: set(wrap("long text here", 40))  → wrapped text
+  wrap = function(s, width)
+    s = tostring(s or "")
+    width = tonumber(width) or 80
+    local result = {}
+    for line in s:gmatch("[^\n]+") do
+      while #line > width do
+        local pos = line:sub(1, width):match(".*()%s") or width
+        table.insert(result, line:sub(1, pos - 1))
+        line = line:sub(pos + 1)
+      end
+      table.insert(result, line)
+    end
+    return table.concat(result, "\n")
+  end,
+
+  -- file_log: append match to file, return original match
+  -- Usage: set(file_log(MATCH, [[C:\tmp\out.txt]]))
+  file_log = function(match, path)
     if match == nil then return "" end
     path = path or [[C:\tmp\matches.txt]]
-    local f, err = io.open(path, "a")
+    local f = io.open(path, "a")
     if not f then return match end
     f:write(tostring(match) .. "\n")
     f:close()
@@ -826,11 +909,76 @@ return {
 
   </section>
 
+  <br>
+
+  <section id="StringHelpers">
+    <h2>String Formatting Helpers</h2>
+    <p>The following built-in helper functions are available for string manipulation. These are ready to use without loading external files.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Function</th>
+        <th>Description</th>
+        <th>Example</th>
+      </tr>
+      <tr>
+        <td><code>trim(s)</code></td>
+        <td>Removes leading and trailing whitespace from string <code>s</code>. Useful for cleaning up database dumps or messy CSVs.</td>
+        <td><code>trim("  abc  ")</code> → <code>"abc"</code></td>
+      </tr>
+      <tr>
+        <td><code>padL(s, w, c)</code></td>
+        <td>Pads string <code>s</code> on the <strong>left</strong> to width <code>w</code> with character <code>c</code> (default: space). Ideal for zero-padding IDs or generating sorted file names like <code>file_001.txt</code>.</td>
+        <td><code>padL("42", 5, "0")</code> → <code>"00042"</code></td>
+      </tr>
+      <tr>
+        <td><code>padR(s, w, c)</code></td>
+        <td>Pads string <code>s</code> on the <strong>right</strong> to width <code>w</code> with character <code>c</code> (default: space). Useful to align text into fixed-width columns.</td>
+        <td><code>padR("Val", 10, ".")</code> → <code>"Val......."</code></td>
+      </tr>
+    </table>
+
+    <h4>Usage Examples</h4>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Regex</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>set(padL(CAP1, 6, "0"))</code></td>
+        <td>Yes</td>
+        <td>Zero-pad numbers to 6 digits: <code>42</code> → <code>000042</code></td>
+      </tr>
+      <tr>
+        <td><code>(\w+)</code></td>
+        <td><code>set(padR(CAP1, 15, " "))</code></td>
+        <td>Yes</td>
+        <td>Right-pad words to 15 chars for column alignment.</td>
+      </tr>
+      <tr>
+        <td><code>^\s*(.+?)\s*$</code></td>
+        <td><code>set(trim(CAP1))</code></td>
+        <td>Yes</td>
+        <td>Remove leading/trailing whitespace from each line.</td>
+      </tr>
+      <tr>
+        <td><code>ID_(\d+)</code></td>
+        <td><code>set("ID_" .. padL(CAP1, 4, "0"))</code></td>
+        <td>Yes</td>
+        <td>Normalize IDs: <code>ID_7</code> → <code>ID_0007</code></td>
+      </tr>
+    </table>
+  </section>
+
+  <br>
+
   <section id="preload-variables--helpers">
-    <h2><strong>Preload variables &amp; helpers</strong></h2>
+    <h2>Preload Variables &amp; Helpers</h2>
     <p>Use init entries (empty Find) to preload variables or helper functions before any replacements run. Init entries run once per Replace-All (or per list pass) and do not change text directly.</p>
 
-    <h3><strong>How it works</strong></h3>
+    <h3>How it works</h3>
     <ul>
       <li><strong>Place <code>vars()</code>, <code>lvars()</code> or <code>lcmd()</code> next to an empty Find field.</strong></li>
       <li>This entry does <strong>not</strong> search for matches but runs before replacements begin.</li>
@@ -857,8 +1005,8 @@ return {
       </tr>
       <tr>
         <td><em>(empty)</em></td>
-        <td><code>lcmd([[C:\tmp\mycmds.lcmd]])</code></td>
-        <td>Load helpers from file (e.g. <code>padLeft</code>, <code>slug</code>).</td>
+        <td><code>lcmd([[C:\tmp\helpers.lcmd]])</code></td>
+        <td>Load helpers from file (e.g. <code>slug</code>, <code>titleCase</code>).</td>
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
@@ -867,8 +1015,8 @@ return {
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>set(padLeft(CAP1, 6, '0'))</code></td>
-        <td>Use helper loaded by <code>lcmd</code> to zero-pad (<code>123</code> → <code>000123</code>).</td>
+        <td><code>set(padL(CAP1, 6, '0'))</code></td>
+        <td>Use built-in helper to zero-pad (<code>123</code> → <code>000123</code>).</td>
       </tr>
       <tr>
         <td><code>(.+)</code></td>
@@ -880,7 +1028,7 @@ return {
 
   <br>
 
- <section id="Operators">
+  <section id="Operators">
      <h2>Operators</h2>
      <table class="optionsTable">
          <tr>
@@ -916,7 +1064,7 @@ return {
   <section id="IfThenLogic">
     <h2>If-Then Logic</h2>
     <p>If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.</p>
-    <p><strong>Note</strong>: Do not embed <code>cond()</code>, <code>set()</code>, or <code>vars()</code> within <code>if statements</code>; <code>if statements</code> are exclusively for adjusting custom variables.</p>
+    <p><strong>Note:</strong> Do not embed <code>cond()</code>, <code>set()</code>, or <code>vars()</code> within <code>if statements</code>; <code>if statements</code> are exclusively for adjusting custom variables.</p>
 
     <h4>Syntax Combinations</h4>
     <ul>
@@ -934,7 +1082,7 @@ return {
   <br>
 
   <section id="DebugOption">
-    <h2>DEBUG option</h2>
+    <h2>DEBUG Option</h2>
     <p>The <code>DEBUG</code> option lets you inspect global variables during replacements. When enabled, it opens a message box displaying the current values of all global variables for each replacement hit, requiring confirmation to proceed to the next match. Initialize the <code>DEBUG</code> option in your replacement string to enable it.</p>
     <table class="optionsTable">
       <tr>
@@ -948,6 +1096,8 @@ return {
     </table>
   </section>
 
+  <br>
+
   <section id="FurtherFunctions">
     <h2>Math &amp; String Functions</h2>
     <p>
@@ -956,6 +1106,8 @@ return {
       <a href="https://www.lua.org/manual/5.4/manual.html#6.6" target="_blank">Lua Mathematical Functions</a> for more information.
     </p>
   </section>
+
+  <br>
 
   <section id="Examples">
     <h2>Examples</h2>
@@ -972,7 +1124,7 @@ return {
         <td><code>cond(LCNT==5,";Column5;")</code></td>
         <td>No</td>
         <td>No</td>
-        <td>Adds a 5th Column for each line into a <code>`;`</code> delimited file.</td>
+        <td>Adds a 5th Column for each line into a <code>;</code> delimited file.</td>
       </tr>
       <tr>
         <td><code>key</code></td>
@@ -983,52 +1135,52 @@ return {
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>set(CAP1.."€ The VAT is: ".. (CAP1 * 0.15).."€ Total with VAT: ".. (CAP1 + (CAP1 * 0.15)).."€")</code></td>
+        <td><code>set(CAP1.."€ The VAT is: "..(CAP1*0.15).."€ Total: "..(CAP1+(CAP1*0.15)).."€")</code></td>
         <td>Yes</td>
         <td>No</td>
-        <td>Finds a number and calculates the VAT at 15%, then displays the original amount, the VAT, and the total amount. E.g., <code>`50`</code> becomes <code>`50€ The VAT is: 7.5€ Total with VAT: 57.5€`</code>.</td>
+        <td>Finds a number and calculates VAT at 15%, displaying original, VAT, and total.</td>
       </tr>
       <tr>
         <td><code>---</code></td>
-        <td><code>cond(COL==1 and LINE&lt;3, "0-2", cond(COL==2 and LINE&gt;2 and LINE&lt;5, "3-4", cond(COL==3 and LINE&gt;=5 and LINE&lt;10, "5-9", cond(COL==4 and LINE&gt;=10, "10+"))))</code></td>
+        <td><code>cond(COL==1 and LINE&lt;3, "0-2", cond(COL==2 and LINE&gt;2 and LINE&lt;5, "3-4", cond(COL==3 and LINE&gt;=5, "5-9")))</code></td>
         <td>No</td>
         <td>Yes</td>
-        <td>Replaces <code>`---`</code> with a specific range based on the <code>`COL`</code> and <code>`LINE`</code> values. E.g., <code>`3-4`</code> in column 2 of lines 3-4, and <code>`5-9`</code> in column 3 of lines 5-9 assuming <code>`---`</code> is found in all lines and columns.</td>
+        <td>Replaces <code>---</code> with a specific range based on <code>COL</code> and <code>LINE</code> values.</td>
       </tr>
       <tr>
         <td><code>(\d+)\.(\d+)\.(\d+)</code></td>
-        <td><code>cond(CAP1 &gt; 0 and CAP2 == 0 and CAP3 == 0, MATCH, cond(CAP2 &gt; 0 and CAP3 == 0, " " .. MATCH, " " .. MATCH))</code></td>
+        <td><code>cond(CAP1&gt;0 and CAP2==0 and CAP3==0, MATCH, cond(CAP2&gt;0 and CAP3==0, " "..MATCH, "  "..MATCH))</code></td>
         <td>Yes</td>
         <td>No</td>
-        <td>Alters the spacing based on the hierarchy of the version numbers, aligning lower hierarchies with spaces as needed. E.g., <code>`1.0.0`</code> remains <code>`1.0.0`</code>, <code>`1.2.0`</code> becomes <code>` 1.2.0`</code>, indicating a second-level version change.</td>
+        <td>Alters spacing based on version number hierarchy, aligning lower hierarchies with spaces.</td>
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
         <td><code>set(CAP1 * 2)</code></td>
         <td>Yes</td>
         <td>No</td>
-        <td>Doubles the matched number. E.g., <code>`100`</code> becomes <code>`200`</code>.</td>
+        <td>Doubles the matched number. E.g., <code>100</code> becomes <code>200</code>.</td>
       </tr>
       <tr>
         <td><code>;</code></td>
-        <td><code>cond(LCNT == 1, string.rep(" ", 20- (LPOS))..";")</code></td>
+        <td><code>cond(LCNT == 1, string.rep(" ", 20-(LPOS))..";")</code></td>
         <td>No</td>
         <td>No</td>
-        <td>Inserts spaces before the semicolon to align it to the 20th character position if it's the first occurrence.</td>
+        <td>Inserts spaces before the semicolon to align it to the 20th character position.</td>
       </tr>
       <tr>
         <td><code>-</code></td>
-        <td><code>cond(LINE == math.floor(10.5 + 6.25 * math.sin((2 * math.pi * LPOS) / 50)), "*", " ")</code></td>
+        <td><code>cond(LINE == math.floor(10.5 + 6.25*math.sin((2*math.pi*LPOS)/50)), "*", " ")</code></td>
         <td>No</td>
         <td>No</td>
-        <td>Draws a sine wave across a canvas of '-' characters spanning at least 20 lines and 80 characters per line.</td>
+        <td>Draws a sine wave across a canvas of '-' characters.</td>
       </tr>
       <tr>
         <td><code>^(.*)$</code></td>
         <td><code>vars({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;</code></td>
         <td>Yes</td>
         <td>No</td>
-        <td>Removes duplicate lines, keeping the first occurrence of each line. Matches an entire line and uses <code>MATCH_PREV</code> to identify and remove consecutive duplicates.</td>
+        <td>Removes duplicate lines, keeping the first occurrence of each line.</td>
       </tr>
     </table>
   </section>

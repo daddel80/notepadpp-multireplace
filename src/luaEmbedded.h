@@ -297,7 +297,47 @@ function lvars(filePath)
 end
 
 ------------------------------------------------------------------
--- 6) lcmd function
+-- 6) Helper Functions: trim, padL, padR
+------------------------------------------------------------------
+
+-- Removes leading and trailing whitespace
+function trim(s)
+  if s == nil then return "" end
+  return (tostring(s):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+-- Pads string 's' on the LEFT with char 'c' until width 'w' is reached
+-- Usage: padL(CNT, 3, "0") -> "001"
+function padL(s, w, c)
+  s = tostring(s or "")
+  w = tonumber(w) or 0
+  c = tostring(c or " ")
+  if #c == 0 then c = " " end
+  
+  if #s >= w then 
+    return s 
+  end
+  
+  return string.rep(c, w - #s) .. s
+end
+
+-- Pads string 's' on the RIGHT with char 'c' until width 'w' is reached
+-- Usage: padR(match, 20, " ")
+function padR(s, w, c)
+  s = tostring(s or "")
+  w = tonumber(w) or 0
+  c = tostring(c or " ")
+  if #c == 0 then c = " " end
+  
+  if #s >= w then 
+    return s 
+  end
+  
+  return s .. string.rep(c, w - #s)
+end
+
+------------------------------------------------------------------
+-- 7) lcmd function
 -- Loads a file that returns a table of helper functions and registers them globally.
 -- Example file: return { padLeft=function(s,w,ch) ... end, upper=function(s) ... end }
 ------------------------------------------------------------------
