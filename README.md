@@ -412,30 +412,48 @@ Load user-defined helper functions from a Lua file. The file must `return` a tab
 ```lua
 -- C:\tmp\helpers.lcmd
 return {
-  -- padLeft: left-pad string with a given character
-  -- Usage: set(padLeft("42", 5, "0"))   → "00042"
-  padLeft = function(s, w, ch)
-    s = tostring(s or "")
-    ch = ch or " "
-    w = tonumber(w) or 0
-    if #s >= w then return s end
-    return string.rep(ch, w - #s) .. s
-  end,
-
   -- slug: create a URL-friendly slug
-  -- Usage: set(slug("Hello World!"))    → "hello-world"
+  -- Usage: set(slug("Hello World!"))  → "hello-world"
   slug = function(s)
     s = tostring(s or ""):lower()
     s = s:gsub("%s+", "-"):gsub("[^%w%-]", "")
     return s
   end,
 
-  -- file_log_simple: append the exact match to file, return the original match
-  -- Usage: set(file_log_simple(MATCH, [[C:\tmp\out.txt]]))
-  file_log_simple = function(match, path)
+  -- titleCase: convert snake_case or space-separated to Title Case
+  -- Usage: set(titleCase("hello_world"))  → "Hello World"
+  titleCase = function(s)
+    s = tostring(s or "")
+    s = s:gsub("_", " ")
+    s = s:gsub("(%a)([%w]*)", function(first, rest)
+      return first:upper() .. rest:lower()
+    end)
+    return s
+  end,
+
+  -- wrap: wrap text at specified width
+  -- Usage: set(wrap("long text here", 40))  → wrapped text
+  wrap = function(s, width)
+    s = tostring(s or "")
+    width = tonumber(width) or 80
+    local result = {}
+    for line in s:gmatch("[^\n]+") do
+      while #line > width do
+        local pos = line:sub(1, width):match(".*()%s") or width
+        table.insert(result, line:sub(1, pos - 1))
+        line = line:sub(pos + 1)
+      end
+      table.insert(result, line)
+    end
+    return table.concat(result, "\n")
+  end,
+
+  -- file_log: append match to file, return original match
+  -- Usage: set(file_log(MATCH, [[C:\tmp\out.txt]]))
+  file_log = function(match, path)
     if match == nil then return "" end
     path = path or [[C:\tmp\matches.txt]]
-    local f, err = io.open(path, "a")
+    local f = io.open(path, "a")
     if not f then return match end
     f:write(tostring(match) .. "\n")
     f:close()
