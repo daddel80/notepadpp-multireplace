@@ -11813,7 +11813,6 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
     s.stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
     s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
-    s.luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
@@ -11845,7 +11844,6 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeInt(L"Options", L"AllFromCursor", s.allFromCursorEnabled ? 1 : 0);
     CFG.writeInt(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled ? 1 : 0);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", s.maxFileSizeMB);
-    CFG.writeInt(L"Lua", L"SafeMode", s.luaSafeModeEnabled ? 1 : 0);
     CFG.writeInt(L"ListColumns", L"FindCountVisible", s.isFindCountVisible ? 1 : 0);
     CFG.writeInt(L"ListColumns", L"ReplaceCountVisible", s.isReplaceCountVisible ? 1 : 0);
     CFG.writeInt(L"ListColumns", L"CommentsVisible", s.isCommentsColumnVisible ? 1 : 0);

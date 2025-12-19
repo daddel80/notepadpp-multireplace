@@ -204,8 +204,6 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSearchReplacePanel);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hListViewLayoutPanel);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hAppearancePanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hVariablesAutomationPanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hImportScopePanel);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hCsvFlowTabsPanel);
 
         return TRUE;
@@ -312,13 +310,12 @@ INT_PTR MultiReplaceConfigDialog::handleCtlColorStatic(WPARAM wParam, LPARAM lPa
 
 void MultiReplaceConfigDialog::showCategory(int index) {
     if (index == _currentCategory) return;
-    if (index < 0 || index > 5) return;
+    if (index < 0 || index > 3) return;
     _currentCategory = index;
     ShowWindow(_hSearchReplacePanel, index == 0 ? SW_SHOW : SW_HIDE);
     ShowWindow(_hListViewLayoutPanel, index == 1 ? SW_SHOW : SW_HIDE);
     ShowWindow(_hCsvFlowTabsPanel, index == 2 ? SW_SHOW : SW_HIDE);
     ShowWindow(_hAppearancePanel, index == 3 ? SW_SHOW : SW_HIDE);
-    ShowWindow(_hVariablesAutomationPanel, index == 4 ? SW_SHOW : SW_HIDE);
     if (_hCategoryFont) applyFonts();
 }
 
@@ -330,13 +327,11 @@ void MultiReplaceConfigDialog::createUI() {
     _hListViewLayoutPanel = createPanel();
     _hCsvFlowTabsPanel = createPanel();
     _hAppearancePanel = createPanel();
-    _hVariablesAutomationPanel = createPanel();
 
     createSearchReplacePanelControls();
     createListViewLayoutPanelControls();
     createCsvOptionsPanelControls();
     createAppearancePanelControls();
-    createVariablesAutomationPanelControls();
 }
 
 void MultiReplaceConfigDialog::initUI() {
@@ -344,7 +339,6 @@ void MultiReplaceConfigDialog::initUI() {
     SendMessage(_hCategoryList, LB_ADDSTRING, 0, (LPARAM)LM.getLPCW(L"config_cat_list_view"));
     SendMessage(_hCategoryList, LB_ADDSTRING, 0, (LPARAM)LM.getLPCW(L"config_cat_csv"));
     SendMessage(_hCategoryList, LB_ADDSTRING, 0, (LPARAM)LM.getLPCW(L"config_cat_appearance"));
-    SendMessage(_hCategoryList, LB_ADDSTRING, 0, (LPARAM)LM.getLPCW(L"config_cat_automation"));
 
     int catToSelect = (_currentCategory >= 0) ? _currentCategory : 0;
     ::SendMessage(_hCategoryList, LB_SETCURSEL, catToSelect, 0);
@@ -387,8 +381,6 @@ void MultiReplaceConfigDialog::applyFonts() {
     applyToHierarchy(_hSearchReplacePanel);
     applyToHierarchy(_hListViewLayoutPanel);
     applyToHierarchy(_hAppearancePanel);
-    applyToHierarchy(_hVariablesAutomationPanel);
-    applyToHierarchy(_hImportScopePanel);
     applyToHierarchy(_hCsvFlowTabsPanel);
 
     if (_hCategoryList) ::SendMessage(_hCategoryList, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
@@ -430,7 +422,6 @@ void MultiReplaceConfigDialog::resizeUI() {
     MoveWindow(_hListViewLayoutPanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
     MoveWindow(_hCsvFlowTabsPanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
     MoveWindow(_hAppearancePanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
-    MoveWindow(_hVariablesAutomationPanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
 }
 
 LRESULT CALLBACK MultiReplaceConfigDialog::CheckboxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
@@ -660,18 +651,6 @@ void MultiReplaceConfigDialog::createAppearancePanelControls() {
     display.AddCheckbox(IDC_CFG_USE_LIST_COLORS_MARKING, LM.getLPCW(L"config_chk_use_list_colors_marking"));
 }
 
-void MultiReplaceConfigDialog::createVariablesAutomationPanelControls() {
-    if (!_hVariablesAutomationPanel) return;
-    const int margin = 70;
-    const int top = 20;
-    const int groupW = 460;
-    const int groupH = 75;
-
-    LayoutBuilder root(this, _hVariablesAutomationPanel, margin, top, groupW, 24);
-    auto inner = root.BeginGroup(margin, top, groupW, groupH, 22, 30, IDC_CFG_GRP_LUA, LM.getLPCW(L"config_grp_lua"));
-    inner.AddCheckbox(IDC_CFG_LUA_SAFEMODE_ENABLED, LM.getLPCW(L"config_chk_lua_safemode"));
-}
-
 void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
     if (!_hCsvFlowTabsPanel) return;
     const int left = 70;
@@ -714,7 +693,6 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     s.listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
     s.stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
     s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
-    s.luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
@@ -787,9 +765,6 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
     MultiReplace::Settings s = MultiReplace::getSettings();
     readBindingsFromUI_Generic((void*)&s);
 
-    if (_hVariablesAutomationPanel)
-        s.luaSafeModeEnabled = (::IsDlgButtonChecked(_hVariablesAutomationPanel, IDC_CFG_LUA_SAFEMODE_ENABLED) == BST_CHECKED);
-
     double newScaleFactor = _userScaleFactor;
     if (_hAppearancePanel) {
         if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_FOREGROUND_SLIDER))
@@ -836,8 +811,6 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
         safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
         safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
-        safeDestroy(_hAppearancePanel); safeDestroy(_hVariablesAutomationPanel);
-        safeDestroy(_hImportScopePanel); safeDestroy(_hCsvFlowTabsPanel);
 
         createUI();
         _currentCategory = -1;
@@ -854,8 +827,6 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSearchReplacePanel);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hListViewLayoutPanel);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hAppearancePanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hVariablesAutomationPanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hImportScopePanel);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hCsvFlowTabsPanel);
     }
 }
@@ -889,7 +860,6 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.isHoverTextEnabled = true;
     def.csvHeaderLinesCount = 1;
     def.flowTabsNumericAlignEnabled = true;
-    def.luaSafeModeEnabled = false;
     def.exportToBashEnabled = false;
     def.isFindCountVisible = false;
     def.isReplaceCountVisible = false;
@@ -935,8 +905,6 @@ void MultiReplaceConfigDialog::resetToDefaults()
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
         safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
         safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
-        safeDestroy(_hAppearancePanel); safeDestroy(_hVariablesAutomationPanel);
-        safeDestroy(_hImportScopePanel); safeDestroy(_hCsvFlowTabsPanel);
 
         createUI();
         _currentCategory = -1;
@@ -952,8 +920,6 @@ void MultiReplaceConfigDialog::resetToDefaults()
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSearchReplacePanel);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hListViewLayoutPanel);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hAppearancePanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hVariablesAutomationPanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hImportScopePanel);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hCsvFlowTabsPanel);
     }
 }
@@ -967,9 +933,7 @@ void MultiReplaceConfigDialog::applyInternalTheme() {
         _hSearchReplacePanel,
         _hListViewLayoutPanel,
         _hCsvFlowTabsPanel,
-        _hAppearancePanel,
-        _hVariablesAutomationPanel,
-        _hImportScopePanel
+        _hAppearancePanel
     };
 
     for (HWND hPanel : panels) {

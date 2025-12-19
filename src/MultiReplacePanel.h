@@ -433,7 +433,6 @@ public:
         bool listStatisticsEnabled;
         bool stayAfterReplaceEnabled;
         bool groupResultsEnabled;
-        bool luaSafeModeEnabled;
         bool allFromCursorEnabled;
         bool limitFileSizeEnabled;
         int  maxFileSizeMB;

@@ -277,7 +277,6 @@ const LangKV kEnglishPairs[] = {
 { L"config_cat_list_view", L"List View and Layout" },
 { L"config_cat_csv", L"CSV Options" },
 { L"config_cat_appearance", L"Appearance" },
-{ L"config_cat_automation", L"Variables and Automation" },
 
 // Search & Replace Settings
 { L"config_grp_search_behaviour", L"Search behaviour" },
@@ -324,10 +323,6 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_enable_tooltips", L"Enable tooltips" },
 { L"config_chk_result_dock_entry_colors", L"Use list colors in search results" },
 { L"config_chk_use_list_colors_marking", L"Use list colors for text marking" },
-
-// Variables & Automation Settings
-{ L"config_grp_lua", L"Lua" },
-{ L"config_chk_lua_safemode", L"Enable Lua safe mode" },
 
 // Plugin Menu
 { L"menu_multiple_replacement", L"&Multiple Replacement..." },

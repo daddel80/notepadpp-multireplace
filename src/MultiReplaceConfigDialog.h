@@ -89,7 +89,6 @@ private:
     void createSearchReplacePanelControls();
     void createListViewLayoutPanelControls();
     void createAppearancePanelControls();
-    void createVariablesAutomationPanelControls();
     void createCsvOptionsPanelControls();
 
     // -------------------------------------------------------------------------
@@ -103,8 +102,6 @@ private:
     HWND _hSearchReplacePanel = nullptr;
     HWND _hListViewLayoutPanel = nullptr;
     HWND _hAppearancePanel = nullptr;
-    HWND _hVariablesAutomationPanel = nullptr;
-    HWND _hImportScopePanel = nullptr;
     HWND _hCsvFlowTabsPanel = nullptr;
 
     // Subclass procedure for checkbox to notify dialog on click
