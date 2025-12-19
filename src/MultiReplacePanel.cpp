@@ -54,6 +54,7 @@
 #include <iomanip>
 #include <lua.hpp>
 #include <sdkddkver.h>
+#include "DebugSearch.h"
 
 
 static LanguageManager& LM = LanguageManager::instance();
@@ -7153,101 +7154,218 @@ void MultiReplace::handleFindInFiles() {
 
 void MultiReplace::handleFindNextButton() {
 
+    // === DEBUG: Initialize on first call ===
+    static bool debugInit = false;
+    if (!debugInit) {
+        debugInit = true;
+        LRESULT ver = SendMessage(nppData._nppHandle, NPPM_GETNPPVERSION, 0, 0);
+        std::wstring nppVer = std::to_wstring(HIWORD(ver)) + L"." + std::to_wstring(LOWORD(ver));
+        DebugSearch::init(L"5.x-debug", nppVer);
+    }
+
+    static int searchNum = 0;
+    DebugSearch::log(L"================================================================");
+    DebugSearch::log(L"[SEARCH #" + std::to_wstring(++searchNum) + L"]");
+    DebugSearch::log(L"================================================================");
+
+    // === Log ALL UI checkbox states ===
+    bool wrapAround = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+    bool matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+    bool wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+    bool isNormal = (IsDlgButtonChecked(_hSelf, IDC_NORMAL_RADIO) == BST_CHECKED);
+    bool isExtended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+    bool isRegex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+    bool scopeAll = (IsDlgButtonChecked(_hSelf, IDC_ALL_TEXT_RADIO) == BST_CHECKED);
+    bool scopeSel = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    bool scopeCol = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+
+    DebugSearch::log(L"[UI SETTINGS]");
+    DebugSearch::log(L"  Use List: " + std::wstring(useListEnabled ? L"ON" : L"OFF"));
+    DebugSearch::log(L"  Wrap Around: " + std::wstring(wrapAround ? L"ON" : L"OFF"));
+    DebugSearch::log(L"  Match Case: " + std::wstring(matchCase ? L"ON" : L"OFF"));
+    DebugSearch::log(L"  Whole Word: " + std::wstring(wholeWord ? L"ON" : L"OFF"));
+    DebugSearch::log(L"  Mode: " + std::wstring(isRegex ? L"REGEX" : (isExtended ? L"EXTENDED" : (isNormal ? L"NORMAL" : L"UNDEFINED"))));
+    DebugSearch::log(L"  Scope: " + std::wstring(scopeAll ? L"ALL" : (scopeSel ? L"SELECTION" : L"COLUMN")));
+
+    if (scopeCol) {
+        std::wstring delim = getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT);
+        std::wstring quote = getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT);
+        std::wstring cols = getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT);
+        DebugSearch::log(L"  Delimiter: \"" + delim + L"\" hex=" + DebugSearch::toHexW(delim, 5));
+        DebugSearch::log(L"  Quote: \"" + quote + L"\"");
+        DebugSearch::log(L"  Columns: \"" + cols + L"\"");
+    }
+
+    // === Log document state ===
+    LRESULT docLen = send(SCI_GETLENGTH, 0, 0);
+    LRESULT lineCount = send(SCI_GETLINECOUNT, 0, 0);
+    UINT sciCp = static_cast<UINT>(send(SCI_GETCODEPAGE, 0, 0));
+    LRESULT curPos = send(SCI_GETCURRENTPOS, 0, 0);
+    LRESULT selStart = send(SCI_GETSELECTIONSTART, 0, 0);
+    LRESULT selEnd = send(SCI_GETSELECTIONEND, 0, 0);
+
+    DebugSearch::log(L"[DOCUMENT]");
+    DebugSearch::log(L"  Length: " + std::to_wstring(docLen) + L" bytes");
+    DebugSearch::log(L"  Lines: " + std::to_wstring(lineCount));
+    DebugSearch::log(L"  Scintilla CP: " + std::to_wstring(sciCp) +
+        (sciCp == 65001 ? L" (UTF-8)" : (sciCp == 0 ? L" (ANSI)" : L"")));
+    DebugSearch::log(L"  Cursor: " + std::to_wstring(curPos) + L" / " + std::to_wstring(docLen));
+    DebugSearch::log(L"  Selection: " + std::to_wstring(selStart) + L" - " + std::to_wstring(selEnd) +
+        (selEnd > selStart ? L" (" + std::to_wstring(selEnd - selStart) + L" selected)" : L" (none)"));
+
+    // Get first 50 bytes as hex sample
+    std::string textSample;
+    size_t sampleLen = static_cast<size_t>((std::min)(docLen, static_cast<LRESULT>(50)));
+    for (size_t i = 0; i < sampleLen; ++i) {
+        char c = static_cast<char>(send(SCI_GETCHARAT, i, 0));
+        textSample += c;
+    }
+    DebugSearch::log(L"  Text sample (first 50 bytes hex): " + DebugSearch::toHex(textSample, 50));
+
+    // === Validate delimiter ===
     if (!validateDelimiterData()) {
+        DebugSearch::log(L"[ERROR] validateDelimiterData() returned FALSE - aborting");
         return;
     }
 
     size_t matchIndex = std::numeric_limits<size_t>::max();
-    bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
     SelectionInfo selection = getSelectionInfo(false);
 
-    // Determine the starting search position:
-    // If there is a selection and the selection radio is checked, start at the beginning of the selection.
-    // Otherwise, use the current cursor position.
-    Sci_Position searchPos = (selection.length > 0 && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED)
+    Sci_Position searchPos = (selection.length > 0 && scopeSel)
         ? selection.startPos
         : send(SCI_GETCURRENTPOS, 0, 0);
 
-    // Initialize SearchContext
+    DebugSearch::log(L"[SEARCH START]");
+    DebugSearch::log(L"  Starting position: " + std::to_wstring(searchPos));
+
     SearchContext context;
-    context.docLength = send(SCI_GETLENGTH, 0, 0);
-    context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
-    context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    context.docLength = docLen;
+    context.isColumnMode = scopeCol;
+    context.isSelectionMode = scopeSel;
     context.retrieveFoundText = true;
     context.highlightMatch = true;
 
     if (useListEnabled) {
+        DebugSearch::log(L"[LIST MODE]");
+
         if (replaceListData.empty()) {
+            DebugSearch::log(L"  List is EMPTY - aborting");
             showStatusMessage(LM.get(L"status_add_values_or_find_directly"), MessageStatus::Error);
             return;
         }
 
-        // Call performListSearchForward with the complete SearchContext
+        size_t enabled = std::count_if(replaceListData.begin(), replaceListData.end(),
+            [](const ReplaceItemData& item) { return item.isEnabled; });
+        DebugSearch::log(L"  Total entries: " + std::to_wstring(replaceListData.size()));
+        DebugSearch::log(L"  Enabled entries: " + std::to_wstring(enabled));
+
+        if (enabled == 0) {
+            DebugSearch::log(L"  *** WARNING: No enabled entries! ***");
+        }
+
         SearchResult result = performListSearchForward(replaceListData, searchPos, matchIndex, context);
-        if (result.pos < 0 && wrapAroundEnabled) {
+
+        if (result.pos < 0 && wrapAround) {
+            DebugSearch::log(L"  First search failed, trying wrap around from 0...");
             result = performListSearchForward(replaceListData, 0, matchIndex, context);
             if (result.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView();
                 selectListItem(matchIndex);
                 showStatusMessage(LM.get(L"status_wrapped"), MessageStatus::Info);
+                DebugSearch::log(L"[RESULT] FOUND (wrapped) at " + std::to_wstring(result.pos));
                 return;
             }
         }
+
         if (result.pos >= 0) {
             showStatusMessage(L"", MessageStatus::Success);
             updateCountColumns(matchIndex, 1);
             refreshUIListView();
             selectListItem(matchIndex);
-            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+            if (scopeSel) {
                 ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
                 ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
                 ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
             }
+            DebugSearch::log(L"[RESULT] FOUND at " + std::to_wstring(result.pos));
         }
         else {
             showStatusMessage(LM.get(L"status_no_matches_found"), MessageStatus::Error, true);
+            DebugSearch::log(L"[RESULT] NOT FOUND");
         }
     }
     else {
-        // Read search text and check search options
-        std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+        // === Direct search (not using list) ===
+        DebugSearch::log(L"[DIRECT SEARCH]");
 
-        // Determine if extended mode is active
-        bool isExtended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-        context.findText = convertAndExtendW(findText, isExtended);
+        std::wstring findTextW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findTextW);
 
-        // Set search flags
+        DebugSearch::log(L"  Find text (wstring): \"" + findTextW + L"\"");
+        DebugSearch::log(L"  Find text length: " + std::to_wstring(findTextW.size()) + L" chars");
+        DebugSearch::log(L"  Find text hex: " + DebugSearch::toHexW(findTextW, 20));
+
+        if (findTextW.empty()) {
+            DebugSearch::log(L"  *** Find text is EMPTY - nothing to search ***");
+        }
+
+        // Get target codepage BEFORE conversion
+        UINT targetCp = getCurrentDocCodePage();
+        DebugSearch::log(L"  Target codepage for conversion: " + std::to_wstring(targetCp));
+
+        DebugSearch::log(L"[CALLING convertAndExtendW]");
+        context.findText = convertAndExtendW(findTextW, isExtended);
+        DebugSearch::log(L"[RETURNED from convertAndExtendW]");
+        DebugSearch::log(L"  Result length: " + std::to_wstring(context.findText.size()) + L" bytes");
+        DebugSearch::log(L"  Result hex: " + DebugSearch::toHex(context.findText, 50));
+
+        if (context.findText.empty() && !findTextW.empty()) {
+            DebugSearch::log(L"  *** CRITICAL: Conversion returned EMPTY! Input was not empty! ***");
+        }
+
         context.searchFlags =
-            (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) |
-            (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) |
-            (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+            (wholeWord ? SCFIND_WHOLEWORD : 0) |
+            (matchCase ? SCFIND_MATCHCASE : 0) |
+            (isRegex ? SCFIND_REGEXP : 0);
 
-        // Set search flags before calling `performSearchForward`
+        DebugSearch::log(L"  Search flags: " + DebugSearch::flagsStr(context.searchFlags));
+
         send(SCI_SETSEARCHFLAGS, context.searchFlags);
 
-        // Perform forward search
+        DebugSearch::log(L"[CALLING performSearchForward] from position " + std::to_wstring(searchPos));
         SearchResult result = performSearchForward(context, searchPos);
-        if (result.pos < 0 && wrapAroundEnabled) {
+        DebugSearch::log(L"[RETURNED from performSearchForward] pos=" + std::to_wstring(result.pos));
+
+        if (result.pos < 0 && wrapAround) {
+            DebugSearch::log(L"  First search failed, wrap around is ON, trying from 0...");
             result = performSearchForward(context, 0);
+            DebugSearch::log(L"  Wrap search result: pos=" + std::to_wstring(result.pos));
+
             if (result.pos >= 0) {
                 showStatusMessage(LM.get(L"status_wrapped"), MessageStatus::Info);
+                DebugSearch::log(L"[RESULT] FOUND (wrapped) at " + std::to_wstring(result.pos));
                 return;
             }
         }
+
         if (result.pos >= 0) {
             showStatusMessage(L"", MessageStatus::Success);
-            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+            if (scopeSel) {
                 ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
                 ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
                 ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
             }
+            DebugSearch::log(L"[RESULT] FOUND at " + std::to_wstring(result.pos) +
+                L", length=" + std::to_wstring(result.length));
         }
         else {
-            showStatusMessage(LM.get(L"status_no_matches_found_for", { findText }), MessageStatus::Error, true);
+            showStatusMessage(LM.get(L"status_no_matches_found_for", { findTextW }), MessageStatus::Error, true);
+            DebugSearch::log(L"[RESULT] NOT FOUND");
         }
     }
+
+    DebugSearch::log(L"");  // Empty line between searches
 }
 
 void MultiReplace::handleFindPrevButton() {
@@ -7364,33 +7482,58 @@ void MultiReplace::handleFindPrevButton() {
 
 SearchResult MultiReplace::performSingleSearch(const SearchContext& context, SelectionRange range)
 {
-    // Early exit if the search string is empty
+    DebugSearch::log(L"  [performSingleSearch] ENTER");
+    DebugSearch::log(L"    Range: " + std::to_wstring(range.start) + L" - " + std::to_wstring(range.end));
+    DebugSearch::log(L"    findText length: " + std::to_wstring(context.findText.size()) + L" bytes");
+    DebugSearch::log(L"    findText hex: " + DebugSearch::toHex(context.findText, 30));
+    DebugSearch::log(L"    searchFlags: " + DebugSearch::flagsStr(context.searchFlags));
+    DebugSearch::log(L"    docLength: " + std::to_wstring(context.docLength));
+
     if (context.findText.empty()) {
-        return {};  // Return default-initialized SearchResult
+        DebugSearch::log(L"    *** findText is EMPTY - returning no match ***");
+        DebugSearch::log(L"  [performSingleSearch] EXIT (empty findText)");
+        return {};
     }
 
-    // Set the target range and search flags via Scintilla
+    DebugSearch::log(L"    Calling SCI_SETTARGETRANGE...");
     send(SCI_SETTARGETRANGE, range.start, range.end);
 
-    // Perform the search using SCI_SEARCHINTARGET
-    Sci_Position pos = send(SCI_SEARCHINTARGET, context.findText.size(), reinterpret_cast<sptr_t>(context.findText.c_str()));
-    Sci_Position matchEnd = send(SCI_GETTARGETEND);
+    DebugSearch::log(L"    Calling SCI_SEARCHINTARGET with " + std::to_wstring(context.findText.size()) + L" bytes...");
+    Sci_Position pos = send(SCI_SEARCHINTARGET, context.findText.size(),
+        reinterpret_cast<sptr_t>(context.findText.c_str()));
 
-    // Accept zero-length matches (matchEnd == pos) so anchors/lookarounds can be replaced.
-    if (pos < 0 || matchEnd < pos || matchEnd > context.docLength) {
-        return {};  // Return empty result if no match is found
+    DebugSearch::log(L"    SCI_SEARCHINTARGET returned: " + std::to_wstring(pos));
+
+    Sci_Position matchEnd = send(SCI_GETTARGETEND);
+    DebugSearch::log(L"    SCI_GETTARGETEND returned: " + std::to_wstring(matchEnd));
+
+    if (pos < 0) {
+        DebugSearch::log(L"    pos < 0: NOT FOUND");
+        DebugSearch::log(L"  [performSingleSearch] EXIT (not found)");
+        return {};
     }
 
-    // Construct the search result
+    if (matchEnd < pos) {
+        DebugSearch::log(L"    matchEnd < pos: INVALID MATCH");
+        DebugSearch::log(L"  [performSingleSearch] EXIT (invalid)");
+        return {};
+    }
+
+    if (matchEnd > context.docLength) {
+        DebugSearch::log(L"    matchEnd > docLength: OUT OF BOUNDS");
+        DebugSearch::log(L"  [performSingleSearch] EXIT (out of bounds)");
+        return {};
+    }
+
     SearchResult result;
     result.pos = pos;
     result.length = matchEnd - pos;
 
-    // Retrieve found text only when requested
+    DebugSearch::log(L"    MATCH FOUND: pos=" + std::to_wstring(pos) + L", length=" + std::to_wstring(result.length));
+
     if (context.retrieveFoundText) {
         const int codepage = static_cast<int>(send(SCI_GETCODEPAGE));
         const size_t bytesPerChar = (codepage == SC_CP_UTF8) ? 4u : 1u;
-
         const size_t charsInTarget = static_cast<size_t>(result.length);
         const size_t cap = charsInTarget * bytesPerChar + 1;
 
@@ -7403,34 +7546,49 @@ SearchResult MultiReplace::performSingleSearch(const SearchContext& context, Sel
 
         buf.resize(static_cast<size_t>(textLength));
         result.foundText = std::move(buf);
+
+        DebugSearch::log(L"    Found text hex: " + DebugSearch::toHex(result.foundText, 20));
     }
 
-    // Highlight the match if required by context
     if (context.highlightMatch) {
         displayResultCentered(pos, matchEnd, true);
     }
 
+    DebugSearch::log(L"  [performSingleSearch] EXIT (found)");
     return result;
 }
 
 SearchResult MultiReplace::performSearchForward(const SearchContext& context, LRESULT start)
 {
+    DebugSearch::log(L"  [performSearchForward] ENTER");
+    DebugSearch::log(L"    start position: " + std::to_wstring(start));
+    DebugSearch::log(L"    isColumnMode: " + std::wstring(context.isColumnMode ? L"YES" : L"NO"));
+    DebugSearch::log(L"    isSelectionMode: " + std::wstring(context.isSelectionMode ? L"YES" : L"NO"));
+    DebugSearch::log(L"    columnDelimiterData.isValid(): " +
+        std::wstring(columnDelimiterData.isValid() ? L"YES" : L"NO"));
+
     bool isBackward = false;
     SelectionRange targetRange;
     SearchResult result;
 
-    // Use cached mode states from the context to decide the search method
     if (context.isColumnMode && columnDelimiterData.isValid()) {
+        DebugSearch::log(L"    -> Taking COLUMN MODE path");
         result = performSearchColumn(context, start, isBackward);
     }
     else if (context.isSelectionMode) {
+        DebugSearch::log(L"    -> Taking SELECTION MODE path");
         result = performSearchSelection(context, start, isBackward);
     }
     else {
+        DebugSearch::log(L"    -> Taking NORMAL (all text) path");
         targetRange.start = start;
         targetRange.end = context.docLength;
+        DebugSearch::log(L"    Target range: " + std::to_wstring(targetRange.start) +
+            L" - " + std::to_wstring(targetRange.end));
         result = performSingleSearch(context, targetRange);
     }
+
+    DebugSearch::log(L"  [performSearchForward] EXIT with pos=" + std::to_wstring(result.pos));
     return result;
 }
 
@@ -10257,68 +10415,102 @@ static inline bool decodeNumericEscape(const std::wstring& src, size_t pos, int 
 
 std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool extended, UINT targetCodepage) const
 {
-    if (!extended)                          // fast path – no escapes
-        return Encoding::wstringToBytes(input, targetCodepage);
+    DebugSearch::log(L"[convertAndExtendW] ENTER");
+    DebugSearch::log(L"  Input wstring: \"" + input + L"\"");
+    DebugSearch::log(L"  Input length: " + std::to_wstring(input.size()) + L" chars");
+    DebugSearch::log(L"  Input hex: " + DebugSearch::toHexW(input, 20));
+    DebugSearch::log(L"  Extended mode: " + std::wstring(extended ? L"YES" : L"NO"));
+    DebugSearch::log(L"  Target codepage: " + std::to_wstring(targetCodepage));
 
-    std::wstring out;
-    out.reserve(input.size());
-
-    for (size_t i = 0; i < input.size(); ++i)
-    {
-        wchar_t ch = input[i];
-
-        if (ch != L'\\' || i + 1 >= input.size())
-        {
-            out.push_back(ch);
-            continue;
-        }
-
-        wchar_t esc = input[++i];           // escape designator
-        wchar_t decoded;
-
-        switch (esc)
-        {
-        case L'r': out.push_back(L'\r');                    break;
-        case L'n': out.push_back(L'\n');                    break;
-        case L't': out.push_back(L'\t');                    break;
-        case L'\\':out.push_back(L'\\');                    break;
-        case L'0': out.push_back(L'\0');                    break;
-
-        case L'o': // \oNNN  (octal)
-            if (decodeNumericEscape(input, i + 1, 8, 3, decoded))
-            {
-                out.push_back(decoded); i += 3; break;
-            }
-            [[fallthrough]];                                // literal fallback
-
-        case L'd': // \dNNN  (decimal)
-            if (decodeNumericEscape(input, i + 1, 10, 3, decoded))
-            {
-                out.push_back(decoded); i += 3; break;
-            }
-            [[fallthrough]];
-
-        case L'x': // \xHH   (hex-byte)
-            if (decodeNumericEscape(input, i + 1, 16, 2, decoded))
-            {
-                out.push_back(decoded); i += 2; break;
-            }
-            [[fallthrough]];
-
-        case L'u': // \uXXXX (Unicode BMP)
-            if (decodeNumericEscape(input, i + 1, 16, 4, decoded))
-            {
-                out.push_back(decoded); i += 4; break;
-            }
-            [[fallthrough]];
-
-        default:  // unknown or invalid sequence → keep literally
-            out.append({ L'\\', esc });
-            break;
-        }
+    if (input.empty()) {
+        DebugSearch::log(L"  Input is empty, returning empty string");
+        DebugSearch::log(L"[convertAndExtendW] EXIT (empty)");
+        return std::string();
     }
 
-    return Encoding::wstringToBytes(out, targetCodepage);
+    std::wstring processedW;
+
+    if (!extended) {
+        DebugSearch::log(L"  Extended=NO, using input directly");
+        processedW = input;
+    }
+    else {
+        DebugSearch::log(L"  Extended=YES, processing escape sequences...");
+        processedW.reserve(input.size());
+
+        for (size_t i = 0; i < input.size(); ++i)
+        {
+            wchar_t ch = input[i];
+
+            if (ch != L'\\' || i + 1 >= input.size())
+            {
+                processedW.push_back(ch);
+                continue;
+            }
+
+            wchar_t esc = input[++i];
+            wchar_t decoded;
+
+            switch (esc)
+            {
+            case L'r': processedW.push_back(L'\r'); break;
+            case L'n': processedW.push_back(L'\n'); break;
+            case L't': processedW.push_back(L'\t'); break;
+            case L'\\': processedW.push_back(L'\\'); break;
+            case L'0': processedW.push_back(L'\0'); break;
+
+            case L'o':
+                if (decodeNumericEscape(input, i + 1, 8, 3, decoded))
+                {
+                    processedW.push_back(decoded); i += 3; break;
+                }
+                [[fallthrough]];
+
+            case L'd':
+                if (decodeNumericEscape(input, i + 1, 10, 3, decoded))
+                {
+                    processedW.push_back(decoded); i += 3; break;
+                }
+                [[fallthrough]];
+
+            case L'x':
+                if (decodeNumericEscape(input, i + 1, 16, 2, decoded))
+                {
+                    processedW.push_back(decoded); i += 2; break;
+                }
+                [[fallthrough]];
+
+            case L'u':
+                if (decodeNumericEscape(input, i + 1, 16, 4, decoded))
+                {
+                    processedW.push_back(decoded); i += 4; break;
+                }
+                [[fallthrough]];
+
+            default:
+                processedW.append({ L'\\', esc });
+                break;
+            }
+        }
+
+        DebugSearch::log(L"  After escape processing: \"" + processedW + L"\"");
+        DebugSearch::log(L"  After escape processing length: " + std::to_wstring(processedW.size()));
+        DebugSearch::log(L"  After escape processing hex: " + DebugSearch::toHexW(processedW, 20));
+    }
+
+    DebugSearch::log(L"  Calling Encoding::wstringToBytes...");
+    std::string result = Encoding::wstringToBytes(processedW, targetCodepage);
+
+    DebugSearch::log(L"  Encoding::wstringToBytes returned:");
+    DebugSearch::log(L"    Result length: " + std::to_wstring(result.size()) + L" bytes");
+    DebugSearch::log(L"    Result hex: " + DebugSearch::toHex(result, 50));
+
+    if (result.empty() && !processedW.empty()) {
+        DebugSearch::log(L"    *** CRITICAL ERROR: wstringToBytes returned EMPTY for non-empty input! ***");
+    }
+
+    DebugSearch::log(L"[convertAndExtendW] EXIT");
+    return result;
 }
 
 std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool extended)

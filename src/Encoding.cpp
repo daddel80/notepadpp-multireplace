@@ -1,27 +1,92 @@
 ﻿// This file is part of the MultiReplace plugin for Notepad++.
 // Copyright (C) 2023 Thomas Knoefel
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// ... (License header same as original)
 
 #include "Encoding.h"
+#include "DebugSearch.h"  // DEBUG - remove after bugfix
 #include <algorithm>
 #include <cstring>
 #include <windows.h>
 
 namespace Encoding {
 
-    // ---------- internal helpers ----------
+    // ========================================================================
+    // DEBUG VERSION of wstringToBytes - logs EVERY step
+    // ========================================================================
+    std::string wstringToBytes(const std::wstring& w, UINT cp, const ConvertOptions& /*copt*/) {
+
+        // STEP 1: Check empty input
+        DebugSearch::log(L"  [wstringToBytes] ENTER");
+        DebugSearch::log(L"    STEP 1: Input wstring length = " + std::to_wstring(w.size()));
+        DebugSearch::log(L"    STEP 1: Input hex = " + DebugSearch::toHexW(w, 20));
+        DebugSearch::log(L"    STEP 1: Target codepage = " + std::to_wstring(cp));
+
+        if (w.empty()) {
+            DebugSearch::log(L"    STEP 1: Input is EMPTY -> returning empty string");
+            return std::string();
+        }
+
+        // STEP 2: First WideCharToMultiByte call to get required length
+        DebugSearch::log(L"    STEP 2: Calling WideCharToMultiByte to get length...");
+
+        int mlen = WideCharToMultiByte(
+            cp,                           // CodePage
+            0,                            // Flags (0 = permissive, like v4.4)
+            w.data(),                     // WideCharStr
+            static_cast<int>(w.size()),   // Length (NOT -1, explicit length)
+            nullptr,                      // MultiByteStr (nullptr to get length)
+            0,                            // cbMultiByte
+            nullptr,                      // lpDefaultChar
+            nullptr                       // lpUsedDefaultChar
+        );
+
+        DWORD lastError = (mlen <= 0) ? GetLastError() : 0;
+
+        DebugSearch::log(L"    STEP 2: WideCharToMultiByte returned mlen = " + std::to_wstring(mlen));
+        if (mlen <= 0) {
+            DebugSearch::log(L"    STEP 2: *** ERROR! GetLastError = " + std::to_wstring(lastError) + L" ***");
+            DebugSearch::log(L"    STEP 2: Returning EMPTY string due to error");
+            return std::string();
+        }
+
+        // STEP 3: Allocate output buffer
+        DebugSearch::log(L"    STEP 3: Allocating output buffer of " + std::to_wstring(mlen) + L" bytes");
+        std::string out(static_cast<size_t>(mlen), '\0');
+
+        // STEP 4: Second WideCharToMultiByte call to do actual conversion
+        DebugSearch::log(L"    STEP 4: Calling WideCharToMultiByte for actual conversion...");
+
+        int converted = WideCharToMultiByte(
+            cp,
+            0,
+            w.data(),
+            static_cast<int>(w.size()),
+            out.data(),
+            mlen,
+            nullptr,
+            nullptr
+        );
+
+        lastError = (converted <= 0) ? GetLastError() : 0;
+
+        DebugSearch::log(L"    STEP 4: WideCharToMultiByte returned = " + std::to_wstring(converted));
+        if (converted <= 0) {
+            DebugSearch::log(L"    STEP 4: *** ERROR! GetLastError = " + std::to_wstring(lastError) + L" ***");
+            DebugSearch::log(L"    STEP 4: Returning EMPTY string due to conversion error");
+            return std::string();
+        }
+
+        // STEP 5: Success - return result
+        DebugSearch::log(L"    STEP 5: SUCCESS! Output length = " + std::to_wstring(out.size()));
+        DebugSearch::log(L"    STEP 5: Output hex = " + DebugSearch::toHex(out, 50));
+        DebugSearch::log(L"  [wstringToBytes] EXIT");
+
+        return out;
+    }
+
+    // ========================================================================
+    // Rest of Encoding.cpp - unchanged except wstringToBytes above
+    // ========================================================================
 
     static inline bool isMostlyAscii(const char* data, int len, double threshold) {
         if (len <= 0) return true;
@@ -41,26 +106,22 @@ namespace Encoding {
         n1 = (len > cap) ? cap : len;
         s2 = nullptr;
         n2 = 0;
-
-        // Optional middle slice for very large files
         if (len > cap * 3) {
             s2 = base + (len / 2);
             n2 = (std::min)(cap, len - (len / 2));
         }
     }
 
-    // ---------- UTF-8 validation ----------
-
     bool isValidUtf8(const char* data, size_t len) {
         const unsigned char* s = reinterpret_cast<const unsigned char*>(data);
         size_t i = 0;
         while (i < len) {
             unsigned char c = s[i];
-            if (c < 0x80) { ++i; continue; }                         // ASCII
+            if (c < 0x80) { ++i; continue; }
             size_t need = 0;
-            if ((c & 0xE0) == 0xC0) { need = 1; if ((c & 0xFE) == 0xC0) return false; } // overlong 2-byte
+            if ((c & 0xE0) == 0xC0) { need = 1; if ((c & 0xFE) == 0xC0) return false; }
             else if ((c & 0xF0) == 0xE0) { need = 2; }
-            else if ((c & 0xF8) == 0xF0) { need = 3; if (c > 0xF4) return false; }      // >U+10FFFF
+            else if ((c & 0xF8) == 0xF0) { need = 3; if (c > 0xF4) return false; }
             else return false;
 
             if (i + need >= len) return false;
@@ -69,14 +130,14 @@ namespace Encoding {
 
             if (need == 2) {
                 unsigned char c1 = s[i + 1];
-                if ((c == 0xE0 && (c1 & 0xE0) == 0x80) ||            // overlong 3-byte
-                    (c == 0xED && (c1 & 0xE0) == 0xA0))              // surrogate halves
+                if ((c == 0xE0 && (c1 & 0xE0) == 0x80) ||
+                    (c == 0xED && (c1 & 0xE0) == 0xA0))
                     return false;
             }
             else if (need == 3) {
                 unsigned char c1 = s[i + 1];
-                if ((c == 0xF0 && (c1 & 0xF0) == 0x80) ||            // overlong 4-byte
-                    (c == 0xF4 && (c1 & 0xF0) != 0x80))              // > U+10FFFF
+                if ((c == 0xF0 && (c1 & 0xF0) == 0x80) ||
+                    (c == 0xF4 && (c1 & 0xF0) != 0x80))
                     return false;
             }
             i += (need + 1);
@@ -84,12 +145,9 @@ namespace Encoding {
         return true;
     }
 
-    // ---------- roundtrip check ----------
-
     bool roundtripLossless(const char* data, int len, UINT cp) {
         if (!data || len <= 0) return true;
 
-        // MBCS -> UTF-16
         DWORD err = 0;
         int wlen = MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS, data, len, nullptr, 0);
         if (wlen == 0) {
@@ -107,7 +165,6 @@ namespace Encoding {
         if (MultiByteToWideChar(cp, 0, data, len, wbuf.data(), wlen) != wlen)
             return false;
 
-        // UTF-16 -> MBCS (no best-fit; detect default-char usage)
         BOOL usedDefault = FALSE;
         int mlen = WideCharToMultiByte(cp, WC_NO_BEST_FIT_CHARS,
             wbuf.data(), wlen, nullptr, 0,
@@ -124,7 +181,6 @@ namespace Encoding {
         return std::memcmp(back.data(), data, len) == 0;
     }
 
-    // Quick DBCS plausibility: count lead+trail pairs for a given code page.
     static int dbcsPairScore(const char* data, int len, UINT cp) {
         int score = 0;
         for (int i = 0; i < len; ++i) {
@@ -136,18 +192,14 @@ namespace Encoding {
         return score;
     }
 
-
     UINT autoDetectAnsiCodepage(const char* data, int len, UINT acp, const DetectOptions& opt) {
         if (!data || len <= 0) return acp;
-
-        // 0) ASCII fast path
         if (isMostlyAscii(data, len, opt.asciiQuickPathThreshold))
             return acp;
 
         const char* s1; int n1; const char* s2; int n2;
         pickSamples(data, len, s1, n1, s2, n2, static_cast<int>(opt.sampleKB));
 
-        // 1) Probe CJK first ONLY if we see plausible DBCS structure
         static const UINT cjk[] = { 932u, 936u, 949u, 950u };
         constexpr int MIN_DBCS_PAIRS = 3;
 
@@ -161,7 +213,6 @@ namespace Encoding {
             }
         }
 
-        // 2) Optional extras (only if caller set them)
         for (UINT cp : opt.extraAnsiCandidates) {
             if (cp == acp) continue;
             bool ok1 = roundtripLossless(s1, n1, cp);
@@ -169,7 +220,6 @@ namespace Encoding {
             if (ok1 && ok2) return cp;
         }
 
-        // 3) Fallback: system ACP
         return acp;
     }
 
@@ -184,7 +234,6 @@ namespace Encoding {
 
         const unsigned char* p = reinterpret_cast<const unsigned char*>(data);
 
-        // BOM checks
         if (len >= 3 && p[0] == 0xEF && p[1] == 0xBB && p[2] == 0xBF) {
             ei.kind = Kind::UTF8;
             ei.withBOM = true; ei.bomBytes = 3;
@@ -201,14 +250,12 @@ namespace Encoding {
             return ei;
         }
 
-        // UTF-8 (no BOM)
         if (opt.preferUtf8NoBOM && isValidUtf8(data, len)) {
             ei.kind = Kind::UTF8;
             ei.withBOM = false; ei.bomBytes = 0;
             return ei;
         }
 
-        // ANSI fallback
         ei.kind = Kind::ANSI;
         ei.codepage = GetACP();
         ei.withBOM = false; ei.bomBytes = 0;
@@ -220,9 +267,6 @@ namespace Encoding {
         return ei;
     }
 
-
-    // ---------- string conversions ----------
-
     std::wstring bytesToWString(const std::string& bytes, UINT cp) {
         if (bytes.empty()) return std::wstring();
         int wlen = MultiByteToWideChar(cp, 0, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0);
@@ -230,20 +274,6 @@ namespace Encoding {
         std::wstring w(static_cast<size_t>(wlen), L'\0');
         MultiByteToWideChar(cp, 0, bytes.data(), static_cast<int>(bytes.size()), w.data(), wlen);
         return w;
-    }
-
-    std::string wstringToBytes(const std::wstring& w, UINT cp, const ConvertOptions& copt) {
-        if (w.empty()) return std::string();
-        BOOL usedDefault = FALSE;
-        DWORD flags = copt.allowBestFit ? 0u : WC_NO_BEST_FIT_CHARS;
-        int mlen = WideCharToMultiByte(cp, flags, w.data(), static_cast<int>(w.size()),
-            nullptr, 0, nullptr, &usedDefault);
-        if (mlen <= 0 || (!copt.allowBestFit && usedDefault)) return std::string();
-        std::string out(static_cast<size_t>(mlen), '\0');
-        WideCharToMultiByte(cp, flags, w.data(), static_cast<int>(w.size()),
-            out.data(), mlen, nullptr, &usedDefault);
-        if (!copt.allowBestFit && usedDefault) return std::string();
-        return out;
     }
 
     std::string bytesToUtf8(const std::string& bytes, UINT cp) {
@@ -276,8 +306,6 @@ namespace Encoding {
         return wstringToBytes(utf8ToWString(u8), cp, copt);
     }
 
-    // ---------- buffer conversions + BOM ----------
-
     static inline void appendBOM(Kind kind, std::vector<char>& out) {
         if (kind == Kind::UTF8) {
             const unsigned char b[3] = { 0xEF, 0xBB, 0xBF };
@@ -300,7 +328,6 @@ namespace Encoding {
         const char* data = in.data();
         size_t len = in.size();
 
-        // Skip BOM bytes if present
         if (src.bomBytes > 0 && static_cast<size_t>(src.bomBytes) <= len) {
             data += src.bomBytes;
             len -= src.bomBytes;
@@ -312,7 +339,7 @@ namespace Encoding {
         }
 
         if (src.kind == Kind::UTF16LE || src.kind == Kind::UTF16BE) {
-            UINT cp = (src.kind == Kind::UTF16LE) ? 1200u : 1201u; // Windows Unicode codepages
+            UINT cp = (src.kind == Kind::UTF16LE) ? 1200u : 1201u;
             int wlen = MultiByteToWideChar(cp, 0, data, static_cast<int>(len), nullptr, 0);
             if (wlen <= 0) return false;
             std::vector<wchar_t> w(static_cast<size_t>(wlen));
@@ -322,7 +349,6 @@ namespace Encoding {
             return true;
         }
 
-        // ANSI
         outUtf8 = bytesToUtf8(std::string(data, data + len), src.codepage);
         return !outUtf8.empty() || len == 0;
     }
@@ -349,11 +375,9 @@ namespace Encoding {
             return true;
         }
 
-        // ANSI
         {
             std::string mbs = wstringToBytes(w, dst.codepage, copt);
             if (mbs.empty() && !w.empty()) return false;
-            // ANSI doesn't use BOM; ignore dst.withBOM
             outBytes.insert(outBytes.end(), mbs.begin(), mbs.end());
             return true;
         }

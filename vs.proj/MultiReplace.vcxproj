@@ -31,6 +31,7 @@
     <ClInclude Include="..\src\BatchUIGuard.h" />
     <ClInclude Include="..\src\ColumnTabs.h" />
     <ClInclude Include="..\src\ConfigManager.h" />
+    <ClInclude Include="..\src\DebugSearch.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
     <ClInclude Include="..\src\Encoding.h" />
