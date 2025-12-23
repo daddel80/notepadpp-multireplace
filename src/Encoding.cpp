@@ -232,17 +232,17 @@ namespace Encoding {
         return w;
     }
 
-    std::string wstringToBytes(const std::wstring& w, UINT cp, const ConvertOptions& copt) {
+    // FIX: Restored to v4.4 behavior - always use permissive mode (flags = 0).
+    // The strict WC_NO_BEST_FIT_CHARS + usedDefault check caused search failures
+    // on certain codepages (CP866, CP1251, etc.) where even simple ASCII failed.
+    std::string wstringToBytes(const std::wstring& w, UINT cp) {
         if (w.empty()) return std::string();
-        BOOL usedDefault = FALSE;
-        DWORD flags = copt.allowBestFit ? 0u : WC_NO_BEST_FIT_CHARS;
-        int mlen = WideCharToMultiByte(cp, flags, w.data(), static_cast<int>(w.size()),
-            nullptr, 0, nullptr, &usedDefault);
-        if (mlen <= 0 || (!copt.allowBestFit && usedDefault)) return std::string();
+        int mlen = WideCharToMultiByte(cp, 0, w.data(), static_cast<int>(w.size()),
+            nullptr, 0, nullptr, nullptr);
+        if (mlen <= 0) return std::string();
         std::string out(static_cast<size_t>(mlen), '\0');
-        WideCharToMultiByte(cp, flags, w.data(), static_cast<int>(w.size()),
-            out.data(), mlen, nullptr, &usedDefault);
-        if (!copt.allowBestFit && usedDefault) return std::string();
+        WideCharToMultiByte(cp, 0, w.data(), static_cast<int>(w.size()),
+            out.data(), mlen, nullptr, nullptr);
         return out;
     }
 
@@ -272,8 +272,8 @@ namespace Encoding {
         return w;
     }
 
-    std::string utf8ToBytes(const std::string& u8, UINT cp, const ConvertOptions& copt) {
-        return wstringToBytes(utf8ToWString(u8), cp, copt);
+    std::string utf8ToBytes(const std::string& u8, UINT cp) {
+        return wstringToBytes(utf8ToWString(u8), cp);
     }
 
     // ---------- buffer conversions + BOM ----------
@@ -327,7 +327,7 @@ namespace Encoding {
         return !outUtf8.empty() || len == 0;
     }
 
-    bool convertUtf8ToOriginal(const std::string& u8, const EncodingInfo& dst, std::vector<char>& outBytes, const ConvertOptions& copt) {
+    bool convertUtf8ToOriginal(const std::string& u8, const EncodingInfo& dst, std::vector<char>& outBytes) {
         outBytes.clear();
 
         if (dst.kind == Kind::UTF8) {
@@ -351,7 +351,7 @@ namespace Encoding {
 
         // ANSI
         {
-            std::string mbs = wstringToBytes(w, dst.codepage, copt);
+            std::string mbs = wstringToBytes(w, dst.codepage);
             if (mbs.empty() && !w.empty()) return false;
             // ANSI doesn't use BOM; ignore dst.withBOM
             outBytes.insert(outBytes.end(), mbs.begin(), mbs.end());

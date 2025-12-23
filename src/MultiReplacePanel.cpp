@@ -6468,9 +6468,8 @@ void MultiReplace::handleReplaceInFiles() {
             // Write back only if content changed
             std::string u8out = guard.getText();
             if (u8out != u8in) {
-                Encoding::ConvertOptions copt;           // strict: no best-fit
                 std::vector<char> outBytes;
-                if (Encoding::convertUtf8ToOriginal(u8out, enc, outBytes, copt)) {
+                if (Encoding::convertUtf8ToOriginal(u8out, enc, outBytes)) {
                     std::string finalBuf(outBytes.begin(), outBytes.end());
                     if (guard.writeFile(fp, finalBuf)) {
                         ++changed;
