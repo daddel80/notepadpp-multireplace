@@ -674,14 +674,17 @@ Customize the look and feel of the plugin window.
   - **Use list colors in search results** — When checked, search hits in the result docking window are color-coded matching the specific color assigned to their list entry. When unchecked, all search results use a uniform standard color.
   - **Use list colors for text marking** — When checked, highlights matches in the editor using the specific color defined in the list entry. When unchecked, all marked text uses a single standard highlight color.
 
-### 5. Variables and Automation
-Advanced settings for scripting.
-
-- **Enable Lua safe mode** — When checked, disables Lua libraries that access the file system (`os`, `io`, `package`, `dofile`, etc.) for security. When unchecked, full Lua functionality is enabled (required for advanced commands like `lvars`, `lkp`, and `lcmd`).
-
 <br>
 
 > **Note:** All settings configured in this panel are automatically saved to `MultiReplace.ini` in your Notepad++ plugins configuration directory.
+
+### INI-Only Settings
+
+Some advanced options are not exposed in the UI and can only be configured by editing `MultiReplace.ini` directly:
+
+| Section | Key | Default | Description |
+|---------|-----|---------|-------------|
+| `[Lua]` | `SafeMode` | `0` | When set to `1`, disables Lua libraries that access the file system (`os`, `io`, `package`, `dofile`, etc.) for security. When `0`, full Lua functionality is enabled (required for `lvars`, `lkp`, and `lcmd`). |
 
 ## Multilingual UI Support
 
