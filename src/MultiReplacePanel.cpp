@@ -54,7 +54,8 @@
 #include <iomanip>
 #include <lua.hpp>
 #include <sdkddkver.h>
-
+#include <uxtheme.h>
+#pragma comment(lib, "uxtheme.lib")
 
 static LanguageManager& LM = LanguageManager::instance();
 static ConfigManager& CFG = ConfigManager::instance();
@@ -485,6 +486,10 @@ bool MultiReplace::createAndShowWindows() {
 
             if (hwndTooltip)
             {
+                // Apply dark mode theme to tooltip
+                if (NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle)) {
+                    SetWindowTheme(hwndTooltip, L"DarkMode_Explorer", nullptr);
+                }
                 // Limit width only for the "?" help tooltip; 0 = unlimited
                 DWORD maxWidth = (pair.first == IDC_FILTER_HELP) ? 200 : 0;
                 SendMessage(hwndTooltip, TTM_SETMAXTIPWIDTH, 0, maxWidth);
@@ -985,6 +990,11 @@ void MultiReplace::updateUseListState(bool isUpdate)
 
         // Activate the tooltip
         SendMessage(_hUseListButtonTooltip, TTM_ACTIVATE, TRUE, 0);
+        
+        // Apply dark mode theme to tooltip
+        if (NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle)) {
+            SetWindowTheme(_hUseListButtonTooltip, L"DarkMode_Explorer", nullptr);
+        }
     }
 
     // Prepare the TOOLINFO structure
@@ -2569,6 +2579,11 @@ void MultiReplace::rebuildAllTooltips()
             nullptr
         );
         if (!hwndTooltip) continue;
+
+        // Apply dark mode theme to tooltip
+        if (NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle)) {
+            SetWindowTheme(hwndTooltip, L"DarkMode_Explorer", nullptr);
+        }
 
         DWORD maxWidth = (ctrlId == IDC_FILTER_HELP) ? 200 : 0;
         SendMessage(hwndTooltip, TTM_SETMAXTIPWIDTH, 0, maxWidth);
