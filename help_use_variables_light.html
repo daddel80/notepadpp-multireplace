@@ -603,7 +603,7 @@
     <h3 id="varsvariable1value1-variable2value2-">vars({Variable1=Value1, Variable2=Value2, ...})</h3>
     <p><strong>Note:</strong> This command was previously named <code>init()</code> and has been renamed to <code>vars()</code>. For compatibility, <code>init()</code> still works.</p>
     <p>Initializes custom variables for use in various commands, extending beyond standard variables like <code>CNT</code>, <code>MATCH</code>, <code>CAP1</code>. These variables can carry the status of previous find-and-replace operations to subsequent ones.</p>
-    <p>Custom variables maintain their values throughout a single Replace-All or within a list of multiple Replace operations. Thus, they can transfer values from one list entry to subsequent ones. They reset at the start of each new document in <strong>'Replace All in All Open Documents'</strong>.</p>
+    <p>Custom variables persist from match to match within a single <strong>'Replace All'</strong> operation and can transfer values between list entries. Each new operation (button click) starts with a fresh state. In multi-file replacements, variables also reset at each <strong>document switch</strong>.</p>
     <p><strong>Init usage:</strong> Can be used as an init entry (empty Find) to preload before replacements; not mandatory. See <a href="#preload-variables--helpers">Preload Variables &amp; Helpers</a> for workflow and examples.</p>
 
     <table class="optionsTable">
