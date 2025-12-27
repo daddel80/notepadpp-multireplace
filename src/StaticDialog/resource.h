@@ -85,13 +85,14 @@
 // ===================================================================
 //  5030-block – Split-button option command IDs
 // ===================================================================
-//  Replace-All split options (keep original IDs)
+//  Replace-All split options
 #define ID_REPLACE_ALL_OPTION           5031
 #define ID_REPLACE_IN_ALL_DOCS_OPTION   5032
 #define ID_REPLACE_IN_FILES_OPTION      5033
+#define ID_DEBUG_MODE_OPTION            5034
 
-//  Stand-alone list toggle button (kept at 5034!)
-#define IDC_USE_LIST_BUTTON             5034
+//  Stand-alone list toggle button
+#define IDC_USE_LIST_BUTTON             5040
 
 
 

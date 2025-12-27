@@ -37,7 +37,7 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
   - [Preload Variables and Helpers](#preload-variables-and-helpers)
   - [Operators](#operators)
   - [If-Then Logic](#if-then-logic)
-  - [DEBUG Option](#debug-option)
+  - [DEBUG Mode](#debug-mode)
   - [More Examples](#more-examples)
   - [Engine Overview](#engine-overview)
 - [User Interaction and List Management](#user-interaction-and-list-management)
@@ -141,6 +141,7 @@ Execution targets define **which files** an operation is applied to. They are ac
   - **Filters:** Space-separated list of patterns to include or exclude files and folders.
   - **In Subfolders:** Recursively include all subdirectories.
   - **In Hidden Files:** Include hidden files and folders.
+- **Debug Mode** — Runs a simulation of the replacement to inspect variables without modifying the document. See [Debug Mode](#debug-mode) for details.
 
 **Filter Syntax**
 
@@ -528,13 +529,18 @@ This example shows how to use `if` statements with `cond()` to manage variables 
 
 <br>
 
-### DEBUG Option
+### Debug Mode
 
-The `DEBUG` option lets you inspect global variables during replacements. When enabled, it opens a message box displaying the current values of all global variables for each replacement hit, requiring confirmation to proceed to the next match. Initialize the `DEBUG` option in your replacement string to enable it.
+The **Debug Mode** provides a safe environment to test complex logic involving conditions or math. Instead of modifying the text immediately, it allows you to step through matches one by one and inspect the real-time values of all variables.
 
-| Find       | Replace               |
-|------------|----------------------|
-| *(empty)*  | `vars({DEBUG=true})` |
+**How to enable:**
+* **Via Menu:** Click the arrow on the **Replace All** button and select **Debug Mode**. This is the standard way to debug.
+* **Via Script:** Initialize the `DEBUG` variable in your replacement string. This overrides the menu setting and allows for conditional debugging.
+
+| Find | Replace | Description |
+| :--- | :--- | :--- |
+| *(empty)* | `vars({DEBUG=true})` | **Globally** enables Debug Mode for the run (acts as an [Init entry](#preload-variables-and-helpers)). |
+| `(\d+)` | `if CNT==50 then DEBUG=true end; set(CAP1)` | Activates Debug Mode **starting from** the 50th match. |
 
 <br>
 

@@ -111,6 +111,7 @@ const LangKV kEnglishPairs[] = {
 { L"split_menu_replace_all", L"Replace All" },
 { L"split_menu_replace_all_in_docs", L"Replace All in All opened Documents" },
 { L"split_menu_replace_all_in_files", L"Replace All in Files" },
+{ L"split_menu_debug_mode", L"Debug Mode" },
 { L"split_button_replace_all", L"Replace All" },
 { L"split_button_replace_all_in_docs", L"Replace All in Docs" },
 { L"split_button_replace_all_in_files", L"Replace in Files" },

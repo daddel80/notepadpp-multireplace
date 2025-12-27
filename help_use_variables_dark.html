@@ -346,7 +346,7 @@
     <a href="#preload-variables--helpers">Preload Variables &amp; Helpers</a>
     <a href="#Operators">Operators</a>
     <a href="#IfThenLogic">If-Then Logic</a>
-    <a href="#DebugOption">DEBUG Option</a>
+    <a href="#DebugMode">Debug Mode</a>
     <a href="#FurtherFunctions">Math &amp; String Functions</a>
     <a href="#Examples">Examples</a>
 </nav>
@@ -1081,17 +1081,31 @@ return {
 
   <br>
 
-  <section id="DebugOption">
-    <h2>DEBUG Option</h2>
-    <p>The <code>DEBUG</code> option lets you inspect global variables during replacements. When enabled, it opens a message box displaying the current values of all global variables for each replacement hit, requiring confirmation to proceed to the next match. Initialize the <code>DEBUG</code> option in your replacement string to enable it.</p>
+<section id="DebugMode">
+    <h2>Debug Mode</h2>
+    <p>The <strong>Debug Mode</strong> provides a safe environment to test complex logic involving conditions or math. Instead of modifying the text immediately, it allows you to step through matches one by one and inspect the real-time values of all variables.</p>
+    
+    <p><strong>How to enable:</strong></p>
+    <ul>
+      <li><strong>Via Menu:</strong> Click the arrow on the <strong>Replace All</strong> button and select <strong>Debug Mode</strong>. This is the standard way to debug.</li>
+      <li><strong>Via Script:</strong> Initialize the <code>DEBUG</code> variable in your replacement string. This overrides the menu setting and allows for conditional debugging.</li>
+    </ul>
+
     <table class="optionsTable">
       <tr>
         <th>Find</th>
         <th>Replace</th>
+        <th>Description</th>
       </tr>
       <tr>
         <td><em>(empty)</em></td>
         <td><code>vars({DEBUG=true})</code></td>
+        <td><strong>Globally</strong> enables Debug Mode for the run (acts as an Init entry).</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>if CNT==50 then DEBUG=true end; set(CAP1)</code></td>
+        <td>Activates Debug Mode <strong>starting from</strong> the 50th match.</td>
       </tr>
     </table>
   </section>

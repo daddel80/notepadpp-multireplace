@@ -528,8 +528,9 @@ private:
     static constexpr int MARKER_COLOR_DARK = 0x0050D2;  // Color for non-list Marker
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     static constexpr int REPLACE_FILES_PANEL_HEIGHT = 88;
-    bool isReplaceAllInDocs = false;   // True if replacing in all open documents, false for current document only.
+    bool isReplaceAllInDocs = false; // True if replacing in all open documents, false for current document only.
     bool isReplaceInFiles = false;   // True if replacing in files, false for current document only.
+    bool _debugModeEnabled = false;  // Debug Mode checkbox state
     bool isFindAllInDocs = false;
     bool isFindAllInFiles = false;
 

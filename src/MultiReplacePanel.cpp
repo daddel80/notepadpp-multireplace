@@ -22,6 +22,7 @@
 #include "MultiReplacePanel.h"
 #include "ColumnTabs.h"
 #include "Notepad_plus_msgs.h"
+#include "menuCmdID.h"
 #include "PluginDefinition.h"
 #include "Scintilla.h"
 #include "DPIManager.h"
@@ -3594,8 +3595,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         adjustWindowSize();
 
         // Activate Dark Mode
-        ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
-            static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
+        ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
 
         // Post a custom message to perform post-initialization tasks after the dialog is shown
         PostMessage(_hSelf, WM_POST_INIT, 0, 0);
@@ -3771,6 +3771,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             AppendMenu(hMenu, MF_STRING, ID_REPLACE_ALL_OPTION, LM.getLPW(L"split_menu_replace_all"));
             AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_ALL_DOCS_OPTION, LM.getLPW(L"split_menu_replace_all_in_docs"));
             AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_FILES_OPTION, LM.getLPW(L"split_menu_replace_all_in_files"));
+            AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+            AppendMenu(hMenu, MF_STRING | (_debugModeEnabled ? MF_CHECKED : MF_UNCHECKED), ID_DEBUG_MODE_OPTION, LM.getLPW(L"split_menu_debug_mode"));
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, NULL);
             DestroyMenu(hMenu);
             return TRUE;
@@ -4524,6 +4526,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             isReplaceAllInDocs = false;
             isReplaceInFiles = true;
             updateFilesPanel();
+            return TRUE;
+        }
+
+        case ID_DEBUG_MODE_OPTION:
+        {
+            _debugModeEnabled = !_debugModeEnabled;
             return TRUE;
         }
 
@@ -5688,9 +5696,11 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     }
 
     // 11) DEBUG flag & window
-    lua_getglobal(_luaState, "DEBUG");                     // push DEBUG
-    bool debugOn = lua_isboolean(_luaState, -1) && lua_toboolean(_luaState, -1);
-    lua_pop(_luaState, 1);                                 // pop DEBUG
+    lua_getglobal(_luaState, "DEBUG");
+    bool luaDebugExists = !lua_isnil(_luaState, -1);
+    bool luaDebug = luaDebugExists && lua_toboolean(_luaState, -1);
+    lua_pop(_luaState, 1);
+    bool debugOn = luaDebugExists ? luaDebug : _debugModeEnabled;
 
     if (debugOn) {
         globalLuaVariablesMap.clear();
@@ -5921,6 +5931,9 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         return -1;
     }
 
+    // Activate Dark Mode
+    ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(hwnd));
+
     // Save the handle of the debug window
     hDebugWnd = hwnd;
 
@@ -5930,13 +5943,13 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     MSG msg = { 0 };
 
     // Scintilla needs seperate key handling
+// Scintilla needs separate key handling
     while (IsWindow(hwnd))
     {
         // Check for the global shutdown signal from Notepad++
         if (_isShuttingDown) {
-            // If N++ is closing, we must break our loop immediately to allow a clean shutdown.
-            DestroyWindow(hwnd); // This will post a WM_QUIT message and terminate the loop.
-            debugWindowResponse = 3; // Simulate a "Stop" press.
+            DestroyWindow(hwnd);
+            debugWindowResponse = 3; // Simulate a "Stop" press
             continue;
         }
 
@@ -5944,45 +5957,44 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
         {
             if (msg.message == WM_QUIT) {
-                break; // Exit loop on WM_QUIT
+                break;
             }
+
             if (!IsDialogMessage(hwnd, &msg)) {
-                // Check if the Debug window is not focused and forward key combinations to Notepad++
-                if (GetForegroundWindow() != hwnd) {
-                    if (msg.message == WM_KEYDOWN && (GetKeyState(VK_CONTROL) & 0x8000)) {
-                        // Handle Ctrl-C, Ctrl-V, and Ctrl-X
-                        if (msg.wParam == 'C') {
-                            SendMessage(nppData._scintillaMainHandle, SCI_COPY, 0, 0);
-                            continue;
-                        }
-                        else if (msg.wParam == 'V') {
-                            SendMessage(nppData._scintillaMainHandle, SCI_PASTE, 0, 0);
-                            continue;
-                        }
-                        else if (msg.wParam == 'X') {
-                            SendMessage(nppData._scintillaMainHandle, SCI_CUT, 0, 0);
-                            continue;
-                        }
-                        // Handle Ctrl-U for lowercase
-                        else if (msg.wParam == 'U' && !(GetKeyState(VK_SHIFT) & 0x8000)) {
-                            SendMessage(nppData._scintillaMainHandle, SCI_LOWERCASE, 0, 0);
-                            continue;
-                        }
-                        // Handle Ctrl-Shift-U for uppercase
-                        else if (msg.wParam == 'U' && (GetKeyState(VK_SHIFT) & 0x8000)) {
-                            SendMessage(nppData._scintillaMainHandle, SCI_UPPERCASE, 0, 0);
-                            continue;
-                        }
+                // Forward Ctrl+Key combinations to Notepad++ when editor is focused
+                if (GetForegroundWindow() != hwnd &&
+                    msg.message == WM_KEYDOWN &&
+                    (GetKeyState(VK_CONTROL) & 0x8000))
+                {
+                    bool shiftPressed = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+                    bool handled = true;
+
+                    switch (msg.wParam) {
+                        // Scintilla commands
+                    case 'C': SendMessage(nppData._scintillaMainHandle, SCI_COPY, 0, 0); break;
+                    case 'V': SendMessage(nppData._scintillaMainHandle, SCI_PASTE, 0, 0); break;
+                    case 'X': SendMessage(nppData._scintillaMainHandle, SCI_CUT, 0, 0); break;
+                    case 'U': SendMessage(nppData._scintillaMainHandle,
+                        shiftPressed ? SCI_UPPERCASE : SCI_LOWERCASE, 0, 0); break;
+
+                        // Notepad++ commands
+                    case 'S': SendMessage(nppData._nppHandle,
+                        shiftPressed ? NPPM_SAVEALLFILES : NPPM_SAVECURRENTFILE, 0, 0); break;
+                    case 'G': SendMessage(nppData._nppHandle, NPPM_MENUCOMMAND, 0, IDM_SEARCH_GOTOLINE); break;
+                    case 'F': SendMessage(nppData._nppHandle, NPPM_MENUCOMMAND, 0, IDM_SEARCH_FIND); break;
+
+                    default: handled = false; break;
                     }
+
+                    if (handled) continue;
                 }
-                // Process other messages normally
+
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
             }
         }
         else
         {
-            // If there are no messages, wait for the next one without consuming 100% CPU
             WaitMessage();
         }
     }
@@ -9718,7 +9730,6 @@ LRESULT MultiReplace::adjustForegroundForDarkMode(LRESULT textColor, LRESULT bac
 
 void MultiReplace::initializeColumnStyles() {
 
-    int IDM_LANG_TEXT = 46016;  // Switch off Languages - > Normal Text
     ::SendMessage(nppData._nppHandle, NPPM_MENUCOMMAND, 0, IDM_LANG_TEXT);
 
     // Get default text color from Notepad++
