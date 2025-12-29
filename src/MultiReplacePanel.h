@@ -880,7 +880,7 @@ private:
     static void applyLuaSafeMode(lua_State* L);
 
     //Lua Debug Window
-    int ShowDebugWindow(const std::string& message);
+    int ShowDebugWindow(const std::string& message, bool isInitEntry);
     static LRESULT CALLBACK DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     static void CopyListViewToClipboard(HWND hListView);
     static void CloseDebugWindow();

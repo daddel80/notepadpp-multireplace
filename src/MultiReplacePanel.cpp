@@ -5382,7 +5382,6 @@ void MultiReplace::captureLuaGlobals(lua_State* L) {
         const char* key = lua_tostring(L, -2);
         LuaVariable luaVar;
         luaVar.name = key;
-
         int type = lua_type(L, -1);
         if (type == LUA_TNUMBER) {
             luaVar.type = LuaVariableType::Number;
@@ -5401,11 +5400,9 @@ void MultiReplace::captureLuaGlobals(lua_State* L) {
             lua_pop(L, 1);
             continue;
         }
-
         globalLuaVariablesMap[key] = luaVar;
         lua_pop(L, 1);
     }
-
     lua_pop(L, 1);
 }
 
@@ -5617,8 +5614,10 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
                 }
             }
             std::string capName = "CAP" + std::to_string(i);
-            setLuaVariable(_luaState, capName, capVal);
-            capNames.push_back(capName);
+            if (!capVal.empty()) {
+                setLuaVariable(_luaState, capName, capVal);
+            }
+            capNames.push_back(capName);  // Always track for cleanup
         }
     }
 
@@ -5686,9 +5685,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         else if (lua_isstring(_luaState, -1)) {
             capVariablesStr += capName + "\tString\t" + lua_tostring(_luaState, -1) + "\n\n";
         }
-        else {
-            capVariablesStr += capName + "\t<nil>\n\n";
-        }
+
         lua_pop(_luaState, 1);                             // pop CAP value
 
         lua_pushnil(_luaState);                            // clear global
@@ -5722,7 +5719,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         }
 
         refreshUIListView();
-        int resp = ShowDebugWindow(capVariablesStr + globalsStr);
+        int resp = ShowDebugWindow(capVariablesStr + globalsStr, vars.CNT == 0);
         if (resp == 3) { restoreStack(); return false; }   // “Stop”
         if (resp == -1) { restoreStack(); return false; }  // window closed
     }
@@ -5826,7 +5823,7 @@ void MultiReplace::applyLuaSafeMode(lua_State* L)
 
 #pragma region Lua Debug Window
 
-int MultiReplace::ShowDebugWindow(const std::string& message) {
+int MultiReplace::ShowDebugWindow(const std::string& message, bool isInitEntry) {
     const int buffer_size = 4096;
     wchar_t wMessage[buffer_size];
     debugWindowResponse = -1;
@@ -5862,65 +5859,62 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     std::wstring line;
 
     while (std::getline(inputMessageStream, line)) {
+        if (line.empty()) continue;
+
         std::wistringstream iss(line);
         std::wstring variable, type, value;
 
-        if (std::getline(iss, variable, L'\t') &&
-            std::getline(iss, type, L'\t') &&
-            std::getline(iss, value)) {
+        if (!std::getline(iss, variable, L'\t')) continue;
+        if (!std::getline(iss, type, L'\t')) continue;
+        std::getline(iss, value);  // Value may be empty
 
-            // Trim whitespace
-            type.erase(0, type.find_first_not_of(L" \t"));
-            type.erase(type.find_last_not_of(L" \t") + 1);
-            value.erase(0, value.find_first_not_of(L" \t"));
-            value.erase(value.find_last_not_of(L" \t") + 1);
-
-            if (type == L"Number") {
-                try {
-                    double num = std::stod(value);
-
-                    // If the number is integral, output as an integer
-                    if (num == std::floor(num)) {
-                        value = std::to_wstring(static_cast<long long>(num));
-                    }
-                    else {
-                        // Format the number with fixed precision (up to 6 decimals)
-                        std::wstringstream numStream;
-                        numStream << std::fixed << std::setprecision(8) << num;
-                        std::wstring formatted = numStream.str();
-                        // Remove trailing zeros
-                        size_t pos = formatted.find_last_not_of(L'0');
-                        if (pos != std::wstring::npos) {
-                            formatted.erase(pos + 1);
-                        }
-                        // If the last character is a decimal point, remove it
-                        if (!formatted.empty() && formatted.back() == L'.') {
-                            formatted.pop_back();
-                        }
-                        value = formatted;
-                    }
+        if (type == L"Number") {
+            try {
+                double num = std::stod(value);
+                if (num == std::floor(num)) {
+                    value = std::to_wstring(static_cast<long long>(num));
                 }
-                catch (...) {
-                    // If conversion fails, retain the original value
+                else {
+                    std::wstringstream numStream;
+                    numStream << std::fixed << std::setprecision(8) << num;
+                    std::wstring formatted = numStream.str();
+                    size_t pos = formatted.find_last_not_of(L'0');
+                    if (pos != std::wstring::npos) {
+                        formatted.erase(pos + 1);
+                    }
+                    if (!formatted.empty() && formatted.back() == L'.') {
+                        formatted.pop_back();
+                    }
+                    value = formatted;
                 }
             }
-
-            formattedMessage << variable << L"\t" << type << L"\t" << value << L"\n";
+            catch (...) {
+                // If conversion fails, retain the original value
+            }
         }
+        else if (type == L"String" && value.empty()) {
+            value = L"<empty>";
+        }
+
+        formattedMessage << variable << L"\t" << type << L"\t" << value << L"\n";
     }
 
     std::wstring finalMessage = formattedMessage.str();
 
     // Use the saved position and size if set, otherwise use default position and size
-    int width = debugWindowSizeSet ? debugWindowSize.cx : sx(260); // Set initial width
+    int width = debugWindowSizeSet ? debugWindowSize.cx : sx(340); // Set initial width
     int height = debugWindowSizeSet ? debugWindowSize.cy : sy(400); // Set initial height
     int x = debugWindowPositionSet ? debugWindowPosition.x : (GetSystemMetrics(SM_CXSCREEN) - width) / 2; // Center horizontally
     int y = debugWindowPositionSet ? debugWindowPosition.y : (GetSystemMetrics(SM_CYSCREEN) - height) / 2; // Center vertically
 
+    std::wstring windowTitle = isInitEntry
+        ? L"Debug Information (Init)"
+        : L"Debug Information (Match)";
+
     HWND hwnd = CreateWindowEx(
-        WS_EX_TOPMOST, // Always on top
+        WS_EX_TOPMOST,
         L"DebugWindowClass",
-        L"Debug Information",
+        windowTitle.c_str(),
         WS_OVERLAPPEDWINDOW,
         x, y, width, height,
         nppData._nppHandle, NULL, hInstance, (LPVOID)finalMessage.c_str()
@@ -6078,19 +6072,24 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         std::wstring line;
         int itemIndex = 0;
         while (std::getline(ss, line)) {
+            if (line.empty()) continue;
+
             std::wstring variable, type, value;
             std::wistringstream iss(line);
-            if (std::getline(iss, variable, L'\t') && std::getline(iss, type, L'\t') && std::getline(iss, value)) {
-                LVITEM lvItem;
-                lvItem.mask = LVIF_TEXT;
-                lvItem.iItem = itemIndex;
-                lvItem.iSubItem = 0;
-                lvItem.pszText = const_cast<LPWSTR>(variable.c_str());
-                ListView_InsertItem(hListView, &lvItem);
-                ListView_SetItemText(hListView, itemIndex, 1, const_cast<LPWSTR>(type.c_str()));
-                ListView_SetItemText(hListView, itemIndex, 2, const_cast<LPWSTR>(value.c_str()));
-                ++itemIndex;
-            }
+
+            if (!std::getline(iss, variable, L'\t')) continue;
+            if (!std::getline(iss, type, L'\t')) continue;
+            std::getline(iss, value);
+
+            LVITEM lvItem;
+            lvItem.mask = LVIF_TEXT;
+            lvItem.iItem = itemIndex;
+            lvItem.iSubItem = 0;
+            lvItem.pszText = const_cast<LPWSTR>(variable.c_str());
+            ListView_InsertItem(hListView, &lvItem);
+            ListView_SetItemText(hListView, itemIndex, 1, const_cast<LPWSTR>(type.c_str()));
+            ListView_SetItemText(hListView, itemIndex, 2, const_cast<LPWSTR>(value.c_str()));
+            ++itemIndex;
         }
 
         break;
