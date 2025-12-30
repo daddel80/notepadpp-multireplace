@@ -180,6 +180,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_tabs_removed", L"Flow Tabs: REMOVED." },
 { L"status_tabs_aligned", L"Flow Tabs: ALIGNED" },
 { L"status_nothing_to_align", L"Flow Tabs: nothing to align." },
+{ L"status_no_selection", L"No text selected." },
 
 // Dynamic Status message entries
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },

@@ -417,11 +417,6 @@ void MultiReplace::initializeCtrlMap() {
     // Limit the input for IDC_QUOTECHAR_EDIT to one character
     SendMessage(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), EM_SETLIMITTEXT, (WPARAM)1, 0);
 
-    // Enable IDC_SELECTION_RADIO based on text selection
-    SelectionInfo selection = getSelectionInfo(false);
-    bool isTextSelected = (selection.length > 0);
-    ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), isTextSelected);
-
     isWindowOpen = true;
 }
 
@@ -4714,10 +4709,6 @@ void MultiReplace::replaceAllInOpenedDocs()
     }
     refreshUIListView();
 
-    // Reset the scope radios to a consistent default
-    ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-    ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-    ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
 }
 
 bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std::filesystem::path* explicitPath) {
@@ -4726,12 +4717,17 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         return false;
     }
 
-    // In "Replace in All Docs" + "Selection" scope, skip documents that have no selection.
-    if (isReplaceAllInDocs &&
-        IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED &&
+    // Selection mode with no selection: different behavior for single-doc vs. multi-doc
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED &&
         getSelectionInfo(false).length == 0)
     {
-        return true;          // just jump into next Document
+        if (isReplaceAllInDocs) {
+            return true;  // Multi-doc mode: skip to next document silently
+        }
+        else {
+            showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
+            return false; // Single-doc mode: show error
+        }
     }
 
     // First check if the document is read-only
@@ -4849,18 +4845,6 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         showStatusMessage(LM.get(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), MessageStatus::Success);
     }
 
-    // Only reset the scope radio buttons for a single-document "Replace All"
-    if (!isReplaceAllInDocs) {
-        SelectionInfo selection = getSelectionInfo(false);
-        if (selection.length == 0 &&
-            IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED)
-        {
-            ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-            ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-            ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
-        }
-
-    }
 
     return replaceSuccess;
 
@@ -4870,6 +4854,15 @@ void MultiReplace::handleReplaceButton() {
 
     if (!validateDelimiterData()) {
         return;
+    }
+
+    // Safety: Selection mode with no selection → do nothing
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+        SelectionInfo sel = getSelectionInfo(false);
+        if (sel.length == 0) {
+            showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
+            return;
+        }
     }
 
     // First check if the document is read-only
@@ -5024,14 +5017,6 @@ void MultiReplace::handleReplaceButton() {
                 showStatusMessage(LM.get(L"status_found_text_not_replaced"), MessageStatus::Info);
             }
         }
-    }
-
-    // Disable selection radio and switch to "All Text" if it was Replaced and no selection left, or search will be trapped
-    selection = getSelectionInfo(false);
-    if (selection.length == 0 && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-        ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-        ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
     }
 
 }
@@ -7182,6 +7167,15 @@ void MultiReplace::handleFindNextButton() {
         return;
     }
 
+    // Safety: Selection mode with no selection → do nothing
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+        SelectionInfo sel = getSelectionInfo(false);
+        if (sel.length == 0) {
+            showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
+            return;
+        }
+    }
+
     size_t matchIndex = std::numeric_limits<size_t>::max();
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
     SelectionInfo selection = getSelectionInfo(false);
@@ -7224,11 +7218,6 @@ void MultiReplace::handleFindNextButton() {
             updateCountColumns(matchIndex, 1);
             refreshUIListView();
             selectListItem(matchIndex);
-            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-                ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-                ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-                ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
-            }
         }
         else {
             showStatusMessage(LM.get(L"status_no_matches_found"), MessageStatus::Error, true);
@@ -7263,11 +7252,6 @@ void MultiReplace::handleFindNextButton() {
         }
         if (result.pos >= 0) {
             showStatusMessage(L"", MessageStatus::Success);
-            if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-                ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-                ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-                ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
-            }
         }
         else {
             showStatusMessage(LM.get(L"status_no_matches_found_for", { findText }), MessageStatus::Error, true);
@@ -7279,6 +7263,15 @@ void MultiReplace::handleFindPrevButton() {
 
     if (!validateDelimiterData()) {
         return;
+    }
+
+    // Safety: Selection mode with no selection → do nothing
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+        SelectionInfo sel = getSelectionInfo(false);
+        if (sel.length == 0) {
+            showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
+            return;
+        }
     }
 
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
@@ -7321,11 +7314,6 @@ void MultiReplace::handleFindPrevButton() {
                 refreshUIListView();
                 selectListItem(matchIndex);
                 showStatusMessage(LM.get(L"status_wrapped"), MessageStatus::Info);
-                if (context.isSelectionMode) {
-                    ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-                    ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-                    ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
-                }
                 return;
             }
         }
@@ -7334,11 +7322,6 @@ void MultiReplace::handleFindPrevButton() {
             updateCountColumns(matchIndex, 1);
             refreshUIListView();
             selectListItem(matchIndex);
-            if (context.isSelectionMode) {
-                ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-                ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-                ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
-            }
         }
         else {
             showStatusMessage(LM.get(L"status_no_matches_found"), MessageStatus::Error, true);
@@ -7364,21 +7347,11 @@ void MultiReplace::handleFindPrevButton() {
             result = performSearchBackward(context, searchPos);
             if (result.pos >= 0) {
                 showStatusMessage(LM.get(L"status_wrapped"), MessageStatus::Info);
-                if (context.isSelectionMode) {
-                    ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-                    ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-                    ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
-                }
                 return;
             }
         }
         if (result.pos >= 0) {
             showStatusMessage(L"", MessageStatus::Success);
-            if (context.isSelectionMode) {
-                ::EnableWindow(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), FALSE);
-                ::SendMessage(::GetDlgItem(_hSelf, IDC_ALL_TEXT_RADIO), BM_SETCHECK, BST_CHECKED, 0);
-                ::SendMessage(::GetDlgItem(_hSelf, IDC_SELECTION_RADIO), BM_SETCHECK, BST_UNCHECKED, 0);
-            }
         }
         else {
             showStatusMessage(LM.get(L"status_no_matches_found_for", { findText }),
@@ -12285,15 +12258,13 @@ void MultiReplace::pointerToScintilla() {
 
 void MultiReplace::onSelectionChanged()
 {
-    static bool wasTextSelected = false;   // remember previous selection state
+    static bool wasTextSelected = false;
 
-    HWND hDlg = getDialogHandle();         // dialog handle once for reuse
+    HWND hDlg = getDialogHandle();
 
     // -----------------------------------------------------------------------
-    // 1) “Replace in Files” mode:
-    //    - Selection-Radio ist dort nutzlos → immer deaktivieren
-    //    - Nur wenn er noch angehakt ist, auf All Text umschalten
-    //    - Dann sofort zurückkehren, damit er nicht erneut aktiviert wird
+    // 1) "Replace in Files" mode:
+    //    - Selection-Radio is useless here → always disable and switch
     // -----------------------------------------------------------------------
     if (instance && (instance->isReplaceInFiles || instance->isFindAllInFiles))
     {
@@ -12304,39 +12275,22 @@ void MultiReplace::onSelectionChanged()
         {
             ::CheckRadioButton(
                 hDlg,
-                IDC_ALL_TEXT_RADIO,     // first in radio group
-                IDC_COLUMN_MODE_RADIO,  // last  in radio group
-                IDC_ALL_TEXT_RADIO      // button to check
+                IDC_ALL_TEXT_RADIO,
+                IDC_COLUMN_MODE_RADIO,
+                IDC_ALL_TEXT_RADIO
             );
         }
-        return;    // nothing else must re-enable Selection in this mode
+        return;
     }
 
     // -----------------------------------------------------------------------
-    // 2) Normal Replace-All / Replace-in-Opened-Docs modes
+    // 2) Normal modes: No auto-disable, no auto-switch
     // -----------------------------------------------------------------------
-    Sci_Position start = ::SendMessage(getScintillaHandle(),
-        SCI_GETSELECTIONSTART, 0, 0);
-    Sci_Position end = ::SendMessage(getScintillaHandle(),
-        SCI_GETSELECTIONEND, 0, 0);
+    Sci_Position start = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
+    Sci_Position end = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
     bool isTextSelected = (start != end);
 
-    HWND hSel = ::GetDlgItem(hDlg, IDC_SELECTION_RADIO);
-    ::EnableWindow(hSel, isTextSelected);
-
-    // If no text is selected but Selection is still checked → switch to All Text
-    if (!isTextSelected &&
-        ::SendMessage(hSel, BM_GETCHECK, 0, 0) == BST_CHECKED)
-    {
-        ::CheckRadioButton(
-            hDlg,
-            IDC_ALL_TEXT_RADIO,
-            IDC_COLUMN_MODE_RADIO,
-            IDC_ALL_TEXT_RADIO
-        );
-    }
-
-    // Inform other UI parts when we just lost a selection
+    // Inform other UI parts when selection is lost
     if (wasTextSelected && !isTextSelected)
     {
         if (instance)
