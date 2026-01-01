@@ -4840,6 +4840,10 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         send(SCI_ENDUNDOACTION, 0, 0);
 
     }
+
+    // If debug window is still open after all matches, wait for user to close it
+    WaitForDebugWindowClose();
+
     // Display status message
     if (replaceSuccess && showCompletionMessage) {
         showStatusMessage(LM.get(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), MessageStatus::Success);
@@ -5019,6 +5023,8 @@ void MultiReplace::handleReplaceButton() {
         }
     }
 
+    // If debug window is still open after single replace, close it automatically
+    WaitForDebugWindowClose(true);
 }
 
 bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context)
@@ -5106,6 +5112,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
     }
     return false; // No replacement was made.
 }
+
 bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, size_t itemIndex)
 {
     if (itemData.findText.empty() && !itemData.useVariables) {
@@ -5292,7 +5299,7 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                     bool skipReplace = false;
                     LuaVariables vars;
                     setLuaFileVars(vars);   // Setting FNAME and FPATH
-                    if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, replaceListData[i].regex)) {
+                    if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, replaceListData[i].regex, false)) {
                         return false;
                     }
                 }
@@ -5549,7 +5556,7 @@ bool MultiReplace::ensureLuaCodeCompiled(const std::string& luaCode)
     return true;
 }
 
-bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
+bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex, bool showDebugWindow)
 {
     // 1) Stack-checkpoint
     const int stackBase = lua_gettop(_luaState);
@@ -5684,7 +5691,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     lua_pop(_luaState, 1);
     bool debugOn = luaDebugExists ? luaDebug : _debugModeEnabled;
 
-    if (debugOn) {
+    if (debugOn && showDebugWindow) {
         globalLuaVariablesMap.clear();
         captureLuaGlobals(_luaState);
 
@@ -5704,8 +5711,10 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         }
 
         refreshUIListView();
-        int resp = ShowDebugWindow(capVariablesStr + globalsStr, vars.CNT == 0);
-        if (resp == 3) { restoreStack(); return false; }   // “Stop”
+
+        int resp = ShowDebugWindow(capVariablesStr + globalsStr);
+
+        if (resp == 3) { restoreStack(); return false; }   // "Stop"
         if (resp == -1) { restoreStack(); return false; }  // window closed
     }
 
@@ -5808,7 +5817,7 @@ void MultiReplace::applyLuaSafeMode(lua_State* L)
 
 #pragma region Lua Debug Window
 
-int MultiReplace::ShowDebugWindow(const std::string& message, bool isInitEntry) {
+int MultiReplace::ShowDebugWindow(const std::string& message) {
     const int buffer_size = 4096;
     wchar_t wMessage[buffer_size];
     debugWindowResponse = -1;
@@ -5839,6 +5848,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message, bool isInitEntry) 
         isClassRegistered = true;
     }
 
+    // Format the message for ListView
     std::wstringstream formattedMessage;
     std::wstringstream inputMessageStream(wMessage);
     std::wstring line;
@@ -5886,15 +5896,81 @@ int MultiReplace::ShowDebugWindow(const std::string& message, bool isInitEntry) 
 
     std::wstring finalMessage = formattedMessage.str();
 
-    // Use the saved position and size if set, otherwise use default position and size
-    int width = debugWindowSizeSet ? debugWindowSize.cx : sx(340); // Set initial width
-    int height = debugWindowSizeSet ? debugWindowSize.cy : sy(400); // Set initial height
-    int x = debugWindowPositionSet ? debugWindowPosition.x : (GetSystemMetrics(SM_CXSCREEN) - width) / 2; // Center horizontally
-    int y = debugWindowPositionSet ? debugWindowPosition.y : (GetSystemMetrics(SM_CYSCREEN) - height) / 2; // Center vertically
+    std::wstring windowTitle = L"Debug Information";
 
-    std::wstring windowTitle = isInitEntry
-        ? L"Debug Information (Init)"
-        : L"Debug Information (Match)";
+    // Check if window already exists - if so, just update content (PERSISTENT WINDOW)
+    if (IsWindow(hDebugWnd) && hDebugListView != NULL) {
+        // Update window title
+        SetWindowTextW(hDebugWnd, windowTitle.c_str());
+
+        // Clear existing ListView items
+        ListView_DeleteAllItems(hDebugListView);
+
+        // Repopulate ListView with new data
+        std::wstringstream ss(finalMessage);
+        std::wstring dataLine;
+        int itemIndex = 0;
+        while (std::getline(ss, dataLine)) {
+            if (dataLine.empty()) continue;
+
+            std::wstring variable, type, value;
+            std::wistringstream iss(dataLine);
+
+            if (!std::getline(iss, variable, L'\t')) continue;
+            if (!std::getline(iss, type, L'\t')) continue;
+            std::getline(iss, value);
+
+            LVITEM lvItem;
+            lvItem.mask = LVIF_TEXT;
+            lvItem.iItem = itemIndex;
+            lvItem.iSubItem = 0;
+            lvItem.pszText = const_cast<LPWSTR>(variable.c_str());
+            ListView_InsertItem(hDebugListView, &lvItem);
+            ListView_SetItemText(hDebugListView, itemIndex, 1, const_cast<LPWSTR>(type.c_str()));
+            ListView_SetItemText(hDebugListView, itemIndex, 2, const_cast<LPWSTR>(value.c_str()));
+            ++itemIndex;
+        }
+
+        // Wait for user response (window stays open)
+        debugWindowResponse = -1;
+        MSG msg = { 0 };
+        while (IsWindow(hDebugWnd) && debugWindowResponse == -1)
+        {
+            if (_isShuttingDown) {
+                DestroyWindow(hDebugWnd);
+                debugWindowResponse = 3;
+                hDebugWnd = NULL;
+                hDebugListView = NULL;
+                continue;
+            }
+
+            if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+            {
+                if (msg.message == WM_QUIT) break;
+                if (!IsDialogMessage(hDebugWnd, &msg)) {
+                    TranslateMessage(&msg);
+                    DispatchMessage(&msg);
+                }
+            }
+            else {
+                WaitMessage();
+            }
+        }
+
+        // If Stop was pressed or window closed, cleanup
+        if (debugWindowResponse != 2) {
+            hDebugWnd = NULL;
+            hDebugListView = NULL;
+        }
+
+        return debugWindowResponse;
+    }
+
+    // Window doesn't exist - create it
+    int width = debugWindowSizeSet ? debugWindowSize.cx : sx(350);
+    int height = debugWindowSizeSet ? debugWindowSize.cy : sy(400);
+    int x = debugWindowPositionSet ? debugWindowPosition.x : (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
+    int y = debugWindowPositionSet ? debugWindowPosition.y : (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
 
     HWND hwnd = CreateWindowEx(
         WS_EX_TOPMOST,
@@ -5921,18 +5997,17 @@ int MultiReplace::ShowDebugWindow(const std::string& message, bool isInitEntry) 
 
     MSG msg = { 0 };
 
-    // Scintilla needs seperate key handling
-// Scintilla needs separate key handling
-    while (IsWindow(hwnd))
+    // Message loop - wait for user response (exit when response is set, NOT when window closes)
+    while (IsWindow(hwnd) && debugWindowResponse == -1)
     {
-        // Check for the global shutdown signal from Notepad++
         if (_isShuttingDown) {
             DestroyWindow(hwnd);
-            debugWindowResponse = 3; // Simulate a "Stop" press
+            debugWindowResponse = 3;
+            hDebugWnd = NULL;
+            hDebugListView = NULL;
             continue;
         }
 
-        // Process messages in a non-blocking way
         if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
         {
             if (msg.message == WM_QUIT) {
@@ -5940,7 +6015,6 @@ int MultiReplace::ShowDebugWindow(const std::string& message, bool isInitEntry) 
             }
 
             if (!IsDialogMessage(hwnd, &msg)) {
-                // Forward Ctrl+Key combinations to Notepad++ when editor is focused
                 if (GetForegroundWindow() != hwnd &&
                     msg.message == WM_KEYDOWN &&
                     (GetKeyState(VK_CONTROL) & 0x8000))
@@ -5949,19 +6023,15 @@ int MultiReplace::ShowDebugWindow(const std::string& message, bool isInitEntry) 
                     bool handled = true;
 
                     switch (msg.wParam) {
-                        // Scintilla commands
                     case 'C': SendMessage(nppData._scintillaMainHandle, SCI_COPY, 0, 0); break;
                     case 'V': SendMessage(nppData._scintillaMainHandle, SCI_PASTE, 0, 0); break;
                     case 'X': SendMessage(nppData._scintillaMainHandle, SCI_CUT, 0, 0); break;
                     case 'U': SendMessage(nppData._scintillaMainHandle,
                         shiftPressed ? SCI_UPPERCASE : SCI_LOWERCASE, 0, 0); break;
-
-                        // Notepad++ commands
                     case 'S': SendMessage(nppData._nppHandle,
                         shiftPressed ? NPPM_SAVEALLFILES : NPPM_SAVECURRENTFILE, 0, 0); break;
                     case 'G': SendMessage(nppData._nppHandle, NPPM_MENUCOMMAND, 0, IDM_SEARCH_GOTOLINE); break;
                     case 'F': SendMessage(nppData._nppHandle, NPPM_MENUCOMMAND, 0, IDM_SEARCH_FIND); break;
-
                     default: handled = false; break;
                     }
 
@@ -5978,31 +6048,16 @@ int MultiReplace::ShowDebugWindow(const std::string& message, bool isInitEntry) 
         }
     }
 
-    // Get the window position and size before destroying it
-    RECT rect;
-    if (GetWindowRect(hwnd, &rect)) {
-        debugWindowPosition.x = rect.left;
-        debugWindowPosition.y = rect.top;
-        debugWindowPositionSet = true;
-
-        debugWindowSize.cx = rect.right - rect.left;
-        debugWindowSize.cy = rect.bottom - rect.top;
-        debugWindowSizeSet = true;
+    // If Stop was pressed or window closed (not Next), cleanup
+    if (debugWindowResponse != 2) {
+        hDebugWnd = NULL;
+        hDebugListView = NULL;
     }
 
-    DestroyWindow(hwnd);
-    hDebugWnd = NULL; // Reset the handle after the window is destroyed
-
-    if (debugWindowResponse == 2) // ID of "Next" is 2
+    if (debugWindowResponse == 2)
     {
         MSG m;
-        // Check for and remove any pending mouse messages from the queue.
-        // This prevents a lingering WM_LBUTTONUP from re-triggering the "Next" button
-        // on the next debug window that will be created.
-        while (PeekMessage(&m, nullptr, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE))
-        {
-            // Do nothing with the message, effectively discarding it.
-        }
+        while (PeekMessage(&m, nullptr, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE)) {}
     }
 
     return debugWindowResponse;
@@ -6020,6 +6075,7 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
             WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
             10, 10, 360, 140,
             hwnd, (HMENU)1, NULL, NULL);
+        hDebugListView = hListView;  // Save handle for content updates
 
         // Initialize columns
         LVCOLUMN lvCol;
@@ -6103,8 +6159,12 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
     }
 
     case WM_COMMAND:
-        if (LOWORD(wParam) == 2 || LOWORD(wParam) == 3) {
-            debugWindowResponse = LOWORD(wParam);
+        if (LOWORD(wParam) == 2) {  // Next button
+            debugWindowResponse = 2;
+            // Don't destroy window - just set response and let message loop exit
+        }
+        else if (LOWORD(wParam) == 3) {  // Stop/Close button
+            debugWindowResponse = 3;
 
             // Save the window position and size before closing
             RECT rect;
@@ -6118,6 +6178,7 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
             }
 
             DestroyWindow(hwnd);
+            hDebugListView = NULL;
         }
         else if (LOWORD(wParam) == 4) {  // Copy button was pressed
             CopyListViewToClipboard(hListView);
@@ -6230,6 +6291,58 @@ void MultiReplace::CloseDebugWindow()
     SendMessage(hDebugWnd, WM_CLOSE, 0, 0);  // synchronous → window really gone
 }
 
+void MultiReplace::SetDebugComplete()
+{
+    if (!IsWindow(hDebugWnd)) {
+        return;
+    }
+
+    // Update window title to show completion
+    SetWindowTextW(hDebugWnd, L"Debug Information (Complete)");
+
+    // Change Stop button to Close
+    HWND hStopButton = GetDlgItem(hDebugWnd, 3);
+    if (hStopButton) {
+        SetWindowTextW(hStopButton, L"Close");
+    }
+
+    // Disable Next button
+    HWND hNextButton = GetDlgItem(hDebugWnd, 2);
+    if (hNextButton) {
+        EnableWindow(hNextButton, FALSE);
+    }
+}
+
+void MultiReplace::WaitForDebugWindowClose(bool autoClose)
+{
+    if (!IsWindow(hDebugWnd)) {
+        return;
+    }
+
+    // For single actions: close window immediately without waiting
+    if (autoClose) {
+        CloseDebugWindow();
+        return;
+    }
+
+    SetDebugComplete();
+
+    // Wait for user to close the window
+    MSG msg = { 0 };
+    while (IsWindow(hDebugWnd))
+    {
+        if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) break;
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+        else {
+            WaitMessage();
+        }
+    }
+    hDebugWnd = NULL;
+    hDebugListView = NULL;
+}
 #pragma endregion
 
 

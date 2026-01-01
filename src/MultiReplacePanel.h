@@ -653,7 +653,6 @@ private:
     inline static int   debugWindowResponse = -1;
     inline static SIZE  debugWindowSize{ 400, 250 };
     inline static bool  debugWindowSizeSet = false;
-    inline static HWND  hDebugWnd = nullptr; // Handle for the debug window
     int _editingItemIndex;
     int _editingColumnIndex;
     int _editingColumnID;
@@ -709,6 +708,9 @@ private:
 
     inline static std::vector<int> _textMarkerIds;  // Fixed IDs for text marking (0-9 = list, 10 = single)
     inline static bool _textMarkersInitialized = false;
+
+    inline static HWND  hDebugWnd = nullptr; // Handle for the debug window
+    inline static HWND  hDebugListView = nullptr;  // ListView handle for content updates
 
     bool isHoverTextSuppressed = false;    // Temporarily suppress HoverText to avoid flickering when Edit in list is open
 
@@ -870,7 +872,7 @@ private:
     //Lua Engine
     void captureLuaGlobals(lua_State* L);
     std::string escapeForRegex(const std::string& input);
-    bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex);
+    bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex, bool showDebugWindow = true);
     void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
     void updateFilePathCache(const std::filesystem::path* explicitPath = nullptr);
     void setLuaFileVars(LuaVariables& vars);
@@ -880,10 +882,12 @@ private:
     static void applyLuaSafeMode(lua_State* L);
 
     //Lua Debug Window
-    int ShowDebugWindow(const std::string& message, bool isInitEntry);
+    int ShowDebugWindow(const std::string& message);
     static LRESULT CALLBACK DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     static void CopyListViewToClipboard(HWND hListView);
     static void CloseDebugWindow();
+    void SetDebugComplete();
+    void WaitForDebugWindowClose(bool autoClose = false);
 
     //Replace in Files
     bool handleBrowseDirectoryButton();
