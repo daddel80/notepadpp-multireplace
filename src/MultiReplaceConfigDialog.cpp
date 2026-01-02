@@ -356,7 +356,7 @@ void MultiReplaceConfigDialog::createFonts() {
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, fontName
         );
-        return hf ? hf : (HFONT)::GetStockObject(DEFAULT_GUI_FONT);
+        return hf ? hf : reinterpret_cast<HFONT>(::GetStockObject(DEFAULT_GUI_FONT));
         };
 
     _hCategoryFont = create(13, FW_NORMAL, L"MS Shell Dlg 2");
