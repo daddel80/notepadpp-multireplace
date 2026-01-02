@@ -117,7 +117,7 @@ void MultiReplaceConfigDialog::readBindingsFromUI_Generic(void* settingsPtr)
             *reinterpret_cast<bool*>(base + b.offset) = v;
         }
         else {
-            wchar_t buf[32] = { 0 };
+            wchar_t buf[32] = {};
             ::GetWindowText(hCtrl, buf, 32);
             int vi = _wtoi(buf);
             vi = clampInt(vi, b.minVal, b.maxVal);
@@ -184,10 +184,10 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         if (GetWindowRect(::GetParent(_hSelf), &rcParent)) {
             int x = rcParent.left + (rcParent.right - rcParent.left - finalW) / 2;
             int y = rcParent.top + (rcParent.bottom - rcParent.top - finalH) / 2;
-            SetWindowPos(_hSelf, NULL, x, y, finalW, finalH, SWP_NOZORDER | SWP_NOACTIVATE);
+            SetWindowPos(_hSelf, nullptr, x, y, finalW, finalH, SWP_NOZORDER | SWP_NOACTIVATE);
         }
         else {
-            SetWindowPos(_hSelf, NULL, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            SetWindowPos(_hSelf, nullptr, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
         }
 
         createUI();
@@ -199,12 +199,12 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         resizeUI();
 
         // Initial Dark Mode application
-        WPARAM mode = (WPARAM)NppDarkMode::dmfInit;
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSelf);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSearchReplacePanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hListViewLayoutPanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hAppearancePanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hCsvFlowTabsPanel);
+        WPARAM mode = static_cast<WPARAM>(NppDarkMode::dmfInit);
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSelf));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSearchReplacePanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hListViewLayoutPanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hAppearancePanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCsvFlowTabsPanel));
 
         return TRUE;
     }
@@ -320,9 +320,9 @@ void MultiReplaceConfigDialog::showCategory(int index) {
 }
 
 void MultiReplaceConfigDialog::createUI() {
-    _hCategoryList = ::CreateWindowEx(0, WC_LISTBOX, TEXT(""), WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT, 0, 0, 0, 0, _hSelf, (HMENU)IDC_CONFIG_CATEGORY_LIST, _hInst, nullptr);
-    _hCloseButton = ::CreateWindowEx(0, WC_BUTTON, LM.getLPCW(L"config_btn_close"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 0, 0, _hSelf, (HMENU)IDCANCEL, _hInst, nullptr);
-    _hResetButton = ::CreateWindowEx(0, WC_BUTTON, LM.getLPCW(L"config_btn_reset"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 0, 0, _hSelf, (HMENU)IDC_BTN_RESET, _hInst, nullptr);
+    _hCategoryList = ::CreateWindowEx(0, WC_LISTBOX, TEXT(""), WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT, 0, 0, 0, 0, _hSelf, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_CONFIG_CATEGORY_LIST)), _hInst, nullptr);
+    _hCloseButton = ::CreateWindowEx(0, WC_BUTTON, LM.getLPCW(L"config_btn_close"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 0, 0, _hSelf, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDCANCEL)), _hInst, nullptr);
+    _hResetButton = ::CreateWindowEx(0, WC_BUTTON, LM.getLPCW(L"config_btn_reset"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 0, 0, _hSelf, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_BTN_RESET)), _hInst, nullptr);
     _hSearchReplacePanel = createPanel();
     _hListViewLayoutPanel = createPanel();
     _hCsvFlowTabsPanel = createPanel();
@@ -335,10 +335,10 @@ void MultiReplaceConfigDialog::createUI() {
 }
 
 void MultiReplaceConfigDialog::initUI() {
-    SendMessage(_hCategoryList, LB_ADDSTRING, 0, (LPARAM)LM.getLPCW(L"config_cat_search_replace"));
-    SendMessage(_hCategoryList, LB_ADDSTRING, 0, (LPARAM)LM.getLPCW(L"config_cat_list_view"));
-    SendMessage(_hCategoryList, LB_ADDSTRING, 0, (LPARAM)LM.getLPCW(L"config_cat_csv"));
-    SendMessage(_hCategoryList, LB_ADDSTRING, 0, (LPARAM)LM.getLPCW(L"config_cat_appearance"));
+    SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_search_replace")));
+    SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_list_view")));
+    SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_csv")));
+    SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_appearance")));
 
     int catToSelect = (_currentCategory >= 0) ? _currentCategory : 0;
     ::SendMessage(_hCategoryList, LB_SETCURSEL, catToSelect, 0);
@@ -372,9 +372,9 @@ void MultiReplaceConfigDialog::cleanupFonts() {
 void MultiReplaceConfigDialog::applyFonts() {
     auto applyToHierarchy = [this](HWND parent) {
         if (!parent) return;
-        ::SendMessage(parent, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
+        ::SendMessage(parent, WM_SETFONT, reinterpret_cast<WPARAM>(_hCategoryFont), TRUE);
         for (HWND child = ::GetWindow(parent, GW_CHILD); child != nullptr; child = ::GetWindow(child, GW_HWNDNEXT)) {
-            ::SendMessage(child, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
+            ::SendMessage(child, WM_SETFONT, reinterpret_cast<WPARAM>(_hCategoryFont), TRUE);
         }
         };
 
@@ -383,9 +383,9 @@ void MultiReplaceConfigDialog::applyFonts() {
     applyToHierarchy(_hAppearancePanel);
     applyToHierarchy(_hCsvFlowTabsPanel);
 
-    if (_hCategoryList) ::SendMessage(_hCategoryList, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
-    if (_hCloseButton)  ::SendMessage(_hCloseButton, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
-    if (_hResetButton)  ::SendMessage(_hResetButton, WM_SETFONT, (WPARAM)_hCategoryFont, TRUE);
+    if (_hCategoryList) ::SendMessage(_hCategoryList, WM_SETFONT, reinterpret_cast<WPARAM>(_hCategoryFont), TRUE);
+    if (_hCloseButton)  ::SendMessage(_hCloseButton, WM_SETFONT, reinterpret_cast<WPARAM>(_hCategoryFont), TRUE);
+    if (_hResetButton)  ::SendMessage(_hResetButton, WM_SETFONT, reinterpret_cast<WPARAM>(_hCategoryFont), TRUE);
 }
 
 void MultiReplaceConfigDialog::resizeUI() {
@@ -471,12 +471,12 @@ LRESULT CALLBACK MultiReplaceConfigDialog::PanelSubclassProc(HWND hWnd, UINT uMs
                 if (isDark) {
                     ::SetTextColor(hdc, RGB(220, 220, 220));
                     ::SetBkColor(hdc, RGB(45, 45, 48)); // Match the brush
-                    return (LRESULT)hBrushDark;
+                    return reinterpret_cast<LRESULT>(hBrushDark);
                 }
                 else {
                     ::SetTextColor(hdc, RGB(0, 0, 0));
                     ::SetBkColor(hdc, ::GetSysColor(COLOR_WINDOW)); // Match the brush
-                    return (LRESULT)hBrushLight;
+                    return reinterpret_cast<LRESULT>(hBrushLight);
                 }
             }
         }
@@ -490,7 +490,7 @@ LRESULT CALLBACK MultiReplaceConfigDialog::PanelSubclassProc(HWND hWnd, UINT uMs
             ::SetTextColor(hdc, RGB(0, 0, 0));
         }
 
-        return (LRESULT)::GetStockObject(NULL_BRUSH);
+        return reinterpret_cast<LRESULT>(::GetStockObject(NULL_BRUSH));
     }
 
     return ::DefSubclassProc(hWnd, uMsg, wParam, lParam);
@@ -536,28 +536,28 @@ HWND MultiReplaceConfigDialog::createPanel() {
     return hPanel;
 }
 HWND MultiReplaceConfigDialog::createGroupBox(HWND parent, int left, int top, int width, int height, int id, const TCHAR* text) {
-    return ::CreateWindowEx(0, WC_BUTTON, text, WS_CHILD | WS_VISIBLE | BS_GROUPBOX, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, (HMENU)(INT_PTR)id, _hInst, nullptr);
+    return ::CreateWindowEx(0, WC_BUTTON, text, WS_CHILD | WS_VISIBLE | BS_GROUPBOX, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
 }
 HWND MultiReplaceConfigDialog::createCheckBox(HWND parent, int left, int top, int width, int id, const TCHAR* text) {
-    return ::CreateWindowEx(0, WC_BUTTON, text, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, scaleX(left), scaleY(top), scaleX(width), scaleY(18), parent, (HMENU)(INT_PTR)id, _hInst, nullptr);
+    return ::CreateWindowEx(0, WC_BUTTON, text, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, scaleX(left), scaleY(top), scaleX(width), scaleY(18), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
 }
 HWND MultiReplaceConfigDialog::createStaticText(HWND parent, int left, int top, int width, int height, int id, const TCHAR* text, DWORD extraStyle) {
-    return ::CreateWindowEx(0, WC_STATIC, text, WS_CHILD | WS_VISIBLE | extraStyle, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, (HMENU)(INT_PTR)id, _hInst, nullptr);
+    return ::CreateWindowEx(0, WC_STATIC, text, WS_CHILD | WS_VISIBLE | extraStyle, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
 }
 HWND MultiReplaceConfigDialog::createNumberEdit(HWND parent, int left, int top, int width, int height, int id) {
-    return ::CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, TEXT(""), WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_LEFT | ES_AUTOHSCROLL | ES_NUMBER, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, (HMENU)(INT_PTR)id, _hInst, nullptr);
+    return ::CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, TEXT(""), WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_LEFT | ES_AUTOHSCROLL | ES_NUMBER, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
 }
 HWND MultiReplaceConfigDialog::createComboDropDownList(HWND parent, int left, int top, int width, int height, int id) {
-    return ::CreateWindowEx(0, WC_COMBOBOX, TEXT(""), WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, (HMENU)(INT_PTR)id, _hInst, nullptr);
+    return ::CreateWindowEx(0, WC_COMBOBOX, TEXT(""), WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
 }
 HWND MultiReplaceConfigDialog::createTrackbarHorizontal(HWND parent, int left, int top, int width, int height, int id) {
-    return ::CreateWindowEx(0, TRACKBAR_CLASS, TEXT(""), WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_BOTTOM, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, (HMENU)(INT_PTR)id, _hInst, nullptr);
+    return ::CreateWindowEx(0, TRACKBAR_CLASS, TEXT(""), WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_BOTTOM, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
 }
 HWND MultiReplaceConfigDialog::createSlider(HWND parent, int left, int top, int width, int height, int id, int minValue, int maxValue, int tickMark) {
     HWND hTrack = createTrackbarHorizontal(parent, left, top, width, height, id);
     ::SendMessage(hTrack, TBM_SETRANGE, TRUE, MAKELPARAM(minValue, maxValue));
     if (tickMark >= minValue && tickMark <= maxValue) {
-        ::SendMessage(hTrack, TBM_SETTIC, 0, (LPARAM)tickMark);
+        ::SendMessage(hTrack, TBM_SETTIC, 0, static_cast<LPARAM>(tickMark));
     }
     return hTrack;
 }
@@ -806,7 +806,7 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
 
         int finalW = rc.right - rc.left;
         int finalH = rc.bottom - rc.top;
-        SetWindowPos(_hSelf, NULL, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(_hSelf, nullptr, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
         safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
@@ -822,12 +822,12 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         applyFonts();
         resizeUI();
 
-        WPARAM mode = (WPARAM)NppDarkMode::dmfInit;
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSelf);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSearchReplacePanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hListViewLayoutPanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hAppearancePanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hCsvFlowTabsPanel);
+        WPARAM mode = static_cast<WPARAM>(NppDarkMode::dmfInit);
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSelf));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSearchReplacePanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hListViewLayoutPanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hAppearancePanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCsvFlowTabsPanel));
     }
 }
 
@@ -900,7 +900,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
         int finalW = rc.right - rc.left;
         int finalH = rc.bottom - rc.top;
 
-        SetWindowPos(_hSelf, NULL, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(_hSelf, nullptr, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
         safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
@@ -915,19 +915,19 @@ void MultiReplaceConfigDialog::resetToDefaults()
         applyFonts();
         resizeUI();
 
-        WPARAM mode = (WPARAM)NppDarkMode::dmfInit;
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSelf);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSearchReplacePanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hListViewLayoutPanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hAppearancePanel);
-        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hCsvFlowTabsPanel);
+        WPARAM mode = static_cast<WPARAM>(NppDarkMode::dmfInit);
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSelf));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSearchReplacePanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hListViewLayoutPanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hAppearancePanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCsvFlowTabsPanel));
     }
 }
 
 void MultiReplaceConfigDialog::applyInternalTheme() {
-    WPARAM mode = (WPARAM)NppDarkMode::dmfInit;
+    WPARAM mode = static_cast<WPARAM>(NppDarkMode::dmfInit);
 
-    SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hSelf);
+    SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSelf));
 
     HWND panels[] = {
         _hSearchReplacePanel,
@@ -938,11 +938,11 @@ void MultiReplaceConfigDialog::applyInternalTheme() {
 
     for (HWND hPanel : panels) {
         if (hPanel) {
-            SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)hPanel);
+            SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(hPanel));
         }
     }
 
-    if (_hCategoryList) SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hCategoryList);
-    if (_hCloseButton) SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hCloseButton);
-    if (_hResetButton) SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, (LPARAM)_hResetButton);
+    if (_hCategoryList) SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCategoryList));
+    if (_hCloseButton) SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCloseButton));
+    if (_hResetButton) SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hResetButton));
 }

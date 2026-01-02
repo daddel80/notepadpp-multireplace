@@ -84,8 +84,7 @@ void ResultDock::ensureCreatedAndVisible(const NppData& npp)
 
     // 2) show again – MUST use the client handle!
     if (_hSci)
-        ::SendMessage(npp._nppHandle, NPPM_DMMSHOW, 0,
-            reinterpret_cast<LPARAM>(_hSci));
+        ::SendMessage(npp._nppHandle, NPPM_DMMSHOW, 0,reinterpret_cast<LPARAM>(_hSci));
 }
 
 void ResultDock::clear()
@@ -106,7 +105,7 @@ void ResultDock::clear()
     S(SCI_SETREADONLY, TRUE);
 
     // remove all folding levels → BASE
-    const int lineCount = (int)S(SCI_GETLINECOUNT);
+    const int lineCount = static_cast<int>(S(SCI_GETLINECOUNT));
     for (int l = 0; l < lineCount; ++l)
         S(SCI_SETFOLDLEVEL, l, SC_FOLDLEVELBASE);;
 
@@ -147,7 +146,7 @@ void ResultDock::rebuildFolding()
 {
     if (!_hSci) return;
 
-    const int lineCount = (int)S(SCI_GETLINECOUNT);
+    const int lineCount = static_cast<int>(S(SCI_GETLINECOUNT));
     if (lineCount <= 0) return;
 
     // Ensure folding is enabled; harmless if already set
@@ -181,22 +180,22 @@ void ResultDock::rebuildFolding()
 
     for (int l = 0; l < lineCount; ++l)
     {
-        const int lineLen = (int)S(SCI_LINELENGTH, l);
+        const int lineLen = static_cast<int>(S(SCI_LINELENGTH, l));
 
         // True blank or whitespace-only → BASE (non-foldable)
         if (lineLen == 0 || !hasContentBeyondIndent(_hSci, l)) {
-            const int cur = (int)S(SCI_GETFOLDLEVEL, l);
+            const int cur = static_cast<int>(S(SCI_GETFOLDLEVEL, l));
             if (cur != BASE) S(SCI_SETFOLDLEVEL, l, BASE);
             continue;
         }
 
-        const int indent = (int)S(SCI_GETLINEINDENTATION, l);
+        const int indent = static_cast<int>(S(SCI_GETLINEINDENTATION, l));
         bool isHdr = false;
         const int level = calcLevel(indent, isHdr);
         const int target = isHdr ? (level | SC_FOLDLEVELHEADERFLAG) : level;
 
         // Only set if value changed to reduce unnecessary messages
-        const int cur = (int)S(SCI_GETFOLDLEVEL, l);
+        const int cur = static_cast<int>(S(SCI_GETFOLDLEVEL, l));
         if (cur != target) {
             S(SCI_SETFOLDLEVEL, l, target);
         }
@@ -395,7 +394,7 @@ void ResultDock::insertFileBlockNow(const FileMap& fm, const SciSendFn& sciSend)
     // For per-file incremental commits we prefer keeping it expanded → re-expand it.
     if (hadOld) {
         const int firstLineOfOldBlock = newBlockLines + 1; // + separator line
-        const int level = (int)S(SCI_GETFOLDLEVEL, firstLineOfOldBlock);
+        const int level = static_cast<int>(S(SCI_GETFOLDLEVEL, firstLineOfOldBlock));
         if (level & SC_FOLDLEVELHEADERFLAG) {
             S(SCI_SETFOLDEXPANDED, firstLineOfOldBlock, TRUE);
             S(SCI_FOLDCHILDREN, firstLineOfOldBlock, SC_FOLDACTION_EXPAND);
@@ -426,7 +425,7 @@ void ResultDock::insertSearchHeader(const std::wstring& header)
     // was just collapsed by prependBlock(). Immediately re-expand it.
     if (hadOld) {
         const int firstLineOfOldBlock = hdrLines + 1; // typically 1
-        const int level = (int)S(SCI_GETFOLDLEVEL, firstLineOfOldBlock);
+        const int level = static_cast<int>(S(SCI_GETFOLDLEVEL, firstLineOfOldBlock));
         if (level & SC_FOLDLEVELHEADERFLAG) {
             S(SCI_SETFOLDEXPANDED, firstLineOfOldBlock, TRUE);
             S(SCI_FOLDCHILDREN, firstLineOfOldBlock, SC_FOLDACTION_EXPAND);
@@ -452,7 +451,7 @@ static void applyControlRepresentations(HWND hSci)
 {
     auto setRep = [&](const char* key, const char* rep)
         {
-            ::SendMessage(hSci, SCI_SETREPRESENTATION, (WPARAM)key, (LPARAM)rep);
+            ::SendMessage(hSci, SCI_SETREPRESENTATION, reinterpret_cast<WPARAM>(key), reinterpret_cast<LPARAM>(rep));
         };
 
     // C0 controls except \t, \n, \r
@@ -496,11 +495,11 @@ void ResultDock::create(const NppData& npp)
     }
 
     // This ensures colors and transparency match the main editor (DirectWrite vs GDI)
-    int tech = (int)::SendMessage(npp._scintillaMainHandle, SCI_GETTECHNOLOGY, 0, 0);
+    int tech = static_cast<int>(::SendMessage(npp._scintillaMainHandle, SCI_GETTECHNOLOGY, 0, 0));
     ::SendMessage(_hSci, SCI_SETTECHNOLOGY, tech, 0);
 
     // Optional: Synchronize bidirectional text settings
-    int bidi = (int)::SendMessage(npp._scintillaMainHandle, SCI_GETBIDIRECTIONAL, 0, 0);
+    int bidi = static_cast<int>(::SendMessage(npp._scintillaMainHandle, SCI_GETBIDIRECTIONAL, 0, 0));
     ::SendMessage(_hSci, SCI_SETBIDIRECTIONAL, bidi, 0);
 
     // 2) Subclass Scintilla so we receive double-clicks and other messages
@@ -648,7 +647,7 @@ void ResultDock::applyTheme()
     S(SCI_STYLESETFORE, STYLE_DEFAULT, editorFg);
     S(SCI_STYLESETBACK, STYLE_DEFAULT, editorBg);
     S(SCI_STYLECLEARALL);
-    S(SCI_STYLESETFONT, STYLE_DEFAULT, (LPARAM)"Consolas");
+    S(SCI_STYLESETFONT, STYLE_DEFAULT, reinterpret_cast<LPARAM>("Consolas"));
     S(SCI_STYLESETSIZE, STYLE_DEFAULT, 10);
 
     // Margin colors
@@ -753,8 +752,8 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
     if (!_hSci || len <= 0) return;
 
     const Sci_Position endPos = pos0 + len;
-    const int firstLine = (int)S(SCI_LINEFROMPOSITION, pos0);
-    const int lastLine = (int)S(SCI_LINEFROMPOSITION, endPos);
+    const int firstLine = static_cast<int>(S(SCI_LINEFROMPOSITION, pos0));
+    const int lastLine = static_cast<int>(S(SCI_LINEFROMPOSITION, endPos));
 
     // Base styling using indentation (no GETLINE)
     Sci_Position lineStartPos = S(SCI_POSITIONFROMLINE, firstLine);
@@ -766,11 +765,11 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
 
     for (int line = firstLine; line <= lastLine; ++line) {
         const Sci_Position ls = S(SCI_POSITIONFROMLINE, line);
-        const int          ll = (int)S(SCI_LINELENGTH, line);
+        const int          ll = static_cast<int>(S(SCI_LINELENGTH, line));
 
         int style = STYLE_DEFAULT;
         if (ll > 0) {
-            const int indent = (int)S(SCI_GETLINEINDENTATION, line);
+            const int indent = static_cast<int>(S(SCI_GETLINEINDENTATION, line));
             if (indent == IND_SRCH) style = STYLE_HEADER;
             else if (indent == IND_CRIT) style = STYLE_CRITHDR;
             else if (indent == IND_FILE) style = STYLE_FILEPATH;
@@ -787,7 +786,7 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
     S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
     for (const auto& h : newHits) {
         if (h.displayLineStart < 0) continue;
-        const int          line = (int)S(SCI_LINEFROMPOSITION, h.displayLineStart);
+        const int          line = static_cast<int>(S(SCI_LINEFROMPOSITION, h.displayLineStart));
         const Sci_Position ls = S(SCI_POSITIONFROMLINE, line);
         const Sci_Position ll = S(SCI_LINELENGTH, line);
         if (ll > 0) S(SCI_INDICATORFILLRANGE, ls, ll);
@@ -855,16 +854,16 @@ void ResultDock::rebuildFoldingRange(int firstLine, int lastLine) const
 
     for (int l = firstLine; l <= lastLine; ++l) {
         // Treat whitespace-only like blank
-        const int lineLen = (int)S(SCI_LINELENGTH, l);
+        const int lineLen = static_cast<int>(S(SCI_LINELENGTH, l));
         int target = BASE;
         if (lineLen > 0 && hasContentBeyondIndent(_hSci, l)) {
-            const int indent = (int)S(SCI_GETLINEINDENTATION, l);
+            const int indent = static_cast<int>(S(SCI_GETLINEINDENTATION, l));
             bool isHdr = false;
             const int lvl = calcLevel(indent, isHdr);
             target = isHdr ? (lvl | SC_FOLDLEVELHEADERFLAG) : lvl;
         }
 
-        const int cur = (int)S(SCI_GETFOLDLEVEL, l);
+        const int cur = static_cast<int>(S(SCI_GETFOLDLEVEL, l));
         if (cur != target) S(SCI_SETFOLDLEVEL, l, target);
     }
 
@@ -921,7 +920,7 @@ void ResultDock::prependBlock(const std::wstring& dockText, std::vector<Hit>& ne
 
     if (oldLen > 0) {
         const int firstLineOfOldBlock = newBlockLines + 1;
-        const int level = (int)S(SCI_GETFOLDLEVEL, firstLineOfOldBlock);
+        const int level = static_cast<int>(S(SCI_GETFOLDLEVEL, firstLineOfOldBlock));
         if ((level & SC_FOLDLEVELHEADERFLAG) && S(SCI_GETFOLDEXPANDED, firstLineOfOldBlock))
             S(SCI_FOLDLINE, firstLineOfOldBlock, SC_FOLDACTION_CONTRACT);
     }
@@ -943,7 +942,7 @@ void ResultDock::collapseOldSearches()
     for (size_t i = 0; i < lastIdx; ++i) {
         const int headerLine = _searchHeaderLines[i];
         /// Safety check: ensure headerLine is within the current line count.
-        const int lineCount = (int)S(SCI_GETLINECOUNT);
+        const int lineCount = static_cast<int>(S(SCI_GETLINECOUNT));
         if (headerLine >= 0 && headerLine < lineCount) {
             S(SCI_SETFOLDEXPANDED, headerLine, FALSE);
             S(SCI_FOLDCHILDREN, headerLine, SC_FOLDACTION_CONTRACT);
@@ -1070,7 +1069,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     std::vector<int> lineNumbers; lineNumbers.reserve(hits.size());
     size_t maxDigits = 0;
     for (const Hit& h : hits) {
-        int line1 = (int)sciSend(SCI_LINEFROMPOSITION, h.pos, 0) + 1;
+        int line1 = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, h.pos, 0)) + 1;
         lineNumbers.push_back(line1);
         maxDigits = (std::max)(maxDigits, std::to_wstring(line1).size());
     }
@@ -1101,9 +1100,9 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                 return;
 
             // raw line
-            const int rawLen = (int)sciSend(SCI_LINELENGTH, line0, 0);
+            const int rawLen = static_cast<int>(sciSend(SCI_LINELENGTH, line0, 0));
             cachedRaw.assign(rawLen + 1, '\0');
-            sciSend(SCI_GETLINE, line0, (LPARAM)cachedRaw.data());
+            sciSend(SCI_GETLINE, line0, reinterpret_cast<LPARAM>(cachedRaw.data()));
             cachedRaw.resize(rawLen);
             while (!cachedRaw.empty() && (cachedRaw.back() == '\r' || cachedRaw.back() == '\n'))
                 cachedRaw.pop_back();
@@ -1415,7 +1414,7 @@ int ResultDock::ancestorFileLine(HWND hSci, int startLine) {
         };
 
     for (int l = startLine; l >= 0; --l) {
-        int len = (int)Sx(SCI_LINELENGTH, l);
+        int len = static_cast<int>(Sx(SCI_LINELENGTH, l));
         std::string raw(len, '\0');
         Sx(SCI_GETLINE, l, (sptr_t)raw.data());
         raw.resize(strnlen(raw.c_str(), len));
@@ -1430,7 +1429,7 @@ std::wstring ResultDock::getLineW(HWND hSci, int line) {
     auto Sx = [&](UINT m, uptr_t w = 0, sptr_t l = 0)->sptr_t {
         return fn ? fn(ptr, m, w, l) : ::SendMessage(hSci, m, w, l);
         };
-    int len = (int)Sx(SCI_LINELENGTH, line);
+    int len = static_cast<int>(Sx(SCI_LINELENGTH, line));
     std::string raw(len, '\0');
     Sx(SCI_GETLINE, line, (sptr_t)raw.data());
     raw.resize(strnlen(raw.c_str(), len));
@@ -1462,7 +1461,7 @@ bool ResultDock::FileExistsW(const std::wstring& fullPath)
 
 std::wstring ResultDock::GetNppProgramDir()
 {
-    wchar_t buf[MAX_PATH] = { 0 };
+    wchar_t buf[MAX_PATH] = {};
     DWORD n = ::GetModuleFileNameW(nullptr, buf, MAX_PATH);
     std::wstring exePath = (n ? std::wstring(buf, n) : std::wstring());
     const size_t pos = exePath.find_last_of(L"\\/");
@@ -1471,23 +1470,23 @@ std::wstring ResultDock::GetNppProgramDir()
 
 bool ResultDock::IsCurrentDocByFullPath(const std::wstring& fullPath)
 {
-    wchar_t cur[MAX_PATH] = { 0 };
-    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, (WPARAM)MAX_PATH, (LPARAM)cur);
+    wchar_t cur[MAX_PATH] = {};
+    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, static_cast<WPARAM>(MAX_PATH), reinterpret_cast<LPARAM>(cur));
     return (_wcsicmp(cur, fullPath.c_str()) == 0);
 }
 
 bool ResultDock::IsCurrentDocByTitle(const std::wstring& titleOnly)
 {
     // Compare against current tab title (filename only)
-    wchar_t name[MAX_PATH] = { 0 };
-    ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, (WPARAM)MAX_PATH, (LPARAM)name);
+    wchar_t name[MAX_PATH] = {};
+    ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, static_cast<WPARAM>(MAX_PATH), reinterpret_cast<LPARAM>(name));
     return (_wcsicmp(name, titleOnly.c_str()) == 0);
 }
 
 void ResultDock::SwitchToFileIfOpenByFullPath(const std::wstring& fullPath)
 {
     // NPP reuses an existing tab if the file is open; otherwise: no effect.
-    ::SendMessage(nppData._nppHandle, NPPM_SWITCHTOFILE, 0, (LPARAM)fullPath.c_str());
+    ::SendMessage(nppData._nppHandle, NPPM_SWITCHTOFILE, 0, reinterpret_cast<LPARAM>(fullPath.c_str()));
 }
 
 std::wstring ResultDock::BuildDefaultPathForPseudo(const std::wstring& label)
@@ -1522,7 +1521,7 @@ bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, st
 
     // Not open: try to open if it exists
     if (FileExistsW(desiredPath)) {
-        ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)desiredPath.c_str());
+        ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(desiredPath.c_str()));
         outOpenedPath = desiredPath;
         return true;
     }
@@ -1545,7 +1544,7 @@ bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, st
     ::CloseHandle(hFile);
 
     // Open the just created file
-    const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)desiredPath.c_str());
+    const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(desiredPath.c_str()));
     if (ok) {
         outOpenedPath = desiredPath;
         return true;
@@ -1561,7 +1560,7 @@ void ResultDock::JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len
 {
     // Always use the currently active Scintilla to avoid focusing the wrong view.
     int whichView = 0; // 0 main, 1 secondary
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&whichView);
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&whichView));
     HWND hEd = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
     if (!hEd)
         return;
@@ -1586,13 +1585,13 @@ void ResultDock::JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len
     ::SendMessage(hEd, SCI_SETSEL, startPos, endPos);
 
     // Ensure full range is visible horizontally as well
-    ::SendMessage(hEd, SCI_SCROLLRANGE, (WPARAM)startPos, (LPARAM)endPos);
+    ::SendMessage(hEd, SCI_SCROLLRANGE, static_cast<WPARAM>(startPos), static_cast<LPARAM>(endPos));
 
     // --- Vertical centering (wrap-aware) ---
     // Use y-position of the match relative to the current viewport.
-    const int yCaret = (int)::SendMessage(hEd, SCI_POINTYFROMPOSITION, 0, (LPARAM)startPos);
-    int lineHeight = (int)::SendMessage(hEd, SCI_TEXTHEIGHT, 0, 0);
-    int linesOnScr = (int)::SendMessage(hEd, SCI_LINESONSCREEN, 0, 0);
+    const int yCaret = static_cast<int>(::SendMessage(hEd, SCI_POINTYFROMPOSITION, 0, static_cast<LPARAM>(startPos)));
+    int lineHeight = static_cast<int>(::SendMessage(hEd, SCI_TEXTHEIGHT, 0, 0));
+    int linesOnScr = static_cast<int>(::SendMessage(hEd, SCI_LINESONSCREEN, 0, 0));
 
     if (lineHeight <= 0) lineHeight = 1;
     if (linesOnScr <= 0) linesOnScr = 1;
@@ -1605,7 +1604,7 @@ void ResultDock::JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len
     if (deltaSubLines != 0)
     {
         // Scroll by sublines; Scintilla treats the second arg as display lines (wrap-aware).
-        ::SendMessage(hEd, SCI_LINESCROLL, 0, (WPARAM)deltaSubLines);
+        ::SendMessage(hEd, SCI_LINESCROLL, 0, static_cast<WPARAM>(deltaSubLines));
     }
 
     // Keep caret selection consistent after scroll
@@ -1643,15 +1642,15 @@ void ResultDock::copySelectedLines(HWND hSci) {
     Sci_Position a = (Sci_Position)Sx(SCI_GETSELECTIONNANCHOR);
     Sci_Position c = (Sci_Position)Sx(SCI_GETCURRENTPOS);
     if (a > c) std::swap(a, c);
-    int lineStart = (int)Sx(SCI_LINEFROMPOSITION, a);
-    int lineEnd = (int)Sx(SCI_LINEFROMPOSITION, c);
+    int lineStart = static_cast<int>(Sx(SCI_LINEFROMPOSITION, a));
+    int lineEnd = static_cast<int>(Sx(SCI_LINEFROMPOSITION, c));
     bool hasSel = (a != c);
 
     std::vector<std::wstring> out;
 
     if (hasSel) {                               // ----- selection mode
         for (int l = lineStart; l <= lineEnd; ++l) {
-            int len = (int)Sx(SCI_LINELENGTH, l);
+            int len = static_cast<int>(Sx(SCI_LINELENGTH, l));
             std::string raw(len, '\0');
             Sx(SCI_GETLINE, l, (sptr_t)raw.data());
             raw.resize(strnlen(raw.c_str(), len));
@@ -1661,16 +1660,16 @@ void ResultDock::copySelectedLines(HWND hSci) {
     }
     else {                                    // ----- caret hierarchy walk
         int caretLine = lineStart;
-        int len = (int)Sx(SCI_LINELENGTH, caretLine);
+        int len = static_cast<int>(Sx(SCI_LINELENGTH, caretLine));
         std::string rawCaret(len, '\0');
         Sx(SCI_GETLINE, caretLine, (sptr_t)rawCaret.data());
         rawCaret.resize(strnlen(rawCaret.c_str(), len));
         LineKind kind = classify(rawCaret);
 
         auto pushHitsBelow = [&](int fromLine, int minIndent) {
-            int total = (int)Sx(SCI_GETLINECOUNT);
+            int total = static_cast<int>(Sx(SCI_GETLINECOUNT));
             for (int l = fromLine; l < total; ++l) {
-                int lLen = (int)Sx(SCI_LINELENGTH, l);
+                int lLen = static_cast<int>(Sx(SCI_LINELENGTH, l));
                 std::string raw(lLen, '\0');
                 Sx(SCI_GETLINE, l, (sptr_t)raw.data());
                 raw.resize(strnlen(raw.c_str(), lLen));
@@ -1736,8 +1735,8 @@ void ResultDock::copySelectedPaths(HWND hSci) {
     Sci_Position a = (Sci_Position)Sx(SCI_GETSELECTIONNANCHOR);
     Sci_Position c = (Sci_Position)Sx(SCI_GETCURRENTPOS);
     if (a > c) std::swap(a, c);
-    int lineStart = (int)Sx(SCI_LINEFROMPOSITION, a);
-    int lineEnd = (int)Sx(SCI_LINEFROMPOSITION, c);
+    int lineStart = static_cast<int>(Sx(SCI_LINEFROMPOSITION, a));
+    int lineEnd = static_cast<int>(Sx(SCI_LINEFROMPOSITION, c));
     bool hasSel = (a != c);
 
     std::vector<std::wstring> paths;
@@ -1745,9 +1744,9 @@ void ResultDock::copySelectedPaths(HWND hSci) {
     auto addUnique = [&](const std::wstring& p) { if (seen.insert(p).second) paths.push_back(p); };
 
     auto pushFileHdrsBelow = [&](int fromLine, int minIndent) {
-        int total = (int)Sx(SCI_GETLINECOUNT);
+        int total = static_cast<int>(Sx(SCI_GETLINECOUNT));
         for (int l = fromLine; l < total; ++l) {
-            int lLen = (int)Sx(SCI_LINELENGTH, l);
+            int lLen = static_cast<int>(Sx(SCI_LINELENGTH, l));
             std::string raw(lLen, '\0');
             Sx(SCI_GETLINE, l, (sptr_t)raw.data());
             raw.resize(strnlen(raw.c_str(), lLen));
@@ -1762,7 +1761,7 @@ void ResultDock::copySelectedPaths(HWND hSci) {
 
     if (hasSel) {
         for (int l = lineStart; l <= lineEnd; ++l) {
-            int len = (int)Sx(SCI_LINELENGTH, l);
+            int len = static_cast<int>(Sx(SCI_LINELENGTH, l));
             std::string raw(len, '\0');
             Sx(SCI_GETLINE, l, (sptr_t)raw.data());
             raw.resize(strnlen(raw.c_str(), len));
@@ -1779,7 +1778,7 @@ void ResultDock::copySelectedPaths(HWND hSci) {
     }
     else {
         int caretLine = lineStart;
-        int len = (int)Sx(SCI_LINELENGTH, caretLine);
+        int len = static_cast<int>(Sx(SCI_LINELENGTH, caretLine));
         std::string raw(len, '\0');
         Sx(SCI_GETLINE, caretLine, (sptr_t)raw.data());
         raw.resize(strnlen(raw.c_str(), len));
@@ -1825,13 +1824,13 @@ void ResultDock::openSelectedPaths(HWND hSci) {
     Sci_Position a = (Sci_Position)Sx(SCI_GETSELECTIONNANCHOR);
     Sci_Position c = (Sci_Position)Sx(SCI_GETCURRENTPOS);
     if (a > c) std::swap(a, c);
-    int lineStart = (int)Sx(SCI_LINEFROMPOSITION, a);
-    int lineEnd = (int)Sx(SCI_LINEFROMPOSITION, c);
+    int lineStart = static_cast<int>(Sx(SCI_LINEFROMPOSITION, a));
+    int lineEnd = static_cast<int>(Sx(SCI_LINEFROMPOSITION, c));
 
     std::unordered_set<std::wstring> opened;
 
     for (int l = lineStart; l <= lineEnd; ++l) {
-        int len = (int)Sx(SCI_LINELENGTH, l);
+        int len = static_cast<int>(Sx(SCI_LINELENGTH, l));
         std::string raw(len, '\0');
         Sx(SCI_GETLINE, l, (sptr_t)raw.data());
         raw.resize(strnlen(raw.c_str(), len));
@@ -1840,14 +1839,14 @@ void ResultDock::openSelectedPaths(HWND hSci) {
         if (k == LineKind::FileHdr) {
             std::wstring p = pathFromFileHdr(Encoding::utf8ToWString(raw));
             if (opened.insert(p).second)
-                ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)p.c_str());
+                ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(p.c_str()));
         }
         else if (k == LineKind::HitLine || k == LineKind::CritHdr) {
             int fLine = ancestorFileLine(hSci, l);
             if (fLine != -1) {
                 std::wstring p = pathFromFileHdr(getLineW(hSci, fLine));
                 if (opened.insert(p).second)
-                    ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)p.c_str());
+                    ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(p.c_str()));
             }
         }
     }
@@ -1868,8 +1867,8 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     Sci_Position c = (Sci_Position)Sx(SCI_GETCURRENTPOS);
     if (a > c) std::swap(a, c);
 
-    int firstLine = (int)Sx(SCI_LINEFROMPOSITION, a);
-    int lastLine = (int)Sx(SCI_LINEFROMPOSITION, c);
+    int firstLine = static_cast<int>(Sx(SCI_LINEFROMPOSITION, a));
+    int lastLine = static_cast<int>(Sx(SCI_LINEFROMPOSITION, c));
     bool hasSel = (a != c);
 
     // Build list of display-line ranges to delete (unchanged logic)
@@ -1877,9 +1876,9 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     std::vector<DelRange> ranges;
 
     auto subtreeEnd = [&](int fromLine, int minIndent) -> int {
-        int total = (int)Sx(SCI_GETLINECOUNT);
+        int total = static_cast<int>(Sx(SCI_GETLINECOUNT));
         for (int l = fromLine; l < total; ++l) {
-            int len = (int)Sx(SCI_LINELENGTH, l);
+            int len = static_cast<int>(Sx(SCI_LINELENGTH, l));
             std::string raw(len, '\0');
             Sx(SCI_GETLINE, l, (sptr_t)raw.data());
             raw.resize(strnlen(raw.c_str(), len));
@@ -1889,7 +1888,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
             if (indent <= minIndent && classify(raw) != LineKind::HitLine)
                 return l - 1;
         }
-        return (int)Sx(SCI_GETLINECOUNT) - 1;
+        return static_cast<int>(Sx(SCI_GETLINECOUNT) - 1);
         };
 
     auto pushRange = [&](int f, int l) {
@@ -1903,7 +1902,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
         for (int l = firstLine; l <= lastLine; ++l) {
             if (!ranges.empty() && l <= ranges.back().last) continue;
 
-            int len = (int)Sx(SCI_LINELENGTH, l);
+            int len = static_cast<int>(Sx(SCI_LINELENGTH, l));
             std::string raw(len, '\0');
             Sx(SCI_GETLINE, l, (sptr_t)raw.data());
             raw.resize(strnlen(raw.c_str(), len));
@@ -1921,7 +1920,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
         }
     }
     else {
-        int len = (int)Sx(SCI_LINELENGTH, firstLine);
+        int len = static_cast<int>(Sx(SCI_LINELENGTH, firstLine));
         std::string raw(len, '\0');
         Sx(SCI_GETLINE, firstLine, (sptr_t)raw.data());
         raw.resize(strnlen(raw.c_str(), len));
@@ -1954,7 +1953,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
         Sci_Position p1 = (Sci_Position)Sx(SCI_GETLINEENDPOSITION, l1);
 
         // include trailing CRLF if not EOF
-        const int totalLines = (int)Sx(SCI_GETLINECOUNT);
+        const int totalLines = static_cast<int>(Sx(SCI_GETLINECOUNT));
         if (l1 < totalLines - 1)
             p1 += 2;
 
@@ -2005,7 +2004,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
         SCNotification* scn = reinterpret_cast<SCNotification*>(lp);
         if (scn->nmhdr.code == SCN_MARGINCLICK && scn->margin == 2) {
-            int line = (int)::SendMessage(hwnd, SCI_LINEFROMPOSITION, scn->position, 0);
+            int line = static_cast<int>(::SendMessage(hwnd, SCI_LINEFROMPOSITION, scn->position, 0));
             ::SendMessage(hwnd, SCI_TOGGLEFOLD, line, 0);
             return 0;
         }
@@ -2014,16 +2013,16 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
     case WM_LBUTTONDBLCLK:
     {
-        const int firstVisible = (int)::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0);
+        const int firstVisible = static_cast<int>(::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0));
 
         const int x = LOWORD(lp);
         const int y = HIWORD(lp);
         const Sci_Position posInDock = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y);
         if (posInDock < 0) return 0;
 
-        const int dispLine = (int)::SendMessage(hwnd, SCI_LINEFROMPOSITION, posInDock, 0);
+        const int dispLine = static_cast<int>(::SendMessage(hwnd, SCI_LINEFROMPOSITION, posInDock, 0));
 
-        const int level = (int)::SendMessage(hwnd, SCI_GETFOLDLEVEL, dispLine, 0);
+        const int level = static_cast<int>(::SendMessage(hwnd, SCI_GETFOLDLEVEL, dispLine, 0));
         if (level & SC_FOLDLEVELHEADERFLAG) {
             ::SendMessage(hwnd, SCI_TOGGLEFOLD, dispLine, 0);
             const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
@@ -2031,24 +2030,24 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             return 0;
         }
 
-        const int lineLen = (int)::SendMessage(hwnd, SCI_LINELENGTH, dispLine, 0);
+        const int lineLen = static_cast<int>(::SendMessage(hwnd, SCI_LINELENGTH, dispLine, 0));
         if (lineLen <= 0) return 0;
 
         std::string raw(lineLen, '\0');
-        ::SendMessage(hwnd, SCI_GETLINE, dispLine, (LPARAM)raw.data());
+        ::SendMessage(hwnd, SCI_GETLINE, dispLine, reinterpret_cast<LPARAM>(raw.data()));
         raw.resize(strnlen(raw.c_str(), lineLen));
         if (ResultDock::classify(raw) != LineKind::HitLine) return 0;
 
         int hitIndex = -1;
         {
             int count = -1;
-            const int totalLines = (int)::SendMessage(hwnd, SCI_GETLINECOUNT, 0, 0);
+            const int totalLines = static_cast<int>(::SendMessage(hwnd, SCI_GETLINECOUNT, 0, 0));
             const int last = (dispLine < totalLines) ? dispLine : (totalLines - 1);
             for (int i = 0; i <= last; ++i) {
-                const int len = (int)::SendMessage(hwnd, SCI_LINELENGTH, i, 0);
+                const int len = static_cast<int>(::SendMessage(hwnd, SCI_LINELENGTH, i, 0));
                 if (len <= 0) continue;
                 std::string buf(len, '\0');
-                ::SendMessage(hwnd, SCI_GETLINE, i, (LPARAM)buf.data());
+                ::SendMessage(hwnd, SCI_GETLINE, i, reinterpret_cast<LPARAM>(buf.data()));
                 buf.resize(strnlen(buf.c_str(), len));
                 if (ResultDock::classify(buf) == LineKind::HitLine)
                     ++count;
@@ -2094,7 +2093,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
         SetPendingJump(pathToOpen, hit.pos, hit.length);
 
-        const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)pathToOpen.c_str());
+        const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(pathToOpen.c_str()));
         if (!ok) {
             SetPendingJump(L"", 0, 0);
             return 0;
@@ -2127,7 +2126,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
 
     case DMN_CLOSE:
-        ::SendMessage(nppData._nppHandle, NPPM_DMMHIDE, 0, (LPARAM)ResultDock::instance()._hDock);
+        ::SendMessage(nppData._nppHandle, NPPM_DMMHIDE, 0, reinterpret_cast<LPARAM>(ResultDock::instance()._hDock));
         return TRUE;
 
     case WM_KEYDOWN: {
@@ -2137,8 +2136,8 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         }
         if (wp == VK_SPACE || wp == VK_RETURN) {
             Sci_Position pos = ::SendMessage(hwnd, SCI_GETCURRENTPOS, 0, 0);
-            int line = (int)::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0);
-            int level = (int)::SendMessage(hwnd, SCI_GETFOLDLEVEL, line, 0);
+            int line = static_cast<int>(::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0));
+            int level = static_cast<int>(::SendMessage(hwnd, SCI_GETFOLDLEVEL, line, 0));
             if (level & SC_FOLDLEVELHEADERFLAG) {
                 ::SendMessage(hwnd, SCI_TOGGLEFOLD, line, 0);
                 return 0;
@@ -2153,7 +2152,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
     case WM_CONTEXTMENU: {
         // ignore clicks on Scintilla margins
-        if (wp != (WPARAM)hwnd) return 0;
+        if (wp != reinterpret_cast<WPARAM>(hwnd)) return 0;
 
         HMENU hMenu = ::CreatePopupMenu();
         if (!hMenu) return 0;
@@ -2205,11 +2204,11 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             // ── fold / unfold ─────────────────────────────
         case IDM_RD_FOLD_ALL:
         {
-            const int lineCount = (int)::SendMessage(hwnd, SCI_GETLINECOUNT, 0, 0);
+            const int lineCount = static_cast<int>(::SendMessage(hwnd, SCI_GETLINECOUNT, 0, 0));
 
             for (int line = lineCount - 1; line >= 0; --line)
             {
-                const int level = (int)::SendMessage(hwnd, SCI_GETFOLDLEVEL, line, 0);
+                const int level = static_cast<int>(::SendMessage(hwnd, SCI_GETFOLDLEVEL, line, 0));
                 if (level & SC_FOLDLEVELHEADERFLAG)
                 {
                     if (::SendMessage(hwnd, SCI_GETFOLDEXPANDED, line, 0))
@@ -2288,12 +2287,12 @@ void ResultDock::onNppNotification(const SCNotification* notify)
     if (notify->nmhdr.code == NPPN_BUFFERACTIVATED)
     {
         wchar_t cur[MAX_PATH] = {};
-        ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, (LPARAM)cur);
+        ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(cur));
         if (!cur[0] || _wcsicmp(cur, s_pendingPath.c_str()) != 0)
             return;
 
         int whichView = 0;
-        ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&whichView);
+        ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&whichView));
         s_targetEd = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
         s_jumpState = 1;
         return;

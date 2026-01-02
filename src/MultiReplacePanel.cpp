@@ -123,7 +123,7 @@ void MultiReplace::initializeWindowSize()
 
     SetWindowPos(
         _hSelf,
-        NULL,
+        nullptr,
         windowRect.left,
         windowRect.top,
         windowRect.right - windowRect.left,
@@ -143,7 +143,7 @@ void MultiReplace::createFonts() {
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, fontName
         );
-        return hf ? hf : (HFONT)::GetStockObject(DEFAULT_GUI_FONT);
+        return hf ? hf : reinterpret_cast<HFONT>(::GetStockObject(DEFAULT_GUI_FONT));
         };
 
     // Populate Registry
@@ -174,7 +174,7 @@ void MultiReplace::createFonts() {
         crossWidth_scaled = measure(L"\u2716") + 15;
         boxWidth_scaled = measure(L"\u2610") + 15;
 
-        ReleaseDC(NULL, hdc);
+        ReleaseDC(nullptr, hdc);
     }
     deleteButtonColumnWidth = crossWidth_scaled;
 }
@@ -195,7 +195,7 @@ void MultiReplace::applyFonts() {
             FontRole role = pair.second.fontRole;
             HFONT hFont = _fontHandles[static_cast<size_t>(role)];
             if (hFont) {
-                SendMessage(hCtrl, WM_SETFONT, (WPARAM)hFont, TRUE);
+                SendMessage(hCtrl, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
             }
         }
     }
@@ -269,35 +269,35 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
    // --- STATIC CONTROLS ---
 
     // Default Font (Standard)
-    ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_find_what"), SS_RIGHT, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_replace_with"), SS_RIGHT, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_find_what"), SS_RIGHT, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_replace_with"), SS_RIGHT, nullptr, true, FontRole::Standard };
 
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(112), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(112), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
 
     // Note: Replace Hit Edit uses Standard Font implicitly
-    ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(176), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,  LM.getLPCW(L"tooltip_replace_at_matches"), true, FontRole::Standard };
+    ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(176), sx(41), sy(16), WC_EDIT, nullptr, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,  LM.getLPCW(L"tooltip_replace_at_matches"), true, FontRole::Standard };
 
-    ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(173), sy(104), WC_BUTTON, LM.getLPCW(L"panel_search_mode"), BS_GROUPBOX, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_SEARCH_MODE_GROUP] = { sx(180), sy(79), sx(173), sy(104), WC_BUTTON, LM.getLPCW(L"panel_search_mode"), BS_GROUPBOX, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_NORMAL_RADIO] = { sx(188), sy(101), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_normal"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
 
-    ctrlMap[IDC_SCOPE_GROUP] = { sx(367), sy(79), sx(252), sy(125), WC_BUTTON, LM.getLPCW(L"panel_scope"), BS_GROUPBOX, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(375), sy(101), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_SELECTION_RADIO] = { sx(375), sy(126), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(375), sy(150), sx(45), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, NULL, true, FontRole::Standard };
+    ctrlMap[IDC_SCOPE_GROUP] = { sx(367), sy(79), sx(252), sy(125), WC_BUTTON, LM.getLPCW(L"panel_scope"), BS_GROUPBOX, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(375), sy(101), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_SELECTION_RADIO] = { sx(375), sy(126), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(375), sy(150), sx(45), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
 
-    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(412), sy(151), sx(30), sy(20), WC_STATIC, LM.getLPCW(L"panel_cols"), SS_RIGHT, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(443), sy(151), sx(41), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_columns"), true, FontRole::Standard };
-    ctrlMap[IDC_DELIMITER_STATIC] = { sx(485), sy(151), sx(38), sy(20), WC_STATIC, LM.getLPCW(L"panel_delim"), SS_RIGHT, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_DELIMITER_EDIT] = { sx(524), sy(151), sx(25), sy(16), WC_EDIT, NULL, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_delimiter"), true, FontRole::Standard };
-    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(549), sy(151), sx(37), sy(20), WC_STATIC, LM.getLPCW(L"panel_quote"), SS_RIGHT, NULL, true, FontRole::Standard };
-    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(587), sy(151), sx(15), sy(16), WC_EDIT, NULL, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_quote"), true, FontRole::Standard };
+    ctrlMap[IDC_COLUMN_NUM_STATIC] = { sx(412), sy(151), sx(30), sy(20), WC_STATIC, LM.getLPCW(L"panel_cols"), SS_RIGHT, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_COLUMN_NUM_EDIT] = { sx(443), sy(151), sx(41), sy(16), WC_EDIT, nullptr, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_columns"), true, FontRole::Standard };
+    ctrlMap[IDC_DELIMITER_STATIC] = { sx(485), sy(151), sx(38), sy(20), WC_STATIC, LM.getLPCW(L"panel_delim"), SS_RIGHT, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_DELIMITER_EDIT] = { sx(524), sy(151), sx(25), sy(16), WC_EDIT, nullptr, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_delimiter"), true, FontRole::Standard };
+    ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(549), sy(151), sx(37), sy(20), WC_STATIC, LM.getLPCW(L"panel_quote"), SS_RIGHT, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(587), sy(151), sx(15), sy(16), WC_EDIT, nullptr, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_quote"), true, FontRole::Standard };
 
     // Special Fonts for Buttons
     ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(373), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_descending"), true, FontRole::Standard };
@@ -311,74 +311,74 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // --- DYNAMIC CONTROLS ---
 
     // Edit Controls -> Normal1
-    ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false, FontRole::Normal1 };
-    ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(44), comboWidth, sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false, FontRole::Normal1 };
+    ctrlMap[IDC_FIND_EDIT] = { sx(96), sy(14), comboWidth, sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
+    ctrlMap[IDC_REPLACE_EDIT] = { sx(96), sy(44), comboWidth, sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
 
     // Swap Button -> Bold1
-    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Bold1 };
+    ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Bold1 };
 
-    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(14), sx(128), sy(52), WC_BUTTON, LM.getLPCW(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(91), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(14), sx(128), sy(52), WC_BUTTON, LM.getLPCW(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(91), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
     // Replace All Small -> Normal6
     ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_replace_all"), false, FontRole::Normal6 };
 
     ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, LM.getLPCW(L"tooltip_2_buttons_mode"), false, FontRole::Standard };
 
-    ctrlMap[IDC_FIND_ALL_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_find_all"), BS_SPLITBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_FIND_ALL_BUTTON] = { buttonX, sy(119), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_find_all"), BS_SPLITBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
     findNextButtonText = L"▼ " + LM.get(L"panel_find_next");
-    ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
-    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
     // Copy Marked -> Normal4
     ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_marked_text"), false, FontRole::Normal4 };
 
-    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
     // Status Message -> Normal1
-    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(205) + filesOffsetY, listWidth - sx(5), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, NULL, false, FontRole::Normal1 };
+    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(205) + filesOffsetY, listWidth - sx(5), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, nullptr, false, FontRole::Normal1 };
 
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_new_list"), false, FontRole::Standard };
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
     // Save -> Normal3
     ctrlMap[IDC_SAVE_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save"), false, FontRole::Normal3 };
 
-    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(4), sy(323) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11) + filesOffsetY, sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16) + filesOffsetY, sx(96), sy(16), WC_STATIC, LM.getLPCW(L"panel_move_lines"), SS_LEFT, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227) + filesOffsetY, listWidth, listHeight, WC_LISTVIEW, NULL, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(4), sy(323) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11) + filesOffsetY, sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16) + filesOffsetY, sx(96), sy(16), WC_STATIC, LM.getLPCW(L"panel_move_lines"), SS_LEFT, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227) + filesOffsetY, listWidth, listHeight, WC_LISTVIEW, nullptr, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, nullptr, false, FontRole::Standard };
 
     // Path/Stats -> Normal1
-    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5) + filesOffsetY, listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL, false, FontRole::Normal1 };
-    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, sy(225) + listHeight + sy(5) + filesOffsetY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, NULL, false, FontRole::Normal1 };
+    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), sy(225) + listHeight + sy(5) + filesOffsetY, listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, nullptr, false, FontRole::Normal1 };
+    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, sy(225) + listHeight + sy(5) + filesOffsetY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, nullptr, false, FontRole::Normal1 };
 
     // Use List -> Normal5
-    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY , sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Normal5 };
+    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY , sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Normal5 };
 
-    ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_FILE_OPS_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_filter"), SS_RIGHT, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_FILE_OPS_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_filter"), SS_RIGHT, nullptr, false, FontRole::Standard };
 
     // Filter/Dir Edits -> Normal1
-    ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false, FontRole::Normal1 };
+    ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), comboWidth - sx(170),  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
     ctrlMap[IDC_FILTER_HELP] = { sx(96) + comboWidth - sx(170) + sx(5), sy(228), sx(20), sy(20), WC_STATIC, L"(?)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_filter_help"), false, FontRole::Standard };
-    ctrlMap[IDC_DIR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_directory"), SS_RIGHT, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, NULL, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, NULL, false, FontRole::Normal1 };
+    ctrlMap[IDC_DIR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_directory"), SS_RIGHT, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
 
-    ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(21), sy(230), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, NULL, false, FontRole::Standard };
-    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(21), sy(257), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, NULL, false, FontRole::Standard };
+    ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(21), sy(230), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(21), sy(257), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
 }
 
 HFONT MultiReplace::font(FontRole role) const {
@@ -415,7 +415,7 @@ void MultiReplace::initializeCtrlMap() {
     updateUseListState(false);
 
     // Limit the input for IDC_QUOTECHAR_EDIT to one character
-    SendMessage(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), EM_SETLIMITTEXT, (WPARAM)1, 0);
+    SendMessage(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), EM_SETLIMITTEXT, static_cast<WPARAM>(1), 0);
 
     isWindowOpen = true;
 }
@@ -454,7 +454,7 @@ bool MultiReplace::createAndShowWindows() {
             style,
             pair.second.x, pair.second.y, pair.second.cx, pair.second.cy,
             _hSelf,
-            (HMENU)(INT_PTR)pair.first,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(pair.first)),
             hInstance,
             NULL
         );
@@ -491,13 +491,13 @@ bool MultiReplace::createAndShowWindows() {
                 SendMessage(hwndTooltip, TTM_SETMAXTIPWIDTH, 0, maxWidth);
 
                 // Bind the tooltip to the specific child control (by HWND)
-                TOOLINFO ti = { 0 };
+                TOOLINFO ti = {};
                 ti.cbSize = sizeof(ti);
                 ti.hwnd = _hSelf;                         // parent window
                 ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;    // subclass the control to show tips
                 ti.uId = (UINT_PTR)hwndControl;          // identify by child HWND
                 ti.lpszText = const_cast<LPWSTR>(pair.second.tooltipText);
-                SendMessage(hwndTooltip, TTM_ADDTOOL, 0, (LPARAM)&ti);
+                SendMessage(hwndTooltip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
             }
         }
     }
@@ -622,11 +622,11 @@ void MultiReplace::moveAndResizeControls(bool moveStatic) {
 
         DWORD startSelection = 0, endSelection = 0;
         if (isSelectionSensitive) {
-            SendMessage(resizeHwnd, CB_GETEDITSEL, (WPARAM)&startSelection, (LPARAM)&endSelection);
+            SendMessage(resizeHwnd, CB_GETEDITSEL, reinterpret_cast<WPARAM>(&startSelection), reinterpret_cast<LPARAM>(&endSelection));
         }
 
         // Queue Move
-        hdwp = DeferWindowPos(hdwp, resizeHwnd, NULL, targetX, targetY, targetW, targetH,
+        hdwp = DeferWindowPos(hdwp, resizeHwnd, nullptr, targetX, targetY, targetW, targetH,
             SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
 
         // Restore selection
@@ -710,11 +710,11 @@ void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title)
     MapWindowPoints(HWND_DESKTOP, _hSelf, reinterpret_cast<LPPOINT>(&rcGrp), 2);
 
     // Clean the parent background in the group area
-    RedrawWindow(_hSelf, &rcGrp, NULL,
+    RedrawWindow(_hSelf, &rcGrp, nullptr,
         RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_NOCHILDREN);
 
     // Redraw the groupbox (including non-client frame)
-    RedrawWindow(hGrp, NULL, NULL,
+    RedrawWindow(hGrp, nullptr, nullptr,
         RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE | RDW_NOCHILDREN | RDW_FRAME);
 
     // Redraw visible children (no erase to prevent flicker)
@@ -722,7 +722,7 @@ void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title)
         if (id == IDC_FILE_OPS_GROUP) continue;
         HWND hChild = GetDlgItem(_hSelf, id);
         if (IsWindow(hChild) && IsWindowVisible(hChild)) {
-            RedrawWindow(hChild, NULL, NULL,
+            RedrawWindow(hChild, nullptr, nullptr,
                 RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
         }
     }
@@ -825,7 +825,7 @@ void MultiReplace::updateFilesPanel()
             for (int id : idsShiftedUp) {
                 HWND hCtrl = GetDlgItem(_hSelf, id);
                 if (IsWindow(hCtrl) && IsWindowVisible(hCtrl)) {
-                    RedrawWindow(hCtrl, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
+                    RedrawWindow(hCtrl, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
                 }
             }
 
@@ -834,7 +834,7 @@ void MultiReplace::updateFilesPanel()
             lastTitleKey.clear();
 
         }
-        RedrawWindow(_hSelf, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
+        RedrawWindow(_hSelf, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
 
         lastShow = show;
         if (show) lastTitleKey = titleKey;
@@ -952,7 +952,7 @@ void MultiReplace::adjustWindowSize() {
     int newHeight = useListEnabled ? std::max(useListOnHeight, minHeight) : useListOffHeight;
 
     // Adjust the window size while keeping the current position and width
-    SetWindowPos(_hSelf, NULL, currentX, currentY, currentWidth, newHeight, SWP_NOZORDER);
+    SetWindowPos(_hSelf, nullptr, currentX, currentY, currentWidth, newHeight, SWP_NOZORDER);
 }
 
 void MultiReplace::updateUseListState(bool isUpdate)
@@ -973,10 +973,10 @@ void MultiReplace::updateUseListState(bool isUpdate)
     if (!isUpdate && !_hUseListButtonTooltip)
     {
         _hUseListButtonTooltip = CreateWindowEx(
-            NULL, TOOLTIPS_CLASS, NULL,
+            0, TOOLTIPS_CLASS, nullptr,
             WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON,  // Use the same styles as in createAndShowWindows
             CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-            _hSelf, NULL, hInstance, NULL);
+            _hSelf, nullptr, hInstance, nullptr);
 
         if (!_hUseListButtonTooltip)
         {
@@ -994,7 +994,7 @@ void MultiReplace::updateUseListState(bool isUpdate)
     }
 
     // Prepare the TOOLINFO structure
-    TOOLINFO ti = { 0 };
+    TOOLINFO ti = {};
     ti.cbSize = sizeof(TOOLINFO);
     ti.hwnd = _hSelf;  // Parent window handle
     ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
@@ -1007,11 +1007,11 @@ void MultiReplace::updateUseListState(bool isUpdate)
     // If it's an update, delete the old tooltip first
     if (isUpdate)
     {
-        SendMessage(_hUseListButtonTooltip, TTM_DELTOOL, 0, (LPARAM)&ti);
+        SendMessage(_hUseListButtonTooltip, TTM_DELTOOL, 0, reinterpret_cast<LPARAM>(&ti));
     }
 
     // Add or update the tooltip
-    SendMessage(_hUseListButtonTooltip, TTM_ADDTOOL, 0, (LPARAM)&ti);
+    SendMessage(_hUseListButtonTooltip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
 }
 
 void MultiReplace::loadLanguageGlobal() {
@@ -1046,7 +1046,7 @@ void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& ite
 
     // Update the ListView
     ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
 
     // Create undo and redo actions
     UndoRedoAction action;
@@ -1058,7 +1058,7 @@ void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& ite
 
         // Update the ListView
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
 
         // Deselect all items
         ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
@@ -1074,7 +1074,7 @@ void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& ite
 
         // Update the ListView
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
 
         // Deselect all items
         ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
@@ -1108,7 +1108,7 @@ void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indices
 
     // Update the ListView to reflect changes
     ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
 
     // Create undo and redo actions
     UndoRedoAction action;
@@ -1124,7 +1124,7 @@ void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indices
 
         // Update the ListView to include restored items
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
 
         // Deselect all items
         ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
@@ -1163,7 +1163,7 @@ void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indices
 
         // Update the ListView to reflect removal
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
 
         // Deselect all items
         ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
@@ -1261,7 +1261,7 @@ bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Directio
 
     // Update the ListView
     ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
 
     // Create Undo/Redo actions
     UndoRedoAction action;
@@ -1274,7 +1274,7 @@ bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Directio
 
         // Update the ListView
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
 
         // Deselect all items
         ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
@@ -1298,7 +1298,7 @@ bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Directio
 
         // Update the ListView
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
 
         // Deselect all items
         ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
@@ -1355,7 +1355,7 @@ void MultiReplace::sortItemsInReplaceList(const std::vector<size_t>& originalOrd
         // Update UI
         updateHeaderSortDirection();
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
         };
 
     // Redo action: Restore sorted order and current sort state
@@ -1378,7 +1378,7 @@ void MultiReplace::sortItemsInReplaceList(const std::vector<size_t>& originalOrd
         // Update UI
         updateHeaderSortDirection();
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
         };
 
     // Push the action onto the undo stack
@@ -1443,11 +1443,11 @@ HWND MultiReplace::CreateHeaderTooltip(HWND hwndParent)
     HWND hwndTT = CreateWindowEx(
         WS_EX_TOPMOST,
         TOOLTIPS_CLASS,
-        NULL,
+        nullptr,
         WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
         hwndParent,
-        NULL,
+        nullptr,
         GetModuleHandle(NULL),
         NULL
     );
@@ -1464,7 +1464,7 @@ void MultiReplace::AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnInde
     RECT rect;
     Header_GetItemRect(hwndHeader, columnIndex, &rect);
 
-    TOOLINFO ti = { 0 };
+    TOOLINFO ti = {};
     ti.cbSize = sizeof(TOOLINFO);
     ti.uFlags = TTF_SUBCLASS;
     ti.hwnd = hwndHeader;
@@ -1473,8 +1473,8 @@ void MultiReplace::AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnInde
     ti.lpszText = const_cast<LPWSTR>(pszText);
     ti.rect = rect;
 
-    SendMessage(hwndTT, TTM_DELTOOL, 0, (LPARAM)&ti);
-    SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)&ti);
+    SendMessage(hwndTT, TTM_DELTOOL, 0, reinterpret_cast<LPARAM>(&ti));
+    SendMessage(hwndTT, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
 }
 
 void MultiReplace::createListViewColumns() {
@@ -1963,7 +1963,7 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
     // Update Header if there might be any changes
     updateHeaderSelection();
 
-    InvalidateRect(_replaceListView, NULL, TRUE);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
 
     showStatusMessage(LM.get(L"status_one_line_deleted"), MessageStatus::Success);
 }
@@ -2081,7 +2081,7 @@ void MultiReplace::sortReplaceListData(int columnID) {
     // Update the UI and restore the selection
     updateHeaderSortDirection();
     ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
     selectRows(selectedIDs);
 
     // Delegate undo/redo creation to the new function
@@ -2149,7 +2149,7 @@ void MultiReplace::resetCountColumns() {
 
     // Update the list view to immediately reflect the changes
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
 }
 
 void MultiReplace::updateCountColumns(const size_t itemIndex, const int findCount, int replaceCount)
@@ -2180,7 +2180,7 @@ void MultiReplace::clearList() {
 
     // Update the ListView to reflect the cleared list
     ListView_SetItemCountEx(_replaceListView, 0, LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
 
     // Reset listFilePath to an empty string
     listFilePath.clear();
@@ -2195,7 +2195,7 @@ void MultiReplace::clearList() {
 void MultiReplace::refreshUIListView()
 {
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
 }
 
 void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
@@ -2232,7 +2232,7 @@ void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
     createListViewColumns();
 
     // Refresh the ListView (if necessary)
-    InvalidateRect(listView, NULL, TRUE);
+    InvalidateRect(listView, nullptr, TRUE);
 }
 
 ColumnID MultiReplace::getColumnIDFromIndex(int columnIndex) const {
@@ -2277,7 +2277,7 @@ void MultiReplace::updateHeaderSelection() {
     }
 
     // Initialize the LVCOLUMN structure
-    LVCOLUMN lvc = { 0 };
+    LVCOLUMN lvc = {};
     lvc.mask = LVCF_TEXT;
 
     // Determine the symbol to show in the header
@@ -2385,13 +2385,13 @@ void MultiReplace::showListFilePath()
         return;
 
     HDC hDC = GetDC(hPathDisplay);
-    HFONT hFont = (HFONT)SendMessage(hPathDisplay, WM_GETFONT, 0, 0);
+    HFONT hFont = reinterpret_cast<HFONT>(SendMessage(hPathDisplay, WM_GETFONT, 0, 0));
     SelectObject(hDC, hFont);
 
     // Get ListView dimensions
     RECT rcListView;
     GetWindowRect(hListView, &rcListView);
-    MapWindowPoints(NULL, _hSelf, reinterpret_cast<LPPOINT>(&rcListView), 2);
+    MapWindowPoints(nullptr, _hSelf, reinterpret_cast<LPPOINT>(&rcListView), 2);
     int listWidth = rcListView.right - rcListView.left;
 
     const int spacing = sx(10);
@@ -2453,10 +2453,10 @@ void MultiReplace::showListFilePath()
     ReleaseDC(hPathDisplay, hDC);
 
     // Immediate redraw
-    InvalidateRect(hPathDisplay, NULL, TRUE);
+    InvalidateRect(hPathDisplay, nullptr, TRUE);
     UpdateWindow(hPathDisplay);
     if (hStatsDisplay) {
-        InvalidateRect(hStatsDisplay, NULL, TRUE);
+        InvalidateRect(hStatsDisplay, nullptr, TRUE);
         UpdateWindow(hStatsDisplay);
     }
 }
@@ -2530,7 +2530,7 @@ void MultiReplace::destroyAllTooltipWindows()
             HWND hFilterHelp = GetDlgItem(pThis->_hSelf, IDC_FILTER_HELP);
             if (hFilterHelp) {
                 TOOLINFO ti{}; ti.cbSize = sizeof(ti);
-                for (int i = 0; SendMessage(hwnd, TTM_ENUMTOOLS, (WPARAM)i, (LPARAM)&ti); ++i) {
+                for (int i = 0; SendMessage(hwnd, TTM_ENUMTOOLS, static_cast<WPARAM>(i), reinterpret_cast<LPARAM>(&ti)); ++i) {
                     if ((ti.uFlags & TTF_IDISHWND) && (HWND)ti.uId == hFilterHelp) {
                         return TRUE; // keep this tooltip window
                     }
@@ -2591,7 +2591,7 @@ void MultiReplace::rebuildAllTooltips()
         ti.uId = (UINT_PTR)hCtrl;
         ti.lpszText = const_cast<LPWSTR>(info.tooltipText);
 
-        SendMessage(hwndTooltip, TTM_ADDTOOL, 0, (LPARAM)&ti);
+        SendMessage(hwndTooltip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
         SendMessage(hwndTooltip, TTM_ACTIVATE, TRUE, 0);
     }
 
@@ -2719,7 +2719,7 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
         editWidth,
         editHeight,
         _replaceListView,
-        NULL,
+        nullptr,
         (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE),
         NULL
     );
@@ -2735,14 +2735,14 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
         buttonWidth,
         buttonHeight,
         _replaceListView,
-        (HMENU)ID_EDIT_EXPAND_BUTTON,
+        reinterpret_cast<HMENU>(ID_EDIT_EXPAND_BUTTON),
         (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE),
         NULL
     );
 
     // Set the _hBoldFont2 to the expand/collapse button
     if (font(FontRole::Bold2)) {
-        SendMessage(hwndExpandBtn, WM_SETFONT, (WPARAM)font(FontRole::Bold2), TRUE);
+        SendMessage(hwndExpandBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font(FontRole::Bold2)), TRUE);
     }
 
     // Set the initial text of the edit control
@@ -2758,9 +2758,9 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
     SetWindowTextW(hwndEdit, (src ? src->c_str() : L""));
 
     // Get the ListView font and set it for the Edit control
-    HFONT hListViewFont = (HFONT)SendMessage(_replaceListView, WM_GETFONT, 0, 0);
+    HFONT hListViewFont = reinterpret_cast<HFONT>(SendMessage(_replaceListView, WM_GETFONT, 0, 0));
     if (hListViewFont) {
-        SendMessage(hwndEdit, WM_SETFONT, (WPARAM)hListViewFont, TRUE);
+        SendMessage(hwndEdit, WM_SETFONT, reinterpret_cast<WPARAM>(hListViewFont), TRUE);
     }
 
     // Focus the edit control and select all its text
@@ -2909,7 +2909,7 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         // Close the edit control if it exists and is visible
         if (pThis->hwndEdit && IsWindow(pThis->hwndEdit)) {
             DestroyWindow(pThis->hwndEdit);
-            pThis->hwndEdit = NULL;
+            pThis->hwndEdit = nullptr;
         }
         // Allow the default list view procedure to handle standard scrolling
         break;
@@ -2967,11 +2967,11 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
                 // If there is an active edit control, destroy it when the header is changed
                 if (pThis->hwndEdit && IsWindow(pThis->hwndEdit)) {
                     DestroyWindow(pThis->hwndEdit);
-                    pThis->hwndEdit = NULL;
+                    pThis->hwndEdit = nullptr;
                 }
 
                 // Set a timer to defer the tooltip update, ensuring the column resize is complete
-                SetTimer(hwnd, 1, 100, NULL);  // Timer ID 1, 100ms delay
+                SetTimer(hwnd, 1, 100, nullptr);  // Timer ID 1, 100ms delay
 
             }
         }
@@ -3081,8 +3081,8 @@ void MultiReplace::toggleEditExpand()
     GetWindowRect(hwndEdit, &rc);
     POINT ptLT = { rc.left, rc.top };
     POINT ptRB = { rc.right, rc.bottom };
-    MapWindowPoints(NULL, _replaceListView, &ptLT, 1);
-    MapWindowPoints(NULL, _replaceListView, &ptRB, 1);
+    MapWindowPoints(nullptr, _replaceListView, &ptLT, 1);
+    MapWindowPoints(nullptr, _replaceListView, &ptRB, 1);
 
     int curWidth = ptRB.x - ptLT.x;
     int curHeight = ptRB.y - ptLT.y;
@@ -3100,7 +3100,7 @@ void MultiReplace::toggleEditExpand()
     _editIsExpanded = !_editIsExpanded;
 
     // Set the _hBoldFont2 to the expand/collapse button
-    SendMessage(hwndExpandBtn, WM_SETFONT, (WPARAM)font(FontRole::Bold2), TRUE);
+    SendMessage(hwndExpandBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font(FontRole::Bold2)), TRUE);
 
     // Update position and size of edit control and button
     MoveWindow(hwndEdit, ptLT.x, ptLT.y, curWidth, newHeight, TRUE);
@@ -3656,7 +3656,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         if (hwndStatic == GetDlgItem(_hSelf, IDC_STATUS_MESSAGE)) {
             SetTextColor(hdcStatic, _statusMessageColor);
             SetBkMode(hdcStatic, TRANSPARENT);
-            return (LRESULT)GetStockObject(NULL_BRUSH); // Return a brush handle
+            return reinterpret_cast<LRESULT>(GetStockObject(NULL_BRUSH)); // Return a brush handle
         }
 
         return FALSE;
@@ -3666,7 +3666,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
 
         if (_replaceListView && originalListViewProc) {
-            SetWindowLongPtr(_replaceListView, GWLP_WNDPROC, (LONG_PTR)originalListViewProc);
+            SetWindowLongPtr(_replaceListView, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(originalListViewProc));
         }
 
         saveSettings(); // Save any settings before destroying
@@ -3685,7 +3685,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         cleanupFonts();
 
         // Close the debug window if open
-        if (hDebugWnd != NULL) {
+        if (hDebugWnd != nullptr) {
             RECT rect;
             if (GetWindowRect(hDebugWnd, &rect)) {
                 debugWindowPosition.x = rect.left;
@@ -3696,7 +3696,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 debugWindowSizeSet = true;
             }
             PostMessage(hDebugWnd, WM_CLOSE, 0, 0);
-            hDebugWnd = NULL; // Reset the handle after closing
+            hDebugWnd = nullptr; // Reset the handle after closing
         }
 
         // Clean up DPIManager
@@ -3735,7 +3735,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             moveAndResizeControls(false);
 
             // Refresh UI and gripper by invalidating window
-            InvalidateRect(_hSelf, NULL, TRUE);
+            InvalidateRect(_hSelf, nullptr, TRUE);
 
             if (useListEnabled) {
                 // Update useListOnHeight with the new height
@@ -4093,7 +4093,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_CTLCOLORDLG:
     {
         // Store the handle to the brush that the dialog will use to paint its background
-        _hDlgBrush = (HBRUSH)wParam;
+        _hDlgBrush = reinterpret_cast<HBRUSH>(wParam);
         return (INT_PTR)_hDlgBrush;
     }
 
@@ -4121,7 +4121,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
             std::wstring filename = isDark ? L"\\help_use_variables_dark.html" : L"\\help_use_variables_light.html";
             path += filename;
-            ShellExecute(NULL, L"open", path.c_str(), NULL, NULL, SW_SHOWNORMAL);
+            ShellExecute(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
             return TRUE;
         }
 
@@ -4224,7 +4224,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_HIGHLIGHT_BUTTON:
         {
-            int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+            int currentBufferID = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
 
             if (!highlightedTabs.isHighlighted(currentBufferID)) {
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
@@ -5444,8 +5444,8 @@ void MultiReplace::updateFilePathCache(const std::filesystem::path* explicitPath
     }
     else {
         // No specific path was provided. Default to the active Notepad++ document.
-        wchar_t filePathBuffer[MAX_PATH] = { 0 };
-        wchar_t fileNameBuffer[MAX_PATH] = { 0 };
+        wchar_t filePathBuffer[MAX_PATH] = {};
+        wchar_t fileNameBuffer[MAX_PATH] = {};
         ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(filePathBuffer));
         ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH, reinterpret_cast<LPARAM>(fileNameBuffer));
 
@@ -5744,9 +5744,9 @@ int MultiReplace::safeLoadFileSandbox(lua_State* L)
         utf8_buf = std::move(raw);
     }
     else {
-        int wlen = MultiByteToWideChar(CP_ACP, 0, raw.data(), (int)raw.size(), nullptr, 0);
+        int wlen = MultiByteToWideChar(CP_ACP, 0, raw.data(), static_cast<int>(raw.size()), nullptr, 0);
         std::wstring wide(wlen, L'\0');
-        MultiByteToWideChar(CP_ACP, 0, raw.data(), (int)raw.size(), &wide[0], wlen);
+        MultiByteToWideChar(CP_ACP, 0, raw.data(), static_cast<int>(raw.size()), &wide[0], wlen);
 
         int u8len = WideCharToMultiByte(CP_UTF8, 0, wide.data(), wlen, nullptr, 0, nullptr, nullptr);
         utf8_buf.resize(u8len);
@@ -5832,13 +5832,13 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     static bool isClassRegistered = false;
 
     if (!isClassRegistered) {
-        WNDCLASS wc = { 0 };
+        WNDCLASS wc = {};
 
         wc.lpfnWndProc = DebugWindowProc;
         wc.hInstance = hInstance;
         wc.lpszClassName = L"DebugWindowClass";
-        wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-        wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+        wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+        wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
 
         if (!RegisterClass(&wc)) {
             MessageBox(nppData._nppHandle, L"Error registering class", L"Error", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
@@ -5899,7 +5899,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     std::wstring windowTitle = L"Debug Information";
 
     // Check if window already exists - if so, just update content (PERSISTENT WINDOW)
-    if (IsWindow(hDebugWnd) && hDebugListView != NULL) {
+    if (IsWindow(hDebugWnd) && hDebugListView != nullptr) {
         // Update window title
         SetWindowTextW(hDebugWnd, windowTitle.c_str());
 
@@ -5920,7 +5920,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
             if (!std::getline(iss, type, L'\t')) continue;
             std::getline(iss, value);
 
-            LVITEM lvItem;
+            LVITEM lvItem = {};
             lvItem.mask = LVIF_TEXT;
             lvItem.iItem = itemIndex;
             lvItem.iSubItem = 0;
@@ -5933,18 +5933,18 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
 
         // Wait for user response (window stays open)
         debugWindowResponse = -1;
-        MSG msg = { 0 };
+        MSG msg = {};
         while (IsWindow(hDebugWnd) && debugWindowResponse == -1)
         {
             if (_isShuttingDown) {
                 DestroyWindow(hDebugWnd);
                 debugWindowResponse = 3;
-                hDebugWnd = NULL;
-                hDebugListView = NULL;
+                hDebugWnd = nullptr;
+                hDebugListView = nullptr;
                 continue;
             }
 
-            if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+            if (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
             {
                 if (msg.message == WM_QUIT) break;
                 if (!IsDialogMessage(hDebugWnd, &msg)) {
@@ -5959,8 +5959,8 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
 
         // If Stop was pressed or window closed, cleanup
         if (debugWindowResponse != 2) {
-            hDebugWnd = NULL;
-            hDebugListView = NULL;
+            hDebugWnd = nullptr;
+            hDebugListView = nullptr;
         }
 
         return debugWindowResponse;
@@ -5978,10 +5978,10 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         windowTitle.c_str(),
         WS_OVERLAPPEDWINDOW,
         x, y, width, height,
-        nppData._nppHandle, NULL, hInstance, (LPVOID)finalMessage.c_str()
+        nppData._nppHandle, nullptr, hInstance, reinterpret_cast<LPVOID>(const_cast<wchar_t*>(finalMessage.c_str()))
     );
 
-    if (hwnd == NULL) {
+   if (hwnd == nullptr) {
         MessageBoxW(nppData._nppHandle, L"Error creating window", L"Error", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
         return -1;
     }
@@ -5995,7 +5995,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
 
-    MSG msg = { 0 };
+    MSG msg = {};
 
     // Message loop - wait for user response (exit when response is set, NOT when window closes)
     while (IsWindow(hwnd) && debugWindowResponse == -1)
@@ -6003,12 +6003,12 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         if (_isShuttingDown) {
             DestroyWindow(hwnd);
             debugWindowResponse = 3;
-            hDebugWnd = NULL;
-            hDebugListView = NULL;
+            hDebugWnd = nullptr;
+            hDebugListView = nullptr;
             continue;
         }
 
-        if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+        if (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
         {
             if (msg.message == WM_QUIT) {
                 break;
@@ -6050,8 +6050,8 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
 
     // If Stop was pressed or window closed (not Next), cleanup
     if (debugWindowResponse != 2) {
-        hDebugWnd = NULL;
-        hDebugListView = NULL;
+        hDebugWnd = nullptr;
+        hDebugListView = nullptr;
     }
 
     if (debugWindowResponse == 2)
@@ -6074,11 +6074,11 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         hListView = CreateWindowW(WC_LISTVIEW, L"",
             WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
             10, 10, 360, 140,
-            hwnd, (HMENU)1, NULL, NULL);
+            hwnd, reinterpret_cast<HMENU>(1), nullptr, nullptr);
         hDebugListView = hListView;  // Save handle for content updates
 
         // Initialize columns
-        LVCOLUMN lvCol;
+        LVCOLUMN lvCol = {};
         lvCol.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
         lvCol.pszText = L"Variable";
         lvCol.cx = 120;
@@ -6093,17 +6093,17 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         hNextButton = CreateWindowW(L"BUTTON", L"Next",
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
             50, 160, 80, 30,
-            hwnd, (HMENU)2, NULL, NULL);
+            hwnd, reinterpret_cast<HMENU>(2), nullptr, nullptr);
 
         hStopButton = CreateWindowW(L"BUTTON", L"Stop",
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
             150, 160, 80, 30,
-            hwnd, (HMENU)3, NULL, NULL);
+            hwnd, reinterpret_cast<HMENU>(3), nullptr, nullptr);
 
         hCopyButton = CreateWindowW(L"BUTTON", L"Copy",
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
             250, 160, 80, 30,
-            hwnd, (HMENU)4, NULL, NULL);
+            hwnd, reinterpret_cast<HMENU>(4), nullptr, nullptr);
 
         // Extract the debug message from lParam
         LPCWSTR debugMessage = reinterpret_cast<LPCWSTR>(reinterpret_cast<CREATESTRUCT*>(lParam)->lpCreateParams);
@@ -6122,7 +6122,7 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
             if (!std::getline(iss, type, L'\t')) continue;
             std::getline(iss, value);
 
-            LVITEM lvItem;
+            LVITEM lvItem = {};
             lvItem.mask = LVIF_TEXT;
             lvItem.iItem = itemIndex;
             lvItem.iSubItem = 0;
@@ -6146,10 +6146,10 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         int buttonHeight = 30;
         int listHeight = rect.bottom - buttonHeight - 40; // 40 for padding
 
-        SetWindowPos(hListView, NULL, 10, 10, rect.right - 20, listHeight, SWP_NOZORDER);
-        SetWindowPos(hNextButton, NULL, 10, rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
-        SetWindowPos(hStopButton, NULL, buttonWidth + 20, rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
-        SetWindowPos(hCopyButton, NULL, 2 * (buttonWidth + 20), rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
+        SetWindowPos(hListView, nullptr, 10, 10, rect.right - 20, listHeight, SWP_NOZORDER);
+        SetWindowPos(hNextButton, nullptr, 10, rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
+        SetWindowPos(hStopButton, nullptr, buttonWidth + 20, rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
+        SetWindowPos(hCopyButton, nullptr, 2 * (buttonWidth + 20), rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
 
         // Adjust the column widths
         ListView_SetColumnWidth(hListView, 0, LVSCW_AUTOSIZE_USEHEADER); // Variable column
@@ -6178,7 +6178,7 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
             }
 
             DestroyWindow(hwnd);
-            hDebugListView = NULL;
+            hDebugListView = nullptr;
         }
         else if (LOWORD(wParam) == 4) {  // Copy button was pressed
             CopyListViewToClipboard(hListView);
@@ -6235,7 +6235,7 @@ void MultiReplace::CopyListViewToClipboard(HWND hListView) {
             li.pszText = buffer;
 
             buffer[0] = L'\0';
-            SendMessageW(hListView, LVM_GETITEMTEXTW, (WPARAM)i, (LPARAM)&li);
+            SendMessageW(hListView, LVM_GETITEMTEXTW, static_cast<WPARAM>(i), reinterpret_cast<LPARAM>(&li));
             buffer[std::size(buffer) - 1] = L'\0';
 
             int len = lstrlenW(buffer);
@@ -6328,10 +6328,10 @@ void MultiReplace::WaitForDebugWindowClose(bool autoClose)
     SetDebugComplete();
 
     // Wait for user to close the window
-    MSG msg = { 0 };
+    MSG msg = {};
     while (IsWindow(hDebugWnd))
     {
-        if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+        if (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) break;
             TranslateMessage(&msg);
             DispatchMessage(&msg);
@@ -6340,8 +6340,8 @@ void MultiReplace::WaitForDebugWindowClose(bool autoClose)
             WaitMessage();
         }
     }
-    hDebugWnd = NULL;
-    hDebugListView = NULL;
+    hDebugWnd = nullptr;
+    hDebugListView = nullptr;
 }
 #pragma endregion
 
@@ -6351,7 +6351,7 @@ void MultiReplace::WaitForDebugWindowClose(bool autoClose)
 bool MultiReplace::selectDirectoryDialog(HWND owner, std::wstring& outPath)
 {
     // Initialize COM and store the result.
-    HRESULT hrInit = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    HRESULT hrInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (FAILED(hrInit)) {
         // If critical COM error, we cannot proceed at all.
         return false;
@@ -6486,7 +6486,7 @@ void MultiReplace::handleReplaceInFiles() {
     // --- Confirmation Dialog Setup ---
     // Manually shorten the directory path to prevent ugly wrapping.
     HDC dialogHdc = GetDC(_hSelf);
-    HFONT dialogHFont = (HFONT)SendMessage(_hSelf, WM_GETFONT, 0, 0);
+    HFONT dialogHFont = reinterpret_cast<HFONT>(SendMessage(_hSelf, WM_GETFONT, 0, 0));
     SelectObject(dialogHdc, dialogHFont);
     std::wstring shortenedDirectory = getShortenedFilePath(wDir, 400, dialogHdc);
     ReleaseDC(_hSelf, dialogHdc);
@@ -6530,7 +6530,7 @@ void MultiReplace::handleReplaceInFiles() {
     bool aborted = false;
 
     for (const auto& fp : files) {
-        MSG m;
+        MSG m = {};
         while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) {
             ::TranslateMessage(&m);
             ::DispatchMessage(&m);
@@ -6545,9 +6545,9 @@ void MultiReplace::handleReplaceInFiles() {
         std::wstring prefix = L"Progress: [" + std::to_wstring(percent) + L"%] ";
         HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
         HDC hdc = GetDC(hStatus);
-        HFONT hFont = (HFONT)SendMessage(hStatus, WM_GETFONT, 0, 0);
+        HFONT hFont = reinterpret_cast<HFONT>(SendMessage(hStatus, WM_GETFONT, 0, 0));
         SelectObject(hdc, hFont);
-        SIZE sz{}; GetTextExtentPoint32W(hdc, prefix.c_str(), (int)prefix.length(), &sz);
+        SIZE sz{}; GetTextExtentPoint32W(hdc, prefix.c_str(), static_cast<int>(prefix.length()), &sz);
         RECT rc{}; GetClientRect(hStatus, &rc);
         int avail = (rc.right - rc.left) - sz.cx;
         std::wstring shortPath = getShortenedFilePath(fp.wstring(), avail, hdc);
@@ -6656,23 +6656,23 @@ void MultiReplace::trimHitToFirstLine(
     ResultDock::Hit& h)
 {
     // Determine EOL sequence based on document setting
-    int eolMode = (int)sciSend(SCI_GETEOLMODE, 0, 0);
+    int eolMode = static_cast<int>(sciSend(SCI_GETEOLMODE, 0, 0));
     std::string eolSeq =
         eolMode == SC_EOL_CRLF ? "\r\n" :
         (eolMode == SC_EOL_CR ? "\r" : "\n");
 
     // Get line index and start position
-    int lineZero = (int)sciSend(SCI_LINEFROMPOSITION, h.pos, 0);
+    int lineZero = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, h.pos, 0));
     Sci_Position lineStart = sciSend(SCI_POSITIONFROMLINE, lineZero, 0);
 
     // Read raw line including EOL
-    int rawLen = (int)sciSend(SCI_LINELENGTH, lineZero, 0);
+    int rawLen = static_cast<int>(sciSend(SCI_LINELENGTH, lineZero, 0));
 
     // Allocate +1 for the terminating NUL written by SCI_GETLINE
     // (keep full rawLen bytes; do NOT stop at embedded NULs)
     std::string raw;
     raw.resize(rawLen + 1, '\0');                     // NEW: length-aware buffer
-    sciSend(SCI_GETLINE, lineZero, (LPARAM)raw.data());
+    sciSend(SCI_GETLINE, lineZero, reinterpret_cast<LPARAM>(raw.data()));
     raw.resize(rawLen);                                // NEW: keep exact line length
 
     // Find EOL position
@@ -6724,7 +6724,7 @@ void MultiReplace::handleFindAllButton()
         };
 
     wchar_t buf[MAX_PATH] = {};
-    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, (LPARAM)buf);
+    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(buf));
     std::wstring wFilePath = *buf ? buf : L"<untitled>";
     std::string  utf8FilePath = Encoding::wstringToUtf8(wFilePath);
 
@@ -6904,7 +6904,7 @@ void MultiReplace::handleFindAllInDocsButton()
         auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT { return ::SendMessage(_hScintilla, m, w, l); };
 
         wchar_t wBuf[MAX_PATH] = {};
-        ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, (LPARAM)wBuf);
+        ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(wBuf));
         std::wstring wPath = *wBuf ? wBuf : L"<untitled>";
         std::string  u8Path = Encoding::wstringToUtf8(wPath);
 
@@ -7140,9 +7140,9 @@ void MultiReplace::handleFindInFiles() {
         const std::wstring prefix = L"Progress: [" + std::to_wstring(percent) + L"%] ";
         HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
         HDC hdc = GetDC(hStatus);
-        HFONT hFont = (HFONT)SendMessage(hStatus, WM_GETFONT, 0, 0);
+        HFONT hFont = reinterpret_cast<HFONT>(SendMessage(hStatus, WM_GETFONT, 0, 0));
         SelectObject(hdc, hFont);
-        SIZE sz{}; GetTextExtentPoint32W(hdc, prefix.c_str(), (int)prefix.length(), &sz);
+        SIZE sz{}; GetTextExtentPoint32W(hdc, prefix.c_str(), static_cast<int>(prefix.length()), &sz);
         RECT rc{}; GetClientRect(hStatus, &rc);
         const int avail = (rc.right - rc.left) - sz.cx;
         std::wstring shortPath = getShortenedFilePath(fp.wstring(), avail, hdc);
@@ -7208,7 +7208,7 @@ void MultiReplace::handleFindInFiles() {
                     raw.push_back(std::move(h));
                 }
             }
-            const int n = (int)raw.size();
+            const int n = static_cast<int>(raw.size());
             if (n == 0) return;
             auto& agg = fileMap[u8Path];
             agg.wPath = wPath;
@@ -8490,9 +8490,9 @@ void MultiReplace::handleCopyColumnsToClipboard()
             send(SCI_SETINDICATORCURRENT, indicId, 0);
 
             for (LRESULT p = startPos; p < endPos; ++p) {
-                if ((int)send(SCI_INDICATORVALUEAT, indicId, p) != 0)
+                if (static_cast<int>(send(SCI_INDICATORVALUEAT), indicId, p) != 0)
                     continue; // skip artificial alignment padding
-                const int ch = (int)send(SCI_GETCHARAT, p, 0);
+                const int ch = static_cast<int>(send(SCI_GETCHARAT, p, 0));
                 if (ch == 0)
                     break;
                 out.push_back((char)ch);
@@ -8564,7 +8564,7 @@ void MultiReplace::handleCopyColumnsToClipboard()
                 if (delimBeforeIndex < lineInfo.positions.size()) {
                     startPos = lineStartPos
                         + lineInfo.positions[delimBeforeIndex].offsetInLine
-                        + (LRESULT)columnDelimiterData.delimiterLength;
+                        + static_cast<LRESULT>(columnDelimiterData.delimiterLength);
                 }
                 else {
                     // Safety: malformed position info, skip this column
@@ -8618,7 +8618,7 @@ bool MultiReplace::buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outMod
     outModel.docStartLine = 0;
     outModel.delimiterIsTab = (columnDelimiterData.extendedDelimiter.size() == 1
         && columnDelimiterData.extendedDelimiter[0] == '\t');
-    outModel.delimiterLength = (int)columnDelimiterData.delimiterLength;
+    outModel.delimiterLength = static_cast<int>(columnDelimiterData.delimiterLength);
     outModel.collapseTabRuns = outModel.delimiterIsTab;
     outModel.Lines.reserve(lineDelimiterPositions.size());
 
@@ -8629,13 +8629,13 @@ bool MultiReplace::buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outMod
         const LineInfo& src = lineDelimiterPositions[i];
 
         ColumnTabs::CT_ColumnLineInfo li{};
-        li.lineLength = (int)src.lineLength;
+        li.lineLength = static_cast<int>(src.lineLength);
 
         li.delimiterOffsets.reserve(src.positions.size());
         for (const auto& dp : src.positions) {
             // guard against invalid offsets (must be within line)
-            if (dp.offsetInLine >= 0 && dp.offsetInLine < (LRESULT)src.lineLength)
-                li.delimiterOffsets.push_back((int)dp.offsetInLine);
+            if (dp.offsetInLine >= 0 && dp.offsetInLine < static_cast<LRESULT>(src.lineLength))
+                li.delimiterOffsets.push_back(static_cast<int>(dp.offsetInLine));
         }
 
         // only accept consistent lines
@@ -8782,7 +8782,7 @@ void MultiReplace::handleColumnGridTabsButton()
 
     // Step 1: numeric alignment (optional; modifies text, inserts numeric left padding)
     if (flowTabsNumericAlignEnabled) {
-        ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, (int)model.Lines.size() - 1);
+        ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, static_cast<int>(model.Lines.size()) - 1);
         findAllDelimitersInDocument();
         if (!buildCTModelFromMatrix(model)) {
             send(SCI_ENDUNDOACTION, 0, 0);
@@ -8794,9 +8794,9 @@ void MultiReplace::handleColumnGridTabsButton()
     // Step 2: insert Flow-Tab padding (tabs/spaces between columns, mark padding ranges)
     ColumnTabs::CT_AlignOptions opt{};
     opt.firstLine = 0;
-    opt.lastLine = (int)model.Lines.size() - 1;
+    opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
 
-    const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
+    const int spacePx = static_cast<int>(SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" "));
     opt.gapCells = 2;
     _flowPaddingPx = spacePx * opt.gapCells;
 
@@ -8953,7 +8953,7 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
 
             // Numeric padding first (optional)
             if (flowTabsNumericAlignEnabled) {
-                ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, (int)model.Lines.size() - 1);
+                ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, static_cast<int>(model.Lines.size()) - 1);
 
                 // After text edits, delimiter offsets are stale → rescan & rebuild
                 findAllDelimitersInDocument();
@@ -8965,10 +8965,10 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
             // Insert Flow-Tabs (this also computes & sets visual tab stops)
             ColumnTabs::CT_AlignOptions a{};
             a.firstLine = 0;
-            a.lastLine = (int)model.Lines.size() - 1;
+            a.lastLine = static_cast<int>(model.Lines.size()) - 1;
 
             // Convert pixels -> "cells" (width of one space in the current font)
-            const int spacePx = (int)SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
+            const int spacePx = static_cast<int>(SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" "));
             a.gapCells = (spacePx > 0) ? (_flowPaddingPx / spacePx) : 2;
             a.oneFlowTabOnly = true;
 
@@ -9116,11 +9116,11 @@ bool MultiReplace::showFlowTabsIntroDialog(bool& dontShowFlag) const
 
 ViewState MultiReplace::saveViewState() const {
     ViewState s{};
-    s.firstVisibleLine = (int)send(SCI_GETFIRSTVISIBLELINE);
-    s.xOffset = (int)send(SCI_GETXOFFSET);
+    s.firstVisibleLine = static_cast<int>(send(SCI_GETFIRSTVISIBLELINE));
+    s.xOffset = static_cast<int>(send(SCI_GETXOFFSET));
     s.caret = (Sci_Position)send(SCI_GETCURRENTPOS);
     s.anchor = (Sci_Position)send(SCI_GETANCHOR);
-    s.wrapMode = (int)send(SCI_GETWRAPMODE);
+    s.wrapMode = static_cast<int>(send(SCI_GETWRAPMODE));
     return s;
 }
 
@@ -9129,7 +9129,7 @@ void MultiReplace::restoreViewStateExact(const ViewState& s) {
     send(SCI_SETSEL, s.anchor, s.caret);
     send(SCI_SETXOFFSET, s.xOffset, 0);
 
-    const int curFirst = (int)send(SCI_GETFIRSTVISIBLELINE);
+    const int curFirst = static_cast<int>(send(SCI_GETFIRSTVISIBLELINE));
     if (curFirst != s.firstVisibleLine) {
         send(SCI_LINESCROLL, 0, s.firstVisibleLine - curFirst);
     }
@@ -9381,7 +9381,7 @@ void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalO
     // Re-insert the lines in their original order
     for (size_t i = 0; i < sortedLines.size(); ++i) {
         //std::string message = "Inserting line at position: " + std::to_string(i) + "\nContent: " + sortedLines[i];
-        //MessageBoxA(NULL, message.c_str(), "Debug Insert Line", MB_OK);
+        //MessageBoxA(nullptr, message.c_str(), "Debug Insert Line", MB_OK);
         send(SCI_APPENDTEXT, sortedLines[i].length(), reinterpret_cast<sptr_t>(sortedLines[i].c_str()));
         // Add a line break after each line except the last one
         if (i < sortedLines.size() - 1) {
@@ -9843,7 +9843,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     // --- Viewport snapshot (vertical + horizontal + selection)
     const ViewState vs = saveViewState();
 
-    int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+    int currentBufferID = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
     highlightedTabs.mark(currentBufferID);
     initializeColumnStyles();
     LRESULT totalLines = static_cast<LRESULT>(lineDelimiterPositions.size());
@@ -9874,11 +9874,11 @@ void MultiReplace::fixHighlightAtDocumentEnd() {
     if (lastLine >= 2) {
         size_t highlightLine1 = lastLine - 2;
         if (highlightLine1 < (size_t)docLineCount) {
-            highlightColumnsInLine((LRESULT)highlightLine1);
+            highlightColumnsInLine(static_cast<LRESULT>(highlightLine1));
         }
         size_t highlightLine2 = lastLine - 1;
         if (highlightLine2 < (size_t)docLineCount) {
-            highlightColumnsInLine((LRESULT)highlightLine2);
+            highlightColumnsInLine(static_cast<LRESULT>(highlightLine2));
         }
     }
 }
@@ -9943,7 +9943,7 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
 
 void MultiReplace::handleClearColumnMarks() {
     // Get the current buffer ID
-    int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+    int currentBufferID = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
 
     // If the tab was not highlighted, exit early
     if (!highlightedTabs.isHighlighted(currentBufferID)) {
@@ -10218,7 +10218,7 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         }
 
         // Check current highlight status (global or per-tab)
-        const int currentBufferID = (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+        const int currentBufferID = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
         const bool highlightActive = (isColumnHighlighted != FALSE) ||
             highlightedTabs.isHighlighted(currentBufferID);
 
@@ -10295,7 +10295,7 @@ void MultiReplace::displayLogChangesInMessageBox() {
 
     std::string startContent = listToString(lineDelimiterPositions);
     std::wstring wideStartContent = utf8ToWString(startContent);
-    MessageBox(NULL, wideStartContent.c_str(), L"Content at the beginning", MB_OK);
+    MessageBox(nullptr, wideStartContent.c_str(), L"Content at the beginning", MB_OK);
 
     std::ostringstream oss;
 
@@ -10316,16 +10316,16 @@ void MultiReplace::displayLogChangesInMessageBox() {
 
     std::string logChangesStr = oss.str();
     std::wstring logChangesWStr = utf8ToWString(logChangesStr);
-    MessageBox(NULL, logChangesWStr.c_str(), L"Log Changes", MB_OK);
+    MessageBox(nullptr, logChangesWStr.c_str(), L"Log Changes", MB_OK);
 
     processLogForDelimiters();
     std::wstring wideMessageBoxContent = utf8ToWString(messageBoxContent);
-    MessageBox(NULL, wideMessageBoxContent.c_str(), L"Final Result", MB_OK);
+    MessageBox(nullptr, wideMessageBoxContent.c_str(), L"Final Result", MB_OK);
     messageBoxContent.clear();
 
     std::string endContent = listToString(lineDelimiterPositions);
     std::wstring wideEndContent = utf8ToWString(endContent);
-    MessageBox(NULL, wideEndContent.c_str(), L"Content at the end", MB_OK);
+    MessageBox(nullptr, wideEndContent.c_str(), L"Content at the end", MB_OK);
 
     logChanges.clear();
 }
@@ -10587,7 +10587,7 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageSta
 
     if (isNotFound)
     {
-        FLASHWINFO fwInfo = { 0 };
+        FLASHWINFO fwInfo = {};
         fwInfo.cbSize = sizeof(FLASHWINFO);
         fwInfo.hwnd = _hSelf;
         fwInfo.dwFlags = FLASHW_ALL;
@@ -10627,8 +10627,8 @@ void MultiReplace::applyThemePalette()
     }
 
     // Repaint status control and "(?)" tooltip so they pick up the new palette
-    InvalidateRect(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), NULL, TRUE);
-    InvalidateRect(GetDlgItem(_hSelf, IDC_FILTER_HELP), NULL, TRUE);
+    InvalidateRect(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), nullptr, TRUE);
+    InvalidateRect(GetDlgItem(_hSelf, IDC_FILTER_HELP), nullptr, TRUE);
 }
 
 void MultiReplace::refreshColumnStylesIfNeeded()
@@ -10845,7 +10845,7 @@ int MultiReplace::getCharacterWidth(int elementID, const wchar_t* character) {
     HWND hwndElement = GetDlgItem(_hSelf, elementID);
 
     // Get the font used by the element
-    HFONT hFont = (HFONT)SendMessage(hwndElement, WM_GETFONT, 0, 0);
+    HFONT hFont = reinterpret_cast<HFONT>(SendMessage(hwndElement, WM_GETFONT, 0, 0));
 
     // Get the device context for measuring text
     HDC hdc = GetDC(hwndElement);
@@ -10988,8 +10988,8 @@ void MultiReplace::forceWrapRecalculation() {
 
 std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath) {
     flags |= OFN_NOCHANGEDIR;
-    OPENFILENAME ofn = { 0 };
-    WCHAR szFile[MAX_PATH] = { 0 };
+    OPENFILENAME ofn = {};
+    WCHAR szFile[MAX_PATH] = {};
 
     // Safely copy the default file path into the buffer and ensure null-termination
     if (!defaultFilePath.empty()) {
@@ -11186,9 +11186,9 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     }
 
     // Convert UTF-8 or ANSI bytes to std::wstring
-    int wlen = MultiByteToWideChar(cp, 0, raw.c_str() + offset, (int)raw.size() - (int)offset, nullptr, 0);
+    int wlen = MultiByteToWideChar(cp, 0, raw.c_str() + offset, static_cast<int>(raw.size() - offset), nullptr, 0);
     std::wstring content(wlen, L'\0');
-    MultiByteToWideChar(cp, 0, raw.c_str() + offset, (int)raw.size() - (int)offset, &content[0], wlen);
+    MultiByteToWideChar(cp, 0, raw.c_str() + offset, static_cast<int>(raw.size() - offset), &content[0], wlen);
 
     std::wstringstream contentStream(content);
 
@@ -11259,7 +11259,7 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
 
         // Update the ListView
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
 
         // Display success or error message based on the loaded data
         if (replaceListData.empty()) {
@@ -11293,7 +11293,7 @@ void MultiReplace::checkForFileChangesAtStartup() {
                 replaceListData = tempListFromFile;
                 originalListHash = newFileHash;
                 ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-                InvalidateRect(_replaceListView, NULL, TRUE);
+                InvalidateRect(_replaceListView, nullptr, TRUE);
             }
         }
     }
@@ -11535,7 +11535,7 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
 
 std::pair<std::wstring, std::wstring> MultiReplace::generateConfigFilePaths() {
     wchar_t configDir[MAX_PATH] = {};
-    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, (LPARAM)configDir);
+    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, reinterpret_cast<LPARAM>(configDir));
     configDir[MAX_PATH - 1] = '\0'; // Ensure null-termination
 
     std::wstring iniFilePath = std::wstring(configDir) + L"\\MultiReplace.ini";
@@ -11767,7 +11767,7 @@ void MultiReplace::loadSettingsToPanelUI() {
 
             // Refresh data and redraw
             ListView_SetItemCountEx(instance->_replaceListView, instance->replaceListData.size(), LVSICF_NOINVALIDATEALL);
-            InvalidateRect(instance->_replaceListView, NULL, TRUE);
+            InvalidateRect(instance->_replaceListView, nullptr, TRUE);
 
             // Update Header Icons (Checkmarks)
             instance->updateHeaderSelection();
@@ -11787,11 +11787,11 @@ void MultiReplace::loadSettings() {
     catch (const CsvLoadException& ex) {
         std::wstring errorMessage = L"An error occurred while loading the settings: ";
         errorMessage += std::wstring(ex.what(), ex.what() + strlen(ex.what()));
-        // MessageBox(NULL, errorMessage.c_str(), L"Error", MB_OK | MB_ICONERROR);
+        // MessageBox(nullptr, errorMessage.c_str(), L"Error", MB_OK | MB_ICONERROR);
     }
     updateHeaderSelection();
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-    InvalidateRect(_replaceListView, NULL, TRUE);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
 
     showListFilePath();
 }
@@ -11835,7 +11835,7 @@ void MultiReplace::loadUIConfigFromIni()
 
             // This triggers WM_SIZE -> moveAndResizeControls(false)
             // Static controls will NOT move yet.
-            SetWindowPos(_hSelf, NULL, 0, 0, newW, newH,
+            SetWindowPos(_hSelf, nullptr, 0, 0, newW, newH,
                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
 
             adjustWindowSize();
@@ -11877,12 +11877,12 @@ void MultiReplace::loadUIConfigFromIni()
     replaceColumnLockedEnabled = CFG.readBool(L"ListColumns", L"ReplaceColumnLocked", false);
     commentsColumnLockedEnabled = CFG.readBool(L"ListColumns", L"CommentsColumnLocked", true);
 
-    int fg = (int)CFG.readByte(L"Window", L"ForegroundTransparency", 255);
-    int bg = (int)CFG.readByte(L"Window", L"BackgroundTransparency", 190);
+    int fg = static_cast<int>(CFG.readByte(L"Window", L"ForegroundTransparency", 255));
+    int bg = static_cast<int>(CFG.readByte(L"Window", L"BackgroundTransparency", 190));
     if (fg < 0) fg = 0; if (fg > 255) fg = 255;
     if (bg < 0) bg = 0; if (bg > 255) bg = 255;
-    foregroundTransparency = (BYTE)fg;
-    backgroundTransparency = (BYTE)bg;
+    foregroundTransparency = static_cast<BYTE>(fg);
+    backgroundTransparency = static_cast<BYTE>(bg);
 
     tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
     isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
@@ -12173,7 +12173,7 @@ void MultiReplace::applyConfigSettingsOnly()
     if (_replaceListView) {
         createListViewColumns();
         ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, NULL, TRUE);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
         updateHeaderSelection();
     }
 }
@@ -12247,9 +12247,9 @@ void MultiReplace::processLog() {
 static bool GetViewIndexFromBufferId(BufferId bufId, int& viewOut, int& indexOut)
 {
     // Try MAIN view first, then SUB view.
-    int pos = (int)::SendMessage(nppData._nppHandle, NPPM_GETPOSFROMBUFFERID, (WPARAM)bufId, MAIN_VIEW);
+    int pos = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETPOSFROMBUFFERID, (WPARAM)bufId, MAIN_VIEW));
     if (pos < 0)
-        pos = (int)::SendMessage(nppData._nppHandle, NPPM_GETPOSFROMBUFFERID, (WPARAM)bufId, SUB_VIEW);
+        pos = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETPOSFROMBUFFERID, (WPARAM)bufId, SUB_VIEW));
     if (pos < 0) return false;
 
     viewOut = (pos >> 30) & 0x3;         // top 2 bits
@@ -12262,7 +12262,7 @@ static void PostActivateBufferId(BufferId bufId)
 {
     int view, index;
     if (!GetViewIndexFromBufferId(bufId, view, index)) return;
-    ::PostMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, (WPARAM)view, (LPARAM)index);
+    ::PostMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, static_cast<WPARAM>(view), static_cast<LPARAM>(index));
 }
 
 void MultiReplace::onDocumentSwitched()
@@ -12325,7 +12325,7 @@ void MultiReplace::onDocumentSwitched()
     ColumnTabs::CT_ResetFlowVisualState();
 
     const int currentBufferID =
-        (int)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
+        static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
 
     if (currentBufferID == self->scannedDelimiterBufferID) {
         g_prevBufId = currBufId; // remember for next natural switch
@@ -12357,7 +12357,7 @@ void MultiReplace::onDocumentSwitched()
 void MultiReplace::pointerToScintilla() {
 
     int which = -1;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&which);
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&which));
     if (which != -1) {
         instance->_hScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
         s_hScintilla = instance->_hScintilla;
@@ -12496,7 +12496,7 @@ void MultiReplace::showDPIAndFontInfo()
     if (hDC)
     {
         // Get current font of the window
-        HFONT currentFont = (HFONT)SendMessage(_hSelf, WM_GETFONT, 0, 0);
+        HFONT currentFont = reinterpret_cast<HFONT>(SendMessage(_hSelf, WM_GETFONT, 0, 0));
         SelectObject(hDC, currentFont);  // Select current font into the DC
 
         TEXTMETRIC tmCurrent;
@@ -12528,7 +12528,7 @@ void MultiReplace::showDPIAndFontInfo()
         monitorData.currentMonitor = 0;
         monitorData.primaryMonitorIndex = 0;
 
-        EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, reinterpret_cast<LPARAM>(&monitorData));
+        EnumDisplayMonitors(nullptr, nullptr, MonitorEnumProc, reinterpret_cast<LPARAM>(&monitorData));
 
         std::wstring message =
             L"On Monitor " + std::to_wstring(monitorData.currentMonitor) + L"\n"

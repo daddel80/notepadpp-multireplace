@@ -366,14 +366,14 @@ class MultiReplace : public StaticDialog
 {
 public:
     MultiReplace() :
-        hInstance(NULL),
-        _hScintilla(0),
+        hInstance(nullptr),
+        _hScintilla(nullptr),
         _hClearMarksButton(nullptr),
         _hCopyMarkedTextButton(nullptr),
         _hInListCheckbox(nullptr),
         _hMarkMatchesButton(nullptr),
         _hReplaceAllButton(nullptr),
-        _replaceListView(NULL),
+        _replaceListView(nullptr),
         _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
     {
@@ -561,7 +561,7 @@ private:
     // Static variables related to GUI 
     inline static HWND s_hScintilla = nullptr;
     inline static HWND s_hDlg = nullptr;
-    HWND hwndEdit = NULL;
+    HWND hwndEdit = nullptr;
     WNDPROC originalListViewProc;
     inline static std::map<int, ControlInfo> ctrlMap{};
 
