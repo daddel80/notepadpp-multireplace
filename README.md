@@ -195,7 +195,7 @@ Enable the '**Use Variables**' option to enhance replacements with calculations 
 
    **Option 1:** [`set(...)`](#setstrorcalc) → Directly replaces with a value or calculation.
    - **Find**: `(\d+)`
-   - **Replace**: `set(CAP1 * 2)`
+   - **Replace**: `set(tonumber(CAP1) * 2)`
    - **Result**: Doubles numbers (e.g., `50` → `100`).
 
    *(Enable 'Regular Expression' in 'Search Mode' to use `(\d+)` as a capture group.)*
@@ -227,11 +227,11 @@ Enable the '**Use Variables**' option to enhance replacements with calculations 
 | **MATCH**| Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
 | **FNAME**| Filename or window title for new, unsaved files. |
 | **FPATH**| Full path including the filename, or empty for new, unsaved files. |
-| **CAP1**, **CAP2**, ... | Equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Suited for calculations and conditional operations. Note: Standard counterparts (`$1`, `$2`, ...) cannot be used in this environment. |
+| **CAP1**, **CAP2**, ... | Equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Always strings; use `tonumber(CAP1)` for calculations. Note: Standard counterparts (`$1`, `$2`, ...) cannot be used in this environment. |
 
 **Notes:**
 - `FNAME` and `FPATH` are updated for each file processed by `Replace All in All Open Docs` and `Replace All in Files`. This ensures that variables always refer to the file currently being modified.
-- **Decimal Separator:** When `MATCH` and `CAP` variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.
+- **String Variables:** `MATCH` and `CAP` variables are always strings. For calculations, use `tonumber(CAP1)`. Both dot (.) and comma (,) are recognized as decimal separators. Thousands separators are not supported.
 
 <br>
 
@@ -266,7 +266,7 @@ Directly outputs strings or numbers, replacing the matched text with a specified
 | Find      | Replace with                                 | Regex | Description/Expected Output                                                 |
 |-----------|----------------------------------------------|-------|-----------------------------------------------------------------------------|
 | `apple`   | `set("banana")`                              | No    | Replaces every occurrence of `apple` with the string `"banana"`.           |
-| `(\d+)`   | `set(CAP1 * 2)`                              | Yes   | Doubles any found number; e.g., `10` becomes `20`.                         |
+| `(\d+)`   | `set(tonumber(CAP1) * 2)`                    | Yes   | Doubles any found number; e.g., `10` becomes `20`.                         |
 | `found`   | `set("Found #"..CNT.." at position "..APOS)` | No    | Shows how many times `found` was detected and its absolute position.       |
 
 <br>
@@ -277,7 +277,7 @@ Evaluates the condition and outputs `trueVal` if the condition is true, otherwis
 | Find        | Replace with                                                                     | Regex | Description/Expected Output                                                                                             |
 |-------------|----------------------------------------------------------------------------------|-------|-------------------------------------------------------------------------------------------------------------------------|
 | `word`      | `cond(CNT==1, "First 'word'", "Another 'word'")`                                 | No    | For the first occurrence of `word` → `"First 'word'"`; for subsequent matches → `"Another 'word'"`.                    |
-| `(\d+)`     | `cond(CAP1>100, "Large", cond(CAP1>50, "Medium", "Small"))`                      | Yes   | If > 100 → `"Large"`, if > 50 → `"Medium"`, otherwise → `"Small"`.                                                      |
+| `(\d+)`     | `cond(tonumber(CAP1)>100, "Large", cond(tonumber(CAP1)>50, "Medium", "Small"))`  | Yes   | If > 100 → `"Large"`, if > 50 → `"Medium"`, otherwise → `"Small"`.                                                      |
 | `anymatch`  | `cond(APOS<50, "Early in document", "Later in document")`                        | No    | If the absolute position `APOS` is under 50 → `"Early in document"`, otherwise → `"Later in document"`.                |
 
 <br>
@@ -293,7 +293,7 @@ Custom variables persist from match to match within a single **'Replace All'** o
 
 | **Find**         | **Replace**                                                                                                                            | **Before**                                           | **After**                                                    | **Regex** | **Scope CSV** | **Description**                                                                                                              |
 |------------------|----------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------|--------------------------------------------------------------|-----------|---------------|------------------------------------------------------------------------------------------------------------------------------|
-| `(\d+)`          | `vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);`<br>`if COL==2 then COL2=CAP1 end;`<br>`if COL==4 then COL4=CAP1 end;`               | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` | Yes       | Yes           | Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line.                |
+| `(\d+)`          | `vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);`<br>`if COL==2 then COL2=tonumber(CAP1) end;`<br>`if COL==4 then COL4=tonumber(CAP1) end;`               | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` | Yes       | Yes           | Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line.                |
 | `\d{2}-[A-Z]{3}` | `vars({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                                                          | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`            | Yes       | No            | Uses `MATCH_PREV` to track the first match in the line and shift it to the 2nd (`LCNT`) match during replacements.           |
 
 <br>
@@ -550,10 +550,10 @@ The **Debug Mode** provides a safe environment to test complex logic involving c
 |-------------------|-------------------------------------------------------------------------------------------------------------|-------|-----------|-------------------------------------------------------------------------------------------------|
 | `;`               | `cond(LCNT==5,";Column5;")`                                                                                 | No    | No        | Adds a 5th Column for each line into a `;` delimited file.                                      |
 | `key`             | `set("key"..CNT)`                                                                                           | No    | No        | Enumerates key values by appending the count of detected strings. E.g., key1, key2, key3, etc.  |
-| `(\d+)`           | `set(CAP1.."€ The VAT is: "..(CAP1*0.15).."€ Total: "..(CAP1+(CAP1*0.15)).."€")`                             | Yes   | No        | Finds a number and calculates VAT at 15%, displaying original, VAT, and total.                  |
+| `(\d+)`           | `local n=tonumber(CAP1); set(CAP1.."€ The VAT is: "..(n*0.15).."€ Total: "..(n*1.15).."€")`  | Yes   | No        | Finds a number and calculates VAT at 15%, displaying original, VAT, and total.                  |
 | `---`             | `cond(COL==1 and LINE<3, "0-2", cond(COL==2 and LINE>2 and LINE<5, "3-4", cond(COL==3 and LINE>=5, "5-9")))` | No    | Yes       | Replaces `---` with a specific range based on `COL` and `LINE` values.                          |
-| `(\d+)\.(\d+)\.(\d+)` | `cond(CAP1>0 and CAP2==0 and CAP3==0, MATCH, cond(CAP2>0 and CAP3==0, " "..MATCH, "  "..MATCH))`        | Yes   | No        | Alters spacing based on version number hierarchy, aligning lower hierarchies with spaces.        |
-| `(\d+)`           | `set(CAP1 * 2)`                                                                                             | Yes   | No        | Doubles the matched number. E.g., `100` becomes `200`.                                          |
+| `(\d+)\.(\d+)\.(\d+)` | `local c1,c2,c3=tonumber(CAP1),tonumber(CAP2),tonumber(CAP3); cond(c1>0 and c2==0 and c3==0, MATCH, cond(c2>0 and c3==0, " "..MATCH, "  "..MATCH))` | Yes   | No        | Alters spacing based on version number hierarchy, aligning lower hierarchies with spaces.        |
+| `(\d+)`           | `set(tonumber(CAP1) * 2)`                                                                                   | Yes   | No        | Doubles the matched number. E.g., `100` becomes `200`.                                          |
 | `;`               | `cond(LCNT == 1, string.rep(" ", 20-(LPOS))..";")`                                                          | No    | No        | Inserts spaces before the semicolon to align it to the 20th character position.                 |
 | `-`               | `cond(LINE == math.floor(10.5 + 6.25*math.sin((2*math.pi*LPOS)/50)), "*", " ")`                              | No    | No        | Draws a sine wave across a canvas of '-' characters.                                            |
 | `^(.*)$`          | `vars({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;`                                    | Yes   | No        | Removes duplicate lines, keeping the first occurrence of each line.                             |

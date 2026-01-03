@@ -376,7 +376,7 @@
         <p><strong>Option 1:</strong> <a href="#setstrorcalc"><code>set(...)</code></a> → Directly replaces with a value or calculation.</p>
         <ul>
           <li><strong>Find</strong>: <code>(\d+)</code></li>
-          <li><strong>Replace</strong>: <code>set(CAP1 * 2)</code></li>
+          <li><strong>Replace</strong>: <code>set(tonumber(CAP1) * 2)</code></li>
           <li><strong>Result</strong>: Doubles numbers (e.g., <code>50</code> → <code>100</code>).</li>
         </ul>
         <em>(Enable 'Regular Expression' in 'Search Mode' to use <code>(\d+)</code> as a capture group.)</em>
@@ -452,14 +452,14 @@
       </tr>
       <tr>
         <td><strong>CAP1</strong>, <strong>CAP2</strong>, ...</td>
-        <td>Equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Suited for calculations and conditional operations. Note: Standard counterparts (<code>$1</code>, <code>$2</code>, ...) cannot be used in this environment.</td>
+        <td>Equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Always strings; use <code>tonumber(CAP1)</code> for calculations. Note: Standard counterparts (<code>$1</code>, <code>$2</code>, ...) cannot be used in this environment.</td>
       </tr>
     </table>
 
     <p><strong>Notes:</strong></p>
     <ul>
       <li><code>FNAME</code> and <code>FPATH</code> are updated for each file processed by <code>Replace All in All Open Docs</code> and <code>Replace All in Files</code>. This ensures that variables always refer to the file currently being modified.</li>
-      <li><strong>Decimal Separator:</strong> When <code>MATCH</code> and <code>CAP</code> variables are used to read numerical values for further calculations, both dot (.) and comma (,) can serve as decimal separators. However, these variables do not support the use of thousands separators.</li>
+      <li><strong>String Variables:</strong> <code>MATCH</code> and <code>CAP</code> variables are always strings. For calculations, use <code>tonumber(CAP1)</code>. Both dot (.) and comma (,) are recognized as decimal separators. Thousands separators are not supported.</li>
     </ul>
   </section>
 
@@ -555,7 +555,7 @@
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>set(CAP1 * 2)</code></td>
+        <td><code>set(tonumber(CAP1) * 2)</code></td>
         <td>Yes</td>
         <td>Doubles any found number; e.g., <code>10</code> becomes <code>20</code>.</td>
       </tr>
@@ -586,7 +586,7 @@
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>cond(CAP1&gt;100, "Large", cond(CAP1&gt;50, "Medium", "Small"))</code></td>
+        <td><code>cond(tonumber(CAP1)&gt;100, "Large", cond(tonumber(CAP1)&gt;50, "Medium", "Small"))</code></td>
         <td>Yes</td>
         <td>If &gt; 100 → <code>"Large"</code>, if &gt; 50 → <code>"Medium"</code>, otherwise → <code>"Small"</code>.</td>
       </tr>
@@ -618,7 +618,7 @@
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);</code><br><code>if COL==2 then COL2=CAP1 end;</code><br><code>if COL==4 then COL4=CAP1 end;</code></td>
+        <td><code>vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);</code><br><code>if COL==2 then COL2=tonumber(CAP1) end;</code><br><code>if COL==4 then COL4=tonumber(CAP1) end;</code></td>
         <td>1,20,text,2,0<br>2,30,text,3,0<br>3,40,text,4,0</td>
         <td>1,20,text,2,22.0<br>2,30,text,3,33.0<br>3,40,text,4,44.0</td>
         <td>Yes</td>
@@ -1149,7 +1149,7 @@ return {
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>set(CAP1.."€ The VAT is: "..(CAP1*0.15).."€ Total: "..(CAP1+(CAP1*0.15)).."€")</code></td>
+        <td><code>local n=tonumber(CAP1); set(CAP1.."€ The VAT is: "..(n*0.15).."€ Total: "..(n*1.15).."€")</code></td>
         <td>Yes</td>
         <td>No</td>
         <td>Finds a number and calculates VAT at 15%, displaying original, VAT, and total.</td>
@@ -1163,14 +1163,14 @@ return {
       </tr>
       <tr>
         <td><code>(\d+)\.(\d+)\.(\d+)</code></td>
-        <td><code>cond(CAP1&gt;0 and CAP2==0 and CAP3==0, MATCH, cond(CAP2&gt;0 and CAP3==0, " "..MATCH, "  "..MATCH))</code></td>
+        <td><code>local c1,c2,c3=tonumber(CAP1),tonumber(CAP2),tonumber(CAP3); cond(c1&gt;0 and c2==0 and c3==0, MATCH, cond(c2&gt;0 and c3==0, " "..MATCH, "  "..MATCH))</code></td>
         <td>Yes</td>
         <td>No</td>
         <td>Alters spacing based on version number hierarchy, aligning lower hierarchies with spaces.</td>
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>set(CAP1 * 2)</code></td>
+        <td><code>set(tonumber(CAP1) * 2)</code></td>
         <td>Yes</td>
         <td>No</td>
         <td>Doubles the matched number. E.g., <code>100</code> becomes <code>200</code>.</td>
