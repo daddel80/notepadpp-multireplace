@@ -873,7 +873,7 @@ private:
     void captureLuaGlobals(lua_State* L);
     std::string escapeForRegex(const std::string& input);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex, bool showDebugWindow = true);
-    void setLuaVariable(lua_State* L, const std::string& varName, std::string value);
+    void setLuaVariable(lua_State* L, const std::string& varName, const std::string& value);
     void updateFilePathCache(const std::filesystem::path* explicitPath = nullptr);
     void setLuaFileVars(LuaVariables& vars);
     bool initLuaState();

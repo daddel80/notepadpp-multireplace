@@ -5416,23 +5416,9 @@ std::string MultiReplace::escapeForRegex(const std::string& input) {
     return escaped;
 }
 
-void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, std::string value) {
-    // Check if the input string is a number
-    bool isNumber = normalizeAndValidateNumber(value);
-    if (isNumber) {
-        double doubleVal = std::stod(value);
-        int intVal = static_cast<int>(doubleVal);
-        if (doubleVal == static_cast<double>(intVal)) {
-            lua_pushinteger(L, intVal); // Push as integer if value is integral
-        }
-        else {
-            lua_pushnumber(L, doubleVal); // Push as floating-point number otherwise
-        }
-    }
-    else {
-        lua_pushstring(L, value.c_str());
-    }
-    lua_setglobal(L, varName.c_str()); // Set the global variable in Lua
+void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, const std::string& value) {
+    lua_pushstring(L, value.c_str());
+    lua_setglobal(L, varName.c_str());
 }
 
 void MultiReplace::updateFilePathCache(const std::filesystem::path* explicitPath) {
