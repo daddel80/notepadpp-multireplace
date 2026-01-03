@@ -49,4 +49,7 @@ namespace StringUtils {
 
     std::wstring trim(const std::wstring& str);
 
+    // Escape control characters for debug display (makes \n, \r, \t visible)
+    std::string escapeControlChars(const std::string& input);
+
 } // namespace StringUtils

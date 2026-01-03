@@ -287,4 +287,31 @@ namespace StringUtils {
         return str.substr(first, last - first + 1);
     }
 
+    // ----------------------------------------------------------------------------
+    // Escape control characters for debug display (makes \n, \r, \t visible)
+    // ----------------------------------------------------------------------------
+    std::string escapeControlChars(const std::string& input) {
+        std::string result;
+        result.reserve(input.size() * 2);
+
+        for (unsigned char ch : input) {
+            switch (ch) {
+            case '\n': result += "\\n"; break;
+            case '\r': result += "\\r"; break;
+            case '\t': result += "\\t"; break;
+            case '\0': result += "\\0"; break;
+            default:
+                if (ch < 32) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "\\x%02X", ch);
+                    result += buf;
+                }
+                else {
+                    result += static_cast<char>(ch);
+                }
+            }
+        }
+        return result;
+    }
+
 } // namespace StringUtils

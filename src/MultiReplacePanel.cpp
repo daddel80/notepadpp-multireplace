@@ -5675,7 +5675,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             capVariablesStr += capName + "\tBoolean\t" + (b ? "true" : "false") + "\n\n";
         }
         else if (lua_isstring(_luaState, -1)) {
-            capVariablesStr += capName + "\tString\t" + lua_tostring(_luaState, -1) + "\n\n";
+            capVariablesStr += capName + "\tString\t" + SU::escapeControlChars(lua_tostring(_luaState, -1)) + "\n\n";
         }
 
         lua_pop(_luaState, 1);                             // pop CAP value
@@ -5699,7 +5699,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         for (const auto& p : globalLuaVariablesMap) {
             const LuaVariable& v = p.second;
             if (v.type == LuaVariableType::String) {
-                globalsStr += v.name + "\tString\t" + v.stringValue + "\n\n";
+                globalsStr += v.name + "\tString\t" + SU::escapeControlChars(v.stringValue) + "\n\n";
             }
             else if (v.type == LuaVariableType::Number) {
                 std::ostringstream os; os << std::fixed << std::setprecision(8) << v.numberValue;
