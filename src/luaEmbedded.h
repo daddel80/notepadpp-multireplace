@@ -336,6 +336,23 @@ function padR(s, w, c)
   return s .. string.rep(c, w - #s)
 end
 
+-- Converts string to number, accepting both dot (.) and comma (,) as decimal separator
+-- Usage: tonum(CAP1) * 2, tonum("3,14") -> 3.14
+function tonum(s)
+  if s == nil then
+    return nil
+  end
+  if type(s) == 'number' then
+    return s
+  end
+  if type(s) ~= 'string' then
+    s = tostring(s)
+  end
+  -- Replace comma with dot for decimal separator compatibility
+  s = s:gsub(',', '.')
+  return tonumber(s)
+end
+
 ------------------------------------------------------------------
 -- 7) lcmd function
 -- Loads a file that returns a table of helper functions and registers them globally.
