@@ -365,6 +365,27 @@ using IniData = std::map<std::wstring, std::map<std::wstring, std::wstring>>;
 class MultiReplace : public StaticDialog
 {
 public:
+
+    // RAII guard for Scintilla undo grouping - ensures END is always called
+    class ScopedUndoAction {
+        MultiReplace& _owner;
+        bool _active;
+    public:
+        explicit ScopedUndoAction(MultiReplace& owner) : _owner(owner), _active(false) {
+            if (_owner.send(SCI_GETUNDOCOLLECTION, 0, 0)) {
+                _owner.send(SCI_BEGINUNDOACTION, 0, 0);
+                _active = true;
+            }
+        }
+        ~ScopedUndoAction() {
+            if (_active) {
+                _owner.send(SCI_ENDUNDOACTION, 0, 0);
+            }
+        }
+        ScopedUndoAction(const ScopedUndoAction&) = delete;
+        ScopedUndoAction& operator=(const ScopedUndoAction&) = delete;
+    };
+
     MultiReplace() :
         hInstance(nullptr),
         _hScintilla(nullptr),

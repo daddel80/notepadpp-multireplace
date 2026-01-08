@@ -4776,49 +4776,51 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         const SelectionInfo fixedSel = getSelectionInfo(false);
         const Sci_Position  fixedStart = computeAllStartPos(startCtx, wrapAroundEnabled, allFromCursor);
 
-        send(SCI_BEGINUNDOACTION, 0, 0);
-        for (size_t i = 0; i < replaceListData.size(); ++i)
         {
-            if (replaceListData[i].isEnabled)
+            ScopedUndoAction undo(*this);
+            for (size_t i = 0; i < replaceListData.size(); ++i)
             {
-                if (!wrapAroundEnabled && allFromCursor)
+                if (replaceListData[i].isEnabled)
                 {
-                    const Sci_Position docLenNow = send(SCI_GETLENGTH, 0, 0);
-                    auto clamp = [&](Sci_Position p) {
-                        return (p < 0) ? 0 : (p > docLenNow ? docLenNow : p);
-                        };
+                    if (!wrapAroundEnabled && allFromCursor)
+                    {
+                        const Sci_Position docLenNow = send(SCI_GETLENGTH, 0, 0);
+                        auto clamp = [&](Sci_Position p) {
+                            return (p < 0) ? 0 : (p > docLenNow ? docLenNow : p);
+                            };
 
-                    if (startCtx.isSelectionMode) {
-                        Sci_Position s = clamp(fixedSel.startPos);
-                        Sci_Position e = clamp(fixedSel.endPos);
-                        if (e < s) std::swap(s, e);
-                        send(SCI_SETSEL, s, e);
+                        if (startCtx.isSelectionMode) {
+                            Sci_Position s = clamp(fixedSel.startPos);
+                            Sci_Position e = clamp(fixedSel.endPos);
+                            if (e < s) std::swap(s, e);
+                            send(SCI_SETSEL, s, e);
+                        }
+                        else {
+                            const Sci_Position s = clamp(fixedStart);
+                            send(SCI_GOTOPOS, s, 0);
+                        }
                     }
-                    else {
-                        const Sci_Position s = clamp(fixedStart);
-                        send(SCI_GOTOPOS, s, 0);
+
+                    int findCount = 0;
+                    int replaceCount = 0;
+
+                    // Call replaceAll and break out if there is an error or a Debug Stop
+                    replaceSuccess = replaceAll(replaceListData[i], findCount, replaceCount, i);
+
+                    // Refresh ListView to show updated statistics
+                    refreshUIListView();
+
+                    // Accumulate total replacements
+                    totalReplaceCount += replaceCount;
+
+                    // cosmetic caret restore only for single-document run
+                    if (!replaceSuccess) {
+                        break;
                     }
-                }
-
-                int findCount = 0;
-                int replaceCount = 0;
-
-                // Call replaceAll and break out if there is an error or a Debug Stop
-                replaceSuccess = replaceAll(replaceListData[i], findCount, replaceCount, i);
-
-                // Refresh ListView to show updated statistics
-                refreshUIListView();
-
-                // Accumulate total replacements
-                totalReplaceCount += replaceCount;
-
-                // cosmetic caret restore only for single-document run
-                if (!replaceSuccess) {
-                    break;
                 }
             }
         }
-        send(SCI_ENDUNDOACTION, 0, 0);
+        
     }
     else
     {
@@ -4834,10 +4836,11 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
 
-        send(SCI_BEGINUNDOACTION, 0, 0);
-        int findCount = 0;
-        replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount);
-        send(SCI_ENDUNDOACTION, 0, 0);
+        {
+            ScopedUndoAction undo(*this);
+            int findCount = 0;
+            replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount);
+        }
 
     }
 
@@ -8353,104 +8356,105 @@ void MultiReplace::handleDeleteColumns()
         return;
     }
 
-    send(SCI_BEGINUNDOACTION, 0, 0);
-
     int deletedFieldsCount = 0;
-    SIZE_T lineCount = lineDelimiterPositions.size();
 
-    // Iterate over lines from last to first.
-    for (SIZE_T i = lineCount; --i > 0; ) {
-        const auto& lineInfo = lineDelimiterPositions[i];
+    {
+        ScopedUndoAction undo(*this);
 
-        // Get absolute start and end positions for this line.
-        LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
-        LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
+        SIZE_T lineCount = lineDelimiterPositions.size();
 
-        // Get the actual EOL length for this line
-        LRESULT eolLength = getEOLLengthForLine(i);
+        // Iterate over lines from last to first.
+        for (SIZE_T i = lineCount; --i > 0; ) {
+            const auto& lineInfo = lineDelimiterPositions[i];
 
-        // Vector to collect deletion ranges for the current line.
-        std::vector<std::pair<LRESULT, LRESULT>> deletionRanges;
+            // Get absolute start and end positions for this line.
+            LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
+            LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
 
-        // Iterate over columns using the set's reverse_iterator.
-        for (auto it = columnDelimiterData.columns.rbegin(); it != columnDelimiterData.columns.rend(); ++it) {
-            SIZE_T column = *it;
+            // Get the actual EOL length for this line
+            LRESULT eolLength = getEOLLengthForLine(i);
 
-            // Only process columns that exist in this line.
-            if (column > lineInfo.positions.size() + 1)
-                continue;
+            // Vector to collect deletion ranges for the current line.
+            std::vector<std::pair<LRESULT, LRESULT>> deletionRanges;
 
-            LRESULT startPos = 0, endPos = 0;
-            // Calculate the absolute start position:
-            if (column == 1) {
-                startPos = lineStartPos;
-            }
-            else if (column - 2 < lineInfo.positions.size()) {
-                startPos = lineStartPos + lineInfo.positions[column - 2].offsetInLine;
-            }
-            else {
-                continue;  // Skip if the column index is invalid for this line.
-            }
+            // Iterate over columns using the set's reverse_iterator.
+            for (auto it = columnDelimiterData.columns.rbegin(); it != columnDelimiterData.columns.rend(); ++it) {
+                SIZE_T column = *it;
 
-            // Calculate the absolute end position:
-            if (column - 1 < lineInfo.positions.size()) {
+                // Only process columns that exist in this line.
+                if (column > lineInfo.positions.size() + 1)
+                    continue;
+
+                LRESULT startPos = 0, endPos = 0;
+                // Calculate the absolute start position:
                 if (column == 1) {
-                    // When deleting the first column, also delete the following delimiter.
-                    endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine
-                        + columnDelimiterData.delimiterLength;
+                    startPos = lineStartPos;
+                }
+                else if (column - 2 < lineInfo.positions.size()) {
+                    startPos = lineStartPos + lineInfo.positions[column - 2].offsetInLine;
                 }
                 else {
-                    endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
+                    continue;  // Skip if the column index is invalid for this line.
                 }
-            }
-            else {
-                // Last column: delete until the end of the line.
-                // For non-last lines, subtract actual EOL length to preserve the line break.
-                if (i < lineCount - 1)
-                    endPos = lineEndPos - eolLength;
-                else
-                    endPos = lineEndPos;
-            }
 
-            deletionRanges.push_back({ startPos, endPos });
-        }
-
-        // If deletion ranges were computed for this line, merge contiguous or overlapping ranges.
-        if (!deletionRanges.empty()) {
-            // Sort ranges by start position.
-            std::sort(deletionRanges.begin(), deletionRanges.end(),
-                [](const std::pair<LRESULT, LRESULT>& a, const std::pair<LRESULT, LRESULT>& b) {
-                    return a.first < b.first;
-                });
-            std::vector<std::pair<LRESULT, LRESULT>> mergedRanges;
-            auto currentRange = deletionRanges[0];
-            for (size_t j = 1; j < deletionRanges.size(); ++j) {
-                const auto& nextRange = deletionRanges[j];
-                // If the next range starts before or exactly when the current range ends, merge them.
-                if (nextRange.first <= currentRange.second) {
-                    currentRange.second = std::max(currentRange.second, nextRange.second);
+                // Calculate the absolute end position:
+                if (column - 1 < lineInfo.positions.size()) {
+                    if (column == 1) {
+                        // When deleting the first column, also delete the following delimiter.
+                        endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine
+                            + columnDelimiterData.delimiterLength;
+                    }
+                    else {
+                        endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
+                    }
                 }
                 else {
-                    mergedRanges.push_back(currentRange);
-                    currentRange = nextRange;
+                    // Last column: delete until the end of the line.
+                    // For non-last lines, subtract actual EOL length to preserve the line break.
+                    if (i < lineCount - 1)
+                        endPos = lineEndPos - eolLength;
+                    else
+                        endPos = lineEndPos;
                 }
-            }
-            mergedRanges.push_back(currentRange);
 
-            // Execute the deletions for all merged ranges in reverse order.
-            // (Deleting from rightmost to leftmost prevents shifting of absolute positions.)
-            for (auto it = mergedRanges.rbegin(); it != mergedRanges.rend(); ++it) {
-                LRESULT lengthToDelete = it->second - it->first;
-                if (lengthToDelete > 0) {
-                    send(SCI_DELETERANGE, it->first, lengthToDelete, false);
-                    ++deletedFieldsCount;
+                deletionRanges.push_back({ startPos, endPos });
+            }
+
+            // If deletion ranges were computed for this line, merge contiguous or overlapping ranges.
+            if (!deletionRanges.empty()) {
+                // Sort ranges by start position.
+                std::sort(deletionRanges.begin(), deletionRanges.end(),
+                    [](const std::pair<LRESULT, LRESULT>& a, const std::pair<LRESULT, LRESULT>& b) {
+                        return a.first < b.first;
+                    });
+                std::vector<std::pair<LRESULT, LRESULT>> mergedRanges;
+                auto currentRange = deletionRanges[0];
+                for (size_t j = 1; j < deletionRanges.size(); ++j) {
+                    const auto& nextRange = deletionRanges[j];
+                    // If the next range starts before or exactly when the current range ends, merge them.
+                    if (nextRange.first <= currentRange.second) {
+                        currentRange.second = std::max(currentRange.second, nextRange.second);
+                    }
+                    else {
+                        mergedRanges.push_back(currentRange);
+                        currentRange = nextRange;
+                    }
+                }
+                mergedRanges.push_back(currentRange);
+
+                // Execute the deletions for all merged ranges in reverse order.
+                // (Deleting from rightmost to leftmost prevents shifting of absolute positions.)
+                for (auto it = mergedRanges.rbegin(); it != mergedRanges.rend(); ++it) {
+                    LRESULT lengthToDelete = it->second - it->first;
+                    if (lengthToDelete > 0) {
+                        send(SCI_DELETERANGE, it->first, lengthToDelete, false);
+                        ++deletedFieldsCount;
+                    }
                 }
             }
         }
-    }
 
-    send(SCI_ENDUNDOACTION, 0, 0);
-
+     }
     // Display a status message with the number of deleted fields.
     showStatusMessage(LM.get(L"status_deleted_fields_count", { std::to_wstring(deletedFieldsCount) }), MessageStatus::Success);
 }
@@ -8763,59 +8767,60 @@ void MultiReplace::handleColumnGridTabsButton()
         return;
     }
 
-    // We want NumericPadding + InsertAlignedPadding to be one single undo step.
-    send(SCI_BEGINUNDOACTION, 0, 0);
+    {
+        // We want NumericPadding + InsertAlignedPadding to be one single undo step.
+        ScopedUndoAction undo(*this);
 
-    // Step 1: numeric alignment (optional; modifies text, inserts numeric left padding)
-    if (flowTabsNumericAlignEnabled) {
-        ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, static_cast<int>(model.Lines.size()) - 1);
-        findAllDelimitersInDocument();
-        if (!buildCTModelFromMatrix(model)) {
-            send(SCI_ENDUNDOACTION, 0, 0);
-            showStatusMessage(L"Numeric align: model rebuild failed", MessageStatus::Error);
-            return;
-        }
-    }
+        // Step 1: numeric alignment (optional; modifies text, inserts numeric left padding)
+        if (flowTabsNumericAlignEnabled) {
+            ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, static_cast<int>(model.Lines.size()) - 1);
+            findAllDelimitersInDocument();
+            if (!buildCTModelFromMatrix(model)) {
 
-    // Step 2: insert Flow-Tab padding (tabs/spaces between columns, mark padding ranges)
-    ColumnTabs::CT_AlignOptions opt{};
-    opt.firstLine = 0;
-    opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
-
-    const int spacePx = static_cast<int>(SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" "));
-    opt.gapCells = 2;
-    _flowPaddingPx = spacePx * opt.gapCells;
-
-    opt.oneFlowTabOnly = true;
-
-    bool nothingToAlign = false;
-    if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt, &nothingToAlign)) {
-        send(SCI_ENDUNDOACTION, 0, 0);
-
-        // If numeric padding already modified text, treat this as success (ON).
-        if (ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
-            _flowTabsActive = true;
-            if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-                ::SetWindowText(h, L"⇤");
-
-            // Optionally bind visuals (may be a no-op if no delimiters)
-            applyFlowTabStops();
-
-            showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
-            g_padBufs.insert(bufId);
-            g_prevBufId = bufId;
-            return;
+                showStatusMessage(L"Numeric align: model rebuild failed", MessageStatus::Error);
+                return;
+            }
         }
 
-        // Otherwise: report proper status (nothing vs. failed)
-        showStatusMessage(LM.get(nothingToAlign ? L"status_nothing_to_align"
-            : L"status_padding_insert_failed"),
-            nothingToAlign ? MessageStatus::Info : MessageStatus::Error);
-        return;
-    }
+        // Step 2: insert Flow-Tab padding (tabs/spaces between columns, mark padding ranges)
+        ColumnTabs::CT_AlignOptions opt{};
+        opt.firstLine = 0;
+        opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
 
-    // All text modifications that belong to this "TURN ON" action are done.
-    send(SCI_ENDUNDOACTION, 0, 0);
+        const int spacePx = static_cast<int>(SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" "));
+        opt.gapCells = 2;
+        _flowPaddingPx = spacePx * opt.gapCells;
+
+        opt.oneFlowTabOnly = true;
+
+        bool nothingToAlign = false;
+        if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt, &nothingToAlign)) {
+
+
+            // If numeric padding already modified text, treat this as success (ON).
+            if (ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
+                _flowTabsActive = true;
+                if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
+                    ::SetWindowText(h, L"⇤");
+
+                // Optionally bind visuals (may be a no-op if no delimiters)
+                applyFlowTabStops();
+
+                showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
+                g_padBufs.insert(bufId);
+                g_prevBufId = bufId;
+                return;
+            }
+
+            // Otherwise: report proper status (nothing vs. failed)
+            showStatusMessage(LM.get(nothingToAlign ? L"status_nothing_to_align"
+                : L"status_padding_insert_failed"),
+                nothingToAlign ? MessageStatus::Info : MessageStatus::Error);
+            return;
+        }
+
+        // All text modifications that belong to this "TURN ON" action are done.
+    }
 
     // Rescan after edit so delimiter info matches new layout
     findAllDelimitersInDocument();
@@ -9230,11 +9235,11 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
 
     // run under the ETabs layer (handles PAD remove/reinsert or VIS re-apply)
     runCsvWithFlowTabs(CsvOp::Sort, [&]() -> bool {
-        send(SCI_BEGINUNDOACTION, 0, 0);
+        ScopedUndoAction undo(*this);
 
         const size_t lineCount = lineDelimiterPositions.size();
         if (lineCount <= CSVheaderLinesCount) {
-            send(SCI_ENDUNDOACTION, 0, 0);
+            
             return true; // nothing to sort
         }
 
@@ -9296,7 +9301,7 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
         // apply new order in editor
         reorderLinesInScintilla(tempOrder);
 
-        send(SCI_ENDUNDOACTION, 0, 0);
+        
         return true;
         });
 }
@@ -9420,9 +9425,8 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
         isSortedColumn = false; //Disable logging of changes
         if (!originalLineOrder.empty()) {
             runCsvWithFlowTabs(CsvOp::Sort, [&]() -> bool {
-                send(SCI_BEGINUNDOACTION, 0, 0);
-                restoreOriginalLineOrder(originalLineOrder);
-                send(SCI_ENDUNDOACTION, 0, 0);
+                ScopedUndoAction undo(*this);
+                restoreOriginalLineOrder(originalLineOrder); 
                 return true;
                 });
         }
