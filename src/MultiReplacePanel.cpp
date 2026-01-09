@@ -5885,7 +5885,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
 
     std::wstring finalMessage = formattedMessage.str();
 
-    std::wstring windowTitle = L"Debug Information";
+    std::wstring windowTitle = LM.get(L"debug_title");
 
     // Check if window already exists - if so, just update content (PERSISTENT WINDOW)
     if (IsWindow(hDebugWnd) && hDebugListView != nullptr) {
@@ -5956,7 +5956,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
     }
 
     // Window doesn't exist - create it
-    int width = debugWindowSizeSet ? debugWindowSize.cx : sx(350);
+    int width = debugWindowSizeSet ? debugWindowSize.cx : sx(334);
     int height = debugWindowSizeSet ? debugWindowSize.cy : sy(400);
     int x = debugWindowPositionSet ? debugWindowPosition.x : (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
     int y = debugWindowPositionSet ? debugWindowPosition.y : (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
@@ -6069,29 +6069,36 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         // Initialize columns
         LVCOLUMN lvCol = {};
         lvCol.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
-        lvCol.pszText = L"Variable";
+        lvCol.pszText = LM.getLPW(L"debug_col_variable");
         lvCol.cx = 120;
         ListView_InsertColumn(hListView, 0, &lvCol);
-        lvCol.pszText = L"Type";
+        lvCol.pszText = LM.getLPW(L"debug_col_type");
         lvCol.cx = 80;
         ListView_InsertColumn(hListView, 1, &lvCol);
-        lvCol.pszText = L"Value";
-        lvCol.cx = 160;
+        lvCol.pszText = LM.getLPW(L"debug_col_value");
+        lvCol.cx = 180;
         ListView_InsertColumn(hListView, 2, &lvCol);
 
-        hNextButton = CreateWindowW(L"BUTTON", L"Next",
+        // Button dimensions
+        const int btnWidth = 120;
+        const int btnHeight = 30;
+        const int btnGap = 10;
+        const int btnStartX = 10;
+        const int btnY = 160;
+
+        hNextButton = CreateWindowW(L"BUTTON", LM.getLPW(L"debug_btn_next"),
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-            50, 160, 80, 30,
+            btnStartX, btnY, btnWidth, btnHeight,
             hwnd, reinterpret_cast<HMENU>(2), nullptr, nullptr);
 
-        hStopButton = CreateWindowW(L"BUTTON", L"Stop",
+        hStopButton = CreateWindowW(L"BUTTON", LM.getLPW(L"debug_btn_stop"),
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-            150, 160, 80, 30,
+            btnStartX + btnWidth + btnGap, btnY, btnWidth, btnHeight,
             hwnd, reinterpret_cast<HMENU>(3), nullptr, nullptr);
 
-        hCopyButton = CreateWindowW(L"BUTTON", L"Copy",
+        hCopyButton = CreateWindowW(L"BUTTON", LM.getLPW(L"debug_btn_copy"),
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-            250, 160, 80, 30,
+            btnStartX + 2 * (btnWidth + btnGap), btnY, btnWidth, btnHeight,
             hwnd, reinterpret_cast<HMENU>(4), nullptr, nullptr);
 
         // Extract the debug message from lParam
@@ -6126,24 +6133,25 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
     }
 
     case WM_SIZE: {
-        // Get the new window size
         RECT rect;
         GetClientRect(hwnd, &rect);
 
-        // Calculate new positions for the buttons
-        int buttonWidth = 80;
-        int buttonHeight = 30;
-        int listHeight = rect.bottom - buttonHeight - 40; // 40 for padding
+        // Button dimensions (fixed left position)
+        const int btnWidth = 120;
+        const int btnHeight = 30;
+        const int btnGap = 10;
+        const int btnStartX = 10;
+        const int btnY = rect.bottom - btnHeight - 10;
+        const int listHeight = rect.bottom - btnHeight - 40;
 
         SetWindowPos(hListView, nullptr, 10, 10, rect.right - 20, listHeight, SWP_NOZORDER);
-        SetWindowPos(hNextButton, nullptr, 10, rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
-        SetWindowPos(hStopButton, nullptr, buttonWidth + 20, rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
-        SetWindowPos(hCopyButton, nullptr, 2 * (buttonWidth + 20), rect.bottom - buttonHeight - 10, buttonWidth, buttonHeight, SWP_NOZORDER);
+        SetWindowPos(hNextButton, nullptr, btnStartX, btnY, btnWidth, btnHeight, SWP_NOZORDER);
+        SetWindowPos(hStopButton, nullptr, btnStartX + btnWidth + btnGap, btnY, btnWidth, btnHeight, SWP_NOZORDER);
+        SetWindowPos(hCopyButton, nullptr, btnStartX + 2 * (btnWidth + btnGap), btnY, btnWidth, btnHeight, SWP_NOZORDER);
 
-        // Adjust the column widths
-        ListView_SetColumnWidth(hListView, 0, LVSCW_AUTOSIZE_USEHEADER); // Variable column
-        ListView_SetColumnWidth(hListView, 1, LVSCW_AUTOSIZE_USEHEADER); // Type column
-        ListView_SetColumnWidth(hListView, 2, LVSCW_AUTOSIZE_USEHEADER); // Value column
+        ListView_SetColumnWidth(hListView, 0, LVSCW_AUTOSIZE_USEHEADER);
+        ListView_SetColumnWidth(hListView, 1, LVSCW_AUTOSIZE_USEHEADER);
+        ListView_SetColumnWidth(hListView, 2, LVSCW_AUTOSIZE_USEHEADER);
         break;
     }
 
@@ -6287,12 +6295,12 @@ void MultiReplace::SetDebugComplete()
     }
 
     // Update window title to show completion
-    SetWindowTextW(hDebugWnd, L"Debug Information (Complete)");
+    SetWindowTextW(hDebugWnd, LM.getLPW(L"debug_title_complete"));
 
     // Change Stop button to Close
     HWND hStopButton = GetDlgItem(hDebugWnd, 3);
     if (hStopButton) {
-        SetWindowTextW(hStopButton, L"Close");
+        SetWindowTextW(hStopButton, LM.getLPW(L"debug_btn_close"));
     }
 
     // Disable Next button

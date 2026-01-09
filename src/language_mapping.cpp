@@ -340,6 +340,17 @@ const LangKV kEnglishPairs[] = {
 { L"about_help_support", L"Help and Support" },
 { L"about_ok", L"OK" },
 
+// Debug Window
+{ L"debug_title", L"Debug Information" },
+{ L"debug_title_complete", L"Debug Information (Complete)" },
+{ L"debug_btn_next", L"Next" },
+{ L"debug_btn_stop", L"Stop" },
+{ L"debug_btn_close", L"Close" },
+{ L"debug_btn_copy", L"Copy" },
+{ L"debug_col_variable", L"Variable" },
+{ L"debug_col_type", L"Type" },
+{ L"debug_col_value", L"Value" },
+
 };
 
 const size_t kEnglishPairsCount = sizeof(kEnglishPairs) / sizeof(kEnglishPairs[0]);
