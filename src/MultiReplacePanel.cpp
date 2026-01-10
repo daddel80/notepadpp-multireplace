@@ -35,6 +35,8 @@
 #include "UndoRedoManager.h"
 #include "NumericToken.h"
 #include "StringUtils.h"
+#include "language_mapping.h"
+#include "MultiReplaceConfigDialog.h"
 #include <algorithm>
 #include <bitset>
 #include <fstream>
@@ -62,6 +64,7 @@ static LanguageManager& LM = LanguageManager::instance();
 static ConfigManager& CFG = ConfigManager::instance();
 static UndoRedoManager& URM = UndoRedoManager::instance();
 namespace SU = StringUtils;
+extern MultiReplaceConfigDialog _MultiReplaceConfig;
 
 // Pointer-sized BufferID
 using BufferId = UINT_PTR;
@@ -272,12 +275,12 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_find_what"), SS_RIGHT, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_replace_with"), SS_RIGHT, nullptr, true, FontRole::Standard };
 
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(134), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(133), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(158), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
-    ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(112), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(110), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
 
     // Note: Replace Hit Edit uses Standard Font implicitly
     ctrlMap[IDC_REPLACE_HIT_EDIT] = { sx(130), sy(176), sx(41), sy(16), WC_EDIT, nullptr, ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,  LM.getLPCW(L"tooltip_replace_at_matches"), true, FontRole::Standard };
@@ -377,8 +380,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
 
     ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(21), sy(230), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(21), sy(257), sx(115), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(27), sy(230), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(27), sy(257), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
 }
 
 HFONT MultiReplace::font(FontRole role) const {
@@ -1027,6 +1030,99 @@ void MultiReplace::loadLanguageGlobal() {
     LanguageManager::instance().load(pluginDir, langXml);
 }
 
+void MultiReplace::refreshUILanguage()
+{
+    // Reload language strings
+    loadLanguageGlobal();
+
+    if (!_MultiReplace._hSelf || !IsWindow(_MultiReplace._hSelf))
+        return;
+
+    // Rebuild ctrlMap with new language strings
+    RECT rc;
+    GetClientRect(_MultiReplace._hSelf, &rc);
+    _MultiReplace.positionAndResizeControls(rc.right, rc.bottom);
+
+    // Update all controls - SetWindowPos forces Windows to recalculate text extent
+    for (auto& pair : _MultiReplace.ctrlMap) {
+        HWND hCtrl = GetDlgItem(_MultiReplace._hSelf, pair.first);
+        if (!hCtrl) continue;
+
+        // Only set text for controls with defined windowName (skip edit fields/comboboxes)
+        if (pair.second.windowName && pair.second.windowName[0] != L'\0') {
+            SetWindowTextW(hCtrl, pair.second.windowName);
+        }
+
+        SetWindowPos(hCtrl, nullptr,
+            pair.second.x, pair.second.y,
+            pair.second.cx, pair.second.cy,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    // Update ListView headers
+    if (_MultiReplace._replaceListView) {
+        auto& colIndices = _MultiReplace.columnIndices;
+        LVCOLUMN lvc = {};
+        lvc.mask = LVCF_TEXT;
+
+        for (size_t i = 0; i < kHeaderTextMappingsCount; ++i) {
+            ColumnID colId = static_cast<ColumnID>(kHeaderTextMappings[i].columnId);
+            auto it = colIndices.find(colId);
+            if (it != colIndices.end() && it->second >= 0) {
+                lvc.pszText = LM.getLPW(kHeaderTextMappings[i].langKey);
+                ListView_SetColumn(_MultiReplace._replaceListView, it->second, &lvc);
+            }
+        }
+
+        // Update header tooltips
+        if (_MultiReplace._hHeaderTooltip) {
+            HWND hwndHeader = ListView_GetHeader(_MultiReplace._replaceListView);
+            if (hwndHeader) {
+                for (size_t i = 0; i < kHeaderTooltipMappingsCount; ++i) {
+                    ColumnID colId = static_cast<ColumnID>(kHeaderTooltipMappings[i].columnId);
+                    auto it = colIndices.find(colId);
+                    if (it != colIndices.end() && it->second >= 0) {
+                        TOOLINFO ti = { sizeof(TOOLINFO) };
+                        ti.hwnd = hwndHeader;
+                        ti.uId = static_cast<UINT_PTR>(it->second);
+                        ti.lpszText = LM.getLPW(kHeaderTooltipMappings[i].langKey);
+                        SendMessage(_MultiReplace._hHeaderTooltip, TTM_UPDATETIPTEXT, 0, reinterpret_cast<LPARAM>(&ti));
+                    }
+                }
+            }
+        }
+    }
+
+    // Update ConfigDialog
+    _MultiReplaceConfig.refreshUILanguage();
+
+    // Update Debug Window
+    if (hDebugWnd && IsWindow(hDebugWnd)) {
+        SetWindowTextW(hDebugWnd, LM.getLPCW(L"debug_title"));
+
+        // Update buttons (IDs: 2=Next, 3=Stop, 4=Copy)
+        HWND hBtn = GetDlgItem(hDebugWnd, 2);
+        if (hBtn) SetWindowTextW(hBtn, LM.getLPCW(L"debug_btn_next"));
+        hBtn = GetDlgItem(hDebugWnd, 3);
+        if (hBtn) SetWindowTextW(hBtn, LM.getLPCW(L"debug_btn_stop"));
+        hBtn = GetDlgItem(hDebugWnd, 4);
+        if (hBtn) SetWindowTextW(hBtn, LM.getLPCW(L"debug_btn_copy"));
+
+        // Update ListView columns
+        if (hDebugListView && IsWindow(hDebugListView)) {
+            LVCOLUMN lvc = {};
+            lvc.mask = LVCF_TEXT;
+            lvc.pszText = LM.getLPW(L"debug_col_variable");
+            ListView_SetColumn(hDebugListView, 0, &lvc);
+            lvc.pszText = LM.getLPW(L"debug_col_type");
+            ListView_SetColumn(hDebugListView, 1, &lvc);
+            lvc.pszText = LM.getLPW(L"debug_col_value");
+            ListView_SetColumn(hDebugListView, 2, &lvc);
+        }
+    }
+    RedrawWindow(_MultiReplace._hSelf, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+}
+
 #pragma endregion
 
 
@@ -1525,7 +1621,7 @@ void MultiReplace::createListViewColumns() {
         lvc.iSubItem = currentIndex;
         lvc.pszText = LM.getLPW(L"header_find_count");
         lvc.cx = findCountColumnWidth;
-        lvc.fmt = LVCFMT_RIGHT;
+        lvc.fmt = LVCFMT_LEFT;
         ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
         columnIndices[ColumnID::FIND_COUNT] = currentIndex;
         ++currentIndex;
@@ -1539,7 +1635,7 @@ void MultiReplace::createListViewColumns() {
         lvc.iSubItem = currentIndex;
         lvc.pszText = LM.getLPW(L"header_replace_count");
         lvc.cx = replaceCountColumnWidth;
-        lvc.fmt = LVCFMT_RIGHT;
+        lvc.fmt = LVCFMT_LEFT;
         ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
         columnIndices[ColumnID::REPLACE_COUNT] = currentIndex;
         ++currentIndex;

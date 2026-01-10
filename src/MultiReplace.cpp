@@ -16,6 +16,7 @@
 
 #include "PluginDefinition.h"
 #include "MultiReplacePanel.h"
+#include "MultiReplaceConfigDialog.h"
 #include "image_data.h"
 #include <algorithm>
 #include <vector>
@@ -24,6 +25,7 @@
 
 extern FuncItem funcItem[nbFunc];
 extern NppData nppData;
+extern MultiReplaceConfigDialog _MultiReplaceConfig;
 
 HINSTANCE g_inst;
 
@@ -226,7 +228,12 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
         ::SetWindowPos(_MultiReplace.getHSelf(), nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED); // to redraw titlebar and window
         break;
     }
-
+    case NPPN_NATIVELANGCHANGED:
+    {
+        MultiReplace::refreshUILanguage();
+        _MultiReplaceConfig.refreshUILanguage();
+        break;
+    }
     default:
         return;
     }

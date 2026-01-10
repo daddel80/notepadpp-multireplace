@@ -1,4 +1,4 @@
-﻿// This file is part of the MultiReplace plugin for Notepad++.
+// This file is part of the MultiReplace plugin for Notepad++.
 // Copyright (C) 2023 Thomas Knoefel
 //
 // This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,8 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #include "language_mapping.h"
-
+#include "MultiReplacePanel.h"
+#include "StaticDialog/resource.h"
 
 const LangKV kEnglishPairs[] = {
 { L"panel_find_what", L"Find what: "},
@@ -156,46 +157,32 @@ const LangKV kEnglishPairs[] = {
 { L"status_invalid_quote_character", L"Invalid quote character. Use \" or ' or leave it empty." },
 { L"status_unable_to_save_file", L"Error: Unable to open or write to file." },
 { L"status_saved_items_to_csv", L"$REPLACE_STRING items saved to CSV." },
-{ L"status_no_valid_items_in_csv", L"No valid items found in the CSV file." },
-{ L"status_list_exported_to_bash", L"List exported to BASH script." }, 
-{ L"status_invalid_column_count", L"File not loaded! Invalid number of columns in CSV file." },
-{ L"status_invalid_data_in_columns", L"File not loaded! Invalid data found in CSV columns." },
-{ L"status_no_find_replace_list_input", L"No 'Find' or 'Replace' string provided. Please enter a value." },
-{ L"status_found_in_list", L"Entry found in the list." },
-{ L"status_not_found_in_list", L"No entry found in the list based on input fields." },
-{ L"status_enable_list", L"List mode enabled. Actions will use list entries." },
-{ L"status_disable_list", L"List mode disabled. Actions will use 'Find what' and 'Replace with' fields." },
-{ L"status_new_list_created", L"New list created." },
-{ L"status_no_rows_selected_to_delete", L"No rows selected to delete." },
-{ L"status_invalid_indices", L"Invalid indices supplied." },
-{ L"status_error_hidden_buffer", L"Error creating hidden buffer for processing." },
-{ L"status_error_invalid_directory", L"The specified directory is invalid or does not exist." },
-{ L"status_error_scanning_directory", L"Error scanning directory: $REPLACE_STRING" },
-{ L"status_canceled", L"Canceled" },
-{ L"status_no_delimiters", L"No delimiters found." },
-{ L"status_model_build_failed", L"Flow Tabs: model build failed." },
-{ L"status_padding_insert_failed", L"Flow Tabs: insert failed." },
-{ L"status_visual_fail", L"Flow Tabs: visual tabstops failed." },
-{ L"status_tabs_inserted", L"Flow Tabs: INSERTED." },
-{ L"status_tabs_removed", L"Flow Tabs: REMOVED." },
-{ L"status_tabs_aligned", L"Flow Tabs: ALIGNED" },
-{ L"status_nothing_to_align", L"Flow Tabs: nothing to align." },
-{ L"status_no_selection", L"No text selected." },
-
-// Dynamic Status message entries
-{ L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },
+{ L"status_no_items_to_save", L"No items to save." },
+{ L"status_loaded_items_from_csv", L"$REPLACE_STRING items loaded from CSV." },
+{ L"status_loaded_lines_from_bash", L"$REPLACE_STRING lines loaded from Bash." },
+{ L"status_failed_to_open_file", L"Failed to open file: $REPLACE_STRING" },
+{ L"status_invalid_csv_format", L"Invalid CSV format." },
 { L"status_lines_deleted", L"$REPLACE_STRING lines deleted." },
-{ L"status_occurrences_replaced", L"$REPLACE_STRING occurrences were replaced." },
-{ L"status_no_matches_found_for", L"No matches found for '$REPLACE_STRING'." },
-{ L"status_actual_position", L"Actual Position $REPLACE_STRING" },
-{ L"status_items_loaded_from_csv", L"$REPLACE_STRING items loaded from CSV." },
-{ L"status_occurrences_marked", L"$REPLACE_STRING occurrences were marked." },
-{ L"status_items_copied_to_clipboard", L"$REPLACE_STRING items copied to Clipboard." },
-{ L"status_no_matches_after_wrap_for", L"No matches found for '$REPLACE_STRING' after wrap." },
-{ L"status_deleted_fields_count", L"Deleted $REPLACE_STRING fields." },
-{ L"status_line_and_column_position", L" (Line: $REPLACE_STRING1, Column: $REPLACE_STRING2)" },
-{ L"status_unable_to_open_file", L"Failed to open the file: $REPLACE_STRING" },
-{ L"status_operation_cancelled", L"Replacement cancelled." },
+{ L"status_lines_shifted_up", L"$REPLACE_STRING lines shifted up." },
+{ L"status_lines_shifted_down", L"$REPLACE_STRING lines shifted down." },
+{ L"status_marked_text_copied", L"Marked text copied to clipboard." },
+{ L"status_columns_copied_to_clipboard", L"$REPLACE_STRING column(s) copied to Clipboard." },
+{ L"status_columns_deleted", L"$REPLACE_STRING column(s) deleted." },
+{ L"status_find_list", L"Find in List" },
+{ L"status_find_in_files_started", L"Find in files started." },
+{ L"status_replace_in_files_started", L"Replace in files started." },
+{ L"status_list_replace_in_files_started", L"List replace in files started." },
+{ L"status_unable_to_open_target_file", L"Unable to open target file: $REPLACE_STRING" },
+{ L"status_unable_to_write_to_file", L"Unable to write to file: $REPLACE_STRING" },
+{ L"status_replaced_in_list", L"Replaced in List: $REPLACE_STRING1 of $REPLACE_STRING2 line(s)." },
+{ L"status_found_in_list", L"Found in List: $REPLACE_STRING1 of $REPLACE_STRING2 line(s)." },
+{ L"status_matches_found", L"$REPLACE_STRING matches found." },
+{ L"status_matches_marked", L"$REPLACE_STRING matches marked." },
+{ L"status_matches_replaced", L"$REPLACE_STRING matches replaced." },
+{ L"status_count_one_replaced", L"$REPLACE_STRING occurrence replaced." },
+{ L"status_no_matches_to_replace", L"No matches to replace." },
+{ L"status_match_replaced", L"Match replaced." },
+{ L"status_find_summary", L"Find in files : $REPLACE_STRING1 hits in $REPLACE_STRING2 file(s)." },
 { L"status_replace_summary", L"Replace in files : $REPLACE_STRING1 of $REPLACE_STRING2 file(s) modified." },
 { L"status_occurrences_found", L"$REPLACE_STRING occurrences found." },
 
@@ -252,7 +239,7 @@ const LangKV kEnglishPairs[] = {
 { L"ctxmenu_redo", L"R&edo\tCtrl+Y" },
 { L"ctxmenu_add_new_line", L"&Add New Line\tCtrl+I" },
 
-// Result Dock Menu
+// Result Dock Menu
 { L"rdmenu_fold_all",            L"Fold all" },
 { L"rdmenu_unfold_all",          L"Unfold all" },
 { L"rdmenu_copy_std",            L"&Copy\tCtrl+C" },
@@ -292,8 +279,8 @@ const LangKV kEnglishPairs[] = {
 
 // List View Settings
 { L"config_grp_list_columns", L"Visible Columns" },
-{ L"config_chk_find_count", L"Find Count" },
-{ L"config_chk_replace_count", L"Replace Count" },
+{ L"config_chk_find_count", L"Matches Count" },
+{ L"config_chk_replace_count", L"Replaced Count" },
 { L"config_chk_comments", L"Comments" },
 { L"config_chk_delete_button", L"Delete Button" },
 { L"config_grp_list_results", L"List Results" },
@@ -323,8 +310,6 @@ const LangKV kEnglishPairs[] = {
 { L"config_lbl_scale_factor", L"Scale factor" },
 { L"config_grp_display_options", L"Display Options" },
 { L"config_chk_enable_tooltips", L"Enable tooltips" },
-{ L"config_chk_result_dock_entry_colors", L"Use list colors in search results" },
-{ L"config_chk_use_list_colors_marking", L"Use list colors for text marking" },
 
 // Plugin Menu
 { L"menu_multiple_replacement", L"&Multiple Replacement..." },
@@ -354,3 +339,114 @@ const LangKV kEnglishPairs[] = {
 };
 
 const size_t kEnglishPairsCount = sizeof(kEnglishPairs) / sizeof(kEnglishPairs[0]);
+
+// ============================================================
+// Main Panel: Control Text Mappings
+// ============================================================
+
+const UITextMapping kControlTextMappings[] = {
+    // Labels
+    { IDC_STATIC_FIND,                 L"panel_find_what" },
+    { IDC_STATIC_REPLACE,              L"panel_replace_with" },
+    // Checkboxes
+    { IDC_WHOLE_WORD_CHECKBOX,         L"panel_match_whole_word_only" },
+    { IDC_MATCH_CASE_CHECKBOX,         L"panel_match_case" },
+    { IDC_USE_VARIABLES_CHECKBOX,      L"panel_use_variables" },
+    { IDC_USE_VARIABLES_HELP,          L"panel_help" },
+    { IDC_WRAP_AROUND_CHECKBOX,        L"panel_wrap_around" },
+    { IDC_REPLACE_AT_MATCHES_CHECKBOX, L"panel_replace_at_matches" },
+    // Group boxes
+    { IDC_SEARCH_MODE_GROUP,           L"panel_search_mode" },
+    { IDC_SCOPE_GROUP,                 L"panel_scope" },
+    // Radio buttons
+    { IDC_NORMAL_RADIO,                L"panel_normal" },
+    { IDC_EXTENDED_RADIO,              L"panel_extended" },
+    { IDC_REGEX_RADIO,                 L"panel_regular_expression" },
+    { IDC_ALL_TEXT_RADIO,              L"panel_all_text" },
+    { IDC_SELECTION_RADIO,             L"panel_selection" },
+    { IDC_COLUMN_MODE_RADIO,           L"panel_csv" },
+    // Column mode labels
+    { IDC_COLUMN_NUM_STATIC,           L"panel_cols" },
+    { IDC_DELIMITER_STATIC,            L"panel_delim" },
+    { IDC_QUOTECHAR_STATIC,            L"panel_quote" },
+    // Buttons
+    { IDC_COPY_TO_LIST_BUTTON,         L"panel_add_into_list" },
+    { IDC_REPLACE_ALL_BUTTON,          L"panel_replace_all" },
+    { IDC_REPLACE_BUTTON,              L"panel_replace" },
+    { IDC_FIND_ALL_BUTTON,             L"panel_find_all" },
+    { IDC_FIND_NEXT_BUTTON,            L"panel_find_next" },
+    { IDC_MARK_BUTTON,                 L"panel_mark_matches" },
+    { IDC_MARK_MATCHES_BUTTON,         L"panel_mark_matches_small" },
+    { IDC_CLEAR_MARKS_BUTTON,          L"panel_clear_all_marks" },
+    { IDC_LOAD_FROM_CSV_BUTTON,        L"panel_load_list" },
+    { IDC_LOAD_LIST_BUTTON,            L"panel_load_list" },
+    { IDC_SAVE_TO_CSV_BUTTON,          L"panel_save_list" },
+    { IDC_SAVE_AS_BUTTON,              L"panel_save_as" },
+    { IDC_EXPORT_BASH_BUTTON,          L"panel_export_to_bash" },
+    { IDC_SHIFT_TEXT,                  L"panel_move_lines" },
+    // Replace in Files Panel - NEU HINZUGEFÜGT
+    { IDC_DIR_STATIC,                  L"panel_directory" },
+    { IDC_FILTER_STATIC,               L"panel_filter" },
+    { IDC_SUBFOLDERS_CHECKBOX,         L"panel_in_subfolders" },
+    { IDC_HIDDENFILES_CHECKBOX,        L"panel_in_hidden_folders" },
+    { IDC_CANCEL_REPLACE_BUTTON,       L"panel_cancel_replace" },
+};
+
+const size_t kControlTextMappingsCount = sizeof(kControlTextMappings) / sizeof(kControlTextMappings[0]);
+
+// ============================================================
+// Main Panel: Tooltip Mappings (for future use when tooltips are centralized)
+// ============================================================
+
+const UITooltipMapping kTooltipMappings[] = {
+    { IDC_COLUMN_NUM_EDIT,             L"tooltip_columns" },
+    { IDC_DELIMITER_EDIT,              L"tooltip_delimiter" },
+    { IDC_QUOTECHAR_EDIT,              L"tooltip_quote" },
+    { IDC_REPLACE_HIT_EDIT,            L"tooltip_replace_at_matches" },
+    { IDC_COLUMN_SORT_DESC_BUTTON,     L"tooltip_sort_descending" },
+    { IDC_COLUMN_SORT_ASC_BUTTON,      L"tooltip_sort_ascending" },
+    { IDC_COLUMN_DROP_BUTTON,          L"tooltip_drop_columns" },
+    { IDC_COLUMN_COPY_BUTTON,          L"tooltip_copy_columns" },
+    { IDC_COLUMN_HIGHLIGHT_BUTTON,     L"tooltip_column_highlight" },
+    { IDC_COLUMN_GRIDTABS_BUTTON,      L"tooltip_column_tabs" },
+    { IDC_COPY_MARKED_TEXT_BUTTON,     L"tooltip_copy_marked_text" },
+    { IDC_REPLACE_ALL_SMALL_BUTTON,    L"tooltip_replace_all" },
+    { IDC_2_BUTTONS_MODE,              L"tooltip_2_buttons_mode" },
+    { IDC_NEW_LIST_BUTTON,             L"tooltip_new_list" },
+    { IDC_SAVE_BUTTON,                 L"tooltip_save" },
+};
+
+const size_t kTooltipMappingsCount = sizeof(kTooltipMappings) / sizeof(kTooltipMappings[0]);
+
+// ============================================================
+// ListView Header Text Mappings
+// ============================================================
+
+const UIHeaderMapping kHeaderTextMappings[] = {
+    { ColumnID::FIND_COUNT,    L"header_find_count" },
+    { ColumnID::REPLACE_COUNT, L"header_replace_count" },
+    { ColumnID::FIND_TEXT,     L"header_find" },
+    { ColumnID::REPLACE_TEXT,  L"header_replace" },
+    { ColumnID::WHOLE_WORD,    L"header_whole_word" },
+    { ColumnID::MATCH_CASE,    L"header_match_case" },
+    { ColumnID::USE_VARIABLES, L"header_use_variables" },
+    { ColumnID::EXTENDED,      L"header_extended" },
+    { ColumnID::REGEX,         L"header_regex" },
+    { ColumnID::COMMENTS,      L"header_comments" },
+};
+
+const size_t kHeaderTextMappingsCount = sizeof(kHeaderTextMappings) / sizeof(kHeaderTextMappings[0]);
+
+// ============================================================
+// ListView Header Tooltip Mappings
+// ============================================================
+
+const UIHeaderMapping kHeaderTooltipMappings[] = {
+    { ColumnID::WHOLE_WORD,    L"tooltip_header_whole_word" },
+    { ColumnID::MATCH_CASE,    L"tooltip_header_match_case" },
+    { ColumnID::USE_VARIABLES, L"tooltip_header_use_variables" },
+    { ColumnID::EXTENDED,      L"tooltip_header_extended" },
+    { ColumnID::REGEX,         L"tooltip_header_regex" },
+};
+
+const size_t kHeaderTooltipMappingsCount = sizeof(kHeaderTooltipMappings) / sizeof(kHeaderTooltipMappings[0]);

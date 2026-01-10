@@ -142,6 +142,125 @@ void MultiReplaceConfigDialog::init(HINSTANCE hInst, HWND hParent)
     StaticDialog::init(hInst, hParent);
 }
 
+void MultiReplaceConfigDialog::refreshUILanguage()
+{
+    // Only update if dialog exists
+    if (!_hSelf || !IsWindow(_hSelf))
+        return;
+
+    // Update main dialog buttons
+    if (_hCloseButton) {
+        SetWindowTextW(_hCloseButton, LM.getLPCW(L"config_btn_close"));
+    }
+    if (_hResetButton) {
+        SetWindowTextW(_hResetButton, LM.getLPCW(L"config_btn_reset"));
+    }
+
+    // Update category list
+    if (_hCategoryList) {
+        int currentSel = static_cast<int>(SendMessage(_hCategoryList, LB_GETCURSEL, 0, 0));
+        SendMessage(_hCategoryList, LB_RESETCONTENT, 0, 0);
+        SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_search_replace")));
+        SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_list_view")));
+        SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_csv")));
+        SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_appearance")));
+        if (currentSel >= 0) {
+            SendMessage(_hCategoryList, LB_SETCURSEL, currentSel, 0);
+        }
+    }
+
+    // ============================================================
+    // Config Dialog: Control Text Mappings with FIXED widths
+    // Width/Height are UNSCALED pixels (will be scaled with scaleX/scaleY)
+    // These must match the values used in create*PanelControls()
+    // ============================================================
+    static const struct {
+        int controlId;
+        const wchar_t* langKey;
+        int width;   // Unscaled width (0 = GroupBox, keep current)
+        int height;  // Unscaled height (18 for checkboxes/labels)
+    } kConfigMappings[] = {
+        // Search & Replace Panel: groupW=420, innerWidth=420-34=386
+        { IDC_CFG_GRP_SEARCH_BEHAVIOUR,    L"config_grp_search_behaviour",    0, 0 },
+        { IDC_CFG_STAY_AFTER_REPLACE,      L"config_chk_stay_after_replace",  386, 18 },
+        { IDC_CFG_ALL_FROM_CURSOR,         L"config_chk_all_from_cursor",     386, 18 },
+        { IDC_CFG_MUTE_SOUNDS,             L"config_chk_mute_sounds",         386, 18 },
+        { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize",      386, 18 },
+
+        // List View Panel - Columns: leftColWidth=210, innerWidth=210-24=186
+        { IDC_CFG_GRP_LIST_COLUMNS,        L"config_grp_list_columns",        0, 0 },
+        { IDC_CFG_FINDCOUNT_VISIBLE,       L"config_chk_find_count",          186, 18 },
+        { IDC_CFG_REPLACECOUNT_VISIBLE,    L"config_chk_replace_count",       186, 18 },
+        { IDC_CFG_COMMENTS_VISIBLE,        L"config_chk_comments",            186, 18 },
+        { IDC_CFG_DELETEBUTTON_VISIBLE,    L"config_chk_delete_button",       186, 18 },
+
+        // List View Panel - Results: rightColWidth=330, innerWidth=330-24=306
+        { IDC_CFG_GRP_LIST_STATS,          L"config_grp_list_results",        0, 0 },
+        { IDC_CFG_LISTSTATISTICS_ENABLED,  L"config_chk_list_stats",          306, 18 },
+        { IDC_CFG_GROUPRESULTS_ENABLED,    L"config_chk_group_results",       306, 18 },
+
+        // List View Panel - Interaction: totalWidth=560, innerWidth=560-24=536
+        { IDC_CFG_GRP_LIST_INTERACTION,    L"config_grp_list_interaction",    0, 0 },
+        { IDC_CFG_HIGHLIGHT_MATCH,         L"config_chk_highlight_match",     536, 18 },
+        { IDC_CFG_DOUBLECLICK_EDITS,       L"config_chk_doubleclick",         536, 18 },
+        { IDC_CFG_HOVER_TEXT_ENABLED,      L"config_chk_hover_text",          536, 18 },
+        { IDC_CFG_EDITFIELD_LABEL,         L"config_lbl_edit_height",         190, 18 },
+
+        // CSV Panel: groupW=570, innerWidth=570-24=546
+        { IDC_CFG_GRP_CSV_SETTINGS,        L"config_grp_csv_settings",        0, 0 },
+        { IDC_CFG_FLOWTABS_NUMERIC_ALIGN,  L"config_chk_numeric_align",       546, 18 },
+        { IDC_CFG_FLOWTABS_INTRO_DONTSHOW, L"config_chk_flowtabs_intro_dontshow", 546, 18 },
+        { IDC_CFG_CSV_SORT_LABEL,          L"config_lbl_csv_sort",            240, 18 },
+
+        // Appearance Panel - Interface: Labels use labelW=170
+        { IDC_CFG_GRP_INTERFACE,           L"config_grp_interface",           0, 0 },
+        { IDC_CFG_FOREGROUND_LABEL,        L"config_lbl_foreground",          170, 18 },
+        { IDC_CFG_BACKGROUND_LABEL,        L"config_lbl_background",          170, 18 },
+        { IDC_CFG_SCALE_LABEL,             L"config_lbl_scale_factor",        170, 18 },
+
+        // Appearance Panel - Display Options: groupW=460, padX=22, innerWidth=460-44=416
+        { IDC_CFG_GRP_DISPLAY_OPTIONS,     L"config_grp_display_options",     0, 0 },
+        { IDC_CFG_TOOLTIPS_ENABLED,        L"config_chk_enable_tooltips",     416, 18 },
+        { IDC_CFG_RESULT_DOCK_ENTRY_COLORS, L"config_chk_result_dock_entry_colors", 416, 18 },
+        { IDC_CFG_USE_LIST_COLORS_MARKING, L"config_chk_use_list_colors_marking", 416, 18 },
+    };
+
+    // Update all panel controls
+    HWND panels[] = { _hSearchReplacePanel, _hListViewLayoutPanel, _hCsvFlowTabsPanel, _hAppearancePanel };
+
+    for (const auto& mapping : kConfigMappings) {
+        for (HWND panel : panels) {
+            if (!panel) continue;
+            HWND hCtrl = GetDlgItem(panel, mapping.controlId);
+            if (hCtrl) {
+                // Set new text
+                SetWindowTextW(hCtrl, LM.getLPCW(mapping.langKey));
+
+                // Get current position (we need x, y)
+                RECT rc;
+                GetWindowRect(hCtrl, &rc);
+                MapWindowPoints(HWND_DESKTOP, panel, reinterpret_cast<LPPOINT>(&rc), 2);
+
+                // Use FIXED width/height if specified, otherwise keep current
+                int newWidth = (mapping.width > 0) ? scaleX(mapping.width) : (rc.right - rc.left);
+                int newHeight = (mapping.height > 0) ? scaleY(mapping.height) : (rc.bottom - rc.top);
+
+                // SetWindowPos forces Windows to recalculate text extent
+                SetWindowPos(hCtrl, nullptr,
+                    rc.left, rc.top,
+                    newWidth, newHeight,
+                    SWP_NOZORDER | SWP_NOACTIVATE);
+
+                break;
+            }
+        }
+    }
+
+    // Force complete repaint with background erase
+    RedrawWindow(_hSelf, nullptr, nullptr,
+        RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+}
+
 intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
     UNREFERENCED_PARAMETER(lParam);
@@ -611,7 +730,7 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     // Die untere Box spannt sich über die gesamte Breite beider oberer Boxen
     const int totalWidth = leftColWidth + columnSpacing + rightColWidth;
 
-    createGroupBox(_hListViewLayoutPanel, marginX, bottomY, totalWidth, bottomGroupH, IDC_STATIC, LM.getLPCW(L"config_grp_list_interaction"));
+    createGroupBox(_hListViewLayoutPanel, marginX, bottomY, totalWidth, bottomGroupH, IDC_CFG_GRP_LIST_INTERACTION, LM.getLPCW(L"config_grp_list_interaction"));
     {
         LayoutBuilder lb(this, _hListViewLayoutPanel, marginX + 22, bottomY + 25, totalWidth - 24, 24);
         lb.AddCheckbox(IDC_CFG_HIGHLIGHT_MATCH, LM.getLPCW(L"config_chk_highlight_match"));
@@ -655,8 +774,8 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
     if (!_hCsvFlowTabsPanel) return;
     const int left = 70;
     int top = 20;
-    const int groupW = 440;
-    const int groupH = 150;  // Erhöht von 120 auf 150 für die zusätzliche Checkbox
+    const int groupW = 570;
+    const int groupH = 150;
 
     createGroupBox(_hCsvFlowTabsPanel, left, top, groupW, groupH, IDC_CFG_GRP_CSV_SETTINGS, TEXT("CSV Settings"));
     const int innerLeft = left + 22;
@@ -665,8 +784,8 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
 
     LayoutBuilder lb(this, _hCsvFlowTabsPanel, innerLeft, innerTop, innerWidth, 32);
     lb.AddCheckbox(IDC_CFG_FLOWTABS_NUMERIC_ALIGN, LM.getLPCW(L"config_chk_numeric_align"));
-    lb.AddCheckbox(IDC_CFG_FLOWTABS_INTRO_DONTSHOW, LM.getLPCW(L"config_chk_flowtabs_intro_dontshow"));  // NEU
-    lb.AddLabel(IDC_STATIC, LM.getLPCW(L"config_lbl_csv_sort"), 240);
+    lb.AddCheckbox(IDC_CFG_FLOWTABS_INTRO_DONTSHOW, LM.getLPCW(L"config_chk_flowtabs_intro_dontshow"));
+    lb.AddLabel(IDC_CFG_CSV_SORT_LABEL, LM.getLPCW(L"config_lbl_csv_sort"), 240);
     lb.AddNumberEdit(IDC_CFG_HEADERLINES_EDIT, 250, -2, 45, 22);
 
     if (_hCategoryFont) applyFonts();

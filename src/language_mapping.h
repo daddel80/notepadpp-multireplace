@@ -18,6 +18,9 @@
 #include <string_view>
 #include <cstddef>
 
+// ============================================================
+// Language Key-Value Pairs (English defaults)
+// ============================================================
 struct LangKV {
     std::wstring_view k;
     std::wstring_view v;
@@ -25,3 +28,41 @@ struct LangKV {
 
 extern const LangKV kEnglishPairs[];
 extern const size_t kEnglishPairsCount;
+
+// ============================================================
+// UI Control Mappings for Language Refresh
+// ============================================================
+
+// Control ID -> Language Key (for SetWindowText)
+struct UITextMapping {
+    int controlId;
+    const wchar_t* langKey;
+};
+
+// Control ID -> Language Key (for Tooltips - future use)
+struct UITooltipMapping {
+    int controlId;
+    const wchar_t* langKey;
+};
+
+// ColumnID -> Language Key (for ListView headers)
+// Note: columnId corresponds to ColumnID enum values
+struct UIHeaderMapping {
+    int columnId;
+    const wchar_t* langKey;
+};
+
+// ============================================================
+// Main Panel Mappings
+// ============================================================
+extern const UITextMapping kControlTextMappings[];
+extern const size_t kControlTextMappingsCount;
+
+extern const UITooltipMapping kTooltipMappings[];
+extern const size_t kTooltipMappingsCount;
+
+extern const UIHeaderMapping kHeaderTextMappings[];
+extern const size_t kHeaderTextMappingsCount;
+
+extern const UIHeaderMapping kHeaderTooltipMappings[];
+extern const size_t kHeaderTooltipMappingsCount;

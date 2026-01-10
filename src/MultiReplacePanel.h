@@ -26,7 +26,8 @@
 #include "Encoding.h"
 #include "LanguageManager.h"
 #include "ConfigManager.h"
-#include "ColumnTabs.h" 
+#include "ColumnTabs.h"
+#include "MultiReplaceConfigDialog.h"
 
 #include <string>
 #include <vector>
@@ -402,6 +403,7 @@ public:
     };
 
     inline static MultiReplace* instance = nullptr; // Static instance of the class
+    //inline static MultiReplaceConfigDialog* _configDialog = nullptr;
 
     // Helper functions for scaling
     inline int sx(int value) { return dpiMgr->scaleX(value); }
@@ -540,6 +542,7 @@ public:
     void setBatchUIState(HWND hDlg, bool inProgress);
 
     static void loadLanguageGlobal();
+    static void refreshUILanguage();
 
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;

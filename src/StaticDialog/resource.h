@@ -256,15 +256,19 @@
 #define STYLE10                         69
 
 
-#define IDD_MULTIREPLACE_CONFIG         7000
-#define IDC_CONFIG_CATEGORY_LIST        7010
+// ===================================================================
+//  Config Dialog (7000-block)
+// ===================================================================
+#define IDD_MULTIREPLACE_CONFIG           7000
+#define IDC_CONFIG_CATEGORY_LIST          7010
 
 // ===================================================================
-//  Config dialog control IDs (dynamic controls)
+//  Config Dialog Control IDs (79xxx block)
+//  Gruppiert nach Panel, 20er Schritte zwischen Gruppen
 // ===================================================================
 
 // -------------------------------------------------------------------
-//  Search & Replace panel
+//  Search & Replace Panel
 // -------------------------------------------------------------------
 #define IDC_CFG_GRP_SEARCH_BEHAVIOUR      79000
 #define IDC_CFG_STAY_AFTER_REPLACE        79001
@@ -273,11 +277,9 @@
 #define IDC_CFG_LIMIT_FILESIZE            79004
 #define IDC_CFG_MAX_FILESIZE_EDIT         79005
 #define IDC_CFG_FILESIZE_MB_LABEL         79006
-#define IDC_CFG_GRP_HIGHLIGHT             79007
-#define IDC_CFG_HIGHLIGHT_MATCH           79008
 
 // -------------------------------------------------------------------
-//  List View & Layout panel
+//  List View Panel - Columns Group
 // -------------------------------------------------------------------
 #define IDC_CFG_GRP_LIST_COLUMNS          79020
 #define IDC_CFG_FINDCOUNT_VISIBLE         79021
@@ -285,48 +287,50 @@
 #define IDC_CFG_COMMENTS_VISIBLE          79023
 #define IDC_CFG_DELETEBUTTON_VISIBLE      79024
 
+// -------------------------------------------------------------------
+//  List View Panel - Results Group
+// -------------------------------------------------------------------
 #define IDC_CFG_GRP_LIST_STATS            79030
 #define IDC_CFG_LISTSTATISTICS_ENABLED    79031
 #define IDC_CFG_GROUPRESULTS_ENABLED      79032
 
-#define IDC_CFG_GRP_CSV_SETTINGS          79040
-#define IDC_CFG_FLOWTABS_NUMERIC_ALIGN    79041
-#define IDC_CFG_FLOWTABS_INTRO_DONTSHOW   79042
-
-#define IDC_CFG_GRP_SORTING               79050
-#define IDC_CFG_HEADERLINES_LABEL         79051
-#define IDC_CFG_HEADERLINES_EDIT          79052
+// -------------------------------------------------------------------
+//  List View Panel - Interaction Group
+// -------------------------------------------------------------------
+#define IDC_CFG_GRP_LIST_INTERACTION      79040
+#define IDC_CFG_HIGHLIGHT_MATCH           79041
+#define IDC_CFG_DOUBLECLICK_EDITS         79042
+#define IDC_CFG_HOVER_TEXT_ENABLED        79043
+#define IDC_CFG_EDITFIELD_LABEL           79044
+#define IDC_CFG_EDITFIELD_SIZE_COMBO      79045
 
 // -------------------------------------------------------------------
-//  Interface and Tooltips panel
+// CSV Panel
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_INTERACTION           79060
-#define IDC_CFG_DOUBLECLICK_EDITS         79061
-#define IDC_CFG_HOVER_TEXT_ENABLED        79062
-
-#define IDC_CFG_GRP_TOOLTIPS              79070
-#define IDC_CFG_TOOLTIPS_ENABLED          79071
-#define IDC_CFG_HOVER_DELAY_LABEL         79072
-#define IDC_CFG_HOVER_DELAY_EDIT          79073
+#define IDC_CFG_GRP_CSV_SETTINGS          79060
+#define IDC_CFG_FLOWTABS_NUMERIC_ALIGN    79061
+#define IDC_CFG_FLOWTABS_INTRO_DONTSHOW   79062
+#define IDC_CFG_CSV_SORT_LABEL            79063
+#define IDC_CFG_HEADERLINES_EDIT          79064
 
 // -------------------------------------------------------------------
-//  Appearance panel
+//  Appearance Panel - Interface Group
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_EDITFIELD             79080
-#define IDC_CFG_EDITFIELD_LABEL           79081
-#define IDC_CFG_EDITFIELD_SIZE_COMBO      79082
+#define IDC_CFG_GRP_INTERFACE             79080
+#define IDC_CFG_FOREGROUND_LABEL          79081
+#define IDC_CFG_FOREGROUND_SLIDER         79082
+#define IDC_CFG_BACKGROUND_LABEL          79083
+#define IDC_CFG_BACKGROUND_SLIDER         79084
+#define IDC_CFG_SCALE_LABEL               79085
+#define IDC_CFG_SCALE_SLIDER              79086
 
-#define IDC_CFG_GRP_INTERFACE             79090
-#define IDC_CFG_FOREGROUND_LABEL          79091
-#define IDC_CFG_FOREGROUND_SLIDER         79092
-#define IDC_CFG_BACKGROUND_LABEL          79093
-#define IDC_CFG_BACKGROUND_SLIDER         79094
-#define IDC_CFG_SCALE_LABEL               79096
-#define IDC_CFG_SCALE_SLIDER              79097
-
-#define IDC_CFG_GRP_DISPLAY_OPTIONS       79111
-#define IDC_CFG_RESULT_DOCK_ENTRY_COLORS  79112
-#define IDC_CFG_USE_LIST_COLORS_MARKING   79113
+// -------------------------------------------------------------------
+//  79100-79109: Appearance Panel - Display Options Group
+// -------------------------------------------------------------------
+#define IDC_CFG_GRP_DISPLAY_OPTIONS       79100
+#define IDC_CFG_TOOLTIPS_ENABLED          79101
+#define IDC_CFG_RESULT_DOCK_ENTRY_COLORS  79102
+#define IDC_CFG_USE_LIST_COLORS_MARKING   79103
 
 // -------------------------------------------------------------------
 //  Variables and Automation panel
