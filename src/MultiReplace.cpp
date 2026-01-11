@@ -26,6 +26,7 @@
 extern FuncItem funcItem[nbFunc];
 extern NppData nppData;
 extern MultiReplaceConfigDialog _MultiReplaceConfig;
+extern void refreshPluginMenu();
 
 HINSTANCE g_inst;
 
@@ -230,6 +231,8 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
     }
     case NPPN_NATIVELANGCHANGED:
     {
+        MultiReplace::loadLanguageGlobal();
+        refreshPluginMenu();
         MultiReplace::refreshUILanguage();
         _MultiReplaceConfig.refreshUILanguage();
         break;

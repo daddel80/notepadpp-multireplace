@@ -20,6 +20,7 @@
 #include "AboutDialog.h"
 #include "MultiReplaceConfigDialog.h"
 #include "LanguageManager.h"
+#include <string>
 
 
 MultiReplace _MultiReplace;
@@ -151,4 +152,59 @@ void multiReplaceConfig()
     }
 
     _MultiReplaceConfig.display(true);
+}
+
+//
+// Refresh plugin menu text when UI language changes (NPPN_NATIVELANGCHANGED)
+// This updates the menu items without requiring Notepad++ restart
+//
+void refreshPluginMenu()
+{
+    LanguageManager& LM = LanguageManager::instance();
+
+    // Mapping: funcItem index -> language key
+    // Index 1 is SEPARATOR, we skip it
+    static const struct {
+        int index;
+        const wchar_t* langKey;
+    } menuMappings[] = {
+        { 0, L"menu_multiple_replacement" },
+        // Index 1 is SEPARATOR - skip
+        { 2, L"menu_settings" },
+        { 3, L"menu_documentation" },
+        { 4, L"menu_about" },
+    };
+
+    // Get main menu handle from Notepad++
+    HMENU hMainMenu = reinterpret_cast<HMENU>(
+        ::SendMessage(nppData._nppHandle, NPPM_GETMENUHANDLE, 0, 0)
+        );
+
+    if (!hMainMenu) return;
+
+    // Update each menu item using its command ID
+    for (const auto& mapping : menuMappings) {
+        if (mapping.index < 0 || mapping.index >= nbFunc) continue;
+
+        int cmdId = funcItem[mapping.index]._cmdID;
+        if (cmdId == 0) continue;  // Command ID not yet assigned
+
+        std::wstring newText = LM.get(mapping.langKey);
+
+        // Update the internal funcItem name (for consistency with Notepad++ internals)
+        lstrcpyn(funcItem[mapping.index]._itemName, newText.c_str(), nbChar);
+
+        // Update the actual menu item text
+        MENUITEMINFOW mii = {};
+        mii.cbSize = sizeof(MENUITEMINFOW);
+        mii.fMask = MIIM_STRING;
+        mii.dwTypeData = const_cast<wchar_t*>(newText.c_str());
+
+        // SetMenuItemInfoW with FALSE = search by command ID (not by position)
+        // This works because Notepad++ assigns unique command IDs to plugin menu items
+        ::SetMenuItemInfoW(hMainMenu, cmdId, FALSE, &mii);
+    }
+
+    // Force the menu bar to redraw to show the changes immediately
+    ::DrawMenuBar(nppData._nppHandle);
 }

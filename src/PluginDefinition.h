@@ -64,7 +64,7 @@ void commandMenuCleanUp();
 //
 // Function which sets your command 
 //
-bool setCommand(size_t index, TCHAR *cmdName, PFUNCPLUGINCMD pFunc, ShortcutKey *sk = NULL, bool check0nInit = false);
+bool setCommand(size_t index, TCHAR* cmdName, PFUNCPLUGINCMD pFunc, ShortcutKey* sk = NULL, bool check0nInit = false);
 
 
 //
@@ -74,5 +74,10 @@ void multiReplace();
 void openHelpLink();
 void about();
 void multiReplaceConfig();
+
+//
+// Plugin menu language refresh (called on NPPN_NATIVELANGCHANGED)
+//
+void refreshPluginMenu();
 
 #endif //PLUGINDEFINITION_H
