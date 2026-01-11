@@ -367,7 +367,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, sy(225) + listHeight + sy(5) + filesOffsetY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, nullptr, false, FontRole::Normal1 };
 
     // Use List -> Normal5
-    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY , sx(22), sy(22), WC_BUTTON, L"-", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Normal5 };
+    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY , sx(22), sy(22), WC_BUTTON, useListEnabled ? L"˄" : L"˅", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Normal5 };
 
     ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_FILE_OPS_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, nullptr, false, FontRole::Standard };
