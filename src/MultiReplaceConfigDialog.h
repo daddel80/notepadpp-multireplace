@@ -91,6 +91,7 @@ private:
     void createListViewLayoutPanelControls();
     void createAppearancePanelControls();
     void createCsvOptionsPanelControls();
+    void createExportPanelControls();
 
     // -------------------------------------------------------------------------
     // Members
@@ -104,6 +105,10 @@ private:
     HWND _hListViewLayoutPanel = nullptr;
     HWND _hAppearancePanel = nullptr;
     HWND _hCsvFlowTabsPanel = nullptr;
+    HWND _hExportPanel = nullptr;
+
+    HWND _hTooltip = nullptr;
+    COLORREF _helpColor = RGB(0, 0, 255);  // Default light mode blue
 
     // Subclass procedure for checkbox to notify dialog on click
     static LRESULT CALLBACK CheckboxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);

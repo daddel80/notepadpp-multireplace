@@ -52,4 +52,6 @@ namespace StringUtils {
     // Escape control characters for debug display (makes \n, \r, \t visible)
     std::string escapeControlChars(const std::string& input);
 
+    std::wstring quoteField(const std::wstring& value);
+
 } // namespace StringUtils

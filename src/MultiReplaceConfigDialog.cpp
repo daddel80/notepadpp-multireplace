@@ -20,10 +20,15 @@
 #include "StaticDialog/resource.h"
 #include "LanguageManager.h"
 #include "MultiReplacePanel.h"
+#include <uxtheme.h>
 #include <cstddef>
 #include <algorithm>
 #include <cmath>
 #include <commctrl.h>
+
+namespace {
+    static const wchar_t* kDefaultExportTemplate = L"%FIND%\\t%REPLACE%\\t%FCOUNT%\\t%RCOUNT%\\t%COMMENT%";
+}
 
 extern NppData nppData;
 
@@ -135,6 +140,10 @@ MultiReplaceConfigDialog::~MultiReplaceConfigDialog()
     delete dpiMgr;
     dpiMgr = nullptr;
     if (_hCategoryFont) { ::DeleteObject(_hCategoryFont); _hCategoryFont = nullptr; }
+    if (_hTooltip) {
+        DestroyWindow(_hTooltip);
+        _hTooltip = nullptr;
+    }
 }
 
 void MultiReplaceConfigDialog::init(HINSTANCE hInst, HWND hParent)
@@ -163,6 +172,7 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_search_replace")));
         SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_list_view")));
         SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_csv")));
+        SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_export")));
         SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_appearance")));
         if (currentSel >= 0) {
             SendMessage(_hCategoryList, LB_SETCURSEL, currentSel, 0);
@@ -211,6 +221,10 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_FLOWTABS_NUMERIC_ALIGN,  L"config_chk_numeric_align",       546, 18 },
         { IDC_CFG_FLOWTABS_INTRO_DONTSHOW, L"config_chk_flowtabs_intro_dontshow", 546, 18 },
         { IDC_CFG_CSV_SORT_LABEL,          L"config_lbl_csv_sort",            240, 18 },
+        { IDC_CFG_GRP_EXPORT_DATA,       L"config_grp_export_data",           0, 0 },
+        { IDC_CFG_EXPORT_TEMPLATE_LABEL, L"config_lbl_export_template",       70, 18 },
+        { IDC_CFG_EXPORT_ESCAPE_CHECK,   L"config_chk_export_escape",         220, 18 },
+        { IDC_CFG_EXPORT_HEADER_CHECK,   L"config_chk_export_header",         200, 18 },
 
         // Appearance Panel - Interface: Labels use labelW=170
         { IDC_CFG_GRP_INTERFACE,           L"config_grp_interface",           0, 0 },
@@ -226,7 +240,7 @@ void MultiReplaceConfigDialog::refreshUILanguage()
     };
 
     // Update all panel controls
-    HWND panels[] = { _hSearchReplacePanel, _hListViewLayoutPanel, _hCsvFlowTabsPanel, _hAppearancePanel };
+    HWND panels[] = { _hSearchReplacePanel, _hListViewLayoutPanel, _hCsvFlowTabsPanel, _hAppearancePanel, _hExportPanel };
 
     for (const auto& mapping : kConfigMappings) {
         for (HWND panel : panels) {
@@ -309,6 +323,12 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
             SetWindowPos(_hSelf, nullptr, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
         }
 
+        // Create tooltip control
+        _hTooltip = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, nullptr,
+            WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+            _hSelf, nullptr, _hInst, nullptr);
+
         createUI();
         initUI();
         loadSettingsToConfigUI();
@@ -324,6 +344,7 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hListViewLayoutPanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hAppearancePanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCsvFlowTabsPanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hExportPanel));
 
         return TRUE;
     }
@@ -351,6 +372,24 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         }
     }
 
+    case WM_DRAWITEM:
+    {
+        DRAWITEMSTRUCT* pdis = reinterpret_cast<DRAWITEMSTRUCT*>(lParam);
+        if (pdis->CtlID == IDC_CFG_EXPORT_TEMPLATE_HELP) {
+            wchar_t buffer[16];
+            GetWindowTextW(pdis->hwndItem, buffer, 16);
+
+            // Yellow in dark mode, blue in light mode
+            bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+            SetTextColor(pdis->hDC, isDark ? RGB(255, 235, 59) : RGB(0, 0, 255));
+            SetBkMode(pdis->hDC, TRANSPARENT);
+
+            DrawTextW(pdis->hDC, buffer, -1, &pdis->rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            return TRUE;
+        }
+        return FALSE;
+    }
+
     case WM_SIZE:
         resizeUI();
         return TRUE;
@@ -360,6 +399,25 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
             loadSettingsToConfigUI(false);
         }
         return TRUE;
+
+    case WM_NOTIFY:
+    {
+        NMHDR* nmhdr = reinterpret_cast<NMHDR*>(lParam);
+        if (nmhdr->code == TTN_GETDISPINFO) {
+            NMTTDISPINFO* pdi = reinterpret_cast<NMTTDISPINFO*>(lParam);
+
+            // Get control ID from the tooltip
+            HWND hCtrl = reinterpret_cast<HWND>(pdi->hdr.idFrom);
+            int ctrlId = GetDlgCtrlID(hCtrl);
+
+            if (ctrlId == IDC_CFG_EXPORT_TEMPLATE_HELP) {
+                pdi->lpszText = const_cast<LPWSTR>(LM.getLPCW(L"tooltip_export_template_help"));
+                pdi->hinst = nullptr;
+            }
+            return TRUE;
+        }
+        break;
+    }
 
     case WM_COMMAND:
         switch (LOWORD(wParam))
@@ -429,12 +487,13 @@ INT_PTR MultiReplaceConfigDialog::handleCtlColorStatic(WPARAM wParam, LPARAM lPa
 
 void MultiReplaceConfigDialog::showCategory(int index) {
     if (index == _currentCategory) return;
-    if (index < 0 || index > 3) return;
+    if (index < 0 || index > 4) return;
     _currentCategory = index;
     ShowWindow(_hSearchReplacePanel, index == 0 ? SW_SHOW : SW_HIDE);
     ShowWindow(_hListViewLayoutPanel, index == 1 ? SW_SHOW : SW_HIDE);
     ShowWindow(_hCsvFlowTabsPanel, index == 2 ? SW_SHOW : SW_HIDE);
-    ShowWindow(_hAppearancePanel, index == 3 ? SW_SHOW : SW_HIDE);
+    ShowWindow(_hExportPanel, index == 3 ? SW_SHOW : SW_HIDE);
+    ShowWindow(_hAppearancePanel, index == 4 ? SW_SHOW : SW_HIDE);
     if (_hCategoryFont) applyFonts();
 }
 
@@ -446,17 +505,20 @@ void MultiReplaceConfigDialog::createUI() {
     _hListViewLayoutPanel = createPanel();
     _hCsvFlowTabsPanel = createPanel();
     _hAppearancePanel = createPanel();
+    _hExportPanel = createPanel();  // NEU
 
     createSearchReplacePanelControls();
     createListViewLayoutPanelControls();
     createCsvOptionsPanelControls();
     createAppearancePanelControls();
+    createExportPanelControls();  // NEU
 }
 
 void MultiReplaceConfigDialog::initUI() {
     SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_search_replace")));
     SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_list_view")));
     SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_csv")));
+    SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_export")));
     SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_appearance")));
 
     int catToSelect = (_currentCategory >= 0) ? _currentCategory : 0;
@@ -501,6 +563,7 @@ void MultiReplaceConfigDialog::applyFonts() {
     applyToHierarchy(_hListViewLayoutPanel);
     applyToHierarchy(_hAppearancePanel);
     applyToHierarchy(_hCsvFlowTabsPanel);
+    applyToHierarchy(_hExportPanel);
 
     if (_hCategoryList) ::SendMessage(_hCategoryList, WM_SETFONT, reinterpret_cast<WPARAM>(_hCategoryFont), TRUE);
     if (_hCloseButton)  ::SendMessage(_hCloseButton, WM_SETFONT, reinterpret_cast<WPARAM>(_hCategoryFont), TRUE);
@@ -541,6 +604,7 @@ void MultiReplaceConfigDialog::resizeUI() {
     MoveWindow(_hListViewLayoutPanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
     MoveWindow(_hCsvFlowTabsPanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
     MoveWindow(_hAppearancePanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
+    MoveWindow(_hExportPanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
 }
 
 LRESULT CALLBACK MultiReplaceConfigDialog::CheckboxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
@@ -571,6 +635,22 @@ LRESULT CALLBACK MultiReplaceConfigDialog::PanelSubclassProc(HWND hWnd, UINT uMs
     (void)uIdSubclass;
     (void)dwRefData;
 
+    // Forward WM_COMMAND to parent dialog so controls on panels can notify the dialog
+    if (uMsg == WM_COMMAND) {
+        HWND hParent = ::GetParent(hWnd);
+        if (hParent) {
+            return ::SendMessage(hParent, WM_COMMAND, wParam, lParam);
+        }
+    }
+
+    // Forward WM_DRAWITEM to parent dialog for owner-drawn controls
+    if (uMsg == WM_DRAWITEM) {
+        HWND hParent = ::GetParent(hWnd);
+        if (hParent) {
+            return ::SendMessage(hParent, WM_DRAWITEM, wParam, lParam);
+        }
+    }
+
     if (uMsg == WM_CTLCOLORSTATIC) {
         HDC hdc = reinterpret_cast<HDC>(wParam);
         HWND hCtrl = reinterpret_cast<HWND>(lParam);
@@ -578,23 +658,22 @@ LRESULT CALLBACK MultiReplaceConfigDialog::PanelSubclassProc(HWND hWnd, UINT uMs
         // Check if the control is a Trackbar (Slider)
         TCHAR className[64];
         if (::GetClassName(hCtrl, className, 64)) {
-            // FIX: Use lstrcmpi instead of _tcsicmp to avoid missing include error
             if (lstrcmpi(className, TRACKBAR_CLASS) == 0) {
 
                 // TRACKBARS NEED SOLID BACKGROUNDS (Fixes the black box issue)
                 bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
 
-                static HBRUSH hBrushDark = ::CreateSolidBrush(RGB(45, 45, 48)); // Dark Mode Background
-                static HBRUSH hBrushLight = ::CreateSolidBrush(::GetSysColor(COLOR_WINDOW)); // Light Mode Background (White)
+                static HBRUSH hBrushDark = ::CreateSolidBrush(RGB(45, 45, 48));
+                static HBRUSH hBrushLight = ::CreateSolidBrush(::GetSysColor(COLOR_WINDOW));
 
                 if (isDark) {
                     ::SetTextColor(hdc, RGB(220, 220, 220));
-                    ::SetBkColor(hdc, RGB(45, 45, 48)); // Match the brush
+                    ::SetBkColor(hdc, RGB(45, 45, 48));
                     return reinterpret_cast<LRESULT>(hBrushDark);
                 }
                 else {
                     ::SetTextColor(hdc, RGB(0, 0, 0));
-                    ::SetBkColor(hdc, ::GetSysColor(COLOR_WINDOW)); // Match the brush
+                    ::SetBkColor(hdc, ::GetSysColor(COLOR_WINDOW));
                     return reinterpret_cast<LRESULT>(hBrushLight);
                 }
             }
@@ -691,11 +770,8 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     const int marginX = 30;
     const int marginY = 10;
 
-    // LAYOUT ANPASSUNG:
-    // Links schmaler (kurze Texte), Rechts breiter (lange Sätze in DE/RU/FR).
-    // Gesamtbreite ca. 540px + Spacing.
-    const int leftColWidth = 210;  // Vorher 260
-    const int rightColWidth = 330; // Vorher 260 (Verhältnis ~1:1.6 - Goldener Schnitt)
+    const int leftColWidth = 210;
+    const int rightColWidth = 330;
     const int columnSpacing = 20;
 
     const int leftGroupH = 140;
@@ -704,7 +780,6 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     const int bottomGroupH = 140;
     const int topRowY = marginY;
 
-    // --- Linke Box (Visible Columns) ---
     createGroupBox(_hListViewLayoutPanel, marginX, topRowY, leftColWidth, leftGroupH, IDC_CFG_GRP_LIST_COLUMNS, LM.getLPCW(L"config_grp_list_columns"));
     {
         LayoutBuilder lb(this, _hListViewLayoutPanel, marginX + 22, topRowY + 25, leftColWidth - 24, 24);
@@ -714,7 +789,6 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
         lb.AddCheckbox(IDC_CFG_DELETEBUTTON_VISIBLE, LM.getLPCW(L"config_chk_delete_button"));
     }
 
-    // --- Rechte Box (List Results) ---
     const int rightColX = marginX + leftColWidth + columnSpacing;
 
     createGroupBox(_hListViewLayoutPanel, rightColX, topRowY, rightColWidth, rightGroupH, IDC_CFG_GRP_LIST_STATS, LM.getLPCW(L"config_grp_list_results"));
@@ -724,10 +798,8 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
         lb.AddCheckbox(IDC_CFG_GROUPRESULTS_ENABLED, LM.getLPCW(L"config_chk_group_results"));
     }
 
-    // --- Untere Box (List Interaction) ---
     const int bottomY = topRowY + (leftGroupH > rightGroupH ? leftGroupH : rightGroupH) + gapAfterTop;
 
-    // Die untere Box spannt sich über die gesamte Breite beider oberer Boxen
     const int totalWidth = leftColWidth + columnSpacing + rightColWidth;
 
     createGroupBox(_hListViewLayoutPanel, marginX, bottomY, totalWidth, bottomGroupH, IDC_CFG_GRP_LIST_INTERACTION, LM.getLPCW(L"config_grp_list_interaction"));
@@ -772,21 +844,87 @@ void MultiReplaceConfigDialog::createAppearancePanelControls() {
 
 void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
     if (!_hCsvFlowTabsPanel) return;
+
     const int left = 70;
-    int top = 20;
+    const int top = 20;
     const int groupW = 570;
-    const int groupH = 150;
+    const int groupH = 130;
 
-    createGroupBox(_hCsvFlowTabsPanel, left, top, groupW, groupH, IDC_CFG_GRP_CSV_SETTINGS, TEXT("CSV Settings"));
-    const int innerLeft = left + 22;
-    const int innerTop = top + 35;
-    const int innerWidth = groupW - 24;
+    createGroupBox(_hCsvFlowTabsPanel, left, top, groupW, groupH,
+        IDC_CFG_GRP_CSV_SETTINGS, LM.getLPCW(L"config_grp_csv_settings"));
+    {
+        const int innerLeft = left + 22;
+        const int innerTop = top + 30;
+        const int innerWidth = groupW - 44;
 
-    LayoutBuilder lb(this, _hCsvFlowTabsPanel, innerLeft, innerTop, innerWidth, 32);
-    lb.AddCheckbox(IDC_CFG_FLOWTABS_NUMERIC_ALIGN, LM.getLPCW(L"config_chk_numeric_align"));
-    lb.AddCheckbox(IDC_CFG_FLOWTABS_INTRO_DONTSHOW, LM.getLPCW(L"config_chk_flowtabs_intro_dontshow"));
-    lb.AddLabel(IDC_CFG_CSV_SORT_LABEL, LM.getLPCW(L"config_lbl_csv_sort"), 240);
-    lb.AddNumberEdit(IDC_CFG_HEADERLINES_EDIT, 250, -2, 45, 22);
+        LayoutBuilder lb(this, _hCsvFlowTabsPanel, innerLeft, innerTop, innerWidth, 28);
+        lb.AddCheckbox(IDC_CFG_FLOWTABS_NUMERIC_ALIGN, LM.getLPCW(L"config_chk_numeric_align"));
+        lb.AddCheckbox(IDC_CFG_FLOWTABS_INTRO_DONTSHOW, LM.getLPCW(L"config_chk_flowtabs_intro_dontshow"));
+        lb.AddLabel(IDC_CFG_CSV_SORT_LABEL, LM.getLPCW(L"config_lbl_csv_sort"), 240);
+        lb.AddNumberEdit(IDC_CFG_HEADERLINES_EDIT, 250, -2, 45, 22);
+    }
+
+    if (_hCategoryFont) applyFonts();
+}
+
+void MultiReplaceConfigDialog::createExportPanelControls() {
+    if (!_hExportPanel) return;
+
+    const int left = 30;
+    const int top = 20;
+    const int groupW = 560;
+    const int groupH = 145;
+
+    createGroupBox(_hExportPanel, left, top, groupW, groupH,
+        IDC_CFG_GRP_EXPORT_DATA, LM.getLPCW(L"config_grp_export_data"));
+    {
+        const int innerLeft = left + 22;
+        const int innerTop = top + 30;
+        const int innerWidth = groupW - 44;
+
+        createStaticText(_hExportPanel, innerLeft, innerTop, 70, 18,
+            IDC_CFG_EXPORT_TEMPLATE_LABEL, LM.getLPCW(L"config_lbl_export_template"));
+
+        HWND hHelp = ::CreateWindowEx(0, WC_STATIC, L"(?)",
+            WS_CHILD | WS_VISIBLE | SS_CENTER | SS_OWNERDRAW | SS_NOTIFY,
+            scaleX(innerLeft + 75), scaleY(innerTop - 2), scaleX(22), scaleY(18),
+            _hExportPanel, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_CFG_EXPORT_TEMPLATE_HELP)),
+            _hInst, nullptr);
+
+        if (hHelp) {
+            HWND hwndTooltip = CreateWindowEx(0, TOOLTIPS_CLASS, nullptr,
+                WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON | TTS_NOPREFIX,
+                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                _hSelf, nullptr, _hInst, nullptr);
+
+            if (hwndTooltip) {
+                if (NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle)) {
+                    SetWindowTheme(hwndTooltip, L"DarkMode_Explorer", nullptr);
+                }
+                SendMessage(hwndTooltip, TTM_SETMAXTIPWIDTH, 0, 350);
+
+                TOOLINFO ti = {};
+                ti.cbSize = sizeof(ti);
+                ti.hwnd = _hSelf;
+                ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+                ti.uId = reinterpret_cast<UINT_PTR>(hHelp);
+                ti.lpszText = const_cast<LPWSTR>(LM.getLPCW(L"tooltip_export_template_help"));
+                SendMessage(hwndTooltip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
+            }
+        }
+
+        const int row2Y = innerTop + 22;
+        HWND hEdit = createNumberEdit(_hExportPanel, innerLeft, row2Y, innerWidth, 22,
+            IDC_CFG_EXPORT_TEMPLATE_EDIT);
+        LONG style = GetWindowLong(hEdit, GWL_STYLE);
+        SetWindowLong(hEdit, GWL_STYLE, style & ~ES_NUMBER);
+
+        const int row3Y = row2Y + 38;
+        createCheckBox(_hExportPanel, innerLeft, row3Y, 230,
+            IDC_CFG_EXPORT_ESCAPE_CHECK, LM.getLPCW(L"config_chk_export_escape"));
+        createCheckBox(_hExportPanel, innerLeft + 260, row3Y, 200,
+            IDC_CFG_EXPORT_HEADER_CHECK, LM.getLPCW(L"config_chk_export_header"));
+    }
 
     if (_hCategoryFont) applyFonts();
 }
@@ -864,6 +1002,19 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
         BOOL checked = (::IsDlgButtonChecked(_hSearchReplacePanel, IDC_CFG_LIMIT_FILESIZE) == BST_CHECKED);
         ::EnableWindow(::GetDlgItem(_hSearchReplacePanel, IDC_CFG_MAX_FILESIZE_EDIT), checked);
     }
+
+    // Export Data settings
+    if (_hExportPanel) {
+        std::wstring exportTemplate = CFG.readString(L"Options", L"ExportTemplate", kDefaultExportTemplate);
+        bool exportEscape = CFG.readBool(L"Options", L"ExportEscape", false);
+        bool exportHeader = CFG.readBool(L"Options", L"ExportHeader", false);
+
+        if (HWND hEdit = GetDlgItem(_hExportPanel, IDC_CFG_EXPORT_TEMPLATE_EDIT)) {
+            SetWindowTextW(hEdit, exportTemplate.c_str());
+        }
+        CheckDlgButton(_hExportPanel, IDC_CFG_EXPORT_ESCAPE_CHECK, exportEscape ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(_hExportPanel, IDC_CFG_EXPORT_HEADER_CHECK, exportHeader ? BST_CHECKED : BST_UNCHECKED);
+    }
 }
 
 void MultiReplaceConfigDialog::applyConfigToSettings()
@@ -902,6 +1053,21 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         }
     }
 
+    // Export Data settings
+    if (_hExportPanel) {
+        wchar_t templateBuf[1024] = {};
+        if (HWND hEdit = GetDlgItem(_hExportPanel, IDC_CFG_EXPORT_TEMPLATE_EDIT)) {
+            GetWindowTextW(hEdit, templateBuf, 1024);
+        }
+
+        bool exportEscape = (IsDlgButtonChecked(_hExportPanel, IDC_CFG_EXPORT_ESCAPE_CHECK) == BST_CHECKED);
+        bool exportHeader = (IsDlgButtonChecked(_hExportPanel, IDC_CFG_EXPORT_HEADER_CHECK) == BST_CHECKED);
+
+        ConfigManager::instance().writeString(L"Options", L"ExportTemplate", templateBuf);
+        ConfigManager::instance().writeBool(L"Options", L"ExportEscape", exportEscape);
+        ConfigManager::instance().writeBool(L"Options", L"ExportHeader", exportHeader);
+    }
+
     MultiReplace::writeStructToConfig(s);
     ConfigManager::instance().save(L"");
 
@@ -930,6 +1096,7 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
         safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
         safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
+        safeDestroy(_hCsvFlowTabsPanel); safeDestroy(_hAppearancePanel); safeDestroy(_hExportPanel);
 
         createUI();
         _currentCategory = -1;
@@ -947,6 +1114,7 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hListViewLayoutPanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hAppearancePanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCsvFlowTabsPanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hExportPanel));
     }
 }
 
@@ -994,6 +1162,10 @@ void MultiReplaceConfigDialog::resetToDefaults()
     cm.writeInt(L"Window", L"BackgroundTransparency", 190);
     cm.writeString(L"Window", L"ScaleFactor", L"1.0");
 
+    cm.writeString(L"Options", L"ExportTemplate", kDefaultExportTemplate);
+    cm.writeBool(L"Options", L"ExportEscape", false);
+    cm.writeBool(L"Options", L"ExportHeader", false);
+
     cm.save(L"");
 
     double oldScale = _userScaleFactor;
@@ -1024,6 +1196,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
         safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
         safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
+        safeDestroy(_hCsvFlowTabsPanel); safeDestroy(_hAppearancePanel); safeDestroy(_hExportPanel);
 
         createUI();
         _currentCategory = -1;
@@ -1040,6 +1213,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hListViewLayoutPanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hAppearancePanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCsvFlowTabsPanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hExportPanel));
     }
 }
 
@@ -1052,7 +1226,8 @@ void MultiReplaceConfigDialog::applyInternalTheme() {
         _hSearchReplacePanel,
         _hListViewLayoutPanel,
         _hCsvFlowTabsPanel,
-        _hAppearancePanel
+        _hAppearancePanel,
+        _hExportPanel
     };
 
     for (HWND hPanel : panels) {

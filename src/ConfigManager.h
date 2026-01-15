@@ -77,6 +77,7 @@ public:
         const std::wstring& val);
     void writeInt(const std::wstring& sec, const std::wstring& key, int val);
     void writeSizeT(const std::wstring& sec, const std::wstring& key, size_t val);
+    void writeBool(const std::wstring& sec, const std::wstring& key, bool val);
 
     // Raw access if absolutely necessary
     const IniFileCache& ini() const { return _cache; }

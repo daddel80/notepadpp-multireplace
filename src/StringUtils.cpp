@@ -314,4 +314,26 @@ namespace StringUtils {
         return result;
     }
 
+    // ----------------------------------------------------------------------------
+    // Wrap field in quotes and escape inner quotes (" -> "")
+    // ----------------------------------------------------------------------------
+    std::wstring quoteField(const std::wstring& value) {
+        std::wstring out;
+        out.reserve(value.size() + 4);
+        out += L'"';
+
+        for (wchar_t ch : value) {
+            if (ch == L'"') {
+                out += L"\"\"";
+            }
+            else {
+                out += ch;
+            }
+        }
+
+        out += L'"';
+        return out;
+    }
+
+
 } // namespace StringUtils

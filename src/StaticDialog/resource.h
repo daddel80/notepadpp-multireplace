@@ -27,13 +27,13 @@
 
 
 // ===================================================================
-//  5000-block – Dialogs & base widgets
+//  5000-block - Dialogs & base widgets
 // ===================================================================
 #define IDD_REPLACE_DIALOG              5000   // main modeless dialog
 
 
 // -------------------------------------------------------------------
-//  5000-block – Edit controls & small helpers
+//  5000-block - Edit controls & small helpers
 // -------------------------------------------------------------------
 #define IDC_FIND_EDIT                   5001
 #define IDC_REPLACE_EDIT                5002
@@ -44,12 +44,12 @@
 
 
 // ===================================================================
-//  5005-block – Primary action buttons
+//  5005-block - Primary action buttons
 // ===================================================================
-#define IDC_REPLACE_ALL_BUTTON          5006   // split button (Replace …)
-#define IDC_REPLACE_DROPDOWN_BUTTON     5007   // ▼ part of the split button
-#define IDC_REPLACE_BUTTON              5008   // single “Replace” action
-#define IDC_REPLACE_ALL_SMALL_BUTTON    5009   // ↻ icon button
+#define IDC_REPLACE_ALL_BUTTON          5006   // split button (Replace ...)
+#define IDC_REPLACE_DROPDOWN_BUTTON     5007   // part of the split button
+#define IDC_REPLACE_BUTTON              5008   // single "Replace" action
+#define IDC_REPLACE_ALL_SMALL_BUTTON    5009   // icon button
 #define IDC_2_BUTTONS_MODE              5010   // checkbox: two-button UI
 
 #define IDC_FIND_ALL_BUTTON             5011
@@ -65,7 +65,7 @@
 
 
 // ===================================================================
-//  5020-block – File & list management
+//  5020-block - File & list management
 // ===================================================================
 #define IDC_LOAD_FROM_CSV_BUTTON        5020
 #define IDC_LOAD_LIST_BUTTON            5021
@@ -83,7 +83,7 @@
 
 
 // ===================================================================
-//  5030-block – Split-button option command IDs
+//  5030-block - Split-button option command IDs
 // ===================================================================
 //  Replace-All split options
 #define ID_REPLACE_ALL_OPTION           5031
@@ -97,7 +97,7 @@
 
 
 // ===================================================================
-//  5100-block – Static texts & status
+//  5100-block - Static texts & status
 // ===================================================================
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101
@@ -108,7 +108,7 @@
 
 
 // ===================================================================
-//  5200-block – Checkboxes
+//  5200-block - Checkboxes
 // ===================================================================
 #define IDC_WHOLE_WORD_CHECKBOX         5200
 #define IDC_MATCH_CASE_CHECKBOX         5201
@@ -121,7 +121,7 @@
 
 
 // ===================================================================
-//  5300-block – Search-mode radio buttons
+//  5300-block - Search-mode radio buttons
 // ===================================================================
 #define IDC_SEARCH_MODE_GROUP           5300
 #define IDC_NORMAL_RADIO                5301
@@ -131,7 +131,7 @@
 
 
 // ===================================================================
-//  5450-block – Column / scope group
+//  5450-block - Column / scope group
 // ===================================================================
 #define IDC_SCOPE_GROUP                 5451
 #define IDC_ALL_TEXT_RADIO              5452
@@ -155,7 +155,7 @@
 
 
 // ===================================================================
-//  5465-block – “Replace-in-Files” frame
+//  5465-block - "Replace-in-Files" frame
 // ===================================================================
 #define IDC_FILE_OPS_GROUP              5469
 #define IDC_FILTER_EDIT                 5470
@@ -172,7 +172,7 @@
 
 
 // ===================================================================
-//  5500-block – List view & frame
+//  5500-block - List view & frame
 // ===================================================================
 #define IDC_STATIC_FRAME                5501
 #define IDC_REPLACE_LIST                5502
@@ -180,7 +180,7 @@
 
 
 // ===================================================================
-//  5600-block – About dialog
+//  5600-block - About dialog
 // ===================================================================
 #define IDD_ABOUT_DIALOG                5600
 #define IDC_NAME_STATIC                 5601
@@ -195,26 +195,27 @@
 
 
 // ===================================================================
-//  5700-block – Context-menu command IDs
+//  5700-block - Context-menu command IDs
 // ===================================================================
 #define IDM_UNDO                        5701
 #define IDM_REDO                        5702
-#define IDM_COPY_DATA_TO_FIELDS         5703
-#define IDM_SEARCH_IN_LIST              5704
-#define IDM_CUT_LINES_TO_CLIPBOARD      5705
-#define IDM_ADD_NEW_LINE                5706
-#define IDM_COPY_LINES_TO_CLIPBOARD     5707
-#define IDM_PASTE_LINES_FROM_CLIPBOARD  5708
-#define IDM_EDIT_VALUE                  5709
-#define IDM_DELETE_LINES                5710
-#define IDM_SELECT_ALL                  5711
-#define IDM_ENABLE_LINES                5712
-#define IDM_DISABLE_LINES               5713
+#define IDM_CUT_LINES_TO_CLIPBOARD      5703
+#define IDM_COPY_LINES_TO_CLIPBOARD     5704
+#define IDM_PASTE_LINES_FROM_CLIPBOARD  5705
+#define IDM_SELECT_ALL                  5706
+#define IDM_EDIT_VALUE                  5707
+#define IDM_DELETE_LINES                5708
+#define IDM_ADD_NEW_LINE                5709
+#define IDM_COPY_DATA_TO_FIELDS         5710
+#define IDM_EXPORT_DATA                 5711
+#define IDM_SEARCH_IN_LIST              5712
+#define IDM_ENABLE_LINES                5713
+#define IDM_DISABLE_LINES               5714
 
 
 
 // ===================================================================
-//  5800-block – View-toggle menu items & icons
+//  5800-block - View-toggle menu items & icons
 // ===================================================================
 #define IDM_TOGGLE_FIND_COUNT           5801
 #define IDM_TOGGLE_REPLACE_COUNT        5802
@@ -226,7 +227,6 @@
 
 
 #define IDD_MULTIREPLACE_RESULT_DOCK    6100    // dock panel template
-                                                //     (no dialog resource needed)
 #define IDC_FINDALL_BUTTON              6105    // big split-button
 #define ID_FIND_ALL_OPTION              6110
 #define ID_FIND_ALL_IN_ALL_DOCS_OPTION  6115
@@ -235,14 +235,14 @@
 
 
 // ===================================================================
-//  6000-block – Miscellaneous
+//  6000-block - Miscellaneous
 // ===================================================================
 #define ID_EDIT_EXPAND_BUTTON           6000
 
 
 
 // ===================================================================
-//  Scintilla style IDs  (60 – 69)
+//  Scintilla style IDs  (60 - 69)
 // ===================================================================
 #define STYLE1                          60
 #define STYLE2                          61
@@ -263,96 +263,103 @@
 #define IDC_CONFIG_CATEGORY_LIST          7010
 
 // ===================================================================
-//  Config Dialog Control IDs (79xxx block)
-//  Gruppiert nach Panel, 20er Schritte zwischen Gruppen
+//  Config Dialog Control IDs (7900-7999 block)
+//  Grouped by panel, 10-step increments between groups
+//  NOTE: Windows Control IDs must be < 65536 (16-bit)
 // ===================================================================
 
 // -------------------------------------------------------------------
-//  Search & Replace Panel
+//  Search & Replace Panel (7900-7909)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_SEARCH_BEHAVIOUR      79000
-#define IDC_CFG_STAY_AFTER_REPLACE        79001
-#define IDC_CFG_ALL_FROM_CURSOR           79002
-#define IDC_CFG_MUTE_SOUNDS               79003
-#define IDC_CFG_LIMIT_FILESIZE            79004
-#define IDC_CFG_MAX_FILESIZE_EDIT         79005
-#define IDC_CFG_FILESIZE_MB_LABEL         79006
+#define IDC_CFG_GRP_SEARCH_BEHAVIOUR      7900
+#define IDC_CFG_STAY_AFTER_REPLACE        7901
+#define IDC_CFG_ALL_FROM_CURSOR           7902
+#define IDC_CFG_MUTE_SOUNDS               7903
+#define IDC_CFG_LIMIT_FILESIZE            7904
+#define IDC_CFG_MAX_FILESIZE_EDIT         7905
+#define IDC_CFG_FILESIZE_MB_LABEL         7906
 
 // -------------------------------------------------------------------
-//  List View Panel - Columns Group
+//  List View Panel - Columns Group (7910-7919)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_LIST_COLUMNS          79020
-#define IDC_CFG_FINDCOUNT_VISIBLE         79021
-#define IDC_CFG_REPLACECOUNT_VISIBLE      79022
-#define IDC_CFG_COMMENTS_VISIBLE          79023
-#define IDC_CFG_DELETEBUTTON_VISIBLE      79024
+#define IDC_CFG_GRP_LIST_COLUMNS          7910
+#define IDC_CFG_FINDCOUNT_VISIBLE         7911
+#define IDC_CFG_REPLACECOUNT_VISIBLE      7912
+#define IDC_CFG_COMMENTS_VISIBLE          7913
+#define IDC_CFG_DELETEBUTTON_VISIBLE      7914
 
 // -------------------------------------------------------------------
-//  List View Panel - Results Group
+//  List View Panel - Results Group (7920-7929)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_LIST_STATS            79030
-#define IDC_CFG_LISTSTATISTICS_ENABLED    79031
-#define IDC_CFG_GROUPRESULTS_ENABLED      79032
+#define IDC_CFG_GRP_LIST_STATS            7920
+#define IDC_CFG_LISTSTATISTICS_ENABLED    7921
+#define IDC_CFG_GROUPRESULTS_ENABLED      7922
 
 // -------------------------------------------------------------------
-//  List View Panel - Interaction Group
+//  List View Panel - Interaction Group (7930-7939)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_LIST_INTERACTION      79040
-#define IDC_CFG_HIGHLIGHT_MATCH           79041
-#define IDC_CFG_DOUBLECLICK_EDITS         79042
-#define IDC_CFG_HOVER_TEXT_ENABLED        79043
-#define IDC_CFG_EDITFIELD_LABEL           79044
-#define IDC_CFG_EDITFIELD_SIZE_COMBO      79045
+#define IDC_CFG_GRP_LIST_INTERACTION      7930
+#define IDC_CFG_HIGHLIGHT_MATCH           7931
+#define IDC_CFG_DOUBLECLICK_EDITS         7932
+#define IDC_CFG_HOVER_TEXT_ENABLED        7933
+#define IDC_CFG_EDITFIELD_LABEL           7934
+#define IDC_CFG_EDITFIELD_SIZE_COMBO      7935
 
 // -------------------------------------------------------------------
-// CSV Panel
+//  CSV Panel (7940-7949)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_CSV_SETTINGS          79060
-#define IDC_CFG_FLOWTABS_NUMERIC_ALIGN    79061
-#define IDC_CFG_FLOWTABS_INTRO_DONTSHOW   79062
-#define IDC_CFG_CSV_SORT_LABEL            79063
-#define IDC_CFG_HEADERLINES_EDIT          79064
+#define IDC_CFG_GRP_CSV_SETTINGS          7940
+#define IDC_CFG_FLOWTABS_NUMERIC_ALIGN    7941
+#define IDC_CFG_FLOWTABS_INTRO_DONTSHOW   7942
+#define IDC_CFG_CSV_SORT_LABEL            7943
+#define IDC_CFG_HEADERLINES_EDIT          7944
 
 // -------------------------------------------------------------------
-//  Appearance Panel - Interface Group
+//  Export Data Panel (7950-7959)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_INTERFACE             79080
-#define IDC_CFG_FOREGROUND_LABEL          79081
-#define IDC_CFG_FOREGROUND_SLIDER         79082
-#define IDC_CFG_BACKGROUND_LABEL          79083
-#define IDC_CFG_BACKGROUND_SLIDER         79084
-#define IDC_CFG_SCALE_LABEL               79085
-#define IDC_CFG_SCALE_SLIDER              79086
+#define IDC_CFG_GRP_EXPORT_DATA           7950
+#define IDC_CFG_EXPORT_FORMAT_LABEL       7951
+#define IDC_CFG_EXPORT_FORMAT_COMBO       7952
+#define IDC_CFG_EXPORT_TEMPLATE_LABEL     7953
+#define IDC_CFG_EXPORT_TEMPLATE_EDIT      7954
+#define IDC_CFG_EXPORT_ESCAPE_CHECK       7955
+#define IDC_CFG_EXPORT_HEADER_CHECK       7956
+#define IDC_CFG_EXPORT_TEMPLATE_HELP      7957
 
 // -------------------------------------------------------------------
-//  79100-79109: Appearance Panel - Display Options Group
+//  Appearance Panel - Interface Group (7960-7969)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_DISPLAY_OPTIONS       79100
-#define IDC_CFG_TOOLTIPS_ENABLED          79101
-#define IDC_CFG_RESULT_DOCK_ENTRY_COLORS  79102
-#define IDC_CFG_USE_LIST_COLORS_MARKING   79103
+#define IDC_CFG_GRP_INTERFACE             7960
+#define IDC_CFG_FOREGROUND_LABEL          7961
+#define IDC_CFG_FOREGROUND_SLIDER         7962
+#define IDC_CFG_BACKGROUND_LABEL          7963
+#define IDC_CFG_BACKGROUND_SLIDER         7964
+#define IDC_CFG_SCALE_LABEL               7965
+#define IDC_CFG_SCALE_SLIDER              7966
 
 // -------------------------------------------------------------------
-//  Variables and Automation panel
+//  Appearance Panel - Display Options Group (7970-7979)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_VARIABLES_AUTOMATION  79100
-#define IDC_CFG_USE_LUA_VARIABLES         79101
-#define IDC_CFG_AUTO_APPLY_VARIABLES      79102
-#define IDC_CFG_RUN_SCRIPT_BEFORE_REPLACE 79103
-
-//  (Lua specific controls, same panel)
-#define IDC_CFG_GRP_LUA                   79130
-#define IDC_CFG_LUA_SAFEMODE_ENABLED      79131
-#define IDC_CFG_LUA_PLACEHOLDER_LABEL     79132
+#define IDC_CFG_GRP_DISPLAY_OPTIONS       7970
+#define IDC_CFG_TOOLTIPS_ENABLED          7971
+#define IDC_CFG_RESULT_DOCK_ENTRY_COLORS  7972
+#define IDC_CFG_USE_LIST_COLORS_MARKING   7973
 
 // -------------------------------------------------------------------
-//  Import and Scope panel
+//  Import and Scope Panel (7980-7989)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_IMPORT_SCOPE          79120
-#define IDC_CFG_SCOPE_USE_LIST            79121
-#define IDC_CFG_IMPORT_ON_STARTUP         79122
-#define IDC_CFG_REMEMBER_IMPORT_PATH      79123
-#define IDC_CFG_IMPORT_SCOPE_PLACEHOLDER  79124
+#define IDC_CFG_GRP_IMPORT_SCOPE          7980
+#define IDC_CFG_SCOPE_USE_LIST            7981
+#define IDC_CFG_IMPORT_ON_STARTUP         7982
+#define IDC_CFG_REMEMBER_IMPORT_PATH      7983
+#define IDC_CFG_IMPORT_SCOPE_PLACEHOLDER  7984
+
+// -------------------------------------------------------------------
+//  Lua Settings (7990-7999)
+// -------------------------------------------------------------------
+#define IDC_CFG_GRP_LUA                   7990
+#define IDC_CFG_LUA_SAFEMODE_ENABLED      7991
+#define IDC_CFG_LUA_PLACEHOLDER_LABEL     7992
 
 
 // ===================================================================

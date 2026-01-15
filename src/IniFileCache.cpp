@@ -26,39 +26,6 @@
 #include <windows.h>
 #include <filesystem> 
 
-namespace {
-
-    // unescapeCsvValue – unchanged from original code ------------------
-    std::wstring unescapeCsvValue(const std::wstring& value)
-    {
-        std::wstring out;
-        if (value.empty()) return out;
-
-        size_t start = (value.front() == L'"' && value.back() == L'"') ? 1 : 0;
-        size_t end = (start == 1) ? value.size() - 1 : value.size();
-
-        for (size_t i = start; i < end; ++i) {
-            if (i < end - 1 && value[i] == L'\\') {
-                switch (value[i + 1]) {
-                case L'n': out += L'\n'; ++i; break;
-                case L'r': out += L'\r'; ++i; break;
-                case L'\\': out += L'\\'; ++i; break;
-                default:   out += value[i];   break;
-                }
-            }
-            else if (i < end - 1 && value[i] == L'"' && value[i + 1] == L'"') {
-                out += L'"'; ++i;
-            }
-            else {
-                out += value[i];
-            }
-        }
-        return out;
-    }
-
-} // anonymous namespace
-
-
 
 // ------------------------------------------------------------------
 //  Public loader
@@ -68,7 +35,6 @@ bool IniFileCache::load(const std::wstring& iniFile)
     _data.clear();
     return parse(iniFile);
 }
-
 
 
 // ------------------------------------------------------------------
@@ -133,12 +99,10 @@ bool IniFileCache::parse(const std::wstring& iniFilePath)
 
         std::wstring key = StringUtils::trim(line.substr(0, eq));
         std::wstring value = StringUtils::trim(line.substr(eq + 1));
-        _data[section][key] = unescapeCsvValue(value);
+        _data[section][key] = StringUtils::unescapeCsvValue(value);
     }
     return true;
 }
-
-
 
 // ------------------------------------------------------------------
 //  Typed getters  (identical logic, macro‑safe max() usage)

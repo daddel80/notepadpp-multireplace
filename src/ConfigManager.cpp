@@ -110,4 +110,10 @@ void ConfigManager::writeSizeT(const std::wstring& sec, const std::wstring& key,
     writeString(sec, key, std::to_wstring(val));
 }
 
+void ConfigManager::writeBool(const std::wstring& sec, const std::wstring& key,
+    bool val)
+{
+    writeString(sec, key, val ? L"1" : L"0");
+}
+
 // Further writeBool / writeFloat / … could be added similarly

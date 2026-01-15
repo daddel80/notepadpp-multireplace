@@ -1529,6 +1529,180 @@ void MultiReplace::scrollToIndices(size_t firstIndex, size_t lastIndex) {
     }
 }
 
+void MultiReplace::exportDataToClipboard() {
+    // Get selected items (or all if none selected)
+    std::vector<size_t> selectedIndices;
+
+    int itemCount = ListView_GetItemCount(_replaceListView);
+    int selCount = ListView_GetSelectedCount(_replaceListView);
+
+    if (selCount > 0) {
+        // Get selected items
+        int idx = -1;
+        while ((idx = ListView_GetNextItem(_replaceListView, idx, LVNI_SELECTED)) != -1) {
+            selectedIndices.push_back(static_cast<size_t>(idx));
+        }
+    }
+    else {
+        // No selection - use all items
+        for (int i = 0; i < itemCount; ++i) {
+            selectedIndices.push_back(static_cast<size_t>(i));
+        }
+    }
+
+    if (selectedIndices.empty()) {
+        showStatusMessage(LM.get(L"status_no_items_to_export"), MessageStatus::Error);
+        return;
+    }
+
+    // Load settings from config
+    const auto& cfg = ConfigManager::instance();
+    std::wstring templateStr = cfg.readString(L"ExportData", L"Template",
+        L"%FIND%\\t%REPLACE%\\t%FCOUNT%\\t%RCOUNT%\\t%COMMENT%");
+    bool escapeChars = cfg.readBool(L"ExportData", L"Escape", false);
+    bool includeHeader = cfg.readBool(L"ExportData", L"Header", false);
+
+    // This converts \t to real tabs in the TEMPLATE, not in the data
+    std::wstring processedTemplate = processTemplateEscapes(templateStr);
+
+    // Build output
+    std::wstring output;
+
+    // Add header row if enabled
+    if (includeHeader) {
+        std::wstring headerLine = processedTemplate;
+
+        // Replace all variables with header names
+        headerLine = replaceTemplateVar(headerLine, L"%FIND%", L"Find");
+        headerLine = replaceTemplateVar(headerLine, L"%REPLACE%", L"Replace");
+        headerLine = replaceTemplateVar(headerLine, L"%FCOUNT%", L"FindCount");
+        headerLine = replaceTemplateVar(headerLine, L"%RCOUNT%", L"ReplaceCount");
+        headerLine = replaceTemplateVar(headerLine, L"%COMMENT%", L"Comment");
+        headerLine = replaceTemplateVar(headerLine, L"%SEL%", L"Selected");
+        headerLine = replaceTemplateVar(headerLine, L"%ROW%", L"Row");
+        // Option flags
+        headerLine = replaceTemplateVar(headerLine, L"%REGEX%", L"Regex");
+        headerLine = replaceTemplateVar(headerLine, L"%CASE%", L"MatchCase");
+        headerLine = replaceTemplateVar(headerLine, L"%WORD%", L"WholeWord");
+        headerLine = replaceTemplateVar(headerLine, L"%EXT%", L"Extended");
+        headerLine = replaceTemplateVar(headerLine, L"%VAR%", L"Variables");
+
+        // NO processTemplateEscapes here - already done above
+        output += headerLine;
+        if (!headerLine.empty() && headerLine.back() != L'\n') {
+            output += L"\r\n";
+        }
+    }
+
+    // Process each item
+    for (size_t idx : selectedIndices) {
+        if (idx >= replaceListData.size()) continue;
+
+        const ReplaceItemData& item = replaceListData[idx];
+        std::wstring line = processedTemplate;  // Use already-processed template
+
+        // Get field values
+        std::wstring findText = item.findText;
+        std::wstring replaceText = item.replaceText;
+        std::wstring comment = item.comments;
+
+        // Escape if checkbox is enabled
+        // This converts real newlines to \n (two chars), tabs to \t, etc.
+        if (escapeChars) {
+            findText = StringUtils::escapeCsvValue(item.findText);
+            replaceText = StringUtils::escapeCsvValue(item.replaceText);
+            comment = StringUtils::escapeCsvValue(item.comments);
+        }
+        else {
+            findText = StringUtils::quoteField(item.findText);
+            replaceText = StringUtils::quoteField(item.replaceText);
+            comment = StringUtils::quoteField(item.comments);
+        }
+
+        // Replace template variables - Main data
+        line = replaceTemplateVar(line, L"%FIND%", findText);
+        line = replaceTemplateVar(line, L"%REPLACE%", replaceText);
+        line = replaceTemplateVar(line, L"%FCOUNT%", std::to_wstring(item.findCount >= 0 ? item.findCount : 0));
+        line = replaceTemplateVar(line, L"%RCOUNT%", std::to_wstring(item.replaceCount >= 0 ? item.replaceCount : 0));
+        line = replaceTemplateVar(line, L"%COMMENT%", comment);
+        line = replaceTemplateVar(line, L"%SEL%", item.isEnabled ? L"1" : L"0");
+        line = replaceTemplateVar(line, L"%ROW%", std::to_wstring(idx + 1));
+
+        // Replace template variables - Option flags
+        line = replaceTemplateVar(line, L"%REGEX%", item.regex ? L"1" : L"0");
+        line = replaceTemplateVar(line, L"%CASE%", item.matchCase ? L"1" : L"0");
+        line = replaceTemplateVar(line, L"%WORD%", item.wholeWord ? L"1" : L"0");
+        line = replaceTemplateVar(line, L"%EXT%", item.extended ? L"1" : L"0");
+        line = replaceTemplateVar(line, L"%VAR%", item.useVariables ? L"1" : L"0");
+
+        output += line;
+
+        // Add newline if template doesn't end with one
+        if (!line.empty() && line.back() != L'\n') {
+            output += L"\r\n";
+        }
+    }
+
+    // Copy to clipboard (reuse existing clipboard logic pattern)
+    if (output.empty()) return;
+
+    if (OpenClipboard(_hSelf)) {
+        EmptyClipboard();
+        const SIZE_T size = (output.size() + 1) * sizeof(wchar_t);
+        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, size);
+        if (hMem) {
+            if (void* p = GlobalLock(hMem)) {
+                memcpy(p, output.c_str(), size);
+                GlobalUnlock(hMem);
+                if (SetClipboardData(CF_UNICODETEXT, hMem)) {
+                    CloseClipboard();
+                    showStatusMessage(LM.get(L"status_exported_to_clipboard",
+                        { std::to_wstring(selectedIndices.size()) }),
+                        MessageStatus::Info);
+                    return;
+                }
+            }
+            GlobalFree(hMem);
+        }
+        CloseClipboard();
+    }
+    showStatusMessage(LM.get(L"status_export_failed"), MessageStatus::Error);
+}
+
+std::wstring MultiReplace::replaceTemplateVar(const std::wstring& tmpl,
+    const std::wstring& var,
+    const std::wstring& value) {
+    std::wstring result = tmpl;
+    size_t pos = 0;
+    while ((pos = result.find(var, pos)) != std::wstring::npos) {
+        result.replace(pos, var.length(), value);
+        pos += value.length();
+    }
+    return result;
+}
+
+std::wstring MultiReplace::processTemplateEscapes(const std::wstring& tmpl) {
+    std::wstring result;
+    result.reserve(tmpl.size());
+
+    for (size_t i = 0; i < tmpl.size(); ++i) {
+        if (tmpl[i] == L'\\' && i + 1 < tmpl.size()) {
+            switch (tmpl[i + 1]) {
+            case L't': result += L'\t'; ++i; break;
+            case L'n': result += L'\n'; ++i; break;
+            case L'r': result += L'\r'; ++i; break;
+            case L'\\': result += L'\\'; ++i; break;
+            default: result += tmpl[i]; break;
+            }
+        }
+        else {
+            result += tmpl[i];
+        }
+    }
+    return result;
+}
+
+
 #pragma endregion
 
 
@@ -3224,6 +3398,7 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
         AppendMenu(hMenu, MF_STRING, IDM_ADD_NEW_LINE, LM.get(L"ctxmenu_add_new_line").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, LM.get(L"ctxmenu_transfer_to_input_fields").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_EXPORT_DATA, LM.get(L"ctxmenu_export_data").c_str());
         AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_SEARCH_IN_LIST, LM.get(L"ctxmenu_search_in_list").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, LM.get(L"ctxmenu_enable").c_str());
@@ -3426,14 +3601,14 @@ void MultiReplace::copySelectedItemsToClipboard() {
         if (ListView_GetItemState(_replaceListView, i, LVIS_SELECTED) & LVIS_SELECTED) {
             const ReplaceItemData& item = replaceListData[i];
             csvData += std::to_wstring(item.isEnabled) + L",";
-            csvData += escapeCsvValue(item.findText) + L",";
-            csvData += escapeCsvValue(item.replaceText) + L",";
+            csvData += StringUtils::escapeCsvValue(item.findText) + L",";
+            csvData += StringUtils::escapeCsvValue(item.replaceText) + L",";
             csvData += std::to_wstring(item.wholeWord) + L",";
             csvData += std::to_wstring(item.matchCase) + L",";
             csvData += std::to_wstring(item.useVariables) + L",";
             csvData += std::to_wstring(item.extended) + L",";
             csvData += std::to_wstring(item.regex) + L",";
-            csvData += escapeCsvValue(item.comments);
+            csvData += StringUtils::escapeCsvValue(item.comments);
             csvData += L'\n';
         }
     }
@@ -3483,7 +3658,7 @@ bool MultiReplace::canPasteFromClipboard() {
         if (line.empty()) {
             continue;
         }
-        auto columns = parseCsvLine(line);
+        auto columns = StringUtils::parseCsvLine(line);
         if (columns.size() == 8 || columns.size() == 9) {
             return true;
         }
@@ -3523,7 +3698,7 @@ void MultiReplace::pasteItemsIntoList() {
     while (std::getline(contentStream, line)) {
         if (line.empty()) continue; // Skip empty lines
 
-        std::vector<std::wstring> columns = parseCsvLine(line);
+        std::vector<std::wstring> columns = StringUtils::parseCsvLine(line);
 
         // Check for proper column count before adding to the list
         if ((columns.size() != 8 && columns.size() != 9)) continue;
@@ -4653,6 +4828,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             NMITEMACTIVATE nmia = {};
             nmia.iItem = ListView_HitTest(_replaceListView, &_contextMenuClickPoint);
             handleCopyBack(&nmia);
+            return TRUE;
+        }
+
+        case IDM_EXPORT_DATA:
+        {
+            exportDataToClipboard();
             return TRUE;
         }
 
@@ -7226,7 +7407,6 @@ void MultiReplace::handleFindInFiles() {
         MSG m; while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) { ::TranslateMessage(&m); ::DispatchMessage(&m); }
         if (_isShuttingDown || _isCancelRequested) { aborted = true; break; }
 
-        // Hier wird das äußere 'idx' verwendet (Fortschritt)
         ++idx;
 
         const int percent = static_cast<int>((static_cast<double>(idx) / (std::max)(1, total)) * 100.0);
@@ -7313,8 +7493,6 @@ void MultiReplace::handleFindInFiles() {
             };
 
         if (useListEnabled) {
-            // OPTIMIZED: Use clean list
-            // FIX: Umbenannt zu entryIdx um Shadowing mit äußerem 'idx' zu vermeiden
             for (size_t entryIdx : workIndices) {
                 const auto& it = replaceListData[entryIdx];
                 SearchContext ctx{};
@@ -8078,6 +8256,7 @@ void MultiReplace::handleMarkMatchesButton() {
     }
     showStatusMessage(LM.get(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), MessageStatus::Info);
 }
+
 int MultiReplace::markString(const SearchContext& context, Sci_Position initialStart, const std::wstring& findText)
 {
     if (context.findText.empty()) return 0;
@@ -8117,8 +8296,6 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::wstri
     int indicId = -1;
     COLORREF color;
 
-    // Wir reservieren den allerletzten Indikator für den "Single Mode" (oder Notfälle).
-    // Die Liste darf also alles nutzen von 0 bis size-2.
     int editorLimit = static_cast<int>(_textMarkerIds.size());
     int dockLimit = ResultDock::MAX_ENTRY_COLORS;
     int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
@@ -8129,8 +8306,7 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::wstri
         auto it = textToSlot.find(findText);
 
         if (it != textToSlot.end()) {
-            // Text bekannt -> Slot wiederverwenden
-            // Schutz vor Index-Out-Of-Bounds, falls Pool-Größe sich geändert hätte
+
             int slot = it->second;
             if (slot < static_cast<int>(_textMarkerIds.size())) {
                 indicId = _textMarkerIds[slot];
@@ -11168,14 +11344,14 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
     // Write list items to CSV file
     for (const ReplaceItemData& item : list) {
         std::wstring line = std::to_wstring(item.isEnabled) + L"," +
-            escapeCsvValue(item.findText) + L"," +
-            escapeCsvValue(item.replaceText) + L"," +
+            StringUtils::escapeCsvValue(item.findText) + L"," +
+            StringUtils::escapeCsvValue(item.replaceText) + L"," +
             std::to_wstring(item.wholeWord) + L"," +
             std::to_wstring(item.matchCase) + L"," +
             std::to_wstring(item.useVariables) + L"," +
             std::to_wstring(item.extended) + L"," +
             std::to_wstring(item.regex) + L"," +
-            escapeCsvValue(item.comments) + L"\n";
+            StringUtils::escapeCsvValue(item.comments) + L"\n";
         std::string utf8Line = Encoding::wstringToUtf8(line);
         outFile << utf8Line;
     }
@@ -11298,7 +11474,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
     // Read and process each line in the file
     while (std::getline(contentStream, line)) {
-        std::vector<std::wstring> columns = parseCsvLine(line);
+        std::vector<std::wstring> columns = StringUtils::parseCsvLine(line);
 
         // Check if column count is valid
         if (columns.size() < 8 || columns.size() > 9) {
@@ -11405,114 +11581,6 @@ void MultiReplace::checkForFileChangesAtStartup() {
     else {
         showStatusMessage(LM.get(L"status_items_loaded_from_csv", { std::to_wstring(replaceListData.size()) }), MessageStatus::Success);
     }
-}
-std::wstring MultiReplace::escapeCsvValue(const std::wstring& value) {
-    std::wstring escapedValue = L"\"";
-
-    for (const wchar_t& ch : value) {
-        switch (ch) {
-        case L'"':
-            escapedValue += L"\"\"";
-            break;
-        case L'\n':
-            escapedValue += L"\\n";
-            break;
-        case L'\r':
-            escapedValue += L"\\r";
-            break;
-        case L'\\':
-            escapedValue += L"\\\\";
-            break;
-        default:
-            escapedValue += ch;
-            break;
-        }
-    }
-
-    escapedValue += L"\"";
-
-    return escapedValue;
-}
-
-std::wstring MultiReplace::unescapeCsvValue(const std::wstring& value) {
-    std::wstring unescapedValue;
-    if (value.empty()) return unescapedValue;
-
-    // Detect outer quotes: only if both first and last are quotes
-    const bool hadOuterQuotes = (value.front() == L'"' && value.back() == L'"');
-    size_t start = hadOuterQuotes ? 1 : 0;
-    size_t end = hadOuterQuotes ? value.size() - 1 : value.size();
-
-    for (size_t i = start; i < end; ++i) {
-        if (i < end - 1 && value[i] == L'\\') {
-            // Handle backslash escapes
-            switch (value[i + 1]) {
-            case L'n': unescapedValue += L'\n'; ++i; break;
-            case L'r': unescapedValue += L'\r'; ++i; break;
-            case L'\\': unescapedValue += L'\\'; ++i; break;
-            default: unescapedValue += value[i]; break;
-            }
-        }
-        // IMPORTANT: Only collapse CSV double quotes ("") to (")
-        // if the original field had outer quotes (i.e., it was a quoted CSV field).
-        else if (hadOuterQuotes && i < end - 1 && value[i] == L'"' && value[i + 1] == L'"') {
-            unescapedValue += L'"';
-            ++i;
-        }
-        else {
-            unescapedValue += value[i];
-        }
-    }
-    return unescapedValue;
-}
-
-std::wstring MultiReplace::unescapeOnlySequences(const std::wstring& value) {
-    std::wstring result;
-    for (size_t i = 0; i < value.size(); ++i) {
-        if (i < value.size() - 1 && value[i] == L'\\') {
-            switch (value[i + 1]) {
-            case L'n': result += L'\n'; ++i; break;
-            case L'r': result += L'\r'; ++i; break;
-            case L'\\': result += L'\\'; ++i; break;
-            default: result += value[i]; break;
-            }
-        }
-        else {
-            result += value[i];
-        }
-    }
-    return result;
-}
-
-std::vector<std::wstring> MultiReplace::parseCsvLine(const std::wstring& line) {
-    std::vector<std::wstring> columns;
-    std::wstring currentValue;
-    bool insideQuotes = false;
-
-    for (size_t i = 0; i < line.length(); ++i) {
-        const wchar_t& ch = line[i];
-        if (ch == L'"') {
-            if (insideQuotes && i + 1 < line.length() && line[i + 1] == L'"') {
-                // Escaped quote
-                currentValue += L'"';
-                ++i; // Skip the next quote
-            }
-            else {
-                // Toggle the state
-                insideQuotes = !insideQuotes;
-            }
-        }
-        else if (ch == L',' && !insideQuotes) {
-            // When not inside quotes, treat comma as column separator
-            columns.push_back(unescapeOnlySequences(currentValue));  // ÄNDERUNG
-            currentValue.clear();
-        }
-        else {
-            currentValue += ch; // Append the character to the current value
-        }
-    }
-    columns.push_back(unescapeOnlySequences(currentValue));  // ÄNDERUNG
-    return columns;
 }
 
 void MultiReplace::exportToBashScript(const std::wstring& fileName) {
@@ -12119,8 +12187,8 @@ void MultiReplace::syncUIToCache()
     CFG.writeInt(L"ListColumns", L"CommentsColumnLocked", commentsColumnLockedEnabled ? 1 : 0);
 
     // Current Find/Replace Text
-    CFG.writeString(L"Current", L"FindText", escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)));
-    CFG.writeString(L"Current", L"ReplaceText", escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT)));
+    CFG.writeString(L"Current", L"FindText", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)));
+    CFG.writeString(L"Current", L"ReplaceText", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT)));
 
     // Search Options
     CFG.writeInt(L"Options", L"WholeWord", IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? 1 : 0);
@@ -12163,15 +12231,15 @@ void MultiReplace::syncUIToCache()
     CFG.writeInt(L"Scope", L"HeaderLines", static_cast<int>(CSVheaderLinesCount));
 
     // Replace in Files Settings
-    CFG.writeString(L"ReplaceInFiles", L"Filter", escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT)));
-    CFG.writeString(L"ReplaceInFiles", L"Directory", escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_DIR_EDIT)));
+    CFG.writeString(L"ReplaceInFiles", L"Filter", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT)));
+    CFG.writeString(L"ReplaceInFiles", L"Directory", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_DIR_EDIT)));
     CFG.writeInt(L"ReplaceInFiles", L"InSubfolders", IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"ReplaceInFiles", L"InHiddenFolders", IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"ReplaceInFiles", L"LimitFileSize", limitFileSizeEnabled ? 1 : 0);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", static_cast<int>(maxFileSizeMB));
 
     // File Info
-    CFG.writeString(L"File", L"ListFilePath", escapeCsvValue(listFilePath));
+    CFG.writeString(L"File", L"ListFilePath", StringUtils::escapeCsvValue(listFilePath));
     CFG.writeSizeT(L"File", L"OriginalListHash", originalListHash);
 
     // History 
@@ -12192,7 +12260,7 @@ void MultiReplace::syncHistoryToCache(HWND hComboBox, const std::wstring& keyPre
         LRESULT len = SendMessage(hComboBox, CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1));
         SendMessage(hComboBox, CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
-        std::wstring text = escapeCsvValue(std::wstring(buffer.data()));
+        std::wstring text = StringUtils::escapeCsvValue(std::wstring(buffer.data()));
         CFG.writeString(L"History", keyPrefix + std::to_wstring(i), text);
     }
 }

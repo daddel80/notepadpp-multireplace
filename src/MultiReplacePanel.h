@@ -827,6 +827,9 @@ private:
     bool moveItemsInReplaceList(std::vector<size_t>& indices, Direction direction);
     void sortItemsInReplaceList(const std::vector<size_t>& originalOrder, const std::vector<size_t>& newOrder, const std::map<int, SortDirection>& previousColumnSortOrder, int columnID, SortDirection direction);
     void scrollToIndices(size_t firstIndex, size_t lastIndex);
+    void exportDataToClipboard();
+    static std::wstring replaceTemplateVar(const std::wstring& tmpl, const std::wstring& var, const std::wstring& value);
+    static std::wstring processTemplateEscapes(const std::wstring& tmpl);
 
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);
@@ -1025,10 +1028,6 @@ private:
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
     void checkForFileChangesAtStartup();
-    std::wstring escapeCsvValue(const std::wstring& value);
-    std::wstring unescapeCsvValue(const std::wstring& value);
-    std::wstring unescapeOnlySequences(const std::wstring& value);
-    std::vector<std::wstring> parseCsvLine(const std::wstring& line);
     void exportToBashScript(const std::wstring& fileName);
 
     //INI

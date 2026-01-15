@@ -52,8 +52,8 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
   - [1. Search and Replace](#1-search-and-replace)
   - [2. List View and Layout](#2-list-view-and-layout)
   - [3. CSV Options](#3-csv-options)
-  - [4. Appearance](#4-appearance)
-  - [5. Variables and Automation](#5-variables-and-automation)
+  - [4. Export](#4-export)
+  - [5. Appearance](#5-appearance)
 - [Multilingual UI Support](#multilingual-ui-support)
 
 ## Key Features
@@ -670,7 +670,23 @@ Settings specific to the CSV column manipulation and alignment features.
 - **Flow Tabs: Don't show intro message** — Suppresses the informational dialog that appears when activating Flow Tabs for the first time.
 - **CSV Sort: Header lines to exclude** — Specifies the number of lines at the top of the file to protect from sorting operations (e.g., set to `1` to keep the header row fixed at the top).
 
-### 4. Appearance
+### 4. Export
+Configure how list data is exported to the clipboard via **Export Data** from the context menu.
+
+- **Template** — Defines the output format using placeholders. Available placeholders:
+  - `%FIND%` — Find pattern
+  - `%REPLACE%` — Replace text
+  - `%COMMENT%` — Comment
+  - `%FCOUNT%` — Find count
+  - `%RCOUNT%` — Replace count
+  - `%ROW%` — Row number
+  - `%SEL%` — Selected state (1/0)
+  - `%REGEX%`, `%CASE%`, `%WORD%`, `%EXT%`, `%VAR%` — Option flags (1/0)
+  - Use `\t` for tab delimiter (e.g., `%FIND%\t%REPLACE%\t%COMMENT%` for TSV format).
+- **Escape special characters** — When checked, converts newlines, tabs, and backslashes in field values to their escape sequences (`\n`, `\t`, `\\`). Useful for single-line formats.
+- **Include header row** — When checked, adds a header line with column names before the data rows.
+
+### 5. Appearance
 Customize the look and feel of the plugin window.
 
 - **Interface:**

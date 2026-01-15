@@ -86,6 +86,7 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_enable_list", L"Enable list" },
 { L"tooltip_disable_list", L"Disable list" },
 { L"tooltip_filter_help", L"Find in cpp, cxx, h, hxx & hpp:\n*.cpp *.cxx *.h *.hxx *.hpp\n\nFind in all files except exe, obj & log:\n*.* !*.exe !*.obj !*.log\n\nFind in all files but exclude folders\ntests, bin & bin64:\n*.* !\\tests\\ !\\bin*\n\nFind in all files but exclude all folders\nlog or logs recursively:\n*.* !+\\log*" },
+{ L"tooltip_export_template_help", L"Available placeholders:\n\nData fields:\n  %FIND%      - Find pattern\n  %REPLACE%   - Replace text\n  %COMMENT%   - Comment\n  %FCOUNT%    - Find count\n  %RCOUNT%    - Replace count\n\nRow info:\n  %ROW%       - Row number\n  %SEL%       - Selected (1/0)\n\nOptions:\n  %REGEX%     - Regex enabled (1/0)\n  %CASE%      - Match case (1/0)\n  %WORD%      - Whole word (1/0)\n  %EXT%       - Extended (1/0)\n  %VAR%       - Variables (1/0)\n\nUse \\t for tab delimiter" },
 
 // header entries
 { L"header_find_count", L"Find Count" },
@@ -265,6 +266,7 @@ const LangKV kEnglishPairs[] = {
 { L"config_cat_search_replace", L"Search and Replace" },
 { L"config_cat_list_view", L"List View and Layout" },
 { L"config_cat_csv", L"CSV Options" },
+{ L"config_cat_export", L"Export" },
 { L"config_cat_appearance", L"Appearance" },
 
 // Search & Replace Settings
@@ -297,6 +299,15 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_numeric_align", L"Flow Tabs: Right-align numeric columns" },
 { L"config_chk_flowtabs_intro_dontshow", L"Flow Tabs: Don't show intro message" },
 { L"config_lbl_csv_sort", L"CSV Sort: Header lines to exclude:" },
+
+// Export
+{ L"config_grp_export_data", L"Export Data" },
+{ L"config_lbl_export_template", L"Template:" },
+{ L"config_chk_export_escape", L"Escape special characters" },
+{ L"config_chk_export_header", L"Add header row" },
+{ L"ctxmenu_export_data", L"Export Data" },
+{ L"status_exported_to_clipboard", L"Exported $REPLACE_STRING entries to clipboard" },
+{ L"status_no_items_to_export", L"No items to export" },
 
 // Highlighting Settings
 { L"config_grp_highlighting", L"Highlighting" },
