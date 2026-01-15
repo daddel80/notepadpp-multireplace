@@ -546,8 +546,8 @@ void MultiReplace::moveAndResizeControls() {
         IDC_REPLACE_BUTTON, IDC_REPLACE_ALL_SMALL_BUTTON, IDC_2_BUTTONS_MODE, IDC_FIND_ALL_BUTTON, IDC_FIND_NEXT_BUTTON,
         IDC_FIND_PREV_BUTTON, IDC_MARK_BUTTON, IDC_MARK_MATCHES_BUTTON, IDC_CLEAR_MARKS_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON,
         IDC_USE_LIST_BUTTON, IDC_CANCEL_REPLACE_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-        IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON, 
-        IDC_PATH_DISPLAY, IDC_STATS_DISPLAY, IDC_FILTER_EDIT, IDC_FILTER_HELP, IDC_SUBFOLDERS_CHECKBOX, 
+        IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_SHIFT_FRAME, IDC_UP_BUTTON, IDC_DOWN_BUTTON, IDC_SHIFT_TEXT, IDC_EXPORT_BASH_BUTTON,
+        IDC_PATH_DISPLAY, IDC_STATS_DISPLAY, IDC_FILTER_EDIT, IDC_FILTER_HELP, IDC_SUBFOLDERS_CHECKBOX,
         IDC_HIDDENFILES_CHECKBOX, IDC_DIR_EDIT, IDC_BROWSE_DIR_BUTTON, IDC_FILE_OPS_GROUP, IDC_DIR_PROGRESS_BAR, IDC_STATUS_MESSAGE
     };
 
@@ -563,7 +563,7 @@ void MultiReplace::moveAndResizeControls() {
         GetClientRect(resizeHwnd, &rc);
 
         DWORD startSelection = 0, endSelection = 0;
-        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT 
+        if (ctrlId == IDC_FIND_EDIT || ctrlId == IDC_REPLACE_EDIT
             || ctrlId == IDC_DIR_EDIT || ctrlId == IDC_FILTER_EDIT) {
             SendMessage(resizeHwnd, CB_GETEDITSEL, (WPARAM)&startSelection, (LPARAM)&endSelection);
         }
@@ -2017,12 +2017,12 @@ void MultiReplace::sortReplaceListData(int columnID) {
     auto safeToInt = [](const std::wstring& s) -> int {
         try { return s.empty() ? -1 : std::stoi(s); }
         catch (...) { return -1; }
-    };
+        };
 
     // Perform the sorting
     std::sort(replaceListData.begin(), replaceListData.end(),
         [this, columnID, direction, safeToInt]
-    (const ReplaceItemData& a, const ReplaceItemData& b) -> bool
+        (const ReplaceItemData& a, const ReplaceItemData& b) -> bool
         {
             switch (columnID)
             {
@@ -3083,15 +3083,15 @@ void MultiReplace::pasteItemsIntoList() {
 
         ReplaceItemData item;
         try {
-            item.isEnabled    = std::stoi(columns[0]) != 0;
-            item.findText     = columns[1];
-            item.replaceText  = columns[2];
-            item.wholeWord    = std::stoi(columns[3]) != 0;
-            item.matchCase    = std::stoi(columns[4]) != 0;
+            item.isEnabled = std::stoi(columns[0]) != 0;
+            item.findText = columns[1];
+            item.replaceText = columns[2];
+            item.wholeWord = std::stoi(columns[3]) != 0;
+            item.matchCase = std::stoi(columns[4]) != 0;
             item.useVariables = std::stoi(columns[5]) != 0;
-            item.extended     = std::stoi(columns[6]) != 0;
-            item.regex        = std::stoi(columns[7]) != 0;
-            item.comments     = (columns.size() == 9 ? columns[8] : L"");
+            item.extended = std::stoi(columns[6]) != 0;
+            item.regex = std::stoi(columns[7]) != 0;
+            item.comments = (columns.size() == 9 ? columns[8] : L"");
         }
         catch (const std::exception&) {
             continue; // Silently ignore lines with conversion errors
@@ -3635,7 +3635,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         performItemAction(_contextMenuClickPoint, ItemAction::Add);
                         break;
                     }
-                } 
+                }
                 else {
                     switch (pnkd->wVKey) {
                     case VK_DELETE: // Delete key for deleting selected lines
@@ -3958,7 +3958,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case ID_FIND_ALL_IN_ALL_DOCS_OPTION: 
+        case ID_FIND_ALL_IN_ALL_DOCS_OPTION:
         {
             SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getLPW(L"split_button_find_all_in_docs"));
             isFindAllInDocs = true;
@@ -4765,7 +4765,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 newPos = itemData.regex
                     ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
                     : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
-                
+
                 // Only skip advancing when we deleted a non-empty match:
                 if (searchResult.length == 0 || newPos != searchResult.pos) {
                     newPos = ensureForwardProgress(newPos, searchResult);
@@ -5213,7 +5213,7 @@ bool MultiReplace::compileLuaReplaceCode(const std::string& luaCode)
     return true;
 }
 
-bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex) 
+bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex)
 {
     // 1) Stack-checkpoint
     const int stackBase = lua_gettop(_luaState);
@@ -5250,7 +5250,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             if (len > 0) {
                 std::vector<char> buf(len + 1, '\0');
                 if (send(SCI_GETTAG, i,
-                         reinterpret_cast<sptr_t>(buf.data()), false) >= 0)
+                    reinterpret_cast<sptr_t>(buf.data()), false) >= 0)
                     capVal.assign(buf.data());
             }
             std::string capName = "CAP" + std::to_string(i);
@@ -5265,9 +5265,9 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         const char* err = lua_tostring(_luaState, -1);
         if (err && isLuaErrorDialogEnabled) {
             MessageBox(nppData._nppHandle,
-                       Encoding::utf8ToWString(err).c_str(),
-                       LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
-                       MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+                Encoding::utf8ToWString(err).c_str(),
+                LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
+                MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
         }
         restoreStack();
         return false;
@@ -5279,10 +5279,10 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
         if (isLuaErrorDialogEnabled) {
             std::wstring msg =
                 LM.get(L"msgbox_use_variables_execution_error",
-                       { Encoding::utf8ToWString(inputString.c_str()) });
+                    { Encoding::utf8ToWString(inputString.c_str()) });
             MessageBox(nppData._nppHandle, msg.c_str(),
-                       LM.get(L"msgbox_title_use_variables_execution_error").c_str(),
-                       MB_OK);
+                LM.get(L"msgbox_title_use_variables_execution_error").c_str(),
+                MB_OK);
         }
         restoreStack();
         return false;
@@ -5292,7 +5292,8 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     lua_getfield(_luaState, -1, "result");                 // push result
     if (lua_isnil(_luaState, -1)) {
         inputString.clear();
-    } else if (lua_isstring(_luaState, -1) || lua_isnumber(_luaState, -1)) {
+    }
+    else if (lua_isstring(_luaState, -1) || lua_isnumber(_luaState, -1)) {
         std::string res = lua_tostring(_luaState, -1);
         if (regex) { res = escapeForRegex(res); }
         inputString = res;
@@ -5314,12 +5315,15 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             double n = lua_tonumber(_luaState, -1);
             std::ostringstream os; os << std::fixed << std::setprecision(8) << n;
             capVariablesStr += capName + "\tNumber\t" + os.str() + "\n\n";
-        } else if (lua_isboolean(_luaState, -1)) {
+        }
+        else if (lua_isboolean(_luaState, -1)) {
             bool b = lua_toboolean(_luaState, -1);
             capVariablesStr += capName + "\tBoolean\t" + (b ? "true" : "false") + "\n\n";
-        } else if (lua_isstring(_luaState, -1)) {
+        }
+        else if (lua_isstring(_luaState, -1)) {
             capVariablesStr += capName + "\tString\t" + lua_tostring(_luaState, -1) + "\n\n";
-        } else {
+        }
+        else {
             capVariablesStr += capName + "\t<nil>\n\n";
         }
         lua_pop(_luaState, 1);                             // pop CAP value
@@ -5342,10 +5346,12 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             const LuaVariable& v = p.second;
             if (v.type == LuaVariableType::String) {
                 globalsStr += v.name + "\tString\t" + v.stringValue + "\n\n";
-            } else if (v.type == LuaVariableType::Number) {
+            }
+            else if (v.type == LuaVariableType::Number) {
                 std::ostringstream os; os << std::fixed << std::setprecision(8) << v.numberValue;
                 globalsStr += v.name + "\tNumber\t" + os.str() + "\n\n";
-            } else if (v.type == LuaVariableType::Boolean) {
+            }
+            else if (v.type == LuaVariableType::Boolean) {
                 globalsStr += v.name + "\tBoolean\t" + (v.booleanValue ? "true" : "false") + "\n\n";
             }
         }
@@ -8231,7 +8237,7 @@ void MultiReplace::handleColumnGridTabsButton()
 
     showStatusMessage(LM.get(nowHasPads ? L"status_tabs_inserted"  // with inserts
         : L"status_tabs_aligned"), // visuals only
-        MessageStatus::Success );
+        MessageStatus::Success);
 
     // Track active buffer for cleanup-on-switch logic
     if (nowHasPads) g_padBufs.insert(bufId); else g_padBufs.erase(bufId);
@@ -8622,7 +8628,7 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
             size_t e = s.size();
             while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t')) --e;
             return s.substr(b, e - b);
-        };
+            };
         std::vector<CombinedColumns> sortable = combinedData;
         for (auto& row : sortable)
             for (auto& col : row.columns) {
@@ -8737,7 +8743,7 @@ void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalO
         send(SCI_APPENDTEXT, sortedLines[i].length(), reinterpret_cast<sptr_t>(sortedLines[i].c_str()));
         // Add a line break after each line except the last one
         if (i < sortedLines.size() - 1) {
-            send(SCI_APPENDTEXT, lineBreak.length(),reinterpret_cast<sptr_t>(lineBreak.c_str()));
+            send(SCI_APPENDTEXT, lineBreak.length(), reinterpret_cast<sptr_t>(lineBreak.c_str()));
         }
     }
 }
@@ -8784,7 +8790,7 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
         runCsvWithFlowTabs(CsvOp::Sort, [&]() -> bool {
             restoreOriginalLineOrder(originalLineOrder);
             return true;
-        });
+            });
         currentSortState = SortDirection::Unsorted;
         originalLineOrder.clear();
     }
@@ -8811,7 +8817,7 @@ void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, 
         newIndices.reserve(blockCount);
 
         for (SIZE_T i = 0; i < blockCount; ++i) {
-            newIndices.push_back(maxIndex + i); 
+            newIndices.push_back(maxIndex + i);
         }
 
         // Insert them at the specified position
@@ -9385,7 +9391,7 @@ void MultiReplace::processLogForDelimiters() {
             break;
         }
 
-        case ChangeType::Delete: 
+        case ChangeType::Delete:
         {
             Sci_Position deletePos = logEntry.lineNumber;
             Sci_Position blockCount = logEntry.blockSize;
@@ -9424,7 +9430,7 @@ void MultiReplace::processLogForDelimiters() {
             break;
         }
 
-        case ChangeType::Modify: 
+        case ChangeType::Modify:
         {
             modifyLogEntries.push_back(logEntry);
             break;
@@ -9610,7 +9616,6 @@ void MultiReplace::handleClearDelimiterState() {
     }
     clearFlowTabsIfAny();
     isCaretPositionEnabled = false;
-    normalizeSelectionAfterCleanup();
 }
 
 void MultiReplace::normalizeSelectionAfterCleanup()
@@ -9697,7 +9702,7 @@ void MultiReplace::displayLogChangesInMessageBox() {
 
 #pragma region Utilities
 
-static inline bool decodeNumericEscape(const std::wstring& src,size_t pos, int  base, int digits,wchar_t& out)
+static inline bool decodeNumericEscape(const std::wstring& src, size_t pos, int  base, int digits, wchar_t& out)
 {
     if (pos + digits > src.size())           // not enough characters
         return false;
@@ -10477,7 +10482,7 @@ UINT MultiReplace::getCurrentDocCodePage()
     return static_cast<UINT>(cp != 0 ? cp : CP_ACP);
 }
 
-Sci_Position MultiReplace::advanceAfterMatch(const SearchResult& r)  {
+Sci_Position MultiReplace::advanceAfterMatch(const SearchResult& r) {
     if (r.length > 0) return r.pos + r.length;
     const Sci_Position after = static_cast<Sci_Position>(send(SCI_POSITIONAFTER, r.pos, 0));
     const Sci_Position next = (after > r.pos) ? after : (r.pos + 1);
@@ -10485,7 +10490,7 @@ Sci_Position MultiReplace::advanceAfterMatch(const SearchResult& r)  {
     return (next > docLen) ? docLen : next;
 }
 
-Sci_Position MultiReplace::ensureForwardProgress(Sci_Position candidate, const SearchResult& last)  {
+Sci_Position MultiReplace::ensureForwardProgress(Sci_Position candidate, const SearchResult& last) {
     if (candidate > last.pos) return candidate;
     const Sci_Position after = static_cast<Sci_Position>(send(SCI_POSITIONAFTER, last.pos, 0));
     const Sci_Position next = (after > last.pos) ? after : (last.pos + 1);
@@ -10844,7 +10849,7 @@ std::wstring MultiReplace::escapeCsvValue(const std::wstring& value) {
         }
     }
 
-    escapedValue += L"\""; 
+    escapedValue += L"\"";
 
     return escapedValue;
 }
@@ -11522,7 +11527,7 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
             LogEntry insertEntry;
             insertEntry.changeType = ChangeType::Insert;
             insertEntry.lineNumber = lineNumber;
-            insertEntry.blockSize  = static_cast<Sci_Position>(std::abs(addedLines));
+            insertEntry.blockSize = static_cast<Sci_Position>(std::abs(addedLines));
             logChanges.push_back(insertEntry);
         }
         else {
@@ -11546,7 +11551,7 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
 
             deleteEntry.changeType = ChangeType::Delete;
             deleteEntry.lineNumber = lineNumber;
-            deleteEntry.blockSize  = static_cast<Sci_Position>(std::abs(addedLines));
+            deleteEntry.blockSize = static_cast<Sci_Position>(std::abs(addedLines));
             logChanges.push_back(deleteEntry);
         }
         else {
@@ -11694,6 +11699,12 @@ void MultiReplace::onSelectionChanged()
     static bool wasTextSelected = false;   // remember previous selection state
 
     HWND hDlg = getDialogHandle();         // dialog handle once for reuse
+    HWND hScintilla = getScintillaHandle();
+
+    // Guard: Skip if dialog or scintilla not yet initialized
+    if (!hDlg || !hScintilla) {
+        return;
+    }
 
     // -----------------------------------------------------------------------
     // 1) “Replace in Files” mode:
@@ -11721,9 +11732,9 @@ void MultiReplace::onSelectionChanged()
     // -----------------------------------------------------------------------
     // 2) Normal Replace-All / Replace-in-Opened-Docs modes
     // -----------------------------------------------------------------------
-    Sci_Position start = ::SendMessage(getScintillaHandle(),
+    Sci_Position start = ::SendMessage(hScintilla,
         SCI_GETSELECTIONSTART, 0, 0);
-    Sci_Position end = ::SendMessage(getScintillaHandle(),
+    Sci_Position end = ::SendMessage(hScintilla,
         SCI_GETSELECTIONEND, 0, 0);
     bool isTextSelected = (start != end);
 
