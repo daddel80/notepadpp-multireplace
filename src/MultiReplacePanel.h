@@ -256,6 +256,14 @@ enum class ItemAction {
     Add
 };
 
+enum class SearchOption {
+    WholeWord,
+    MatchCase,
+    Variables,
+    Extended,
+    Regex
+};
+
 enum class SortDirection {
     Unsorted,
     Ascending,
@@ -1002,6 +1010,7 @@ private:
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
     void setSelections(bool select, bool onlySelected = false);
+    void setOptionForSelection(SearchOption option, bool value);
     void showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound = false);
     void applyThemePalette();
     void refreshColumnStylesIfNeeded();

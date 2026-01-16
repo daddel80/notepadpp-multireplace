@@ -212,6 +212,17 @@
 #define IDM_ENABLE_LINES                5713
 #define IDM_DISABLE_LINES               5714
 
+// Set/Clear Options Submenus
+#define IDM_SET_WHOLEWORD               5715
+#define IDM_SET_MATCHCASE               5716
+#define IDM_SET_VARIABLES               5717
+#define IDM_SET_EXTENDED                5718
+#define IDM_SET_REGEX                   5719
+#define IDM_CLEAR_WHOLEWORD             5720
+#define IDM_CLEAR_MATCHCASE             5721
+#define IDM_CLEAR_VARIABLES             5722
+#define IDM_CLEAR_EXTENDED              5723
+#define IDM_CLEAR_REGEX                 5724
 
 
 // ===================================================================

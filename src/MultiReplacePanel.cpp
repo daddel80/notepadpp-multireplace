@@ -3403,8 +3403,33 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, LM.get(L"ctxmenu_enable").c_str());
         AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allDisabled ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_LINES, LM.get(L"ctxmenu_disable").c_str());
+
+        // Set Options Submenu
+        HMENU hSetMenu = CreatePopupMenu();
+        if (hSetMenu) {
+            AppendMenu(hSetMenu, MF_STRING, IDM_SET_WHOLEWORD, LM.get(L"ctxmenu_opt_wholeword").c_str());
+            AppendMenu(hSetMenu, MF_STRING, IDM_SET_MATCHCASE, LM.get(L"ctxmenu_opt_matchcase").c_str());
+            AppendMenu(hSetMenu, MF_STRING, IDM_SET_VARIABLES, LM.get(L"ctxmenu_opt_variables").c_str());
+            AppendMenu(hSetMenu, MF_STRING, IDM_SET_EXTENDED, LM.get(L"ctxmenu_opt_extended").c_str());
+            AppendMenu(hSetMenu, MF_STRING, IDM_SET_REGEX, LM.get(L"ctxmenu_opt_regex").c_str());
+            AppendMenu(hMenu, MF_POPUP | (state.hasSelection ? MF_ENABLED : MF_GRAYED),
+                reinterpret_cast<UINT_PTR>(hSetMenu), LM.get(L"ctxmenu_set_options").c_str());
+        }
+
+        // Clear Options Submenu
+        HMENU hClearMenu = CreatePopupMenu();
+        if (hClearMenu) {
+            AppendMenu(hClearMenu, MF_STRING, IDM_CLEAR_WHOLEWORD, LM.get(L"ctxmenu_opt_wholeword").c_str());
+            AppendMenu(hClearMenu, MF_STRING, IDM_CLEAR_MATCHCASE, LM.get(L"ctxmenu_opt_matchcase").c_str());
+            AppendMenu(hClearMenu, MF_STRING, IDM_CLEAR_VARIABLES, LM.get(L"ctxmenu_opt_variables").c_str());
+            AppendMenu(hClearMenu, MF_STRING, IDM_CLEAR_EXTENDED, LM.get(L"ctxmenu_opt_extended").c_str());
+            AppendMenu(hClearMenu, MF_STRING, IDM_CLEAR_REGEX, LM.get(L"ctxmenu_opt_regex").c_str());
+            AppendMenu(hMenu, MF_POPUP | (state.hasSelection ? MF_ENABLED : MF_GRAYED),
+                reinterpret_cast<UINT_PTR>(hClearMenu), LM.get(L"ctxmenu_clear_options").c_str());
+        }
+
         TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, ptScreen.x, ptScreen.y, 0, hwnd, NULL);
-        DestroyMenu(hMenu); // Clean up
+        DestroyMenu(hMenu); // Cleans up submenus too
     }
 }
 
@@ -4882,6 +4907,60 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDM_DISABLE_LINES:
         {
             setSelections(false, ListView_GetSelectedCount(_replaceListView) > 0);
+            return TRUE;
+        }
+
+        // Set Options
+        case IDM_SET_WHOLEWORD:
+        {
+            setOptionForSelection(SearchOption::WholeWord, true);
+            return TRUE;
+        }
+        case IDM_SET_MATCHCASE:
+        {
+            setOptionForSelection(SearchOption::MatchCase, true);
+            return TRUE;
+        }
+        case IDM_SET_VARIABLES:
+        {
+            setOptionForSelection(SearchOption::Variables, true);
+            return TRUE;
+        }
+        case IDM_SET_EXTENDED:
+        {
+            setOptionForSelection(SearchOption::Extended, true);
+            return TRUE;
+        }
+        case IDM_SET_REGEX:
+        {
+            setOptionForSelection(SearchOption::Regex, true);
+            return TRUE;
+        }
+
+        // Clear Options
+        case IDM_CLEAR_WHOLEWORD:
+        {
+            setOptionForSelection(SearchOption::WholeWord, false);
+            return TRUE;
+        }
+        case IDM_CLEAR_MATCHCASE:
+        {
+            setOptionForSelection(SearchOption::MatchCase, false);
+            return TRUE;
+        }
+        case IDM_CLEAR_VARIABLES:
+        {
+            setOptionForSelection(SearchOption::Variables, false);
+            return TRUE;
+        }
+        case IDM_CLEAR_EXTENDED:
+        {
+            setOptionForSelection(SearchOption::Extended, false);
+            return TRUE;
+        }
+        case IDM_CLEAR_REGEX:
+        {
+            setOptionForSelection(SearchOption::Regex, false);
             return TRUE;
         }
 
@@ -10829,6 +10908,69 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
 
     // Show Select Statisics
     showListFilePath();
+}
+
+void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
+    if (replaceListData.empty()) return;
+
+    std::vector<std::pair<size_t, ReplaceItemData>> originalDataList;
+    for (size_t i = 0; i < replaceListData.size(); ++i) {
+        if (ListView_GetItemState(_replaceListView, static_cast<int>(i), LVIS_SELECTED)) {
+            originalDataList.emplace_back(i, replaceListData[i]);
+            switch (option) {
+            case SearchOption::WholeWord:  replaceListData[i].wholeWord = value; break;
+            case SearchOption::MatchCase:  replaceListData[i].matchCase = value; break;
+            case SearchOption::Variables:  replaceListData[i].useVariables = value; break;
+            case SearchOption::Extended:
+                replaceListData[i].extended = value;
+                if (value) replaceListData[i].regex = false;
+                break;
+            case SearchOption::Regex:
+                replaceListData[i].regex = value;
+                if (value) replaceListData[i].extended = false;
+                break;
+            }
+        }
+    }
+    if (originalDataList.empty()) return;
+
+    for (const auto& [index, _] : originalDataList) updateListViewItem(index);
+
+    std::wstring optionName;
+    switch (option) {
+    case SearchOption::WholeWord: optionName = L"Whole Word"; break;
+    case SearchOption::MatchCase: optionName = L"Match Case"; break;
+    case SearchOption::Variables: optionName = L"Variables"; break;
+    case SearchOption::Extended:  optionName = L"Extended"; break;
+    case SearchOption::Regex:     optionName = L"Regex"; break;
+    }
+
+    UndoRedoAction action;
+    action.undoAction = [this, originalDataList]() {
+        for (const auto& [index, data] : originalDataList) {
+            replaceListData[index] = data;
+            updateListViewItem(index);
+        }
+        };
+    action.redoAction = [this, originalDataList, option, value]() {
+        for (const auto& [index, _] : originalDataList) {
+            switch (option) {
+            case SearchOption::WholeWord:  replaceListData[index].wholeWord = value; break;
+            case SearchOption::MatchCase:  replaceListData[index].matchCase = value; break;
+            case SearchOption::Variables:  replaceListData[index].useVariables = value; break;
+            case SearchOption::Extended:
+                replaceListData[index].extended = value;
+                if (value) replaceListData[index].regex = false;
+                break;
+            case SearchOption::Regex:
+                replaceListData[index].regex = value;
+                if (value) replaceListData[index].extended = false;
+                break;
+            }
+            updateListViewItem(index);
+        }
+        };
+    URM.push(action.undoAction, action.redoAction, (value ? L"Set " : L"Clear ") + optionName);
 }
 
 void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound)

@@ -250,6 +250,13 @@ const LangKV kEnglishPairs[] = {
 { L"ctxmenu_undo", L"U&ndo\tCtrl+Z" },
 { L"ctxmenu_redo", L"R&edo\tCtrl+Y" },
 { L"ctxmenu_add_new_line", L"&Add New Line\tCtrl+I" },
+{ L"ctxmenu_set_options", L"Set Options" },
+{ L"ctxmenu_clear_options", L"Clear Options" },
+{ L"ctxmenu_opt_wholeword", L"Whole Word" },
+{ L"ctxmenu_opt_matchcase", L"Match Case" },
+{ L"ctxmenu_opt_variables", L"Variables" },
+{ L"ctxmenu_opt_regex", L"Regex" },
+{ L"ctxmenu_opt_extended", L"Extended" },
 
 // Result Dock Menu
 { L"rdmenu_fold_all",            L"Fold all" },
