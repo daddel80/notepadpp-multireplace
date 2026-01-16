@@ -7083,9 +7083,14 @@ void MultiReplace::handleFindAllButton()
         refreshUIListView();
     }
     else {
-        // Single Mode (unchanged)
+        // Single Mode
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         std::wstring headerPattern = this->sanitizeSearchPattern(findW);
+
+        bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+        COLORREF c = isDark ? MARKER_COLOR_DARK : MARKER_COLOR_LIGHT;
+        dock.defineSlotColor(0, c);
+
         context.findText = convertAndExtendW(findW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
         context.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) ? SCFIND_REGEXP : 0);
         sciSend(SCI_SETSEARCHFLAGS, context.searchFlags);
@@ -7102,8 +7107,11 @@ void MultiReplace::handleFindAllButton()
             h.pos = r.pos;
             h.length = r.length;
             this->trimHitToFirstLine(sciSend, h);
-            h.colorIndex = -1;
-            if (h.length > 0) rawHits.push_back(std::move(h));
+            if (h.length > 0) {
+                h.findTextW = findW;
+                h.colorIndex = 0;
+                rawHits.push_back(std::move(h));
+            }
         }
 
         if (!rawHits.empty()) {
@@ -7150,13 +7158,14 @@ void MultiReplace::handleFindAllInDocsButton()
     }
 
     int maxListSlots = 1;
+    bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+
     if (useListEnabled) {
         int editorLimit = static_cast<int>(_textMarkerIds.size());
         int dockLimit = ResultDock::MAX_ENTRY_COLORS;
         int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
         if (effectiveLimit < 1) effectiveLimit = 1;
         maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
-        bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
 
         // Define Colors Loop (using clean list)
         for (size_t idx : workIndices) {
@@ -7165,6 +7174,11 @@ void MultiReplace::handleFindAllInDocsButton()
             COLORREF c = ResultDock::generateColorFromText(replaceListData[idx].findText, isDark);
             dock.defineSlotColor(slot, c);
         }
+    }
+    else {
+        std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        COLORREF c = isDark ? MARKER_COLOR_DARK : MARKER_COLOR_LIGHT;
+        dock.defineSlotColor(0, c);
     }
 
     std::wstring placeholder = useListEnabled
@@ -7211,7 +7225,7 @@ void MultiReplace::handleFindAllInDocsButton()
                         if (slot >= maxListSlots) slot = maxListSlots - 1;
                         h.colorIndex = slot;
                     }
-                    else { h.colorIndex = -1; }
+                    else { h.colorIndex = 0; }
                     raw.push_back(std::move(h));
                 }
             }
@@ -7363,13 +7377,14 @@ void MultiReplace::handleFindInFiles() {
     }
 
     int maxListSlots = 1;
+    bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+
     if (useListEnabled) {
         int editorLimit = static_cast<int>(_textMarkerIds.size());
         int dockLimit = ResultDock::MAX_ENTRY_COLORS;
         int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
         if (effectiveLimit < 1) effectiveLimit = 1;
         maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
-        bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
 
         // Define Colors (Clean loop)
         for (size_t idx : workIndices) {
@@ -7378,6 +7393,11 @@ void MultiReplace::handleFindInFiles() {
             COLORREF c = ResultDock::generateColorFromText(replaceListData[idx].findText, isDark);
             dock.defineSlotColor(slot, c);
         }
+    }
+    else {
+        std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        COLORREF c = isDark ? MARKER_COLOR_DARK : MARKER_COLOR_LIGHT;
+        dock.defineSlotColor(0, c);
     }
 
     std::wstring placeholder = useListEnabled
@@ -7477,7 +7497,7 @@ void MultiReplace::handleFindInFiles() {
                         if (slot >= maxListSlots) slot = maxListSlots - 1;
                         h.colorIndex = slot;
                     }
-                    else { h.colorIndex = -1; }
+                    else { h.colorIndex = 0;}
                     raw.push_back(std::move(h));
                 }
             }

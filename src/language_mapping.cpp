@@ -186,6 +186,16 @@ const LangKV kEnglishPairs[] = {
 { L"status_find_summary", L"Find in files : $REPLACE_STRING1 hits in $REPLACE_STRING2 file(s)." },
 { L"status_replace_summary", L"Replace in files : $REPLACE_STRING1 of $REPLACE_STRING2 file(s) modified." },
 { L"status_occurrences_found", L"$REPLACE_STRING occurrences found." },
+{ L"status_canceled",L"Canceled" },
+{ L"status_no_delimiters",L"No delimiters found." },
+{ L"status_model_build_failed",L"Flow Tabs: model build failed." },
+{ L"status_padding_insert_failed",L"Flow Tabs: insert failed." },
+{ L"status_visual_fail",L"Flow Tabs: visual tabstops failed." },
+{ L"status_tabs_inserted",L"Flow Tabs: INSERTED." },
+{ L"status_tabs_removed",L"Flow Tabs: REMOVED." },
+{ L"status_tabs_aligned",L"Flow Tabs: ALIGNED." },
+{ L"status_nothing_to_align",L"Flow Tabs: nothing to align." },
+{ L"status_no_selection",L"No text selected." },
 
 // MessageBox Titles
 { L"msgbox_title_error", L"Error" },

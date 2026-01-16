@@ -57,7 +57,7 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     // CSV
     _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_HEADERLINES_EDIT, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, csvHeaderLinesCount), 0, 999 });
     _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_FLOWTABS_NUMERIC_ALIGN, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, flowTabsNumericAlignEnabled), 0, 0 });
-    _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_FLOWTABS_INTRO_DONTSHOW, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, flowTabsIntroDontShowEnabled), 0, 0 });  // NEU
+    _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_FLOWTABS_INTRO_DONTSHOW, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, flowTabsIntroDontShowEnabled), 0, 0 });
     
     // Appearance
     _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_TOOLTIPS_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, tooltipsEnabled), 0, 0 });
@@ -505,13 +505,13 @@ void MultiReplaceConfigDialog::createUI() {
     _hListViewLayoutPanel = createPanel();
     _hCsvFlowTabsPanel = createPanel();
     _hAppearancePanel = createPanel();
-    _hExportPanel = createPanel();  // NEU
+    _hExportPanel = createPanel();
 
     createSearchReplacePanelControls();
     createListViewLayoutPanelControls();
     createCsvOptionsPanelControls();
     createAppearancePanelControls();
-    createExportPanelControls();  // NEU
+    createExportPanelControls();
 }
 
 void MultiReplaceConfigDialog::initUI() {
