@@ -721,7 +721,7 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
     }
 
     lb.AddNumberEdit(IDC_CFG_MAX_FILESIZE_EDIT, 270, -24, 45, 20);
-    createStaticText(_hSearchReplacePanel, innerLeft + 325, lb.y - 22, 30, 18, IDC_CFG_FILESIZE_MB_LABEL, LM.getLPCW(L"config_lbl_max_filesize_mb"));
+    createStaticText(_hSearchReplacePanel, innerLeft + 325, lb.y - 22, 30, 18, IDC_CFG_FILESIZE_MB_LABEL, L"MB");
 }
 
 HWND MultiReplaceConfigDialog::createPanel() {

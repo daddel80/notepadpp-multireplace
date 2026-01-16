@@ -8780,7 +8780,7 @@ void MultiReplace::handleCopyColumnsToClipboard()
             send(SCI_SETINDICATORCURRENT, indicId, 0);
 
             for (LRESULT p = startPos; p < endPos; ++p) {
-                if (static_cast<int>(send(SCI_INDICATORVALUEAT), indicId, p) != 0)
+                if (static_cast<int>(send(SCI_INDICATORVALUEAT, indicId, p)) != 0)
                     continue; // skip artificial alignment padding
                 const int ch = static_cast<int>(send(SCI_GETCHARAT, p, 0));
                 if (ch == 0)

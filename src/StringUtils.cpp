@@ -88,14 +88,20 @@ namespace StringUtils {
     }
 
     std::vector<std::wstring> parseCsvLine(const std::wstring& line) {
+        // Remove trailing line ending characters (handles CRLF from Windows)
+        std::wstring cleanLine = line;
+        while (!cleanLine.empty() && (cleanLine.back() == L'\r' || cleanLine.back() == L'\n')) {
+            cleanLine.pop_back();
+        }
+
         std::vector<std::wstring> columns;
         std::wstring current;
         bool insideQuotes = false;
 
-        for (size_t i = 0; i < line.size(); ++i) {
-            wchar_t ch = line[i];
+        for (size_t i = 0; i < cleanLine.size(); ++i) {
+            wchar_t ch = cleanLine[i];
             if (ch == L'"') {
-                if (insideQuotes && i + 1 < line.size() && line[i + 1] == L'"') {
+                if (insideQuotes && i + 1 < cleanLine.size() && cleanLine[i + 1] == L'"') {
                     current += L'"';
                     ++i;
                 }
