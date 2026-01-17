@@ -47,6 +47,7 @@ public:
         Sci_Position length{};
 
         std::wstring findTextW;
+        std::vector<std::wstring> allFindTexts;
 
         int displayLineStart{ -1 };
         int numberStart{ 0 };
@@ -95,6 +96,12 @@ public:
     void insertSearchHeader(const std::wstring& header);
 
     void onNppNotification(const SCNotification* notify);
+
+    // ------------------- Jump Navigation ----------------------
+    static void SwitchToFileIfOpenByFullPath(const std::wstring& fullPath);
+    static void JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len);
+    static void SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, Sci_Position len);
+    void scrollToHitAndHighlight(int displayLineStart);
 
     // ------------------- Color Utilities ----------------------
     static COLORREF generateColorFromText(const std::wstring& text, bool darkMode);
@@ -192,10 +199,8 @@ private:
     static std::wstring GetNppProgramDir();
     static bool IsCurrentDocByFullPath(const std::wstring& fullPath);
     static bool IsCurrentDocByTitle(const std::wstring& titleOnly);
-    static void SwitchToFileIfOpenByFullPath(const std::wstring& fullPath);
     static std::wstring BuildDefaultPathForPseudo(const std::wstring& label);
     static bool EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, std::wstring& outOpenedPath);
-    static void JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len);
 
     // --------------- Context Menu Command Handlers ------------
     static void copySelectedLines(HWND hSci);

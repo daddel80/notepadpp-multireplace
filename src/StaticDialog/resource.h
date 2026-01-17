@@ -224,6 +224,12 @@
 #define IDM_CLEAR_EXTENDED              5723
 #define IDM_CLEAR_REGEX                 5724
 
+// List Search Bar
+#define IDC_LIST_SEARCH_COMBO           5726
+#define IDC_LIST_SEARCH_BUTTON          5727
+#define IDC_LIST_SEARCH_CLOSE           5728
+
+
 
 // ===================================================================
 //  5800-block - View-toggle menu items & icons

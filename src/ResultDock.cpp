@@ -1270,6 +1270,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             h.matchColors.clear();
 
             firstHitOnRow = &h;
+            firstHitOnRow->allFindTexts.clear();
+            firstHitOnRow->allFindTexts.push_back(h.findTextW);
 
             if (dispStart < displayU8.size()) {
                 size_t safeLen = dispLen;
@@ -1302,6 +1304,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                         firstHitOnRow->matchColors.push_back(h.colorIndex);
                     }
                 }
+                firstHitOnRow->allFindTexts.push_back(h.findTextW);
             }
             h.displayLineStart = -1; // Markieren zum Löschen
         }
@@ -1611,6 +1614,59 @@ void ResultDock::JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len
     ::SendMessage(hEd, SCI_GOTOPOS, endPos, 0);
     ::SendMessage(hEd, SCI_SETANCHOR, startPos, 0);
     ::SendMessage(hEd, SCI_CHOOSECARETX, 0, 0);
+}
+
+void ResultDock::SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, Sci_Position len)
+{
+    // Check if already in the correct document
+    wchar_t currentPath[MAX_PATH] = {};
+    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(currentPath));
+
+    if (_wcsicmp(currentPath, fullPath.c_str()) == 0) {
+        // Already in correct document - jump directly
+        JumpSelectCenterActiveEditor(pos, len);
+    }
+    else {
+        // Need to switch document - use pending jump mechanism
+        SetPendingJump(fullPath, pos, len);
+        ::SendMessage(nppData._nppHandle, NPPM_SWITCHTOFILE, 0, reinterpret_cast<LPARAM>(fullPath.c_str()));
+    }
+}
+
+void ResultDock::scrollToHitAndHighlight(int displayLineStart)
+{
+    if (!_hSci || displayLineStart < 0)
+        return;
+
+    // Save horizontal scroll position
+    int xOffset = static_cast<int>(S(SCI_GETXOFFSET, 0, 0));
+
+    // Get line number from position
+    int line = static_cast<int>(S(SCI_LINEFROMPOSITION, displayLineStart, 0));
+
+    // Ensure line is visible (unfold if needed)
+    S(SCI_ENSUREVISIBLE, line, 0);
+
+    // Get line start and end positions for selection
+    Sci_Position lineStartPos = S(SCI_POSITIONFROMLINE, line, 0);
+    Sci_Position lineEndPos = S(SCI_GETLINEENDPOSITION, line, 0);
+
+    // Select the entire line (highlights it)
+    S(SCI_SETSEL, lineStartPos, lineEndPos);
+
+    // Scroll to center the line vertically
+    int linesOnScreen = static_cast<int>(S(SCI_LINESONSCREEN, 0, 0));
+    int firstVisibleLine = static_cast<int>(S(SCI_GETFIRSTVISIBLELINE, 0, 0));
+    int targetFirstLine = line - (linesOnScreen / 2);
+    if (targetFirstLine < 0) targetFirstLine = 0;
+
+    int scrollDelta = targetFirstLine - firstVisibleLine;
+    if (scrollDelta != 0) {
+        S(SCI_LINESCROLL, 0, scrollDelta);
+    }
+
+    // Restore horizontal scroll position (prevent horizontal jumping)
+    S(SCI_SETXOFFSET, xOffset, 0);
 }
 
 void ResultDock::rebuildHitLineIndex()

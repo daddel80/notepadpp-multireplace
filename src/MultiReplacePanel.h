@@ -565,6 +565,10 @@ private:
     bool _debugModeEnabled = false;  // Debug Mode checkbox state
     bool isFindAllInDocs = false;
     bool isFindAllInFiles = false;
+    bool _listSearchBarVisible = false;
+    bool _findAllSearchActive = false;
+
+    std::unordered_map<size_t, size_t> _jumpPositions;  // listIndex → current hit position
 
     static constexpr int MIN_GENERAL_WIDTH = 40;
     static constexpr int DEFAULT_COLUMN_WIDTH_FIND = 150;   // Default size for Find Column
@@ -888,9 +892,15 @@ private:
     void copySelectedItemsToClipboard();
     bool canPasteFromClipboard();
     void pasteItemsIntoList();
-    void performSearchInList();
     int searchInListData(int startIdx, const std::wstring& findText, const std::wstring& replaceText);
     void handleEditOnDoubleClick(int itemIndex, ColumnID columnID);
+    void toggleListSearchBar();
+    void showListSearchBar();
+    void hideListSearchBar();
+    void findInList(bool forward);
+    int searchInListData(int startIdx, const std::wstring& searchText, bool forward);
+    void jumpToNextMatchInEditor(size_t listIndex);
+    void invalidateFindAllState();
 
     //Replace
     void replaceAllInOpenedDocs();
