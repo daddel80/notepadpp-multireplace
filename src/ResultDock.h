@@ -48,6 +48,8 @@ public:
 
         std::wstring findTextW;
         std::vector<std::wstring> allFindTexts;
+        std::vector<Sci_Position> allPositions;
+        std::vector<Sci_Position> allLengths;
 
         int displayLineStart{ -1 };
         int numberStart{ 0 };

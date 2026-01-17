@@ -3968,21 +3968,30 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
         return;
     }
 
-    // 4. Determine next index (wrap-around)
-    size_t& currentIdx = _jumpPositions[listIndex];
+    // 4. Determine next index (wrap-around) - use findText as key for robustness against list reordering
+    size_t& currentIdx = _jumpPositions[item.findText];
     if (currentIdx >= matchingHits.size()) {
         currentIdx = 0;  // Wrap around to first
     }
 
-    // 5. Get the hit and jump
+    // 5. Get the hit and determine actual position for this specific match
     const auto& [hitIdx, findTextIdx] = matchingHits[currentIdx];
     const auto& hit = allHits[hitIdx];
 
+    // Use specific position if available, otherwise fallback to first match
+    Sci_Position jumpPos = hit.pos;
+    Sci_Position jumpLen = hit.length;
+
+    if (findTextIdx < hit.allPositions.size()) {
+        jumpPos = hit.allPositions[findTextIdx];
+        jumpLen = hit.allLengths[findTextIdx];
+    }
+
     // 6. Switch file if necessary and jump to position
     std::wstring filePath = Encoding::utf8ToWString(hit.fullPathUtf8);
-    ResultDock::SwitchAndJump(filePath, hit.pos, hit.length);
+    ResultDock::SwitchAndJump(filePath, jumpPos, jumpLen);
 
-    // 7b. Scroll ResultDock to show the hit line
+    // 7. Scroll ResultDock to show the hit line
     if (hit.displayLineStart >= 0) {
         dock.scrollToHitAndHighlight(hit.displayLineStart);
     }

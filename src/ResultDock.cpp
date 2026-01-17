@@ -1272,6 +1272,10 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             firstHitOnRow = &h;
             firstHitOnRow->allFindTexts.clear();
             firstHitOnRow->allFindTexts.push_back(h.findTextW);
+            firstHitOnRow->allPositions.clear();
+            firstHitOnRow->allPositions.push_back(h.pos);
+            firstHitOnRow->allLengths.clear();
+            firstHitOnRow->allLengths.push_back(h.length);
 
             if (dispStart < displayU8.size()) {
                 size_t safeLen = dispLen;
@@ -1305,8 +1309,10 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                     }
                 }
                 firstHitOnRow->allFindTexts.push_back(h.findTextW);
+                firstHitOnRow->allPositions.push_back(h.pos);
+                firstHitOnRow->allLengths.push_back(h.length);
             }
-            h.displayLineStart = -1; // Markieren zum Löschen
+            h.displayLineStart = -1; 
         }
     }
 
