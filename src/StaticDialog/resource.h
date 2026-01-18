@@ -77,8 +77,6 @@
 
 #define IDC_UP_BUTTON                   5027
 #define IDC_DOWN_BUTTON                 5028
-#define IDC_SHIFT_FRAME                 5029
-#define IDC_SHIFT_TEXT                  5030
 
 
 

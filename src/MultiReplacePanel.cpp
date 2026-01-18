@@ -363,10 +363,12 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(4), sy(323) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(4), sy(323 + 24 + 4) + filesOffsetY, sx(24), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_SHIFT_FRAME] = { buttonX, sy(323 - 11) + filesOffsetY, sx(128), sy(68), WC_BUTTON, L"", BS_GROUPBOX, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_SHIFT_TEXT] = { buttonX + sx(30), sy(323 + 16) + filesOffsetY, sx(96), sy(16), WC_STATIC, LM.getLPCW(L"panel_move_lines"), SS_LEFT, nullptr, false, FontRole::Standard };
+   
+    // Move Buttons - positioned at right edge of list, vertically fixed at list start
+    int moveButtonX = sx(14) + listWidth + sx(4);  // 4px gap to list
+    int moveButtonY = sy(227) + filesOffsetY;       // Same Y as list start
+    ctrlMap[IDC_UP_BUTTON] = { moveButtonX, moveButtonY, sx(20), sy(20), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER | BS_FLAT, LM.getLPCW(L"tooltip_move_up"), false, FontRole::Standard };
+    ctrlMap[IDC_DOWN_BUTTON] = { moveButtonX, moveButtonY + sy(28), sx(20), sy(20), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER | BS_FLAT, LM.getLPCW(L"tooltip_move_down"), false, FontRole::Standard };
     ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227) + filesOffsetY, listWidth, listHeight, WC_LISTVIEW, nullptr, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, nullptr, false, FontRole::Standard };
 
     // List Search Bar (between list and path display)
@@ -429,6 +431,12 @@ void MultiReplace::initializeCtrlMap() {
 
     // Initialize the tooltip for the "Use List" button with dynamic text
     updateUseListState(false);
+
+    // Hide path and stats display if list is not enabled
+    if (!useListEnabled) {
+        ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_HIDE);
+    }
 
     // Limit the input for IDC_QUOTECHAR_EDIT to one character
     SendMessage(GetDlgItem(_hSelf, IDC_QUOTECHAR_EDIT), EM_SETLIMITTEXT, static_cast<WPARAM>(1), 0);
@@ -508,11 +516,44 @@ bool MultiReplace::createAndShowWindows() {
             && pair.second.tooltipText != nullptr
             && pair.second.tooltipText[0] != L'\0')
         {
-            // ... tooltip code unchanged ...
+            // Create a tooltip window for this control
+            HWND hwndTooltip = CreateWindowEx(
+                0,                                   // no extended styles
+                TOOLTIPS_CLASS,                      // tooltip class
+                nullptr,
+                WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON | TTS_NOPREFIX,
+                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                _hSelf,                              // parent = our panel/dialog
+                nullptr,
+                hInstance,
+                nullptr
+            );
+
+            if (hwndTooltip)
+            {
+                // Apply dark mode theme to tooltip
+                if (NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle)) {
+                    SetWindowTheme(hwndTooltip, L"DarkMode_Explorer", nullptr);
+                }
+
+                // Limit width only for the "?" help tooltip; 0 = unlimited
+                DWORD maxWidth = (pair.first == IDC_FILTER_HELP) ? 200 : 0;
+                SendMessage(hwndTooltip, TTM_SETMAXTIPWIDTH, 0, maxWidth);
+
+                // Bind the tooltip to the specific child control (by HWND)
+                TOOLINFO ti = {};
+                ti.cbSize = sizeof(ti);
+                ti.hwnd = _hSelf;                         // parent window
+                ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;  // subclass the control to show tips
+                ti.uId = (UINT_PTR)hwndControl;           // identify by child HWND
+                ti.lpszText = const_cast<LPWSTR>(pair.second.tooltipText);
+                SendMessage(hwndTooltip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
+            }
         }
     }
     return true;
 }
+
 void MultiReplace::ensureIndicatorContext()
 {
     HWND hSci0 = nppData._scintillaMainHandle;
@@ -828,8 +869,7 @@ void MultiReplace::updateFilesPanel()
                 IDC_REPLACE_LIST, IDC_STATUS_MESSAGE, IDC_PATH_DISPLAY, IDC_STATS_DISPLAY,
                 IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON,
                 IDC_SAVE_TO_CSV_BUTTON,  IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON,
-                IDC_EXPORT_BASH_BUTTON, IDC_SHIFT_FRAME, IDC_SHIFT_TEXT,
-                IDC_UP_BUTTON, IDC_DOWN_BUTTON
+                IDC_EXPORT_BASH_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON
             };
             for (int id : idsShiftedUp) {
                 HWND hCtrl = GetDlgItem(_hSelf, id);
@@ -7911,7 +7951,7 @@ void MultiReplace::handleFindNextButton() {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView();
                 selectListItem(matchIndex);
-                showStatusMessage(LM.get(L"status_wrapped"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_wrapped_to_first"), MessageStatus::Success);
                 return;
             }
         }
@@ -7948,7 +7988,7 @@ void MultiReplace::handleFindNextButton() {
         if (result.pos < 0 && wrapAroundEnabled) {
             result = performSearchForward(context, 0);
             if (result.pos >= 0) {
-                showStatusMessage(LM.get(L"status_wrapped"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_wrapped_to_first"), MessageStatus::Success);
                 return;
             }
         }
@@ -8018,7 +8058,7 @@ void MultiReplace::handleFindPrevButton() {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView();
                 selectListItem(matchIndex);
-                showStatusMessage(LM.get(L"status_wrapped"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_wrapped_to_last"), MessageStatus::Success);
                 return;
             }
         }
@@ -8051,7 +8091,7 @@ void MultiReplace::handleFindPrevButton() {
             searchPos = context.isSelectionMode ? selection.endPos : send(SCI_GETLENGTH, 0, 0);
             result = performSearchBackward(context, searchPos);
             if (result.pos >= 0) {
-                showStatusMessage(LM.get(L"status_wrapped"), MessageStatus::Info);
+                showStatusMessage(LM.get(L"status_wrapped_to_last"), MessageStatus::Success);
                 return;
             }
         }

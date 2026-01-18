@@ -49,7 +49,6 @@ const LangKV kEnglishPairs[] = {
 { L"panel_save_list", L"Save List" },
 { L"panel_save_as", L"Save As..." },
 { L"panel_export_to_bash", L"Export to Bash" },
-{ L"panel_move_lines", L"Move Lines" },
 { L"panel_help", L"?" },
 { L"panel_replace_in_files", L"Replace in Files" },
 { L"panel_find_in_files", L"Find in Files" },
@@ -85,6 +84,8 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_disable_list", L"Disable list" },
 { L"tooltip_filter_help", L"Find in cpp, cxx, h, hxx & hpp:\n*.cpp *.cxx *.h *.hxx *.hpp\n\nFind in all files except exe, obj & log:\n*.* !*.exe !*.obj !*.log\n\nFind in all files but exclude folders\ntests, bin & bin64:\n*.* !\\tests\\ !\\bin*\n\nFind in all files but exclude all folders\nlog or logs recursively:\n*.* !+\\log*" },
 { L"tooltip_export_template_help", L"Available placeholders:\n\nData fields:\n  %FIND%      - Find pattern\n  %REPLACE%   - Replace text\n  %COMMENT%   - Comment\n  %FCOUNT%    - Find count\n  %RCOUNT%    - Replace count\n\nRow info:\n  %ROW%       - Row number\n  %SEL%       - Selected (1/0)\n\nOptions:\n  %REGEX%     - Regex enabled (1/0)\n  %CASE%      - Match case (1/0)\n  %WORD%      - Whole word (1/0)\n  %EXT%       - Extended (1/0)\n  %VAR%       - Variables (1/0)\n\nUse \\t for tab delimiter" },
+{ L"tooltip_move_up", L"Move selected lines up" },
+{ L"tooltip_move_down", L"Move selected lines down" },
 
 // header entries
 { L"header_find_count", L"Find Count" },
@@ -188,6 +189,8 @@ const LangKV kEnglishPairs[] = {
 { L"status_results_cleared", L"Results have been cleared." },
 { L"status_matches_no_longer_available", L"Matches no longer available." },
 { L"status_match_position", L"Match $REPLACE_STRING1/$REPLACE_STRING2" },
+{ L"status_wrapped_to_first", L"Wrapped to first match" },
+{ L"status_wrapped_to_last", L"Wrapped to last match" },
 
 // Dynamic Status Messages
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },
@@ -414,7 +417,6 @@ const UITextMapping kControlTextMappings[] = {
     { IDC_SAVE_TO_CSV_BUTTON,          L"panel_save_list" },
     { IDC_SAVE_AS_BUTTON,              L"panel_save_as" },
     { IDC_EXPORT_BASH_BUTTON,          L"panel_export_to_bash" },
-    { IDC_SHIFT_TEXT,                  L"panel_move_lines" },
     // Replace in Files Panel - NEU HINZUGEFÜGT
     { IDC_DIR_STATIC,                  L"panel_directory" },
     { IDC_FILTER_STATIC,               L"panel_filter" },
