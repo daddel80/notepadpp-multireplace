@@ -970,6 +970,12 @@ void MultiReplace::updateUseListState(bool isUpdate)
     // Set the button text based on the current state
     SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"˄" : L"˅");
 
+    // Show/hide list-related controls based on list state
+    // Required because PATH_DISPLAY is now positioned at window bottom (for search bar support)
+    int showCmd = useListEnabled ? SW_SHOW : SW_HIDE;
+    ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), showCmd);
+    ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), showCmd);
+
     // Set the status message based on the list state
     showStatusMessage(useListEnabled ? LM.get(L"status_enable_list") : LM.get(L"status_disable_list"), MessageStatus::Info);
 
@@ -3809,6 +3815,10 @@ int MultiReplace::searchInListData(int startIdx, const std::wstring& searchText,
 }
 
 void MultiReplace::toggleListSearchBar() {
+    if (!useListEnabled) {
+        return;
+    }
+
     if (_listSearchBarVisible) {
         hideListSearchBar();
     }
@@ -4721,6 +4731,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_USE_LIST_BUTTON:
         {
             useListEnabled = !useListEnabled;
+            if (!useListEnabled && _listSearchBarVisible) {
+                hideListSearchBar();
+            }
             updateUseListState(true);
             adjustWindowSize();
             return TRUE;
