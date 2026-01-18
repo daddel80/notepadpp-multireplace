@@ -3982,7 +3982,8 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
     Sci_Position jumpPos = hit.pos;
     Sci_Position jumpLen = hit.length;
 
-    if (findTextIdx < hit.allPositions.size()) {
+    if (findTextIdx < hit.allPositions.size() &&
+        findTextIdx < hit.allLengths.size()) {
         jumpPos = hit.allPositions[findTextIdx];
         jumpLen = hit.allLengths[findTextIdx];
     }

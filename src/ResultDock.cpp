@@ -1624,19 +1624,34 @@ void ResultDock::JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len
 
 void ResultDock::SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, Sci_Position len)
 {
+    // Check for pseudo-paths (like <untitled>)
+    const bool isPseudo = IsPseudoPath(fullPath);
+
     // Check if already in the correct document
     wchar_t currentPath[MAX_PATH] = {};
     ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(currentPath));
 
-    if (_wcsicmp(currentPath, fullPath.c_str()) == 0) {
+    if (!isPseudo && _wcsicmp(currentPath, fullPath.c_str()) == 0) {
         // Already in correct document - jump directly
         JumpSelectCenterActiveEditor(pos, len);
+        return;
     }
-    else {
-        // Need to switch document - use pending jump mechanism
-        SetPendingJump(fullPath, pos, len);
-        ::SendMessage(nppData._nppHandle, NPPM_SWITCHTOFILE, 0, reinterpret_cast<LPARAM>(fullPath.c_str()));
+
+    if (isPseudo && IsCurrentDocByTitle(fullPath)) {
+        // Already in correct pseudo document - jump directly
+        JumpSelectCenterActiveEditor(pos, len);
+        return;
     }
+
+    // Need to switch document
+    std::wstring pathToOpen = fullPath;
+    if (isPseudo) {
+        pathToOpen = BuildDefaultPathForPseudo(fullPath);
+        if (pathToOpen.empty()) return;
+    }
+
+    SetPendingJump(pathToOpen, pos, len);
+    ::SendMessage(nppData._nppHandle, NPPM_SWITCHTOFILE, 0, reinterpret_cast<LPARAM>(pathToOpen.c_str()));
 }
 
 void ResultDock::scrollToHitAndHighlight(int displayLineStart)

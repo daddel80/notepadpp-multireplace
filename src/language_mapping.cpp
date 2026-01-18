@@ -183,6 +183,11 @@ const LangKV kEnglishPairs[] = {
 { L"status_nothing_to_align", L"Flow Tabs: nothing to align." },
 { L"status_no_selection", L"No text selected." },
 { L"status_export_failed", L"Export to clipboard failed." },
+{ L"status_no_find_all_results", L"No Find All results available. Run Find All first." },
+{ L"status_no_matches_for_entry", L"No matches for this entry." },
+{ L"status_results_cleared", L"Results have been cleared." },
+{ L"status_matches_no_longer_available", L"Matches no longer available." },
+{ L"status_match_position", L"Match $REPLACE_STRING1/$REPLACE_STRING2" },
 
 // Dynamic Status Messages
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },
@@ -257,11 +262,6 @@ const LangKV kEnglishPairs[] = {
 { L"ctxmenu_opt_variables", L"Variables" },
 { L"ctxmenu_opt_regex", L"Regex" },
 { L"ctxmenu_opt_extended", L"Extended" },
-{ L"status_no_find_all_results", L"No Find All results available. Run Find All first." },
-{ L"status_no_matches_for_entry", L"No matches for this entry." },
-{ L"status_results_cleared", L"Results have been cleared." },
-{ L"status_matches_no_longer_available", L"Matches no longer available." },
-{ L"status_match_position", L"Match $REPLACE_STRING1/$REPLACE_STRING2" },
 
 // Result Dock Menu
 { L"rdmenu_fold_all",            L"Fold all" },
