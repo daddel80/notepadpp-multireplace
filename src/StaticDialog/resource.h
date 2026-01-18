@@ -383,7 +383,7 @@
 #define POS_X               92
 #define POS_Y               40
 #define MIN_WIDTH           810
-#define MIN_HEIGHT          400
+#define MIN_HEIGHT          370
 #define SHRUNK_HEIGHT       224
 
 #define WM_POST_INIT        (WM_APP + 1)    // posted after the dialog is shown
