@@ -671,7 +671,7 @@ Settings specific to the CSV column manipulation and alignment features.
 - **CSV Sort: Header lines to exclude** — Specifies the number of lines at the top of the file to protect from sorting operations (e.g., set to `1` to keep the header row fixed at the top).
 
 ### 4. Export
-Configure how list data is exported to the clipboard via **Export Data** from the context menu.
+Configure how list data is exported to the clipboard via **Copy List Data** from the context menu.
 
 - **Template** — Defines the output format using placeholders. Available placeholders:
   - `%FIND%` — Find pattern

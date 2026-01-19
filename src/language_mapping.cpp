@@ -327,11 +327,11 @@ const LangKV kEnglishPairs[] = {
 { L"config_lbl_csv_sort", L"CSV Sort: Header lines to exclude:" },
 
 // Export
-{ L"config_grp_export_data", L"Export Data" },
+{ L"config_grp_export_data", L"Copy List Data" },
 { L"config_lbl_export_template", L"Template:" },
 { L"config_chk_export_escape", L"Escape special characters" },
 { L"config_chk_export_header", L"Add header row" },
-{ L"ctxmenu_export_data", L"Export Data" },
+{ L"ctxmenu_export_data", L"Copy List Data" },
 { L"status_exported_to_clipboard", L"Exported $REPLACE_STRING entries to clipboard" },
 { L"status_no_items_to_export", L"No items to export" },
 
