@@ -1643,7 +1643,7 @@ void ResultDock::SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, S
         return;
     }
 
-    // Need to switch document
+    // Need to switch/open document
     std::wstring pathToOpen = fullPath;
     if (isPseudo) {
         pathToOpen = BuildDefaultPathForPseudo(fullPath);
@@ -1651,7 +1651,9 @@ void ResultDock::SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, S
     }
 
     SetPendingJump(pathToOpen, pos, len);
-    ::SendMessage(nppData._nppHandle, NPPM_SWITCHTOFILE, 0, reinterpret_cast<LPARAM>(pathToOpen.c_str()));
+
+    // Use NPPM_DOOPEN instead to open files that aren't already open
+    ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(pathToOpen.c_str()));
 }
 
 void ResultDock::scrollToHitAndHighlight(int displayLineStart)

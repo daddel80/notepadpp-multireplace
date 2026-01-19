@@ -367,8 +367,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // Move Buttons - positioned at right edge of list, vertically fixed at list start
     int moveButtonX = sx(14) + listWidth + sx(4);  // 4px gap to list
     int moveButtonY = sy(227) + filesOffsetY;       // Same Y as list start
-    ctrlMap[IDC_UP_BUTTON] = { moveButtonX, moveButtonY, sx(20), sy(20), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER | BS_FLAT, LM.getLPCW(L"tooltip_move_up"), false, FontRole::Standard };
-    ctrlMap[IDC_DOWN_BUTTON] = { moveButtonX, moveButtonY + sy(28), sx(20), sy(20), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER | BS_FLAT, LM.getLPCW(L"tooltip_move_down"), false, FontRole::Standard };
+    ctrlMap[IDC_UP_BUTTON] = { moveButtonX, moveButtonY, sx(20), sy(20), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, LM.getLPCW(L"tooltip_move_up"), false, FontRole::Standard };
+    ctrlMap[IDC_DOWN_BUTTON] = { moveButtonX, moveButtonY + sy(28), sx(20), sy(20), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, LM.getLPCW(L"tooltip_move_down"), false, FontRole::Standard };
     ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227) + filesOffsetY, listWidth, listHeight, WC_LISTVIEW, nullptr, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, nullptr, false, FontRole::Standard };
 
     // List Search Bar (between list and path display)
