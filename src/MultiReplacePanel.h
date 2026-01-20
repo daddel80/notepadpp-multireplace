@@ -568,8 +568,6 @@ private:
     bool _listSearchBarVisible = false;
     bool _findAllSearchActive = false;
 
-    std::unordered_map<std::wstring, size_t> _jumpPositions; // listIndex → current hit position
-
     static constexpr int MIN_GENERAL_WIDTH = 40;
     static constexpr int DEFAULT_COLUMN_WIDTH_FIND = 150;   // Default size for Find Column
     static constexpr int DEFAULT_COLUMN_WIDTH_REPLACE = 150; // Default size for Replace Column

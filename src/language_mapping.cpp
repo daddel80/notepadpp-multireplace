@@ -140,7 +140,6 @@ const LangKV kEnglishPairs[] = {
 { L"status_replace_one_none_left", L"Replace: 1 occurrence replaced. None left." },
 { L"status_replace_one", L"Replace: 1 occurrence replaced." },
 { L"status_add_values_or_find_directly", L"Add values into the list. Or disable the list to find directly." },
-{ L"status_wrapped", L"Wrapped" },
 { L"status_no_matches_found", L"No matches found." },
 { L"status_add_values_or_mark_directly", L"Add values into the list. Or disable the list to mark directly." },
 { L"status_no_text_to_copy", L"No text to copy." },
@@ -191,6 +190,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_match_position", L"Match $REPLACE_STRING1/$REPLACE_STRING2" },
 { L"status_wrapped_to_first", L"Wrapped to first match" },
 { L"status_wrapped_to_last", L"Wrapped to last match" },
+{ L"status_wrapped_to_first_of", L"Wrapped to match $REPLACE_STRING1/$REPLACE_STRING2" },
 
 // Dynamic Status Messages
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },

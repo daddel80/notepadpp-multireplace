@@ -63,6 +63,13 @@ public:
         int colorIndex{ -1 };
     };
 
+    // Cursor position info for navigation anchoring
+    struct CursorHitInfo {
+        bool valid = false;
+        size_t hitIndex = SIZE_MAX;
+    };
+    CursorHitInfo getCurrentCursorHitInfo() const;
+
     struct CritAgg { std::wstring text; std::vector<Hit> hits; };
     struct FileAgg { std::wstring wPath; int hitCount = 0; std::vector<CritAgg> crits; };
     using FileMap = std::unordered_map<std::string, FileAgg>;

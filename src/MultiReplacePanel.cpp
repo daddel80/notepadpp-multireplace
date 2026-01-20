@@ -3963,7 +3963,6 @@ void MultiReplace::findInList(bool forward) {
 
 void MultiReplace::invalidateFindAllState() {
     _findAllSearchActive = false;
-    _jumpPositions.clear();
 }
 
 void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
@@ -4012,17 +4011,35 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
         return;
     }
 
-    // 4. Determine next index (wrap-around) - use findText as key for robustness against list reordering
-    size_t& currentIdx = _jumpPositions[item.findText];
-    if (currentIdx >= matchingHits.size()) {
-        currentIdx = 0;  // Wrap around to first
+    // 4. Get anchor from ResultDock cursor position
+    auto cursorInfo = dock.getCurrentCursorHitInfo();
+
+    size_t foundIdx = SIZE_MAX;
+    bool wrapped = false;
+
+    if (cursorInfo.valid) {
+        // Find first match AFTER the cursor line
+        for (size_t i = 0; i < matchingHits.size(); ++i) {
+            const auto& [hitIdx, findTextIdx] = matchingHits[i];
+            if (hitIdx > cursorInfo.hitIndex) {
+                foundIdx = i;
+                break;
+            }
+        }
     }
 
-    // 5. Get the hit and determine actual position for this specific match
-    const auto& [hitIdx, findTextIdx] = matchingHits[currentIdx];
+    // 5. Wrap-around if no match found after anchor
+    if (foundIdx == SIZE_MAX) {
+        foundIdx = 0;
+        if (cursorInfo.valid && matchingHits.size() > 0) {
+            wrapped = true;
+        }
+    }
+
+    // 6. Get the hit and determine actual position for this specific match
+    const auto& [hitIdx, findTextIdx] = matchingHits[foundIdx];
     const auto& hit = allHits[hitIdx];
 
-    // Use specific position if available, otherwise fallback to first match
     Sci_Position jumpPos = hit.pos;
     Sci_Position jumpLen = hit.length;
 
@@ -4032,23 +4049,29 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
         jumpLen = hit.allLengths[findTextIdx];
     }
 
-    // 6. Switch file if necessary and jump to position
+    // 7. Switch file if necessary and jump to position
     std::wstring filePath = Encoding::utf8ToWString(hit.fullPathUtf8);
     ResultDock::SwitchAndJump(filePath, jumpPos, jumpLen);
 
-    // 7. Scroll ResultDock to show the hit line
+    // 8. Scroll ResultDock to show the hit line (this updates the cursor/anchor)
     if (hit.displayLineStart >= 0) {
         dock.scrollToHitAndHighlight(hit.displayLineStart);
     }
 
-    // 8. Update index for next jump
-    size_t displayIdx = currentIdx + 1;
-    currentIdx++;
-
     // 9. Status message
-    showStatusMessage(LM.get(L"status_match_position",
-        { std::to_wstring(displayIdx), std::to_wstring(matchingHits.size()) }),
-        MessageStatus::Success);
+    size_t total = matchingHits.size();
+    size_t current = foundIdx + 1;
+
+    if (wrapped) {
+        showStatusMessage(LM.get(L"status_wrapped_to_first_of",
+            { std::to_wstring(current), std::to_wstring(total) }),
+            MessageStatus::Info);
+    }
+    else {
+        showStatusMessage(LM.get(L"status_match_position",
+            { std::to_wstring(current), std::to_wstring(total) }),
+            MessageStatus::Success);
+    }
 }
 
 void MultiReplace::handleEditOnDoubleClick(int itemIndex, ColumnID columnID) {
@@ -7455,7 +7478,6 @@ void MultiReplace::handleFindAllButton()
 
     // Activate Find All navigation state
     _findAllSearchActive = true;
-    _jumpPositions.clear();
 
     showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
@@ -7635,7 +7657,6 @@ void MultiReplace::handleFindAllInDocsButton()
     dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
 
     _findAllSearchActive = true;
-    _jumpPositions.clear();
 
     showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
@@ -7890,7 +7911,6 @@ void MultiReplace::handleFindInFiles() {
 
     // Activate Find All navigation state (after all results collected)
     _findAllSearchActive = true;
-    _jumpPositions.clear();
 
     showStatusMessage(msg + canceledSuffix, ms);
     _isCancelRequested = false;

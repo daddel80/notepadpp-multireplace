@@ -1661,23 +1661,17 @@ void ResultDock::scrollToHitAndHighlight(int displayLineStart)
     if (!_hSci || displayLineStart < 0)
         return;
 
-    // Save horizontal scroll position
     int xOffset = static_cast<int>(S(SCI_GETXOFFSET, 0, 0));
-
-    // Get line number from position
     int line = static_cast<int>(S(SCI_LINEFROMPOSITION, displayLineStart, 0));
 
-    // Ensure line is visible (unfold if needed)
     S(SCI_ENSUREVISIBLE, line, 0);
 
-    // Get line start and end positions for selection
     Sci_Position lineStartPos = S(SCI_POSITIONFROMLINE, line, 0);
     Sci_Position lineEndPos = S(SCI_GETLINEENDPOSITION, line, 0);
 
-    // Select the entire line (highlights it)
     S(SCI_SETSEL, lineStartPos, lineEndPos);
 
-    // Scroll to center the line vertically
+    // Scroll to center
     int linesOnScreen = static_cast<int>(S(SCI_LINESONSCREEN, 0, 0));
     int firstVisibleLine = static_cast<int>(S(SCI_GETFIRSTVISIBLELINE, 0, 0));
     int targetFirstLine = line - (linesOnScreen / 2);
@@ -1688,8 +1682,29 @@ void ResultDock::scrollToHitAndHighlight(int displayLineStart)
         S(SCI_LINESCROLL, 0, scrollDelta);
     }
 
-    // Restore horizontal scroll position (prevent horizontal jumping)
     S(SCI_SETXOFFSET, xOffset, 0);
+}
+
+ResultDock::CursorHitInfo ResultDock::getCurrentCursorHitInfo() const {
+    CursorHitInfo info;
+    if (!_hSci) return info;
+
+    // Get current cursor position and line
+    Sci_Position curPos = S(SCI_GETCURRENTPOS, 0, 0);
+    int line = static_cast<int>(S(SCI_LINEFROMPOSITION, curPos, 0));
+    Sci_Position lineStart = S(SCI_POSITIONFROMLINE, line, 0);
+
+    // Lookup hit index from line start position
+    auto it = _lineStartToHitIndex.find(static_cast<int>(lineStart));
+    if (it == _lineStartToHitIndex.end()) return info;
+
+    size_t hitIdx = it->second;
+    if (hitIdx >= _hits.size()) return info;
+
+    info.valid = true;
+    info.hitIndex = hitIdx;
+
+    return info;
 }
 
 void ResultDock::rebuildHitLineIndex()
