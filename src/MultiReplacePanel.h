@@ -676,6 +676,7 @@ private:
     std::vector<ReplaceItemData> replaceListData;
     std::vector<LineInfo> lineDelimiterPositions;
     std::vector<char> lineBuffer; // reusable Buffer for findDelimitersInLine()
+    std::vector<char> styleBuffer; // reusable Buffer for highlightColumnsInLine()
     std::vector<char> tagBuffer;  // reusable Buffer for SCI_GETTAG in resolveLuaSyntax()
     bool isColumnHighlighted = false;
     std::map<int, bool> stateSnapshot; // stores the state of the Elements

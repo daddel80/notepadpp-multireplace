@@ -10564,16 +10564,15 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
         return;
     }
 
-    // Create a styles vector with a size equal to the line length
-    std::vector<char> styles(static_cast<size_t>(lineInfo.lineLength), 0);
+    // Reuse style buffer - assign sets exact size and fills with 0
+    styleBuffer.assign(static_cast<size_t>(lineInfo.lineLength), 0);
 
     // If no delimiters are found and column 1 is defined, fill the entire line with column 1's style
-    if (lineInfo.positions.empty() &&
-        std::find(columnDelimiterData.columns.begin(), columnDelimiterData.columns.end(), 1) != columnDelimiterData.columns.end())
+    if (lineInfo.positions.empty() && columnDelimiterData.columns.count(1) > 0)
     {
         // Mask the style value to fit into 8 bits
         char style = static_cast<char>(hColumnStyles[0 % hColumnStyles.size()] & 0xFF);
-        std::fill(styles.begin(), styles.end(), style);
+        std::fill(styleBuffer.begin(), styleBuffer.end(), style);
     }
     else {
         // For each defined column, calculate the start and end offsets within the line
@@ -10597,9 +10596,9 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
                 }
 
                 // Apply the style if the range is valid
-                if (start < end && end <= static_cast<LRESULT>(styles.size())) {
+                if (start < end && end <= static_cast<LRESULT>(styleBuffer.size())) {
                     char style = static_cast<char>(hColumnStyles[(column - 1) % hColumnStyles.size()] & 0xFF);
-                    std::fill(styles.begin() + start, styles.begin() + end, style);
+                    std::fill(styleBuffer.begin() + start, styleBuffer.begin() + end, style);
                 }
             }
         }
@@ -10610,7 +10609,7 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
 
     // Apply the computed styles to the document via Scintilla's API
     send(SCI_STARTSTYLING, lineStartPos, 0);
-    send(SCI_SETSTYLINGEX, styles.size(), reinterpret_cast<sptr_t>(styles.data()));
+    send(SCI_SETSTYLINGEX, styleBuffer.size(), reinterpret_cast<sptr_t>(styleBuffer.data()));
 }
 
 void MultiReplace::handleClearColumnMarks() {
@@ -10664,6 +10663,7 @@ void MultiReplace::processLogForDelimiters() {
     }
 
     std::vector<LogEntry> modifyLogEntries;
+    modifyLogEntries.reserve(logChanges.size());
 
     // Loop through the log entries in chronological order
     for (auto& logEntry : logChanges) {
