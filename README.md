@@ -168,7 +168,7 @@ The **Search Results Window** is a dedicated dockable panel that displays all ma
 
 - **Hierarchical Display** — Results are organized in a collapsible tree structure: Search Header → File → Criterion → Individual Hits. Each level can be expanded or collapsed for easy navigation.
 - **Color-Coded Matches** — When using the replacement list, each search term is highlighted in its own distinct color (up to 28 colors). This visual distinction makes it easy to identify which list entry produced each match.
-- **One-Click Navigation** — Navigate to any match by double-clicking either a result line in this window or the hit count in the list's **Matches** column. Both methods open the file and jump to the exact position.
+- **One-Click Navigation** — Double-click any result line to open the file and jump to the exact match position. To navigate from a specific point: first click a line in the Search Results Window to set your starting position, then double-click the **Matches** count in the replacement list to jump to the next match after that point.
 - **Context Menu** — Right-click to access options like Copy Lines, Copy Paths, Open Selected Files, Fold/Unfold All, and Clear Results.
 - **Persistent Results** — By default, new searches append to existing results, allowing you to accumulate findings. Enable "Purge on new search" in the context menu to clear previous results automatically.
 - **Word Wrap** — Toggle word wrap via the context menu for long lines.
@@ -609,7 +609,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
   - **E** — Extended search mode.
   - **R** — Regular expression mode.
 - **Additional Columns:**
-  - **Matches** — Displays the number of times each 'Find what' string is detected. After running Find All, double-click the count to cycle through all matches in the editor; each click jumps to the next occurrence and highlights the corresponding line in the Search Results Window.
+  - **Matches** — Shows the hit count for each entry. After Find All, double-click to navigate through matches starting from the cursor position in the Search Results Window; wraps to first match at the end.
   - **Replaced** — Shows the number of replacements made for each 'Replace with' string.
   - **Comments** — Add custom comments to entries for annotations or additional context.
   - **Delete** — Contains a delete button for each entry, allowing quick removal from the list.
@@ -671,7 +671,7 @@ Settings specific to the CSV column manipulation and alignment features.
 - **CSV Sort: Header lines to exclude** — Specifies the number of lines at the top of the file to protect from sorting operations (e.g., set to `1` to keep the header row fixed at the top).
 
 ### 4. Export
-Configure how list data is exported to the clipboard via **Copy List Data** from the context menu.
+Configure how list data is exported to the clipboard via **Export Data** from the context menu.
 
 - **Template** — Defines the output format using placeholders. Available placeholders:
   - `%FIND%` — Find pattern
