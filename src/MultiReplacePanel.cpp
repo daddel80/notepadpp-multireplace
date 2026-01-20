@@ -9044,7 +9044,7 @@ void MultiReplace::handleDeleteColumns()
         SIZE_T lineCount = lineDelimiterPositions.size();
 
         // Iterate over lines from last to first.
-        for (SIZE_T i = lineCount; --i > 0; ) {
+        for (SIZE_T i = lineCount; i-- > 0; ) {
             const auto& lineInfo = lineDelimiterPositions[i];
 
             // Get absolute start and end positions for this line.
