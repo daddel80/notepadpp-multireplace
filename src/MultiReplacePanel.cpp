@@ -2353,36 +2353,55 @@ void MultiReplace::sortReplaceListData(int columnID) {
     }
     auto previousColumnSortOrder = columnSortOrder;
 
-    // Determine the new sort direction
+    // Determine the new sort direction (3-state cycle)
     SortDirection direction = SortDirection::Ascending;
     auto it = columnSortOrder.find(columnID);
-    if (it != columnSortOrder.end() && it->second == SortDirection::Ascending) {
-        direction = SortDirection::Descending;
+    if (it != columnSortOrder.end()) {
+        if (it->second == SortDirection::Ascending) {
+            direction = SortDirection::Descending;
+        }
+        else if (it->second == SortDirection::Descending) {
+            direction = SortDirection::Unsorted;
+        }
     }
 
     // Update the column sort order
     columnSortOrder.clear();
-    columnSortOrder[columnID] = direction;
+    if (direction != SortDirection::Unsorted) {
+        columnSortOrder[columnID] = direction;
+    }
 
     // Perform the sorting
     std::sort(replaceListData.begin(), replaceListData.end(),
         [this, columnID, direction]
         (const ReplaceItemData& a, const ReplaceItemData& b) -> bool
         {
+            // Unsorted = sort by ID (insertion order)
+            if (direction == SortDirection::Unsorted) {
+                return a.id < b.id;
+            }
+
             switch (columnID)
             {
-            case ColumnID::FIND_COUNT: {
+            case ColumnID::FIND_COUNT:
                 return direction == SortDirection::Ascending ? a.findCount < b.findCount : a.findCount > b.findCount;
-            }
-            case ColumnID::REPLACE_COUNT: {
+            case ColumnID::REPLACE_COUNT:
                 return direction == SortDirection::Ascending ? a.replaceCount < b.replaceCount : a.replaceCount > b.replaceCount;
-            }
             case ColumnID::FIND_TEXT:
-                return direction == SortDirection::Ascending ? a.findText < b.findText : a.findText > b.findText;
+            {
+                int cmp = lstrcmpiW(a.findText.c_str(), b.findText.c_str());
+                return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
+            }
             case ColumnID::REPLACE_TEXT:
-                return direction == SortDirection::Ascending ? a.replaceText < b.replaceText : a.replaceText > b.replaceText;
+            {
+                int cmp = lstrcmpiW(a.replaceText.c_str(), b.replaceText.c_str());
+                return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
+            }
             case ColumnID::COMMENTS:
-                return direction == SortDirection::Ascending ? a.comments < b.comments : a.comments > b.comments;
+            {
+                int cmp = lstrcmpiW(a.comments.c_str(), b.comments.c_str());
+                return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
+            }
             default:
                 return false;
             }
@@ -2400,7 +2419,7 @@ void MultiReplace::sortReplaceListData(int columnID) {
     InvalidateRect(_replaceListView, nullptr, TRUE);
     selectRows(selectedIDs);
 
-    // Delegate undo/redo creation to the new function
+    // Delegate undo/redo creation
     sortItemsInReplaceList(originalOrder, newOrder, previousColumnSortOrder, columnID, direction);
 }
 
