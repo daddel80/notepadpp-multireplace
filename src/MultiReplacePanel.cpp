@@ -9996,15 +9996,15 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
         size_t idx = sortedIndex[i];
         LRESULT lineStart = send(SCI_POSITIONFROMLINE, idx, 0);
         LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, idx, 0);
-        std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1); // Buffer size includes space for null terminator
+        std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
         Sci_TextRangeFull tr;
         tr.chrg.cpMin = lineStart;
         tr.chrg.cpMax = lineEnd;
         tr.lpstrText = buffer.data();
         send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
-        combinedLines += std::string(buffer.data(), buffer.size() - 1); // Exclude null terminator from the string
+        combinedLines += std::string(buffer.data(), buffer.size() - 1);
         if (i < sortedIndex.size() - 1) {
-            combinedLines += lineBreak; // Add line break after each line except the last
+            combinedLines += lineBreak;
         }
     }
 
@@ -10222,11 +10222,13 @@ int MultiReplace::compareColumnValue(const ColumnValue& left, const ColumnValue&
     if (left.isNumeric) {
         if (left.numericValue < right.numericValue) return -1;
         if (left.numericValue > right.numericValue) return 1;
-        return 0; // Values are equal
+        return 0;
     }
 
-    // If both are strings, compare text values
-    return left.text.compare(right.text);
+    // If both are strings, use locale-aware comparison (case-insensitive)
+    std::wstring leftW = Encoding::utf8ToWString(left.text);
+    std::wstring rightW = Encoding::utf8ToWString(right.text);
+    return lstrcmpiW(leftW.c_str(), rightW.c_str());
 }
 
 #pragma endregion
