@@ -1057,6 +1057,7 @@ private:
     //Debug DPI Information
     void showDPIAndFontInfo();
 
+    static void displayLogChangesInMessageBox();
 };
 
 //extern std::unordered_map<std::wstring, std::wstring> languageMap;

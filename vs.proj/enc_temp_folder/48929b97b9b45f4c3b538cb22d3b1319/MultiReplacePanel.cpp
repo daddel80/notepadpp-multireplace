@@ -10713,6 +10713,7 @@ void MultiReplace::processLogForDelimiters() {
                     }
                 }
             }
+
             break;
         }
 
