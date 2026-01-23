@@ -234,6 +234,7 @@
     <ClInclude Include="..\src\NumericToken.h" />
     <ClInclude Include="..\src\NppStyleKit.h" />
     <ClInclude Include="..\src\MultiReplaceConfigDialog.h" />
+    <ClInclude Include="SciUndoGuard.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

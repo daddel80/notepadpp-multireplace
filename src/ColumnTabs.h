@@ -23,118 +23,201 @@
 
 namespace ColumnTabs
 {
-    // ------------------------------------------------------------------------
-    // Data model
-    // ------------------------------------------------------------------------
+    // ========================================================================
+    // Data Model
+    // ========================================================================
 
-    // One physical line in the column model.
+    /// Information about a single line in the column model.
     struct CT_ColumnLineInfo {
-        int lineLength = 0;                 // length in bytes (without CR/LF)
-        std::vector<int> delimiterOffsets;  // byte offsets of each delimiter
+        int lineLength = 0;                 ///< Length in bytes (without CR/LF)
+        std::vector<int> delimiterOffsets;  ///< Byte offsets of each delimiter
+
+        /// Number of fields (columns) = delimiters + 1
         size_t FieldCount() const noexcept { return delimiterOffsets.size() + 1; }
     };
 
-    // Read-only view of a document range.
+    /// Read-only view of a document range for columnar operations.
     struct CT_ColumnModelView {
-        std::vector<CT_ColumnLineInfo> Lines;    // optional if getLineInfo is set
-        size_t docStartLine = 0;                 // 0-based absolute document line
+        std::vector<CT_ColumnLineInfo> Lines;  ///< Line data (optional if getLineInfo is set)
+        size_t docStartLine = 0;               ///< 0-based absolute document line
 
-        bool delimiterIsTab = false;             // true if delimiter is '\t'
-        int  delimiterLength = 1;                // bytes per delimiter (>= 1)
-        bool collapseTabRuns = true;             // preserved for callers
+        bool delimiterIsTab = false;           ///< true if delimiter is '\t'
+        int  delimiterLength = 1;              ///< Bytes per delimiter (>= 1)
+        bool collapseTabRuns = true;           ///< Preserved for callers
 
-        // If set, used instead of Lines; index = (line - docStartLine).
+        /// Optional callback for lazy line access; index = (line - docStartLine).
         std::function<CT_ColumnLineInfo(size_t)> getLineInfo;
     };
 
-    // Options for destructive alignment (text-changing padding).
+    /// Options for text-modifying alignment (padding insertion).
     struct CT_AlignOptions {
-        int  firstLine = 0;    // inclusive, model-relative
-        int  lastLine = -1;   // -1 => last model line
-        int  gapCells = 2;    // visual gap in *spaces* between columns
-        bool oneFlowTabOnly = true; // collapse runs to one '\t' and add tabstops
+        int  firstLine = 0;        ///< Inclusive, model-relative
+        int  lastLine = -1;        ///< -1 => last model line
+        int  gapCells = 2;         ///< Visual gap in *spaces* between columns
+        bool oneFlowTabOnly = true; ///< Collapse runs to one '\t' and add tabstops
     };
 
-    // ------------------------------------------------------------------------
-    // Indicator (tracks inserted padding)
-    // ------------------------------------------------------------------------
+    // ========================================================================
+    // Indicator Management
+    // ========================================================================
+    //
+    // The indicator marks characters inserted by padding operations (TABs,
+    // spaces, decimal points). This allows CT_RemoveAlignedPadding() to
+    // precisely remove only artificial padding without affecting user content.
+    //
+    // Style: INDIC_HIDDEN with alpha=0 (invisible but programmatically detectable)
+    // ========================================================================
+
     void CT_SetIndicatorId(int id) noexcept;
     int  CT_GetIndicatorId() noexcept;
 
-    // ------------------------------------------------------------------------
-    // Destructive API (edits text)
-    // ------------------------------------------------------------------------
+    // ========================================================================
+    // Document Padding State
+    // ========================================================================
+    //
+    // Per-document flag indicating whether padding has been inserted.
+    // This is an O(1) optimization to avoid scanning for indicators.
+    //
+    // The flag uses Scintilla's document pointer (SCI_GETDOCPOINTER) as key,
+    // correctly tracking state even with multiple views on the same document.
+    //
+    // IMPORTANT: This flag is the source of truth. It's set by
+    // CT_InsertAlignedPadding / CT_ApplyNumericPadding and cleared by
+    // CT_RemoveAlignedPadding.
+    // ========================================================================
 
-    // Insert aligned padding (tabs/spaces) according to the model/options.
+    /// Set padding flag for a specific document pointer.
+    void CT_SetDocHasPads(sptr_t docPtr, bool has) noexcept;
+
+    /// Get padding flag for a specific document pointer.
+    bool CT_GetDocHasPads(sptr_t docPtr) noexcept;
+
+    /// Set padding flag for the CURRENT document (convenience wrapper).
+    void CT_SetCurDocHasPads(HWND hSci, bool has) noexcept;
+
+    /// Get padding flag for the CURRENT document (convenience wrapper).
+    /// This is the recommended function to check if padding exists.
+    bool CT_GetCurDocHasPads(HWND hSci) noexcept;
+
+    /// Alias for CT_GetCurDocHasPads (for API compatibility).
+    /// NOTE: This checks the cached flag, NOT actual document content.
+    bool CT_HasAlignedPadding(HWND hSci) noexcept;
+
+    // ========================================================================
+    // Destructive API (Modifies Document Text)
+    // ========================================================================
+    //
+    // These functions insert or remove padding characters in the document.
+    // All inserted characters are marked with the indicator for later removal.
+    //
+    // UNDO HANDLING:
+    // These functions use SciUndoGuard internally. To combine multiple
+    // operations into ONE undo step, wrap them in your own SciUndoGuard:
+    //
+    //   {
+    //       SciUndoGuard undo(hSci);           // Outer guard
+    //       CT_ApplyNumericPadding(...);       // Inner guard = no-op
+    //       CT_InsertAlignedPadding(...);      // Inner guard = no-op
+    //   }
+    //   // Result: ONE undo step for everything
+    // ========================================================================
+
+    /// Insert TAB padding for column alignment.
+    ///
+    /// Inserts TAB characters before delimiters to align columns visually.
+    /// All inserted TABs are marked with the indicator.
+    ///
+    /// @param hSci             Scintilla window handle
+    /// @param model            Column model describing document structure
+    /// @param opt              Alignment options
+    /// @param outNothingToAlign  [out] true if no alignment was needed
+    /// @return true on success
     bool CT_InsertAlignedPadding(HWND hSci,
         const CT_ColumnModelView& model,
         const CT_AlignOptions& opt,
         bool* outNothingToAlign = nullptr);
 
-    // Remove previously inserted aligned padding (by indicator).
+    /// Remove ALL padding previously inserted by this module.
+    ///
+    /// Finds all indicator-marked ranges and removes them, restoring
+    /// the document to its original state.
+    ///
+    /// @param hSci  Scintilla window handle
+    /// @return true if padding was removed, false if none existed
     bool CT_RemoveAlignedPadding(HWND hSci);
 
-    // Query whether the buffer currently contains aligned padding owned by us.
-    bool CT_HasAlignedPadding(HWND hSci) noexcept;
-
-    // Align numbers by integer/decimal part within [firstLine..lastLine] (doc-absolute).
+    /// Insert numeric alignment padding (leading spaces, trailing decimals).
+    ///
+    /// Example: "42" → "  42.00", "3.14" → "  3.14", "100.5" → "100.50"
+    ///
+    /// @param hSci      Scintilla window handle
+    /// @param model     Column model
+    /// @param firstLine First line (doc-absolute)
+    /// @param lastLine  Last line (doc-absolute)
+    /// @return true on success
     bool CT_ApplyNumericPadding(HWND hSci,
         const CT_ColumnModelView& model,
         int firstLine,
         int lastLine);
 
-    // ------------------------------------------------------------------------
-    // Visual API (does not edit text; manages Scintilla tab stops)
-    // ------------------------------------------------------------------------
+    // ========================================================================
+    // Visual API (Non-Destructive Tab Stops)
+    // ========================================================================
+    //
+    // These functions set Scintilla's per-line tab stop positions without
+    // modifying document text. Creates visual column alignment using
+    // existing TAB characters.
+    // ========================================================================
 
-    // Apply Flow tab stops for [firstLine..lastLine] with a fixed pixel gap.
-    // Units: paddingPx in *pixels* (e.g., 12).
+    /// Apply calculated tab stops for visual column alignment.
     bool CT_ApplyFlowTabStops(HWND hSci,
         const CT_ColumnModelView& model,
         int firstLine,
-        int lastLine,   // -1 => all model lines
-        int paddingPx /*pixels*/);
+        int lastLine,   // -1 = all model lines
+        int paddingPx);
 
-    // Convenience: apply Flow tab stops for the whole model (what MultiReplacePanel expects).
+    /// Convenience: Apply tab stops for entire model.
     inline bool CT_ApplyFlowTabStopsAll(HWND hSci,
         const CT_ColumnModelView& model,
-        int paddingPx /*pixels*/)
+        int paddingPx)
     {
-        // firstLine is doc-absolute; -1 means: clamp to the model’s last line internally
-        return CT_ApplyFlowTabStops(hSci, model, static_cast<int>(model.docStartLine), -1, paddingPx);
+        return CT_ApplyFlowTabStops(hSci, model,
+            static_cast<int>(model.docStartLine), -1, paddingPx);
     }
 
-    // Disable Flow tab stops; optionally restore manual per-line stops.
+    /// Remove visual tab stops, optionally restoring previous manual stops.
     bool CT_DisableFlowTabStops(HWND hSci, bool restoreManual);
 
-    // Convenience: clear only Flow (ETS-owned) tab stops and restore manual ones
-    // (exact name/signature used by MultiReplacePanel).
+    /// Convenience: Clear Flow tab stops and restore manual ones.
     inline bool CT_ClearFlowTabStops(HWND hSci)
     {
         return CT_DisableFlowTabStops(hSci, /*restoreManual=*/true);
     }
 
-    // Remove *all* tab stops in the buffer (manual and Flow).
+    /// Remove ALL tab stops (manual and Flow).
     bool CT_ClearAllTabStops(HWND hSci);
 
-    // Forget any cached visual state (call on buffer/document switch).
+    /// Reset cached visual state (call on buffer/document switch).
     void CT_ResetFlowVisualState() noexcept;
 
-    // Fast check whether any line currently has Flow tab stops.
+    /// Check if any line has Flow tab stops.
     bool CT_HasFlowTabStops() noexcept;
 
-    // ------------------------------------------------------------------------
-    // Utilities (kept for callers)
-    // ------------------------------------------------------------------------
+    // ========================================================================
+    // Utilities
+    // ========================================================================
+
+    /// Calculate visual width accounting for tab expansion.
     size_t CT_VisualCellWidth(const char* s, size_t n, int tabWidth);
 
-    // Per-document padding state (O(1) gate to avoid scans on switches)
-    void CT_SetDocHasPads(sptr_t docPtr, bool has) noexcept;
-    bool CT_GetDocHasPads(sptr_t docPtr) noexcept;
-    void CT_SetCurDocHasPads(HWND hSci, bool has) noexcept;
-    bool CT_GetCurDocHasPads(HWND hSci) noexcept;
+    // ========================================================================
+    // Cleanup Helpers
+    // ========================================================================
 
-    // Optional convenience cleanups (used by panel on buffer switches)
+    /// Remove visual tab stops only (no text modification).
     bool CT_CleanupVisuals(HWND hSci) noexcept;
+
+    /// Full cleanup: remove padding text AND visual tab stops.
     bool CT_CleanupAllForDoc(HWND hSci) noexcept;
+
 } // namespace ColumnTabs

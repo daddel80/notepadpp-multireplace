@@ -28,6 +28,7 @@
 #include "ConfigManager.h"
 #include "ColumnTabs.h"
 #include "MultiReplaceConfigDialog.h"
+#include "SciUndoGuard.h"
 
 #include <string>
 #include <vector>
@@ -375,24 +376,56 @@ class MultiReplace : public StaticDialog
 {
 public:
 
-    // RAII guard for Scintilla undo grouping - ensures END is always called
+    /// RAII guard for Scintilla undo grouping.
+    /// Uses shared nesting counter from SciUndoGuard.h to ensure that
+    /// nested operations (e.g., ColumnTabs functions called from here)
+    /// all become part of ONE undo step.
     class ScopedUndoAction {
         MultiReplace& _owner;
-        bool _active;
+        bool _ownsAction;  // true if this instance sent SCI_BEGINUNDOACTION
     public:
-        explicit ScopedUndoAction(MultiReplace& owner) : _owner(owner), _active(false) {
-            if (_owner.send(SCI_GETUNDOCOLLECTION, 0, 0)) {
-                _owner.send(SCI_BEGINUNDOACTION, 0, 0);
-                _active = true;
+        explicit ScopedUndoAction(MultiReplace& owner)
+            : _owner(owner), _ownsAction(false)
+        {
+            // Only the outermost guard (nesting depth 0 → 1) sends BEGIN
+            if (SciUndo::detail::g_nestingDepth == 0) {
+                if (_owner.send(SCI_GETUNDOCOLLECTION, 0, 0)) {
+                    _owner.send(SCI_BEGINUNDOACTION, 0, 0);
+                    _ownsAction = true;
+                }
             }
+            ++SciUndo::detail::g_nestingDepth;
         }
+
         ~ScopedUndoAction() {
-            if (_active) {
+            if (SciUndo::detail::g_nestingDepth > 0) {
+                --SciUndo::detail::g_nestingDepth;
+            }
+            if (_ownsAction) {
                 _owner.send(SCI_ENDUNDOACTION, 0, 0);
             }
         }
+
         ScopedUndoAction(const ScopedUndoAction&) = delete;
         ScopedUndoAction& operator=(const ScopedUndoAction&) = delete;
+    };
+
+    class ScopedRedrawLock {
+        HWND _hwnd;
+    public:
+        explicit ScopedRedrawLock(HWND hwnd) : _hwnd(hwnd) {
+            if (_hwnd) {
+                ::SendMessage(_hwnd, WM_SETREDRAW, FALSE, 0);
+            }
+        }
+        ~ScopedRedrawLock() {
+            if (_hwnd) {
+                ::SendMessage(_hwnd, WM_SETREDRAW, TRUE, 0);
+                ::RedrawWindow(_hwnd, NULL, NULL, RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_ALLCHILDREN);
+            }
+        }
+        ScopedRedrawLock(const ScopedRedrawLock&) = delete;
+        ScopedRedrawLock& operator=(const ScopedRedrawLock&) = delete;
     };
 
     MultiReplace() :
@@ -976,7 +1009,7 @@ private:
     void handleColumnGridTabsButton();
     void clearFlowTabsIfAny();
     bool buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const;
-    bool applyFlowTabStops();
+    bool applyFlowTabStops(const ColumnTabs::CT_ColumnModelView* existingModel = nullptr);
     bool runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& body);
     bool showFlowTabsIntroDialog(bool& dontShowFlag) const;
     ViewState saveViewState() const;

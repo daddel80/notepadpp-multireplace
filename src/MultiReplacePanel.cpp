@@ -9319,13 +9319,14 @@ bool MultiReplace::buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outMod
     return validLines > 0;
 }
 
-bool MultiReplace::applyFlowTabStops()
+bool MultiReplace::applyFlowTabStops(const ColumnTabs::CT_ColumnModelView* existingModel)
 {
+    if (existingModel) {
+        return ColumnTabs::CT_ApplyFlowTabStopsAll(_hScintilla, *existingModel, _flowPaddingPx);
+    }
     ColumnTabs::CT_ColumnModelView model;
     if (!buildCTModelFromMatrix(model))
         return false;
-
-    // pixel-accurate, editor-global; does not change text
     return ColumnTabs::CT_ApplyFlowTabStopsAll(_hScintilla, model, _flowPaddingPx);
 }
 
@@ -9397,25 +9398,42 @@ void MultiReplace::handleColumnGridTabsButton()
     // From here on: states are in sync.
     // 2) Normal TOGGLE LOGIC
 
+    // ══════════════════════════════════════════════════════════════════════════
     // CASE A: Padding present (and _flowTabsActive == true) -> TURN OFF fully
+    // ══════════════════════════════════════════════════════════════════════════
     if (hasPadNow)
     {
-        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
-        ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
-        ColumnTabs::CT_ResetFlowVisualState();
+        // Disable logging during bulk text modification
+        bool wasLoggingEnabled = isLoggingEnabled;
+        isLoggingEnabled = false;
+        logChanges.clear();
 
-        ColumnTabs::CT_SetCurDocHasPads(_hScintilla, false);
-        g_padBufs.erase(bufId);
+        {
+            ScopedRedrawLock redrawLock(_hScintilla);
 
-        findAllDelimitersInDocument();
+            ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
+            ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
+            ColumnTabs::CT_ResetFlowVisualState();
+
+            ColumnTabs::CT_SetCurDocHasPads(_hScintilla, false);
+            g_padBufs.erase(bufId);
+
+            findAllDelimitersInDocument();
+        }
 
         _flowTabsActive = false;
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
             ::SetWindowText(h, L"⇥");
 
-        fixHighlightAtDocumentEnd();
+        isLoggingEnabled = wasLoggingEnabled;
 
-        // Force Scintilla to recalculate word wrapping after padding removal
+        if (isColumnHighlighted) {
+            handleHighlightColumnsInDocument();
+        }
+        else {
+            fixHighlightAtDocumentEnd();
+        }
+
         forceWrapRecalculation();
 
         showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
@@ -9423,7 +9441,9 @@ void MultiReplace::handleColumnGridTabsButton()
         return;
     }
 
+    // ══════════════════════════════════════════════════════════════════════════
     // CASE B: Padding not present (and _flowTabsActive == false) -> TURN ON
+    // ══════════════════════════════════════════════════════════════════════════
 
     if (!flowTabsIntroDontShowEnabled) {
         bool dontShow = false;
@@ -9447,68 +9467,97 @@ void MultiReplace::handleColumnGridTabsButton()
         return;
     }
 
+    // Disable screen updates and logging during bulk operation
+    bool wasLoggingEnabled = isLoggingEnabled;
+    bool wasHighlighted = isColumnHighlighted;
+    bool operationSuccess = false;
+    bool earlySuccessPath = false;
+
+    isLoggingEnabled = false;
+    logChanges.clear();
+
     {
-        // We want NumericPadding + InsertAlignedPadding to be one single undo step.
-        ScopedUndoAction undo(*this);
+        // Lock screen updates during bulk text modification
+        ScopedRedrawLock redrawLock(_hScintilla);
 
-        // Step 1: numeric alignment (optional; modifies text, inserts numeric left padding)
-        if (flowTabsNumericAlignEnabled) {
-            ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, static_cast<int>(model.Lines.size()) - 1);
+        {
+            // We want NumericPadding + InsertAlignedPadding to be one single undo step.
+            ScopedUndoAction undo(*this);
+
+            // Step 1: numeric alignment (optional; modifies text, inserts numeric left padding)
+            if (flowTabsNumericAlignEnabled) {
+                ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, static_cast<int>(model.Lines.size()) - 1);
+                findAllDelimitersInDocument();
+                if (!buildCTModelFromMatrix(model)) {
+                    isLoggingEnabled = wasLoggingEnabled;
+                    showStatusMessage(L"Numeric align: model rebuild failed", MessageStatus::Error);
+                    return;
+                }
+            }
+
+            // Step 2: insert Flow-Tab padding
+            ColumnTabs::CT_AlignOptions opt{};
+            opt.firstLine = 0;
+            opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
+
+            const int spacePx = static_cast<int>(SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" "));
+            opt.gapCells = 2;
+            _flowPaddingPx = spacePx * opt.gapCells;
+            opt.oneFlowTabOnly = true;
+
+            bool nothingToAlign = false;
+            if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt, &nothingToAlign)) {
+                if (ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
+                    // Numeric padding succeeded, InsertAlignedPadding failed but we have pads
+                    _flowTabsActive = true;
+                    if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
+                        ::SetWindowText(h, L"⇤");
+
+                    findAllDelimitersInDocument();
+                    if (buildCTModelFromMatrix(model)) {
+                        applyFlowTabStops(&model);
+                    }
+
+                    g_padBufs.insert(bufId);
+                    g_prevBufId = bufId;
+                    earlySuccessPath = true;
+                    operationSuccess = true;
+                }
+                else {
+                    isLoggingEnabled = wasLoggingEnabled;
+                    showStatusMessage(LM.get(nothingToAlign ? L"status_nothing_to_align"
+                        : L"status_padding_insert_failed"),
+                        nothingToAlign ? MessageStatus::Info : MessageStatus::Error);
+                    return;
+                }
+            }
+            else {
+                operationSuccess = true;
+            }
+        }
+
+        // Rescan after edit (only if not early success path which already did it)
+        if (operationSuccess && !earlySuccessPath) {
             findAllDelimitersInDocument();
-            if (!buildCTModelFromMatrix(model)) {
-
-                showStatusMessage(L"Numeric align: model rebuild failed", MessageStatus::Error);
-                return;
-            }
         }
+    }
+    // ScopedRedrawLock released here - screen redraws once
 
-        // Step 2: insert Flow-Tab padding (tabs/spaces between columns, mark padding ranges)
-        ColumnTabs::CT_AlignOptions opt{};
-        opt.firstLine = 0;
-        opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
+    // Restore logging
+    isLoggingEnabled = wasLoggingEnabled;
 
-        const int spacePx = static_cast<int>(SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" "));
-        opt.gapCells = 2;
-        _flowPaddingPx = spacePx * opt.gapCells;
-
-        opt.oneFlowTabOnly = true;
-
-        bool nothingToAlign = false;
-        if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt, &nothingToAlign)) {
-
-
-            // If numeric padding already modified text, treat this as success (ON).
-            if (ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
-                _flowTabsActive = true;
-                if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-                    ::SetWindowText(h, L"⇤");
-
-                // Optionally bind visuals (may be a no-op if no delimiters)
-                applyFlowTabStops();
-
-                showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
-                g_padBufs.insert(bufId);
-                g_prevBufId = bufId;
-                return;
-            }
-
-            // Otherwise: report proper status (nothing vs. failed)
-            showStatusMessage(LM.get(nothingToAlign ? L"status_nothing_to_align"
-                : L"status_padding_insert_failed"),
-                nothingToAlign ? MessageStatus::Info : MessageStatus::Error);
-            return;
+    // Handle early success path
+    if (earlySuccessPath) {
+        if (wasHighlighted) {
+            handleHighlightColumnsInDocument();
         }
-
-        // All text modifications that belong to this "TURN ON" action are done.
+        showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
+        return;
     }
 
-    // Rescan after edit so delimiter info matches new layout
-    findAllDelimitersInDocument();
-
-    // CHANGE: do not force pads flag; check actual state
+    // Normal success path continues here
     const bool nowHasPads = ColumnTabs::CT_GetCurDocHasPads(_hScintilla);
     if (!nowHasPads && !ColumnTabs::CT_HasFlowTabStops()) {
-        // No pads and no visuals → treat as nothing-to-align
         if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
             ::SetWindowText(h, L"⇥");
         _flowTabsActive = false;
@@ -9517,8 +9566,12 @@ void MultiReplace::handleColumnGridTabsButton()
         return;
     }
 
-    // Mark active, bind visuals
-    if (!applyFlowTabStops()) {
+    if (!buildCTModelFromMatrix(model)) {
+        showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
+        return;
+    }
+
+    if (!applyFlowTabStops(&model)) {
         showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
     }
 
@@ -9526,11 +9579,15 @@ void MultiReplace::handleColumnGridTabsButton()
     if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
         ::SetWindowText(h, L"⇤");
 
+    // Re-highlight AFTER screen updates are enabled
+    if (wasHighlighted) {
+        handleHighlightColumnsInDocument();
+    }
+
     showStatusMessage(LM.get(nowHasPads ? L"status_tabs_inserted"
         : L"status_tabs_aligned"),
         MessageStatus::Success);
 
-    // Track active buffer for cleanup-on-switch logic
     if (nowHasPads) g_padBufs.insert(bufId); else g_padBufs.erase(bufId);
     g_prevBufId = bufId;
 }

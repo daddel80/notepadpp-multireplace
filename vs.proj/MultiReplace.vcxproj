@@ -80,6 +80,7 @@
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
     <ClInclude Include="..\src\StringUtils.h" />
     <ClInclude Include="..\src\UndoRedoManager.h" />
+    <ClInclude Include="SciUndoGuard.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\ColumnTabs.cpp" />
