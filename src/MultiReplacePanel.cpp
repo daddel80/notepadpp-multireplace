@@ -12889,13 +12889,12 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
     Sci_Position lineNumber = ::SendMessage(getScintillaHandle(), SCI_LINEFROMPOSITION, cursorPosition, 0);
     if (notifyCode->modificationType & SC_MOD_INSERTTEXT) {
         if (addedLines != 0) {
-            // Set the first entry as Modify
             logChanges.push_back({ ChangeType::Modify, lineNumber });
-
-            // Instead of pushing multiple Insert entries in a loop, just push one block
+            Sci_Position lineStart = ::SendMessage(getScintillaHandle(), SCI_POSITIONFROMLINE, lineNumber, 0);
+            Sci_Position insertLineNumber = (cursorPosition == lineStart) ? lineNumber : lineNumber + 1;
             LogEntry insertEntry;
             insertEntry.changeType = ChangeType::Insert;
-            insertEntry.lineNumber = lineNumber;
+            insertEntry.lineNumber = insertLineNumber;  // ← FIXED: Use adjusted position
             insertEntry.blockSize = static_cast<Sci_Position>(std::abs(addedLines));
             logChanges.push_back(insertEntry);
         }
@@ -12913,13 +12912,16 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
                 logChanges.push_back({ ChangeType::Delete, 0 });
                 return;
             }
-            // Then, log the deletes in one block
-            LogEntry deleteEntry;
-            // Set the first entry as Modify for the smallest lineNumber
+
+            // Determine where deletion actually occurred
+            Sci_Position lineStart = ::SendMessage(getScintillaHandle(), SCI_POSITIONFROMLINE, lineNumber, 0);
+            Sci_Position deletePos = (cursorPosition == lineStart) ? lineNumber : lineNumber + 1;
+
             logChanges.push_back({ ChangeType::Modify, lineNumber });
 
+            LogEntry deleteEntry;
             deleteEntry.changeType = ChangeType::Delete;
-            deleteEntry.lineNumber = lineNumber;
+            deleteEntry.lineNumber = deletePos;  // ← FIXED
             deleteEntry.blockSize = static_cast<Sci_Position>(std::abs(addedLines));
             logChanges.push_back(deleteEntry);
         }
