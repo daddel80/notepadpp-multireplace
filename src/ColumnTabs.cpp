@@ -15,14 +15,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #include "ColumnTabs.h"
-#include "SciUndoGuard.h"
 #include "NumericToken.h"
 #include <algorithm>
 #include <unordered_map>
 #include <string_view>
 #include <cctype> 
-#include <chrono>
-#include <sstream>
 
 // --- Scintilla direct --------------------------------------------------------
 static inline sptr_t S(HWND hSci, UINT m, uptr_t w = 0, sptr_t l = 0)
@@ -69,6 +66,62 @@ struct OptionalRedrawGuard {
         }
     }
 };
+
+// small helpers (file-local)
+static int CT_TextWidthPx(HWND hSci, const std::string& s) {
+    const int w = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)s.c_str());
+    if (w > 0) return w;
+    const int sp = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
+    return (int)s.size() * (sp > 0 ? sp : 8);
+}
+
+static void CT_GetSubTextUtf8(HWND hSci, Sci_Position pos0, Sci_Position pos1, std::string& out) {
+    out.clear();
+    if (pos1 <= pos0) return;
+    const ptrdiff_t need = (ptrdiff_t)(pos1 - pos0);
+    out.assign((size_t)need + 1u, '\0');
+    Sci_TextRangeFull tr{}; tr.chrg.cpMin = pos0; tr.chrg.cpMax = pos1; tr.lpstrText = out.data();
+    S(hSci, SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
+    if (!out.empty()) out.pop_back();
+}
+
+// find number in [fieldPos0, fieldPos1): returns doc pos of first digit/sign and px width of left part
+static bool CT_FindNumericToken(HWND hSci,
+    Sci_Position fieldPos0,
+    Sci_Position fieldPos1,
+    Sci_Position& outStartDoc,
+    int& outLeftPx,
+    bool& outHasDecimal)
+{
+    std::string fld;
+    CT_GetSubTextUtf8(hSci, fieldPos0, fieldPos1, fld);
+    if (fld.empty()) return false;
+
+    auto is_space = [](unsigned char c) noexcept { return c == ' ' || c == '\t'; };
+    std::size_t n = fld.size();
+    std::size_t t0 = 0, t1 = n;
+    while (t0 < n && is_space((unsigned char)fld[t0])) ++t0;
+    while (t1 > t0 && is_space((unsigned char)fld[t1 - 1])) --t1;
+
+    if (t1 <= t0) return false;
+    std::string_view trimmed(fld.data() + t0, t1 - t0);
+
+    mr::num::NumericToken tok;
+    if (!mr::num::classify_numeric_field(trimmed, tok))
+        return false;
+
+    std::size_t intStart = tok.start + (tok.hasSign ? 1u : 0u);
+    std::size_t intLen = (tok.intDigits > 0) ? (std::size_t)tok.intDigits : 0u;
+
+    std::string leftDigits;
+    if (intLen > 0 && intStart + intLen <= trimmed.size())
+        leftDigits.assign(trimmed.data() + intStart, intLen);
+
+    outLeftPx = CT_TextWidthPx(hSci, leftDigits);
+    outStartDoc = fieldPos0 + (Sci_Position)(t0 + tok.start);
+    outHasDecimal = tok.hasDecimal;
+    return true;
+}
 
 // -----------------------------------------------------------------------------
 // ColumnTabs::detail – persistent state and helpers  (separater Namespace)
@@ -120,7 +173,7 @@ namespace ColumnTabs::detail {
         return model.getLineInfo ? model.getLineInfo(idx) : model.Lines[idx];
     }
 
-    // Compute tab-stop pixel positions from text widths (columnar alignment).
+    // Expects doc-absolute line indices [line0..line1].
     static bool computeStopsFromWidthsPx(
         HWND hSci,
         const ColumnTabs::CT_ColumnModelView& model,
@@ -131,79 +184,59 @@ namespace ColumnTabs::detail {
         using namespace ColumnTabs;
 
         if (line1 < line0) std::swap(line0, line1);
-        const int numLines = line1 - line0 + 1;
 
+        // Uniform spacing: left-only gap; right gap must be 0.
         const int gapBeforePx = (gapPx >= 0) ? gapPx : 0;
         const int gapAfterPx = 0;
 
+        // Safety margin to stay strictly left of stop with rounding/kerning.
         const int spacePx = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
         const int minAdvancePx = (spacePx > 0) ? ((spacePx + 1) / 2) : 2;
 
-        // Determine maximum field count
+        // Determine maximum field count across the range.
         size_t maxCols = 0;
-        if (!model.Lines.empty()) {
-            for (int ln = line0; ln <= line1; ++ln) {
-                const size_t idx = static_cast<size_t>(ln - static_cast<int>(model.docStartLine));
-                if (idx < model.Lines.size()) {
-                    maxCols = (std::max)(maxCols, model.Lines[idx].FieldCount());
-                }
-            }
+        for (int ln = line0; ln <= line1; ++ln) {
+            const auto L = fetchLine(model, ln); // model/doc-absolute
+            maxCols = (std::max)(maxCols, L.FieldCount()); // FieldCount = nDelims + 1
         }
-        else if (model.getLineInfo) {
-            for (int ln = line0; ln <= line1; ++ln) {
-                const auto L = detail::fetchLine(model, ln);
-                maxCols = (std::max)(maxCols, L.FieldCount());
-            }
-        }
-
         if (maxCols < 2) { stopPx.clear(); return true; }
         const size_t stopsCount = maxCols - 1;
 
-        // Read entire document once
-        const Sci_Position docLen = (Sci_Position)S(hSci, SCI_GETLENGTH);
-        std::string fullText(static_cast<size_t>(docLen) + 1, '\0');
-        S(hSci, SCI_GETTEXT, (uptr_t)(docLen + 1), (sptr_t)fullText.data());
-        fullText.resize(static_cast<size_t>(docLen));
+        // Helpers: extract text; measure width in px.
+        auto getSubText = [&](Sci_Position pos0, Sci_Position pos1, std::string& out) {
+            if (pos1 <= pos0) { out.clear(); return; }
+            const ptrdiff_t need = (ptrdiff_t)(pos1 - pos0);
+            out.assign((size_t)need + 1u, '\0'); // +1 for '\0'
 
-        std::vector<Sci_Position> lineStarts(static_cast<size_t>(numLines));
-        for (int ln = line0; ln <= line1; ++ln) {
-            lineStarts[static_cast<size_t>(ln - line0)] =
-                (Sci_Position)S(hSci, SCI_POSITIONFROMLINE, (uptr_t)ln);
-        }
+            Sci_TextRangeFull tr{};
+            tr.chrg.cpMin = pos0;
+            tr.chrg.cpMax = pos1;
+            tr.lpstrText = out.data();
+            S(hSci, SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
 
-        // Width cache
-        std::unordered_map<std::string, int> widthCache;
-        widthCache.reserve(5000);
-
-        auto measurePxCached = [&](const std::string& s) -> int {
-            if (s.empty()) return 0;
-            auto it = widthCache.find(s);
-            if (it != widthCache.end()) {
-                return it->second;
-            }
-            const int w = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)s.c_str());
-            const int result = (w > 0) ? w : (int)s.size() * ((spacePx > 0) ? spacePx : 8);
-            widthCache[s] = result;
-            return result;
+            if (!out.empty()) out.pop_back(); // drop trailing '\0'
             };
 
-        // PASS 1: collect maxima per column
+        auto measurePx = [&](const std::string& s) -> int {
+            const int w = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)s.c_str());
+            return (w > 0) ? w : (int)s.size() * ((spacePx > 0) ? spacePx : 8);
+            };
+
+        // PASS 1: collect maxima per column and per-line EOL-x under same rules.
         std::vector<int> maxCellWidthPx(maxCols, 0);
         std::vector<int> maxDelimiterWidthPx(stopsCount, 0);
         struct LM { std::vector<int> cellW, delimW; int lastIdx = -1; int eolX = 0; };
-        std::vector<LM> lines;
-        lines.reserve(static_cast<size_t>(numLines));
+        std::vector<LM> lines; lines.reserve((size_t)(line1 - line0 + 1));
 
         for (int ln = line0; ln <= line1; ++ln) {
-            const size_t lineIdx = static_cast<size_t>(ln - line0);
-            const auto L = detail::fetchLine(model, ln);
+            const auto L = fetchLine(model, ln);
             const size_t nDel = L.delimiterOffsets.size();
             const size_t nFld = nDel + 1;
 
             LM lm{};
             if (nFld == 0) { lines.push_back(std::move(lm)); continue; }
 
-            const Sci_Position base = lineStarts[lineIdx];
+            const Sci_Position base = (Sci_Position)S(hSci, SCI_POSITIONFROMLINE, (uptr_t)ln);
             lm.cellW.assign(nFld, 0);
             lm.delimW.assign(stopsCount, 0);
             lm.lastIdx = (int)nFld - 1;
@@ -220,36 +253,25 @@ namespace ColumnTabs::detail {
                     : (base + (Sci_Position)L.lineLength);
 
                 std::string cell;
-                if (e > s && static_cast<size_t>(s) < fullText.size()) {
-                    size_t len = static_cast<size_t>(e - s);
-                    if (static_cast<size_t>(s) + len > fullText.size())
-                        len = fullText.size() - static_cast<size_t>(s);
-                    cell = fullText.substr(static_cast<size_t>(s), len);
-                }
+                getSubText(s, e, cell);
 
+                // Tab-invariant measure: ignore '\t' for width.
                 if (!cell.empty())
                     cell.erase(std::remove(cell.begin(), cell.end(), '\t'), cell.end());
 
-                const int w = measurePxCached(cell);
+                const int w = measurePx(cell);
                 lm.cellW[k] = w;
                 if (w > maxCellWidthPx[k]) maxCellWidthPx[k] = w;
             }
 
-            // Delimiters
+            // Delimiters (only if not TAB)
             if (!model.delimiterIsTab && model.delimiterLength > 0) {
                 for (size_t d = 0; d < nDel && d < stopsCount; ++d) {
                     Sci_Position d0 = base + (Sci_Position)L.delimiterOffsets[d];
                     Sci_Position d1 = d0 + (Sci_Position)model.delimiterLength;
-
                     std::string del;
-                    if (d1 > d0 && static_cast<size_t>(d0) < fullText.size()) {
-                        size_t len = static_cast<size_t>(d1 - d0);
-                        if (static_cast<size_t>(d0) + len > fullText.size())
-                            len = fullText.size() - static_cast<size_t>(d0);
-                        del = fullText.substr(static_cast<size_t>(d0), len);
-                    }
-
-                    const int dw = measurePxCached(del);
+                    getSubText(d0, d1, del);
+                    const int dw = measurePx(del);
                     lm.delimW[d] = dw;
                     if (dw > maxDelimiterWidthPx[d]) maxDelimiterWidthPx[d] = dw;
                 }
@@ -258,10 +280,11 @@ namespace ColumnTabs::detail {
                 std::fill(lm.delimW.begin(), lm.delimW.end(), 0);
             }
 
+            // EOL under the same layout model.
             int eol = 0;
             for (int k = 0; k < lm.lastIdx; ++k) {
                 eol += lm.cellW[(size_t)k] + gapBeforePx;
-                eol += lm.delimW[(size_t)k] + gapAfterPx;
+                eol += lm.delimW[(size_t)k] + gapAfterPx; // 0
             }
             if (lm.lastIdx >= 0)
                 eol += lm.cellW[(size_t)lm.lastIdx];
@@ -270,18 +293,18 @@ namespace ColumnTabs::detail {
             lines.push_back(std::move(lm));
         }
 
-        // PASS 2: preferred stops
+        // PASS 2: preferred stops from maxima (+ safety margin).
         std::vector<int> stopPref(stopsCount, 0);
         {
             int acc = 0;
             for (size_t c = 0; c < stopsCount; ++c) {
-                acc += maxCellWidthPx[c] + gapBeforePx + minAdvancePx;
+                acc += maxCellWidthPx[c] + gapBeforePx + minAdvancePx; // strictly beyond widest cell
                 stopPref[c] = acc;
-                acc += maxDelimiterWidthPx[c] + gapAfterPx;
+                acc += maxDelimiterWidthPx[c] + gapAfterPx;            // 0
             }
         }
 
-        // PASS 3: EOL clamps
+        // PASS 3: EOL clamps — never beyond preferred (guard rail).
         std::vector<int> clamp(stopsCount, 0);
         for (const auto& lm : lines) {
             if (lm.lastIdx < 0) continue;
@@ -291,15 +314,12 @@ namespace ColumnTabs::detail {
             }
         }
 
-        // Final stops
-        stopPx.resize(stopsCount);
-        int prevStop = 0;
+        // Final: max(preferred, clamp) and enforce monotonicity.
+        stopPx.assign(stopsCount, 0);
         for (size_t c = 0; c < stopsCount; ++c) {
-            int candidate = (stopPref[c] > clamp[c]) ? stopPref[c] : clamp[c];
-            if (candidate <= prevStop)
-                candidate = prevStop + minAdvancePx;
-            stopPx[c] = candidate;
-            prevStop = candidate;
+            int target = (stopPref[c] < clamp[c]) ? clamp[c] : stopPref[c];
+            if (c > 0 && target < stopPx[c - 1]) target = stopPx[c - 1];
+            stopPx[c] = target;
         }
 
         return true;
@@ -322,7 +342,7 @@ namespace ColumnTabs::detail {
 } // namespace ColumnTabs::detail
 
 // -----------------------------------------------------------------------------
-// ColumnTabs – all public APIs
+// ColumnTabs – all public APIs (separater Namespace)
 // -----------------------------------------------------------------------------
 namespace ColumnTabs {
 
@@ -337,7 +357,6 @@ namespace ColumnTabs {
     // -------------------------------------------------------------------------
     // Destructive API (edits text)
     // -------------------------------------------------------------------------
-
     bool ColumnTabs::CT_InsertAlignedPadding(HWND hSci,
         const CT_ColumnModelView& model,
         const CT_AlignOptions& opt,
@@ -389,9 +408,6 @@ namespace ColumnTabs {
             return false;
         }
 
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 1: Compute tab stop positions
-        // ══════════════════════════════════════════════════════════════════════
         ensureCapacity(hSci);
 
         const int gapPx = (opt.gapCells > 0) ? (pxOfSpace(hSci) * opt.gapCells) : 0;
@@ -405,9 +421,6 @@ namespace ColumnTabs {
             return false;
         }
 
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 2: Save manual tab stops
-        // ══════════════════════════════════════════════════════════════════════
         for (int ln = line0; ln <= line1; ++ln) {
             if ((int)g_hasETSLine.size() > ln &&
                 (int)g_savedManualStopsPx.size() > ln &&
@@ -417,9 +430,6 @@ namespace ColumnTabs {
             }
         }
 
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 3: Apply visual tab stops
-        // ══════════════════════════════════════════════════════════════════════
         setTabStopsRangePx(hSci, line0, line1, stops);
 
         for (int ln = line0; ln <= line1; ++ln) {
@@ -430,160 +440,59 @@ namespace ColumnTabs {
         if (opt.oneFlowTabOnly && model.delimiterIsTab)
             return true;
 
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 4: Read entire document
-        // ══════════════════════════════════════════════════════════════════════
+        RedrawGuard rd(hSci);
+        Sci(SCI_BEGINUNDOACTION);
+        Sci(SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
+        Sci(SCI_INDICSETSTYLE, g_CT_IndicatorId, INDIC_HIDDEN);
+        Sci(SCI_INDICSETALPHA, g_CT_IndicatorId, 0);
+
+        bool madePads = false;
+
         auto fetch = [&](int ln)->CT_ColumnLineInfo {
             return detail::fetchLine(model, ln);
             };
 
-        const Sci_Position docLen = (Sci_Position)Sci(SCI_GETLENGTH);
-        std::string fullText(static_cast<size_t>(docLen) + 1, '\0');
-        Sci(SCI_GETTEXT, (uptr_t)(docLen + 1), (sptr_t)fullText.data());
-        fullText.resize(static_cast<size_t>(docLen));
-
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 5: Collect existing indicator ranges
-        // ══════════════════════════════════════════════════════════════════════
-        const int ind = g_CT_IndicatorId;
-        std::vector<std::pair<Sci_Position, Sci_Position>> existingIndicators;
-        {
-            Sci_Position pos = 0;
-            while (pos < docLen) {
-                if ((int)Sci(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)pos) != 0) {
-                    const Sci_Position start = (Sci_Position)Sci(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)pos);
-                    const Sci_Position end = (Sci_Position)Sci(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)pos);
-                    if (end > start) {
-                        existingIndicators.emplace_back(start, end - start);
-                        pos = end;
-                    }
-                    else {
-                        ++pos;
-                    }
-                }
-                else {
-                    const Sci_Position nextEnd = (Sci_Position)Sci(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)pos);
-                    if (nextEnd > pos) {
-                        pos = nextEnd;
-                    }
-                    else {
-                        ++pos;
-                    }
-                }
-            }
-        }
-
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 6: Collect insertion points
-        // ══════════════════════════════════════════════════════════════════════
-        std::vector<Sci_Position> insertPositions;
-        insertPositions.reserve(static_cast<size_t>((line1 - line0 + 1) * 10));
-
         for (int ln = line0; ln <= line1; ++ln) {
             const auto L = fetch(ln);
             const Sci_Position base = (Sci_Position)Sci(SCI_POSITIONFROMLINE, (uptr_t)ln);
-            const Sci_Position lineEnd = (Sci_Position)Sci(SCI_GETLINEENDPOSITION, (uptr_t)ln);
+            Sci_Position delta = 0;
 
             const size_t nDelims = L.delimiterOffsets.size();
             if (nDelims == 0) continue;
 
             for (size_t c = 0; c < nDelims; ++c) {
-                const Sci_Position delimPos = base + (Sci_Position)L.delimiterOffsets[c];
-                if (delimPos < base || delimPos > lineEnd) continue;
-                if (static_cast<size_t>(delimPos) > fullText.size()) continue;
+                const Sci_Position lineEndNow = (Sci_Position)Sci(SCI_GETLINEENDPOSITION, (uptr_t)ln);
+                const Sci_Position delimPos = base + (Sci_Position)L.delimiterOffsets[c] + delta;
+                if (delimPos < base || delimPos > lineEndNow) continue;
 
                 Sci_Position wsStart = delimPos;
-                while (wsStart > base && static_cast<size_t>(wsStart - 1) < fullText.size()) {
-                    const char ch = fullText[static_cast<size_t>(wsStart - 1)];
+                while (wsStart > base) {
+                    const int ch = (int)Sci(SCI_GETCHARAT, (uptr_t)(wsStart - 1));
                     if (ch == ' ' || ch == '\t') --wsStart; else break;
                 }
 
                 const bool keepExistingTab =
                     (wsStart < delimPos) &&
-                    (static_cast<size_t>(delimPos - 1) < fullText.size()) &&
-                    (fullText[static_cast<size_t>(delimPos - 1)] == '\t');
+                    ((int)Sci(SCI_GETCHARAT, (uptr_t)(delimPos - 1)) == '\t');
 
                 if (!keepExistingTab) {
-                    insertPositions.push_back(delimPos);
+                    const Sci_Position tabPos = delimPos;
+                    Sci(SCI_INSERTTEXT, (uptr_t)tabPos, (sptr_t)"\t");
+                    Sci(SCI_INDICATORFILLRANGE, (uptr_t)tabPos, (sptr_t)1);
+                    delta += 1;
+                    madePads = true;
                 }
             }
         }
 
-        if (insertPositions.empty()) {
-            if (outNothingToAlign) *outNothingToAlign = true;
-            return true;
+        Sci(SCI_ENDUNDOACTION);
+
+        if (madePads) {
+            CT_SetCurDocHasPads(hSci, true);
         }
-
-        std::sort(insertPositions.begin(), insertPositions.end());
-
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 7: Build new text with inserted tabs
-        // ══════════════════════════════════════════════════════════════════════
-        std::string newText;
-        newText.reserve(fullText.size() + insertPositions.size());
-
-        std::vector<Sci_Position> newTabPositions;
-        newTabPositions.reserve(insertPositions.size());
-
-        Sci_Position copyFrom = 0;
-
-        for (Sci_Position insertPos : insertPositions) {
-            if (insertPos > copyFrom) {
-                newText.append(fullText, static_cast<size_t>(copyFrom),
-                    static_cast<size_t>(insertPos - copyFrom));
-            }
-            newTabPositions.push_back(static_cast<Sci_Position>(newText.size()));
-            newText.push_back('\t');
-            copyFrom = insertPos;
-        }
-
-        if (copyFrom < static_cast<Sci_Position>(fullText.size())) {
-            newText.append(fullText, static_cast<size_t>(copyFrom),
-                fullText.size() - static_cast<size_t>(copyFrom));
-        }
-
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 8: Adjust existing indicator positions (binary search)
-        // ══════════════════════════════════════════════════════════════════════
-        std::vector<std::pair<Sci_Position, Sci_Position>> adjustedExistingIndicators;
-        adjustedExistingIndicators.reserve(existingIndicators.size());
-
-        for (const auto& existingInd : existingIndicators) {
-            const Sci_Position oldPos = existingInd.first;
-            const Sci_Position len = existingInd.second;
-
-            auto it = std::upper_bound(insertPositions.begin(), insertPositions.end(), oldPos);
-            const Sci_Position offset = static_cast<Sci_Position>(it - insertPositions.begin());
-
-            adjustedExistingIndicators.emplace_back(oldPos + offset, len);
-        }
-
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 9: Replace document and set indicators
-        // ══════════════════════════════════════════════════════════════════════
-        {
-            SciUndoGuard undo(hSci);
-
-            Sci(SCI_SETTEXT, 0, (sptr_t)newText.c_str());
-
-            Sci(SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
-            Sci(SCI_INDICSETSTYLE, g_CT_IndicatorId, INDIC_HIDDEN);
-            Sci(SCI_INDICSETALPHA, g_CT_IndicatorId, 0);
-
-            for (const auto& adjInd : adjustedExistingIndicators) {
-                Sci(SCI_INDICATORFILLRANGE, (uptr_t)adjInd.first, (sptr_t)adjInd.second);
-            }
-
-            for (Sci_Position tabPos : newTabPositions) {
-                Sci(SCI_INDICATORFILLRANGE, (uptr_t)tabPos, (sptr_t)1);
-            }
-        }
-
-        CT_SetCurDocHasPads(hSci, true);
 
         return true;
     }
-
 
     bool ColumnTabs::CT_RemoveAlignedPadding(HWND hSci)
     {
@@ -597,93 +506,33 @@ namespace ColumnTabs {
         const int ind = CT_GetIndicatorId();
         S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
 
-        const Sci_Position docLen = (Sci_Position)S(SCI_GETLENGTH);
-        if (docLen == 0) return false;
+        bool removedAny = false;
 
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 1: Collect all indicator ranges (positions to remove)
-        // ══════════════════════════════════════════════════════════════════════
-        std::vector<std::pair<Sci_Position, Sci_Position>> ranges;
-        ranges.reserve(1024);
+        S(SCI_BEGINUNDOACTION);
+        {
+            Sci_Position pos = (Sci_Position)S(SCI_GETLENGTH);
+            while (pos > 0) {
+                --pos;
+                if ((int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)pos) == 0)
+                    continue;
 
-        Sci_Position pos = 0;
-        while (pos < docLen) {
-            if ((int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)pos) != 0) {
                 const Sci_Position start = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)pos);
                 const Sci_Position end = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)pos);
                 if (end > start) {
-                    ranges.emplace_back(start, end);
-                    pos = end;
-                }
-                else {
-                    ++pos;
-                }
-            }
-            else {
-                const Sci_Position nextEnd = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)pos);
-                if (nextEnd > pos) {
-                    pos = nextEnd;
-                }
-                else {
-                    ++pos;
+                    S(SCI_INDICATORCLEARRANGE, (uptr_t)start, (sptr_t)(end - start));
+                    S(SCI_DELETERANGE, (uptr_t)start, (sptr_t)(end - start));
+                    pos = start;
+                    removedAny = true;
                 }
             }
         }
+        S(SCI_ENDUNDOACTION);
 
-        if (ranges.empty()) {
+        if (removedAny) {
             ColumnTabs::CT_SetCurDocHasPads(hSci, false);
-            return false;
         }
 
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 2: Read entire document and build new text without padding
-        // ══════════════════════════════════════════════════════════════════════
-        std::string fullText(static_cast<size_t>(docLen) + 1, '\0');
-        S(SCI_GETTEXT, (uptr_t)(docLen + 1), (sptr_t)fullText.data());
-        fullText.resize(static_cast<size_t>(docLen));
-
-        // Calculate new size (original minus all padding)
-        size_t totalPaddingBytes = 0;
-        for (const auto& r : ranges) {
-            totalPaddingBytes += static_cast<size_t>(r.second - r.first);
-        }
-
-        std::string newText;
-        newText.reserve(fullText.size() - totalPaddingBytes);
-
-        // Build new text by copying segments between padding ranges
-        Sci_Position copyFrom = 0;
-        for (const auto& r : ranges) {
-            // Copy text before this padding range
-            if (r.first > copyFrom) {
-                newText.append(fullText, static_cast<size_t>(copyFrom),
-                    static_cast<size_t>(r.first - copyFrom));
-            }
-            // Skip the padding range
-            copyFrom = r.second;
-        }
-        // Copy remaining text after last padding
-        if (copyFrom < docLen) {
-            newText.append(fullText, static_cast<size_t>(copyFrom),
-                static_cast<size_t>(docLen - copyFrom));
-        }
-
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 3: Replace entire document content at once
-        // ══════════════════════════════════════════════════════════════════════
-        // Replace document (uses SciUndoGuard for nesting support)
-        {
-            SciUndoGuard undo(hSci);
-
-            // Clear all indicators first
-            S(SCI_INDICATORCLEARRANGE, 0, (sptr_t)docLen);
-
-            // Replace entire content
-            S(SCI_SETTEXT, 0, (sptr_t)newText.c_str());
-        }
-
-        ColumnTabs::CT_SetCurDocHasPads(hSci, false);
-        return true;
+        return removedAny;
     }
 
     bool ColumnTabs::CT_HasAlignedPadding(HWND hSci) noexcept
@@ -699,53 +548,41 @@ namespace ColumnTabs {
     {
         const HWND hwnd = hSci;
         auto S = [hwnd](UINT msg, WPARAM w = 0, LPARAM l = 0)->sptr_t { return (sptr_t)::S(hwnd, msg, w, l); };
+        auto ls = [&](int ln)->Sci_Position { return (Sci_Position)S(SCI_POSITIONFROMLINE, (uptr_t)ln); };
+        auto le = [&](int ln)->Sci_Position { return (Sci_Position)S(SCI_GETLINEENDPOSITION, (uptr_t)ln); };
+        auto gc = [&](Sci_Position p)->int { return (int)S(SCI_GETCHARAT, (uptr_t)p);  };
 
         const bool haveVec = !model.Lines.empty();
         const bool liveInfo = (model.getLineInfo != nullptr);
         if (!haveVec && !liveInfo) return false;
 
         const int baseDoc = (int)model.docStartLine;
-        int l0 = (firstLine < 0) ? baseDoc : firstLine;
+        int l0 = (firstLine < 0) ? baseDoc : firstLine; // non-const
         int l1 = (lastLine < 0)
             ? (haveVec ? (l0 + (int)model.Lines.size() - 1) : l0)
-            : ((lastLine < l0) ? l0 : lastLine);
+            : ((lastLine < l0) ? l0 : lastLine);         // non-const
 
+        // clamp to model bounds
         if (haveVec) {
             const int modelFirst = baseDoc;
             const int modelLast = baseDoc + (int)model.Lines.size() - 1;
             if (l0 < modelFirst) l0 = modelFirst;
             if (l1 > modelLast)  l1 = modelLast;
         }
-        else {
+        else
+        {
             const int modelFirst = baseDoc;
             if (l0 < modelFirst) l0 = modelFirst;
+            // (l1 is already normalized relative to l0; no further clamping needed here)
         }
 
         if (l1 < l0) return false;
 
-        const int numLines = l1 - l0 + 1;
+        RedrawGuard rg(hSci);
 
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 1: Read entire document + CACHE all line positions
-        // ══════════════════════════════════════════════════════════════════════
-        const Sci_Position docLen = (Sci_Position)S(SCI_GETLENGTH);
-        std::string fullText(static_cast<size_t>(docLen) + 1, '\0');
-        S(SCI_GETTEXT, (uptr_t)(docLen + 1), (sptr_t)fullText.data());
-        fullText.resize(static_cast<size_t>(docLen));
-
-        // CACHE line positions
-        std::vector<Sci_Position> lineStarts(static_cast<size_t>(numLines));
-        std::vector<Sci_Position> lineEnds(static_cast<size_t>(numLines));
-        for (int ln = l0; ln <= l1; ++ln) {
-            const size_t idx = static_cast<size_t>(ln - l0);
-            lineStarts[idx] = (Sci_Position)S(SCI_POSITIONFROMLINE, (uptr_t)ln);
-            lineEnds[idx] = (Sci_Position)S(SCI_GETLINEENDPOSITION, (uptr_t)ln);
-        }
-
-        auto gc = [&](Sci_Position p) -> char {
-            if (p < 0 || static_cast<size_t>(p) >= fullText.size()) return '\0';
-            return fullText[static_cast<size_t>(p)];
-            };
+        S(SCI_SETINDICATORCURRENT, (uptr_t)CT_GetIndicatorId());
+        S(SCI_INDICSETSTYLE, (uptr_t)CT_GetIndicatorId(), INDIC_HIDDEN);
+        S(SCI_INDICSETALPHA, (uptr_t)CT_GetIndicatorId(), 0);
 
         auto countDigits = [](const std::string& s, int& intD, int& fracD, bool& hasDec) {
             intD = fracD = 0; hasDec = false;
@@ -756,31 +593,7 @@ namespace ColumnTabs {
             for (; i < s.size() && isdigit((unsigned char)s[i]); ++i) ++fracD;
             };
 
-        auto findNumericInBuffer = [&](Sci_Position start, Sci_Position end,
-            Sci_Position& tokStart, bool& hasDec) -> bool {
-                hasDec = false;
-                tokStart = start;
-                while (tokStart < end && (gc(tokStart) == ' ' || gc(tokStart) == '\t'))
-                    ++tokStart;
-                if (tokStart >= end) return false;
-                Sci_Position pos = tokStart;
-                char ch = gc(pos);
-                if (ch == '+' || ch == '-') ++pos;
-                Sci_Position digitStart = pos;
-                while (pos < end && isdigit((unsigned char)gc(pos))) ++pos;
-                if (pos == digitStart) return false;
-                ch = gc(pos);
-                if (pos < end && (ch == '.' || ch == ',')) {
-                    hasDec = true;
-                    ++pos;
-                    while (pos < end && isdigit((unsigned char)gc(pos))) ++pos;
-                }
-                return true;
-            };
-
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 2: Collect maxima per column
-        // ══════════════════════════════════════════════════════════════════════
+        // PASS 1: collect maxima
         size_t maxCols = 0;
         for (int ln = l0; ln <= l1; ++ln) {
             const auto L = ColumnTabs::detail::fetchLine(model, ln);
@@ -793,43 +606,35 @@ namespace ColumnTabs {
         std::vector<bool> colHasDec(maxCols, false);
 
         for (int ln = l0; ln <= l1; ++ln) {
-            const size_t lineIdx = static_cast<size_t>(ln - l0);
             const auto L = ColumnTabs::detail::fetchLine(model, ln);
             const size_t nField = L.FieldCount();
             const size_t nDelim = L.delimiterOffsets.size();
-            const Sci_Position base = lineStarts[lineIdx];
-            const Sci_Position lineEnd = lineEnds[lineIdx];
+            const Sci_Position base = ls(ln);
 
-            for (size_t c = 0; c < nField && c < maxCols; ++c) {
+            for (size_t c = 0; c < nField; ++c) {
                 if (c >= nDelim + 1) continue;
 
                 Sci_Position s = (c == 0) ? base
-                    : base + (Sci_Position)L.delimiterOffsets[c - 1] + (Sci_Position)model.delimiterLength;
+                    : base + (Sci_Position)L.delimiterOffsets[c - 1]
+                    + (Sci_Position)model.delimiterLength;
                 Sci_Position e = (c < nDelim)
                     ? base + (Sci_Position)L.delimiterOffsets[c]
-                    : lineEnd;
+                    : le(ln);
 
-                while (s < e && (gc(s) == ' ' || gc(s) == '\t')) ++s;
-                while (e > s && (gc(e - 1) == ' ' || gc(e - 1) == '\t')) --e;
+                while (s < e) { int ch = gc(s);     if (ch == ' ' || ch == '\t') ++s; else break; }
+                while (e > s) { int ch = gc(e - 1); if (ch == ' ' || ch == '\t') --e; else break; }
                 if (e <= s) continue;
 
-                Sci_Position tokStart;
-                bool hasDec;
-                if (!findNumericInBuffer(s, e, tokStart, hasDec))
+                Sci_Position tokStart{}; int leftPx = 0; bool hasDec = false;
+                if (!CT_FindNumericToken(hSci, s, e, tokStart, leftPx, hasDec))
                     continue;
 
-                std::string tok;
-                if (e > tokStart && static_cast<size_t>(tokStart) < fullText.size()) {
-                    size_t len = static_cast<size_t>(e - tokStart);
-                    if (static_cast<size_t>(tokStart) + len > fullText.size())
-                        len = fullText.size() - static_cast<size_t>(tokStart);
-                    tok = fullText.substr(static_cast<size_t>(tokStart), len);
-                }
-                while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t'))
-                    tok.pop_back();
+                std::string tok; tok.assign((size_t)(e - tokStart), '\0');
+                Sci_TextRangeFull tr{}; tr.chrg.cpMin = tokStart; tr.chrg.cpMax = e; tr.lpstrText = tok.data();
+                S(SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
+                while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t')) tok.pop_back();
 
-                int intD = 0, fracD = 0;
-                bool hd = false;
+                int intD = 0, fracD = 0; bool hd = false;
                 countDigits(tok, intD, fracD, hd);
 
                 if (intD > maxIntDigits[c])   maxIntDigits[c] = intD;
@@ -838,149 +643,111 @@ namespace ColumnTabs {
             }
         }
 
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 3: Collect all edits
-        // ══════════════════════════════════════════════════════════════════════
-        struct EditOp {
-            Sci_Position pos = 0;
-            std::string insert;
-        };
-
-        std::vector<EditOp> edits;
-        edits.reserve(static_cast<size_t>(numLines * maxCols));
+        // PASS 2: apply padding and decimal alignment
+        S(SCI_BEGINUNDOACTION);
+        bool madeAny = false;
 
         for (int ln = l0; ln <= l1; ++ln) {
-            const size_t lineIdx = static_cast<size_t>(ln - l0);
             const auto L = ColumnTabs::detail::fetchLine(model, ln);
             const size_t nField = L.FieldCount();
             const size_t nDelim = L.delimiterOffsets.size();
-            const Sci_Position base = lineStarts[lineIdx];
-            const Sci_Position lineEnd = lineEnds[lineIdx];
+            const Sci_Position base = ls(ln);
+            Sci_Position delta = 0;
 
-            for (size_t c = 0; c < nField && c < maxCols; ++c) {
-                if (maxIntDigits[c] <= 0) continue;
+            for (size_t c = 0; c < nField; ++c) {
+                if (c >= maxCols || maxIntDigits[c] <= 0) continue;
                 if (c >= nDelim + 1) continue;
 
-                Sci_Position fieldStart = (c == 0) ? base
-                    : base + (Sci_Position)L.delimiterOffsets[c - 1] + (Sci_Position)model.delimiterLength;
-                Sci_Position fieldEnd = (c < nDelim)
-                    ? base + (Sci_Position)L.delimiterOffsets[c]
-                    : lineEnd;
+                Sci_Position s = (c == 0) ? base
+                    : base + (Sci_Position)L.delimiterOffsets[c - 1]
+                    + (Sci_Position)model.delimiterLength + delta;
+                Sci_Position e = (c < nDelim)
+                    ? base + (Sci_Position)L.delimiterOffsets[c] + delta
+                    : le(ln);
 
-                Sci_Position s = fieldStart, e = fieldEnd;
-                while (s < e && (gc(s) == ' ' || gc(s) == '\t')) ++s;
-                while (e > s && (gc(e - 1) == ' ' || gc(e - 1) == '\t')) --e;
+                while (s < e) { int ch = gc(s);     if (ch == ' ' || ch == '\t') ++s; else break; }
+                while (e > s) { int ch = gc(e - 1); if (ch == ' ' || ch == '\t') --e; else break; }
                 if (e <= s) continue;
 
-                Sci_Position tokStart;
-                bool hasDec;
-                if (!findNumericInBuffer(s, e, tokStart, hasDec))
+                Sci_Position tokStart{}; int leftPx = 0; bool hasDec = false;
+                if (!CT_FindNumericToken(hSci, s, e, tokStart, leftPx, hasDec))
                     continue;
 
-                std::string tok;
-                if (e > tokStart && static_cast<size_t>(tokStart) < fullText.size()) {
-                    size_t len = static_cast<size_t>(e - tokStart);
-                    if (static_cast<size_t>(tokStart) + len > fullText.size())
-                        len = fullText.size() - static_cast<size_t>(tokStart);
-                    tok = fullText.substr(static_cast<size_t>(tokStart), len);
+                int intD = 0, fracD = 0; bool hd = false;
+                {
+                    std::string tok; tok.assign((size_t)(e - tokStart), '\0');
+                    Sci_TextRangeFull tr{}; tr.chrg.cpMin = tokStart; tr.chrg.cpMax = e; tr.lpstrText = tok.data();
+                    S(SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
+                    while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t')) tok.pop_back();
+                    countDigits(tok, intD, fracD, hd);
                 }
-                while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t'))
-                    tok.pop_back();
-
-                int intD = 0, fracD = 0;
-                bool hd = false;
-                countDigits(tok, intD, fracD, hd);
                 if (intD <= 0 && !hasDec && !hd) continue;
 
+                const Sci_Position fieldStart =
+                    (c == 0)
+                    ? base
+                    : base + (Sci_Position)L.delimiterOffsets[c - 1]
+                    + (Sci_Position)model.delimiterLength + delta;
+
                 int spacesTouching = 0;
-                {
-                    Sci_Position p = tokStart;
-                    while (p > fieldStart && gc(p - 1) == ' ') {
-                        --p;
-                        ++spacesTouching;
-                    }
-                }
+                { Sci_Position p = tokStart; while (p > fieldStart && gc(p - 1) == ' ') { --p; ++spacesTouching; } }
 
                 const bool hasSign = (tokStart < e) && (gc(tokStart) == '+' || gc(tokStart) == '-');
                 int needUnits = 1 + (maxIntDigits[c] - intD);
                 if (needUnits < 0) needUnits = 0;
                 if (hasSign && needUnits > 0) --needUnits;
 
+                int appliedShift = 0;
                 const int diff = needUnits - spacesTouching;
 
                 if (diff > 0) {
-                    EditOp op;
-                    op.pos = tokStart;
-                    op.insert = std::string(static_cast<size_t>(diff), ' ');
-                    edits.push_back(op);
+                    std::string pad((size_t)diff, ' ');
+                    S(SCI_INSERTTEXT, (uptr_t)tokStart, (sptr_t)pad.c_str());
+                    S(SCI_SETINDICATORCURRENT, (uptr_t)CT_GetIndicatorId());
+                    S(SCI_INDICATORFILLRANGE, (uptr_t)tokStart, (sptr_t)diff);
+                    delta += (Sci_Position)diff;
+                    appliedShift += diff;
+                    madeAny = true;
+                }
+                else if (diff < 0) {
+                    int toDel = -diff;
+                    const int ind = CT_GetIndicatorId();
+                    S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
+
+                    int delAvail = 0;
+                    if (tokStart > 0 &&
+                        (int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)(tokStart - 1)) != 0)
+                    {
+                        const Sci_Position runBeg = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)(tokStart - 1));
+                        const Sci_Position lower = (runBeg < fieldStart) ? fieldStart : runBeg;
+                        delAvail = (int)(tokStart - lower);
+                    }
+                    if (delAvail > 0) {
+                        if (toDel > delAvail) toDel = delAvail;
+                        const Sci_Position posDel = tokStart - (Sci_Position)toDel;
+                        S(SCI_INDICATORCLEARRANGE, (uptr_t)posDel, (sptr_t)toDel);
+                        S(SCI_DELETERANGE, (uptr_t)posDel, (sptr_t)toDel);
+                        delta -= (Sci_Position)toDel;
+                        appliedShift -= toDel;
+                        madeAny = true;
+                    }
                 }
 
                 if (colHasDec[c] && (maxFracDigits[c] > 0) && (fracD == 0)) {
-                    Sci_Position tokEnd = tokStart + (hasSign ? 1 : 0) + intD;
-                    EditOp op;
-                    op.pos = tokEnd;
-                    op.insert = ".";
-                    op.insert.append(static_cast<size_t>(maxFracDigits[c]), '0');
-                    edits.push_back(op);
+                    const Sci_Position tokEnd = tokStart + (Sci_Position)appliedShift
+                        + (Sci_Position)((hasSign ? 1 : 0) + intD);
+                    std::string pad = "."; pad.append((size_t)maxFracDigits[c], '0');
+                    S(SCI_INSERTTEXT, (uptr_t)tokEnd, (sptr_t)pad.c_str());
+                    S(SCI_SETINDICATORCURRENT, (uptr_t)CT_GetIndicatorId());
+                    S(SCI_INDICATORFILLRANGE, (uptr_t)tokEnd, (sptr_t)pad.size());
+                    delta += (Sci_Position)pad.size();
+                    madeAny = true;
                 }
             }
         }
 
-        if (edits.empty()) return true;
-
-        std::sort(edits.begin(), edits.end(),
-            [](const EditOp& a, const EditOp& b) { return a.pos < b.pos; });
-
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 4: Build new text with all insertions
-        // ══════════════════════════════════════════════════════════════════════
-        std::string newText;
-        newText.reserve(fullText.size() + edits.size() * 4);
-
-        std::vector<std::pair<Sci_Position, Sci_Position>> indicatorRanges;
-        indicatorRanges.reserve(edits.size());
-
-        Sci_Position copyFrom = 0;
-
-        for (const auto& edit : edits) {
-            if (edit.pos > copyFrom) {
-                newText.append(fullText, static_cast<size_t>(copyFrom),
-                    static_cast<size_t>(edit.pos - copyFrom));
-            }
-            indicatorRanges.emplace_back(
-                static_cast<Sci_Position>(newText.size()),
-                static_cast<Sci_Position>(edit.insert.size()));
-            newText.append(edit.insert);
-            copyFrom = edit.pos;
-        }
-
-        if (copyFrom < static_cast<Sci_Position>(fullText.size())) {
-            newText.append(fullText, static_cast<size_t>(copyFrom),
-                fullText.size() - static_cast<size_t>(copyFrom));
-        }
-
-        // ══════════════════════════════════════════════════════════════════════
-        // PHASE 5: Replace document and set indicators
-        // ══════════════════════════════════════════════════════════════════════
-        // Replace document and set indicators (uses SciUndoGuard for nesting support)
-        {
-            SciUndoGuard undo(hSci);
-
-            S(SCI_SETTEXT, 0, (sptr_t)newText.c_str());
-
-            S(SCI_SETINDICATORCURRENT, (uptr_t)CT_GetIndicatorId());
-            S(SCI_INDICSETSTYLE, (uptr_t)CT_GetIndicatorId(), INDIC_HIDDEN);
-            S(SCI_INDICSETALPHA, (uptr_t)CT_GetIndicatorId(), 0);
-
-            for (const auto& range : indicatorRanges) {
-                S(SCI_INDICATORFILLRANGE, (uptr_t)range.first, (sptr_t)range.second);
-            }
-        }
-
-        if (!indicatorRanges.empty()) {
-            CT_SetCurDocHasPads(hSci, true);
-        }
-
+        S(SCI_ENDUNDOACTION);
+        if (madeAny) CT_SetCurDocHasPads(hSci, true);
         return true;
     }
 
@@ -1102,9 +869,7 @@ namespace ColumnTabs {
     void CT_ResetFlowVisualState() noexcept
     {
         detail::g_hasETSLine.clear();
-        detail::g_hasETSLine.shrink_to_fit();
         detail::g_savedManualStopsPx.clear();
-        detail::g_savedManualStopsPx.shrink_to_fit();
     }
 
     bool ColumnTabs::CT_HasFlowTabStops() noexcept

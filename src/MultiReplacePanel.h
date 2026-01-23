@@ -181,8 +181,9 @@ struct ColumnDelimiterData {
 
 struct ColumnValue {
     bool        isNumeric = false;
-    double      numericValue = 0;
-    std::string text = "";
+    double      numericValue = 0.0;
+    std::string text;
+    std::wstring textW;  // Cached wide string for fast comparison
 };
 
 struct CombinedColumns {

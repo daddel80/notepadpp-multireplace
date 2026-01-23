@@ -9625,47 +9625,47 @@ void MultiReplace::clearFlowTabsIfAny()
 
 bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& body)
 {
-    // Ensure CSV matrix exists
     if (lineDelimiterPositions.empty())
         findAllDelimitersInDocument();
 
-    // Derive mode with UI flag taking precedence
     enum class EtabsMode { Off, Visual, Padding };
 
-    // CHANGE: use CT_GetCurDocHasPads() to detect text padding (not CT_HasAlignedPadding)
     const EtabsMode mode =
         (!_flowTabsActive) ? EtabsMode::Off
         : (ColumnTabs::CT_GetCurDocHasPads(_hScintilla) ? EtabsMode::Padding
             : EtabsMode::Visual);
 
-    // Which ops modify text?
     const bool modifiesText =
         (op == CsvOp::Sort) || (op == CsvOp::DeleteColumns);
+
+    // ════════════════════════════════════════════════════════════════════════
+    // FIX: Prevent flicker with manual redraw control
+    // ════════════════════════════════════════════════════════════════════════
+    const bool needsRedrawLock = (mode == EtabsMode::Padding && modifiesText);
+
+    if (needsRedrawLock) {
+        ::SendMessage(_hScintilla, WM_SETREDRAW, FALSE, 0);
+    }
 
     // If Padding + modifying op → unpad to get canonical text
     if (mode == EtabsMode::Padding && modifiesText && ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
         ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
-        findAllDelimitersInDocument(); // offsets changed
+        findAllDelimitersInDocument();
     }
 
-    // Run the actual operation on canonical text
+    // Run the actual operation
     const bool ok = body ? body() : true;
 
-    // Matrix may have changed
     findAllDelimitersInDocument();
 
-    // Reflow presentation (VIS or PAD)
+    // Reflow presentation
     switch (mode) {
     case EtabsMode::Visual: {
-        // Guard: only re-apply if UI still wants visual ETS right now
         if (!_flowTabsActive) break;
 
         ColumnTabs::CT_ColumnModelView model{};
         if (buildCTModelFromMatrix(model)) {
             if (!model.Lines.empty()) {
-                ColumnTabs::CT_ClearFlowTabStops(_hScintilla); // selective
-
-                // CHANGE: apply doc-absolute range (or simply use *_All)
                 const int gapPx = _flowPaddingPx;
                 ColumnTabs::CT_ApplyFlowTabStopsAll(_hScintilla, model, gapPx);
             }
@@ -9673,29 +9673,22 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
         break;
     }
     case EtabsMode::Padding: {
-        // Guard: never re-insert padding if UI is OFF now
         if (!_flowTabsActive) break;
 
         ColumnTabs::CT_ColumnModelView model{};
         if (buildCTModelFromMatrix(model) && !model.Lines.empty()) {
 
-            // Numeric padding first (optional)
             if (flowTabsNumericAlignEnabled) {
                 ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, static_cast<int>(model.Lines.size()) - 1);
-
-                // After text edits, delimiter offsets are stale → rescan & rebuild
                 findAllDelimitersInDocument();
                 if (!buildCTModelFromMatrix(model)) {
-                    break; // keep canonical text if rebuild fails
+                    break;
                 }
             }
 
-            // Insert Flow-Tabs (this also computes & sets visual tab stops)
             ColumnTabs::CT_AlignOptions a{};
             a.firstLine = 0;
             a.lastLine = static_cast<int>(model.Lines.size()) - 1;
-
-            // Convert pixels -> "cells" (width of one space in the current font)
             const int spacePx = static_cast<int>(SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" "));
             a.gapCells = (spacePx > 0) ? (_flowPaddingPx / spacePx) : 2;
             a.oneFlowTabOnly = true;
@@ -9703,9 +9696,7 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
             bool nothingToAlign = false;
             (void)ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, a, &nothingToAlign);
 
-            // CHANGE: do not force the doc-has-pads flag; read the actual state
             if (ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
-                // Optional hygiene: rescan once so matrix matches the new text
                 findAllDelimitersInDocument();
             }
         }
@@ -9713,8 +9704,15 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
     }
     case EtabsMode::Off:
     default:
-        // nothing
         break;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // Re-enable redraw and force repaint
+    // ════════════════════════════════════════════════════════════════════════
+    if (needsRedrawLock) {
+        ::SendMessage(_hScintilla, WM_SETREDRAW, TRUE, 0);
+        ::InvalidateRect(_hScintilla, nullptr, TRUE);
     }
 
     return ok;
@@ -9871,22 +9869,30 @@ void MultiReplace::restoreViewStateExact(const ViewState& s) {
 std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, SIZE_T endLine)
 {
     std::vector<CombinedColumns> combinedData;
-    combinedData.reserve(endLine - startLine); // Preallocate space to avoid reallocations
+    const size_t numLines = endLine - startLine;
+    combinedData.reserve(numLines);
+
+    // ══════════════════════════════════════════════════════════════════════
+    // OPTIMIZATION: Pre-cache all line positions
+    // ══════════════════════════════════════════════════════════════════════
+    std::vector<LRESULT> lineStarts(numLines);
+    for (SIZE_T i = startLine; i < endLine; ++i) {
+        lineStarts[i - startLine] = send(SCI_POSITIONFROMLINE, i, 0);
+    }
+
+    const size_t numColumns = columnDelimiterData.inputColumns.size();
 
     for (SIZE_T i = startLine; i < endLine; ++i) {
-        // Retrieve the LineInfo object
+        const size_t lineIdx = i - startLine;
         const auto& lineInfo = lineDelimiterPositions[i];
 
-        // Calculate absolute start position for this line in the Scintilla document
-        LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
+        // Use cached line start position
+        const LRESULT lineStartPos = lineStarts[lineIdx];
+        const LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
 
-        // Calculate absolute end position (excluding EOL)
-        LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
-
-        // Use the reusable lineBuffer from the class
-        // Read the entire line content in one call to minimize SendMessage overhead
-        size_t currentLineLength = static_cast<size_t>(lineInfo.lineLength);
-        lineBuffer.resize(currentLineLength + 1, '\0'); // Adjust size for the current line
+        // Read the entire line content in one call
+        const size_t currentLineLength = static_cast<size_t>(lineInfo.lineLength);
+        lineBuffer.resize(currentLineLength + 1, '\0');
 
         {
             Sci_TextRangeFull tr;
@@ -9897,134 +9903,124 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
         }
 
         CombinedColumns rowData;
-        rowData.columns.resize(columnDelimiterData.inputColumns.size());
+        rowData.columns.resize(numColumns);
 
-        for (size_t columnIndex = 0; columnIndex < columnDelimiterData.inputColumns.size(); ++columnIndex) {
-            SIZE_T columnNumber = columnDelimiterData.inputColumns[columnIndex];
+        for (size_t columnIndex = 0; columnIndex < numColumns; ++columnIndex) {
+            const SIZE_T columnNumber = columnDelimiterData.inputColumns[columnIndex];
 
-            // Determine the absolute start and end positions of this column in the document
+            // Determine start position of this column
             LRESULT startPos;
             if (columnNumber == 1) {
-                // First column starts at the beginning of the line
                 startPos = lineStartPos;
             }
             else if (columnNumber - 2 < lineInfo.positions.size()) {
-                // Column after the first
                 startPos = lineStartPos + lineInfo.positions[columnNumber - 2].offsetInLine
                     + columnDelimiterData.delimiterLength;
             }
             else {
-                // Skip invalid columns if the delimiter doesn't exist
-                continue;
+                continue; // Skip invalid columns
             }
 
-            // Determine the absolute end position
+            // Determine end position
             LRESULT endPos;
             if (columnNumber - 1 < lineInfo.positions.size()) {
-                // End of the current column = next delimiter offset
                 endPos = lineStartPos + lineInfo.positions[columnNumber - 1].offsetInLine;
             }
             else {
-                // Last column goes to the line's end
                 endPos = lineEndPos;
             }
 
-            // Map absolute positions back to local offsets in the line buffer
+            // Map to local offsets in line buffer
             const size_t localStart = static_cast<size_t>(startPos - lineStartPos);
             const size_t localEnd = static_cast<size_t>(endPos - lineStartPos);
 
-            // Extract column text using local offsets
+            // Extract column text
             if (localStart < localEnd && localEnd <= currentLineLength) {
                 const size_t colSize = localEnd - localStart;
                 std::string columnText(lineBuffer.data() + localStart, colSize);
 
-                // Delete \n and \r at the end of the row
+                // Remove trailing newlines
                 while (!columnText.empty() && (columnText.back() == '\n' || columnText.back() == '\r')) {
                     columnText.pop_back();
                 }
 
-                rowData.columns[columnIndex].text = columnText;
+                rowData.columns[columnIndex].text = std::move(columnText);
             }
-            else {
-                // Empty column if the range is invalid
-                rowData.columns[columnIndex].text.clear();
-            }
-
         }
 
-        // Add parsed row to the result
         combinedData.push_back(std::move(rowData));
     }
 
-    // Optional step: detectNumericColumns if you want to parse columns as numeric
-    detectNumericColumns(combinedData);
+    // NOTE: detectNumericColumns is now called by sortRowsByColumn after sanitization
+    // This avoids duplicate processing
 
     return combinedData;
 }
 
 void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
 {
-    // validate CSV delimiter config
+    // Validate CSV delimiter config
     if (!columnDelimiterData.isValid()) {
         showStatusMessage(LM.get(L"status_invalid_column_or_delimiter"), MessageStatus::Error);
         return;
     }
 
-    // run under the ETabs layer (handles PAD remove/reinsert or VIS re-apply)
+    // Run under the ETabs layer (handles PAD remove/reinsert or VIS re-apply)
     runCsvWithFlowTabs(CsvOp::Sort, [&]() -> bool {
         ScopedUndoAction undo(*this);
 
         const size_t lineCount = lineDelimiterPositions.size();
         if (lineCount <= CSVheaderLinesCount) {
-            
-            return true; // nothing to sort
+            return true; // Nothing to sort
         }
 
-        // build initial order
+        // Build initial order
         std::vector<size_t> tempOrder(lineCount);
         std::iota(tempOrder.begin(), tempOrder.end(), 0);
 
-        // extract columns after headers
+        // Extract columns after headers (detectNumericColumns is called inside)
         std::vector<CombinedColumns> combinedData =
             extractColumnData(CSVheaderLinesCount, lineCount);
 
-        // comparison-only: ignore leading/trailing spaces/tabs for numeric detection & compare
-        auto sanitize = [](std::string s) {
-            if (s.empty()) return s;
-            // trim left (space or tab)
-            size_t b = 0;
-            while (b < s.size() && (s[b] == ' ' || s[b] == '\t')) ++b;
-            // trim right (space or tab)
-            size_t e = s.size();
+        // Sanitize in-place (no copy!) and prepare for sorting
+        auto sanitize = [](std::string& s) {
+            if (s.empty()) return;
+            size_t b = 0, e = s.size();
+            while (b < e && (s[b] == ' ' || s[b] == '\t')) ++b;
             while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t')) --e;
-            return s.substr(b, e - b);
-            };
-        std::vector<CombinedColumns> sortable = combinedData;
-        for (auto& row : sortable)
-            for (auto& col : row.columns) {
-                col.text = sanitize(col.text);
-                col.isNumeric = false; col.numericValue = 0.0;
+            if (b > 0 || e < s.size()) {
+                s = s.substr(b, e - b);
             }
-        detectNumericColumns(sortable);
+            };
 
-        // sort (stable for equal rows)
+        // Sanitize and re-detect numeric (single pass, in-place)
+        for (auto& row : combinedData) {
+            for (auto& col : row.columns) {
+                sanitize(col.text);
+                col.isNumeric = false;
+                col.numericValue = 0.0;
+            }
+        }
+        detectNumericColumns(combinedData);  // Single call with wstring caching
+
+        // Sort (stable for equal rows)
         std::sort(tempOrder.begin() + CSVheaderLinesCount, tempOrder.end(),
             [&](size_t a, size_t b) {
                 const size_t ia = a - CSVheaderLinesCount;
                 const size_t ib = b - CSVheaderLinesCount;
-                const auto& ra = sortable[ia];
-                const auto& rb = sortable[ib];
+                const auto& ra = combinedData[ia];
+                const auto& rb = combinedData[ib];
 
                 for (size_t colIndex = 0; colIndex < columnDelimiterData.inputColumns.size(); ++colIndex) {
                     const int cmp = compareColumnValue(ra.columns[colIndex], rb.columns[colIndex]);
                     if (cmp != 0)
                         return (sortDirection == SortDirection::Ascending) ? (cmp < 0) : (cmp > 0);
                 }
-                return false; // keep original order
+                return false; // Keep original order
             }
         );
 
-        // update originalLineOrder if tracking is used
+        // Update originalLineOrder if tracking is used
         if (!originalLineOrder.empty()) {
             std::vector<size_t> newOrder(originalLineOrder.size());
             for (size_t i = 0; i < tempOrder.size(); ++i)
@@ -10035,40 +10031,69 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
             originalLineOrder = tempOrder;
         }
 
-        // apply new order in editor
+        // Apply new order in editor
         reorderLinesInScintilla(tempOrder);
 
-        
         return true;
         });
 }
 
 void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedIndex) {
-    std::string lineBreak = getEOLStyle();
+    const std::string lineBreak = getEOLStyle();
+    const size_t lineCount = sortedIndex.size();
 
     isSortedColumn = false; // Stop logging changes
-    // Extract the text of each line based on the sorted index and include a line break after each
+
+    // ══════════════════════════════════════════════════════════════════════
+    // OPTIMIZATION: Read entire document once, then extract lines
+    // ══════════════════════════════════════════════════════════════════════
+    const Sci_Position docLen = static_cast<Sci_Position>(send(SCI_GETLENGTH, 0, 0));
+    std::string fullText(static_cast<size_t>(docLen) + 1, '\0');
+    send(SCI_GETTEXT, static_cast<WPARAM>(docLen + 1), reinterpret_cast<sptr_t>(fullText.data()));
+    fullText.resize(static_cast<size_t>(docLen));
+
+    // Pre-cache all line positions
+    std::vector<Sci_Position> lineStarts(lineCount);
+    std::vector<Sci_Position> lineEnds(lineCount);
+    for (size_t i = 0; i < lineCount; ++i) {
+        lineStarts[i] = static_cast<Sci_Position>(send(SCI_POSITIONFROMLINE, i, 0));
+        lineEnds[i] = static_cast<Sci_Position>(send(SCI_GETLINEENDPOSITION, i, 0));
+    }
+
+    // Calculate total size needed
+    size_t totalSize = 0;
+    for (size_t i = 0; i < lineCount; ++i) {
+        const size_t idx = sortedIndex[i];
+        totalSize += static_cast<size_t>(lineEnds[idx] - lineStarts[idx]);
+        if (i < lineCount - 1) {
+            totalSize += lineBreak.size();
+        }
+    }
+
+    // Build combined lines using pre-read document
     std::string combinedLines;
-    for (size_t i = 0; i < sortedIndex.size(); ++i) {
-        size_t idx = sortedIndex[i];
-        LRESULT lineStart = send(SCI_POSITIONFROMLINE, idx, 0);
-        LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, idx, 0);
-        std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
-        Sci_TextRangeFull tr;
-        tr.chrg.cpMin = lineStart;
-        tr.chrg.cpMax = lineEnd;
-        tr.lpstrText = buffer.data();
-        send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
-        combinedLines += std::string(buffer.data(), buffer.size() - 1);
-        if (i < sortedIndex.size() - 1) {
+    combinedLines.reserve(totalSize);
+
+    for (size_t i = 0; i < lineCount; ++i) {
+        const size_t idx = sortedIndex[i];
+        const Sci_Position start = lineStarts[idx];
+        const Sci_Position end = lineEnds[idx];
+
+        if (end > start && static_cast<size_t>(start) < fullText.size()) {
+            size_t len = static_cast<size_t>(end - start);
+            if (static_cast<size_t>(start) + len > fullText.size()) {
+                len = fullText.size() - static_cast<size_t>(start);
+            }
+            combinedLines.append(fullText, static_cast<size_t>(start), len);
+        }
+
+        if (i < lineCount - 1) {
             combinedLines += lineBreak;
         }
     }
 
-    // Clear all content from Scintilla
+    // Clear and re-insert
     send(SCI_CLEARALL);
-
-    // Re-insert the combined lines
     send(SCI_APPENDTEXT, combinedLines.length(), reinterpret_cast<sptr_t>(combinedLines.c_str()));
 
     isSortedColumn = true; // Ready for logging changes
@@ -10076,22 +10101,51 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
 
 void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalOrder) {
 
-    // Determine the total number of lines in the document
     size_t totalLineCount = static_cast<size_t>(send(SCI_GETLINECOUNT));
 
-    // Ensure the size of the originalOrder vector matches the number of lines in the document
-    auto maxElementIt = std::max_element(originalOrder.begin(), originalOrder.end());
-    if (maxElementIt == originalOrder.end() || *maxElementIt != totalLineCount - 1) {
+    if (originalOrder.empty() || originalOrder.size() != totalLineCount) {
         return;
     }
 
-    // Create a vector for the new sorted content of the document
+    // Normalize indices to [0..n-1] range (closes gaps from deleted lines)
+    std::vector<size_t> normalizedOrder = originalOrder;
+
+    auto maxElementIt = std::max_element(originalOrder.begin(), originalOrder.end());
+    if (maxElementIt != originalOrder.end() && *maxElementIt >= totalLineCount) {
+        // Gaps exist - normalization needed
+        std::vector<size_t> sortedIndices = originalOrder;
+        std::sort(sortedIndices.begin(), sortedIndices.end());
+
+        std::unordered_map<size_t, size_t> indexMapping;
+        for (size_t i = 0; i < sortedIndices.size(); ++i) {
+            indexMapping[sortedIndices[i]] = i;
+        }
+
+        for (size_t i = 0; i < normalizedOrder.size(); ++i) {
+            normalizedOrder[i] = indexMapping[normalizedOrder[i]];
+        }
+    }
+
+    // Validate
+    maxElementIt = std::max_element(normalizedOrder.begin(), normalizedOrder.end());
+    if (maxElementIt == normalizedOrder.end() || *maxElementIt != totalLineCount - 1) {
+        return;
+    }
+
+    std::vector<bool> seen(totalLineCount, false);
+    for (size_t idx : normalizedOrder) {
+        if (idx >= totalLineCount || seen[idx]) {
+            return;
+        }
+        seen[idx] = true;
+    }
+
+    // Perform restore
     std::vector<std::string> sortedLines(totalLineCount);
     std::string lineBreak = getEOLStyle();
 
-    // Iterate through each line in the document and fill sortedLines according to originalOrder
     for (size_t i = 0; i < totalLineCount; ++i) {
-        size_t newPosition = originalOrder[i];
+        size_t newPosition = normalizedOrder[i];
         LRESULT lineStart = send(SCI_POSITIONFROMLINE, i, 0);
         LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, i, 0);
         std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
@@ -10100,18 +10154,13 @@ void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalO
         tr.chrg.cpMax = lineEnd;
         tr.lpstrText = buffer.data();
         send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
-        sortedLines[newPosition] = std::string(buffer.data(), buffer.size() - 1); // Exclude null terminator
+        sortedLines[newPosition] = std::string(buffer.data(), buffer.size() - 1);
     }
 
-    // Clear the content of the editor
     send(SCI_CLEARALL);
 
-    // Re-insert the lines in their original order
     for (size_t i = 0; i < sortedLines.size(); ++i) {
-        //std::string message = "Inserting line at position: " + std::to_string(i) + "\nContent: " + sortedLines[i];
-        //MessageBoxA(nullptr, message.c_str(), "Debug Insert Line", MB_OK);
         send(SCI_APPENDTEXT, sortedLines[i].length(), reinterpret_cast<sptr_t>(sortedLines[i].c_str()));
-        // Add a line break after each line except the last one
         if (i < sortedLines.size() - 1) {
             send(SCI_APPENDTEXT, lineBreak.length(), reinterpret_cast<sptr_t>(lineBreak.c_str()));
         }
@@ -10182,15 +10231,16 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
 
 void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType) {
     if (!isSortedColumn || lineNumber > originalLineOrder.size()) {
-        return; // Invalid line number, return early
+        return;
     }
 
     switch (changeType) {
     case ChangeType::Insert: {
-        // Find the current maximum value in originalLineOrder and add one for the new line placeholder
-        size_t maxIndex = originalLineOrder.empty() ? 0 : (*std::max_element(originalLineOrder.begin(), originalLineOrder.end())) + 1;
+        // New lines get indices > all existing ones (will end up at the end on restore)
+        size_t maxIndex = originalLineOrder.empty()
+            ? 0
+            : (*std::max_element(originalLineOrder.begin(), originalLineOrder.end())) + 1;
 
-        //Insert multiple placeholders instead of just one
         std::vector<size_t> newIndices;
         newIndices.reserve(blockCount);
 
@@ -10198,7 +10248,6 @@ void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, 
             newIndices.push_back(maxIndex + i);
         }
 
-        // Insert them at the specified position
         originalLineOrder.insert(
             originalLineOrder.begin() + lineNumber,
             newIndices.begin(),
@@ -10208,40 +10257,24 @@ void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, 
     }
 
     case ChangeType::Delete: {
-        // Ensure lineNumber is within the range before attempting to delete
+        // Simply remove entries - do NOT adjust remaining indices!
+        // Gaps will be closed by normalization during restore.
         SIZE_T endPos = lineNumber + blockCount;
         if (endPos > originalLineOrder.size()) {
             endPos = originalLineOrder.size();
         }
 
-        if (lineNumber < originalLineOrder.size()) { // Safety check
-            // Collect the removed indices 
-            std::vector<size_t> removed(
-                originalLineOrder.begin() + lineNumber,
-                originalLineOrder.begin() + endPos
-            );
-
-            // Directly remove that range
+        if (lineNumber < originalLineOrder.size()) {
             originalLineOrder.erase(
                 originalLineOrder.begin() + lineNumber,
                 originalLineOrder.begin() + endPos
             );
-
-            // Adjust subsequent indices to reflect the deletion
-            if (!removed.empty()) {
-                size_t maxRemoved = *std::max_element(removed.begin(), removed.end());
-                for (size_t i = 0; i < originalLineOrder.size(); ++i) {
-                    if (originalLineOrder[i] > maxRemoved) {
-                        originalLineOrder[i] -= (maxRemoved - lineNumber + 1);
-                    }
-                }
-            }
         }
         break;
     }
+
     case ChangeType::Modify:
     default:
-        // Do nothing for Modify
         break;
     }
 }
@@ -10249,21 +10282,28 @@ void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, 
 void MultiReplace::detectNumericColumns(std::vector<CombinedColumns>& data)
 {
     if (data.empty()) return;
-    size_t colCount = data[0].columns.size();
+    const size_t colCount = data[0].columns.size();
 
     for (size_t col = 0; col < colCount; ++col) {
         for (auto& row : data) {
-            std::string tmp = row.columns[col].text;
+            ColumnValue& cv = row.columns[col];
+            std::string tmp = cv.text;
 
-            // Skip empty fields to prevent false string classification
-            if (tmp.empty()) continue;
-
-            // If column is still numeric, set numeric values
-            if (normalizeAndValidateNumber(tmp)) {
-                row.columns[col].isNumeric = true;
-                row.columns[col].numericValue = std::stod(tmp);
-                row.columns[col].text = tmp; // keep '.' version if you like
+            // Skip empty fields
+            if (tmp.empty()) {
+                cv.textW.clear();
+                continue;
             }
+
+            // Try numeric classification
+            if (normalizeAndValidateNumber(tmp)) {
+                cv.isNumeric = true;
+                cv.numericValue = std::stod(tmp);
+                cv.text = tmp;
+            }
+
+            // Cache wide string for string comparison (done once, not per-compare)
+            cv.textW = Encoding::utf8ToWString(cv.text);
         }
     }
 }
@@ -10282,10 +10322,8 @@ int MultiReplace::compareColumnValue(const ColumnValue& left, const ColumnValue&
         return 0;
     }
 
-    // If both are strings, use locale-aware comparison (case-insensitive)
-    std::wstring leftW = Encoding::utf8ToWString(left.text);
-    std::wstring rightW = Encoding::utf8ToWString(right.text);
-    return lstrcmpiW(leftW.c_str(), rightW.c_str());
+    // Use cached wide strings (no conversion during sort!)
+    return lstrcmpiW(left.textW.c_str(), right.textW.c_str());
 }
 
 #pragma endregion
