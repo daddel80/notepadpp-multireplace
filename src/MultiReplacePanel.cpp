@@ -4716,6 +4716,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_ALL_TEXT_RADIO:
         {
+            m_selectionScope.clear();
             setUIElementVisibility();
             handleClearDelimiterState();
             return TRUE;
@@ -4723,6 +4724,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_SELECTION_RADIO:
         {
+            m_selectionScope.clear();
             setUIElementVisibility();
             handleClearDelimiterState();
             return TRUE;
@@ -4733,6 +4735,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_QUOTECHAR_EDIT:
         case IDC_COLUMN_MODE_RADIO:
         {
+            m_selectionScope.clear();
             CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_COLUMN_MODE_RADIO);
             setUIElementVisibility();
             return TRUE;
@@ -5512,6 +5515,8 @@ void MultiReplace::handleReplaceButton() {
         }
     }
 
+    updateSelectionScope();
+
     // First check if the document is read-only
     LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
@@ -5544,6 +5549,7 @@ void MultiReplace::handleReplaceButton() {
     context.docLength = send(SCI_GETLENGTH, 0, 0);
     context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
     context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    context.useStoredSelections = context.isSelectionMode;
     context.retrieveFoundText = true;
     context.highlightMatch = true;
 
@@ -5686,7 +5692,6 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             selectListItem(itemIndex);
         }
 
-        // This block contains the core replacement logic, structured to be consistent with replaceAll.
         {
             std::string finalReplaceText; // Will hold the final text in the document's native encoding.
 
@@ -5698,25 +5703,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 }
 
                 LuaVariables vars;
-                // Fill vars struct with context for the current match.
-                int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
-                int previousLineStartPos = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
-                setLuaFileVars(vars);
-                if (context.isColumnMode) {
-                    ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
-                    vars.COL = static_cast<int>(columnInfo.startColumnIndex);
-                }
-                vars.CNT = 1;
-                vars.LCNT = 1;
-                vars.APOS = static_cast<int>(searchResult.pos) + 1;
-                vars.LINE = currentLineIndex + 1;
-                vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPos + 1;
-
-                // Convert the MATCH variable to UTF-8 for Lua if the document is ANSI.
-                vars.MATCH = searchResult.foundText;
-                if (documentCodepage != SC_CP_UTF8) {
-                    vars.MATCH = Encoding::wstringToUtf8(Encoding::bytesToWString(vars.MATCH, documentCodepage));
-                }
+                fillLuaMatchVars(vars, searchResult.pos, searchResult.foundText, 1, 1, context.isColumnMode, documentCodepage);
 
                 if (!resolveLuaSyntax(luaTemplateUtf8, vars, skipReplace, itemData.regex)) {
                     return false;
@@ -5840,22 +5827,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                 if (replaceThisHit) {
                     std::string luaWorkingUtf8 = luaTemplateUtf8;
                     LuaVariables vars;
-                    int previousLineStartPos = (currentLineIndex == 0) ? 0 : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
-                    setLuaFileVars(vars);
-                    if (context.isColumnMode) {
-                        ColumnInfo columnInfo = getColumnInfo(searchResult.pos);
-                        vars.COL = static_cast<int>(columnInfo.startColumnIndex);
-                    }
-                    vars.CNT = findCount;
-                    vars.LCNT = lineFindCount;  // Jetzt korrekt!
-                    vars.APOS = static_cast<int>(searchResult.pos) + 1;
-                    vars.LINE = currentLineIndex + 1;
-                    vars.LPOS = static_cast<int>(searchResult.pos) - previousLineStartPos + 1;
-
-                    vars.MATCH = searchResult.foundText;
-                    if (documentCodepage != SC_CP_UTF8) {
-                        vars.MATCH = Encoding::wstringToUtf8(Encoding::bytesToWString(vars.MATCH, documentCodepage));
-                    }
+                    fillLuaMatchVars(vars, searchResult.pos, searchResult.foundText, findCount, lineFindCount, context.isColumnMode, documentCodepage);
 
                     if (!resolveLuaSyntax(luaWorkingUtf8, vars, skipReplace, itemData.regex)) {
                         return false;
@@ -6093,6 +6065,38 @@ void MultiReplace::setLuaFileVars(LuaVariables& vars) {
 
     // Use cached file name
     vars.FNAME = cachedFileName;
+}
+
+void MultiReplace::fillLuaMatchVars(
+    LuaVariables& vars,
+    Sci_Position matchPos,
+    const std::string& foundText,
+    int cnt,
+    int lcnt,
+    bool isColumnMode,
+    int documentCodepage)
+{
+    int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(matchPos), 0));
+    int lineStartPos = (currentLineIndex == 0) ? 0
+        : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
+
+    setLuaFileVars(vars);
+
+    if (isColumnMode) {
+        ColumnInfo columnInfo = getColumnInfo(matchPos);
+        vars.COL = static_cast<int>(columnInfo.startColumnIndex);
+    }
+
+    vars.CNT = cnt;
+    vars.LCNT = lcnt;
+    vars.APOS = static_cast<int>(matchPos) + 1;
+    vars.LINE = currentLineIndex + 1;
+    vars.LPOS = static_cast<int>(matchPos) - lineStartPos + 1;
+
+    vars.MATCH = foundText;
+    if (documentCodepage != SC_CP_UTF8) {
+        vars.MATCH = Encoding::wstringToUtf8(Encoding::bytesToWString(vars.MATCH, documentCodepage));
+    }
 }
 
 bool MultiReplace::initLuaState()
@@ -7954,22 +7958,36 @@ void MultiReplace::handleFindNextButton() {
         }
     }
 
+    updateSelectionScope();
+
+    // Selection mode requires valid scope
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && m_selectionScope.empty()) {
+        showStatusMessage(LM.get(L"status_select_area_first"), MessageStatus::Error, true);
+        return;
+    }
+
     size_t matchIndex = std::numeric_limits<size_t>::max();
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
     SelectionInfo selection = getSelectionInfo(false);
 
-    // Determine the starting search position:
-    // If there is a selection and the selection radio is checked, start at the beginning of the selection.
-    // Otherwise, use the current cursor position.
-    Sci_Position searchPos = (selection.length > 0 && IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED)
-        ? selection.startPos
-        : send(SCI_GETCURRENTPOS, 0, 0);
+    // Determine the starting search position for forward search
+    Sci_Position searchPos;
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && selection.length > 0) {
+        bool isFollowUpSearch = (static_cast<LRESULT>(selection.startPos) == m_lastFindResult.start &&
+            static_cast<LRESULT>(selection.endPos) == m_lastFindResult.end);
+        // Follow-up search: start AFTER last find. New selection: start at BEGINNING.
+        searchPos = isFollowUpSearch ? selection.endPos : selection.startPos;
+    }
+    else {
+        searchPos = send(SCI_GETCURRENTPOS, 0, 0);
+    }
 
     // Initialize SearchContext
     SearchContext context;
     context.docLength = send(SCI_GETLENGTH, 0, 0);
     context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
     context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    context.useStoredSelections = context.isSelectionMode;
     context.retrieveFoundText = true;
     context.highlightMatch = true;
 
@@ -7987,7 +8005,7 @@ void MultiReplace::handleFindNextButton() {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView();
                 selectListItem(matchIndex);
-                showStatusMessage(LM.get(L"status_wrapped_to_first"), MessageStatus::Success);
+                showStatusMessage(LM.get(L"status_wrapped_to_first") + getSelectionScopeSuffix(), MessageStatus::Success);
                 return;
             }
         }
@@ -8024,7 +8042,7 @@ void MultiReplace::handleFindNextButton() {
         if (result.pos < 0 && wrapAroundEnabled) {
             result = performSearchForward(context, 0);
             if (result.pos >= 0) {
-                showStatusMessage(LM.get(L"status_wrapped_to_first"), MessageStatus::Success);
+                showStatusMessage(LM.get(L"status_wrapped_to_first") + getSelectionScopeSuffix(), MessageStatus::Success);
                 return;
             }
         }
@@ -8055,6 +8073,14 @@ void MultiReplace::handleFindPrevButton() {
         }
     }
 
+    updateSelectionScope();
+
+    // Selection mode requires valid scope
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && m_selectionScope.empty()) {
+        showStatusMessage(LM.get(L"status_select_area_first"), MessageStatus::Error, true);
+        return;
+    }
+
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
     SelectionInfo selection = getSelectionInfo(true);
@@ -8077,6 +8103,7 @@ void MultiReplace::handleFindPrevButton() {
     context.docLength = send(SCI_GETLENGTH, 0, 0);
     context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
     context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    context.useStoredSelections = context.isSelectionMode;
     context.retrieveFoundText = true;
     context.highlightMatch = true;
 
@@ -8094,7 +8121,7 @@ void MultiReplace::handleFindPrevButton() {
                 updateCountColumns(matchIndex, 1);
                 refreshUIListView();
                 selectListItem(matchIndex);
-                showStatusMessage(LM.get(L"status_wrapped_to_last"), MessageStatus::Success);
+                showStatusMessage(LM.get(L"status_wrapped_to_last") + getSelectionScopeSuffix(), MessageStatus::Success);
                 return;
             }
         }
@@ -8127,7 +8154,7 @@ void MultiReplace::handleFindPrevButton() {
             searchPos = context.isSelectionMode ? selection.endPos : send(SCI_GETLENGTH, 0, 0);
             result = performSearchBackward(context, searchPos);
             if (result.pos >= 0) {
-                showStatusMessage(LM.get(L"status_wrapped_to_last"), MessageStatus::Success);
+                showStatusMessage(LM.get(L"status_wrapped_to_last") + getSelectionScopeSuffix(), MessageStatus::Success);
                 return;
             }
         }
@@ -8238,16 +8265,19 @@ SearchResult MultiReplace::performSearchSelection(const SearchContext& context, 
     SelectionRange targetRange;
     std::vector<SelectionRange> selections;
 
-    LRESULT selectionCount = send(SCI_GETSELECTIONS, 0, 0);
-    if (selectionCount == 0) {
-        return SearchResult(); // No selections to search
+    if (context.useStoredSelections && !m_selectionScope.empty()) {
+        selections = m_selectionScope;
     }
-
-    // Gather all selection positions
-    selections.resize(selectionCount);
-    for (int i = 0; i < selectionCount; ++i) {
-        selections[i].start = send(SCI_GETSELECTIONNSTART, i, 0);
-        selections[i].end = send(SCI_GETSELECTIONNEND, i, 0);
+    else {
+        LRESULT selectionCount = send(SCI_GETSELECTIONS, 0, 0);
+        if (selectionCount == 0) {
+            return SearchResult();
+        }
+        selections.resize(selectionCount);
+        for (int i = 0; i < selectionCount; ++i) {
+            selections[i].start = send(SCI_GETSELECTIONNSTART, i, 0);
+            selections[i].end = send(SCI_GETSELECTIONNEND, i, 0);
+        }
     }
 
     // Sort selections based on the search direction
@@ -8382,9 +8412,6 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
 
     closestMatchIndex = std::numeric_limits<size_t>::max();
 
-    // Dynamic start boundary - moves forward as we find closer matches
-    LRESULT searchStartPos = 0;
-
     for (size_t i = 0; i < list.size(); ++i) {
         if (!list[i].isEnabled) {
             continue;
@@ -8400,21 +8427,13 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
 
         send(SCI_SETSEARCHFLAGS, localContext.searchFlags);
 
-        // Backward search: from cursorPos down to searchStartPos
-        send(SCI_SETTARGETRANGE, cursorPos, searchStartPos);
-        Sci_Position pos = send(SCI_SEARCHINTARGET, localContext.findText.size(),
-            reinterpret_cast<sptr_t>(localContext.findText.c_str()));
+        SearchResult result = performSearchBackward(localContext, cursorPos);
 
-        if (pos >= 0) {
-            Sci_Position matchEnd = send(SCI_GETTARGETEND);
-
-            if (closestMatch.pos < 0 || pos > closestMatch.pos) {
-                closestMatch.pos = pos;
-                closestMatch.length = matchEnd - pos;
+        if (result.pos >= 0) {
+            if (closestMatch.pos < 0 || result.pos > closestMatch.pos) {
+                closestMatch.pos = result.pos;
+                closestMatch.length = result.length;
                 closestMatchIndex = i;
-
-                // Raise start boundary for subsequent entries
-                searchStartPos = matchEnd;
             }
         }
     }
@@ -8450,9 +8469,6 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
 
     closestMatchIndex = std::numeric_limits<size_t>::max();
 
-    // Dynamic end boundary - shrinks as we find closer matches
-    LRESULT searchEndPos = context.docLength;
-
     for (size_t i = 0; i < list.size(); ++i) {
         if (!list[i].isEnabled) {
             continue;
@@ -8470,21 +8486,13 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
 
         send(SCI_SETSEARCHFLAGS, localContext.searchFlags);
 
-        // Search only in the restricted range [cursorPos, searchEndPos]
-        send(SCI_SETTARGETRANGE, cursorPos, searchEndPos);
-        Sci_Position pos = send(SCI_SEARCHINTARGET, localContext.findText.size(),
-            reinterpret_cast<sptr_t>(localContext.findText.c_str()));
+        SearchResult result = performSearchForward(localContext, cursorPos);
 
-        if (pos >= 0) {
-            Sci_Position matchEnd = send(SCI_GETTARGETEND);
-
-            if (closestMatch.pos < 0 || pos < closestMatch.pos) {
-                closestMatch.pos = pos;
-                closestMatch.length = matchEnd - pos;
+        if (result.pos >= 0) {
+            if (closestMatch.pos < 0 || result.pos < closestMatch.pos) {
+                closestMatch.pos = result.pos;
+                closestMatch.length = result.length;
                 closestMatchIndex = i;
-
-                // Shrink search boundary for subsequent entries
-                searchEndPos = pos;
             }
         }
     }
@@ -8539,6 +8547,8 @@ void MultiReplace::displayResultCentered(size_t posStart, size_t posEnd, bool is
     // the caret doesn't jump to an unexpected column
     send(SCI_CHOOSECARETX, 0, 0);
 
+    m_lastFindResult = { static_cast<LRESULT>(posStart), static_cast<LRESULT>(posEnd) };
+
 }
 
 void MultiReplace::selectListItem(size_t matchIndex) {
@@ -8557,6 +8567,64 @@ void MultiReplace::selectListItem(size_t matchIndex) {
         // Ensure the item is visible, but only scroll if absolutely necessary
         ListView_EnsureVisible(hListView, static_cast<int>(matchIndex), TRUE);
     }
+}
+
+void MultiReplace::updateSelectionScope() {
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) != BST_CHECKED) {
+        return;
+    }
+
+    Sci_Position selStart = static_cast<Sci_Position>(send(SCI_GETSELECTIONSTART, 0, 0));
+    Sci_Position selEnd = static_cast<Sci_Position>(send(SCI_GETSELECTIONEND, 0, 0));
+
+    bool isStaleSelection = (static_cast<LRESULT>(selStart) == m_lastFindResult.start &&
+        static_cast<LRESULT>(selEnd) == m_lastFindResult.end);
+    bool hasUserSelection = (selEnd > selStart) && !isStaleSelection;
+
+    // Case 1: Scope already exists (follow-up search)
+    if (!m_selectionScope.empty()) {
+        if (isStaleSelection) {
+            return;  // Normal follow-up, keep scope
+        }
+        if (hasUserSelection) {
+            captureCurrentSelectionAsScope();  // User selected new area
+            return;
+        }
+        // Click only (no selection) - check if inside scope
+        Sci_Position currentPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
+        Sci_Position scopeStart = static_cast<Sci_Position>(m_selectionScope.front().start);
+        Sci_Position scopeEnd = static_cast<Sci_Position>(m_selectionScope.back().end);
+        if (currentPos < scopeStart || currentPos > scopeEnd) {
+            m_selectionScope.clear();  // Click outside - discard scope
+        }
+        return;
+    }
+
+    // Case 2: No scope yet - need new user selection
+    if (hasUserSelection) {
+        captureCurrentSelectionAsScope();
+    }
+    // Case 3: Stale selection or just click - no valid scope (m_selectionScope stays empty)
+}
+
+void MultiReplace::captureCurrentSelectionAsScope() {
+    m_selectionScope.clear();
+    LRESULT count = send(SCI_GETSELECTIONS, 0, 0);
+    for (LRESULT i = 0; i < count; ++i) {
+        SelectionRange range;
+        range.start = send(SCI_GETSELECTIONNSTART, i, 0);
+        range.end = send(SCI_GETSELECTIONNEND, i, 0);
+        if (range.end > range.start) {
+            m_selectionScope.push_back(range);
+        }
+    }
+}
+
+std::wstring MultiReplace::getSelectionScopeSuffix() {
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && !m_selectionScope.empty()) {
+        return LM.get(L"status_scope_in_selection");
+    }
+    return L"";
 }
 
 #pragma endregion
@@ -13037,6 +13105,8 @@ void MultiReplace::onDocumentSwitched()
         ::SetWindowText(h, L"⇥");
 
     self->showStatusMessage(L"", MessageStatus::Info);
+
+    self->m_selectionScope.clear();
 
     self->originalLineOrder.clear();
     self->currentSortState = SortDirection::Unsorted;

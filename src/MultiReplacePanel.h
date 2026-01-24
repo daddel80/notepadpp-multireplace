@@ -143,6 +143,7 @@ struct SearchContext {
     bool isSelectionMode = false;   // Cached state: true if Selection Mode is active
     bool retrieveFoundText = false; // If true, retrieve the found text from Scintilla
     bool highlightMatch = false;    // If true, highlight the found match
+    bool useStoredSelections = false; // If true, use m_selectionScope instead of current selection
 };
 
 struct SearchResult {
@@ -778,6 +779,10 @@ private:
     inline static std::vector<int> _textMarkerIds;  // Fixed IDs for text marking (0-9 = list, 10 = single)
     inline static bool _textMarkersInitialized = false;
 
+    // Selection Scope Management for interactive search
+    std::vector<SelectionRange> m_selectionScope;
+    SelectionRange m_lastFindResult = { -1, -1 };
+
     inline static HWND  hDebugWnd = nullptr; // Handle for the debug window
     inline static HWND  hDebugListView = nullptr;  // ListView handle for content updates
 
@@ -925,7 +930,6 @@ private:
     void copySelectedItemsToClipboard();
     bool canPasteFromClipboard();
     void pasteItemsIntoList();
-    int searchInListData(int startIdx, const std::wstring& findText, const std::wstring& replaceText);
     void handleEditOnDoubleClick(int itemIndex, ColumnID columnID);
     void toggleListSearchBar();
     void showListSearchBar();
@@ -949,11 +953,12 @@ private:
 
     //Lua Engine
     void captureLuaGlobals(lua_State* L);
-    std::string escapeForRegex(const std::string& input);
+    void fillLuaMatchVars(LuaVariables& vars, Sci_Position matchPos, const std::string& foundText, int cnt, int lcnt, bool isColumnMode, int documentCodepage);
     bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex, bool showDebugWindow = true);
     void setLuaVariable(lua_State* L, const std::string& varName, const std::string& value);
     void updateFilePathCache(const std::filesystem::path* explicitPath = nullptr);
     void setLuaFileVars(LuaVariables& vars);
+    std::string escapeForRegex(const std::string& input);
     bool initLuaState();
     bool ensureLuaCodeCompiled(const std::string& luaCode);
     static int safeLoadFileSandbox(lua_State* L);
@@ -991,6 +996,9 @@ private:
     SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     void selectListItem(size_t matchIndex);
+    void updateSelectionScope();
+    void captureCurrentSelectionAsScope();
+    std::wstring getSelectionScopeSuffix();
 
     //Mark
     void handleMarkMatchesButton();

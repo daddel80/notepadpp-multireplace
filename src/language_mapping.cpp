@@ -191,6 +191,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_wrapped_to_first", L"Wrapped to first match" },
 { L"status_wrapped_to_last", L"Wrapped to last match" },
 { L"status_wrapped_to_first_of", L"Wrapped to match $REPLACE_STRING1/$REPLACE_STRING2" },
+{ L"status_scope_in_selection", L" (in Selection)" },
 
 // Dynamic Status Messages
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },
