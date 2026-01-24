@@ -5826,7 +5826,6 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
         Sci_Position nextPos; // declared before both branches use it
 
-        // This block contains the core replacement logic, structured to be consistent with replaceOne.
         {
             std::string finalReplaceText; // Will hold the final text in the document's native encoding.
 
@@ -5886,8 +5885,6 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             }
             else {
                 nextPos = searchResult.pos + searchResult.length;
-                send(SCI_SETSELECTIONSTART, nextPos, 0);
-                send(SCI_SETSELECTIONEND, nextPos, 0);
             }
             // Only skip advancing when we deleted a non-empty match:
             if (searchResult.length == 0 || nextPos != searchResult.pos) {
