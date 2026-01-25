@@ -10728,41 +10728,49 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
         return;
     }
 
-    // Reuse style buffer - assign sets exact size and fills with 0
-    styleBuffer.assign(static_cast<size_t>(lineInfo.lineLength), 0);
+    // Cache frequently accessed values to avoid repeated member access
+    const size_t lineLen = static_cast<size_t>(lineInfo.lineLength);
+    const size_t styleCount = hColumnStyles.size();
+    const SIZE_T delimLen = columnDelimiterData.delimiterLength;
+    const size_t delimCount = lineInfo.positions.size();
+
+    // Reuse style buffer - only grow if needed, then zero only the used portion
+    if (styleBuffer.size() < lineLen) {
+        styleBuffer.resize(lineLen);
+    }
+    std::fill_n(styleBuffer.data(), lineLen, char(0));
 
     // If no delimiters are found and column 1 is defined, fill the entire line with column 1's style
-    if (lineInfo.positions.empty() && columnDelimiterData.columns.count(1) > 0)
+    if (delimCount == 0 && columnDelimiterData.columns.count(1) > 0)
     {
-        // Mask the style value to fit into 8 bits
-        char style = static_cast<char>(hColumnStyles[0 % hColumnStyles.size()] & 0xFF);
-        std::fill(styleBuffer.begin(), styleBuffer.end(), style);
+        char style = static_cast<char>(hColumnStyles[0] & 0xFF);
+        std::fill_n(styleBuffer.data(), lineLen, style);
     }
     else {
         // For each defined column, calculate the start and end offsets within the line
         for (SIZE_T column : columnDelimiterData.columns) {
-            if (column <= lineInfo.positions.size() + 1) {
-                LRESULT start = 0;
-                LRESULT end = 0;
+            if (column <= delimCount + 1) {
+                size_t start = 0;
+                size_t end = 0;
 
                 if (column == 1) {
                     start = 0;
                 }
                 else {
-                    start = lineInfo.positions[column - 2].offsetInLine + columnDelimiterData.delimiterLength;
+                    start = static_cast<size_t>(lineInfo.positions[column - 2].offsetInLine) + delimLen;
                 }
 
-                if (column == lineInfo.positions.size() + 1) {
-                    end = lineInfo.lineLength;
+                if (column == delimCount + 1) {
+                    end = lineLen;
                 }
                 else {
-                    end = lineInfo.positions[column - 1].offsetInLine;
+                    end = static_cast<size_t>(lineInfo.positions[column - 1].offsetInLine);
                 }
 
                 // Apply the style if the range is valid
-                if (start < end && end <= static_cast<LRESULT>(styleBuffer.size())) {
-                    char style = static_cast<char>(hColumnStyles[(column - 1) % hColumnStyles.size()] & 0xFF);
-                    std::fill(styleBuffer.begin() + start, styleBuffer.begin() + end, style);
+                if (start < end && end <= lineLen) {
+                    char style = static_cast<char>(hColumnStyles[(column - 1) % styleCount] & 0xFF);
+                    std::fill_n(styleBuffer.data() + start, end - start, style);
                 }
             }
         }
@@ -10773,7 +10781,7 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
 
     // Apply the computed styles to the document via Scintilla's API
     send(SCI_STARTSTYLING, lineStartPos, 0);
-    send(SCI_SETSTYLINGEX, styleBuffer.size(), reinterpret_cast<sptr_t>(styleBuffer.data()));
+    send(SCI_SETSTYLINGEX, lineLen, reinterpret_cast<sptr_t>(styleBuffer.data()));
 }
 
 void MultiReplace::handleClearColumnMarks() {
