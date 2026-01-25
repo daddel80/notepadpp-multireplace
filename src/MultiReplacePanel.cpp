@@ -10352,19 +10352,17 @@ void MultiReplace::detectNumericColumns(std::vector<CombinedColumns>& data)
     for (size_t col = 0; col < colCount; ++col) {
         for (auto& row : data) {
             ColumnValue& cv = row.columns[col];
-            std::string tmp = cv.text;
 
             // Skip empty fields
-            if (tmp.empty()) {
+            if (cv.text.empty()) {
                 cv.textW.clear();
                 continue;
             }
 
-            // Try numeric classification
-            if (normalizeAndValidateNumber(tmp)) {
+            // Try numeric classification (modifies cv.text in-place only if numeric)
+            if (normalizeAndValidateNumber(cv.text)) {
                 cv.isNumeric = true;
-                cv.numericValue = std::stod(tmp);
-                cv.text = tmp;
+                cv.numericValue = std::stod(cv.text);
             }
 
             // Cache wide string for string comparison (done once, not per-compare)
@@ -10501,6 +10499,11 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
     // Initialize line information
     LineInfo lineInfo;
 
+    // Pre-reserve based on first line's column count (reduces reallocations for uniform CSVs)
+    if (!lineDelimiterPositions.empty() && !lineDelimiterPositions[0].positions.empty()) {
+        lineInfo.positions.reserve(lineDelimiterPositions[0].positions.size());
+    }
+
     // Get line length
     LRESULT lineLength = send(SCI_LINELENGTH, line, 0);
     lineInfo.lineLength = lineLength;
@@ -10518,6 +10521,7 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
     std::string_view delimiter(columnDelimiterData.extendedDelimiter);
     bool hasQuoteChar = !columnDelimiterData.quoteChar.empty();
     char currentQuoteChar = hasQuoteChar ? columnDelimiterData.quoteChar[0] : '\0';
+    char delimChar = delimiter[0];  // Cache first char for single-char delimiter path
 
     size_t pos = 0;
     bool inQuotes = false;
@@ -10534,7 +10538,7 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
         if (!inQuotes) {
             if (delimLen == 1) {
                 // Single-character delimiter check
-                if (lineContent[pos] == delimiter[0]) {
+                if (lineContent[pos] == delimChar) {
                     lineInfo.positions.push_back({ static_cast<LRESULT>(pos) });
                     ++pos;
                     continue;

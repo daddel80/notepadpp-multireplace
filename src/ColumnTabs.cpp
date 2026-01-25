@@ -506,33 +506,43 @@ namespace ColumnTabs {
         const int ind = CT_GetIndicatorId();
         S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
 
-        bool removedAny = false;
+        // Phase 1: Collect all indicator ranges (forward iteration)
+        std::vector<std::pair<Sci_Position, Sci_Position>> ranges;
+        const Sci_Position docLen = (Sci_Position)S(SCI_GETLENGTH);
+        Sci_Position pos = 0;
 
-        S(SCI_BEGINUNDOACTION);
-        {
-            Sci_Position pos = (Sci_Position)S(SCI_GETLENGTH);
-            while (pos > 0) {
-                --pos;
-                if ((int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)pos) == 0)
-                    continue;
+        while (pos < docLen) {
+            // Find next indicator range
+            const Sci_Position end = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)pos);
+            if (end <= pos) break;  // No more indicators
 
+            // Check if this position is actually inside an indicator
+            if ((int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)pos) != 0) {
                 const Sci_Position start = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)pos);
-                const Sci_Position end = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)pos);
                 if (end > start) {
-                    S(SCI_INDICATORCLEARRANGE, (uptr_t)start, (sptr_t)(end - start));
-                    S(SCI_DELETERANGE, (uptr_t)start, (sptr_t)(end - start));
-                    pos = start;
-                    removedAny = true;
+                    ranges.emplace_back(start, end);
                 }
             }
+            pos = end;  // Jump to end of current range
+        }
+
+        if (ranges.empty()) {
+            ColumnTabs::CT_SetCurDocHasPads(hSci, false);
+            return false;
+        }
+
+        // Phase 2: Delete ranges in reverse order (preserves positions)
+        OptionalRedrawGuard rg(hSci, ranges.size() * 2);  // ~2 ops per range
+
+        S(SCI_BEGINUNDOACTION);
+        for (auto it = ranges.rbegin(); it != ranges.rend(); ++it) {
+            S(SCI_INDICATORCLEARRANGE, (uptr_t)it->first, (sptr_t)(it->second - it->first));
+            S(SCI_DELETERANGE, (uptr_t)it->first, (sptr_t)(it->second - it->first));
         }
         S(SCI_ENDUNDOACTION);
 
-        if (removedAny) {
-            ColumnTabs::CT_SetCurDocHasPads(hSci, false);
-        }
-
-        return removedAny;
+        ColumnTabs::CT_SetCurDocHasPads(hSci, false);
+        return true;
     }
 
     bool ColumnTabs::CT_HasAlignedPadding(HWND hSci) noexcept
