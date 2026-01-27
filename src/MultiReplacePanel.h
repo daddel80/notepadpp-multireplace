@@ -601,8 +601,10 @@ protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 
 private:
-    static constexpr int MARKER_COLOR_LIGHT = 0x00A5FF; // Color for non-list Marker
-    static constexpr int MARKER_COLOR_DARK = 0x0050D2;  // Color for non-list Marker
+    static constexpr int MARKER_COLOR_LIGHT = 0x00A5FF; // Color for non-list Marker (Orange)
+    static constexpr int MARKER_COLOR_DARK = 0x0050D2;  // Color for non-list Marker (Orange)
+    static constexpr int DUPLICATE_MARKER_COLOR_LIGHT = 0xE6E0B0; // Color for Duplicate Marker (Light Ice Blue)
+    static constexpr int DUPLICATE_MARKER_COLOR_DARK = 0x909060;  // Color for Duplicate Marker (Muted Teal)
     static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     static constexpr int REPLACE_FILES_PANEL_HEIGHT = 88;
     bool isReplaceAllInDocs = false; // True if replacing in all open documents, false for current document only.
@@ -786,8 +788,9 @@ private:
     inline static bool useListColorsForMarking = true;          // Use different colors per list entry when marking
     inline static size_t maxFileSizeMB = 100;
 
-    inline static std::vector<int> _textMarkerIds;  // Fixed IDs for text marking (0-9 = list, 10 = single)
+    inline static std::vector<int> _textMarkerIds;  // Fixed IDs for text marking (0-9 = list, last = single)
     inline static bool _textMarkersInitialized = false;
+    inline static int _duplicateIndicatorId = -1;    // Separate indicator for duplicate marking
 
     // Selection Scope Management for interactive search
     std::vector<SelectionRange> m_selectionScope;

@@ -646,9 +646,7 @@ void MultiReplace::moveAndResizeControls(bool moveStatic) {
         HWND resizeHwnd = GetDlgItem(_hSelf, ctrlId);
         if (!resizeHwnd) continue;
 
-        // CRITICAL FIX: If we are not allowed to move static controls (e.g., during resize),
-        // we skip them entirely. This mimics the behavior of the old function where
-        // static controls were simply not in the list.
+        // Skip static controls during resize operations to preserve layout stability
         if (!moveStatic && ctrlInfo.isStatic) {
             continue;
         }
@@ -4986,6 +4984,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             resetCountColumns();
             handleClearTextMarksButton();
+            clearDuplicateMarks();
             showStatusMessage(LM.get(L"status_all_marks_cleared"), MessageStatus::Success);
             return TRUE;
         }
@@ -8840,7 +8839,7 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::wstri
 
 void MultiReplace::handleClearTextMarksButton()
 {
-    // Clear our fixed marker indicators
+    // Clear our fixed marker indicators (but NOT the duplicate indicator)
     for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
         if (!hSci) continue;
         Sci_Position docLen = static_cast<Sci_Position>(::SendMessage(hSci, SCI_GETLENGTH, 0, 0));
@@ -8861,9 +8860,6 @@ void MultiReplace::handleClearTextMarksButton()
 
     textToSlot.clear();
     nextSlot = 0;
-
-    // Also clear any marked duplicate lines
-    _markedDuplicateLines.clear();
 }
 
 void MultiReplace::handleCopyMarkedTextToClipboardButton()
@@ -8978,12 +8974,15 @@ void MultiReplace::initTextMarkerIndicators()
     if (!hSci0) return;
 
     _textMarkerIds.clear();
+    _duplicateIndicatorId = -1;
 
     std::vector<int> available = NppStyleKit::gIndicatorCoord.availableIndicatorPool();
 
     if (available.empty()) return;
 
-    _textMarkerIds = available;
+    // Reserve first indicator for duplicate marking (separate from text markers)
+    _duplicateIndicatorId = available.front();
+    _textMarkerIds.assign(available.begin() + 1, available.end());
 
     _textMarkersInitialized = true;
     updateTextMarkerStyles();
@@ -9040,7 +9039,17 @@ void MultiReplace::updateTextMarkerStyles()
         }
     }
 
-    // 3. Update Single/Standard Marker (last available ID)
+    // 3. Update Duplicate Marker (separate indicator)
+    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+        if (!hSci) continue;
+
+        if (_duplicateIndicatorId >= 0) {
+            COLORREF duplicateColor = isDark ? DUPLICATE_MARKER_COLOR_DARK : DUPLICATE_MARKER_COLOR_LIGHT;
+            applyStyle(hSci, _duplicateIndicatorId, duplicateColor);
+        }
+    }
+
+    // 4. Update Single/Standard Marker (last available ID)
     for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
         if (!hSci) continue;
 
@@ -9787,7 +9796,12 @@ bool MultiReplace::scanForDuplicates()
     }
 
     if (_markedDuplicateLines.empty()) {
-        showStatusMessage(LM.get(L"status_no_duplicates_found"), MessageStatus::Info);
+        MessageBox(
+            nppData._nppHandle,
+            LM.getLPCW(L"status_no_duplicates_found"),
+            LM.getLPCW(L"msgbox_title_delete_duplicates"),
+            MB_OK | MB_ICONINFORMATION
+        );
         return false;
     }
 
@@ -9846,14 +9860,14 @@ bool MultiReplace::validateAndRescanIfNeeded()
 
 void MultiReplace::applyDuplicateMarks()
 {
-    if (_markedDuplicateLines.empty() || _textMarkerIds.empty()) return;
+    if (_markedDuplicateLines.empty() || _duplicateIndicatorId < 0) return;
 
-    const int indicId = _textMarkerIds.back();
+    const int indicId = _duplicateIndicatorId;
 
     bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
     int alpha = isDark ? EDITOR_MARK_ALPHA_DARK : EDITOR_MARK_ALPHA_LIGHT;
     int outlineAlpha = isDark ? EDITOR_OUTLINE_ALPHA_DARK : EDITOR_OUTLINE_ALPHA_LIGHT;
-    COLORREF color = isDark ? RGB(255, 100, 100) : RGB(255, 150, 150);
+    COLORREF color = isDark ? DUPLICATE_MARKER_COLOR_DARK : DUPLICATE_MARKER_COLOR_LIGHT;
 
     send(SCI_INDICSETSTYLE, indicId, INDIC_FULLBOX);
     send(SCI_INDICSETFORE, indicId, color);
@@ -9895,8 +9909,8 @@ void MultiReplace::applyDuplicateMarks()
 void MultiReplace::clearDuplicateMarks()
 {
     // Always clear indicators (prophylactically, even if list is empty)
-    if (!_textMarkerIds.empty()) {
-        const int indicId = _textMarkerIds.back();
+    if (_duplicateIndicatorId >= 0) {
+        const int indicId = _duplicateIndicatorId;
         send(SCI_SETINDICATORCURRENT, indicId, 0);
 
         // Clear indicators on known duplicate lines
@@ -9995,8 +10009,8 @@ void MultiReplace::deleteDuplicateLines()
     const size_t deleteCount = _markedDuplicateLines.size();
 
     // Clear visual marks first
-    if (!_textMarkerIds.empty()) {
-        const int indicId = _textMarkerIds.back();
+    if (_duplicateIndicatorId >= 0) {
+        const int indicId = _duplicateIndicatorId;
         ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicId, 0);
         const size_t currentLineCount = static_cast<size_t>(send(SCI_GETLINECOUNT, 0, 0));
         for (size_t lineIdx : _markedDuplicateLines) {
@@ -10112,7 +10126,7 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
         (op == CsvOp::Sort) || (op == CsvOp::DeleteColumns);
 
     // ════════════════════════════════════════════════════════════════════════
-    // FIX: Prevent flicker with manual redraw control
+    // Batch rendering: suspend redraw during multiple text modifications
     // ════════════════════════════════════════════════════════════════════════
     const bool needsRedrawLock = (mode == EtabsMode::Padding && modifiesText);
 
@@ -10181,7 +10195,7 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Re-enable redraw and force repaint
+    // Resume rendering and repaint once
     // ════════════════════════════════════════════════════════════════════════
     if (needsRedrawLock) {
         ::SendMessage(_hScintilla, WM_SETREDRAW, TRUE, 0);
@@ -12953,7 +12967,7 @@ void MultiReplace::loadSettingsToPanelUI() {
         HWND hBash = GetDlgItem(instance->_hSelf, IDC_EXPORT_BASH_BUTTON);
         if (hBash) ShowWindow(hBash, exportToBashEnabled ? SW_SHOW : SW_HIDE);
 
-        // 4. CRITICAL: Rebuild ListView Columns to reflect visibility changes
+        // 4. Rebuild ListView columns to reflect visibility changes
         if (instance->_replaceListView) {
             instance->createListViewColumns(); // Applies isFindCountVisible etc.
 
