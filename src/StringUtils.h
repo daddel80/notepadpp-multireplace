@@ -54,4 +54,13 @@ namespace StringUtils {
 
     std::wstring quoteField(const std::wstring& value);
 
+    // ---- Unicode-aware string operations ----
+    // Convert UTF-8 string to lowercase using Windows locale-aware API
+    // Correctly handles: German ß/ẞ, French É→é, Turkish İ→i, etc.
+    std::string toLowerUtf8(const std::string& utf8Str);
+
+    // ---- Locale-aware number formatting ----
+    // Format number with locale-specific thousand separator (e.g., 1,234 or 1.234)
+    std::wstring formatNumber(size_t number);
+
 } // namespace StringUtils

@@ -58,7 +58,8 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_HEADERLINES_EDIT, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, csvHeaderLinesCount), 0, 999 });
     _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_FLOWTABS_NUMERIC_ALIGN, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, flowTabsNumericAlignEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_FLOWTABS_INTRO_DONTSHOW, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, flowTabsIntroDontShowEnabled), 0, 0 });
-    
+    _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_DUPLICATE_BOOKMARKS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, duplicateBookmarksEnabled), 0, 0 });
+
     // Appearance
     _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_TOOLTIPS_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, tooltipsEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_RESULT_DOCK_ENTRY_COLORS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, resultDockPerEntryColorsEnabled), 0, 0 });
@@ -220,6 +221,7 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_GRP_CSV_SETTINGS,        L"config_grp_csv_settings",        0, 0 },
         { IDC_CFG_FLOWTABS_NUMERIC_ALIGN,  L"config_chk_numeric_align",       546, 18 },
         { IDC_CFG_FLOWTABS_INTRO_DONTSHOW, L"config_chk_flowtabs_intro_dontshow", 546, 18 },
+        { IDC_CFG_DUPLICATE_BOOKMARKS,     L"config_chk_duplicate_bookmarks", 546, 18 },
         { IDC_CFG_CSV_SORT_LABEL,          L"config_lbl_csv_sort",            240, 18 },
         { IDC_CFG_GRP_EXPORT_DATA,       L"config_grp_export_data",           0, 0 },
         { IDC_CFG_EXPORT_TEMPLATE_LABEL, L"config_lbl_export_template",       70, 18 },
@@ -848,7 +850,7 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
     const int left = 70;
     const int top = 20;
     const int groupW = 570;
-    const int groupH = 130;
+    const int groupH = 158;
 
     createGroupBox(_hCsvFlowTabsPanel, left, top, groupW, groupH,
         IDC_CFG_GRP_CSV_SETTINGS, LM.getLPCW(L"config_grp_csv_settings"));
@@ -860,6 +862,7 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
         LayoutBuilder lb(this, _hCsvFlowTabsPanel, innerLeft, innerTop, innerWidth, 28);
         lb.AddCheckbox(IDC_CFG_FLOWTABS_NUMERIC_ALIGN, LM.getLPCW(L"config_chk_numeric_align"));
         lb.AddCheckbox(IDC_CFG_FLOWTABS_INTRO_DONTSHOW, LM.getLPCW(L"config_chk_flowtabs_intro_dontshow"));
+        lb.AddCheckbox(IDC_CFG_DUPLICATE_BOOKMARKS, LM.getLPCW(L"config_chk_duplicate_bookmarks"));
         lb.AddLabel(IDC_CFG_CSV_SORT_LABEL, LM.getLPCW(L"config_lbl_csv_sort"), 240);
         lb.AddNumberEdit(IDC_CFG_HEADERLINES_EDIT, 250, -2, 45, 22);
     }
@@ -961,6 +964,7 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
     s.resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
     s.useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
+    s.duplicateBookmarksEnabled = CFG.readBool(L"Options", L"DuplicateBookmarks", false);
 
     registerBindingsOnce();
     applyBindingsToUI_Generic((void*)&s);
@@ -1147,6 +1151,8 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.isHoverTextEnabled = true;
     def.csvHeaderLinesCount = 1;
     def.flowTabsNumericAlignEnabled = true;
+    def.flowTabsIntroDontShowEnabled = false;
+    def.duplicateBookmarksEnabled = false;
     def.exportToBashEnabled = false;
     def.isFindCountVisible = false;
     def.isReplaceCountVisible = false;

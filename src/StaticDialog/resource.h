@@ -33,7 +33,7 @@
 
 
 // -------------------------------------------------------------------
-//  5000-block - Edit controls & small helpers
+//  5001-5005 - Edit controls & small helpers
 // -------------------------------------------------------------------
 #define IDC_FIND_EDIT                   5001
 #define IDC_REPLACE_EDIT                5002
@@ -44,7 +44,7 @@
 
 
 // ===================================================================
-//  5005-block - Primary action buttons
+//  5006-5018 - Primary action buttons
 // ===================================================================
 #define IDC_REPLACE_ALL_BUTTON          5006   // split button (Replace ...)
 #define IDC_REPLACE_DROPDOWN_BUTTON     5007   // part of the split button
@@ -65,7 +65,7 @@
 
 
 // ===================================================================
-//  5020-block - File & list management
+//  5020-5028 - File & list management
 // ===================================================================
 #define IDC_LOAD_FROM_CSV_BUTTON        5020
 #define IDC_LOAD_LIST_BUTTON            5021
@@ -81,7 +81,7 @@
 
 
 // ===================================================================
-//  5030-block - Split-button option command IDs
+//  5031-5040 - Split-button option command IDs
 // ===================================================================
 //  Replace-All split options
 #define ID_REPLACE_ALL_OPTION           5031
@@ -95,7 +95,7 @@
 
 
 // ===================================================================
-//  5100-block - Static texts & status
+//  5100-5104 - Static texts & status
 // ===================================================================
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101
@@ -106,7 +106,7 @@
 
 
 // ===================================================================
-//  5200-block - Checkboxes
+//  5200-5206 - Checkboxes
 // ===================================================================
 #define IDC_WHOLE_WORD_CHECKBOX         5200
 #define IDC_MATCH_CASE_CHECKBOX         5201
@@ -119,7 +119,7 @@
 
 
 // ===================================================================
-//  5300-block - Search-mode radio buttons
+//  5300-5303 - Search-mode radio buttons
 // ===================================================================
 #define IDC_SEARCH_MODE_GROUP           5300
 #define IDC_NORMAL_RADIO                5301
@@ -129,32 +129,33 @@
 
 
 // ===================================================================
-//  5450-block - Column / scope group
+//  5450-5479 - Column / scope group & Replace-in-Files
 // ===================================================================
-#define IDC_SCOPE_GROUP                 5451
-#define IDC_ALL_TEXT_RADIO              5452
-#define IDC_SELECTION_RADIO             5453
-#define IDC_COLUMN_MODE_RADIO           5454
 
+// Scope group & radio buttons (5450-5454)
+#define IDC_SCOPE_GROUP                 5450
+#define IDC_ALL_TEXT_RADIO              5451
+#define IDC_SELECTION_RADIO             5452
+#define IDC_COLUMN_MODE_RADIO           5453
+
+// CSV toolbar buttons (5455-5461)
 #define IDC_COLUMN_SORT_DESC_BUTTON     5455
 #define IDC_COLUMN_SORT_ASC_BUTTON      5456
 #define IDC_COLUMN_DROP_BUTTON          5457
 #define IDC_COLUMN_COPY_BUTTON          5458
 #define IDC_COLUMN_HIGHLIGHT_BUTTON     5459
 #define IDC_COLUMN_GRIDTABS_BUTTON      5460
+#define IDC_COLUMN_DUPLICATES_BUTTON    5461
 
-#define IDC_COLUMN_NUM_EDIT             5461
-#define IDC_DELIMITER_EDIT              5462
-#define IDC_QUOTECHAR_EDIT              5463
-#define IDC_DELIMITER_STATIC            5464
+// Column edit controls (5462-5467)
+#define IDC_COLUMN_NUM_EDIT             5462
+#define IDC_DELIMITER_EDIT              5463
+#define IDC_QUOTECHAR_EDIT              5464
 #define IDC_COLUMN_NUM_STATIC           5465
-#define IDC_QUOTECHAR_STATIC            5466
+#define IDC_DELIMITER_STATIC            5466
+#define IDC_QUOTECHAR_STATIC            5467
 
-
-
-// ===================================================================
-//  5465-block - "Replace-in-Files" frame
-// ===================================================================
+// Replace-in-Files frame (5469-5479)
 #define IDC_FILE_OPS_GROUP              5469
 #define IDC_FILTER_EDIT                 5470
 #define IDC_FILTER_HELP                 5471
@@ -170,7 +171,7 @@
 
 
 // ===================================================================
-//  5500-block - List view & frame
+//  5500-5502 - List view & frame
 // ===================================================================
 #define IDC_STATIC_FRAME                5501
 #define IDC_REPLACE_LIST                5502
@@ -178,7 +179,7 @@
 
 
 // ===================================================================
-//  5600-block - About dialog
+//  5600-5608 - About dialog
 // ===================================================================
 #define IDD_ABOUT_DIALOG                5600
 #define IDC_NAME_STATIC                 5601
@@ -193,7 +194,7 @@
 
 
 // ===================================================================
-//  5700-block - Context-menu command IDs
+//  5700-5728 - Context-menu command IDs & List Search
 // ===================================================================
 #define IDM_UNDO                        5701
 #define IDM_REDO                        5702
@@ -230,7 +231,7 @@
 
 
 // ===================================================================
-//  5800-block - View-toggle menu items & icons
+//  5800-5806 - View-toggle menu items & icons
 // ===================================================================
 #define IDM_TOGGLE_FIND_COUNT           5801
 #define IDM_TOGGLE_REPLACE_COUNT        5802
@@ -241,18 +242,17 @@
 #define IDI_MR_DM_ICON                  5806
 
 
+
+// ===================================================================
+//  6000-6120 - Miscellaneous & Result Dock
+// ===================================================================
+#define ID_EDIT_EXPAND_BUTTON           6000
+
 #define IDD_MULTIREPLACE_RESULT_DOCK    6100    // dock panel template
 #define IDC_FINDALL_BUTTON              6105    // big split-button
 #define ID_FIND_ALL_OPTION              6110
 #define ID_FIND_ALL_IN_ALL_DOCS_OPTION  6115
 #define ID_FIND_ALL_IN_FILES_OPTION     6120
-
-
-
-// ===================================================================
-//  6000-block - Miscellaneous
-// ===================================================================
-#define ID_EDIT_EXPAND_BUTTON           6000
 
 
 
@@ -271,11 +271,14 @@
 #define STYLE10                         69
 
 
+
 // ===================================================================
-//  Config Dialog (7000-block)
+//  7000-7010 - Config Dialog Base
 // ===================================================================
 #define IDD_MULTIREPLACE_CONFIG           7000
 #define IDC_CONFIG_CATEGORY_LIST          7010
+
+
 
 // ===================================================================
 //  Config Dialog Control IDs (7900-7999 block)
@@ -328,6 +331,7 @@
 #define IDC_CFG_FLOWTABS_INTRO_DONTSHOW   7942
 #define IDC_CFG_CSV_SORT_LABEL            7943
 #define IDC_CFG_HEADERLINES_EDIT          7944
+#define IDC_CFG_DUPLICATE_BOOKMARKS       7945
 
 // -------------------------------------------------------------------
 //  Export Data Panel (7950-7959)
@@ -375,6 +379,7 @@
 #define IDC_CFG_GRP_LUA                   7990
 #define IDC_CFG_LUA_SAFEMODE_ENABLED      7991
 #define IDC_CFG_LUA_PLACEHOLDER_LABEL     7992
+
 
 
 // ===================================================================

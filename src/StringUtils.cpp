@@ -17,6 +17,7 @@
 #include "StringUtils.h"
 #include "Encoding.h"   // only used in translateEscapes()
 
+#include <windows.h>    // MultiByteToWideChar, WideCharToMultiByte, CharLowerBuffW, GetLocaleInfoW
 #include <bitset>
 #include <algorithm>
 #include <cwctype>      // iswdigit
@@ -339,6 +340,70 @@ namespace StringUtils {
 
         out += L'"';
         return out;
+    }
+
+    // ----------------------------------------------------------------------------
+    // Unicode-aware lowercase conversion using Windows API
+    // Correctly handles all Unicode characters including:
+    // - German: Ä→ä, Ö→ö, Ü→ü, ẞ→ß
+    // - French: É→é, È→è, Ê→ê
+    // - Turkish: İ→i, I→ı (with correct locale)
+    // - Greek, Cyrillic, etc.
+    // ----------------------------------------------------------------------------
+    std::string toLowerUtf8(const std::string& utf8Str)
+    {
+        if (utf8Str.empty()) return utf8Str;
+
+        // Convert UTF-8 to Wide String using Windows API
+        int wideLen = MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(),
+            static_cast<int>(utf8Str.length()), nullptr, 0);
+        if (wideLen <= 0) return utf8Str;  // Fallback on error
+
+        std::wstring wideStr(wideLen, 0);
+        MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(),
+            static_cast<int>(utf8Str.length()), &wideStr[0], wideLen);
+
+        // Convert to lowercase using Windows locale-aware function
+        CharLowerBuffW(&wideStr[0], wideLen);
+
+        // Convert back to UTF-8
+        int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wideStr.c_str(), wideLen,
+            nullptr, 0, nullptr, nullptr);
+        if (utf8Len <= 0) return utf8Str;  // Fallback on error
+
+        std::string result(utf8Len, 0);
+        WideCharToMultiByte(CP_UTF8, 0, wideStr.c_str(), wideLen,
+            &result[0], utf8Len, nullptr, nullptr);
+
+        return result;
+    }
+
+    // ----------------------------------------------------------------------------
+    // Locale-aware number formatting with thousand separators
+    // Uses Windows user locale settings:
+    // - US/UK: 1,234,567
+    // - DE/AT/CH: 1.234.567
+    // - FR: 1 234 567 (with narrow no-break space)
+    // ----------------------------------------------------------------------------
+    std::wstring formatNumber(size_t number)
+    {
+        std::wstring numStr = std::to_wstring(number);
+
+        // Get locale-specific thousand separator from Windows
+        wchar_t thousandSep[8] = L",";
+        if (GetLocaleInfoW(LOCALE_USER_DEFAULT, LOCALE_STHOUSAND, thousandSep, 8) == 0) {
+            // Fallback to comma if API fails
+            wcscpy_s(thousandSep, L",");
+        }
+
+        // Insert thousand separators (from right to left)
+        int insertPosition = static_cast<int>(numStr.length()) - 3;
+        while (insertPosition > 0) {
+            numStr.insert(insertPosition, thousandSep);
+            insertPosition -= 3;
+        }
+
+        return numStr;
     }
 
 

@@ -88,27 +88,27 @@ HBITMAP CreateBitmapFromArray(UINT dpi) {
 
 BOOL APIENTRY DllMain(HINSTANCE hModule, DWORD  reasonForCall, LPVOID /*lpReserved*/)
 {
-	try {
+    try {
 
-		switch (reasonForCall)
-		{
-			case DLL_PROCESS_ATTACH:
-				pluginInit(hModule);
-                g_inst = HINSTANCE(hModule);
-				break;
+        switch (reasonForCall)
+        {
+        case DLL_PROCESS_ATTACH:
+            pluginInit(hModule);
+            g_inst = HINSTANCE(hModule);
+            break;
 
-			case DLL_PROCESS_DETACH:
-				pluginCleanUp();
-				break;
+        case DLL_PROCESS_DETACH:
+            pluginCleanUp();
+            break;
 
-			case DLL_THREAD_ATTACH:
-				break;
+        case DLL_THREAD_ATTACH:
+            break;
 
-			case DLL_THREAD_DETACH:
-				break;
-		}
-	}
-	catch (...) { return FALSE; }
+        case DLL_THREAD_DETACH:
+            break;
+        }
+    }
+    catch (...) { return FALSE; }
 
     return TRUE;
 }
@@ -116,25 +116,25 @@ BOOL APIENTRY DllMain(HINSTANCE hModule, DWORD  reasonForCall, LPVOID /*lpReserv
 
 extern "C" __declspec(dllexport) void setInfo(NppData notpadPlusData)
 {
-	nppData = notpadPlusData;
+    nppData = notpadPlusData;
     MultiReplace::loadLanguageGlobal();  // loading language Information for Plugin
     MultiReplace::loadConfigOnce();   // Load INI into cache once at plugin start
-	commandMenuInit();
+    commandMenuInit();
 }
 
-extern "C" __declspec(dllexport) const TCHAR * getName()
+extern "C" __declspec(dllexport) const TCHAR* getName()
 {
-	return NPP_PLUGIN_NAME;
+    return NPP_PLUGIN_NAME;
 }
 
-extern "C" __declspec(dllexport) FuncItem * getFuncsArray(int *nbF)
+extern "C" __declspec(dllexport) FuncItem* getFuncsArray(int* nbF)
 {
-	*nbF = nbFunc;
-	return funcItem;
+    *nbF = nbFunc;
+    return funcItem;
 }
 
 
-extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
+extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
 {
     // forward notifications for deferred jump handling
     ResultDock::instance().onNppNotification(notifyCode);
@@ -200,8 +200,8 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
         if (notifyCode->updated & SC_UPDATE_SELECTION)
         {
             MultiReplace::onSelectionChanged();
+            MultiReplace::onCaretPositionChanged();
         }
-        MultiReplace::onCaretPositionChanged();
     }
     break;
     case SCN_MODIFIED:
@@ -250,12 +250,12 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification * notifyCode)
 //
 extern "C" __declspec(dllexport) LRESULT messageProc(UINT /*Message*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
 {/*
-	if (Message == WM_MOVE)
-	{
-		::MessageBox(NULL, "move", "", MB_OK);
-	}
+    if (Message == WM_MOVE)
+    {
+        ::MessageBox(NULL, "move", "", MB_OK);
+    }
 */
-	return TRUE;
+    return TRUE;
 }
 
 #ifdef UNICODE

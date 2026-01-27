@@ -130,6 +130,11 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
   - For CSV files, temporary tabs are inserted to simulate uniform column spacing. For tab-delimited files, existing tabs are realigned.
   - The **Align Columns** button toggles alignment on or off; pressing it again restores the original spacing.
   - Numeric values are right-aligned by default; this behavior can be turned off in [Settings > CSV Options](#3-csv-options).
+- **Duplicate Line Detection** — Identifies and marks duplicate rows based on specified columns.
+  - The first occurrence of each group is kept; subsequent duplicates are marked.
+  - After detection, a dialog offers the option to delete duplicates or keep them for inspection.
+  - Marks can be cleared using the **Clear Matches** button.
+  - Optionally set bookmarks on duplicates for navigation — enable in [Settings > CSV Options](#3-csv-options).
 
 ### Execution Targets
 Execution targets define **which files** an operation is applied to. They are accessible via the **Replace All** split-button menu.
@@ -668,7 +673,8 @@ Settings specific to the CSV column manipulation and alignment features.
 
 - **Flow Tabs: Right-align numeric columns** — When using the **Flow Tabs** feature (Column Alignment), numeric values will be right-aligned within their columns for better readability. Text remains left-aligned.
 - **Flow Tabs: Don't show intro message** — Suppresses the informational dialog that appears when activating Flow Tabs for the first time.
-- **CSV Sort: Header lines to exclude** — Specifies the number of lines at the top of the file to protect from sorting operations (e.g., set to `1` to keep the header row fixed at the top).
+- **CSV Sort: Header lines to exclude** — Specifies the number of header rows to protect from sorting and duplicate detection.
+- **Mark duplicate rows with bookmarks** — Places Notepad++ bookmarks on duplicate lines for navigation (F2 / Shift+F2). Clears existing bookmarks when active.
 
 ### 4. Export
 Configure how list data is exported to the clipboard via **Export Data** from the context menu.

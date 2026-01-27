@@ -510,6 +510,7 @@ public:
         int  csvHeaderLinesCount;
         bool resultDockPerEntryColorsEnabled;
         bool useListColorsForMarking;
+        bool duplicateBookmarksEnabled;
     };
 
     static Settings getSettings();
@@ -545,6 +546,15 @@ public:
     inline static bool isLuaErrorDialogEnabled = true;
 
     inline static std::vector<size_t> originalLineOrder{}; // Stores the order of lines before sorting
+    inline static std::vector<size_t> _markedDuplicateLines{};  // Stores line indices of marked duplicates
+    inline static size_t _duplicateGroupCount = 0;              // Number of unique duplicate groups
+    inline static bool _duplicateMatchCase = false;             // Match case setting used when marking
+    inline static bool _duplicateBookmarksEnabled = false;      // Tracks bookmark setting for rescan detection
+
+    // Stored scan criteria for validation rescan before delete
+    inline static std::set<int> _duplicateScanColumns{};        // Columns used for scan
+    inline static std::string _duplicateScanDelimiter{};        // Delimiter used for scan
+
     inline static SortDirection currentSortState = SortDirection::Unsorted; // Status of column sort
     inline static bool isSortedColumn = false; // Indicates if a column is sorted
 
@@ -1016,6 +1026,14 @@ private:
     bool confirmColumnDeletion();
     void handleDeleteColumns();
     void handleColumnGridTabsButton();
+    void handleDuplicatesButton();
+    void findAndMarkDuplicates(bool showDialog = true);
+    bool scanForDuplicates();
+    bool validateAndRescanIfNeeded();
+    void applyDuplicateMarks();
+    void clearDuplicateMarks();
+    void showDeleteDuplicatesDialog();
+    void deleteDuplicateLines();
     void clearFlowTabsIfAny();
     bool buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const;
     bool applyFlowTabStops(const ColumnTabs::CT_ColumnModelView* existingModel = nullptr);
@@ -1062,7 +1080,7 @@ private:
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
     void setSelections(bool select, bool onlySelected = false);
     void setOptionForSelection(SearchOption option, bool value);
-    void showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound = false);
+    void showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound = false, bool isTransient = false);
     void applyThemePalette();
     void refreshColumnStylesIfNeeded();
     std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);

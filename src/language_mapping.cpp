@@ -86,6 +86,7 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_export_template_help", L"Available placeholders:\n\nData fields:\n  %FIND%      - Find pattern\n  %REPLACE%   - Replace text\n  %COMMENT%   - Comment\n  %FCOUNT%    - Find count\n  %RCOUNT%    - Replace count\n\nRow info:\n  %ROW%       - Row number\n  %SEL%       - Selected (1/0)\n\nOptions:\n  %REGEX%     - Regex enabled (1/0)\n  %CASE%      - Match case (1/0)\n  %WORD%      - Whole word (1/0)\n  %EXT%       - Extended (1/0)\n  %VAR%       - Variables (1/0)\n\nUse \\t for tab delimiter" },
 { L"tooltip_move_up", L"Move selected lines up" },
 { L"tooltip_move_down", L"Move selected lines down" },
+{ L"tooltip_find_duplicates", L"Find Duplicates" },
 
 // header entries
 { L"header_find_count", L"Find Count" },
@@ -206,6 +207,10 @@ const LangKV kEnglishPairs[] = {
 { L"status_deleted_fields_count", L"Deleted $REPLACE_STRING fields." },
 { L"status_line_and_column_position", L" (Line: $REPLACE_STRING1, Column: $REPLACE_STRING2)" },
 { L"status_unable_to_open_file", L"Failed to open the file: $REPLACE_STRING" },
+{ L"status_no_data_for_duplicates", L"No data rows to check for duplicates." },
+{ L"status_no_duplicates_found", L"No duplicates found." },
+{ L"status_duplicates_deleted", L"Deleted $REPLACE_STRING duplicate rows." },
+{ L"status_document_modified_delete_cancelled", L"Document was modified. Deletion cancelled." },
 
 // MessageBox Titles
 { L"msgbox_title_error", L"Error" },
@@ -244,6 +249,15 @@ const LangKV kEnglishPairs[] = {
 { L"msgbox_flowtabs_intro_checkbox", L"Do not show this message again" },
 { L"msgbox_button_ok",     L"OK" },
 { L"msgbox_button_cancel", L"Cancel" },
+{ L"msgbox_title_delete_duplicates", L"Delete Duplicates" },
+{ L"msgbox_duplicates_question", L"Delete duplicate rows?" },
+{ L"msgbox_duplicates_stats", L"$REPLACE_STRING1 duplicates in $REPLACE_STRING2 groups" },
+{ L"msgbox_duplicates_mode", L"Mode: $REPLACE_STRING" },
+{ L"msgbox_duplicates_exact", L"Exact Match" },
+{ L"msgbox_duplicates_ignoring", L"Ignoring Case" },
+{ L"msgbox_duplicates_undo", L"Undo is possible via Ctrl+Z" },
+{ L"msgbox_btn_delete_duplicates", L"Delete Duplicates" },
+{ L"msgbox_btn_keep_marked", L"Keep Marked" },
 
 // Context Menu List
 { L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },
@@ -325,6 +339,7 @@ const LangKV kEnglishPairs[] = {
 { L"config_grp_csv_settings", L"CSV Settings" },
 { L"config_chk_numeric_align", L"Flow Tabs: Right-align numeric columns" },
 { L"config_chk_flowtabs_intro_dontshow", L"Flow Tabs: Don't show intro message" },
+{ L"config_chk_duplicate_bookmarks", L"Mark duplicate rows with bookmarks" },
 { L"config_lbl_csv_sort", L"CSV Sort: Header lines to exclude:" },
 
 // Export

@@ -39,6 +39,7 @@
 #include "MultiReplaceConfigDialog.h"
 #include <algorithm>
 #include <bitset>
+#include <cctype>
 #include <fstream>
 #include <map>
 #include <numeric>
@@ -59,6 +60,7 @@
 #include <sdkddkver.h>
 #include <uxtheme.h>
 #pragma comment(lib, "uxtheme.lib")
+#pragma comment(lib, "comctl32.lib")
 
 static LanguageManager& LM = LanguageManager::instance();
 static ConfigManager& CFG = ConfigManager::instance();
@@ -309,14 +311,18 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_QUOTECHAR_STATIC] = { sx(549), sy(151), sx(37), sy(20), WC_STATIC, LM.getLPCW(L"panel_quote"), SS_RIGHT, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_QUOTECHAR_EDIT] = { sx(587), sy(151), sx(15), sy(16), WC_EDIT, nullptr, ES_CENTER | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, LM.getLPCW(L"tooltip_quote"), true, FontRole::Standard };
 
-    // Special Fonts for Buttons
-    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(373), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_descending"), true, FontRole::Standard };
-    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(410), sy(176), sx(34), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_ascending"), true, FontRole::Standard };
-
-    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(453), sy(176), sx(34), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_drop_columns"), true, FontRole::Normal2 };
-    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(490), sy(176), sx(34), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_columns"), true, FontRole::Normal3 };
-    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(533), sy(176), sx(34), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_highlight"), true, FontRole::Normal2 };
-    ctrlMap[IDC_COLUMN_GRIDTABS_BUTTON] = { sx(570), sy(176), sx(34), sy(20), WC_BUTTON, L"⇥", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_tabs"), true, FontRole::Normal7 };
+    // CSV Tool Buttons - grouped visually: SORT | EDIT | VIEW | ANALYZE
+    // Group 1: SORT (tight spacing)
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(373), sy(176), sx(30), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_descending"), true, FontRole::Standard };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(404), sy(176), sx(30), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_ascending"), true, FontRole::Standard };
+    // Group 2: EDIT (gap before, tight spacing)
+    ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(441), sy(176), sx(30), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_drop_columns"), true, FontRole::Normal2 };
+    ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(472), sy(176), sx(30), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_columns"), true, FontRole::Normal3 };
+    // Group 3: VIEW (gap before, tight spacing)
+    ctrlMap[IDC_COLUMN_HIGHLIGHT_BUTTON] = { sx(509), sy(176), sx(30), sy(20), WC_BUTTON, L"🖍", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_highlight"), true, FontRole::Normal2 };
+    ctrlMap[IDC_COLUMN_GRIDTABS_BUTTON] = { sx(540), sy(176), sx(30), sy(20), WC_BUTTON, L"⇥", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_column_tabs"), true, FontRole::Normal7 };
+    // Group 4: ANALYZE (gap before)
+    ctrlMap[IDC_COLUMN_DUPLICATES_BUTTON] = { sx(577), sy(176), sx(30), sy(20), WC_BUTTON, L"☰", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_find_duplicates"), true, FontRole::Standard };
 
     // --- DYNAMIC CONTROLS ---
 
@@ -363,7 +369,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-   
+
     // Move Buttons - positioned at right edge of list, vertically fixed at list start
     int moveButtonX = sx(14) + listWidth + sx(4);  // 4px gap to list
     int moveButtonY = sy(227) + filesOffsetY;       // Same Y as list start
@@ -924,7 +930,8 @@ void MultiReplace::setUIElementVisibility() {
     // Column-mode dependent controls
     const std::vector<int> columnRadioDependentElements = {
         IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON,
-        IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_COLUMN_GRIDTABS_BUTTON
+        IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_COLUMN_GRIDTABS_BUTTON,
+        IDC_COLUMN_DUPLICATES_BUTTON
     };
     for (int id : columnRadioDependentElements) {
         EnableWindow(GetDlgItem(_hSelf, id), columnModeChecked);
@@ -1035,7 +1042,7 @@ void MultiReplace::updateUseListState(bool isUpdate)
 
         // Activate the tooltip
         SendMessage(_hUseListButtonTooltip, TTM_ACTIVATE, TRUE, 0);
-        
+
         // Apply dark mode theme to tooltip
         if (NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle)) {
             SetWindowTheme(_hUseListButtonTooltip, L"DarkMode_Explorer", nullptr);
@@ -4146,7 +4153,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         adjustWindowSize();
 
         // Activate Dark Mode
-        ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
+        ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
 
         // Post a custom message to perform post-initialization tasks after the dialog is shown
         PostMessage(_hSelf, WM_POST_INIT, 0, 0);
@@ -4807,6 +4814,15 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
+        case IDC_COLUMN_DUPLICATES_BUTTON:
+        {
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            if (columnDelimiterData.isValid()) {
+                handleDuplicatesButton();
+            }
+            return TRUE;
+        }
+
         case IDC_USE_LIST_BUTTON:
         {
             useListEnabled = !useListEnabled;
@@ -5463,7 +5479,7 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
                 }
             }
         }
-        
+
     }
     else
     {
@@ -6611,7 +6627,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         nppData._nppHandle, nullptr, hInstance, reinterpret_cast<LPVOID>(const_cast<wchar_t*>(finalMessage.c_str()))
     );
 
-   if (hwnd == nullptr) {
+    if (hwnd == nullptr) {
         MessageBoxW(nppData._nppHandle, L"Error creating window", L"Error", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
         return -1;
     }
@@ -7868,7 +7884,7 @@ void MultiReplace::handleFindInFiles() {
                         if (slot >= maxListSlots) slot = maxListSlots - 1;
                         h.colorIndex = slot;
                     }
-                    else { h.colorIndex = 0;}
+                    else { h.colorIndex = 0; }
                     raw.push_back(std::move(h));
                 }
             }
@@ -8845,6 +8861,9 @@ void MultiReplace::handleClearTextMarksButton()
 
     textToSlot.clear();
     nextSlot = 0;
+
+    // Also clear any marked duplicate lines
+    _markedDuplicateLines.clear();
 }
 
 void MultiReplace::handleCopyMarkedTextToClipboardButton()
@@ -8967,7 +8986,7 @@ void MultiReplace::initTextMarkerIndicators()
     _textMarkerIds = available;
 
     _textMarkersInitialized = true;
-    updateTextMarkerStyles(); 
+    updateTextMarkerStyles();
 }
 
 void MultiReplace::updateTextMarkerStyles()
@@ -8985,12 +9004,12 @@ void MultiReplace::updateTextMarkerStyles()
         ::SendMessage(hSci, SCI_INDICSETALPHA, id, alpha);
         ::SendMessage(hSci, SCI_INDICSETOUTLINEALPHA, id, outlineAlpha);
         ::SendMessage(hSci, SCI_INDICSETUNDER, id, TRUE);
-    };
+        };
 
     // 1. Update List Mode colors (ResultDock & Editor Indicators)
     if (useListEnabled) {
         ResultDock& dock = ResultDock::instance();
-        
+
         int editorLimit = static_cast<int>(_textMarkerIds.size());
         int dockLimit = ResultDock::MAX_ENTRY_COLORS;
         int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
@@ -9014,7 +9033,7 @@ void MultiReplace::updateTextMarkerStyles()
         if (slot >= 0 && slot < static_cast<int>(_textMarkerIds.size())) {
             COLORREF c = ResultDock::generateColorFromText(text, isDark);
             int indicId = _textMarkerIds[slot];
-            
+
             for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
                 applyStyle(hSci, indicId, c);
             }
@@ -9199,7 +9218,7 @@ void MultiReplace::handleDeleteColumns()
             }
         }
 
-     }
+    }
     // Display a status message with the number of deleted fields.
     showStatusMessage(LM.get(L"status_deleted_fields_count", { std::to_wstring(deletedFieldsCount) }), MessageStatus::Success);
 }
@@ -9655,6 +9674,395 @@ void MultiReplace::handleColumnGridTabsButton()
 
     if (nowHasPads) g_padBufs.insert(bufId); else g_padBufs.erase(bufId);
     g_prevBufId = bufId;
+}
+
+void MultiReplace::handleDuplicatesButton()
+{
+    if (!validateDelimiterData()) {
+        return;
+    }
+
+    // Always perform a fresh scan - user may have edited the document
+    findAndMarkDuplicates();
+}
+
+void MultiReplace::findAndMarkDuplicates(bool showDialog)
+{
+    // Ensure we have the correct Scintilla handle
+    pointerToScintilla();
+
+    // Clear any previous marks and bookmarks first
+    clearDuplicateMarks();
+
+    // Re-parse column and delimiter data to ensure fresh data
+    if (!parseColumnAndDelimiterData()) {
+        showStatusMessage(LM.get(L"status_invalid_column_or_delimiter"), MessageStatus::Error);
+        return;
+    }
+
+    // Get Match Case setting from panel and store it
+    _duplicateMatchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+
+    // Store scan criteria for validation rescan before delete
+    _duplicateScanColumns = columnDelimiterData.columns;
+    _duplicateScanDelimiter = columnDelimiterData.extendedDelimiter;
+
+    // Store bookmark setting at scan time (to know if we created bookmarks)
+    Settings settings = getSettings();
+    _duplicateBookmarksEnabled = settings.duplicateBookmarksEnabled;
+
+    // Perform the scan (this calls findAllDelimitersInDocument internally)
+    if (!scanForDuplicates()) {
+        // No duplicates found or no data - message already shown by scanForDuplicates
+        return;
+    }
+
+    // Apply visual marking
+    applyDuplicateMarks();
+
+    // Show dialog asking whether to delete (only if requested)
+    if (showDialog) {
+        showDeleteDuplicatesDialog();
+    }
+}
+
+bool MultiReplace::scanForDuplicates()
+{
+    // Ensure delimiter positions are current
+    findAllDelimitersInDocument();
+
+    const size_t lineCount = lineDelimiterPositions.size();
+    if (lineCount <= CSVheaderLinesCount) {
+        showStatusMessage(LM.get(L"status_no_data_for_duplicates"), MessageStatus::Info);
+        return false;
+    }
+
+    // Extract column data for comparison (reuse existing infrastructure)
+    std::vector<CombinedColumns> columnData = extractColumnData(CSVheaderLinesCount, lineCount);
+
+    // Build comparison keys and find duplicates in single pass
+    // Track count per key to identify groups
+    std::unordered_map<std::string, std::pair<size_t, size_t>> keyInfo;  // key -> (firstLine, count)
+    _markedDuplicateLines.clear();
+    _markedDuplicateLines.reserve(lineCount / 4);
+
+    const char KEY_SEP = '\x01';
+
+    for (size_t dataIdx = 0; dataIdx < columnData.size(); ++dataIdx) {
+        const size_t lineIdx = dataIdx + CSVheaderLinesCount;
+        const auto& row = columnData[dataIdx];
+
+        // Build comparison key
+        std::string key;
+        key.reserve(256);
+
+        for (size_t colIdx = 0; colIdx < row.columns.size(); ++colIdx) {
+            if (colIdx > 0) key += KEY_SEP;
+
+            std::string colText = row.columns[colIdx].text;
+
+            if (!_duplicateMatchCase) {
+                colText = StringUtils::toLowerUtf8(colText);
+            }
+
+            key += colText;
+        }
+
+        auto it = keyInfo.find(key);
+        if (it == keyInfo.end()) {
+            keyInfo[key] = { lineIdx, 1 };
+        }
+        else {
+            it->second.second++;  // Increment count
+            _markedDuplicateLines.push_back(lineIdx);
+        }
+    }
+
+    // Count groups (keys with count > 1)
+    _duplicateGroupCount = 0;
+    for (const auto& kv : keyInfo) {
+        if (kv.second.second > 1) {
+            _duplicateGroupCount++;
+        }
+    }
+
+    if (_markedDuplicateLines.empty()) {
+        showStatusMessage(LM.get(L"status_no_duplicates_found"), MessageStatus::Info);
+        return false;
+    }
+
+    return true;
+}
+
+bool MultiReplace::validateAndRescanIfNeeded()
+{
+    if (_markedDuplicateLines.empty() || _duplicateScanColumns.empty()) {
+        return false;  // Nothing to validate
+    }
+
+    // Save original duplicate indices for comparison
+    std::vector<size_t> originalIndices = _markedDuplicateLines;
+
+    // Save current columnDelimiterData (user may have changed UI settings)
+    auto savedColumns = columnDelimiterData.columns;
+    auto savedDelimiter = columnDelimiterData.extendedDelimiter;
+    auto savedInputColumns = columnDelimiterData.inputColumns;
+    auto savedDelimiterLength = columnDelimiterData.delimiterLength;
+
+    // Use stored scan criteria (from original scan)
+    // Note: _duplicateMatchCase already contains the original Match Case setting
+    columnDelimiterData.columns = _duplicateScanColumns;
+    columnDelimiterData.extendedDelimiter = _duplicateScanDelimiter;
+    columnDelimiterData.delimiterLength = _duplicateScanDelimiter.length();
+    columnDelimiterData.inputColumns.clear();
+    columnDelimiterData.inputColumns.assign(_duplicateScanColumns.begin(), _duplicateScanColumns.end());
+
+    // Rescan delimiter positions with stored delimiter
+    findAllDelimitersInDocument();
+
+    // Rescan duplicates with stored criteria
+    _markedDuplicateLines.clear();
+    bool foundDuplicates = scanForDuplicates();
+
+    // Restore original columnDelimiterData
+    columnDelimiterData.columns = savedColumns;
+    columnDelimiterData.extendedDelimiter = savedDelimiter;
+    columnDelimiterData.inputColumns = savedInputColumns;
+    columnDelimiterData.delimiterLength = savedDelimiterLength;
+
+    // Check if rescan found same duplicates
+    if (!foundDuplicates || _markedDuplicateLines != originalIndices) {
+        // Document was modified - duplicates changed
+        showStatusMessage(LM.get(L"status_document_modified_delete_cancelled"), MessageStatus::Error);
+
+        // Clear all duplicate marks since they're no longer valid
+        clearDuplicateMarks();
+
+        return false;
+    }
+
+    return true;  // Duplicates unchanged, proceed with delete
+}
+
+void MultiReplace::applyDuplicateMarks()
+{
+    if (_markedDuplicateLines.empty() || _textMarkerIds.empty()) return;
+
+    const int indicId = _textMarkerIds.back();
+
+    bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+    int alpha = isDark ? EDITOR_MARK_ALPHA_DARK : EDITOR_MARK_ALPHA_LIGHT;
+    int outlineAlpha = isDark ? EDITOR_OUTLINE_ALPHA_DARK : EDITOR_OUTLINE_ALPHA_LIGHT;
+    COLORREF color = isDark ? RGB(255, 100, 100) : RGB(255, 150, 150);
+
+    send(SCI_INDICSETSTYLE, indicId, INDIC_FULLBOX);
+    send(SCI_INDICSETFORE, indicId, color);
+    send(SCI_INDICSETALPHA, indicId, alpha);
+    send(SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
+    send(SCI_INDICSETUNDER, indicId, TRUE);
+    send(SCI_SETINDICATORCURRENT, indicId, 0);
+
+    // Get bookmark marker ID from N++ (falls back to 20 for newer versions)
+    constexpr UINT LOCAL_NPPM_GETBOOKMARKID = (WM_USER + 1000) + 113;
+    LRESULT nppBookmarkId = ::SendMessage(nppData._nppHandle, LOCAL_NPPM_GETBOOKMARKID, 0, 0);
+    int markerId = (nppBookmarkId > 0 && nppBookmarkId < 32) ? static_cast<int>(nppBookmarkId) : 20;
+
+    // If bookmarks enabled: clear ALL bookmarks first, then set new ones on duplicates
+    if (_duplicateBookmarksEnabled) {
+        send(SCI_MARKERDELETEALL, markerId, 0);
+    }
+
+    // Apply visual indicators and bookmarks
+    for (size_t lineIdx : _markedDuplicateLines) {
+        LRESULT lineStart = send(SCI_POSITIONFROMLINE, lineIdx, 0);
+        LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, lineIdx, 0);
+        LRESULT lineLen = lineEnd - lineStart;
+
+        if (lineLen > 0) {
+            send(SCI_INDICATORFILLRANGE, lineStart, lineLen);
+        }
+
+        // Add bookmark if enabled
+        if (_duplicateBookmarksEnabled) {
+            send(SCI_MARKERADD, static_cast<uptr_t>(lineIdx), static_cast<sptr_t>(markerId));
+        }
+    }
+
+    // Force Scintilla to redraw/refresh the editor view
+    ::InvalidateRect(_hScintilla, nullptr, FALSE);
+}
+
+void MultiReplace::clearDuplicateMarks()
+{
+    // Always clear indicators (prophylactically, even if list is empty)
+    if (!_textMarkerIds.empty()) {
+        const int indicId = _textMarkerIds.back();
+        send(SCI_SETINDICATORCURRENT, indicId, 0);
+
+        // Clear indicators on known duplicate lines
+        const size_t currentLineCount = static_cast<size_t>(send(SCI_GETLINECOUNT, 0, 0));
+        for (size_t lineIdx : _markedDuplicateLines) {
+            if (lineIdx >= currentLineCount) continue;
+
+            LRESULT lineStart = send(SCI_POSITIONFROMLINE, lineIdx, 0);
+            LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, lineIdx, 0);
+            LRESULT lineLen = lineEnd - lineStart;
+
+            if (lineLen > 0) {
+                send(SCI_INDICATORCLEARRANGE, lineStart, lineLen);
+            }
+        }
+    }
+
+    // If bookmark feature was enabled during scan, clear ALL bookmarks
+    if (_duplicateBookmarksEnabled) {
+        constexpr UINT LOCAL_NPPM_GETBOOKMARKID = (WM_USER + 1000) + 113;
+        LRESULT nppBookmarkId = ::SendMessage(nppData._nppHandle, LOCAL_NPPM_GETBOOKMARKID, 0, 0);
+        int markerId = (nppBookmarkId > 0 && nppBookmarkId < 32) ? static_cast<int>(nppBookmarkId) : 20;
+        send(SCI_MARKERDELETEALL, markerId, 0);
+    }
+
+    _markedDuplicateLines.clear();
+    _duplicateGroupCount = 0;
+
+    // Reset stored scan criteria
+    _duplicateScanColumns.clear();
+    _duplicateScanDelimiter.clear();
+
+    // Force Scintilla to redraw/refresh the editor view
+    ::InvalidateRect(_hScintilla, nullptr, FALSE);
+}
+
+void MultiReplace::showDeleteDuplicatesDialog()
+{
+    const size_t duplicateCount = _markedDuplicateLines.size();
+    const size_t groupCount = _duplicateGroupCount;
+
+    // Get language strings
+    std::wstring titleText = LM.get(L"msgbox_title_delete_duplicates");
+    std::wstring questionText = LM.get(L"msgbox_duplicates_question");
+    std::wstring statsText = LM.get(L"msgbox_duplicates_stats", { StringUtils::formatNumber(duplicateCount), StringUtils::formatNumber(groupCount) });
+    std::wstring modeStr = _duplicateMatchCase ? LM.get(L"msgbox_duplicates_exact") : LM.get(L"msgbox_duplicates_ignoring");
+    std::wstring modeText = LM.get(L"msgbox_duplicates_mode", { modeStr });
+    std::wstring undoText = LM.get(L"msgbox_duplicates_undo");
+
+    // Combine content: stats + mode + blank line + undo hint
+    std::wstring contentText = statsText + L"\n" + modeText + L"\n\n" + undoText;
+
+    std::wstring btnDeleteText = LM.get(L"msgbox_btn_delete_duplicates");
+    std::wstring btnKeepText = LM.get(L"msgbox_btn_keep_marked");
+
+    // Button IDs
+    const int ID_BTN_DELETE = 100;
+    const int ID_BTN_KEEP = 101;
+
+    // Custom buttons with dynamic text
+    TASKDIALOG_BUTTON buttons[] = {
+        { ID_BTN_DELETE, btnDeleteText.c_str() },
+        { ID_BTN_KEEP, btnKeepText.c_str() }
+    };
+
+    // Configure TaskDialog
+    TASKDIALOGCONFIG tdc = { sizeof(TASKDIALOGCONFIG) };
+    tdc.hwndParent = nppData._nppHandle;
+    tdc.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW | TDF_SIZE_TO_CONTENT;
+    tdc.pszWindowTitle = titleText.c_str();
+    tdc.pszMainInstruction = questionText.c_str();
+    tdc.pszContent = contentText.c_str();
+    tdc.pszMainIcon = TD_WARNING_ICON;
+    tdc.pButtons = buttons;
+    tdc.cButtons = ARRAYSIZE(buttons);
+    tdc.nDefaultButton = ID_BTN_KEEP;  // Safety: default to non-destructive action
+
+    int nButtonPressed = 0;
+    HRESULT hr = TaskDialogIndirect(&tdc, &nButtonPressed, nullptr, nullptr);
+
+    if (SUCCEEDED(hr) && nButtonPressed == ID_BTN_DELETE) {
+        deleteDuplicateLines();
+    }
+    // If Keep Marked, Cancel, or ESC: marks remain visible for user inspection
+}
+
+void MultiReplace::deleteDuplicateLines()
+{
+    if (_markedDuplicateLines.empty()) return;
+
+    // Validate document state and rescan if needed (user may have edited while dialog was open)
+    if (!validateAndRescanIfNeeded()) {
+        return;  // No duplicates found after rescan or validation failed
+    }
+
+    const size_t deleteCount = _markedDuplicateLines.size();
+
+    // Clear visual marks first
+    if (!_textMarkerIds.empty()) {
+        const int indicId = _textMarkerIds.back();
+        ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicId, 0);
+        const size_t currentLineCount = static_cast<size_t>(send(SCI_GETLINECOUNT, 0, 0));
+        for (size_t lineIdx : _markedDuplicateLines) {
+            if (lineIdx >= currentLineCount) continue;
+            LRESULT lineStart = send(SCI_POSITIONFROMLINE, lineIdx, 0);
+            LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, lineIdx, 0);
+            if (lineEnd > lineStart) {
+                ::SendMessage(_hScintilla, SCI_INDICATORCLEARRANGE, lineStart, lineEnd - lineStart);
+            }
+        }
+    }
+
+    // Delete the marked duplicate lines
+    runCsvWithFlowTabs(CsvOp::DeleteColumns, [&]() -> bool {
+        ScopedUndoAction undo(*this);
+
+        // Sort descending - delete from bottom to top to keep indices valid
+        std::vector<size_t> linesToDelete = _markedDuplicateLines;
+        std::sort(linesToDelete.begin(), linesToDelete.end(), std::greater<size_t>());
+
+        const size_t totalLines = static_cast<size_t>(send(SCI_GETLINECOUNT, 0, 0));
+
+        for (size_t lineIdx : linesToDelete) {
+            if (lineIdx >= totalLines) continue;
+
+            LRESULT lineStart = send(SCI_POSITIONFROMLINE, lineIdx, 0);
+            LRESULT lineEnd;
+
+            if (lineIdx + 1 < totalLines) {
+                lineEnd = send(SCI_POSITIONFROMLINE, lineIdx + 1, 0);
+            }
+            else {
+                lineEnd = send(SCI_GETLINEENDPOSITION, lineIdx, 0);
+                if (lineIdx > 0) {
+                    lineStart = send(SCI_GETLINEENDPOSITION, lineIdx - 1, 0);
+                }
+            }
+
+            LRESULT deleteLen = lineEnd - lineStart;
+            if (deleteLen > 0) {
+                send(SCI_DELETERANGE, lineStart, deleteLen, false);
+            }
+
+            updateUnsortedDocument(lineIdx, 1, ChangeType::Delete);
+        }
+
+        return true;
+        });
+
+    // Clear all bookmarks if bookmark feature was enabled
+    if (_duplicateBookmarksEnabled) {
+        constexpr UINT LOCAL_NPPM_GETBOOKMARKID = (WM_USER + 1000) + 113;
+        LRESULT nppBookmarkId = ::SendMessage(nppData._nppHandle, LOCAL_NPPM_GETBOOKMARKID, 0, 0);
+        int markerId = (nppBookmarkId > 0 && nppBookmarkId < 32) ? static_cast<int>(nppBookmarkId) : 20;
+        send(SCI_MARKERDELETEALL, markerId, 0);
+    }
+
+    // Clear state
+    _markedDuplicateLines.clear();
+    _duplicateGroupCount = 0;
+
+    // Refresh delimiter positions
+    findAllDelimitersInDocument();
+
+    // Show success message
+    showStatusMessage(LM.get(L"status_duplicates_deleted", { std::to_wstring(deleteCount) }), MessageStatus::Success);
 }
 
 void MultiReplace::clearFlowTabsIfAny()
@@ -10277,7 +10685,7 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
         if (!originalLineOrder.empty()) {
             runCsvWithFlowTabs(CsvOp::Sort, [&]() -> bool {
                 ScopedUndoAction undo(*this);
-                restoreOriginalLineOrder(originalLineOrder); 
+                restoreOriginalLineOrder(originalLineOrder);
                 return true;
                 });
         }
@@ -10917,7 +11325,7 @@ void MultiReplace::processLogForDelimiters() {
 
             // Re-parse ONLY the merged line at deletePos
             if (deletePos < (Sci_Position)lineDelimiterPositions.size()) {
-                findDelimitersInLine(deletePos); 
+                findDelimitersInLine(deletePos);
 
                 if (isColumnHighlighted) {
                     LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
@@ -11420,9 +11828,15 @@ void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
     URM.push(action.undoAction, action.redoAction, (value ? L"Set " : L"Clear ") + optionName);
 }
 
-void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound)
+void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound, bool isTransient)
 {
     const size_t MAX_DISPLAY_LENGTH = 150;
+
+    // Any non-transient status message disables "Actual Position" tracking
+    // User must toggle Highlight off/on to re-enable position display
+    if (!isTransient && isCaretPositionEnabled) {
+        isCaretPositionEnabled = false;
+    }
 
     std::wstring strMessage;
     strMessage.reserve(messageText.length());
@@ -12705,6 +13119,7 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
     s.resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
     s.useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
+    s.duplicateBookmarksEnabled = CFG.readBool(L"Options", L"DuplicateBookmarks", false);
     return s;
 }
 
@@ -12733,6 +13148,7 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeInt(L"Scope", L"HeaderLines", s.csvHeaderLinesCount);
     CFG.writeInt(L"Options", L"ResultDockPerEntryColors", s.resultDockPerEntryColorsEnabled ? 1 : 0);
     CFG.writeInt(L"Options", L"UseListColorsForMarking", s.useListColorsForMarking ? 1 : 0);
+    CFG.writeInt(L"Options", L"DuplicateBookmarks", s.duplicateBookmarksEnabled ? 1 : 0);
 }
 
 void MultiReplace::loadConfigOnce()
@@ -12901,6 +13317,10 @@ void MultiReplace::applyConfigSettingsOnly()
     resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
     useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
     ResultDock::setPerEntryColorsEnabled(resultDockPerEntryColorsEnabled);
+
+    // Just update the bookmark setting - no action needed
+    // Bookmarks will be handled correctly on next duplicate scan
+    _duplicateBookmarksEnabled = CFG.readBool(L"Options", L"DuplicateBookmarks", false);
 
     // Hover Text
     bool newHover = CFG.readBool(L"Options", L"HoverText", true);
@@ -13199,7 +13619,8 @@ void MultiReplace::onCaretPositionChanged()
 
     LRESULT startPosition = ::SendMessage(getScintillaHandle(), SCI_GETCURRENTPOS, 0, 0);
     if (instance != nullptr) {
-        instance->showStatusMessage(LanguageManager::instance().get(L"status_actual_position", { instance->addLineAndColumnMessage(startPosition) }), MessageStatus::Success);
+        // isTransient=true: This is a transient position update, don't disable position tracking
+        instance->showStatusMessage(LanguageManager::instance().get(L"status_actual_position", { instance->addLineAndColumnMessage(startPosition) }), MessageStatus::Success, false, true);
     }
 
 }
