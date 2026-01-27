@@ -90,7 +90,8 @@ The search mode determines how the text in the **Find what** field is interprete
   | `\xHH`   | Hexadecimal value      | `\x41` finds or inserts the character **A**.                        |
   | `\oNNN`  | Octal value            | `\o101` finds or inserts **A**.                                     |
   | `\dNNN`  | Decimal value          | `\d065` finds or inserts **A**.                                     |
-  | `\uXXXX` | Unicode character      | `\u20AC` finds or inserts **€**. *(Extension not available in standard Notepad++.)* |
+  | `\bNNNNNNNN` | Binary value       | `\b01000001` finds or inserts **A**.                                |
+  | `\uXXXX` | Unicode character      | `\u20AC` finds or inserts **€**. *(Plugin extension, not in standard Notepad++.)* |
 
 - **Regular expression** — Enables powerful pattern matching using the regex engine integrated into the Notepad++ editor component. It supports common syntax for character classes (`[a-z]`), quantifiers (`*`, `+`, `?`), and capture groups (`(...)`). For a detailed reference, see the official Notepad++ Regular Expressions documentation.
 
@@ -131,7 +132,7 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
   - The **Align Columns** button toggles alignment on or off; pressing it again restores the original spacing.
   - Numeric values are right-aligned by default; this behavior can be turned off in [Settings > CSV Options](#3-csv-options).
 - **Duplicate Line Detection** — Identifies and marks duplicate rows based on specified columns.
-  - The first occurrence of each group is kept; subsequent duplicates are marked.
+  - The first occurrence of each group is kept; only subsequent duplicates are marked.
   - After detection, a dialog offers the option to delete duplicates or keep them for inspection.
   - Marks can be cleared using the **Clear Matches** button.
   - Optionally set bookmarks on duplicates for navigation — enable in [Settings > CSV Options](#3-csv-options).

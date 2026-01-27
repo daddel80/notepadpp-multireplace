@@ -11625,6 +11625,13 @@ std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool exte
             }
             [[fallthrough]];                                // literal fallback
 
+        case L'b': // \bNNNNNNNN  (binary, 8 digits)
+            if (decodeNumericEscape(input, i + 1, 2, 8, decoded))
+            {
+                out.push_back(decoded); i += 8; break;
+            }
+            [[fallthrough]];
+
         case L'd': // \dNNN  (decimal)
             if (decodeNumericEscape(input, i + 1, 10, 3, decoded))
             {
