@@ -107,7 +107,7 @@ void ResultDock::clear()
     // remove all folding levels → BASE
     const int lineCount = static_cast<int>(S(SCI_GETLINECOUNT));
     for (int l = 0; l < lineCount; ++l)
-        S(SCI_SETFOLDLEVEL, l, SC_FOLDLEVELBASE);
+        S(SCI_SETFOLDLEVEL, l, SC_FOLDLEVELBASE);;
 
     // Clear every indicator used by the dock
     for (int ind : { INDIC_LINE_BACKGROUND, INDIC_LINENUMBER_FORE,
@@ -619,10 +619,9 @@ void ResultDock::initFolding() const
         S(SCI_MARKERSETBACK, id, placeholder);
     }
 
-    // 7) enable mouse interaction - but disable auto-fold so we can handle it ourselves
-    //    This allows us to control horizontal scroll position after fold toggle
+    // 7) enable mouse interaction & auto‑fold updates ------------
     S(SCI_SETMARGINSENSITIVEN, M_FOLD, TRUE);
-    S(SCI_SETAUTOMATICFOLD, 0);  // Disable automatic fold on click - handled in sciSubclassProc
+    S(SCI_SETAUTOMATICFOLD, SC_AUTOMATICFOLD_CLICK);
 
     S(SCI_SETFOLDFLAGS, SC_FOLDFLAG_LINEAFTER_CONTRACTED);
 
@@ -631,7 +630,10 @@ void ResultDock::initFolding() const
 
 void ResultDock::applyTheme()
 {
-    if (!_hSci) return;
+    // Helper lambda for Scintilla calls
+    auto S = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
+        return ::SendMessage(_hSci, m, w, l);
+        };
 
     // Determine if dark mode is active
     const bool dark = ::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0;
@@ -1069,8 +1071,20 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     for (const Hit& h : hits) {
         int line1 = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, h.pos, 0)) + 1;
         lineNumbers.push_back(line1);
-        maxDigits = (std::max)(maxDigits, std::to_wstring(line1).size());
+        // Count digits without creating temporary string
+        int temp = line1;
+        size_t digits = 0;
+        do { ++digits; temp /= 10; } while (temp > 0);
+        if (digits > maxDigits) maxDigits = digits;
     }
+
+    // Helper to count digits in a number (avoids std::to_wstring allocation)
+    auto countDigits = [](int n) -> size_t {
+        if (n <= 0) return 1;
+        size_t count = 0;
+        while (n > 0) { ++count; n /= 10; }
+        return count;
+        };
 
     auto padNumber = [](int number, size_t width) -> std::wstring {
         std::wstring numStr = std::to_wstring(number);
@@ -1259,9 +1273,10 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             currentRowLenU8 = displayU8.size();
             out += prefixW + displayW + L"\r\n";
 
+            const size_t line1Digits = countDigits(line1);
             h.displayLineStart = (int)utf8Pos;
-            h.numberStart = (int)(indentHitU8 + kLineU8 + paddedNumW.size() - std::to_wstring(line1).size());
-            h.numberLen = (int)std::to_wstring(line1).size();
+            h.numberStart = (int)(indentHitU8 + kLineU8 + paddedNumW.size() - line1Digits);
+            h.numberLen = (int)line1Digits;
 
             h.matchStarts.clear();
             h.matchLens.clear();
@@ -1291,9 +1306,10 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         }
         else {
             if (firstHitOnRow) {
+                const size_t line1Digits = countDigits(line1);
                 const size_t prefixU8Len = indentHitU8 + kLineU8
-                    + std::to_wstring(line1).size()
-                    + (maxDigits - std::to_wstring(line1).size())
+                    + line1Digits
+                    + (maxDigits - line1Digits)
                     + kColonSpaceU8;
 
                 if (dispStart < displayU8.size()) {
@@ -1659,35 +1675,20 @@ void ResultDock::scrollToHitAndHighlight(int displayLineStart)
     if (!_hSci || displayLineStart < 0)
         return;
 
-    int docLine = static_cast<int>(S(SCI_LINEFROMPOSITION, displayLineStart, 0));
+    int xOffset = static_cast<int>(S(SCI_GETXOFFSET, 0, 0));
+    int line = static_cast<int>(S(SCI_LINEFROMPOSITION, displayLineStart, 0));
 
-    // Ensure the line is visible (expand any collapsed folds)
-    S(SCI_ENSUREVISIBLE, docLine, 0);
+    S(SCI_ENSUREVISIBLE, line, 0);
 
-    // Also expand parent folds if necessary
-    int parentLine = static_cast<int>(S(SCI_GETFOLDPARENT, docLine, 0));
-    while (parentLine >= 0) {
-        if (!S(SCI_GETFOLDEXPANDED, parentLine, 0)) {
-            S(SCI_SETFOLDEXPANDED, parentLine, TRUE);
-            S(SCI_FOLDCHILDREN, parentLine, SC_FOLDACTION_EXPAND);
-        }
-        parentLine = static_cast<int>(S(SCI_GETFOLDPARENT, parentLine, 0));
-    }
+    Sci_Position lineStartPos = S(SCI_POSITIONFROMLINE, line, 0);
+    Sci_Position lineEndPos = S(SCI_GETLINEENDPOSITION, line, 0);
 
-    Sci_Position lineStartPos = S(SCI_POSITIONFROMLINE, docLine, 0);
-    Sci_Position lineEndPos = S(SCI_GETLINEENDPOSITION, docLine, 0);
-
-    // Set selection to highlight the line
     S(SCI_SETSEL, lineStartPos, lineEndPos);
 
-    // Convert document line to visible (display) line for proper centering
-    // This accounts for collapsed folds above the target line
-    int visibleLine = static_cast<int>(S(SCI_VISIBLEFROMDOCLINE, docLine, 0));
-
-    // Scroll to center the line on screen using visible line numbers
+    // Scroll to center
     int linesOnScreen = static_cast<int>(S(SCI_LINESONSCREEN, 0, 0));
     int firstVisibleLine = static_cast<int>(S(SCI_GETFIRSTVISIBLELINE, 0, 0));
-    int targetFirstLine = visibleLine - (linesOnScreen / 2);
+    int targetFirstLine = line - (linesOnScreen / 2);
     if (targetFirstLine < 0) targetFirstLine = 0;
 
     int scrollDelta = targetFirstLine - firstVisibleLine;
@@ -1695,14 +1696,7 @@ void ResultDock::scrollToHitAndHighlight(int displayLineStart)
         S(SCI_LINESCROLL, 0, scrollDelta);
     }
 
-    // Ensure caret is visible after scrolling
-    S(SCI_SCROLLCARET, 0, 0);
-
-    // Reset horizontal scroll to show line beginning
-    S(SCI_SETXOFFSET, 0, 0);
-
-    // Force immediate redraw to show the selection
-    ::RedrawWindow(_hSci, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+    S(SCI_SETXOFFSET, xOffset, 0);
 }
 
 ResultDock::CursorHitInfo ResultDock::getCurrentCursorHitInfo() const {
@@ -2109,51 +2103,18 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
     extern NppData nppData;
 
     switch (msg) {
-    case WM_LBUTTONDOWN: {
-        // Check if click is in the fold margin (margin 2)
-        int x = GET_X_LPARAM(lp);
-        int y = GET_Y_LPARAM(lp);
-
-        // Get margin widths to determine if click is in fold margin
-        int margin0Width = static_cast<int>(::SendMessage(hwnd, SCI_GETMARGINWIDTHN, 0, 0));
-        int margin1Width = static_cast<int>(::SendMessage(hwnd, SCI_GETMARGINWIDTHN, 1, 0));
-        int margin2Width = static_cast<int>(::SendMessage(hwnd, SCI_GETMARGINWIDTHN, 2, 0));
-
-        int foldMarginStart = margin0Width + margin1Width;
-        int foldMarginEnd = foldMarginStart + margin2Width;
-
-        if (x >= foldMarginStart && x < foldMarginEnd) {
-            // Click is in fold margin - handle it ourselves
-            Sci_Position pos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y);
-            int line = static_cast<int>(::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0));
-            int level = static_cast<int>(::SendMessage(hwnd, SCI_GETFOLDLEVEL, line, 0));
-
-            if (level & SC_FOLDLEVELHEADERFLAG) {
-                // This is a fold header line - toggle it
-                // Move cursor to line start first
-                Sci_Position lineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, line, 0);
-                ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStart, 0);
-
-                // Set horizontal scroll to 0
-                ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
-
-                // Toggle the fold
-                ::SendMessage(hwnd, SCI_TOGGLEFOLD, line, 0);
-
-                // Ensure horizontal scroll stays at 0
-                ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
-
-                return 0;  // We handled it
-            }
-        }
-        break;  // Let default handler process non-fold-margin clicks
-    }
-
     case WM_NOTIFY: {
         NMHDR* hdr = reinterpret_cast<NMHDR*>(lp);
         if (hdr->code == DMN_CLOSE) {
             ::SendMessage(nppData._nppHandle, NPPM_DMMHIDE, 0, reinterpret_cast<LPARAM>(hwnd));
             return TRUE;
+        }
+
+        SCNotification* scn = reinterpret_cast<SCNotification*>(lp);
+        if (scn->nmhdr.code == SCN_MARGINCLICK && scn->margin == 2) {
+            int line = static_cast<int>(::SendMessage(hwnd, SCI_LINEFROMPOSITION, scn->position, 0));
+            ::SendMessage(hwnd, SCI_TOGGLEFOLD, line, 0);
+            return 0;
         }
         break;
     }
@@ -2171,19 +2132,9 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
         const int level = static_cast<int>(::SendMessage(hwnd, SCI_GETFOLDLEVEL, dispLine, 0));
         if (level & SC_FOLDLEVELHEADERFLAG) {
-            // Move cursor to header line start to prevent auto-scroll to old cursor position
-            const Sci_Position foldLineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
-            ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, foldLineStart, 0);
-
-            // Reset horizontal scroll to left
-            ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
-
-            // Toggle the fold
             ::SendMessage(hwnd, SCI_TOGGLEFOLD, dispLine, 0);
-
-            // Ensure horizontal scroll stays at 0 after fold
-            ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
-
+            const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
+            ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStartPos, 0);
             return 0;
         }
 
@@ -2195,14 +2146,24 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         raw.resize(strnlen(raw.c_str(), lineLen));
         if (ResultDock::classify(raw) != LineKind::HitLine) return 0;
 
-        // O(1) lookup using line start position and prebuilt index
-        const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
-        auto& dock = ResultDock::instance();
-        auto it = dock._lineStartToHitIndex.find(static_cast<int>(lineStartPos));
-        if (it == dock._lineStartToHitIndex.end()) return 0;
+        int hitIndex = -1;
+        {
+            int count = -1;
+            const int totalLines = static_cast<int>(::SendMessage(hwnd, SCI_GETLINECOUNT, 0, 0));
+            const int last = (dispLine < totalLines) ? dispLine : (totalLines - 1);
+            for (int i = 0; i <= last; ++i) {
+                const int len = static_cast<int>(::SendMessage(hwnd, SCI_LINELENGTH, i, 0));
+                if (len <= 0) continue;
+                std::string buf(len, '\0');
+                ::SendMessage(hwnd, SCI_GETLINE, i, reinterpret_cast<LPARAM>(buf.data()));
+                buf.resize(strnlen(buf.c_str(), len));
+                if (ResultDock::classify(buf) == LineKind::HitLine)
+                    ++count;
+            }
+            hitIndex = count;
+        }
 
-        const int hitIndex = it->second;
-        const auto& hits = dock.hits();
+        const auto& hits = ResultDock::instance().hits();
         if (hitIndex < 0 || hitIndex >= (int)hits.size()) return 0;
         const Hit& hit = hits[(size_t)hitIndex];
 
@@ -2222,12 +2183,14 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         if (!isPseudo && ResultDock::IsCurrentDocByFullPath(pathToOpen)) {
             ResultDock::JumpSelectCenterActiveEditor(hit.pos, hit.length);
             ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
+            const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
             ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStartPos, 0);
             return 0;
         }
         if (isPseudo && ResultDock::IsCurrentDocByTitle(wPath)) {
             ResultDock::JumpSelectCenterActiveEditor(hit.pos, hit.length);
             ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
+            const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
             ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStartPos, 0);
             return 0;
         }
@@ -2245,6 +2208,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         }
 
         ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
+        const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
         ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStartPos, 0);
         return 0;
     }
@@ -2283,19 +2247,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             int line = static_cast<int>(::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0));
             int level = static_cast<int>(::SendMessage(hwnd, SCI_GETFOLDLEVEL, line, 0));
             if (level & SC_FOLDLEVELHEADERFLAG) {
-                // Move cursor to header line start to prevent auto-scroll
-                Sci_Position lineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, line, 0);
-                ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStart, 0);
-
-                // Reset horizontal scroll to left
-                ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
-
-                // Toggle the fold
                 ::SendMessage(hwnd, SCI_TOGGLEFOLD, line, 0);
-
-                // Ensure horizontal scroll stays at 0 after fold
-                ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
-
                 return 0;
             }
         }
@@ -2374,17 +2326,11 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
                     }
                 }
             }
-            // Move cursor to document start and reset horizontal scroll
-            ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, 0, 0);
-            ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
             return 0;
         }
 
         case IDM_RD_UNFOLD_ALL:
             ::SendMessage(hwnd, SCI_FOLDALL, SC_FOLDACTION_EXPAND, 0);
-            // Move cursor to document start and reset horizontal scroll
-            ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, 0, 0);
-            ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
             return 0;
 
             // ── copy ──────────────────────────────────────
