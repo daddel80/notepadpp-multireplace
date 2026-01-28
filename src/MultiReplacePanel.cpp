@@ -2478,6 +2478,8 @@ void MultiReplace::handleCopyToListButton() {
     useListEnabled = true;
     updateUseListState(true);
     adjustWindowSize();
+    ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_SHOW);
+    ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_SHOW);
 }
 
 void MultiReplace::resetCountColumns() {
