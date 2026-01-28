@@ -18,8 +18,6 @@
 
 #include <string>
 #include <vector>
-#include <functional>
-#include <regex>
 
 namespace StringUtils {
 
@@ -37,11 +35,11 @@ namespace StringUtils {
 
     std::string escapeForRegex(const std::string& input);
 
+    // Escape special regex/sed characters. In extended mode, preserves valid escape sequences.
     std::string escapeSpecialChars(const std::string& input, bool extended);
-    void        handleEscapeSequence(const std::regex& rx,
-        const std::string& in,
-        std::string& out,
-        std::function<char(const std::string&)> conv);
+
+    // Translate escape sequences (\n, \r, \t, \xHH, \oOOO, \dDDD, \bBBBBBBBB, \uHHHH) to their values.
+    // \n and \r become __NEWLINE__ and __CARRIAGERETURN__ placeholders for bash export.
     std::string translateEscapes(const std::string& input);
 
     // Replace '\n' / '\r' according to the active mode (Normal / Extended / Regex)

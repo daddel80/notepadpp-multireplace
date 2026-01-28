@@ -15,12 +15,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #include "StringUtils.h"
-#include "Encoding.h"   // only used in translateEscapes()
 
 #include <windows.h>    // MultiByteToWideChar, WideCharToMultiByte, CharLowerBuffW, GetLocaleInfoW
-#include <bitset>
 #include <algorithm>
-#include <cwctype>      // iswdigit
+#include <cctype>       // std::isdigit, std::isxdigit
+#include <cstdlib>      // std::strtol, std::atoi
 
 namespace StringUtils {
 
@@ -140,7 +139,7 @@ namespace StringUtils {
                 ++dotCount;
                 c = '.';
             }
-            else if (!iswdigit(static_cast<wint_t>(static_cast<unsigned char>(c)))) {
+            else if (!std::isdigit(static_cast<unsigned char>(c))) {
                 return false;
             }
             if (dotCount > 1) return false;
@@ -175,88 +174,168 @@ namespace StringUtils {
     // ----------------------------------------------------------------------------
     // Escape translation helpers
     // ----------------------------------------------------------------------------
-    void handleEscapeSequence(const std::regex& rx,
-        const std::string& in,
-        std::string& out,
-        std::function<char(const std::string&)> conv)
-    {
-        std::sregex_iterator it(in.begin(), in.end(), rx);
-        std::sregex_iterator end;
-        for (; it != end; ++it) {
-            std::smatch m = *it;
-            std::string token = m.str();
-            try {
-                char ch = conv(token);
-                size_t pos = out.find(token);
-                if (pos != std::string::npos) {
-                    out.replace(pos, token.size(), 1, ch);
+
+    // Process all escape sequences in a single pass (efficient, handles duplicates correctly)
+    std::string translateEscapes(const std::string& input) {
+        if (input.empty()) return input;
+
+        std::string output;
+        output.reserve(input.size());
+
+        size_t i = 0;
+        while (i < input.size()) {
+            // Check for backslash escape sequence
+            if (input[i] == '\\' && i + 1 < input.size()) {
+                char next = input[i + 1];
+
+                // \n -> placeholder
+                if (next == 'n') {
+                    output += "__NEWLINE__";
+                    i += 2;
+                    continue;
                 }
-            }
-            catch (...) {
-                // keep literal on conversion failure
-            }
-        }
-    }
-
-    std::string escapeSpecialChars(const std::string& input, bool extended) {
-        std::string output = input;
-
-        const std::string supported = "nrt0xubd";
-        const std::string specials = "$.*[]^&\\{}()?+|<>\"'`~;#";
-
-        for (char c : specials) {
-            std::string needle(1, c);
-            size_t pos = output.find(needle);
-
-            while (pos != std::string::npos) {
-                if (needle == "\\" && (pos == 0 || output[pos - 1] != '\\')) {
-                    if (extended && (pos + 1 < output.size() &&
-                        supported.find(output[pos + 1]) != std::string::npos)) {
-                        pos = output.find(needle, pos + 1);
+                // \r -> placeholder
+                if (next == 'r') {
+                    output += "__CARRIAGERETURN__";
+                    i += 2;
+                    continue;
+                }
+                // \t -> tab
+                if (next == 't') {
+                    output += '\t';
+                    i += 2;
+                    continue;
+                }
+                // \0 -> skip (not supported)
+                if (next == '0' && (i + 2 >= input.size() || !std::isdigit(static_cast<unsigned char>(input[i + 2])))) {
+                    i += 2;
+                    continue;
+                }
+                // \xHH -> hex byte
+                if (next == 'x' && i + 3 < input.size()) {
+                    char h1 = input[i + 2], h2 = input[i + 3];
+                    if (std::isxdigit(static_cast<unsigned char>(h1)) &&
+                        std::isxdigit(static_cast<unsigned char>(h2))) {
+                        char hex[3] = { h1, h2, '\0' };
+                        output += static_cast<char>(std::strtol(hex, nullptr, 16));
+                        i += 4;
                         continue;
                     }
                 }
-                output.insert(pos, "\\");
-                pos = output.find(needle, pos + 2);
+                // \oOOO -> octal byte (3 digits)
+                if (next == 'o' && i + 4 < input.size()) {
+                    bool valid = true;
+                    for (int j = 0; j < 3 && valid; ++j) {
+                        char c = input[i + 2 + j];
+                        if (c < '0' || c > '7') valid = false;
+                    }
+                    if (valid) {
+                        char oct[4] = { input[i + 2], input[i + 3], input[i + 4], '\0' };
+                        output += static_cast<char>(std::strtol(oct, nullptr, 8));
+                        i += 5;
+                        continue;
+                    }
+                }
+                // \dDDD -> decimal byte (3 digits)
+                if (next == 'd' && i + 4 < input.size()) {
+                    bool valid = true;
+                    for (int j = 0; j < 3 && valid; ++j) {
+                        if (!std::isdigit(static_cast<unsigned char>(input[i + 2 + j]))) valid = false;
+                    }
+                    if (valid) {
+                        char dec[4] = { input[i + 2], input[i + 3], input[i + 4], '\0' };
+                        int val = std::atoi(dec);
+                        if (val <= 255) {
+                            output += static_cast<char>(val);
+                            i += 5;
+                            continue;
+                        }
+                    }
+                }
+                // \bBBBBBBBB -> binary byte (8 digits)
+                if (next == 'b' && i + 9 < input.size()) {
+                    bool valid = true;
+                    for (int j = 0; j < 8 && valid; ++j) {
+                        char c = input[i + 2 + j];
+                        if (c != '0' && c != '1') valid = false;
+                    }
+                    if (valid) {
+                        unsigned char val = 0;
+                        for (int j = 0; j < 8; ++j) {
+                            val = (val << 1) | (input[i + 2 + j] - '0');
+                        }
+                        output += static_cast<char>(val);
+                        i += 10;
+                        continue;
+                    }
+                }
+                // \uHHHH -> Unicode codepoint (4 hex digits) -> UTF-8
+                if (next == 'u' && i + 5 < input.size()) {
+                    bool valid = true;
+                    for (int j = 0; j < 4 && valid; ++j) {
+                        if (!std::isxdigit(static_cast<unsigned char>(input[i + 2 + j]))) valid = false;
+                    }
+                    if (valid) {
+                        char hex[5] = { input[i + 2], input[i + 3], input[i + 4], input[i + 5], '\0' };
+                        int codepoint = static_cast<int>(std::strtol(hex, nullptr, 16));
+                        // Convert to UTF-8
+                        if (codepoint < 0x80) {
+                            output += static_cast<char>(codepoint);
+                        }
+                        else if (codepoint < 0x800) {
+                            output += static_cast<char>(0xC0 | (codepoint >> 6));
+                            output += static_cast<char>(0x80 | (codepoint & 0x3F));
+                        }
+                        else {
+                            output += static_cast<char>(0xE0 | (codepoint >> 12));
+                            output += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+                            output += static_cast<char>(0x80 | (codepoint & 0x3F));
+                        }
+                        i += 6;
+                        continue;
+                    }
+                }
             }
+
+            // No escape sequence matched - copy character as-is
+            output += input[i];
+            ++i;
         }
+
         return output;
     }
 
-    std::string translateEscapes(const std::string& input) {
-        std::string output = input;
+    // Escape special regex/sed characters in a string (single-pass, efficient)
+    std::string escapeSpecialChars(const std::string& input, bool extended) {
+        if (input.empty()) return input;
 
-        std::regex reOct("\\\\o([0-7]{3})");
-        std::regex reDec("\\\\d([0-9]{3})");
-        std::regex reHex("\\\\x([0-9a-fA-F]{2})");
-        std::regex reBin("\\\\b([01]{8})");
-        std::regex reUni("\\\\u([0-9a-fA-F]{4})");
-        std::regex reNL("\\\\n");
-        std::regex reCR("\\\\r");
-        std::regex reNul("\\\\0");
+        // Characters that need escaping for sed/regex
+        static const std::string specials = "$.*[]^&\\{}()?+|<>\"'`~;#";
+        // Escape sequences to preserve in extended mode
+        static const std::string extendedEscapes = "nrt0xubd";
 
-        handleEscapeSequence(reOct, input, output,
-            [](const std::string& s) { return static_cast<char>(std::stoi(s.substr(2), nullptr, 8)); });
-        handleEscapeSequence(reDec, input, output,
-            [](const std::string& s) { return static_cast<char>(std::stoi(s.substr(2))); });
-        handleEscapeSequence(reHex, input, output,
-            [](const std::string& s) { return static_cast<char>(std::stoi(s.substr(2), nullptr, 16)); });
-        handleEscapeSequence(reBin, input, output,
-            [](const std::string& s) { return static_cast<char>(std::bitset<8>(s.substr(2)).to_ulong()); });
+        std::string output;
+        output.reserve(input.size() * 2);  // Worst case: every char escaped
 
-        // \uXXXX → UTF-8, first byte (as used in panel)
-        handleEscapeSequence(reUni, input, output,
-            [](const std::string& s)->char {
-                int cp = std::stoi(s.substr(2), nullptr, 16);
-                std::wstring w(1, static_cast<wchar_t>(cp));
-                std::string utf8 = Encoding::wstringToUtf8(w);
-                return utf8.empty() ? 0 : utf8.front();
-            });
+        for (size_t i = 0; i < input.size(); ++i) {
+            char c = input[i];
 
-        // simple escapes → placeholders (Extended-mode downstream)
-        output = std::regex_replace(output, reNL, "__NEWLINE__");
-        output = std::regex_replace(output, reCR, "__CARRIAGERETURN__");
-        output = std::regex_replace(output, reNul, ""); // \0 not supported
+            if (specials.find(c) != std::string::npos) {
+                // Special handling for backslash in extended mode
+                if (c == '\\' && extended && i + 1 < input.size()) {
+                    char next = input[i + 1];
+                    if (extendedEscapes.find(next) != std::string::npos) {
+                        // Preserve escape sequence (don't escape the backslash)
+                        output += c;
+                        continue;
+                    }
+                }
+                // Escape the special character
+                output += '\\';
+            }
+            output += c;
+        }
+
         return output;
     }
 
@@ -271,12 +350,18 @@ namespace StringUtils {
             result.erase(std::remove(result.begin(), result.end(), '\r'), result.end());
         }
         else if (mode == ReplaceMode::Extended) {
-            result = std::regex_replace(result, std::regex("\n"), "__NEWLINE__");
-            result = std::regex_replace(result, std::regex("\r"), "__CARRIAGERETURN__");
+            // Replace \n and \r with placeholders (no regex needed)
+            for (size_t pos = 0; (pos = result.find('\n', pos)) != std::string::npos; pos += 11)
+                result.replace(pos, 1, "__NEWLINE__");
+            for (size_t pos = 0; (pos = result.find('\r', pos)) != std::string::npos; pos += 18)
+                result.replace(pos, 1, "__CARRIAGERETURN__");
         }
         else if (mode == ReplaceMode::Regex) {
-            result = std::regex_replace(result, std::regex("\n"), "\\n");
-            result = std::regex_replace(result, std::regex("\r"), "\\r");
+            // Replace \n and \r with escape sequences (no regex needed)
+            for (size_t pos = 0; (pos = result.find('\n', pos)) != std::string::npos; pos += 2)
+                result.replace(pos, 1, "\\n");
+            for (size_t pos = 0; (pos = result.find('\r', pos)) != std::string::npos; pos += 2)
+                result.replace(pos, 1, "\\r");
         }
         return result;
     }
