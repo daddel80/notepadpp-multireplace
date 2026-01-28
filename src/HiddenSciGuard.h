@@ -18,12 +18,12 @@
 
 #include <windows.h>
 #include <shlwapi.h>           // For PathMatchSpecW
-#include <cstring>             // For std::memchr
 #include <string>
 #include <vector>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <cstring>             // For std::memchr
 #include "Notepad_plus_msgs.h" // For NPPM_*
 #include "Scintilla.h"         // For SCI_*
 #pragma comment(lib, "shlwapi.lib")
@@ -238,10 +238,11 @@ public:
     }
 
     // Check if content is binary by looking for NULL bytes
-    // Uses memchr for optimal performance (10-50x faster than manual loop)
+    // This is the industry standard approach (same as grep)
     bool hasNullBytes(const char* data, size_t len) const
     {
         const size_t checkLen = (len < BINARY_CHECK_SIZE) ? len : BINARY_CHECK_SIZE;
+        // std::memchr is highly optimized (uses SIMD on modern CPUs)
         return std::memchr(data, '\0', checkLen) != nullptr;
     }
 
@@ -283,31 +284,36 @@ public:
             std::ifstream in(fp, std::ios::binary);
             if (!in) return false;
 
-            // Reserve space for full file
-            out.reserve(static_cast<size_t>(fileSize));
+            // Determine how much to read for binary check
+            const size_t headerSize = (fileSize < BINARY_CHECK_SIZE)
+                ? static_cast<size_t>(fileSize)
+                : BINARY_CHECK_SIZE;
 
-            // Read header for binary detection
-            out.resize(BINARY_CHECK_SIZE < fileSize ? BINARY_CHECK_SIZE : static_cast<size_t>(fileSize));
-            in.read(out.data(), out.size());
-            std::streamsize headerLen = in.gcount();
-            out.resize(static_cast<size_t>(headerLen));
+            // Read header directly into output buffer
+            out.resize(headerSize);
+            in.read(out.data(), headerSize);
+            const std::streamsize headerLen = in.gcount();
 
-            // Check if binary - skip if so
-            if (headerLen > 0 && shouldSkipAsBinary(out.data(), static_cast<size_t>(headerLen)))
-            {
-                ++_skippedBinaryCount;
+            if (headerLen <= 0) {
                 out.clear();
                 return false;
             }
 
-            // Not binary - read remainder directly into output buffer (header already there)
-            if (fileSize > BINARY_CHECK_SIZE)
+            // Check if binary using the data already in out
+            if (shouldSkipAsBinary(out.data(), static_cast<size_t>(headerLen)))
             {
-                size_t remainingSize = static_cast<size_t>(fileSize) - static_cast<size_t>(headerLen);
-                size_t currentSize = out.size();
-                out.resize(currentSize + remainingSize);
-                in.read(out.data() + currentSize, remainingSize);
-                out.resize(currentSize + static_cast<size_t>(in.gcount()));
+                out.clear();
+                ++_skippedBinaryCount;
+                return false;
+            }
+
+            // Not binary - append remainder if file is larger than header
+            if (fileSize > headerSize)
+            {
+                const size_t remaining = static_cast<size_t>(fileSize) - headerSize;
+                const size_t currentSize = static_cast<size_t>(headerLen);
+                out.resize(currentSize + remaining);
+                in.read(out.data() + currentSize, remaining);
             }
 
             return true;
