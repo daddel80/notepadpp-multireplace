@@ -18,7 +18,12 @@
 
 // Constructor: Initializes DPI values.
 DPIManager::DPIManager(HWND hwnd)
-    : _hwnd(hwnd), _dpiX(96), _dpiY(96), _customScaleFactor(1.0f)
+    : _hwnd(hwnd)
+    , _dpiX(96)
+    , _dpiY(96)
+    , _customScaleFactor(1.0f)
+    , _isSystemMetricsForDpiSupported(false)
+    , _pGetSystemMetricsForDpi(nullptr)
 {
     init();
 }
@@ -34,12 +39,13 @@ void DPIManager::init()
 {
     UINT dpiX = 96, dpiY = 96;  // Default DPI (96 is the standard base DPI)
 
-    // Step 1: Try to load Shcore.dll for modern DPI API
+    // Step 1: Try to load Shcore.dll for modern DPI API (Windows 8.1+)
     HMODULE hShcore = LoadLibrary(TEXT("Shcore.dll"));
     if (hShcore)
     {
         typedef HRESULT(WINAPI* GetDpiForMonitorFunc)(HMONITOR, MONITOR_DPI_TYPE, UINT*, UINT*);
-        GetDpiForMonitorFunc pGetDpiForMonitor = (GetDpiForMonitorFunc)GetProcAddress(hShcore, "GetDpiForMonitor");
+        GetDpiForMonitorFunc pGetDpiForMonitor =
+            (GetDpiForMonitorFunc)GetProcAddress(hShcore, "GetDpiForMonitor");
 
         if (pGetDpiForMonitor)
         {
@@ -54,18 +60,18 @@ void DPIManager::init()
                 HDC hdc = GetDC(_hwnd);
                 if (hdc)
                 {
-                    dpiX = GetDeviceCaps(hdc, LOGPIXELSX); // Fallback to GetDeviceCaps
+                    dpiX = GetDeviceCaps(hdc, LOGPIXELSX);
                     dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
                     ReleaseDC(_hwnd, hdc);
                 }
             }
         }
 
-        FreeLibrary(hShcore);  // Cleanup Shcore.dll
+        FreeLibrary(hShcore);
     }
     else
     {
-        // If Shcore.dll isn't available, use GetDeviceCaps directly
+        // If Shcore.dll isn't available (Windows 7), use GetDeviceCaps directly
         HDC hdc = GetDC(_hwnd);
         if (hdc)
         {
@@ -75,13 +81,15 @@ void DPIManager::init()
         }
     }
 
-    // Step 2: Optionally check for GetSystemMetricsForDpi support for DPI-aware system metrics
-    HMODULE hUser32 = LoadLibrary(TEXT("User32.dll"));
+    // Step 2: Check for GetSystemMetricsForDpi support (Windows 10 1607+)
+    // Use GetModuleHandle since User32.dll is always loaded
+    HMODULE hUser32 = GetModuleHandle(TEXT("User32.dll"));
     if (hUser32)
     {
-        _pGetSystemMetricsForDpi = (decltype(GetSystemMetricsForDpi)*)GetProcAddress(hUser32, "GetSystemMetricsForDpi");
+        _pGetSystemMetricsForDpi =
+            (decltype(GetSystemMetricsForDpi)*)GetProcAddress(hUser32, "GetSystemMetricsForDpi");
         _isSystemMetricsForDpiSupported = (_pGetSystemMetricsForDpi != nullptr);
-        FreeLibrary(hUser32);
+        // No FreeLibrary needed for GetModuleHandle
     }
 
     // Store the DPI values
@@ -104,8 +112,8 @@ int DPIManager::getCustomMetricOrFallback(int nIndex, UINT dpi, int fallbackValu
 // Updates the DPI values, typically called when DPI changes.
 void DPIManager::updateDPI(HWND hwnd)
 {
-    _hwnd = hwnd; // Update window handle in case it has changed.
-    init();       // Reinitialize DPI values.
+    _hwnd = hwnd;  // Update window handle in case it has changed.
+    init();        // Reinitialize DPI values.
 }
 
 // Scales a RECT structure.

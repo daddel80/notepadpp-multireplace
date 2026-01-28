@@ -2548,19 +2548,19 @@ void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
     switch (menuId) {
     case IDM_TOGGLE_FIND_COUNT:
         isFindCountVisible = !isFindCountVisible;
-        CFG.writeInt(L"ListColumns", L"FindCountVisible", isFindCountVisible ? 1 : 0);
+        CFG.writeBool(L"ListColumns", L"FindCountVisible", isFindCountVisible);
         break;
     case IDM_TOGGLE_REPLACE_COUNT:
         isReplaceCountVisible = !isReplaceCountVisible;
-        CFG.writeInt(L"ListColumns", L"ReplaceCountVisible", isReplaceCountVisible ? 1 : 0);
+        CFG.writeBool(L"ListColumns", L"ReplaceCountVisible", isReplaceCountVisible);
         break;
     case IDM_TOGGLE_COMMENTS:
         isCommentsColumnVisible = !isCommentsColumnVisible;
-        CFG.writeInt(L"ListColumns", L"CommentsVisible", isCommentsColumnVisible ? 1 : 0);
+        CFG.writeBool(L"ListColumns", L"CommentsVisible", isCommentsColumnVisible);
         break;
     case IDM_TOGGLE_DELETE:
         isDeleteButtonVisible = !isDeleteButtonVisible;
-        CFG.writeInt(L"ListColumns", L"DeleteButtonVisible", isDeleteButtonVisible ? 1 : 0);
+        CFG.writeBool(L"ListColumns", L"DeleteButtonVisible", isDeleteButtonVisible);
         break;
     default:
         return; // Unhandled menu ID
@@ -13149,29 +13149,29 @@ MultiReplace::Settings MultiReplace::getSettings()
 void MultiReplace::writeStructToConfig(const Settings& s)
 {
     // Write all logic options to ConfigManager
-    CFG.writeInt(L"Options", L"Tooltips", s.tooltipsEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"ExportToBash", s.exportToBashEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"MuteSounds", s.muteSounds ? 1 : 0);
-    CFG.writeInt(L"Options", L"DoubleClickEdits", s.doubleClickEditsEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"HighlightMatch", s.highlightMatchEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"FlowTabsIntroDontShow", s.flowTabsIntroDontShowEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"FlowTabsNumericAlign", s.flowTabsNumericAlignEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"HoverText", s.isHoverTextEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"ListStatistics", s.listStatisticsEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"StayAfterReplace", s.stayAfterReplaceEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"GroupResults", s.groupResultsEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"AllFromCursor", s.allFromCursorEnabled ? 1 : 0);
-    CFG.writeInt(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled ? 1 : 0);
+    CFG.writeBool(L"Options", L"Tooltips", s.tooltipsEnabled);
+    CFG.writeBool(L"Options", L"ExportToBash", s.exportToBashEnabled);
+    CFG.writeBool(L"Options", L"MuteSounds", s.muteSounds);
+    CFG.writeBool(L"Options", L"DoubleClickEdits", s.doubleClickEditsEnabled);
+    CFG.writeBool(L"Options", L"HighlightMatch", s.highlightMatchEnabled);
+    CFG.writeBool(L"Options", L"FlowTabsIntroDontShow", s.flowTabsIntroDontShowEnabled);
+    CFG.writeBool(L"Options", L"FlowTabsNumericAlign", s.flowTabsNumericAlignEnabled);
+    CFG.writeBool(L"Options", L"HoverText", s.isHoverTextEnabled);
+    CFG.writeBool(L"Options", L"ListStatistics", s.listStatisticsEnabled);
+    CFG.writeBool(L"Options", L"StayAfterReplace", s.stayAfterReplaceEnabled);
+    CFG.writeBool(L"Options", L"GroupResults", s.groupResultsEnabled);
+    CFG.writeBool(L"Options", L"AllFromCursor", s.allFromCursorEnabled);
+    CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", s.maxFileSizeMB);
-    CFG.writeInt(L"ListColumns", L"FindCountVisible", s.isFindCountVisible ? 1 : 0);
-    CFG.writeInt(L"ListColumns", L"ReplaceCountVisible", s.isReplaceCountVisible ? 1 : 0);
-    CFG.writeInt(L"ListColumns", L"CommentsVisible", s.isCommentsColumnVisible ? 1 : 0);
-    CFG.writeInt(L"ListColumns", L"DeleteButtonVisible", s.isDeleteButtonVisible ? 1 : 0);
+    CFG.writeBool(L"ListColumns", L"FindCountVisible", s.isFindCountVisible);
+    CFG.writeBool(L"ListColumns", L"ReplaceCountVisible", s.isReplaceCountVisible);
+    CFG.writeBool(L"ListColumns", L"CommentsVisible", s.isCommentsColumnVisible);
+    CFG.writeBool(L"ListColumns", L"DeleteButtonVisible", s.isDeleteButtonVisible);
     CFG.writeInt(L"Options", L"EditFieldSize", s.editFieldSize);
     CFG.writeInt(L"Scope", L"HeaderLines", s.csvHeaderLinesCount);
-    CFG.writeInt(L"Options", L"ResultDockPerEntryColors", s.resultDockPerEntryColorsEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"UseListColorsForMarking", s.useListColorsForMarking ? 1 : 0);
-    CFG.writeInt(L"Options", L"DuplicateBookmarks", s.duplicateBookmarksEnabled ? 1 : 0);
+    CFG.writeBool(L"Options", L"ResultDockPerEntryColors", s.resultDockPerEntryColorsEnabled);
+    CFG.writeBool(L"Options", L"UseListColorsForMarking", s.useListColorsForMarking);
+    CFG.writeBool(L"Options", L"DuplicateBookmarks", s.duplicateBookmarksEnabled);
 }
 
 void MultiReplace::loadConfigOnce()
@@ -13195,16 +13195,11 @@ void MultiReplace::syncUIToCache()
     }
     CFG.writeInt(L"Window", L"Height", useListOnHeight);
 
-    // ScaleFactor: truncate to 1 decimal place like original code
-    std::wstring scaleStr = std::to_wstring(dpiMgr->getCustomScaleFactor());
-    size_t dotPos = scaleStr.find(L'.');
-    if (dotPos != std::wstring::npos && dotPos + 2 < scaleStr.length()) {
-        scaleStr = scaleStr.substr(0, dotPos + 2);
-    }
-    CFG.writeString(L"Window", L"ScaleFactor", scaleStr);
+    // ScaleFactor
+    CFG.writeFloat(L"Window", L"ScaleFactor", dpiMgr->getCustomScaleFactor());
 
-    CFG.writeInt(L"Window", L"ForegroundTransparency", foregroundTransparency);
-    CFG.writeInt(L"Window", L"BackgroundTransparency", backgroundTransparency);
+    CFG.writeByte(L"Window", L"ForegroundTransparency", static_cast<BYTE>(foregroundTransparency));
+    CFG.writeByte(L"Window", L"BackgroundTransparency", static_cast<BYTE>(backgroundTransparency));
 
     // Column Widths
     if (_replaceListView) {
@@ -13226,53 +13221,53 @@ void MultiReplace::syncUIToCache()
     CFG.writeInt(L"ListColumns", L"ReplaceWidth", replaceColumnWidth);
     CFG.writeInt(L"ListColumns", L"CommentsWidth", commentsColumnWidth);
 
-    CFG.writeInt(L"ListColumns", L"FindCountVisible", isFindCountVisible ? 1 : 0);
-    CFG.writeInt(L"ListColumns", L"ReplaceCountVisible", isReplaceCountVisible ? 1 : 0);
-    CFG.writeInt(L"ListColumns", L"CommentsVisible", isCommentsColumnVisible ? 1 : 0);
-    CFG.writeInt(L"ListColumns", L"DeleteButtonVisible", isDeleteButtonVisible ? 1 : 0);
-    CFG.writeInt(L"ListColumns", L"FindColumnLocked", findColumnLockedEnabled ? 1 : 0);
-    CFG.writeInt(L"ListColumns", L"ReplaceColumnLocked", replaceColumnLockedEnabled ? 1 : 0);
-    CFG.writeInt(L"ListColumns", L"CommentsColumnLocked", commentsColumnLockedEnabled ? 1 : 0);
+    CFG.writeBool(L"ListColumns", L"FindCountVisible", isFindCountVisible);
+    CFG.writeBool(L"ListColumns", L"ReplaceCountVisible", isReplaceCountVisible);
+    CFG.writeBool(L"ListColumns", L"CommentsVisible", isCommentsColumnVisible);
+    CFG.writeBool(L"ListColumns", L"DeleteButtonVisible", isDeleteButtonVisible);
+    CFG.writeBool(L"ListColumns", L"FindColumnLocked", findColumnLockedEnabled);
+    CFG.writeBool(L"ListColumns", L"ReplaceColumnLocked", replaceColumnLockedEnabled);
+    CFG.writeBool(L"ListColumns", L"CommentsColumnLocked", commentsColumnLockedEnabled);
 
     // Current Find/Replace Text
     CFG.writeString(L"Current", L"FindText", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)));
     CFG.writeString(L"Current", L"ReplaceText", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT)));
 
     // Search Options
-    CFG.writeInt(L"Options", L"WholeWord", IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? 1 : 0);
-    CFG.writeInt(L"Options", L"MatchCase", IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? 1 : 0);
-    CFG.writeInt(L"Options", L"Extended", IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED ? 1 : 0);
-    CFG.writeInt(L"Options", L"Regex", IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? 1 : 0);
-    CFG.writeInt(L"Options", L"WrapAround", IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED ? 1 : 0);
-    CFG.writeInt(L"Options", L"UseVariables", IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED ? 1 : 0);
-    CFG.writeInt(L"Options", L"ReplaceAtMatches", IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED ? 1 : 0);
-    CFG.writeInt(L"Options", L"ButtonsMode", IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0);
-    CFG.writeInt(L"Options", L"UseList", useListEnabled ? 1 : 0);
+    CFG.writeBool(L"Options", L"WholeWord", IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+    CFG.writeBool(L"Options", L"MatchCase", IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+    CFG.writeBool(L"Options", L"Extended", IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+    CFG.writeBool(L"Options", L"Regex", IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+    CFG.writeBool(L"Options", L"WrapAround", IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+    CFG.writeBool(L"Options", L"UseVariables", IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
+    CFG.writeBool(L"Options", L"ReplaceAtMatches", IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED);
+    CFG.writeBool(L"Options", L"ButtonsMode", IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED);
+    CFG.writeBool(L"Options", L"UseList", useListEnabled);
     CFG.writeString(L"Options", L"EditAtMatches", L"\"" + getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT) + L"\"");
 
     // Config-managed Options
-    CFG.writeInt(L"Options", L"Tooltips", tooltipsEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"HighlightMatch", highlightMatchEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"FlowTabsIntroDontShow", flowTabsIntroDontShowEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"FlowTabsNumericAlign", flowTabsNumericAlignEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"ExportToBash", exportToBashEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"MuteSounds", muteSounds ? 1 : 0);
-    CFG.writeInt(L"Options", L"DoubleClickEdits", doubleClickEditsEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"HoverText", isHoverTextEnabled ? 1 : 0);
+    CFG.writeBool(L"Options", L"Tooltips", tooltipsEnabled);
+    CFG.writeBool(L"Options", L"HighlightMatch", highlightMatchEnabled);
+    CFG.writeBool(L"Options", L"FlowTabsIntroDontShow", flowTabsIntroDontShowEnabled);
+    CFG.writeBool(L"Options", L"FlowTabsNumericAlign", flowTabsNumericAlignEnabled);
+    CFG.writeBool(L"Options", L"ExportToBash", exportToBashEnabled);
+    CFG.writeBool(L"Options", L"MuteSounds", muteSounds);
+    CFG.writeBool(L"Options", L"DoubleClickEdits", doubleClickEditsEnabled);
+    CFG.writeBool(L"Options", L"HoverText", isHoverTextEnabled);
     CFG.writeInt(L"Options", L"EditFieldSize", editFieldSize);
-    CFG.writeInt(L"Options", L"ListStatistics", listStatisticsEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"StayAfterReplace", stayAfterReplaceEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"AllFromCursor", allFromCursorEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"GroupResults", groupResultsEnabled ? 1 : 0);
-    CFG.writeInt(L"Options", L"DockWrap", ResultDock::wrapEnabled() ? 1 : 0);
-    CFG.writeInt(L"Options", L"DockPurge", ResultDock::purgeEnabled() ? 1 : 0);
+    CFG.writeBool(L"Options", L"ListStatistics", listStatisticsEnabled);
+    CFG.writeBool(L"Options", L"StayAfterReplace", stayAfterReplaceEnabled);
+    CFG.writeBool(L"Options", L"AllFromCursor", allFromCursorEnabled);
+    CFG.writeBool(L"Options", L"GroupResults", groupResultsEnabled);
+    CFG.writeBool(L"Options", L"DockWrap", ResultDock::wrapEnabled());
+    CFG.writeBool(L"Options", L"DockPurge", ResultDock::purgeEnabled());
 
     // Lua Options
-    CFG.writeInt(L"Lua", L"SafeMode", luaSafeModeEnabled ? 1 : 0);
+    CFG.writeBool(L"Lua", L"SafeMode", luaSafeModeEnabled);
 
     // Scope Settings
-    CFG.writeInt(L"Scope", L"Selection", IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0);
-    CFG.writeInt(L"Scope", L"ColumnMode", IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED ? 1 : 0);
+    CFG.writeBool(L"Scope", L"Selection", IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    CFG.writeBool(L"Scope", L"ColumnMode", IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
     CFG.writeString(L"Scope", L"ColumnNum", L"\"" + getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT) + L"\"");
     CFG.writeString(L"Scope", L"Delimiter", L"\"" + getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT) + L"\"");
     CFG.writeString(L"Scope", L"QuoteChar", L"\"" + getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT) + L"\"");
@@ -13281,9 +13276,9 @@ void MultiReplace::syncUIToCache()
     // Replace in Files Settings
     CFG.writeString(L"ReplaceInFiles", L"Filter", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT)));
     CFG.writeString(L"ReplaceInFiles", L"Directory", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_DIR_EDIT)));
-    CFG.writeInt(L"ReplaceInFiles", L"InSubfolders", IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED ? 1 : 0);
-    CFG.writeInt(L"ReplaceInFiles", L"InHiddenFolders", IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED ? 1 : 0);
-    CFG.writeInt(L"ReplaceInFiles", L"LimitFileSize", limitFileSizeEnabled ? 1 : 0);
+    CFG.writeBool(L"ReplaceInFiles", L"InSubfolders", IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED);
+    CFG.writeBool(L"ReplaceInFiles", L"InHiddenFolders", IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED);
+    CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", static_cast<int>(maxFileSizeMB));
 
     // File Info

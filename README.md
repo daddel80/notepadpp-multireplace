@@ -122,7 +122,7 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
 - **Quote** — Specify a quote character (`"` or `'`) to ignore delimiters within quoted text.
 
 **Available Column Operations:**
-- **Sorting Lines by Columns** — Sort lines based on one or more columns in ascending or descending order. The sorting algorithm correctly handles mixed numeric and text values.
+- **Sorting Lines by Columns** — Sort lines based on one or more columns in ascending or descending order. The sorting algorithm correctly handles mixed numeric and text values, including currency formats like `$100`, `100 EUR`, or `.5`.
   - **Smart Undo (Toggle Sort)** — A second click on the same sort button reverts the lines to their original order. This powerful undo works even if rows have been modified, added, or deleted after the initial sort.
   - **Exclude Header Lines** — You can protect header rows from being sorted. Configure the number of header rows in [Settings > CSV Options](#3-csv-options).
 - **Deleting Multiple Columns** — Remove specified columns at once, automatically cleaning up obsolete delimiters.
@@ -294,7 +294,7 @@ Evaluates the condition and outputs `trueVal` if the condition is true, otherwis
 
 Initializes custom variables for use in various commands, extending beyond standard variables like `CNT`, `MATCH`, `CAP1`. These variables can carry the status of previous find-and-replace operations to subsequent ones.
 
-Custom variables persist from match to match within a single **'Replace All'** operation and can transfer values between list entries. Each new operation (**button click**) starts with a fresh state. In multi-file replacements, variables also reset at each **document switch**.
+Custom variables persist from match to match within a single **'Replace All'** operation and can transfer values between list entries. Each new operation (**button click**) starts with a fresh state. In multi-document or multi-file replacements, variables **persist across documents**. Use `FPATH` or `FNAME` to detect document changes and reset variables conditionally if needed.
 
 **Init usage:** Can be used as an init entry (empty Find) to preload before replacements; not mandatory. See [Preload Variables and Helpers](#preload-variables-and-helpers) for workflow and examples.
 

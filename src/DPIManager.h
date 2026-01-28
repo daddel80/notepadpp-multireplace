@@ -14,13 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef DPIMANAGER_H
-#define DPIMANAGER_H
+#pragma once
 
 #include <windows.h>
 #include <shellscalingapi.h>
 #include <algorithm>
-
 
 // DPIManager class handles DPI awareness and scaling for UI elements.
 class DPIManager
@@ -35,8 +33,8 @@ public:
     // Getter for custom scale factor
     float getCustomScaleFactor() const { return _customScaleFactor; }
 
-    // Setter for custom scale factor
-    void DPIManager::setCustomScaleFactor(float scaleFactor) {
+    // Setter for custom scale factor (clamped to 50%-200%)
+    void setCustomScaleFactor(float scaleFactor) {
         _customScaleFactor = std::clamp(scaleFactor, 0.5f, 2.0f);
     }
 
@@ -48,9 +46,9 @@ public:
     int scaleX(int x) const { return static_cast<int>(MulDiv(x, _dpiX, 96) * _customScaleFactor); }
     int scaleY(int y) const { return static_cast<int>(MulDiv(y, _dpiY, 96) * _customScaleFactor); }
 
-    // Converts scaled pixels back to raw pixels.
-    int unscaleX(int x) const { return MulDiv(x, 96, _dpiX); }
-    int unscaleY(int y) const { return MulDiv(y, 96, _dpiY); }
+    // Converts scaled pixels back to raw pixels, includes the custom scale factor.
+    int unscaleX(int x) const { return static_cast<int>(MulDiv(x, 96, _dpiX) / _customScaleFactor); }
+    int unscaleY(int y) const { return static_cast<int>(MulDiv(y, 96, _dpiY) / _customScaleFactor); }
 
     // Scales a RECT structure.
     void scaleRect(RECT* pRect) const;
@@ -66,17 +64,15 @@ public:
 
     // Function for custom metrics with fallback.
     int getCustomMetricOrFallback(int nIndex, UINT dpi, int fallbackValue) const;
-    
+
 private:
-    HWND _hwnd;  // Handle to the window.
-    int _dpiX;   // Horizontal DPI.
-    int _dpiY;   // Vertical DPI.
-    float _customScaleFactor; // Custom scaling factor stored INI file.
+    HWND _hwnd;   // Handle to the window.
+    int _dpiX;    // Horizontal DPI.
+    int _dpiY;    // Vertical DPI.
+    float _customScaleFactor;  // Custom scaling factor stored in INI file.
     bool _isSystemMetricsForDpiSupported;  // To check if GetSystemMetricsForDpi is supported
-    decltype(GetSystemMetricsForDpi)* _pGetSystemMetricsForDpi; // Pointer to the function
+    decltype(GetSystemMetricsForDpi)* _pGetSystemMetricsForDpi;  // Pointer to the function
 
     // Initializes the DPI values.
     void init();
 };
-
-#endif // DPIMANAGER_H

@@ -15,263 +15,305 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #include "NumericToken.h"
-#include <stdexcept>
+#include <charconv>
 
-namespace mr { namespace num {
+namespace mr {
+    namespace num {
 
-    // --- helpers -------------------------------------------------------------
+        // =========================================================================
+        // Internal Constants
+        // =========================================================================
 
-    static inline bool is_ascii_digit(unsigned char c) noexcept {
-        return c >= '0' && c <= '9';
-    }
+        // Maximum length for currency/unit prefix or suffix (e.g. "$", "USD", "€")
+        static constexpr std::size_t MAX_AFFIX_LENGTH = 4;
 
-    // Find start: DIGIT or SIGN+DIGIT; fallback (opt.): SIGN? + ('.'|',') + DIGIT
-    static std::size_t find_token_start(std::string_view s, bool allowLeadingSeparator)
-    {
-        const std::size_t n = s.size();
+        // =========================================================================
+        // Helper Functions
+        // =========================================================================
 
-        // primary
-        for (std::size_t i = 0; i < n; ++i) {
-            const unsigned char c = (unsigned char)s[i];
-            if (is_ascii_digit(c)) return i;
-            if ((c == '+' || c == '-') && (i + 1) < n && is_ascii_digit((unsigned char)s[i + 1]))
-                return i;
+        static inline bool is_ascii_digit(unsigned char c) noexcept {
+            return c >= '0' && c <= '9';
         }
 
-        // fallback
-        if (allowLeadingSeparator) {
-            for (std::size_t i = 0; i + 1 < n; ++i) {
-                const unsigned char c  = (unsigned char)s[i];
-                const unsigned char c2 = (unsigned char)s[i + 1];
+        static inline bool is_space(unsigned char c) noexcept {
+            return c == ' ' || c == '\t';
+        }
 
-                if ((c == '+' || c == '-') && (i + 2) < n) {
-                    const unsigned char c3 = (unsigned char)s[i + 2];
-                    if ((c2 == '.' || c2 == ',') && is_ascii_digit(c3))
+        static inline bool is_letter(unsigned char c) noexcept {
+            return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+        }
+
+        static inline bool is_sign(unsigned char c) noexcept {
+            return c == '+' || c == '-';
+        }
+
+        static inline bool is_decimal_sep(unsigned char c) noexcept {
+            return c == '.' || c == ',';
+        }
+
+        // Characters not allowed in prefix/suffix (would indicate another number)
+        static inline bool is_forbidden_affix_char(unsigned char c) noexcept {
+            return is_ascii_digit(c) || is_sign(c) || is_decimal_sep(c);
+        }
+
+        // =========================================================================
+        // Token Finding
+        // =========================================================================
+
+        // Find start position of numeric token.
+        // Recognizes: DIGIT, SIGN+DIGIT, SIGN+SEP+DIGIT, SEP+DIGIT
+        static std::size_t find_token_start(std::string_view s) noexcept
+        {
+            const std::size_t n = s.size();
+            if (n == 0) return std::string::npos;
+
+            // Scan for first potential token start
+            for (std::size_t i = 0; i < n; ++i) {
+                const unsigned char c = static_cast<unsigned char>(s[i]);
+
+                // Direct digit
+                if (is_ascii_digit(c))
+                    return i;
+
+                // Sign followed by digit or decimal
+                if (is_sign(c) && (i + 1) < n) {
+                    const unsigned char c2 = static_cast<unsigned char>(s[i + 1]);
+                    // Sign + digit
+                    if (is_ascii_digit(c2))
+                        return i;
+                    // Sign + decimal + digit (e.g. "-.5")
+                    if (is_decimal_sep(c2) && (i + 2) < n &&
+                        is_ascii_digit(static_cast<unsigned char>(s[i + 2])))
                         return i;
                 }
-                if ((c == '.' || c == ',') && is_ascii_digit(c2))
+
+                // Decimal separator followed by digit (e.g. ".5")
+                if (is_decimal_sep(c) && (i + 1) < n &&
+                    is_ascii_digit(static_cast<unsigned char>(s[i + 1])))
                     return i;
             }
-        }
-        return std::string::npos;
-    }
 
-    // Normalize for std::stod: ','->'.', ".5"->"0.5", "-.5"->"-0.5", "12."->"12"
-    static bool normalize_token(std::string& token)
-    {
-        for (char& ch : token) if (ch == ',') ch = '.';
-
-        if (!token.empty() && token[0] == '.') {
-            token.insert(token.begin(), '0');
-        } else if (token.size() >= 2 && (token[0] == '+' || token[0] == '-') && token[1] == '.') {
-            token.insert(token.begin() + 1, '0');
+            return std::string::npos;
         }
 
-        if (!token.empty() && token.back() == '.') {
-            token.pop_back();
-            if (token.empty() || token == "+" || token == "-")
-                return false;
+        // =========================================================================
+        // Token Normalization
+        // =========================================================================
+
+        // Normalize token for parsing:
+        // - Replace ',' with '.'
+        // - ".5" -> "0.5", "-.5" -> "-0.5"
+        // - "12." -> "12"
+        // Returns false if token becomes invalid after normalization.
+        static bool normalize_token(std::string& token) noexcept
+        {
+            // Replace comma with dot
+            for (char& ch : token) {
+                if (ch == ',') ch = '.';
+            }
+
+            // Add leading zero for ".5" -> "0.5"
+            if (!token.empty() && token[0] == '.') {
+                token.insert(token.begin(), '0');
+            }
+            // Add leading zero for "+.5" -> "+0.5" or "-.5" -> "-0.5"
+            else if (token.size() >= 2 && is_sign(token[0]) && token[1] == '.') {
+                token.insert(token.begin() + 1, '0');
+            }
+
+            // Remove trailing dot: "12." -> "12"
+            if (!token.empty() && token.back() == '.') {
+                token.pop_back();
+                // Check if anything meaningful remains
+                if (token.empty() || token == "+" || token == "-")
+                    return false;
+            }
+
+            return true;
         }
-        return true;
-    }
 
-    // --- public API ----------------------------------------------------------
+        // =========================================================================
+        // Token Parsing
+        // =========================================================================
 
-    NumericToken parse_first_numeric_token(std::string_view field,
-                                           const ParseOptions& opt)
-    {
-        NumericToken out{};
-        const std::size_t n = field.size();
-        if (n == 0) return out;
+        // Parse the first numeric token from a string.
+        // Returns NumericToken with ok=true on success.
+        static NumericToken parse_first_numeric_token(std::string_view field) noexcept
+        {
+            NumericToken out{};
+            const std::size_t n = field.size();
+            if (n == 0) return out;
 
-        const std::size_t start = find_token_start(field, opt.allowLeadingSeparator);
-        if (start == std::string::npos) return out;
+            const std::size_t start = find_token_start(field);
+            if (start == std::string::npos) return out;
 
-        std::size_t p = start;
-        if (field[p] == '+' || field[p] == '-') { out.hasSign = true; ++p; }
+            std::size_t p = start;
 
-        const std::size_t intBeg = p;
-        while (p < n && is_ascii_digit((unsigned char)field[p])) ++p;
-        out.intDigits = (int)(p - intBeg);
+            // Optional sign
+            if (is_sign(static_cast<unsigned char>(field[p]))) {
+                out.hasSign = true;
+                ++p;
+            }
 
-        if (p < n && (field[p] == '.' || field[p] == ',')) {
-            out.hasDecimal = true;
-            ++p;
-            while (p < n && is_ascii_digit((unsigned char)field[p])) ++p;
-        }
-        else if (out.intDigits == 0 && opt.allowLeadingSeparator) {
-            if (p < n && (field[p] == '.' || field[p] == ',')) {
+            // Check for leading decimal separator (e.g. ".5" or after sign "-.5")
+            if (p < n && is_decimal_sep(static_cast<unsigned char>(field[p]))) {
                 out.hasDecimal = true;
                 ++p;
-                if (p >= n || !is_ascii_digit((unsigned char)field[p])) return out;
-                while (p < n && is_ascii_digit((unsigned char)field[p])) ++p;
+                // Must have at least one digit after separator
+                if (p >= n || !is_ascii_digit(static_cast<unsigned char>(field[p])))
+                    return out;
+                while (p < n && is_ascii_digit(static_cast<unsigned char>(field[p]))) ++p;
             }
-        }
+            else {
+                // Integer part digits
+                const std::size_t intBeg = p;
+                while (p < n && is_ascii_digit(static_cast<unsigned char>(field[p]))) ++p;
+                out.intDigits = static_cast<int>(p - intBeg);
 
-        if (out.intDigits == 0 && !out.hasDecimal) return out;
+                // Optional decimal part
+                if (p < n && is_decimal_sep(static_cast<unsigned char>(field[p]))) {
+                    out.hasDecimal = true;
+                    ++p;
+                    while (p < n && is_ascii_digit(static_cast<unsigned char>(field[p]))) ++p;
+                }
 
-        out.start = start;
-        out.end   = p;
+                // Must have at least integer digits
+                if (out.intDigits == 0)
+                    return out;
+            }
 
-        out.normalized.assign(field.substr(out.start, out.end - out.start));
-        if (!normalize_token(out.normalized)) return out;
+            out.start = start;
+            out.end = p;
 
-        try {
-            out.value = std::stod(out.normalized);
-        } catch (...) {
+            // Extract and normalize the token
+            out.normalized.assign(field.substr(out.start, out.end - out.start));
+            if (!normalize_token(out.normalized))
+                return out;
+
+            // Parse the normalized value using std::from_chars (no exceptions)
+            // Note: from_chars doesn't accept leading '+', so skip it
+            const char* parseStart = out.normalized.data();
+            if (!out.normalized.empty() && out.normalized[0] == '+')
+                ++parseStart;
+
+            auto [ptr, ec] = std::from_chars(
+                parseStart,
+                out.normalized.data() + out.normalized.size(),
+                out.value);
+
+            if (ec != std::errc())
+                return out;
+
+            out.ok = true;
             return out;
         }
 
-        out.ok = true;
-        return out;
-    }
+        // =========================================================================
+        // Affix Validation
+        // =========================================================================
 
-    bool try_parse_first_numeric_value(std::string_view field,
-                                       double& outValue,
-                                       std::string* outNormalized,
-                                       const ParseOptions& opt)
-    {
-        const NumericToken t = parse_first_numeric_token(field, opt);
-        if (!t.ok) return false;
-        outValue = t.value;
-        if (outNormalized) *outNormalized = t.normalized;
-        return true;
-    }
+        // Validate a prefix or suffix.
+        // Returns true if valid: letters only OR symbols only, max length, no forbidden chars.
+        static bool validate_affix(std::string_view affix) noexcept
+        {
+            if (affix.empty() || affix.size() > MAX_AFFIX_LENGTH)
+                return false;
 
-    bool mr::num::classify_numeric_field(std::string_view f,
-        NumericToken& outTok,
-        const ParseOptions& opt)
-    {
-        // Helper lambdas
-        auto is_space = [](unsigned char c) noexcept { return c == ' ' || c == '\t'; };
-        auto is_digit = [](unsigned char c) noexcept { return c >= '0' && c <= '9'; };
-        auto is_letter = [](unsigned char c) noexcept { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
-        auto is_forbidden_affix = [&](unsigned char c) noexcept {
-            return is_digit(c) || c == '+' || c == '-' || c == '.' || c == ',';
-            };
+            bool anyLetter = false;
+            bool anySymbol = false;
 
-        const std::size_t n = f.size();
-        if (n == 0) return false;
-
-        // The caller promised 'f' is already trimmed (no leading/trailing ws).
-        // Guard anyway (reject if found).
-        if (is_space((unsigned char)f.front()) || is_space((unsigned char)f.back()))
-            return false;
-
-        // First, find the numeric token using the tolerant tokenizer.
-        NumericToken tok = parse_first_numeric_token(f, opt);
-        if (!tok.ok)
-            return false;
-
-        // The token must be the *only* numeric content; we allow optional prefix/suffix
-        // around it, nothing else. Split: [0..tok.start) [tok] [tok.end..n)
-        std::size_t L0 = 0;
-        std::size_t L1 = tok.start;  // left side (pre-token)
-        std::size_t R0 = tok.end;    // right side (post-token)
-        std::size_t R1 = n;
-
-        // LEFT: contiguous non-space run directly before token (optional affix)
-        bool left_ok = true;
-        bool left_has_affix = false;
-        bool left_affix_letters = false;
-
-        std::size_t left_run_beg = 0, left_run_end = 0; // [beg, end)
-        if (L1 > L0) {
-            // Skip spaces just before the token
-            std::size_t p = L1;
-            while (p > L0 && is_space((unsigned char)f[p - 1])) --p;
-            if (p > L0) {
-                // Non-space run immediately before spaces (or token if adjacent)
-                std::size_t q = p;
-                while (q > L0 && !is_space((unsigned char)f[q - 1])) --q;
-                left_run_beg = q;
-                left_run_end = p;
-                left_has_affix = true;
-
-                // Everything before the run must be spaces only
-                for (std::size_t i = L0; i < q; ++i) { if (!is_space((unsigned char)f[i])) { left_ok = false; break; } }
-
-                // Validate run: length <= 4, no digits and no "+-.,"
-                const std::size_t run_len = p - q;
-                if (left_ok) {
-                    if (run_len == 0 || run_len > 4) left_ok = false;
-                    else {
-                        bool any_forbidden = false, any_letter = false, any_symbol = false;
-                        for (std::size_t i = q; i < p; ++i) {
-                            unsigned char c = (unsigned char)f[i];
-                            if (is_forbidden_affix(c)) { any_forbidden = true; break; }
-                            if (is_letter(c)) any_letter = true; else any_symbol = true;
-                        }
-                        if (any_forbidden || (any_letter && any_symbol)) left_ok = false;
-                        left_affix_letters = any_letter && !any_symbol;
-                        // If letters, there must be at least one space between affix and token
-                        if (left_ok && left_affix_letters) {
-                            if (L1 == p || !is_space((unsigned char)f[L1 - 1])) left_ok = false;
-                        }
-                    }
-                }
+            for (unsigned char c : affix) {
+                if (is_forbidden_affix_char(c))
+                    return false;
+                if (is_letter(c))
+                    anyLetter = true;
+                else
+                    anySymbol = true;
             }
-            else {
-                // Only spaces on left side
-                for (std::size_t i = L0; i < L1; ++i) { if (!is_space((unsigned char)f[i])) { left_ok = false; break; } }
-            }
+
+            // Can't mix letters and symbols (e.g. "$U" is invalid)
+            if (anyLetter && anySymbol)
+                return false;
+
+            return true;
         }
 
-        if (!left_ok) return false;
+        // =========================================================================
+        // Public API
+        // =========================================================================
 
-        // RIGHT: contiguous non-space run immediately after token (optional affix)
-        bool right_ok = true;
-        bool right_has_affix = false;
-        bool right_affix_letters = false;
+        bool classify_numeric_field(std::string_view f, NumericToken& outTok)
+        {
+            const std::size_t n = f.size();
+            if (n == 0) return false;
 
-        std::size_t right_run_beg = 0, right_run_end = 0; // [beg, end)
-        if (R1 > R0) {
-            // Skip spaces just after the token
-            std::size_t p = R0;
-            while (p < R1 && is_space((unsigned char)f[p])) ++p;
-            if (p < R1) {
-                // Non-space run immediately after spaces (or adjacent)
-                std::size_t q = p;
-                while (q < R1 && !is_space((unsigned char)f[q])) ++q;
-                right_run_beg = p;
-                right_run_end = q;
-                right_has_affix = true;
+            // Input must be pre-trimmed
+            if (is_space(static_cast<unsigned char>(f.front())) ||
+                is_space(static_cast<unsigned char>(f.back())))
+                return false;
 
-                // Everything after the run must be spaces only
-                for (std::size_t i = q; i < R1; ++i) { if (!is_space((unsigned char)f[i])) { right_ok = false; break; } }
+            // Parse the numeric token
+            NumericToken tok = parse_first_numeric_token(f);
+            if (!tok.ok)
+                return false;
 
-                // Validate run: length <= 4, no digits and no "+-.,"
-                const std::size_t run_len = q - p;
-                if (right_ok) {
-                    if (run_len == 0 || run_len > 4) right_ok = false;
-                    else {
-                        bool any_forbidden = false, any_letter = false, any_symbol = false;
-                        for (std::size_t i = p; i < q; ++i) {
-                            unsigned char c = (unsigned char)f[i];
-                            if (is_forbidden_affix(c)) { any_forbidden = true; break; }
-                            if (is_letter(c)) any_letter = true; else any_symbol = true;
-                        }
-                        if (any_forbidden || (any_letter && any_symbol)) right_ok = false;
-                        right_affix_letters = any_letter && !any_symbol;
-                        // If letters, there must be at least one space between token and affix
-                        if (right_ok && right_affix_letters) {
-                            if (p == R0) right_ok = false; // adjacent => not allowed for letter affix
-                        }
+            // Validate left side (prefix)
+            if (tok.start > 0) {
+                std::size_t leftEnd = tok.start;
+
+                // Skip trailing spaces before token
+                while (leftEnd > 0 && is_space(static_cast<unsigned char>(f[leftEnd - 1])))
+                    --leftEnd;
+
+                if (leftEnd > 0) {
+                    // Find start of non-space run (the affix)
+                    std::size_t leftStart = leftEnd;
+                    while (leftStart > 0 && !is_space(static_cast<unsigned char>(f[leftStart - 1])))
+                        --leftStart;
+
+                    // Everything before the affix must be spaces
+                    for (std::size_t i = 0; i < leftStart; ++i) {
+                        if (!is_space(static_cast<unsigned char>(f[i])))
+                            return false;
                     }
+
+                    // Validate the affix
+                    std::string_view affix(f.data() + leftStart, leftEnd - leftStart);
+                    if (!validate_affix(affix))
+                        return false;
                 }
             }
-            else {
-                // Only spaces on right side
-                for (std::size_t i = R0; i < R1; ++i) { if (!is_space((unsigned char)f[i])) { right_ok = false; break; } }
+
+            // Validate right side (suffix)
+            if (tok.end < n) {
+                std::size_t rightStart = tok.end;
+
+                // Skip leading spaces after token
+                while (rightStart < n && is_space(static_cast<unsigned char>(f[rightStart])))
+                    ++rightStart;
+
+                if (rightStart < n) {
+                    // Find end of non-space run (the affix)
+                    std::size_t rightEnd = rightStart;
+                    while (rightEnd < n && !is_space(static_cast<unsigned char>(f[rightEnd])))
+                        ++rightEnd;
+
+                    // Everything after the affix must be spaces
+                    for (std::size_t i = rightEnd; i < n; ++i) {
+                        if (!is_space(static_cast<unsigned char>(f[i])))
+                            return false;
+                    }
+
+                    // Validate the affix
+                    std::string_view affix(f.data() + rightStart, rightEnd - rightStart);
+                    if (!validate_affix(affix))
+                        return false;
+                }
             }
+
+            outTok = tok;
+            return true;
         }
 
-        if (!right_ok) return false;
-
-        // Passed: field is a numeric field (affixes optional)
-        outTok = tok; // start/end refer to 'f' (trimmed view)
-        return true;
     }
-
-
-}} // namespace mr::num
+} // namespace mr::num

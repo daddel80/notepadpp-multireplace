@@ -15,16 +15,17 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // -----------------------------------------------------------------------------
-//  Handles user settings stored in “MultiReplace.ini”.
+//  Handles user settings stored in "MultiReplace.ini".
 //  • wrap IniFileCache for typed read access
 //  • simple write helpers modify the in‑memory cache
-//  • save() serialises the full cache back to disk (UTF‑8 +BOM)
+//  • save() serialises the full cache back to disk (UTF‑8 +BOM)
 // -----------------------------------------------------------------------------
 
 #include "ConfigManager.h"
 #include "Encoding.h"        // Encoding::wstringToUtf8
 #include <fstream>
 #include <sstream>
+#include <iomanip>
 #include <windows.h>
 
 //
@@ -92,22 +93,11 @@ bool ConfigManager::save(const std::wstring& file) const
 //
 //  Write helpers (update cache only – caller calls save() later)
 //
+
 void ConfigManager::writeString(const std::wstring& sec, const std::wstring& key,
     const std::wstring& val)
 {
     _cache._data[sec][key] = val;   // direct because ConfigManager is friend
-}
-
-void ConfigManager::writeInt(const std::wstring& sec, const std::wstring& key,
-    int val)
-{
-    writeString(sec, key, std::to_wstring(val));
-}
-
-void ConfigManager::writeSizeT(const std::wstring& sec, const std::wstring& key,
-    size_t val)
-{
-    writeString(sec, key, std::to_wstring(val));
 }
 
 void ConfigManager::writeBool(const std::wstring& sec, const std::wstring& key,
@@ -116,4 +106,44 @@ void ConfigManager::writeBool(const std::wstring& sec, const std::wstring& key,
     writeString(sec, key, val ? L"1" : L"0");
 }
 
-// Further writeBool / writeFloat / … could be added similarly
+void ConfigManager::writeInt(const std::wstring& sec, const std::wstring& key,
+    int val)
+{
+    writeString(sec, key, std::to_wstring(val));
+}
+
+void ConfigManager::writeFloat(const std::wstring& sec, const std::wstring& key,
+    float val)
+{
+    // Format with reasonable precision, remove trailing zeros
+    std::wostringstream oss;
+    oss << std::fixed << std::setprecision(6) << val;
+    std::wstring str = oss.str();
+
+    // Remove trailing zeros after decimal point
+    size_t dotPos = str.find(L'.');
+    if (dotPos != std::wstring::npos) {
+        size_t lastNonZero = str.find_last_not_of(L'0');
+        if (lastNonZero != std::wstring::npos && lastNonZero > dotPos) {
+            str = str.substr(0, lastNonZero + 1);
+        }
+        // Remove trailing dot if no decimals left
+        if (str.back() == L'.') {
+            str.pop_back();
+        }
+    }
+
+    writeString(sec, key, str);
+}
+
+void ConfigManager::writeByte(const std::wstring& sec, const std::wstring& key,
+    BYTE val)
+{
+    writeString(sec, key, std::to_wstring(static_cast<int>(val)));
+}
+
+void ConfigManager::writeSizeT(const std::wstring& sec, const std::wstring& key,
+    size_t val)
+{
+    writeString(sec, key, std::to_wstring(val));
+}

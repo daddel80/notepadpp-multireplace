@@ -20,15 +20,22 @@
 // NumericToken.h
 // -----------------------------------------------------------------------------
 // Purpose:
-//   String-based parser for the *first* numeric token inside a field.
-//   Shared between ColumnTabs (alignment) and MultiReplace (sorting).
+//   String-based parser for numeric fields in CSV data.
+//   Used for CSV column sorting and decimal-point alignment.
 //   Locale-free: ASCII digits only, '.' and ',' as decimal separators.
 //
-// Recognized token patterns (first match wins):
-//   [sign] DIGITS [ ('.'|',') DIGITS? ]     e.g. "-12", "+300.34", "12.", "66,1"
-//   [sign]? ('.'|',') DIGITS                e.g. ".5", "-.75"
-// Everything before/after the token is ignored (prefix/suffix like currency).
-// Normalization:
+// Recognized numeric fields:
+//   [prefix] [sign] DIGITS [sep DIGITS] [suffix]
+//   [prefix] [sign] sep DIGITS [suffix]           (leading decimal: .5, -.5)
+//   
+//   Examples:  "123", "-45.67", ".5", "-.5", "$100", "100EUR", "€50.00"
+//
+// Rules:
+//   - Prefix/suffix max 4 chars, must be symbols ($€£) OR letters (USD, EUR)
+//   - Affixes can be adjacent or space-separated: "$100", "100EUR", "100 EUR"
+//   - Mixed letters+symbols in affix not allowed: "$USD" fails
+//
+// Internal normalization (for sorting):
 //   ',' -> '.', ".5" -> "0.5", "-.5" -> "-0.5", "12." -> "12"
 // -----------------------------------------------------------------------------
 
@@ -36,37 +43,25 @@
 #include <string_view>
 #include <cstddef>
 
-namespace mr { namespace num {
+namespace mr {
+    namespace num {
 
-    struct ParseOptions {
-        bool allowLeadingSeparator = true; // accept ".5" / ",5"
-        int  maxCurrencyAffix = 4;         // reserved (not enforced yet)
-    };
+        struct NumericToken {
+            bool        ok = false;
+            std::size_t start = 0;      // inclusive index in input
+            std::size_t end = 0;      // exclusive index in input
+            bool        hasSign = false;
+            bool        hasDecimal = false;
+            int         intDigits = 0;      // count of digits before decimal
+            std::string normalized;          // normalized ASCII form (e.g. "-123.45")
+            double      value = 0.0;    // parsed numeric value
+        };
 
-    struct NumericToken {
-        bool        ok          = false;
-        std::size_t start       = 0;     // inclusive
-        std::size_t end         = 0;     // exclusive
-        bool        hasSign     = false;
-        bool        hasDecimal  = false;
-        int         intDigits   = 0;
-        std::string normalized;          // normalized ASCII form
-        double      value       = 0.0;   // parsed from normalized
-    };
+        // Classifies a trimmed field as numeric.
+        // Returns true if field contains exactly one numeric token with optional
+        // prefix/suffix (e.g. currency symbols). outTok receives the parsed token.
+        // Input must be pre-trimmed (no leading/trailing whitespace).
+        bool classify_numeric_field(std::string_view trimmedField, NumericToken& outTok);
 
-    // Parse first numeric token; returns { ok=true } on success.
-    NumericToken parse_first_numeric_token(std::string_view field,
-                                           const ParseOptions& opt = {});
-
-    // Convenience: parse only the value (and optionally the normalized token).
-    bool try_parse_first_numeric_value(std::string_view field,
-                                       double& outValue,
-                                       std::string* outNormalized = nullptr,
-                                       const ParseOptions& opt = {});
-
-    // Returns true if the whole field is a numeric field with optional affix.
-    bool classify_numeric_field(std::string_view trimmedField,
-        NumericToken& outTok,
-        const ParseOptions& opt = {});
-
-}} // namespace mr::num
+    }
+} // namespace mr::num

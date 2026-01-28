@@ -71,13 +71,14 @@ public:
     }
 
     // ---------------------------------------------------------------------
-    // Typed setters
+    // Typed setters (symmetric to getters)
     // ---------------------------------------------------------------------
-    void writeString(const std::wstring& sec, const std::wstring& key,
-        const std::wstring& val);
-    void writeInt(const std::wstring& sec, const std::wstring& key, int val);
-    void writeSizeT(const std::wstring& sec, const std::wstring& key, size_t val);
+    void writeString(const std::wstring& sec, const std::wstring& key, const std::wstring& val);
     void writeBool(const std::wstring& sec, const std::wstring& key, bool val);
+    void writeInt(const std::wstring& sec, const std::wstring& key, int val);
+    void writeFloat(const std::wstring& sec, const std::wstring& key, float val);
+    void writeByte(const std::wstring& sec, const std::wstring& key, BYTE val);
+    void writeSizeT(const std::wstring& sec, const std::wstring& key, size_t val);
 
     // Raw access if absolutely necessary
     const IniFileCache& ini() const { return _cache; }
