@@ -70,6 +70,10 @@ public:
     };
     CursorHitInfo getCurrentCursorHitInfo() const;
 
+    // Get hit index at a specific line start position (for double-click navigation)
+    // Returns SIZE_MAX if no hit found at that position
+    size_t getHitIndexAtLineStart(int lineStartPos) const;
+
     struct CritAgg { std::wstring text; std::vector<Hit> hits; };
     struct FileAgg { std::wstring wPath; int hitCount = 0; std::vector<CritAgg> crits; };
     using FileMap = std::unordered_map<std::string, FileAgg>;
