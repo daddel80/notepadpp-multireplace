@@ -312,13 +312,26 @@ namespace Encoding {
         }
 
         if (src.kind == Kind::UTF16LE || src.kind == Kind::UTF16BE) {
-            UINT cp = (src.kind == Kind::UTF16LE) ? 1200u : 1201u; // Windows Unicode codepages
-            int wlen = MultiByteToWideChar(cp, 0, data, static_cast<int>(len), nullptr, 0);
-            if (wlen <= 0) return false;
-            std::vector<wchar_t> w(static_cast<size_t>(wlen));
-            if (MultiByteToWideChar(cp, 0, data, static_cast<int>(len), w.data(), wlen) != wlen)
-                return false;
-            outUtf8 = wstringToUtf8(std::wstring(w.begin(), w.end()));
+            // UTF-16 requires even number of bytes
+            if (len % 2 != 0) return false;
+
+            size_t wcharCount = len / sizeof(wchar_t);
+            std::wstring wstr(wcharCount, L'\0');
+
+            if (src.kind == Kind::UTF16LE) {
+                // UTF-16LE is native wchar_t on Windows - use memcpy for alignment safety
+                std::memcpy(wstr.data(), data, len);
+            }
+            else {
+                // UTF-16BE requires byte swapping
+                const unsigned char* bytes = reinterpret_cast<const unsigned char*>(data);
+                for (size_t i = 0; i < wcharCount; ++i) {
+                    // Swap high and low bytes: BE stores high byte first
+                    wstr[i] = static_cast<wchar_t>((bytes[i * 2] << 8) | bytes[i * 2 + 1]);
+                }
+            }
+
+            outUtf8 = wstringToUtf8(wstr);
             return true;
         }
 
@@ -340,12 +353,23 @@ namespace Encoding {
 
         if (dst.kind == Kind::UTF16LE || dst.kind == Kind::UTF16BE) {
             if (dst.withBOM) appendBOM(dst.kind, outBytes);
-            UINT cp = (dst.kind == Kind::UTF16LE) ? 1200u : 1201u;
-            int blen = WideCharToMultiByte(cp, 0, w.data(), static_cast<int>(w.size()), nullptr, 0, nullptr, nullptr);
-            if (blen <= 0) return false;
-            outBytes.resize(static_cast<size_t>(blen));
-            if (WideCharToMultiByte(cp, 0, w.data(), static_cast<int>(w.size()), outBytes.data(), blen, nullptr, nullptr) != blen)
-                return false;
+
+            if (dst.kind == Kind::UTF16LE) {
+                // UTF-16LE is native wchar_t on Windows - direct copy
+                size_t byteLen = w.size() * sizeof(wchar_t);
+                size_t offset = outBytes.size();
+                outBytes.resize(offset + byteLen);
+                std::memcpy(outBytes.data() + offset, w.data(), byteLen);
+            }
+            else {
+                // UTF-16BE requires byte swapping
+                outBytes.reserve(outBytes.size() + w.size() * 2);
+                for (wchar_t wc : w) {
+                    // Store high byte first, then low byte (Big Endian)
+                    outBytes.push_back(static_cast<char>((wc >> 8) & 0xFF));
+                    outBytes.push_back(static_cast<char>(wc & 0xFF));
+                }
+            }
             return true;
         }
 
