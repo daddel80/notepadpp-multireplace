@@ -1608,10 +1608,10 @@ void MultiReplace::exportDataToClipboard() {
 
     // Load settings from config
     const auto& cfg = ConfigManager::instance();
-    std::wstring templateStr = cfg.readString(L"ExportData", L"Template",
+    std::wstring templateStr = cfg.readString(L"Options", L"ExportTemplate",
         L"%FIND%\\t%REPLACE%\\t%FCOUNT%\\t%RCOUNT%\\t%COMMENT%");
-    bool escapeChars = cfg.readBool(L"ExportData", L"Escape", false);
-    bool includeHeader = cfg.readBool(L"ExportData", L"Header", false);
+    bool escapeChars = cfg.readBool(L"Options", L"ExportEscape", false);
+    bool includeHeader = cfg.readBool(L"Options", L"ExportHeader", false);
 
     // This converts \t to real tabs in the TEMPLATE, not in the data
     std::wstring processedTemplate = processTemplateEscapes(templateStr);
