@@ -617,13 +617,13 @@ void MultiReplace::initializeListView() {
 }
 
 void MultiReplace::initializeDragAndDrop() {
-    dropTarget = new DropTarget(_replaceListView, this);  // Create an instance of DropTarget
-    HRESULT hr = ::RegisterDragDrop(_replaceListView, dropTarget);  // Register the ListView as a drop target
+    dropTarget = new DropTarget(this);
+    HRESULT hr = ::RegisterDragDrop(_replaceListView, dropTarget);
 
     if (FAILED(hr)) {
-        // Safely release the DropTarget instance to avoid memory leaks
-        delete dropTarget;
-        dropTarget = nullptr;  // Set to nullptr to prevent any unintended usage
+        // COM-correct cleanup: Release() will delete the object when refCount reaches 0
+        dropTarget->Release();
+        dropTarget = nullptr;
     }
 }
 
@@ -4213,10 +4213,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         saveSettings(); // Save any settings before destroying
 
-        // Unregister Drag-and-Drop
+        // Unregister Drag-and-Drop (COM-correct cleanup)
         if (dropTarget) {
-            RevokeDragDrop(_replaceListView);
-            delete dropTarget;
+            RevokeDragDrop(_replaceListView);  // Calls Release(): refCount 2→1
+            dropTarget->Release();              // Calls Release(): refCount 1→0, deletes itself
             dropTarget = nullptr;
         }
 

@@ -17,8 +17,9 @@
 #include "DropTarget.h"
 #include "MultiReplacePanel.h"
 
-DropTarget::DropTarget(HWND hwnd, MultiReplace* parent)
-    : _refCount(1), _hwnd(hwnd), _parent(parent) {}
+DropTarget::DropTarget(MultiReplace* parent)
+    : _refCount(1), _parent(parent) {
+}
 
 HRESULT DropTarget::DragEnter(IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DWORD* pdwEffect) {
     UNREFERENCED_PARAMETER(pDataObj);

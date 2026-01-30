@@ -582,7 +582,7 @@ public:
     inline static std::vector<LogEntry> logChanges{};
 
     // Drag-and-Drop functionality
-    DropTarget* dropTarget;  // Pointer to DropTarget instance
+    DropTarget* dropTarget = nullptr;  // Pointer to DropTarget instance
     void loadListFromCsv(const std::wstring& filePath); // used in DropTarget.cpp
     void showListFilePath();
     void initializeDragAndDrop();

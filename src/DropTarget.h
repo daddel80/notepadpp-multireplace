@@ -24,7 +24,7 @@ class MultiReplace;  // Forward declaration to avoid circular dependency
 
 class DropTarget : public IDropTarget {
 public:
-    DropTarget(HWND hwnd, MultiReplace* parent);
+    explicit DropTarget(MultiReplace* parent);
     virtual ~DropTarget() {}
 
     // Implement all IDropTarget methods
@@ -40,7 +40,6 @@ public:
 
 private:
     LONG _refCount;
-    HWND _hwnd;
     MultiReplace* _parent;
 };
 
