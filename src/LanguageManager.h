@@ -39,11 +39,19 @@ public:
     bool loadFromIni(const std::wstring& iniFile, const std::wstring& languageCode);
 
     // --- Strings ----------------------------------------------------------
+    // Returns a copy - caller owns the string
     std::wstring get(const std::wstring& id,
         const std::vector<std::wstring>& repl = {}) const;
-    LPCWSTR      getLPCW(const std::wstring& id,
+
+    // Returns cached pointer (LPCWSTR) - stable for lifetime of LanguageManager
+    // Use for APIs that accept const wchar_t* (e.g., MessageBox, SetWindowText)
+    LPCWSTR getLPCW(const std::wstring& id,
         const std::vector<std::wstring>& repl = {}) const;
-    LPWSTR       getLPW(const std::wstring& id,
+
+    // Returns non-const pointer (LPWSTR) for legacy Win32 APIs that require it
+    // (e.g., LVCOLUMN.pszText, TOOLINFO.lpszText)
+    // Safe: backed by same cache as getLPCW - pointer is stable
+    LPWSTR getW(const std::wstring& id,
         const std::vector<std::wstring>& repl = {}) const;
 
     const IniFileCache& ini() const { return _cache; }

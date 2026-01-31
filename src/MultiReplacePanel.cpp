@@ -1120,7 +1120,7 @@ void MultiReplace::refreshUILanguage()
             ColumnID colId = static_cast<ColumnID>(kHeaderTextMappings[i].columnId);
             auto it = colIndices.find(colId);
             if (it != colIndices.end() && it->second >= 0) {
-                lvc.pszText = LM.getLPW(kHeaderTextMappings[i].langKey);
+                lvc.pszText = LM.getW(kHeaderTextMappings[i].langKey);
                 ListView_SetColumn(_MultiReplace._replaceListView, it->second, &lvc);
             }
         }
@@ -1136,7 +1136,7 @@ void MultiReplace::refreshUILanguage()
                         TOOLINFO ti = { sizeof(TOOLINFO) };
                         ti.hwnd = hwndHeader;
                         ti.uId = static_cast<UINT_PTR>(it->second);
-                        ti.lpszText = LM.getLPW(kHeaderTooltipMappings[i].langKey);
+                        ti.lpszText = LM.getW(kHeaderTooltipMappings[i].langKey);
                         SendMessage(_MultiReplace._hHeaderTooltip, TTM_UPDATETIPTEXT, 0, reinterpret_cast<LPARAM>(&ti));
                     }
                 }
@@ -1163,11 +1163,11 @@ void MultiReplace::refreshUILanguage()
         if (hDebugListView && IsWindow(hDebugListView)) {
             LVCOLUMN lvc = {};
             lvc.mask = LVCF_TEXT;
-            lvc.pszText = LM.getLPW(L"debug_col_variable");
+            lvc.pszText = LM.getW(L"debug_col_variable");
             ListView_SetColumn(hDebugListView, 0, &lvc);
-            lvc.pszText = LM.getLPW(L"debug_col_type");
+            lvc.pszText = LM.getW(L"debug_col_type");
             ListView_SetColumn(hDebugListView, 1, &lvc);
-            lvc.pszText = LM.getLPW(L"debug_col_value");
+            lvc.pszText = LM.getW(L"debug_col_value");
             ListView_SetColumn(hDebugListView, 2, &lvc);
         }
     }
@@ -1608,10 +1608,10 @@ void MultiReplace::exportDataToClipboard() {
 
     // Load settings from config
     const auto& cfg = ConfigManager::instance();
-    std::wstring templateStr = cfg.readString(L"Options", L"ExportTemplate",
+    std::wstring templateStr = cfg.readString(L"ExportData", L"Template",
         L"%FIND%\\t%REPLACE%\\t%FCOUNT%\\t%RCOUNT%\\t%COMMENT%");
-    bool escapeChars = cfg.readBool(L"Options", L"ExportEscape", false);
-    bool includeHeader = cfg.readBool(L"Options", L"ExportHeader", false);
+    bool escapeChars = cfg.readBool(L"ExportData", L"Escape", false);
+    bool includeHeader = cfg.readBool(L"ExportData", L"Header", false);
 
     // This converts \t to real tabs in the TEMPLATE, not in the data
     std::wstring processedTemplate = processTemplateEscapes(templateStr);
@@ -1844,7 +1844,7 @@ void MultiReplace::createListViewColumns() {
     // Column 1: Find Count
     if (isFindCountVisible) {
         lvc.iSubItem = currentIndex;
-        lvc.pszText = LM.getLPW(L"header_find_count");
+        lvc.pszText = LM.getW(L"header_find_count");
         lvc.cx = findCountColumnWidth;
         lvc.fmt = LVCFMT_LEFT;
         ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -1858,7 +1858,7 @@ void MultiReplace::createListViewColumns() {
     // Column 2: Replace Count
     if (isReplaceCountVisible) {
         lvc.iSubItem = currentIndex;
-        lvc.pszText = LM.getLPW(L"header_replace_count");
+        lvc.pszText = LM.getW(L"header_replace_count");
         lvc.cx = replaceCountColumnWidth;
         lvc.fmt = LVCFMT_LEFT;
         ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -1880,7 +1880,7 @@ void MultiReplace::createListViewColumns() {
 
     // Column 4: Find Text (dynamic width)
     lvc.iSubItem = currentIndex;
-    lvc.pszText = LM.getLPW(L"header_find");
+    lvc.pszText = LM.getW(L"header_find");
     lvc.cx = (findColumnLockedEnabled ? findColumnWidth : perColumnWidth);
     lvc.fmt = LVCFMT_LEFT;
     ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -1889,7 +1889,7 @@ void MultiReplace::createListViewColumns() {
 
     // Column 5: Replace Text (dynamic width)
     lvc.iSubItem = currentIndex;
-    lvc.pszText = LM.getLPW(L"header_replace");
+    lvc.pszText = LM.getW(L"header_replace");
     lvc.cx = (replaceColumnLockedEnabled ? replaceColumnWidth : perColumnWidth);
     lvc.fmt = LVCFMT_LEFT;
     ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -1906,7 +1906,7 @@ void MultiReplace::createListViewColumns() {
     };
     for (int i = 0; i < 5; ++i) {
         lvc.iSubItem = currentIndex;
-        lvc.pszText = LM.getLPW(options[i]);
+        lvc.pszText = LM.getW(options[i]);
         lvc.cx = checkMarkWidth_scaled;
         lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
         ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -1917,7 +1917,7 @@ void MultiReplace::createListViewColumns() {
     // Column 11: Comments (dynamic width)
     if (isCommentsColumnVisible) {
         lvc.iSubItem = currentIndex;
-        lvc.pszText = LM.getLPW(L"header_comments");
+        lvc.pszText = LM.getW(L"header_comments");
         lvc.cx = (commentsColumnLockedEnabled ? commentsColumnWidth : perColumnWidth);
         lvc.fmt = LVCFMT_LEFT;
         ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -2197,11 +2197,11 @@ void MultiReplace::updateListViewTooltips() {
 
     _hHeaderTooltip = CreateHeaderTooltip(hwndHeader);
 
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::WHOLE_WORD], LM.getLPW(L"tooltip_header_whole_word"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::MATCH_CASE], LM.getLPW(L"tooltip_header_match_case"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::USE_VARIABLES], LM.getLPW(L"tooltip_header_use_variables"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::EXTENDED], LM.getLPW(L"tooltip_header_extended"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::REGEX], LM.getLPW(L"tooltip_header_regex"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::WHOLE_WORD], LM.getW(L"tooltip_header_whole_word"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::MATCH_CASE], LM.getW(L"tooltip_header_match_case"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::USE_VARIABLES], LM.getW(L"tooltip_header_use_variables"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::EXTENDED], LM.getW(L"tooltip_header_extended"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::REGEX], LM.getW(L"tooltip_header_regex"));
 }
 
 void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
@@ -4305,11 +4305,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // split-button menu for Replace All
             RECT rc; ::GetWindowRect(pnmh->hwndFrom, &rc);
             HMENU hMenu = CreatePopupMenu();
-            AppendMenu(hMenu, MF_STRING, ID_REPLACE_ALL_OPTION, LM.getLPW(L"split_menu_replace_all"));
-            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_ALL_DOCS_OPTION, LM.getLPW(L"split_menu_replace_all_in_docs"));
-            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_FILES_OPTION, LM.getLPW(L"split_menu_replace_all_in_files"));
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_ALL_OPTION, LM.getW(L"split_menu_replace_all"));
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_ALL_DOCS_OPTION, LM.getW(L"split_menu_replace_all_in_docs"));
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_FILES_OPTION, LM.getW(L"split_menu_replace_all_in_files"));
             AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-            AppendMenu(hMenu, MF_STRING | (_debugModeEnabled ? MF_CHECKED : MF_UNCHECKED), ID_DEBUG_MODE_OPTION, LM.getLPW(L"split_menu_debug_mode"));
+            AppendMenu(hMenu, MF_STRING | (_debugModeEnabled ? MF_CHECKED : MF_UNCHECKED), ID_DEBUG_MODE_OPTION, LM.getW(L"split_menu_debug_mode"));
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, NULL);
             DestroyMenu(hMenu);
             return TRUE;
@@ -4320,9 +4320,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // split-button menu for Find All
             RECT rc; ::GetWindowRect(pnmh->hwndFrom, &rc);
             HMENU hMenu = CreatePopupMenu();
-            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_OPTION, LM.getLPW(L"split_menu_find_all"));
-            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_ALL_DOCS_OPTION, LM.getLPW(L"split_menu_find_all_in_docs"));
-            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_FILES_OPTION, LM.getLPW(L"split_menu_find_all_in_files"));
+            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_OPTION, LM.getW(L"split_menu_find_all"));
+            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_ALL_DOCS_OPTION, LM.getW(L"split_menu_find_all_in_docs"));
+            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_FILES_OPTION, LM.getW(L"split_menu_find_all_in_files"));
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, nullptr);
             DestroyMenu(hMenu);
             return TRUE;
@@ -4861,7 +4861,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case ID_FIND_ALL_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getLPW(L"split_button_find_all"));
+            SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getW(L"split_button_find_all"));
             isFindAllInDocs = false;
             isFindAllInFiles = false;
             updateFilesPanel();
@@ -4870,7 +4870,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case ID_FIND_ALL_IN_ALL_DOCS_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getLPW(L"split_button_find_all_in_docs"));
+            SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getW(L"split_button_find_all_in_docs"));
             isFindAllInDocs = true;
             isFindAllInFiles = false;
             updateFilesPanel();
@@ -4879,7 +4879,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case ID_FIND_ALL_IN_FILES_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getLPW(L"split_button_find_all_in_files"));
+            SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getW(L"split_button_find_all_in_files"));
             isFindAllInDocs = false;
             isFindAllInFiles = true;
             updateFilesPanel();
@@ -5070,7 +5070,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case ID_REPLACE_ALL_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getLPW(L"split_button_replace_all"));
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getW(L"split_button_replace_all"));
             isReplaceAllInDocs = false;
             isReplaceInFiles = false;
             updateFilesPanel();
@@ -5079,7 +5079,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case ID_REPLACE_IN_ALL_DOCS_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getLPW(L"split_button_replace_all_in_docs"));
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getW(L"split_button_replace_all_in_docs"));
             isReplaceAllInDocs = true;
             isReplaceInFiles = false;
             updateFilesPanel();
@@ -5088,7 +5088,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case ID_REPLACE_IN_FILES_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getLPW(L"split_button_replace_all_in_files"));
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getW(L"split_button_replace_all_in_files"));
             isReplaceAllInDocs = false;
             isReplaceInFiles = true;
             updateFilesPanel();
@@ -5516,7 +5516,7 @@ void MultiReplace::handleReplaceButton() {
     // First check if the document is read-only
     LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
-        showStatusMessage(LM.getLPW(L"status_cannot_replace_read_only"), MessageStatus::Error);
+        showStatusMessage(LM.getW(L"status_cannot_replace_read_only"), MessageStatus::Error);
         return;
     }
 
@@ -6706,13 +6706,13 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         // Initialize columns
         LVCOLUMN lvCol = {};
         lvCol.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
-        lvCol.pszText = LM.getLPW(L"debug_col_variable");
+        lvCol.pszText = LM.getW(L"debug_col_variable");
         lvCol.cx = 120;
         ListView_InsertColumn(hListView, 0, &lvCol);
-        lvCol.pszText = LM.getLPW(L"debug_col_type");
+        lvCol.pszText = LM.getW(L"debug_col_type");
         lvCol.cx = 80;
         ListView_InsertColumn(hListView, 1, &lvCol);
-        lvCol.pszText = LM.getLPW(L"debug_col_value");
+        lvCol.pszText = LM.getW(L"debug_col_value");
         lvCol.cx = 180;
         ListView_InsertColumn(hListView, 2, &lvCol);
 
@@ -6723,17 +6723,17 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         const int btnStartX = 10;
         const int btnY = 160;
 
-        hNextButton = CreateWindowW(L"BUTTON", LM.getLPW(L"debug_btn_next"),
+        hNextButton = CreateWindowW(L"BUTTON", LM.getW(L"debug_btn_next"),
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
             btnStartX, btnY, btnWidth, btnHeight,
             hwnd, reinterpret_cast<HMENU>(2), nullptr, nullptr);
 
-        hStopButton = CreateWindowW(L"BUTTON", LM.getLPW(L"debug_btn_stop"),
+        hStopButton = CreateWindowW(L"BUTTON", LM.getW(L"debug_btn_stop"),
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
             btnStartX + btnWidth + btnGap, btnY, btnWidth, btnHeight,
             hwnd, reinterpret_cast<HMENU>(3), nullptr, nullptr);
 
-        hCopyButton = CreateWindowW(L"BUTTON", LM.getLPW(L"debug_btn_copy"),
+        hCopyButton = CreateWindowW(L"BUTTON", LM.getW(L"debug_btn_copy"),
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
             btnStartX + 2 * (btnWidth + btnGap), btnY, btnWidth, btnHeight,
             hwnd, reinterpret_cast<HMENU>(4), nullptr, nullptr);
@@ -6932,12 +6932,12 @@ void MultiReplace::SetDebugComplete()
     }
 
     // Update window title to show completion
-    SetWindowTextW(hDebugWnd, LM.getLPW(L"debug_title_complete"));
+    SetWindowTextW(hDebugWnd, LM.getW(L"debug_title_complete"));
 
     // Change Stop button to Close
     HWND hStopButton = GetDlgItem(hDebugWnd, 3);
     if (hStopButton) {
-        SetWindowTextW(hStopButton, LM.getLPW(L"debug_btn_close"));
+        SetWindowTextW(hStopButton, LM.getW(L"debug_btn_close"));
     }
 
     // Disable Next button
@@ -7113,7 +7113,7 @@ void MultiReplace::handleReplaceInFiles() {
     }
 
     if (files.empty()) {
-        MessageBox(_hSelf, LM.getLPW(L"msgbox_no_files"), LM.getLPW(L"msgbox_title_confirm"), MB_OK);
+        MessageBox(_hSelf, LM.getW(L"msgbox_no_files"), LM.getW(L"msgbox_title_confirm"), MB_OK);
         return;
     }
 
@@ -7126,7 +7126,7 @@ void MultiReplace::handleReplaceInFiles() {
     ReleaseDC(_hSelf, dialogHdc);
 
     std::wstring message = LM.get(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()), shortenedDirectory, wFilter });
-    if (MessageBox(_hSelf, message.c_str(), LM.getLPW(L"msgbox_title_confirm"), MB_OKCANCEL | MB_SETFOREGROUND) != IDOK)
+    if (MessageBox(_hSelf, message.c_str(), LM.getW(L"msgbox_title_confirm"), MB_OKCANCEL | MB_SETFOREGROUND) != IDOK)
         return;
 
     // RAII-based UI State Management
@@ -7720,7 +7720,7 @@ void MultiReplace::handleFindInFiles() {
     catch (...) { return; }
 
     if (files.empty()) {
-        MessageBox(_hSelf, LM.getLPW(L"msgbox_no_files"), LM.getLPW(L"msgbox_title_confirm"), MB_OK);
+        MessageBox(_hSelf, LM.getW(L"msgbox_no_files"), LM.getW(L"msgbox_title_confirm"), MB_OK);
         return;
     }
 
@@ -13200,8 +13200,8 @@ void MultiReplace::syncUIToCache()
     CFG.writeInt(L"ListColumns", L"CommentsColumnLocked", commentsColumnLockedEnabled ? 1 : 0);
 
     // Current Find/Replace Text
-    CFG.writeString(L"Current", L"FindText", getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
-    CFG.writeString(L"Current", L"ReplaceText", getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT));
+    CFG.writeString(L"Current", L"FindText", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)));
+    CFG.writeString(L"Current", L"ReplaceText", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT)));
 
     // Search Options
     CFG.writeInt(L"Options", L"WholeWord", IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? 1 : 0);
@@ -13213,7 +13213,7 @@ void MultiReplace::syncUIToCache()
     CFG.writeInt(L"Options", L"ReplaceAtMatches", IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"Options", L"ButtonsMode", IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"Options", L"UseList", useListEnabled ? 1 : 0);
-    CFG.writeString(L"Options", L"EditAtMatches", getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT));
+    CFG.writeString(L"Options", L"EditAtMatches", L"\"" + getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT) + L"\"");
 
     // Config-managed Options
     CFG.writeInt(L"Options", L"Tooltips", tooltipsEnabled ? 1 : 0);
@@ -13238,21 +13238,21 @@ void MultiReplace::syncUIToCache()
     // Scope Settings
     CFG.writeInt(L"Scope", L"Selection", IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"Scope", L"ColumnMode", IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED ? 1 : 0);
-    CFG.writeString(L"Scope", L"ColumnNum", getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT));
-    CFG.writeString(L"Scope", L"Delimiter", getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT));
-    CFG.writeString(L"Scope", L"QuoteChar", getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT));
+    CFG.writeString(L"Scope", L"ColumnNum", L"\"" + getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT) + L"\"");
+    CFG.writeString(L"Scope", L"Delimiter", L"\"" + getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT) + L"\"");
+    CFG.writeString(L"Scope", L"QuoteChar", L"\"" + getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT) + L"\"");
     CFG.writeInt(L"Scope", L"HeaderLines", static_cast<int>(CSVheaderLinesCount));
 
     // Replace in Files Settings
-    CFG.writeString(L"ReplaceInFiles", L"Filter", getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT));
-    CFG.writeString(L"ReplaceInFiles", L"Directory", getTextFromDialogItem(_hSelf, IDC_DIR_EDIT));
+    CFG.writeString(L"ReplaceInFiles", L"Filter", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT)));
+    CFG.writeString(L"ReplaceInFiles", L"Directory", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_DIR_EDIT)));
     CFG.writeInt(L"ReplaceInFiles", L"InSubfolders", IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"ReplaceInFiles", L"InHiddenFolders", IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"ReplaceInFiles", L"LimitFileSize", limitFileSizeEnabled ? 1 : 0);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", static_cast<int>(maxFileSizeMB));
 
     // File Info
-    CFG.writeString(L"File", L"ListFilePath", listFilePath);
+    CFG.writeString(L"File", L"ListFilePath", StringUtils::escapeCsvValue(listFilePath));
     CFG.writeSizeT(L"File", L"OriginalListHash", originalListHash);
 
     // History 
@@ -13273,7 +13273,8 @@ void MultiReplace::syncHistoryToCache(HWND hComboBox, const std::wstring& keyPre
         LRESULT len = SendMessage(hComboBox, CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1));
         SendMessage(hComboBox, CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
-        CFG.writeString(L"History", keyPrefix + std::to_wstring(i), std::wstring(buffer.data()));
+        std::wstring text = StringUtils::escapeCsvValue(std::wstring(buffer.data()));
+        CFG.writeString(L"History", keyPrefix + std::to_wstring(i), text);
     }
 }
 

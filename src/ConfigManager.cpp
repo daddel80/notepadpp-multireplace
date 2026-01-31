@@ -22,8 +22,8 @@
 // -----------------------------------------------------------------------------
 
 #include "ConfigManager.h"
-#include "Encoding.h"
-#include "StringUtils.h"
+#include "Encoding.h"  
+#include "StringUtils.h" 
 #include <fstream>
 #include <sstream>
 #include <windows.h>
@@ -62,8 +62,6 @@ void ConfigManager::forceReload(const std::wstring& iniFile)
 
 //
 //  Save current cache to disk (UTF‑8 with BOM)
-//  Note: All values are escaped with escapeCsvValue for proper roundtrip of
-//  special characters (newlines, backslashes, quotes). The corresponding
 //  unescapeCsvValue is applied in IniFileCache::parse() when loading.
 //
 bool ConfigManager::save(const std::wstring& file) const

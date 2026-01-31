@@ -14,6 +14,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+// -----------------------------------------------------------------------------
+//  Centralised undo / redo stack – no plugin‑specific code in here
+// -----------------------------------------------------------------------------
+
 #include "LanguageManager.h"
 #include "Encoding.h"
 #include "language_mapping.h"
@@ -29,7 +33,13 @@ namespace {
     std::wstring makeKey(const std::wstring& id,
         const std::vector<std::wstring>& repl)
     {
-        std::wstring key = id;
+        // Pre-calculate total size to avoid reallocations
+        size_t totalSize = id.size() + 1;
+        for (const auto& r : repl) { totalSize += r.size() + 1; }
+
+        std::wstring key;
+        key.reserve(totalSize);
+        key = id;
         key.push_back(L'\x1F');
         for (const auto& r : repl) { key += r; key.push_back(L'\x1F'); }
         return key;
@@ -154,12 +164,12 @@ LPCWSTR LanguageManager::getLPCW(const std::wstring& id,
     return it->second.c_str();
 }
 
-LPWSTR LanguageManager::getLPW(const std::wstring& id,
+LPWSTR LanguageManager::getW(const std::wstring& id,
     const std::vector<std::wstring>& repl) const
 {
-    thread_local std::wstring buf;
-    buf = get(id, repl);
-    return buf.empty() ? nullptr : buf.data();
+    // Use the same cached storage as getLPCW for stability
+    // The const_cast is safe because Win32 APIs don't modify these strings
+    return const_cast<LPWSTR>(getLPCW(id, repl));
 }
 
 // --- nativeLang.xml detection --------------------------------------------
@@ -169,7 +179,8 @@ std::wstring LanguageManager::detectLanguage(const std::wstring& xmlPath)
     if (!file.is_open())
         return L"english";
 
-    std::wregex  rx(L"<Native-Langue .*? filename=\"(.*?)\\.xml\"");
+    // Static regex - compiled only once
+    static const std::wregex rx(L"<Native-Langue .*? filename=\"(.*?)\\.xml\"");
     std::wsmatch m;
     std::wstring line, lang = L"english";
 

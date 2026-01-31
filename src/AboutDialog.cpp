@@ -21,12 +21,16 @@
 #include <commctrl.h>
 #include <shellapi.h>
 
-const char eT[] = { 102, 111, 114, 32, 65, 100, 114, 105, 97, 110, 32, 97, 110, 100, 32, 74, 117, 108, 105, 97, 110, 0 };
-static bool isDT = false;
-static TCHAR oT[MAX_PATH] = { 0 };
+namespace {
+    // UI Constants
+    constexpr int kBaseFontSize = 13;
+    constexpr COLORREF kLinkColorLight = RGB(0, 102, 204);
+    constexpr COLORREF kLinkColorDark = RGB(100, 149, 237);
 
-static const COLORREF LINK_COLOR_LIGHT = RGB(0, 102, 204);    // Blue for light mode
-static const COLORREF LINK_COLOR_DARK = RGB(100, 149, 237);   // Cornflower blue for dark mode
+    const char eT[] = { 102, 111, 114, 32, 65, 100, 114, 105, 97, 110, 32, 97, 110, 100, 32, 74, 117, 108, 105, 97, 110, 0 };
+    bool isDT = false;
+    TCHAR oT[MAX_PATH] = { 0 };
+}
 
 AboutDialog::~AboutDialog()
 {
@@ -60,27 +64,23 @@ LRESULT CALLBACK AboutDialog::WebsiteLinkProc(HWND hwnd, UINT uMsg, WPARAM wPara
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
 
-        // Determine if dark mode
         bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-        COLORREF linkColor = isDark ? LINK_COLOR_DARK : LINK_COLOR_LIGHT;
+        COLORREF linkColor = isDark ? kLinkColorDark : kLinkColorLight;
 
         SetTextColor(hdc, linkColor);
         SetBkMode(hdc, TRANSPARENT);
 
-        // Get the font
-        HFONT hFont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+        HFONT hFont = reinterpret_cast<HFONT>(SendMessage(hwnd, WM_GETFONT, 0, 0));
         HFONT hOldFont = nullptr;
         if (hFont) {
-            hOldFont = (HFONT)SelectObject(hdc, hFont);
+            hOldFont = static_cast<HFONT>(SelectObject(hdc, hFont));
         }
 
-        // Get text and rect
         TCHAR szText[MAX_PATH];
         GetWindowText(hwnd, szText, _countof(szText));
         RECT rect;
         GetClientRect(hwnd, &rect);
 
-        // Draw centered text
         DrawText(hdc, szText, -1, &rect, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
 
         if (hOldFont) {
@@ -157,7 +157,6 @@ intptr_t CALLBACK AboutDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
     case WM_INITDIALOG:
     {
-        // Translate UI Elements=
         LanguageManager& LM = LanguageManager::instance();
 
         SetWindowText(_hSelf, LM.getLPCW(L"about_title"));
@@ -167,13 +166,12 @@ intptr_t CALLBACK AboutDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         SetDlgItemText(_hSelf, IDC_WEBSITE_LINK, LM.getLPCW(L"about_help_support"));
         SetDlgItemText(_hSelf, IDOK, LM.getLPCW(L"about_ok"));
 
-        // Font Setup
+        // Font Setup with DPI awareness
         HDC hdc = GetDC(_hSelf);
         int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
         ReleaseDC(_hSelf, hdc);
 
-        int baseSize = 13;
-        int fontSize = -MulDiv(baseSize, dpi, 96);
+        int fontSize = -MulDiv(kBaseFontSize, dpi, 96);
 
         _hFont = CreateFont(fontSize, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -183,15 +181,15 @@ intptr_t CALLBACK AboutDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY, VARIABLE_PITCH, L"MS Shell Dlg");
 
-        // Apply Fonts and Setup Subclasses
+        // Setup website link
         HWND hwndWebsiteLink = GetDlgItem(_hSelf, IDC_WEBSITE_LINK);
         if (hwndWebsiteLink) {
-            SendMessage(hwndWebsiteLink, WM_SETFONT, (WPARAM)_hUnderlineFont, TRUE);
+            SendMessage(hwndWebsiteLink, WM_SETFONT, reinterpret_cast<WPARAM>(_hUnderlineFont), TRUE);
             SetWindowSubclass(hwndWebsiteLink, WebsiteLinkProc, 0, 0);
         }
 
-        const int controlCount = 7;
-        int controlIDs[controlCount] = {
+        // Apply font to static controls
+        const int controlIDs[] = {
             IDC_VERSION_STATIC,
             IDC_AUTHOR_STATIC,
             IDC_LICENSE_STATIC,
@@ -201,19 +199,20 @@ intptr_t CALLBACK AboutDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             IDC_LICENSE_LABEL
         };
 
-        for (int i = 0; i < controlCount; ++i) {
-            HWND hControl = GetDlgItem(_hSelf, controlIDs[i]);
+        for (int id : controlIDs) {
+            HWND hControl = GetDlgItem(_hSelf, id);
             if (hControl) {
-                SendMessage(hControl, WM_SETFONT, (WPARAM)_hFont, TRUE);
+                SendMessage(hControl, WM_SETFONT, reinterpret_cast<WPARAM>(_hFont), TRUE);
             }
         }
 
+        // Setup name static for special interaction
         HWND hwndName = GetDlgItem(_hSelf, IDC_NAME_STATIC);
         if (hwndName) {
             SetWindowSubclass(hwndName, NameStaticProc, 0, 0);
         }
 
-        // Dark Mode
+        // Enable Dark Mode support
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
             static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
 
@@ -225,13 +224,12 @@ intptr_t CALLBACK AboutDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         HDC hdcStatic = reinterpret_cast<HDC>(wParam);
         HWND hwndStatic = reinterpret_cast<HWND>(lParam);
 
-        // Color the website link blue
         if (hwndStatic == GetDlgItem(_hSelf, IDC_WEBSITE_LINK)) {
             bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-            COLORREF linkColor = isDark ? LINK_COLOR_DARK : LINK_COLOR_LIGHT;
+            COLORREF linkColor = isDark ? kLinkColorDark : kLinkColorLight;
             SetTextColor(hdcStatic, linkColor);
             SetBkMode(hdcStatic, TRANSPARENT);
-            return (LRESULT)GetStockObject(NULL_BRUSH);
+            return reinterpret_cast<LRESULT>(GetStockObject(NULL_BRUSH));
         }
         break;
     }
@@ -243,17 +241,6 @@ intptr_t CALLBACK AboutDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDCANCEL:
             display(false);
             return TRUE;
-        }
-        break;
-
-    case WM_DESTROY:
-        if (_hFont) {
-            DeleteObject(_hFont);
-            _hFont = nullptr;
-        }
-        if (_hUnderlineFont) {
-            DeleteObject(_hUnderlineFont);
-            _hUnderlineFont = nullptr;
         }
         break;
     }
