@@ -15,17 +15,17 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // -----------------------------------------------------------------------------
-//  Handles user settings stored in "MultiReplace.ini".
+//  Handles user settings stored in “MultiReplace.ini”.
 //  • wrap IniFileCache for typed read access
 //  • simple write helpers modify the in‑memory cache
-//  • save() serialises the full cache back to disk (UTF‑8 +BOM)
+//  • save() serialises the full cache back to disk (UTF‑8 +BOM)
 // -----------------------------------------------------------------------------
 
 #include "ConfigManager.h"
-#include "Encoding.h"        // Encoding::wstringToUtf8
+#include "Encoding.h"
+#include "StringUtils.h"
 #include <fstream>
 #include <sstream>
-#include <iomanip>
 #include <windows.h>
 
 //
@@ -62,6 +62,9 @@ void ConfigManager::forceReload(const std::wstring& iniFile)
 
 //
 //  Save current cache to disk (UTF‑8 with BOM)
+//  Note: All values are escaped with escapeCsvValue for proper roundtrip of
+//  special characters (newlines, backslashes, quotes). The corresponding
+//  unescapeCsvValue is applied in IniFileCache::parse() when loading.
 //
 bool ConfigManager::save(const std::wstring& file) const
 {
@@ -81,7 +84,8 @@ bool ConfigManager::save(const std::wstring& file) const
         out << Encoding::wstringToUtf8(L"[" + section + L"]\n");
 
         for (const auto& kv : secPair.second) {
-            std::wstring line = kv.first + L"=" + kv.second + L"\n";
+            // Escape value for proper roundtrip (unescaped on load by IniFileCache::parse)
+            std::wstring line = kv.first + L"=" + StringUtils::escapeCsvValue(kv.second) + L"\n";
             out << Encoding::wstringToUtf8(line);
         }
         out << '\n';
@@ -93,17 +97,10 @@ bool ConfigManager::save(const std::wstring& file) const
 //
 //  Write helpers (update cache only – caller calls save() later)
 //
-
 void ConfigManager::writeString(const std::wstring& sec, const std::wstring& key,
     const std::wstring& val)
 {
     _cache._data[sec][key] = val;   // direct because ConfigManager is friend
-}
-
-void ConfigManager::writeBool(const std::wstring& sec, const std::wstring& key,
-    bool val)
-{
-    writeString(sec, key, val ? L"1" : L"0");
 }
 
 void ConfigManager::writeInt(const std::wstring& sec, const std::wstring& key,
@@ -112,38 +109,14 @@ void ConfigManager::writeInt(const std::wstring& sec, const std::wstring& key,
     writeString(sec, key, std::to_wstring(val));
 }
 
-void ConfigManager::writeFloat(const std::wstring& sec, const std::wstring& key,
-    float val)
-{
-    // Format with reasonable precision, remove trailing zeros
-    std::wostringstream oss;
-    oss << std::fixed << std::setprecision(6) << val;
-    std::wstring str = oss.str();
-
-    // Remove trailing zeros after decimal point
-    size_t dotPos = str.find(L'.');
-    if (dotPos != std::wstring::npos) {
-        size_t lastNonZero = str.find_last_not_of(L'0');
-        if (lastNonZero != std::wstring::npos && lastNonZero > dotPos) {
-            str = str.substr(0, lastNonZero + 1);
-        }
-        // Remove trailing dot if no decimals left
-        if (str.back() == L'.') {
-            str.pop_back();
-        }
-    }
-
-    writeString(sec, key, str);
-}
-
-void ConfigManager::writeByte(const std::wstring& sec, const std::wstring& key,
-    BYTE val)
-{
-    writeString(sec, key, std::to_wstring(static_cast<int>(val)));
-}
-
 void ConfigManager::writeSizeT(const std::wstring& sec, const std::wstring& key,
     size_t val)
 {
     writeString(sec, key, std::to_wstring(val));
+}
+
+void ConfigManager::writeBool(const std::wstring& sec, const std::wstring& key,
+    bool val)
+{
+    writeString(sec, key, val ? L"1" : L"0");
 }

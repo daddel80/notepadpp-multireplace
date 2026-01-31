@@ -13200,8 +13200,8 @@ void MultiReplace::syncUIToCache()
     CFG.writeInt(L"ListColumns", L"CommentsColumnLocked", commentsColumnLockedEnabled ? 1 : 0);
 
     // Current Find/Replace Text
-    CFG.writeString(L"Current", L"FindText", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)));
-    CFG.writeString(L"Current", L"ReplaceText", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT)));
+    CFG.writeString(L"Current", L"FindText", getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
+    CFG.writeString(L"Current", L"ReplaceText", getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT));
 
     // Search Options
     CFG.writeInt(L"Options", L"WholeWord", IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? 1 : 0);
@@ -13213,7 +13213,7 @@ void MultiReplace::syncUIToCache()
     CFG.writeInt(L"Options", L"ReplaceAtMatches", IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"Options", L"ButtonsMode", IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"Options", L"UseList", useListEnabled ? 1 : 0);
-    CFG.writeString(L"Options", L"EditAtMatches", L"\"" + getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT) + L"\"");
+    CFG.writeString(L"Options", L"EditAtMatches", getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT));
 
     // Config-managed Options
     CFG.writeInt(L"Options", L"Tooltips", tooltipsEnabled ? 1 : 0);
@@ -13238,21 +13238,21 @@ void MultiReplace::syncUIToCache()
     // Scope Settings
     CFG.writeInt(L"Scope", L"Selection", IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"Scope", L"ColumnMode", IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED ? 1 : 0);
-    CFG.writeString(L"Scope", L"ColumnNum", L"\"" + getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT) + L"\"");
-    CFG.writeString(L"Scope", L"Delimiter", L"\"" + getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT) + L"\"");
-    CFG.writeString(L"Scope", L"QuoteChar", L"\"" + getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT) + L"\"");
+    CFG.writeString(L"Scope", L"ColumnNum", getTextFromDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT));
+    CFG.writeString(L"Scope", L"Delimiter", getTextFromDialogItem(_hSelf, IDC_DELIMITER_EDIT));
+    CFG.writeString(L"Scope", L"QuoteChar", getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT));
     CFG.writeInt(L"Scope", L"HeaderLines", static_cast<int>(CSVheaderLinesCount));
 
     // Replace in Files Settings
-    CFG.writeString(L"ReplaceInFiles", L"Filter", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT)));
-    CFG.writeString(L"ReplaceInFiles", L"Directory", StringUtils::escapeCsvValue(getTextFromDialogItem(_hSelf, IDC_DIR_EDIT)));
+    CFG.writeString(L"ReplaceInFiles", L"Filter", getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT));
+    CFG.writeString(L"ReplaceInFiles", L"Directory", getTextFromDialogItem(_hSelf, IDC_DIR_EDIT));
     CFG.writeInt(L"ReplaceInFiles", L"InSubfolders", IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"ReplaceInFiles", L"InHiddenFolders", IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED ? 1 : 0);
     CFG.writeInt(L"ReplaceInFiles", L"LimitFileSize", limitFileSizeEnabled ? 1 : 0);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", static_cast<int>(maxFileSizeMB));
 
     // File Info
-    CFG.writeString(L"File", L"ListFilePath", StringUtils::escapeCsvValue(listFilePath));
+    CFG.writeString(L"File", L"ListFilePath", listFilePath);
     CFG.writeSizeT(L"File", L"OriginalListHash", originalListHash);
 
     // History 
@@ -13273,8 +13273,7 @@ void MultiReplace::syncHistoryToCache(HWND hComboBox, const std::wstring& keyPre
         LRESULT len = SendMessage(hComboBox, CB_GETLBTEXTLEN, i, 0);
         std::vector<wchar_t> buffer(static_cast<size_t>(len + 1));
         SendMessage(hComboBox, CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(buffer.data()));
-        std::wstring text = StringUtils::escapeCsvValue(std::wstring(buffer.data()));
-        CFG.writeString(L"History", keyPrefix + std::to_wstring(i), text);
+        CFG.writeString(L"History", keyPrefix + std::to_wstring(i), std::wstring(buffer.data()));
     }
 }
 
