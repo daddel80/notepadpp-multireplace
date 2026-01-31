@@ -33,11 +33,11 @@ UndoRedoManager& UndoRedoManager::instance()
 // -----------------------------------------------------------------------------
 void UndoRedoManager::push(Action undoAction,
     Action redoAction,
-    const std::wstring& label)
+    std::wstring label)
 {
     _undo.push_back({ std::move(undoAction),
                       std::move(redoAction),
-                      label });
+                      std::move(label) });
     _redo.clear();
     trim();
 }

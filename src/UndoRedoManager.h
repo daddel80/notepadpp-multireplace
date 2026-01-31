@@ -23,7 +23,7 @@
 
 #include <functional>
 #include <string>
-#include <vector>
+#include <deque>
 
 class UndoRedoManager
 {
@@ -35,7 +35,7 @@ public:
 
     void push(Action undoAction,
         Action redoAction,
-        const std::wstring& label = L"");
+        std::wstring label = L"");
 
     bool undo();          // returns false if nothing to undo
     bool redo();          // returns false if nothing to redo
@@ -64,13 +64,16 @@ private:
         std::wstring  label;
     };
 
-    std::vector<Item> _undo;
-    std::vector<Item> _redo;
+    std::deque<Item> _undo;   // deque for O(1) pop_front during trim
+    std::deque<Item> _redo;
 
-    size_t _capacity = 200;    // limited steps
+    // Default capacity of 200 steps is suitable for typical usage.
+    // Setting capacity to 0 means unlimited (use with caution).
+    size_t _capacity = 200;
+
     void trim() {
-        if (_capacity == 0) return;
-        while (_undo.size() > _capacity) _undo.erase(_undo.begin());
-        while (_redo.size() > _capacity) _redo.erase(_redo.begin());
+        if (_capacity == 0) return;  // 0 means unlimited
+        while (_undo.size() > _capacity) _undo.pop_front();
+        while (_redo.size() > _capacity) _redo.pop_front();
     }
 };
