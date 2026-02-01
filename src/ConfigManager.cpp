@@ -15,10 +15,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // -----------------------------------------------------------------------------
-//  Handles user settings stored in “MultiReplace.ini”.
+//  Handles user settings stored in "MultiReplace.ini".
 //  • wrap IniFileCache for typed read access
 //  • simple write helpers modify the in‑memory cache
-//  • save() serialises the full cache back to disk (UTF‑8 +BOM)
+//  • save() serialises the full cache back to disk (UTF‑8 +BOM)
+//  • Differentiates between numeric values (no escaping) and strings (escaped)
 // -----------------------------------------------------------------------------
 
 #include "ConfigManager.h"
@@ -48,6 +49,7 @@ bool ConfigManager::load(const std::wstring& iniFile)
     }
 
     _iniPath = iniFile;
+    _stringKeys.clear();  // Clear on reload
     bool result = _cache.load(iniFile);
     _isLoaded = result;
     return result;
@@ -57,19 +59,20 @@ void ConfigManager::forceReload(const std::wstring& iniFile)
 {
     _isLoaded = false;
     _iniPath.clear();
+    _stringKeys.clear();
     load(iniFile);
 }
 
 //
 //  Save current cache to disk (UTF‑8 with BOM)
-//  unescapeCsvValue is applied in IniFileCache::parse() when loading.
+//  - String values (user input) are escaped with escapeCsvValue()
+//  - Numeric values (int, bool, float, size_t) are written as-is
 //
 bool ConfigManager::save(const std::wstring& file) const
 {
     std::wstring path = file.empty() ? _iniPath : file;
     if (path.empty()) return false;
 
-    // Use wstring path directly (Windows MSVC supports this)
     std::ofstream out(path, std::ios::binary);
     if (!out.is_open()) return false;
 
@@ -82,8 +85,18 @@ bool ConfigManager::save(const std::wstring& file) const
         out << Encoding::wstringToUtf8(L"[" + section + L"]\n");
 
         for (const auto& kv : secPair.second) {
-            // Escape value for proper roundtrip (unescaped on load by IniFileCache::parse)
-            std::wstring line = kv.first + L"=" + StringUtils::escapeCsvValue(kv.second) + L"\n";
+            std::wstring line;
+            std::wstring fullKey = section + L"|" + kv.first;
+
+            // Check if this key was written as a string (needs escaping)
+            if (_stringKeys.find(fullKey) != _stringKeys.end()) {
+                // String value: escape for proper roundtrip
+                line = kv.first + L"=" + StringUtils::escapeCsvValue(kv.second) + L"\n";
+            }
+            else {
+                // Numeric value: write as-is
+                line = kv.first + L"=" + kv.second + L"\n";
+            }
             out << Encoding::wstringToUtf8(line);
         }
         out << '\n';
@@ -95,26 +108,47 @@ bool ConfigManager::save(const std::wstring& file) const
 //
 //  Write helpers (update cache only – caller calls save() later)
 //
+
+// String values need escaping when saved
 void ConfigManager::writeString(const std::wstring& sec, const std::wstring& key,
     const std::wstring& val)
 {
-    _cache._data[sec][key] = val;   // direct because ConfigManager is friend
+    _cache._data[sec][key] = val;
+    _stringKeys.insert(sec + L"|" + key);  // Mark as string for escaping
 }
 
+// Numeric types don't need escaping
 void ConfigManager::writeInt(const std::wstring& sec, const std::wstring& key,
     int val)
 {
-    writeString(sec, key, std::to_wstring(val));
+    _cache._data[sec][key] = std::to_wstring(val);
+    // Don't add to _stringKeys - numeric values are not escaped
 }
 
 void ConfigManager::writeSizeT(const std::wstring& sec, const std::wstring& key,
     size_t val)
 {
-    writeString(sec, key, std::to_wstring(val));
+    _cache._data[sec][key] = std::to_wstring(val);
+    // Don't add to _stringKeys - numeric values are not escaped
 }
 
 void ConfigManager::writeBool(const std::wstring& sec, const std::wstring& key,
     bool val)
 {
-    writeString(sec, key, val ? L"1" : L"0");
+    _cache._data[sec][key] = val ? L"1" : L"0";
+    // Don't add to _stringKeys - boolean values are not escaped
+}
+
+void ConfigManager::writeFloat(const std::wstring& sec, const std::wstring& key,
+    float val)
+{
+    _cache._data[sec][key] = std::to_wstring(val);
+    // Don't add to _stringKeys - numeric values are not escaped
+}
+
+void ConfigManager::writeByte(const std::wstring& sec, const std::wstring& key,
+    BYTE val)
+{
+    _cache._data[sec][key] = std::to_wstring(static_cast<int>(val));
+    // Don't add to _stringKeys - numeric values are not escaped
 }

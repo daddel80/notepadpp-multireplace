@@ -19,11 +19,13 @@
 //  ConfigManager  (singleton)
 //  • Handles user-configurable settings stored in MultiReplace.ini
 //  • Uses IniFileCache for parsing / writing
+//  • Differentiates between string values (escaped) and numeric values (raw)
 // --------------------------------------------------------------
 
 #include "IniFileCache.h"
 
 #include <string>
+#include <set>
 #include <windows.h>    // BYTE
 
 class ConfigManager
@@ -72,6 +74,8 @@ public:
 
     // ---------------------------------------------------------------------
     // Typed setters (symmetric to getters)
+    // - writeString: values are escaped when saved (for user input)
+    // - writeInt/Bool/Float/Byte/SizeT: values written as-is (numeric)
     // ---------------------------------------------------------------------
     void writeString(const std::wstring& sec, const std::wstring& key, const std::wstring& val);
     void writeBool(const std::wstring& sec, const std::wstring& key, bool val);
@@ -92,4 +96,8 @@ private:
     IniFileCache _cache;
     std::wstring _iniPath;
     bool _isLoaded = false;
+
+    // Track which keys are strings (need escaping) vs numeric (no escaping)
+    // Format: "Section|Key"
+    mutable std::set<std::wstring> _stringKeys;
 };
