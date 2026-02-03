@@ -451,6 +451,7 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
             dpiMgr->setCustomScaleFactor((float)_userScaleFactor);
         }
         createFonts();
+        calculateControlHeights();
         applyFonts();
         resizeUI();
         return TRUE;
@@ -564,7 +565,6 @@ int MultiReplaceConfigDialog::getFontHeight(HWND hwnd, HFONT hFont) {
 
 void MultiReplaceConfigDialog::calculateControlHeights() {
     if (!_hCategoryFont) {
-        // Fallback if font not created
         _editHeight = scaleY(22);
         _checkboxHeight = scaleY(18);
         return;
@@ -572,11 +572,11 @@ void MultiReplaceConfigDialog::calculateControlHeights() {
 
     int fontHeight = getFontHeight(_hSelf, _hCategoryFont);
 
-    // Edit controls: font height + padding for border and internal spacing
-    _editHeight = fontHeight + scaleY(6);
+    // Edit controls: font height + proportional padding (about 50% of font height)
+    _editHeight = fontHeight + (fontHeight / 2);
 
-    // Checkboxes: font height + small padding
-    _checkboxHeight = fontHeight + scaleY(4);
+    // Checkboxes: font height + proportional padding
+    _checkboxHeight = fontHeight + (fontHeight / 4);
 }
 
 void MultiReplaceConfigDialog::cleanupFonts() {
@@ -916,7 +916,7 @@ void MultiReplaceConfigDialog::createExportPanelControls() {
         IDC_CFG_GRP_EXPORT_DATA, LM.getLPCW(L"config_grp_export_data"));
     {
         const int innerLeft = left + 22;
-        const int innerTop = top + 30;
+        const int innerTop = top + 32;
         const int innerWidth = groupW - 44;
 
         createStaticText(_hExportPanel, innerLeft, innerTop, 70, 18,
@@ -956,7 +956,7 @@ void MultiReplaceConfigDialog::createExportPanelControls() {
         LONG style = GetWindowLong(hEdit, GWL_STYLE);
         SetWindowLong(hEdit, GWL_STYLE, style & ~ES_NUMBER);
 
-        const int row3Y = row2Y + 38;
+        const int row3Y = row2Y + 42;
         createCheckBox(_hExportPanel, innerLeft, row3Y, 230,
             IDC_CFG_EXPORT_ESCAPE_CHECK, LM.getLPCW(L"config_chk_export_escape"));
         createCheckBox(_hExportPanel, innerLeft + 260, row3Y, 200,
@@ -1136,13 +1136,15 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
         safeDestroy(_hCsvFlowTabsPanel); safeDestroy(_hAppearancePanel); safeDestroy(_hExportPanel);
 
+        createFonts();
+        calculateControlHeights();
+
         createUI();
         _currentCategory = -1;
         initUI();
 
         loadSettingsToConfigUI(false);
 
-        createFonts();
         applyFonts();
         resizeUI();
 
