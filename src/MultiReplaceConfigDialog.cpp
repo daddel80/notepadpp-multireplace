@@ -302,8 +302,8 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         dpiMgr->setCustomScaleFactor((float)_userScaleFactor);
 
         // Calculate dimensions based on scale
-        int baseWidth = 810;
-        int baseHeight = 380;
+        int baseWidth = CONFIG_DLG_WIDTH;
+        int baseHeight = CONFIG_DLG_HEIGHT;
 
         int clientW = scaleX(baseWidth);
         int clientH = scaleY(baseHeight);
@@ -1084,7 +1084,7 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         _userScaleFactor = newScaleFactor;
         dpiMgr->setCustomScaleFactor((float)_userScaleFactor);
 
-        int baseWidth = 810; int baseHeight = 380;
+        int baseWidth = CONFIG_DLG_WIDTH; int baseHeight = CONFIG_DLG_HEIGHT;
         int clientW = scaleX(baseWidth);
         int clientH = scaleY(baseHeight);
 
@@ -1186,7 +1186,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
     loadSettingsToConfigUI(false);
 
     if (std::abs(oldScale - 1.0) > 0.001) {
-        int baseWidth = 810; int baseHeight = 380;
+        int baseWidth = CONFIG_DLG_WIDTH; int baseHeight = CONFIG_DLG_HEIGHT;
         int clientW = scaleX(baseWidth);
         int clientH = scaleY(baseHeight);
 

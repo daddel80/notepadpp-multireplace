@@ -238,8 +238,6 @@
 #define IDM_TOGGLE_COMMENTS             5803
 #define IDM_TOGGLE_DELETE               5804
 
-
-
 // ===================================================================
 //  6000-6120 - Miscellaneous & Result Dock
 // ===================================================================
@@ -382,11 +380,19 @@
 // ===================================================================
 //  Hard-coded defaults & custom messages
 // ===================================================================
-#define POS_X               92
-#define POS_Y               40
-#define MIN_WIDTH           810
-#define MIN_HEIGHT          370
-#define SHRUNK_HEIGHT       224
+// --- Panel Position ---
+#define CENTER_ON_NPP               -9999   // Sentinel: center over N++ on first run
+
+// --- Main Panel: Window Size (resizable) ---
+#define MIN_WIDTH                   810     // Minimum width (resize limit)
+#define MIN_HEIGHT                  370     // Minimum height with list (resize limit)
+#define SHRUNK_HEIGHT               224     // Minimum height without list
+#define INIT_WIDTH                  833     // Initial width on first run
+#define INIT_HEIGHT                 370     // Initial height on first run
+
+// --- Config Dialog: Window Size (fixed) ---
+#define CONFIG_DLG_WIDTH            810     // Fixed width
+#define CONFIG_DLG_HEIGHT           380     // Fixed height
 
 #define WM_POST_INIT        (WM_APP + 1)    // posted after the dialog is shown
 

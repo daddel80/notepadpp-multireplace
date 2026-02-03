@@ -13018,20 +13018,40 @@ void MultiReplace::loadUIConfigFromIni()
         }
     }
 
-    windowRect.left = CFG.readInt(L"Window", L"PosX", POS_X);
-    windowRect.top = CFG.readInt(L"Window", L"PosY", POS_Y);
+    int savedLeft = CFG.readInt(L"Window", L"PosX", CENTER_ON_NPP);
+    int savedTop = CFG.readInt(L"Window", L"PosY", CENTER_ON_NPP);
 
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     updateUseListState(false);
 
-    const int DEFAULT_WIDTH_EXTRA = 23;
-    int savedWidth = CFG.readInt(L"Window", L"Width", sx(MIN_WIDTH + DEFAULT_WIDTH_EXTRA));
+    int savedWidth = CFG.readInt(L"Window", L"Width", sx(INIT_WIDTH));
     int width = (savedWidth < MIN_WIDTH_scaled) ? MIN_WIDTH_scaled : savedWidth;
 
-    useListOnHeight = CFG.readInt(L"Window", L"Height", MIN_HEIGHT_scaled);
+    useListOnHeight = CFG.readInt(L"Window", L"Height", sy(INIT_HEIGHT));
     if (useListOnHeight < MIN_HEIGHT_scaled) useListOnHeight = MIN_HEIGHT_scaled;
 
     int height = useListEnabled ? useListOnHeight : useListOffHeight;
+
+    // Center over Notepad++ on first run (when no position saved in INI)
+    if (savedLeft == CENTER_ON_NPP || savedTop == CENTER_ON_NPP) {
+        RECT rcNpp;
+        if (::GetWindowRect(nppData._nppHandle, &rcNpp)) {
+            int nppW = rcNpp.right - rcNpp.left;
+            int nppH = rcNpp.bottom - rcNpp.top;
+            windowRect.left = rcNpp.left + (nppW - width) / 2;
+            windowRect.top = rcNpp.top + (nppH - height) / 2;
+        }
+        else {
+            // Fallback if GetWindowRect fails
+            windowRect.left = 100;
+            windowRect.top = 100;
+        }
+    }
+    else {
+        windowRect.left = savedLeft;
+        windowRect.top = savedTop;
+    }
+
     windowRect.right = windowRect.left + width;
     windowRect.bottom = windowRect.top + height;
 
