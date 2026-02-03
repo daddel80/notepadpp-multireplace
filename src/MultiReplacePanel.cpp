@@ -13025,6 +13025,7 @@ void MultiReplace::loadUIConfigFromIni()
     updateUseListState(false);
 
     int savedWidth = CFG.readInt(L"Window", L"Width", sx(INIT_WIDTH));
+    int savedWidth = CFG.readInt(L"Window", L"Width", sx(MIN_WIDTH + DEFAULT_WIDTH_EXTRA));
     int width = (savedWidth < MIN_WIDTH_scaled) ? MIN_WIDTH_scaled : savedWidth;
 
     useListOnHeight = CFG.readInt(L"Window", L"Height", sy(INIT_HEIGHT));
