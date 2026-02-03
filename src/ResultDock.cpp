@@ -275,6 +275,61 @@ void ResultDock::applyStyling() const
 }
 void ResultDock::onThemeChanged() {
     applyTheme();
+    updateTabIcon();
+}
+
+void ResultDock::updateTabIcon() {
+    if (!_hSci) return;
+
+    const bool darkMode = (::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0);
+
+    UINT dpi = 96;
+    if (HDC hdc = ::GetDC(nppData._nppHandle)) {
+        dpi = ::GetDeviceCaps(hdc, LOGPIXELSX);
+        ::ReleaseDC(nppData._nppHandle, hdc);
+    }
+
+    // Cache icons to avoid recreation and memory leaks
+    static HICON s_cachedTabIconLight = nullptr;
+    static HICON s_cachedTabIconDark = nullptr;
+    static UINT s_cachedDpi = 0;
+
+    // Recreate icons only if DPI changed
+    if (dpi != s_cachedDpi) {
+        if (s_cachedTabIconLight) ::DestroyIcon(s_cachedTabIconLight);
+        if (s_cachedTabIconDark) ::DestroyIcon(s_cachedTabIconDark);
+        s_cachedTabIconLight = CreateIconFromImageData(gimp_image_tab_light, dpi);
+        s_cachedTabIconDark = CreateIconFromImageData(gimp_image_tab_dark, dpi);
+        s_cachedDpi = dpi;
+    }
+
+    HICON hNewIcon = darkMode ? s_cachedTabIconDark : s_cachedTabIconLight;
+    if (!hNewIcon) return;
+
+    // Update our local copy
+    _dockData.hIconTab = hNewIcon;
+
+    // Find the docking container and its tab control
+    HWND hParent = ::GetParent(_hSci);
+    while (hParent) {
+        HWND hTab = ::FindWindowEx(hParent, NULL, WC_TABCONTROL, NULL);
+        if (hTab) {
+            int tabCount = static_cast<int>(::SendMessage(hTab, TCM_GETITEMCOUNT, 0, 0));
+            for (int i = 0; i < tabCount; ++i) {
+                TCITEM tcItem = {};
+                tcItem.mask = TCIF_PARAM;
+                if (::SendMessage(hTab, TCM_GETITEM, i, reinterpret_cast<LPARAM>(&tcItem)) && tcItem.lParam) {
+                    tTbData* pTbData = reinterpret_cast<tTbData*>(tcItem.lParam);
+                    if (pTbData->hClient == _hSci) {
+                        pTbData->hIconTab = hNewIcon;
+                        ::InvalidateRect(hTab, NULL, TRUE);
+                        return;
+                    }
+                }
+            }
+        }
+        hParent = ::GetParent(hParent);
+    }
 }
 
 // ------------------- Search Block API ---------------------
@@ -522,10 +577,7 @@ void ResultDock::create(const NppData& npp)
     _sciFn = reinterpret_cast<SciFnDirect_t>(::SendMessage(_hSci, SCI_GETDIRECTFUNCTION, 0, 0));
     _sciPtr = static_cast<sptr_t>(::SendMessage(_hSci, SCI_GETDIRECTPOINTER, 0, 0));
 
-    // 4) Fill docking descriptor (kept from your version)
-    static UINT  s_cachedDpi = 0;
-    static HICON s_cachedLightIcon = nullptr;
-
+    // 4) Fill docking descriptor
     ::ZeroMemory(&_dockData, sizeof(_dockData));
     _dockData.hClient = _hSci;
     _dockData.pszName = L"MultiReplace – Search results";
@@ -537,29 +589,17 @@ void ResultDock::create(const NppData& npp)
     _dockData.rcFloat = { 0, 0, 0, 0 };
 
     const bool darkMode = (::SendMessage(npp._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0);
-    if (!darkMode) {
-        UINT dpi = 96;
-        if (HDC hdc = ::GetDC(npp._nppHandle)) {
-            dpi = ::GetDeviceCaps(hdc, LOGPIXELSX);
-            ::ReleaseDC(npp._nppHandle, hdc);
-        }
-        if (dpi != s_cachedDpi) {
-            if (s_cachedLightIcon) ::DestroyIcon(s_cachedLightIcon);
-            extern HBITMAP CreateBitmapFromArray(UINT dpi);
-            if (HBITMAP bmp = CreateBitmapFromArray(dpi)) {
-                ICONINFO ii = {}; ii.fIcon = TRUE; ii.hbmMask = bmp; ii.hbmColor = bmp;
-                s_cachedLightIcon = ::CreateIconIndirect(&ii);
-                ::DeleteObject(bmp);
-            }
-            s_cachedDpi = dpi;
-        }
-        _dockData.hIconTab = s_cachedLightIcon
-            ? s_cachedLightIcon
-            : static_cast<HICON>(::LoadImage(_hInst, MAKEINTRESOURCE(IDI_MR_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
+
+    UINT dpi = 96;
+    if (HDC hdc = ::GetDC(npp._nppHandle)) {
+        dpi = ::GetDeviceCaps(hdc, LOGPIXELSX);
+        ::ReleaseDC(npp._nppHandle, hdc);
     }
-    else {
-        _dockData.hIconTab = static_cast<HICON>(::LoadImage(_hInst, MAKEINTRESOURCE(IDI_MR_DM_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
-    }
+
+    // Use monochrome tab icons
+    _dockData.hIconTab = darkMode
+        ? CreateIconFromImageData(gimp_image_tab_dark, dpi)
+        : CreateIconFromImageData(gimp_image_tab_light, dpi);
 
     // 5) Register dock & theme it
     _hDock = reinterpret_cast<HWND>(::SendMessageW(npp._nppHandle, NPPM_DMMREGASDCKDLG, 0, reinterpret_cast<LPARAM>(&_dockData)));

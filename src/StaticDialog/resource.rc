@@ -46,7 +46,4 @@ CONTROL         "GPLv3", IDC_LICENSE_STATIC, "Static", SS_LEFT | WS_VISIBLE, 100
 CONTROL         "Help and Support", IDC_WEBSITE_LINK, "Static", SS_NOTIFY | SS_CENTER | WS_VISIBLE, 20, 80, 160, 20
 END
 
-IDI_MR_ICON ICON "resources\multireplace_ico_black.ico"
-IDI_MR_DM_ICON ICON "resources\multireplace_ico_white.ico"
-
 1 RT_MANIFEST "MultiReplacePanel.manifest"

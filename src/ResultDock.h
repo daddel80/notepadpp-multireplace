@@ -87,6 +87,7 @@ public:
     void rebuildFolding();     // Re-calculate folding markers
     void applyStyling() const; // Update indicators/colors
     void onThemeChanged();     // Called on N++ dark mode toggle
+    void updateTabIcon();      // Update tab icon for current theme
 
     const std::vector<Hit>& hits() const { return _hits; }
 

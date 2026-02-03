@@ -18,8 +18,6 @@
 #include "MultiReplacePanel.h"
 #include "MultiReplaceConfigDialog.h"
 #include "image_data.h"
-#include <algorithm>
-#include <vector>
 #include <windows.h>
 #include "ResultDock.h"
 
@@ -29,61 +27,6 @@ extern MultiReplaceConfigDialog _MultiReplaceConfig;
 extern void refreshPluginMenu();
 
 HINSTANCE g_inst;
-
-void CalculateIconSize(UINT dpi, int& iconWidth, int& iconHeight) {
-    constexpr int refDpi = 96;  // Standard DPI
-    constexpr int refSize = 16; // Icon size at 96 DPI
-    float scaleFactor = static_cast<float>(dpi) / refDpi;
-    iconWidth = static_cast<int>(std::round(refSize * scaleFactor));
-    iconHeight = static_cast<int>(std::round(refSize * scaleFactor));
-    iconWidth = (std::max)(16, iconWidth);
-    iconHeight = (std::max)(16, iconHeight);
-}
-
-void ScaleBitmapData(const uint8_t* src, int srcWidth, int srcHeight,
-    std::vector<uint8_t>& dst, int dstWidth, int dstHeight) {
-    for (int y = 0; y < dstHeight; ++y) {
-        for (int x = 0; x < dstWidth; ++x) {
-            int srcX = static_cast<int>(std::round(static_cast<float>(x) / dstWidth * (srcWidth - 1)));
-            int srcY = static_cast<int>(std::round(static_cast<float>(y) / dstHeight * (srcHeight - 1)));
-            srcX = (std::min)(srcX, srcWidth - 1);
-            srcY = (std::min)(srcY, srcHeight - 1);
-            const uint8_t* pixel = &src[(srcY * srcWidth + srcX) * 4];
-            int dstIndex = (y * dstWidth + x) * 4;
-
-            // Swap Red & Blue channels
-            dst[dstIndex] = pixel[2]; // R <== Blue
-            dst[dstIndex + 1] = pixel[1]; // G stays same
-            dst[dstIndex + 2] = pixel[0]; // B <== Red
-            dst[dstIndex + 3] = pixel[3]; // A stays same
-        }
-    }
-}
-
-HBITMAP CreateBitmapFromArray(UINT dpi) {
-    const uint8_t* imageData = gimp_image.pixel_data;
-    int srcWidth = gimp_image.width;
-    int srcHeight = gimp_image.height;
-    int width, height;
-    CalculateIconSize(dpi, width, height);
-    size_t pixelCount = width * height;
-    size_t expectedSize = pixelCount * 4;
-    std::vector<uint8_t> resizedPixelData(expectedSize);
-    ScaleBitmapData(imageData, srcWidth, srcHeight, resizedPixelData, width, height);
-    BITMAPINFO bmi = {};
-    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth = width;
-    bmi.bmiHeader.biHeight = -height;
-    bmi.bmiHeader.biPlanes = 1;
-    bmi.bmiHeader.biBitCount = 32;
-    bmi.bmiHeader.biCompression = BI_RGB;
-    void* pBits = nullptr;
-    HDC hdc = GetDC(NULL);
-    HBITMAP hBitmap = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
-    ReleaseDC(NULL, hdc);
-    memcpy(pBits, resizedPixelData.data(), expectedSize);
-    return hBitmap;
-}
 
 
 BOOL APIENTRY DllMain(HINSTANCE hModule, DWORD  reasonForCall, LPVOID /*lpReserved*/)
@@ -145,7 +88,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
     {
         toolbarIconsWithDarkMode tbIcons;
 
-        // --- Start of the optimized DPI detection block-- -
+        // --- Start of the optimized DPI detection block ---
         static bool s_isInitialized = false;
         static decltype(&GetDpiForWindow) s_pfnGetDpiForWindow = nullptr;
 
@@ -174,14 +117,14 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
                 ::ReleaseDC(nppData._nppHandle, hdc);
             }
         }
-        // --- End of the optimized DPI detection block-- -
+        // --- End of the optimized DPI detection block ---
 
         // Generate the bitmap with proper DPI scaling
-        tbIcons.hToolbarBmp = CreateBitmapFromArray(dpi);
+        tbIcons.hToolbarBmp = CreateBitmapFromImageData(gimp_image, dpi);
 
         // Load icons for normal and dark mode
-        tbIcons.hToolbarIcon = ::LoadIcon(g_inst, MAKEINTRESOURCE(IDI_MR_ICON));
-        tbIcons.hToolbarIconDarkMode = ::LoadIcon(g_inst, MAKEINTRESOURCE(IDI_MR_DM_ICON));
+        tbIcons.hToolbarIcon = CreateIconFromImageData(gimp_image_light, dpi);
+        tbIcons.hToolbarIconDarkMode = CreateIconFromImageData(gimp_image_dark, dpi);
 
         // Send updated toolbar icons to Notepad++
         ::SendMessage(nppData._nppHandle, NPPM_ADDTOOLBARICON_FORDARKMODE, funcItem[0]._cmdID, (LPARAM)&tbIcons);

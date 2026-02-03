@@ -238,9 +238,6 @@
 #define IDM_TOGGLE_COMMENTS             5803
 #define IDM_TOGGLE_DELETE               5804
 
-#define IDI_MR_ICON                     5805
-#define IDI_MR_DM_ICON                  5806
-
 
 
 // ===================================================================

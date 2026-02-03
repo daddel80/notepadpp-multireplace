@@ -88,6 +88,7 @@
     <ClCompile Include="..\src\DPIManager.cpp" />
     <ClCompile Include="..\src\DropTarget.cpp" />
     <ClCompile Include="..\src\Encoding.cpp" />
+    <ClCompile Include="..\src\image_data.cpp" />
     <ClCompile Include="..\src\IniFileCache.cpp" />
     <ClCompile Include="..\src\LanguageManager.cpp" />
     <ClCompile Include="..\src\language_mapping.cpp" />

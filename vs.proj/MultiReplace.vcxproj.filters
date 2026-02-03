@@ -123,6 +123,7 @@
     <ClCompile Include="..\src\NumericToken.cpp" />
     <ClCompile Include="..\src\NppStyleKit.cpp" />
     <ClCompile Include="..\src\MultiReplaceConfigDialog.cpp" />
+    <ClCompile Include="..\src\image_data.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
