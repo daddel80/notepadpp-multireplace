@@ -55,6 +55,8 @@ private:
     void applyFonts();
     int scaleX(int value) const;
     int scaleY(int value) const;
+    int getFontHeight(HWND hwnd, HFONT hFont);
+    void calculateControlHeights();
 
     // -------------------------------------------------------------------------
     // Business Logic
@@ -123,6 +125,10 @@ private:
 
     // Store user scale locally (from INI) to combine with System DPI
     double _userScaleFactor = 1.0;
+
+    // Calculated control heights based on font metrics
+    int _editHeight = 22;       // Default, recalculated in calculateControlHeights()
+    int _checkboxHeight = 18;   // Default, recalculated in calculateControlHeights()
 
     // -------------------------------------------------------------------------
     // Helpers

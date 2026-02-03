@@ -302,8 +302,8 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         dpiMgr->setCustomScaleFactor((float)_userScaleFactor);
 
         // Calculate dimensions based on scale
-        int baseWidth = CONFIG_DLG_WIDTH;
-        int baseHeight = CONFIG_DLG_HEIGHT;
+        int baseWidth = 810;
+        int baseHeight = 380;
 
         int clientW = scaleX(baseWidth);
         int clientH = scaleY(baseHeight);
@@ -331,11 +331,13 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
             CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
             _hSelf, nullptr, _hInst, nullptr);
 
+        createFonts();  // Create fonts FIRST so we can calculate control heights
+        calculateControlHeights();  // Calculate heights based on font metrics
+
         createUI();
         initUI();
         loadSettingsToConfigUI();
 
-        createFonts();
         applyFonts();
         resizeUI();
 
@@ -545,6 +547,38 @@ void MultiReplaceConfigDialog::createFonts() {
     _hCategoryFont = create(13, FW_NORMAL, L"MS Shell Dlg 2");
 }
 
+int MultiReplaceConfigDialog::getFontHeight(HWND hwnd, HFONT hFont) {
+    if (!hFont) return scaleY(13);  // Fallback
+
+    HDC hdc = ::GetDC(hwnd);
+    if (!hdc) return scaleY(13);
+
+    HGDIOBJ oldFont = ::SelectObject(hdc, hFont);
+    TEXTMETRIC tm;
+    ::GetTextMetrics(hdc, &tm);
+    ::SelectObject(hdc, oldFont);
+    ::ReleaseDC(hwnd, hdc);
+
+    return tm.tmHeight;
+}
+
+void MultiReplaceConfigDialog::calculateControlHeights() {
+    if (!_hCategoryFont) {
+        // Fallback if font not created
+        _editHeight = scaleY(22);
+        _checkboxHeight = scaleY(18);
+        return;
+    }
+
+    int fontHeight = getFontHeight(_hSelf, _hCategoryFont);
+
+    // Edit controls: font height + padding for border and internal spacing
+    _editHeight = fontHeight + scaleY(6);
+
+    // Checkboxes: font height + small padding
+    _checkboxHeight = fontHeight + scaleY(4);
+}
+
 void MultiReplaceConfigDialog::cleanupFonts() {
     if (_hCategoryFont) {
         ::DeleteObject(_hCategoryFont);
@@ -739,13 +773,13 @@ HWND MultiReplaceConfigDialog::createGroupBox(HWND parent, int left, int top, in
     return ::CreateWindowEx(0, WC_BUTTON, text, WS_CHILD | WS_VISIBLE | BS_GROUPBOX, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
 }
 HWND MultiReplaceConfigDialog::createCheckBox(HWND parent, int left, int top, int width, int id, const TCHAR* text) {
-    return ::CreateWindowEx(0, WC_BUTTON, text, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, scaleX(left), scaleY(top), scaleX(width), scaleY(18), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
+    return ::CreateWindowEx(0, WC_BUTTON, text, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, scaleX(left), scaleY(top), scaleX(width), _checkboxHeight, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
 }
 HWND MultiReplaceConfigDialog::createStaticText(HWND parent, int left, int top, int width, int height, int id, const TCHAR* text, DWORD extraStyle) {
     return ::CreateWindowEx(0, WC_STATIC, text, WS_CHILD | WS_VISIBLE | extraStyle, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
 }
-HWND MultiReplaceConfigDialog::createNumberEdit(HWND parent, int left, int top, int width, int height, int id) {
-    return ::CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, TEXT(""), WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_LEFT | ES_AUTOHSCROLL | ES_NUMBER, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
+HWND MultiReplaceConfigDialog::createNumberEdit(HWND parent, int left, int top, int width, int /*height*/, int id) {
+    return ::CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, TEXT(""), WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_LEFT | ES_AUTOHSCROLL | ES_NUMBER, scaleX(left), scaleY(top), scaleX(width), _editHeight, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
 }
 HWND MultiReplaceConfigDialog::createComboDropDownList(HWND parent, int left, int top, int width, int height, int id) {
     return ::CreateWindowEx(0, WC_COMBOBOX, TEXT(""), WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
@@ -1084,7 +1118,7 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         _userScaleFactor = newScaleFactor;
         dpiMgr->setCustomScaleFactor((float)_userScaleFactor);
 
-        int baseWidth = CONFIG_DLG_WIDTH; int baseHeight = CONFIG_DLG_HEIGHT;
+        int baseWidth = 810; int baseHeight = 380;
         int clientW = scaleX(baseWidth);
         int clientH = scaleY(baseHeight);
 
@@ -1186,7 +1220,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
     loadSettingsToConfigUI(false);
 
     if (std::abs(oldScale - 1.0) > 0.001) {
-        int baseWidth = CONFIG_DLG_WIDTH; int baseHeight = CONFIG_DLG_HEIGHT;
+        int baseWidth = 810; int baseHeight = 380;
         int clientW = scaleX(baseWidth);
         int clientH = scaleY(baseHeight);
 
