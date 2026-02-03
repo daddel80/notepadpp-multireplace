@@ -3024,26 +3024,24 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
     extendedStyle &= ~LVS_EX_INFOTIP;
     ListView_SetExtendedListViewStyle(_replaceListView, extendedStyle);
 
-    // Calculate X position of the column based on scrolling and widths
-    int totalWidthBeforeColumn = 0;
-    for (int i = 0; i < column; ++i) {
-        totalWidthBeforeColumn += ListView_GetColumnWidth(_replaceListView, i);
-    }
-    int columnWidth = ListView_GetColumnWidth(_replaceListView, column);
+    // Get subitem rectangle directly from ListView (handles scroll position automatically)
+    // Note: ListView_GetSubItemRect works correctly for column >= 1
+    // Editable columns (FIND_TEXT, REPLACE_TEXT, COMMENTS) are always at index >= 1
+    RECT subItemRect;
+    ListView_GetSubItemRect(_replaceListView, itemIndex, column, LVIR_BOUNDS, &subItemRect);
 
-    SCROLLINFO siHorz = { sizeof(siHorz), SIF_POS };
-    GetScrollInfo(_replaceListView, SB_HORZ, &siHorz);
-    int correctedX = totalWidthBeforeColumn - siHorz.nPos;
+    int correctedX = subItemRect.left;
+    int correctedY = subItemRect.top;
+    int columnWidth = subItemRect.right - subItemRect.left;
+    int editHeight = subItemRect.bottom - subItemRect.top;
 
-    // Retrieve Y position and height of the row
-    RECT itemRect;
-    ListView_GetItemRect(_replaceListView, itemIndex, &itemRect, LVIR_BOUNDS);
-    int correctedY = itemRect.top;
-    int editHeight = itemRect.bottom - itemRect.top;
+    // Button dimensions
+    const int EXPAND_BTN_WIDTH = 20;
+    const int EXPAND_BTN_Y_OFFSET = -1;
+    const int EXPAND_BTN_HEIGHT_EXTRA = 2;
 
-    // Calculate scaled button dimensions
-    int buttonWidth = sx(20);
-    int buttonHeight = editHeight + 2;
+    int buttonWidth = sx(EXPAND_BTN_WIDTH);
+    int buttonHeight = editHeight + EXPAND_BTN_HEIGHT_EXTRA;
 
     // Adjust edit control width to reserve space for the button
     int editWidth = columnWidth - buttonWidth;
@@ -3071,7 +3069,7 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
         L"↓", // Indicator for expand/collapse
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
         correctedX + editWidth,
-        correctedY - 1, // Adjust for button alignment
+        correctedY + EXPAND_BTN_Y_OFFSET,
         buttonWidth,
         buttonHeight,
         _replaceListView,
@@ -3416,6 +3414,11 @@ void MultiReplace::toggleEditExpand()
     if (!hwndEdit || !hwndExpandBtn)
         return;
 
+    // Button dimensions (must match editTextAt)
+    const int EXPAND_BTN_WIDTH = 20;
+    const int EXPAND_BTN_Y_OFFSET = -1;
+    const int EXPAND_BTN_HEIGHT_EXTRA = 2;
+
     // Get current position and size of the edit control in ListView coordinates
     RECT rc;
     GetWindowRect(hwndEdit, &rc);
@@ -3444,7 +3447,7 @@ void MultiReplace::toggleEditExpand()
 
     // Update position and size of edit control and button
     MoveWindow(hwndEdit, ptLT.x, ptLT.y, curWidth, newHeight, TRUE);
-    MoveWindow(hwndExpandBtn, ptLT.x + curWidth, ptLT.y - 1, sx(20), newHeight + 2, TRUE);
+    MoveWindow(hwndExpandBtn, ptLT.x + curWidth, ptLT.y + EXPAND_BTN_Y_OFFSET, sx(EXPAND_BTN_WIDTH), newHeight + EXPAND_BTN_HEIGHT_EXTRA, TRUE);
 
     // Bring controls to the top and ensure edit has focus
     SetWindowPos(hwndEdit, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
@@ -13025,7 +13028,6 @@ void MultiReplace::loadUIConfigFromIni()
     updateUseListState(false);
 
     int savedWidth = CFG.readInt(L"Window", L"Width", sx(INIT_WIDTH));
-    int savedWidth = CFG.readInt(L"Window", L"Width", sx(MIN_WIDTH + DEFAULT_WIDTH_EXTRA));
     int width = (savedWidth < MIN_WIDTH_scaled) ? MIN_WIDTH_scaled : savedWidth;
 
     useListOnHeight = CFG.readInt(L"Window", L"Height", sy(INIT_HEIGHT));
