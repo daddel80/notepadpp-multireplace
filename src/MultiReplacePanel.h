@@ -16,32 +16,38 @@
 
 #ifndef MULTI_REPLACE_H
 #define MULTI_REPLACE_H
-#include "NppStyleKit.h"
 
-#include "StaticDialog/resource.h"
-#include "PluginInterface.h"
-#include "DropTarget.h"
+// Project headers
+#include "ColumnTabs.h"
+#include "ConfigManager.h"
 #include "DPIManager.h"
-#include "ResultDock.h"
+#include "DropTarget.h"
 #include "Encoding.h"
 #include "LanguageManager.h"
-#include "ConfigManager.h"
-#include "ColumnTabs.h"
 #include "MultiReplaceConfigDialog.h"
+#include "NppStyleKit.h"
+#include "PluginInterface.h"
+#include "ResultDock.h"
 #include "SciUndoGuard.h"
+#include "StaticDialog/resource.h"
 
-#include <string>
-#include <vector>
-#include <map>
+// Standard library
+#include <array>
+#include <filesystem>
 #include <functional>
+#include <map>
 #include <regex>
+#include <set>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include <set>
-#include <filesystem>
-#include <commctrl.h>
-#include <array>
+#include <vector>
+
+// Third-party
 #include <lua.hpp>
+
+// Windows
+#include <commctrl.h>
 
 extern NppData nppData;
 
@@ -370,10 +376,6 @@ struct EditControlContext
     HWND hwndExpandBtn;
 };
 
-
-using IniData = std::map<std::wstring, std::map<std::wstring, std::wstring>>;
-//inline IniData iniCache;
-
 class MultiReplace : public StaticDialog
 {
 public:
@@ -446,7 +448,6 @@ public:
     };
 
     inline static MultiReplace* instance = nullptr; // Static instance of the class
-    //inline static MultiReplaceConfigDialog* _configDialog = nullptr;
 
     // Helper functions for scaling
     inline int sx(int value) { return dpiMgr->scaleX(value); }
@@ -627,7 +628,7 @@ private:
     static constexpr BYTE DEFAULT_BACKGROUND_TRANSPARENCY = 190; // Default background transparency
 
     static constexpr int MIN_EDIT_FIELD_SIZE = 2; // Minimum size for Multiline Editor
-    static constexpr int MAX_EDIT_FIELD_SIZE = 20; // MAximum size for Multiline Editor
+    static constexpr int MAX_EDIT_FIELD_SIZE = 20; // Maximum size for Multiline Editor
 
     static constexpr int STEP_SIZE = 5; // Speed for opening and closing Count Columns
     static constexpr wchar_t* symbolSortAsc = L"▼";
@@ -683,7 +684,7 @@ private:
     const std::vector<int> lightModeColumnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
     const std::vector<int> darkModeColumnColors = { 0x553333, 0x335577, 0x225522, 0x553355, 0x335555, 0x555522, 0x774444, 0x225555, 0x553366, 0x336633 };
 
-    // Alpha values for MArking values
+    // Alpha values for Marking values
     static constexpr int EDITOR_MARK_ALPHA_LIGHT = 150;
     static constexpr int EDITOR_OUTLINE_ALPHA_LIGHT = 0;
     static constexpr int EDITOR_MARK_ALPHA_DARK = 130;
@@ -858,8 +859,7 @@ private:
     int DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled;
     int DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled;
 
-
-    //Initialization
+    // Initialization
     void initializeWindowSize();
     RECT calculateMinWindowFrame(HWND hwnd);
     void createFonts();
@@ -1120,8 +1120,6 @@ private:
 
     static void displayLogChangesInMessageBox();
 };
-
-//extern std::unordered_map<std::wstring, std::wstring> languageMap;
 
 extern MultiReplace _MultiReplace;
 

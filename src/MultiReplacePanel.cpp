@@ -17,30 +17,38 @@
 #define NOMINMAX
 #define WM_UPDATE_FOCUS (WM_APP + 2)
 
-#include "StaticDialog/StaticDialog.h"
-#include "BatchUIGuard.h"
+// Own header
 #include "MultiReplacePanel.h"
+
+// Project headers
+#include "BatchUIGuard.h"
 #include "ColumnTabs.h"
-#include "Notepad_plus_msgs.h"
-#include "menuCmdID.h"
-#include "PluginDefinition.h"
-#include "Scintilla.h"
-#include "DPIManager.h"
-#include "luaEmbedded.h"
-#include "HiddenSciGuard.h"
-#include "ResultDock.h"
-#include "Encoding.h"
-#include "LanguageManager.h"
 #include "ConfigManager.h"
-#include "UndoRedoManager.h"
-#include "NumericToken.h"
-#include "StringUtils.h"
+#include "DPIManager.h"
+#include "Encoding.h"
+#include "HiddenSciGuard.h"
+#include "LanguageManager.h"
 #include "language_mapping.h"
+#include "luaEmbedded.h"
+#include "menuCmdID.h"
 #include "MultiReplaceConfigDialog.h"
+#include "Notepad_plus_msgs.h"
+#include "NppStyleKit.h"
+#include "NumericToken.h"
+#include "PluginDefinition.h"
+#include "ResultDock.h"
+#include "Scintilla.h"
+#include "StaticDialog/StaticDialog.h"
+#include "StringUtils.h"
+#include "UndoRedoManager.h"
+
+// Standard library
 #include <algorithm>
 #include <bitset>
 #include <cctype>
+#include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <map>
 #include <numeric>
 #include <regex>
@@ -50,14 +58,14 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <filesystem>
-#include "NppStyleKit.h"
 
+// Third-party
+#include <lua.hpp>
+
+// Windows
+#include <sdkddkver.h>
 #include <windows.h>
 #include <Commctrl.h>
-#include <iomanip>
-#include <lua.hpp>
-#include <sdkddkver.h>
 #include <uxtheme.h>
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "comctl32.lib")
@@ -79,7 +87,6 @@ static bool     g_cleanInProgress = false;
 
 // O(1) gate: which buffers currently have flow-pads
 static std::unordered_set<BufferId> g_padBufs;
-
 #pragma region Initialization
 
 void MultiReplace::initializeWindowSize()
@@ -599,7 +606,6 @@ void MultiReplace::initializeListView() {
     createListViewColumns();
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
-
     // Set tooltips based on isHoverTextEnabled
     DWORD extendedStyle = LVS_EX_FULLROWSELECT;
     if (isHoverTextEnabled) {
@@ -943,23 +949,24 @@ void MultiReplace::drawGripper() {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(_hSelf, &ps);
 
-    // Get the size of the client area
     RECT rect;
     GetClientRect(_hSelf, &rect);
 
-    // Determine where to draw the gripper
-    int gripperAreaSize = sx(11); // Total size of the gripper area
-    POINT startPoint = { rect.right - gripperAreaSize, rect.bottom - gripperAreaSize };
+    // Gripper position and dimensions
+    constexpr int GRIPPER_BASE_SIZE = 11;
+    int gripperSize = sx(GRIPPER_BASE_SIZE);
+    POINT startPoint = { rect.right - gripperSize, rect.bottom - gripperSize };
 
-    // Define the new size and reduced gap of the gripper dots
-    int dotSize = sx(2); // Increased dot size
-    int gap = std::max(sx(1), 1); // Reduced gap between dots
+    int dotSize = sx(2);
+    int gap = std::max(sx(1), 1);
 
-    // Brush Color for Gripper
-    HBRUSH hBrush = CreateSolidBrush(RGB(200, 200, 200));
+    // Dark Mode aware color
+    bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+    COLORREF dotColor = isDark ? RGB(100, 100, 100) : RGB(200, 200, 200);
+    HBRUSH hBrush = CreateSolidBrush(dotColor);
 
-    // Matrix to identify the points to draw
-    int positions[3][3] = {
+    // Triangle pattern: 6 dots
+    static constexpr int positions[3][3] = {
         {0, 0, 1},
         {0, 1, 1},
         {1, 1, 1}
@@ -969,7 +976,6 @@ void MultiReplace::drawGripper() {
     {
         for (int col = 0; col < 3; ++col)
         {
-            // Skip drawing for omitted positions
             if (positions[row][col] == 0) continue;
 
             int x = startPoint.x + col * (dotSize + gap);
@@ -980,7 +986,6 @@ void MultiReplace::drawGripper() {
     }
 
     DeleteObject(hBrush);
-
     EndPaint(_hSelf, &ps);
 }
 
@@ -1753,7 +1758,6 @@ std::wstring MultiReplace::processTemplateEscapes(const std::wstring& tmpl) {
     return result;
 }
 
-
 #pragma endregion
 
 
@@ -1821,7 +1825,6 @@ void MultiReplace::createListViewColumns() {
 
     const ControlInfo& listCtrlInfo = ctrlMap[IDC_REPLACE_LIST];
 
-
     // Define the ResizableColWidths struct to pass to calcDynamicColWidth
     ResizableColWidths widths = {
         _replaceListView,
@@ -1834,7 +1837,6 @@ void MultiReplace::createListViewColumns() {
         (isDeleteButtonVisible) ? deleteButtonColumnWidth : 0,
         GetSystemMetrics(SM_CXVSCROLL)
     };
-
 
     // Calculate dynamic width for Find, Replace, and Comments columns
     int perColumnWidth = calcDynamicColWidth(widths);
@@ -2014,7 +2016,6 @@ std::wstring getColumnIDText(ColumnID columnID) {
 
 int MultiReplace::getColumnWidth(ColumnID columnID) {
 
-
     int width = 0;
 
     switch (columnID) {
@@ -2113,7 +2114,6 @@ void MultiReplace::updateListViewAndColumns() {
     deleteButtonColumnWidth = getColumnWidth(ColumnID::DELETE_BUTTON);
     findColumnWidth = getColumnWidth(ColumnID::FIND_TEXT);
     replaceColumnWidth = getColumnWidth(ColumnID::REPLACE_TEXT);
-
 
     // Prepare the ResizableColWidths struct for dynamic width calculations
     ResizableColWidths widths = {
@@ -3907,7 +3907,7 @@ void MultiReplace::showListSearchBar() {
         listInfo.x, listInfo.y, listInfo.cx, listInfo.cy,
         SWP_NOZORDER | SWP_NOACTIVATE);
 
-    // Andere Controls anpassen
+    // Adjust other controls
     moveAndResizeControls(false);
 
     // Show search bar controls
@@ -3940,13 +3940,13 @@ void MultiReplace::hideListSearchBar() {
     GetClientRect(_hSelf, &rc);
     positionAndResizeControls(rc.right, rc.bottom);
 
-    // ListView explizit vergrößern
+    // Resize ListView explicitly
     const ControlInfo& listInfo = ctrlMap[IDC_REPLACE_LIST];
     SetWindowPos(_replaceListView, nullptr,
         listInfo.x, listInfo.y, listInfo.cx, listInfo.cy,
         SWP_NOZORDER | SWP_NOACTIVATE);
 
-    // Andere Controls anpassen
+    // Adjust other controls
     moveAndResizeControls(false);
 
     SetFocus(_replaceListView);
@@ -4613,7 +4613,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_NCHITTEST:
     {
-        // Make gripper area resizable by returning HTBOTTOMRIGHT
+        // Enable resize via gripper area
         POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
         ScreenToClient(_hSelf, &pt);
         RECT rc;
@@ -5518,7 +5518,6 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
     if (replaceSuccess && showCompletionMessage) {
         showStatusMessage(LM.get(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), MessageStatus::Success);
     }
-
 
     return replaceSuccess;
 
@@ -6464,7 +6463,6 @@ void MultiReplace::applyLuaSafeMode(lua_State* L)
 
     // Keep string/table/math/utf8/base intact.
 }
-
 
 #pragma endregion
 
@@ -11541,7 +11539,6 @@ void MultiReplace::handleClearDelimiterState() {
     isCaretPositionEnabled = false;
 }
 
-
 // For testing purposes - uncomment to debug log changes
 void MultiReplace::displayLogChangesInMessageBox() {
     // Helper function to convert std::string to std::wstring
@@ -12936,7 +12933,6 @@ void MultiReplace::loadSettingsToPanelUI() {
     findColumnLockedEnabled = CFG.readBool(L"ListColumns", L"FindColumnLocked", true);
     replaceColumnLockedEnabled = CFG.readBool(L"ListColumns", L"ReplaceColumnLocked", false);
     commentsColumnLockedEnabled = CFG.readBool(L"ListColumns", L"CommentsColumnLocked", true);
-
 
     // Load file path and original hash
     listFilePath = CFG.readString(L"File", L"ListFilePath", L"");
