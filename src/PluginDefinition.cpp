@@ -75,7 +75,7 @@ void commandMenuInit()
     //            ShortcutKey *shortcut,          // optional. Define a shortcut to trigger this command
     //            bool check0nInit                // optional. Make this menu item be checked visually
     //            );
-    setCommand(0, const_cast<TCHAR*>(LM.getLPCW(L"menu_multiple_replacement")), multiReplace, NULL, false);
+    setCommand(0, const_cast<TCHAR*>(LM.getLPCW(L"menu_open")), multiReplace, NULL, false);
     setCommand(1, TEXT("SEPARATOR"), NULL, NULL, false);
     setCommand(2, const_cast<TCHAR*>(LM.getLPCW(L"menu_settings")), multiReplaceConfig, NULL, false);
     setCommand(3, const_cast<TCHAR*>(LM.getLPCW(L"menu_documentation")), openHelpLink, NULL, false);
@@ -168,7 +168,7 @@ void refreshPluginMenu()
         int index;
         const wchar_t* langKey;
     } menuMappings[] = {
-        { 0, L"menu_multiple_replacement" },
+        { 0, L"menu_open" },
         // Index 1 is SEPARATOR - skip
         { 2, L"menu_settings" },
         { 3, L"menu_documentation" },

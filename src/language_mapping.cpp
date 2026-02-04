@@ -359,7 +359,7 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_use_list_colors_marking", L"Use different colors for each list entry when marking" },
 
 // Plugin Menu
-{ L"menu_multiple_replacement", L"&Multiple Replacement..." },
+{ L"menu_open", L"&MultiReplace..." },
 { L"menu_settings", L"&Settings..." },
 { L"menu_documentation", L"&Documentation" },
 { L"menu_about", L"&About MultiReplace" },
