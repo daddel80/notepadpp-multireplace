@@ -150,6 +150,61 @@ LRESULT CALLBACK AboutDialog::NameStaticProc(HWND hwnd, UINT uMsg, WPARAM wParam
     return DefSubclassProc(hwnd, uMsg, wParam, lParam);
 }
 
+void AboutDialog::createFonts()
+{
+    // Cleanup old fonts
+    if (_hFont) {
+        DeleteObject(_hFont);
+        _hFont = nullptr;
+    }
+    if (_hUnderlineFont) {
+        DeleteObject(_hUnderlineFont);
+        _hUnderlineFont = nullptr;
+    }
+
+    // Get current DPI
+    HDC hdc = GetDC(_hSelf);
+    int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
+    ReleaseDC(_hSelf, hdc);
+
+    int fontSize = -MulDiv(kBaseFontSize, dpi, 96);
+
+    _hFont = CreateFont(fontSize, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, VARIABLE_PITCH, L"MS Shell Dlg");
+
+    _hUnderlineFont = CreateFont(fontSize, 0, 0, 0, FW_NORMAL, FALSE, TRUE, FALSE,
+        DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, VARIABLE_PITCH, L"MS Shell Dlg");
+}
+
+void AboutDialog::applyFonts()
+{
+    // Apply underline font to website link
+    HWND hwndWebsiteLink = GetDlgItem(_hSelf, IDC_WEBSITE_LINK);
+    if (hwndWebsiteLink) {
+        SendMessage(hwndWebsiteLink, WM_SETFONT, reinterpret_cast<WPARAM>(_hUnderlineFont), TRUE);
+    }
+
+    // Apply regular font to static controls
+    const int controlIDs[] = {
+        IDC_VERSION_STATIC,
+        IDC_AUTHOR_STATIC,
+        IDC_LICENSE_STATIC,
+        IDC_NAME_STATIC,
+        IDC_VERSION_LABEL,
+        IDC_AUTHOR_LABEL,
+        IDC_LICENSE_LABEL
+    };
+
+    for (int id : controlIDs) {
+        HWND hControl = GetDlgItem(_hSelf, id);
+        if (hControl) {
+            SendMessage(hControl, WM_SETFONT, reinterpret_cast<WPARAM>(_hFont), TRUE);
+        }
+    }
+}
+
 
 intptr_t CALLBACK AboutDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -166,44 +221,13 @@ intptr_t CALLBACK AboutDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         SetDlgItemText(_hSelf, IDC_WEBSITE_LINK, LM.getLPCW(L"about_help_support"));
         SetDlgItemText(_hSelf, IDOK, LM.getLPCW(L"about_ok"));
 
-        // Font Setup with DPI awareness
-        HDC hdc = GetDC(_hSelf);
-        int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
-        ReleaseDC(_hSelf, hdc);
+        createFonts();
+        applyFonts();
 
-        int fontSize = -MulDiv(kBaseFontSize, dpi, 96);
-
-        _hFont = CreateFont(fontSize, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-            DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY, VARIABLE_PITCH, L"MS Shell Dlg");
-
-        _hUnderlineFont = CreateFont(fontSize, 0, 0, 0, FW_NORMAL, FALSE, TRUE, FALSE,
-            DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY, VARIABLE_PITCH, L"MS Shell Dlg");
-
-        // Setup website link
+        // Setup website link subclass
         HWND hwndWebsiteLink = GetDlgItem(_hSelf, IDC_WEBSITE_LINK);
         if (hwndWebsiteLink) {
-            SendMessage(hwndWebsiteLink, WM_SETFONT, reinterpret_cast<WPARAM>(_hUnderlineFont), TRUE);
             SetWindowSubclass(hwndWebsiteLink, WebsiteLinkProc, 0, 0);
-        }
-
-        // Apply font to static controls
-        const int controlIDs[] = {
-            IDC_VERSION_STATIC,
-            IDC_AUTHOR_STATIC,
-            IDC_LICENSE_STATIC,
-            IDC_NAME_STATIC,
-            IDC_VERSION_LABEL,
-            IDC_AUTHOR_LABEL,
-            IDC_LICENSE_LABEL
-        };
-
-        for (int id : controlIDs) {
-            HWND hControl = GetDlgItem(_hSelf, id);
-            if (hControl) {
-                SendMessage(hControl, WM_SETFONT, reinterpret_cast<WPARAM>(_hFont), TRUE);
-            }
         }
 
         // Setup name static for special interaction
@@ -216,6 +240,20 @@ intptr_t CALLBACK AboutDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
             static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
 
+        return TRUE;
+    }
+
+    case WM_DPICHANGED:
+    {
+        createFonts();
+        applyFonts();
+
+        RECT* pRect = reinterpret_cast<RECT*>(lParam);
+        if (pRect) {
+            SetWindowPos(_hSelf, nullptr, pRect->left, pRect->top,
+                pRect->right - pRect->left, pRect->bottom - pRect->top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        }
         return TRUE;
     }
 

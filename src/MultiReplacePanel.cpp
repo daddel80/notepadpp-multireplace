@@ -3046,7 +3046,7 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
     // Adjust edit control width to reserve space for the button
     int editWidth = columnWidth - buttonWidth;
 
-    // Create multi-line edit control with vertical and horizontal scrollbars
+    // Create multi-line edit control with vertical scrollbar
     hwndEdit = CreateWindowEx(
         0,
         L"EDIT",
@@ -4255,6 +4255,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         // Post a quit message to ensure the application terminates cleanly
         PostQuitMessage(0);
 
+        return 0;
+    }
+
+    case WM_DPICHANGED:
+    {
+        if (dpiMgr) {
+            dpiMgr->updateDPI(_hSelf);
+        }
         return 0;
     }
 
@@ -6793,6 +6801,19 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         ListView_SetColumnWidth(hListView, 1, LVSCW_AUTOSIZE_USEHEADER);
         ListView_SetColumnWidth(hListView, 2, LVSCW_AUTOSIZE_USEHEADER);
         break;
+    }
+
+    case WM_DPICHANGED: {
+        if (instance && instance->dpiMgr) {
+            instance->dpiMgr->updateDPI(hwnd);
+        }
+        RECT* pRect = reinterpret_cast<RECT*>(lParam);
+        if (pRect) {
+            SetWindowPos(hwnd, nullptr, pRect->left, pRect->top,
+                pRect->right - pRect->left, pRect->bottom - pRect->top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        return 0;
     }
 
     case WM_COMMAND:

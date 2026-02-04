@@ -37,6 +37,9 @@ private:
     static LRESULT CALLBACK WebsiteLinkProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
     static LRESULT CALLBACK NameStaticProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
 
+    void createFonts();
+    void applyFonts();
+
     HFONT _hFont = nullptr;
     HFONT _hUnderlineFont = nullptr;
 };
