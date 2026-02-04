@@ -4611,6 +4611,23 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         return 0;
     }
 
+    case WM_NCHITTEST:
+    {
+        // Make gripper area resizable by returning HTBOTTOMRIGHT
+        POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+        ScreenToClient(_hSelf, &pt);
+        RECT rc;
+        GetClientRect(_hSelf, &rc);
+
+        int gripperSize = sx(11);
+        if (pt.x >= rc.right - gripperSize && pt.y >= rc.bottom - gripperSize)
+        {
+            SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, HTBOTTOMRIGHT);
+            return TRUE;
+        }
+        return FALSE;
+    }
+
     case WM_DRAWITEM:
     {
         DRAWITEMSTRUCT* pdis = (DRAWITEMSTRUCT*)lParam;
@@ -13048,20 +13065,11 @@ void MultiReplace::loadUIConfigFromIni()
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     updateUseListState(false);
 
-    // Calculate window frame dimensions (adds borders/titlebar to client-area)
-    RECT minFrame = calculateMinWindowFrame(_hSelf);
-    int borderWidthTotal = minFrame.right - MIN_WIDTH_scaled;
-    int borderHeightTotal = minFrame.bottom - MIN_HEIGHT_scaled;
+    int savedWidth = CFG.readInt(L"Window", L"Width", sx(INIT_WIDTH));
+    int width = (savedWidth < MIN_WIDTH_scaled) ? MIN_WIDTH_scaled : savedWidth;
 
-    // INIT values are client-area, convert to window-frame for INI default
-    int initWidthFrame = sx(INIT_WIDTH) + borderWidthTotal;
-    int initHeightFrame = sy(INIT_HEIGHT) + borderHeightTotal;
-
-    int savedWidth = CFG.readInt(L"Window", L"Width", initWidthFrame);
-    int width = (savedWidth < minFrame.right) ? minFrame.right : savedWidth;
-
-    useListOnHeight = CFG.readInt(L"Window", L"Height", initHeightFrame);
-    if (useListOnHeight < minFrame.bottom) useListOnHeight = minFrame.bottom;
+    useListOnHeight = CFG.readInt(L"Window", L"Height", sy(INIT_HEIGHT));
+    if (useListOnHeight < MIN_HEIGHT_scaled) useListOnHeight = MIN_HEIGHT_scaled;
 
     int height = useListEnabled ? useListOnHeight : useListOffHeight;
 
