@@ -13048,11 +13048,20 @@ void MultiReplace::loadUIConfigFromIni()
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     updateUseListState(false);
 
-    int savedWidth = CFG.readInt(L"Window", L"Width", sx(INIT_WIDTH));
-    int width = (savedWidth < MIN_WIDTH_scaled) ? MIN_WIDTH_scaled : savedWidth;
+    // Calculate window frame dimensions (adds borders/titlebar to client-area)
+    RECT minFrame = calculateMinWindowFrame(_hSelf);
+    int borderWidthTotal = minFrame.right - MIN_WIDTH_scaled;
+    int borderHeightTotal = minFrame.bottom - MIN_HEIGHT_scaled;
 
-    useListOnHeight = CFG.readInt(L"Window", L"Height", sy(INIT_HEIGHT));
-    if (useListOnHeight < MIN_HEIGHT_scaled) useListOnHeight = MIN_HEIGHT_scaled;
+    // INIT values are client-area, convert to window-frame for INI default
+    int initWidthFrame = sx(INIT_WIDTH) + borderWidthTotal;
+    int initHeightFrame = sy(INIT_HEIGHT) + borderHeightTotal;
+
+    int savedWidth = CFG.readInt(L"Window", L"Width", initWidthFrame);
+    int width = (savedWidth < minFrame.right) ? minFrame.right : savedWidth;
+
+    useListOnHeight = CFG.readInt(L"Window", L"Height", initHeightFrame);
+    if (useListOnHeight < minFrame.bottom) useListOnHeight = minFrame.bottom;
 
     int height = useListEnabled ? useListOnHeight : useListOffHeight;
 

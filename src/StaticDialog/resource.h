@@ -387,8 +387,8 @@
 #define MIN_WIDTH                   811     // Minimum width (resize limit)
 #define MIN_HEIGHT                  370     // Minimum height with list (resize limit)
 #define SHRUNK_HEIGHT               224     // Minimum height without list
-#define INIT_WIDTH                  826     // Initial width on first run
-#define INIT_HEIGHT                 409     // Initial height on first run
+#define INIT_WIDTH                  MIN_WIDTH   // Initial client-area width on first run
+#define INIT_HEIGHT                 MIN_HEIGHT  // Initial client-area height on first runn
 
 // --- Config Dialog: Window Size (fixed) ---
 #define CONFIG_DLG_WIDTH            810     // Fixed width
