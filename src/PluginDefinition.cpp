@@ -192,7 +192,7 @@ void refreshPluginMenu()
         std::wstring newText = LM.get(mapping.langKey);
 
         // Update the internal funcItem name (for consistency with Notepad++ internals)
-        lstrcpyn(funcItem[mapping.index]._itemName, newText.c_str(), nbChar);
+        (void)lstrcpyn(funcItem[mapping.index]._itemName, newText.c_str(), nbChar);
 
         // Update the actual menu item text
         MENUITEMINFOW mii = {};
