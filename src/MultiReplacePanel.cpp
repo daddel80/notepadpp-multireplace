@@ -9908,13 +9908,12 @@ bool MultiReplace::scanForDuplicates()
         for (size_t colIdx = 0; colIdx < row.columns.size(); ++colIdx) {
             if (colIdx > 0) key += KEY_SEP;
 
-            std::string colText = row.columns[colIdx].text;
-
-            if (!_duplicateMatchCase) {
-                colText = StringUtils::toLowerUtf8(colText);
+            if (_duplicateMatchCase) {
+                key += row.columns[colIdx].text;
             }
-
-            key += colText;
+            else {
+                key += StringUtils::toLowerUtf8(row.columns[colIdx].text);
+            }
         }
 
         auto it = keyInfo.find(key);
@@ -10649,9 +10648,8 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
             size_t b = 0, e = s.size();
             while (b < e && (s[b] == ' ' || s[b] == '\t')) ++b;
             while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t')) --e;
-            if (b > 0 || e < s.size()) {
-                s = s.substr(b, e - b);
-            }
+            if (e < s.size()) s.erase(e);
+            if (b > 0) s.erase(0, b);
             };
 
         // Sanitize and re-detect numeric (single pass, in-place)
@@ -10664,8 +10662,8 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
         }
         detectNumericColumns(combinedData);  // Single call with wstring caching
 
-        // Sort (stable for equal rows)
-        std::sort(tempOrder.begin() + CSVheaderLinesCount, tempOrder.end(),
+        // Stable sort preserves original document order for rows with equal keys
+        std::stable_sort(tempOrder.begin() + CSVheaderLinesCount, tempOrder.end(),
             [&](size_t a, size_t b) {
                 const size_t ia = a - CSVheaderLinesCount;
                 const size_t ib = b - CSVheaderLinesCount;
@@ -10801,31 +10799,63 @@ void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalO
         seen[idx] = true;
     }
 
-    // Perform restore
-    std::vector<std::string> sortedLines(totalLineCount);
-    std::string lineBreak = getEOLStyle();
+    // Perform restore using bulk read (same pattern as reorderLinesInScintilla)
+    const std::string lineBreak = getEOLStyle();
+
+    const Sci_Position docLen = static_cast<Sci_Position>(send(SCI_GETLENGTH, 0, 0));
+    std::string fullText(static_cast<size_t>(docLen) + 1, '\0');
+    send(SCI_GETTEXT, static_cast<WPARAM>(docLen + 1), reinterpret_cast<sptr_t>(fullText.data()));
+    fullText.resize(static_cast<size_t>(docLen));
+
+    // Pre-cache all line positions
+    std::vector<Sci_Position> lineStarts(totalLineCount);
+    std::vector<Sci_Position> lineEnds(totalLineCount);
+    for (size_t i = 0; i < totalLineCount; ++i) {
+        lineStarts[i] = static_cast<Sci_Position>(send(SCI_POSITIONFROMLINE, i, 0));
+        lineEnds[i] = static_cast<Sci_Position>(send(SCI_GETLINEENDPOSITION, i, 0));
+    }
+
+    // Build reordered document: line at position i goes to normalizedOrder[i]
+    // We need to build output in order 0..n-1, so find which source line maps to each target
+    std::vector<size_t> inverseOrder(totalLineCount);
+    for (size_t i = 0; i < totalLineCount; ++i) {
+        inverseOrder[normalizedOrder[i]] = i;
+    }
+
+    // Calculate total size
+    size_t totalSize = 0;
+    for (size_t i = 0; i < totalLineCount; ++i) {
+        const size_t srcIdx = inverseOrder[i];
+        totalSize += static_cast<size_t>(lineEnds[srcIdx] - lineStarts[srcIdx]);
+        if (i < totalLineCount - 1) {
+            totalSize += lineBreak.size();
+        }
+    }
+
+    // Build combined string
+    std::string combinedLines;
+    combinedLines.reserve(totalSize);
 
     for (size_t i = 0; i < totalLineCount; ++i) {
-        size_t newPosition = normalizedOrder[i];
-        LRESULT lineStart = send(SCI_POSITIONFROMLINE, i, 0);
-        LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, i, 0);
-        std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
-        Sci_TextRangeFull tr;
-        tr.chrg.cpMin = lineStart;
-        tr.chrg.cpMax = lineEnd;
-        tr.lpstrText = buffer.data();
-        send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
-        sortedLines[newPosition] = std::string(buffer.data(), buffer.size() - 1);
+        const size_t srcIdx = inverseOrder[i];
+        const Sci_Position start = lineStarts[srcIdx];
+        const Sci_Position end = lineEnds[srcIdx];
+
+        if (end > start && static_cast<size_t>(start) < fullText.size()) {
+            size_t len = static_cast<size_t>(end - start);
+            if (static_cast<size_t>(start) + len > fullText.size()) {
+                len = fullText.size() - static_cast<size_t>(start);
+            }
+            combinedLines.append(fullText, static_cast<size_t>(start), len);
+        }
+
+        if (i < totalLineCount - 1) {
+            combinedLines += lineBreak;
+        }
     }
 
     send(SCI_CLEARALL);
-
-    for (size_t i = 0; i < sortedLines.size(); ++i) {
-        send(SCI_APPENDTEXT, sortedLines[i].length(), reinterpret_cast<sptr_t>(sortedLines[i].c_str()));
-        if (i < sortedLines.size() - 1) {
-            send(SCI_APPENDTEXT, lineBreak.length(), reinterpret_cast<sptr_t>(lineBreak.c_str()));
-        }
-    }
+    send(SCI_APPENDTEXT, combinedLines.length(), reinterpret_cast<sptr_t>(combinedLines.c_str()));
 }
 
 void MultiReplace::extractLineContent(size_t idx, std::string& content, const std::string& lineBreak) {
