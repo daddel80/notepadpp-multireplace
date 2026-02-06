@@ -76,6 +76,11 @@ static UndoRedoManager& URM = UndoRedoManager::instance();
 namespace SU = StringUtils;
 extern MultiReplaceConfigDialog _MultiReplaceConfig;
 
+// Case-insensitive UTF-8 path comparison (Windows paths are case-insensitive)
+static inline bool pathsEqualUtf8(const std::string& a, const std::string& b) {
+    return _stricmp(a.c_str(), b.c_str()) == 0;
+}
+
 // Pointer-sized BufferID
 using BufferId = UINT_PTR;
 
@@ -87,6 +92,7 @@ static bool     g_cleanInProgress = false;
 
 // O(1) gate: which buffers currently have flow-pads
 static std::unordered_set<BufferId> g_padBufs;
+
 #pragma region Initialization
 
 void MultiReplace::initializeWindowSize()
@@ -590,6 +596,16 @@ void MultiReplace::ensureIndicatorContext()
             NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("ColumnTabs", wantCol);
     }
     ColumnTabs::CT_SetIndicatorId(NppStyleKit::gColumnTabsIndicatorId);
+
+    // ResultDock tracking: reserve INDIC_HIDDEN indicator for position tracking
+    const bool trackIdValid =
+        (NppStyleKit::gResultDockTrackingIndicatorId >= 0) &&
+        NppStyleKit::gIndicatorCoord.isIndicatorReserved(NppStyleKit::gResultDockTrackingIndicatorId);
+
+    if (!trackIdValid) {
+        NppStyleKit::gResultDockTrackingIndicatorId =
+            NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("ResultDockTracking", -1);
+    }
 
     // Registry gets the full remaining pool (no dedicated standard id)
     auto remaining = NppStyleKit::gIndicatorCoord.availableIndicatorPool();
@@ -3901,7 +3917,7 @@ void MultiReplace::showListSearchBar() {
     GetClientRect(_hSelf, &rc);
     positionAndResizeControls(rc.right, rc.bottom);
 
-    // ListView explizit verkleinern
+    // Explicitly shrink ListView
     const ControlInfo& listInfo = ctrlMap[IDC_REPLACE_LIST];
     SetWindowPos(_replaceListView, nullptr,
         listInfo.x, listInfo.y, listInfo.cx, listInfo.cy,
@@ -3940,7 +3956,7 @@ void MultiReplace::hideListSearchBar() {
     GetClientRect(_hSelf, &rc);
     positionAndResizeControls(rc.right, rc.bottom);
 
-    // Resize ListView explicitly
+    // Explicitly enlarge ListView
     const ControlInfo& listInfo = ctrlMap[IDC_REPLACE_LIST];
     SetWindowPos(_replaceListView, nullptr,
         listInfo.x, listInfo.y, listInfo.cx, listInfo.cy,
@@ -3994,80 +4010,202 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
 
     const auto& item = replaceListData[listIndex];
 
-    // 2. Get hits from ResultDock
+    // 2. Collect match positions from ResultDock hits that match this list entry
+    //    This ensures Column-Scope filtering is respected (only actual search hits are used)
+    struct MatchRange { Sci_Position start; Sci_Position length; int docLine; int trackingTag; size_t hitIdx; };
+    std::vector<MatchRange> ranges;
+
     ResultDock& dock = ResultDock::instance();
     const auto& allHits = dock.hits();
 
-    // 3. Collect matching hits for this list entry
-    std::vector<std::pair<size_t, size_t>> matchingHits;  // (hitIndex, findTextIndex)
-    for (size_t i = 0; i < allHits.size(); ++i) {
+    // Get current document path for filtering
+    wchar_t curPath[MAX_PATH] = {};
+    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(curPath));
+    std::string curPathUtf8 = Encoding::wstringToUtf8(curPath);
+
+    const int trackIndId = NppStyleKit::gResultDockTrackingIndicatorId;
+    Sci_Position docLen = static_cast<Sci_Position>(send(SCI_GETLENGTH, 0, 0));
+
+    // Build set of valid tracking tags for this list entry in current document
+    // (needed for Strategy A)
+    std::unordered_set<int> validTags;
+    std::unordered_map<int, size_t> tagToHitIdx;
+
+    for (size_t i = 0; i < allHits.size(); ++i)
+    {
         const auto& hit = allHits[i];
-        // Check in allFindTexts (which includes all merged hits on this line)
-        for (size_t j = 0; j < hit.allFindTexts.size(); ++j) {
-            if (hit.allFindTexts[j] == item.findText) {
-                matchingHits.push_back({ i, j });
+        if (!pathsEqualUtf8(hit.fullPathUtf8, curPathUtf8))
+            continue;
+
+        // Check if this hit belongs to the requested list entry (by findText match)
+        bool textMatch = (hit.findTextW == item.findText);
+        if (!textMatch) {
+            for (const auto& ft : hit.allFindTexts) {
+                if (ft == item.findText) { textMatch = true; break; }
             }
         }
-        // Fallback: check findTextW directly (for single hits or if allFindTexts empty)
-        if (hit.allFindTexts.empty() && hit.findTextW == item.findText) {
-            matchingHits.push_back({ i, 0 });
+        if (!textMatch)
+            continue;
+
+        // Collect primary tag
+        if (hit.trackingTag > 0) {
+            validTags.insert(hit.trackingTag);
+            tagToHitIdx[hit.trackingTag] = i;
+        }
+        // Collect merged tags (multiple hits on same row)
+        for (int tag : hit.allTrackingTags) {
+            if (tag > 0) {
+                validTags.insert(tag);
+                tagToHitIdx[tag] = i;
+            }
         }
     }
 
-    if (matchingHits.empty()) {
+    // Lazy Indicator Placement (for Find in Files)
+    // Only place indicators if hits exist but were not marked at search time
+    if (trackIndId >= 0 && !validTags.empty() && !dock.hasIndicatorsForFile(curPathUtf8))
+    {
+        int whichView = 0;
+        ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&whichView));
+        HWND hEd = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+        ResultDock::ensureTrackingIndicatorsForFile(hEd, curPathUtf8);
+    }
+
+    // Strategy A: Use INDIC_HIDDEN tracking indicators (precise, survives edits)
+    //             Only collect positions where the tracking indicator is still present
+    if (trackIndId >= 0 && !validTags.empty())
+    {
+        // Scan document for INDIC_HIDDEN positions with valid tags
+        Sci_Position pos = 0;
+        while (pos < docLen)
+        {
+            int v = static_cast<int>(send(SCI_INDICATORVALUEAT, trackIndId, pos));
+            if (v > 0 && validTags.count(v))
+            {
+                Sci_Position rangeStart = static_cast<Sci_Position>(send(SCI_INDICATORSTART, trackIndId, pos));
+                Sci_Position rangeEnd = static_cast<Sci_Position>(send(SCI_INDICATOREND, trackIndId, pos));
+                if (rangeEnd > rangeStart)
+                {
+                    int line = static_cast<int>(send(SCI_LINEFROMPOSITION, rangeStart, 0));
+                    size_t hitIdx = (tagToHitIdx.count(v)) ? tagToHitIdx[v] : SIZE_MAX;
+                    ranges.push_back({ rangeStart, rangeEnd - rangeStart, line, v, hitIdx });
+                }
+            }
+            Sci_Position next = static_cast<Sci_Position>(send(SCI_INDICATOREND, trackIndId, pos));
+            pos = (next > pos) ? next : (pos + 1);
+        }
+    }
+
+    // Strategy B: Fallback to ResultDock stored positions (for folder search or if indicators gone)
+    if (ranges.empty() && !allHits.empty())
+    {
+        for (size_t i = 0; i < allHits.size(); ++i)
+        {
+            const auto& hit = allHits[i];
+            if (!pathsEqualUtf8(hit.fullPathUtf8, curPathUtf8))
+                continue;
+
+            bool textMatch = (hit.findTextW == item.findText);
+            if (!textMatch) {
+                for (const auto& ft : hit.allFindTexts) {
+                    if (ft == item.findText) { textMatch = true; break; }
+                }
+            }
+            if (!textMatch)
+                continue;
+
+            // Add primary position
+            ranges.push_back({ hit.pos, hit.length, hit.docLine, hit.trackingTag, i });
+
+            // Add merged positions (if any)
+            for (size_t j = 0; j < hit.allPositions.size(); ++j)
+            {
+                int tag = (j < hit.allTrackingTags.size()) ? hit.allTrackingTags[j] : 0;
+                Sci_Position len = (j < hit.allLengths.size()) ? hit.allLengths[j] : hit.length;
+                int line = (hit.docLine >= 0) ? hit.docLine : static_cast<int>(send(SCI_LINEFROMPOSITION, hit.allPositions[j], 0));
+                ranges.push_back({ hit.allPositions[j], len, line, tag, i });
+            }
+        }
+
+        // Sort by position
+        std::sort(ranges.begin(), ranges.end(),
+            [](const MatchRange& a, const MatchRange& b) { return a.start < b.start; });
+    }
+
+    // No Strategy C (live search) anymore!
+    // Rationale: Live search would ignore Column-Scope settings, leading to
+    // incorrect navigation outside the user's intended search scope.
+    // Rule: Navigation only works with validated data from "Find All" or "Find in Files".
+
+    if (ranges.empty()) {
         showStatusMessage(LM.get(L"status_no_results_linked"), MessageStatus::Error);
         return;
     }
 
-    // 4. Get anchor from ResultDock cursor position
-    auto cursorInfo = dock.getCurrentCursorHitInfo();
+    // 3. Determine anchor position
+    Sci_Position anchorPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
 
-    size_t foundIdx = SIZE_MAX;
-    bool wrapped = false;
-
-    if (cursorInfo.valid) {
-        // Find first match AFTER the cursor line
-        for (size_t i = 0; i < matchingHits.size(); ++i) {
-            const auto& [hitIdx, findTextIdx] = matchingHits[i];
-            if (hitIdx > cursorInfo.hitIndex) {
-                foundIdx = i;
-                break;
+    if (anchorPos == 0) {
+        auto cursorInfo = dock.getCurrentCursorHitInfo();
+        if (cursorInfo.valid && cursorInfo.hitIndex < allHits.size()) {
+            int anchorLine = allHits[cursorInfo.hitIndex].docLine;
+            Sci_Position lineStart = static_cast<Sci_Position>(send(SCI_POSITIONFROMLINE, anchorLine, 0));
+            if (lineStart > 0) {
+                anchorPos = lineStart;
             }
         }
     }
 
-    // 5. Wrap-around if no match found after anchor
-    if (foundIdx == SIZE_MAX) {
-        foundIdx = 0;
-        if (cursorInfo.valid && matchingHits.size() > 0) {
-            wrapped = true;
+    // 4. Find next range at or after anchor position
+    size_t foundIdx = SIZE_MAX;
+    bool wrapped = false;
+
+    for (size_t i = 0; i < ranges.size(); ++i) {
+        if (ranges[i].start >= anchorPos) {
+            foundIdx = i;
+            break;
         }
     }
 
-    // 6. Get the hit and determine actual position for this specific match
-    const auto& [hitIdx, findTextIdx] = matchingHits[foundIdx];
-    const auto& hit = allHits[hitIdx];
-
-    Sci_Position jumpPos = hit.pos;
-    Sci_Position jumpLen = hit.length;
-
-    if (findTextIdx < hit.allPositions.size() &&
-        findTextIdx < hit.allLengths.size()) {
-        jumpPos = hit.allPositions[findTextIdx];
-        jumpLen = hit.allLengths[findTextIdx];
+    // 5. Wrap-around
+    if (foundIdx == SIZE_MAX) {
+        foundIdx = 0;
+        wrapped = true;
     }
 
-    // 7. Switch file if necessary and jump to position
-    std::wstring filePath = Encoding::utf8ToWString(hit.fullPathUtf8);
-    ResultDock::SwitchAndJump(filePath, jumpPos, jumpLen);
+    // 6. Jump to the found range
+    Sci_Position jumpPos = ranges[foundIdx].start;
+    Sci_Position jumpLen = ranges[foundIdx].length;
 
-    // 8. Scroll ResultDock to show the hit line (this updates the cursor/anchor)
-    if (hit.displayLineStart >= 0) {
-        dock.scrollToHitAndHighlight(hit.displayLineStart);
+    displayResultCentered(jumpPos, jumpPos + jumpLen, true);
+
+    // 7. Sync ResultDock to the matching hit
+    size_t hitIdx = ranges[foundIdx].hitIdx;
+    if (hitIdx < allHits.size() && allHits[hitIdx].displayLineStart >= 0) {
+        dock.scrollToHitAndHighlight(allHits[hitIdx].displayLineStart);
+    }
+    else if (!allHits.empty()) {
+        // Fallback: find hit by line
+        int jumpLine = ranges[foundIdx].docLine;
+        for (size_t i = 0; i < allHits.size(); ++i) {
+            const auto& hit = allHits[i];
+            if (hit.docLine == jumpLine && hit.displayLineStart >= 0) {
+                bool textMatch = (hit.findTextW == item.findText);
+                if (!textMatch) {
+                    for (const auto& ft : hit.allFindTexts) {
+                        if (ft == item.findText) { textMatch = true; break; }
+                    }
+                }
+                if (textMatch) {
+                    dock.scrollToHitAndHighlight(hit.displayLineStart);
+                    break;
+                }
+            }
+        }
     }
 
-    // 9. Status message
-    size_t total = matchingHits.size();
+    // 8. Status message
+    size_t total = ranges.size();
     size_t current = foundIdx + 1;
 
     if (wrapped) {
@@ -4618,7 +4756,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         ScreenToClient(_hSelf, &pt);
         RECT rc;
         GetClientRect(_hSelf, &rc);
-
         int gripperSize = sx(11);
         if (pt.x >= rc.right - gripperSize && pt.y >= rc.bottom - gripperSize)
         {
@@ -4991,7 +5128,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_CLEAR_MARKS_BUTTON:
         {
-            resetCountColumns();
             handleClearTextMarksButton();
             clearDuplicateMarks();
             showStatusMessage(LM.get(L"status_all_marks_cleared"), MessageStatus::Success);
@@ -7392,6 +7528,9 @@ void MultiReplace::handleFindAllButton()
     dock.ensureCreatedAndVisible(nppData);
     if (ResultDock::purgeEnabled()) dock.clear();
 
+    // Clear old tracking indicators from current editor before new search
+    ResultDock::clearTrackingIndicators(_hScintilla);
+
     auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
         return ::SendMessage(_hScintilla, m, w, l);
         };
@@ -7459,10 +7598,13 @@ void MultiReplace::handleFindAllButton()
                 h.fullPathUtf8 = utf8FilePath;
                 h.pos = (Sci_Position)r.pos;
                 h.length = (Sci_Position)r.length;
+                h.docLine = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, r.pos, 0));
+                h.searchFlags = context.searchFlags;
                 this->trimHitToFirstLine(sciSend, h);
                 if (h.length > 0) {
                     h.findTextW = item.findText;
                     h.colorIndex = slotIndex;
+                    h.trackingTag = ResultDock::nextTrackingTag();
                     rawHits.push_back(std::move(h));
                 }
             }
@@ -7472,6 +7614,11 @@ void MultiReplace::handleFindAllButton()
             updateCountColumns(idx, hitCnt);
 
             if (hitCnt > 0) {
+                // Place invisible tracking indicators in the editor
+                ResultDock::placeTrackingIndicators(_hScintilla, rawHits);
+                // Mark this file as having indicators placed
+                dock.setIndicatorsForFile(utf8FilePath, true);
+
                 auto& agg = fileMap[utf8FilePath];
                 agg.wPath = wFilePath;
                 agg.hitCount += hitCnt;
@@ -7505,15 +7652,22 @@ void MultiReplace::handleFindAllButton()
             h.fullPathUtf8 = utf8FilePath;
             h.pos = r.pos;
             h.length = r.length;
+            h.docLine = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, r.pos, 0));
+            h.searchFlags = context.searchFlags;
             this->trimHitToFirstLine(sciSend, h);
             if (h.length > 0) {
                 h.findTextW = findW;
                 h.colorIndex = 0;
+                h.trackingTag = ResultDock::nextTrackingTag();
                 rawHits.push_back(std::move(h));
             }
         }
 
         if (!rawHits.empty()) {
+            ResultDock::placeTrackingIndicators(_hScintilla, rawHits);
+            // Mark this file as having indicators placed
+            dock.setIndicatorsForFile(utf8FilePath, true);
+
             auto& agg = fileMap[utf8FilePath];
             agg.wPath = wFilePath;
             agg.hitCount = static_cast<int>(rawHits.size());
@@ -7591,6 +7745,9 @@ void MultiReplace::handleFindAllInDocsButton()
         pointerToScintilla();
         auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT { return ::SendMessage(_hScintilla, m, w, l); };
 
+        // Clear old tracking indicators for this buffer
+        ResultDock::clearTrackingIndicators(_hScintilla);
+
         wchar_t wBuf[MAX_PATH] = {};
         ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(wBuf));
         std::wstring wPath = *wBuf ? wBuf : L"<untitled>";
@@ -7617,6 +7774,8 @@ void MultiReplace::handleFindAllInDocsButton()
                 h.fullPathUtf8 = u8Path;
                 h.pos = r.pos;
                 h.length = r.length;
+                h.docLine = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, r.pos, 0));
+                h.searchFlags = ctx.searchFlags;
                 this->trimHitToFirstLine(sciSend, h);
                 if (h.length > 0) {
                     h.findTextW = replaceListData[critIdx].findText;
@@ -7626,6 +7785,7 @@ void MultiReplace::handleFindAllInDocsButton()
                         h.colorIndex = slot;
                     }
                     else { h.colorIndex = 0; }
+                    h.trackingTag = ResultDock::nextTrackingTag();
                     raw.push_back(std::move(h));
                 }
             }
@@ -7633,6 +7793,10 @@ void MultiReplace::handleFindAllInDocsButton()
             if (useListEnabled && critIdx < listHitTotals.size())
                 listHitTotals[critIdx] += hitCnt;
             if (hitCnt == 0) return;
+
+            ResultDock::placeTrackingIndicators(_hScintilla, raw);
+            // Mark this file as having indicators placed
+            dock.setIndicatorsForFile(u8Path, true);
 
             auto& agg = fileMap[u8Path];
             agg.wPath = wPath;
@@ -7890,6 +8054,8 @@ void MultiReplace::handleFindInFiles() {
                 h.fullPathUtf8 = u8Path;
                 h.pos = r.pos;
                 h.length = r.length;
+                h.docLine = static_cast<int>(send(SCI_LINEFROMPOSITION, r.pos, 0));
+                h.searchFlags = ctx.searchFlags;
                 this->trimHitToFirstLine([this](UINT m, WPARAM w, LPARAM l)->LRESULT { return send(m, w, l); }, h);
                 if (h.length > 0) {
                     h.findTextW = pattW;
@@ -7899,6 +8065,7 @@ void MultiReplace::handleFindInFiles() {
                         h.colorIndex = slot;
                     }
                     else { h.colorIndex = 0; }
+                    h.trackingTag = ResultDock::nextTrackingTag();
                     raw.push_back(std::move(h));
                 }
             }
@@ -7939,6 +8106,14 @@ void MultiReplace::handleFindInFiles() {
 
         if (hitsInFile > 0) {
             auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT { return send(m, w, l); };
+
+            // Note: For Find in Files, we do NOT place tracking indicators here.
+            // - Files not open in editor: Lazy placement when user navigates to them
+            // - Files already open: Also lazy placement (to avoid tab switching/flicker)
+            // This is acceptable because Find in Files is primarily for discovery,
+            // not for editing. If the user edits before navigating, the position
+            // may be off - same behavior as Notepad++'s built-in search.
+
             dock.appendFileBlock(fileMap, sciSend);
             uniqueFiles.insert(u8Path);
         }

@@ -111,5 +111,6 @@ namespace NppStyleKit {
     extern IndicatorCoordinator gIndicatorCoord;
     extern IndicatorRegistry    gIndicatorReg;
     extern int                  gColumnTabsIndicatorId;
+    extern int                  gResultDockTrackingIndicatorId;  // INDIC_HIDDEN for position tracking
 
 } // namespace NppStyleKit

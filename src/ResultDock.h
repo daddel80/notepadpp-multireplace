@@ -46,10 +46,17 @@ public:
         Sci_Position pos{};
         Sci_Position length{};
 
+        // For robust line-based navigation (FlowTabs-proof)
+        int          docLine{ -1 };      // 0-based line number
+        int          searchFlags{ 0 };   // SCFIND_MATCHCASE | SCFIND_WHOLEWORD | SCFIND_REGEXP
+
         std::wstring findTextW;
+        int          trackingTag{ 0 };   // unique per-search tag for INDIC_HIDDEN tracking
+
         std::vector<std::wstring> allFindTexts;
         std::vector<Sci_Position> allPositions;
         std::vector<Sci_Position> allLengths;
+        std::vector<int>          allTrackingTags; // parallel to allPositions
 
         int displayLineStart{ -1 };
         int numberStart{ 0 };
@@ -75,7 +82,12 @@ public:
     size_t getHitIndexAtLineStart(int lineStartPos) const;
 
     struct CritAgg { std::wstring text; std::vector<Hit> hits; };
-    struct FileAgg { std::wstring wPath; int hitCount = 0; std::vector<CritAgg> crits; };
+    struct FileAgg {
+        std::wstring wPath;
+        int hitCount = 0;
+        std::vector<CritAgg> crits;
+        bool indicatorsPlaced = false;  // true if INDIC_HIDDEN indicators were set for this file
+    };
     using FileMap = std::unordered_map<std::string, FileAgg>;
 
     // --------------- Singleton & API methods ------------------
@@ -90,6 +102,10 @@ public:
     void updateTabIcon();      // Update tab icon for current theme
 
     const std::vector<Hit>& hits() const { return _hits; }
+
+    // Per-file indicator tracking
+    bool hasIndicatorsForFile(const std::string& fullPathUtf8) const;
+    void setIndicatorsForFile(const std::string& fullPathUtf8, bool placed);
 
     static bool  wrapEnabled() { return _wrapEnabled; }
     static bool  purgeEnabled() { return _purgeOnNextSearch; }
@@ -115,7 +131,21 @@ public:
     static void SwitchToFileIfOpenByFullPath(const std::wstring& fullPath);
     static void JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len);
     static void SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, Sci_Position len);
+    static void NavigateToHit(const Hit& hit);  // Robust line-based navigation with re-search
     void scrollToHitAndHighlight(int displayLineStart);
+
+    // ------------------- Position Tracking (INDIC_HIDDEN) -----
+    // Mark hit positions in the editor with invisible indicators for robust tracking.
+    // Call after all hits are collected for a document, before inserting into the dock.
+    static void placeTrackingIndicators(HWND hEditor, const std::vector<Hit>& hits);
+    // Clear all tracking indicators from the given editor.
+    static void clearTrackingIndicators(HWND hEditor);
+    // Clear tracking indicators from ALL open buffers (used by clear() to prevent orphaned indicators)
+    static void clearTrackingIndicatorsFromAllBuffers();
+    // Lazily place indicators for a file when first navigating to it (for Find in Files)
+    static void ensureTrackingIndicatorsForFile(HWND hEditor, const std::string& filePathUtf8);
+    // Generate next unique tracking tag for a hit
+    static int nextTrackingTag();
 
     // ------------------- Color Utilities ----------------------
     static COLORREF generateColorFromText(const std::wstring& text, bool darkMode);
@@ -313,6 +343,7 @@ private:
 
     // Core data
     std::vector<Hit> _hits;
+    std::unordered_map<std::string, bool> _fileIndicatorsPlaced;  // fullPathUtf8 → indicatorsPlaced
     tTbData _dockData{};
 
     // Pending block build state
@@ -342,4 +373,7 @@ private:
     // O(1) mapping from absolute line start to hit index
     void rebuildHitLineIndex();
     std::unordered_map<int, int> _lineStartToHitIndex;
+
+    // Monotonic tracking tag counter for INDIC_HIDDEN values
+    inline static int _nextTrackingTag = 1;
 };

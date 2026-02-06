@@ -22,6 +22,7 @@
 #include "StaticDialog/Docking.h"
 #include "StaticDialog/DockingDlgInterface.h"
 #include "ResultDock.h"
+#include "ColumnTabs.h"
 #include "image_data.h"
 #include "LanguageManager.h"
 #include <algorithm>
@@ -32,6 +33,7 @@
 #include <unordered_set>
 #include <sstream>
 #include <windowsx.h> 
+#include "NppStyleKit.h"
 
 extern NppData nppData;
 
@@ -40,14 +42,24 @@ extern NppData nppData;
 namespace {
     LanguageManager& LM = LanguageManager::instance();
 
-    static bool         s_hasPendingJump = false;
-    static std::wstring s_pendingPath;
-    static Sci_Position s_pendingPos = 0;
-    static Sci_Position s_pendingLen = 0;
+    // Case-insensitive UTF-8 path comparison (Windows paths are case-insensitive)
+    inline bool pathsEqualUtf8(const std::string& a, const std::string& b) {
+        return _stricmp(a.c_str(), b.c_str()) == 0;
+    }
 
-    static HWND         s_targetEd = nullptr;   // active editor to watch
-    static int          s_jumpState = 0;        // 0=idle, 1=activated, 2=update-seen
-    static const UINT   s_timerId = 1001;       // one-shot timer id
+    // Consolidated pending jump state - minimal data for robust cross-file navigation
+    struct PendingJumpState {
+        bool active = false;
+        std::wstring path;              // Target file path for validation
+        std::string fullPathUtf8;       // UTF-8 path for indicator lookup
+
+        // Minimal fields needed for NavigateToHit-style re-search
+        int docLine = -1;               // 0-based line number in target document
+        int searchFlags = 0;            // SCFIND_MATCHCASE | SCFIND_WHOLEWORD | SCFIND_REGEXP
+        std::wstring findTextW;         // Search text for re-search on line
+
+        // Indicator-based tracking
+        int trackingTag = 0;            // INDIC_HIDDEN value for precise position tracking
 
         // Fallback position if re-search fails
         Sci_Position fallbackPos = 0;
@@ -60,9 +72,11 @@ namespace {
         void clear() {
             active = false;
             path.clear();
+            fullPathUtf8.clear();
             docLine = -1;
             searchFlags = 0;
             findTextW.clear();
+            trackingTag = 0;
             fallbackPos = 0;
             fallbackLen = 0;
             targetEditor = nullptr;
@@ -72,9 +86,11 @@ namespace {
         void setFromHit(const std::wstring& targetPath, const ResultDock::Hit& hit) {
             active = !targetPath.empty();
             path = targetPath;
+            fullPathUtf8 = hit.fullPathUtf8;
             docLine = hit.docLine;
             searchFlags = hit.searchFlags;
             findTextW = hit.findTextW;
+            trackingTag = hit.trackingTag;
             fallbackPos = hit.pos;
             fallbackLen = hit.length;
             targetEditor = nullptr;
@@ -88,10 +104,12 @@ namespace {
     // Legacy function signature for compatibility with SwitchAndJump
     static void SetPendingJump(const std::wstring& path, Sci_Position pos, Sci_Position len)
     {
-        s_pendingPath = path;
-        s_pendingPos = pos;
-        s_pendingLen = len;
-        s_hasPendingJump = !s_pendingPath.empty();
+        s_pending.clear();
+        s_pending.active = !path.empty();
+        s_pending.path = path;
+        s_pending.fallbackPos = pos;
+        s_pending.fallbackLen = len;
+        // docLine = -1 means fallback-only mode (no re-search)
     }
 
     static constexpr uint32_t argb(BYTE a, COLORREF c)
@@ -124,14 +142,41 @@ void ResultDock::ensureCreatedAndVisible(const NppData& npp)
         ::SendMessage(npp._nppHandle, NPPM_DMMSHOW, 0, reinterpret_cast<LPARAM>(_hSci));
 }
 
+// Helper to normalize path for case-insensitive lookup
+static std::string normalizePathForLookup(const std::string& path) {
+    std::string lower = path;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+        [](unsigned char c) { return static_cast<char>(::tolower(c)); });
+    return lower;
+}
+
+bool ResultDock::hasIndicatorsForFile(const std::string& fullPathUtf8) const
+{
+    auto it = _fileIndicatorsPlaced.find(normalizePathForLookup(fullPathUtf8));
+    return (it != _fileIndicatorsPlaced.end()) ? it->second : false;
+}
+
+void ResultDock::setIndicatorsForFile(const std::string& fullPathUtf8, bool placed)
+{
+    _fileIndicatorsPlaced[normalizePathForLookup(fullPathUtf8)] = placed;
+}
+
 void ResultDock::clear()
 {
     // ----- Data structures -------------------------------------------------
     _hits.clear();
     _lineStartToHitIndex.clear();
+    _fileIndicatorsPlaced.clear();
 
     _searchHeaderLines.clear();
     _slotToColor.clear();
+
+    // Reset tracking tag counter (safe since all hits are gone)
+    _nextTrackingTag = 1;
+
+    // Clear tracking indicators from ALL open buffers (not just visible editors)
+    // This prevents orphaned indicators from colliding with new tags after purge
+    clearTrackingIndicatorsFromAllBuffers();
 
     if (!_hSci)
         return;
@@ -1141,7 +1186,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     const size_t       indentHitU8 = getIndentUtf8Length(LineLevel::HitLine);
 
     const std::wstring kLineW = LM.get(L"dock_line") + L" ";
-    static const size_t kLineU8 = Encoding::wstringToUtf8(kLineW).size();
+    const size_t kLineU8 = Encoding::wstringToUtf8(kLineW).size();  // No static: supports runtime language change
     constexpr size_t    kColonSpaceU8 = 2; // ": "
 
     constexpr size_t kMaxHitTextUtf8 = 2048;
@@ -1187,10 +1232,18 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     size_t currentRowLenU8 = 0;
 
     std::string  cachedRaw;
+    std::string  cachedRawFiltered;  // Raw bytes with FlowTabs padding removed
     std::string  origU8;
     std::string  displayU8;
     std::wstring displayW;
     Sci_Position cachedAbsLineStart = 0;
+
+    // FlowTabs filtering: mapping from original raw byte index to filtered byte index
+    std::vector<size_t> mapRawToFiltered;
+
+    // FlowTabs filtering: always query the indicator to strip padding,
+    // regardless of CT_GetCurDocHasPads state.
+    const int flowTabsIndicatorId = ColumnTabs::CT_GetIndicatorId();
 
     std::vector<size_t> mapOrigToDisp;
     std::unordered_map<size_t, size_t> u8PrefixLenByByte;
@@ -1210,8 +1263,43 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 
             cachedAbsLineStart = sciSend(SCI_POSITIONFROMLINE, line0, 0);
 
-            // original as UTF-8 (for mapping)
-            origU8 = Encoding::bytesToUtf8(cachedRaw, docCp);
+            // Filter out FlowTabs padding: always check indicator per byte
+            mapRawToFiltered.clear();
+            if (flowTabsIndicatorId >= 0 && !cachedRaw.empty()) {
+                cachedRawFiltered.clear();
+                cachedRawFiltered.reserve(cachedRaw.size());
+                mapRawToFiltered.reserve(cachedRaw.size() + 1);
+
+                for (size_t i = 0; i < cachedRaw.size(); ++i) {
+                    const Sci_Position docPos = cachedAbsLineStart + static_cast<Sci_Position>(i);
+                    const int indicVal = static_cast<int>(sciSend(SCI_INDICATORVALUEAT,
+                        static_cast<WPARAM>(flowTabsIndicatorId),
+                        static_cast<LPARAM>(docPos)));
+
+                    if (indicVal != 0) {
+                        // This byte is FlowTabs padding - skip it
+                        mapRawToFiltered.push_back(cachedRawFiltered.size());
+                    }
+                    else {
+                        // Keep this byte
+                        mapRawToFiltered.push_back(cachedRawFiltered.size());
+                        cachedRawFiltered.push_back(cachedRaw[i]);
+                    }
+                }
+                // Final entry: position after last byte
+                mapRawToFiltered.push_back(cachedRawFiltered.size());
+            }
+            else {
+                // No FlowTabs - use raw directly, identity mapping
+                cachedRawFiltered = cachedRaw;
+                mapRawToFiltered.resize(cachedRaw.size() + 1);
+                for (size_t i = 0; i <= cachedRaw.size(); ++i) {
+                    mapRawToFiltered[i] = i;
+                }
+            }
+
+            // original as UTF-8 (for mapping) - use filtered version
+            origU8 = Encoding::bytesToUtf8(cachedRawFiltered, docCp);
 
             // classify helpers
             auto isCtlWide = [](wchar_t ch)->bool {
@@ -1240,18 +1328,18 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                 const UINT cp = (UINT)docCp;
                 const UINT wcp = (cp == 0 ? CP_ACP : cp);
                 if (cp == SC_CP_UTF8) {
-                    wide = Encoding::utf8ToWString(cachedRaw);
+                    wide = Encoding::utf8ToWString(cachedRawFiltered);
                 }
                 else {
                     int wlen = ::MultiByteToWideChar(wcp, MB_ERR_INVALID_CHARS,
-                        cachedRaw.data(), (int)cachedRaw.size(), nullptr, 0);
+                        cachedRawFiltered.data(), (int)cachedRawFiltered.size(), nullptr, 0);
                     if (wlen <= 0)
                         wlen = ::MultiByteToWideChar(wcp, 0,
-                            cachedRaw.data(), (int)cachedRaw.size(), nullptr, 0);
+                            cachedRawFiltered.data(), (int)cachedRawFiltered.size(), nullptr, 0);
                     wide.resize((size_t)wlen);
                     if (wlen > 0)
                         ::MultiByteToWideChar(wcp, 0,
-                            cachedRaw.data(), (int)cachedRaw.size(),
+                            cachedRawFiltered.data(), (int)cachedRawFiltered.size(),
                             &wide[0], wlen);
                 }
             }
@@ -1327,10 +1415,20 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             // prevDocLine is set by the caller when the row is actually written
         };
 
+    // Convert raw byte position to filtered byte position
+    auto rawToFilteredPos = [&](size_t rawPos) -> size_t {
+        if (rawPos >= mapRawToFiltered.size()) {
+            return mapRawToFiltered.empty() ? 0 : mapRawToFiltered.back();
+        }
+        return mapRawToFiltered[rawPos];
+        };
+
     auto u8PrefixFromRawBytes = [&](size_t byteCount)->size_t {
         auto it = u8PrefixLenByByte.find(byteCount);
         if (it != u8PrefixLenByByte.end()) return it->second;
-        size_t val = Encoding::bytesToUtf8(cachedRaw.substr(0, byteCount), docCp).size();
+        // Map raw byte count to filtered byte count
+        const size_t filteredByteCount = rawToFilteredPos(byteCount);
+        size_t val = Encoding::bytesToUtf8(cachedRawFiltered.substr(0, filteredByteCount), docCp).size();
         u8PrefixLenByByte.emplace(byteCount, val);
         return val;
         };
@@ -1343,7 +1441,12 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 
         size_t relBytes = (size_t)(h.pos - cachedAbsLineStart);
         size_t hitStartU8_orig = u8PrefixFromRawBytes(relBytes);
-        size_t hitLenU8_orig = Encoding::bytesToUtf8(cachedRaw.substr(relBytes, h.length), docCp).size();
+
+        // Calculate hit length in filtered bytes
+        const size_t filteredStart = rawToFilteredPos(relBytes);
+        const size_t filteredEnd = rawToFilteredPos(relBytes + h.length);
+        const size_t filteredLen = (filteredEnd > filteredStart) ? (filteredEnd - filteredStart) : 0;
+        size_t hitLenU8_orig = Encoding::bytesToUtf8(cachedRawFiltered.substr(filteredStart, filteredLen), docCp).size();
 
         auto mapToDisp = [&](size_t offU8) -> size_t {
             if (offU8 >= mapOrigToDisp.size()) return mapOrigToDisp.empty() ? 0 : mapOrigToDisp.back();
@@ -1378,6 +1481,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             firstHitOnRow->allPositions.push_back(h.pos);
             firstHitOnRow->allLengths.clear();
             firstHitOnRow->allLengths.push_back(h.length);
+            firstHitOnRow->allTrackingTags.clear();
+            firstHitOnRow->allTrackingTags.push_back(h.trackingTag);
 
             if (dispStart < displayU8.size()) {
                 size_t safeLen = dispLen;
@@ -1414,6 +1519,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                 firstHitOnRow->allFindTexts.push_back(h.findTextW);
                 firstHitOnRow->allPositions.push_back(h.pos);
                 firstHitOnRow->allLengths.push_back(h.length);
+                firstHitOnRow->allTrackingTags.push_back(h.trackingTag);
             }
             h.displayLineStart = -1;
         }
@@ -1422,6 +1528,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     hits.erase(std::remove_if(hits.begin(), hits.end(),
         [](const Hit& e) { return e.displayLineStart < 0; }),
         hits.end());
+
 }
 
 
@@ -1723,6 +1830,288 @@ void ResultDock::JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len
     ::SendMessage(hEd, SCI_GOTOPOS, endPos, 0);
     ::SendMessage(hEd, SCI_SETANCHOR, startPos, 0);
     ::SendMessage(hEd, SCI_CHOOSECARETX, 0, 0);
+}
+
+void ResultDock::NavigateToHit(const Hit& hit)
+{
+    // Get active Scintilla
+    int whichView = 0;
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&whichView));
+    HWND hEd = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+    if (!hEd)
+        return;
+
+    const int indId = NppStyleKit::gResultDockTrackingIndicatorId;
+
+    // ---- Lazy Indicator Placement (for Find in Files) ----
+    // Only place indicators if this hit was not marked at search time
+    if (indId >= 0 && hit.trackingTag > 0 && !instance().hasIndicatorsForFile(hit.fullPathUtf8))
+    {
+        ensureTrackingIndicatorsForFile(hEd, hit.fullPathUtf8);
+    }
+
+    // ---- Strategy 1: Indicator-based tracking (precise, survives edits) ----
+    if (indId >= 0 && hit.trackingTag > 0)
+    {
+        // Probe original position first — if the indicator is still there, it's the fastest path
+        const int valAtOrig = static_cast<int>(::SendMessage(hEd, SCI_INDICATORVALUEAT, indId, hit.pos));
+        if (valAtOrig == hit.trackingTag)
+        {
+            // Indicator still at original pos — Scintilla may have shifted it, get exact range
+            const Sci_Position start = ::SendMessage(hEd, SCI_INDICATORSTART, indId, hit.pos);
+            const Sci_Position end = ::SendMessage(hEd, SCI_INDICATOREND, indId, hit.pos);
+            if (start < end) {
+                JumpSelectCenterActiveEditor(start, end - start);
+                return;
+            }
+        }
+
+        // Indicator might have moved — scan document for matching tag value
+        // We search around the original position (±5000 chars) for efficiency
+        const Sci_Position docLen = ::SendMessage(hEd, SCI_GETLENGTH, 0, 0);
+        const Sci_Position scanFrom = (hit.pos > 5000) ? (hit.pos - 5000) : 0;
+        const Sci_Position scanTo = ((hit.pos + 5000) < docLen) ? (hit.pos + 5000) : docLen;
+
+        Sci_Position probe = scanFrom;
+        while (probe < scanTo)
+        {
+            const int v = static_cast<int>(::SendMessage(hEd, SCI_INDICATORVALUEAT, indId, probe));
+            if (v == hit.trackingTag)
+            {
+                const Sci_Position start = ::SendMessage(hEd, SCI_INDICATORSTART, indId, probe);
+                const Sci_Position end = ::SendMessage(hEd, SCI_INDICATOREND, indId, probe);
+                if (start < end) {
+                    JumpSelectCenterActiveEditor(start, end - start);
+                    return;
+                }
+            }
+            // Jump to end of current indicator range to skip efficiently
+            const Sci_Position nextEnd = ::SendMessage(hEd, SCI_INDICATOREND, indId, probe);
+            probe = (nextEnd > probe) ? nextEnd : (probe + 1);
+        }
+    }
+
+    // ---- Strategy 2: Line-based re-search (fallback when indicator gone) ----
+    // When multiple matches exist on the same line, prefer the one closest to original position
+    if (hit.docLine < 0) {
+        JumpSelectCenterActiveEditor(hit.pos, hit.length);
+        return;
+    }
+
+    const int lineCount = static_cast<int>(::SendMessage(hEd, SCI_GETLINECOUNT, 0, 0));
+    if (hit.docLine >= lineCount) {
+        JumpSelectCenterActiveEditor(hit.pos, hit.length);
+        return;
+    }
+
+    const Sci_Position lineStart = ::SendMessage(hEd, SCI_POSITIONFROMLINE, hit.docLine, 0);
+    const Sci_Position lineEnd = ::SendMessage(hEd, SCI_GETLINEENDPOSITION, hit.docLine, 0);
+
+    if (hit.findTextW.empty()) {
+        JumpSelectCenterActiveEditor(hit.pos, hit.length);
+        return;
+    }
+
+    const int docCp = static_cast<int>(::SendMessage(hEd, SCI_GETCODEPAGE, 0, 0));
+    const std::string findBytes = Encoding::wstringToBytes(hit.findTextW, docCp);
+    if (findBytes.empty()) {
+        JumpSelectCenterActiveEditor(hit.pos, hit.length);
+        return;
+    }
+
+    // Find ALL matches on the line and pick the one closest to the original position
+    ::SendMessage(hEd, SCI_SETSEARCHFLAGS, hit.searchFlags, 0);
+
+    Sci_Position bestPos = -1;
+    Sci_Position bestLen = 0;
+    Sci_Position bestDistance = 0x7FFFFFFF; // Large value for distance comparison
+
+    Sci_Position searchFrom = lineStart;
+    while (searchFrom < lineEnd) {
+        ::SendMessage(hEd, SCI_SETTARGETRANGE, searchFrom, lineEnd);
+        const Sci_Position found = ::SendMessage(hEd, SCI_SEARCHINTARGET,
+            findBytes.size(), reinterpret_cast<LPARAM>(findBytes.c_str()));
+
+        if (found < 0) break;
+
+        const Sci_Position foundEnd = ::SendMessage(hEd, SCI_GETTARGETEND, 0, 0);
+        const Sci_Position foundLen = foundEnd - found;
+
+        // Calculate distance to original position
+        Sci_Position distance = (found > hit.pos) ? (found - hit.pos) : (hit.pos - found);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestPos = found;
+            bestLen = foundLen;
+        }
+
+        // Move past this match
+        searchFrom = foundEnd;
+        if (searchFrom <= found) break; // Safety: avoid infinite loop
+    }
+
+    if (bestPos >= 0) {
+        JumpSelectCenterActiveEditor(bestPos, bestLen);
+    }
+    else {
+        JumpSelectCenterActiveEditor(hit.pos, hit.length);
+    }
+}
+
+// ------------------- Position Tracking (INDIC_HIDDEN) -----
+
+int ResultDock::nextTrackingTag()
+{
+    return _nextTrackingTag++;
+}
+
+void ResultDock::placeTrackingIndicators(HWND hEditor, const std::vector<Hit>& hits)
+{
+    const int indId = NppStyleKit::gResultDockTrackingIndicatorId;
+    if (!hEditor || indId < 0)
+        return;
+
+    // Configure as INDIC_HIDDEN (invisible, no visual effect)
+    ::SendMessage(hEditor, SCI_INDICSETSTYLE, indId, INDIC_HIDDEN);
+    ::SendMessage(hEditor, SCI_INDICSETUNDER, indId, TRUE);
+    // Enable indicator values - required for SCI_INDICATORVALUEAT to return our tags
+    ::SendMessage(hEditor, SCI_INDICSETFLAGS, indId, SC_INDICFLAG_VALUEFORE);
+
+    for (const auto& h : hits) {
+        if (h.length <= 0) continue;
+
+        // Always mark the primary position first
+        if (h.pos >= 0 && h.trackingTag > 0) {
+            ::SendMessage(hEditor, SCI_SETINDICATORCURRENT, indId, 0);
+            ::SendMessage(hEditor, SCI_SETINDICATORVALUE, h.trackingTag, 0);
+            ::SendMessage(hEditor, SCI_INDICATORFILLRANGE, h.pos, h.length);
+        }
+
+        // If this hit was merged (allPositions populated), also mark all sub-positions
+        if (!h.allPositions.empty()) {
+            for (size_t i = 0; i < h.allPositions.size(); ++i) {
+                Sci_Position p = h.allPositions[i];
+                Sci_Position len = (i < h.allLengths.size()) ? h.allLengths[i] : h.length;
+                int tag = (i < h.allTrackingTags.size()) ? h.allTrackingTags[i] : h.trackingTag;
+                if (p >= 0 && len > 0 && tag > 0) {
+                    ::SendMessage(hEditor, SCI_SETINDICATORCURRENT, indId, 0);
+                    ::SendMessage(hEditor, SCI_SETINDICATORVALUE, tag, 0);
+                    ::SendMessage(hEditor, SCI_INDICATORFILLRANGE, p, len);
+                }
+            }
+        }
+    }
+}
+
+void ResultDock::clearTrackingIndicators(HWND hEditor)
+{
+    const int indId = NppStyleKit::gResultDockTrackingIndicatorId;
+    if (!hEditor || indId < 0)
+        return;
+
+    const Sci_Position docLen = ::SendMessage(hEditor, SCI_GETLENGTH, 0, 0);
+    if (docLen <= 0) return;
+
+    ::SendMessage(hEditor, SCI_SETINDICATORCURRENT, indId, 0);
+    ::SendMessage(hEditor, SCI_INDICATORCLEARRANGE, 0, docLen);
+}
+
+void ResultDock::ensureTrackingIndicatorsForFile(HWND hEditor, const std::string& filePathUtf8)
+{
+    const int indId = NppStyleKit::gResultDockTrackingIndicatorId;
+    if (!hEditor || indId < 0 || filePathUtf8.empty())
+        return;
+
+    // Configure indicator style (in case it wasn't set yet for this buffer)
+    ::SendMessage(hEditor, SCI_INDICSETSTYLE, indId, INDIC_HIDDEN);
+    ::SendMessage(hEditor, SCI_INDICSETUNDER, indId, TRUE);
+    // Enable indicator values - required for SCI_INDICATORVALUEAT to return our tags
+    ::SendMessage(hEditor, SCI_INDICSETFLAGS, indId, SC_INDICFLAG_VALUEFORE);
+
+    // Collect all hits for this file from the ResultDock
+    const auto& allHits = instance()._hits;
+    bool placedAny = false;
+
+    for (const auto& hit : allHits)
+    {
+        if (!pathsEqualUtf8(hit.fullPathUtf8, filePathUtf8))
+            continue;
+
+        if (hit.trackingTag <= 0 || hit.length <= 0)
+            continue;
+
+        // Place indicator for primary position
+        if (hit.pos >= 0) {
+            ::SendMessage(hEditor, SCI_SETINDICATORCURRENT, indId, 0);
+            ::SendMessage(hEditor, SCI_SETINDICATORVALUE, hit.trackingTag, 0);
+            ::SendMessage(hEditor, SCI_INDICATORFILLRANGE, hit.pos, hit.length);
+            placedAny = true;
+        }
+
+        // Place indicators for merged positions (multiple hits on same row)
+        for (size_t i = 0; i < hit.allPositions.size(); ++i)
+        {
+            Sci_Position p = hit.allPositions[i];
+            Sci_Position len = (i < hit.allLengths.size()) ? hit.allLengths[i] : hit.length;
+            int tag = (i < hit.allTrackingTags.size()) ? hit.allTrackingTags[i] : hit.trackingTag;
+
+            if (p >= 0 && len > 0 && tag > 0) {
+                ::SendMessage(hEditor, SCI_SETINDICATORCURRENT, indId, 0);
+                ::SendMessage(hEditor, SCI_SETINDICATORVALUE, tag, 0);
+                ::SendMessage(hEditor, SCI_INDICATORFILLRANGE, p, len);
+                placedAny = true;
+            }
+        }
+    }
+
+    // Mark this file as having indicators placed (for future navigation)
+    if (placedAny) {
+        instance().setIndicatorsForFile(filePathUtf8, true);
+    }
+}
+
+void ResultDock::clearTrackingIndicatorsFromAllBuffers()
+{
+    const int indId = NppStyleKit::gResultDockTrackingIndicatorId;
+    if (indId < 0)
+        return;
+
+    // Save current document index to restore later
+    LRESULT savedMainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
+    LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW);
+
+    // Determine which view is currently active
+    int whichView = 0;
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&whichView));
+
+    const bool mainVis = ::IsWindowVisible(nppData._scintillaMainHandle) != 0;
+    const bool subVis = ::IsWindowVisible(nppData._scintillaSecondHandle) != 0;
+
+    // Clear indicators from all buffers in main view
+    if (mainVis) {
+        LRESULT nbMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
+        for (LRESULT i = 0; i < nbMain; ++i) {
+            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
+            clearTrackingIndicators(nppData._scintillaMainHandle);
+        }
+    }
+
+    // Clear indicators from all buffers in sub view
+    if (subVis) {
+        LRESULT nbSub = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
+        for (LRESULT i = 0; i < nbSub; ++i) {
+            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, i);
+            clearTrackingIndicators(nppData._scintillaSecondHandle);
+        }
+    }
+
+    // Restore original document in each view
+    if (mainVis && savedMainIdx >= 0) {
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, savedMainIdx);
+    }
+    if (subVis && savedSubIdx >= 0) {
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, savedSubIdx);
+    }
 }
 
 void ResultDock::SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, Sci_Position len)
@@ -2332,14 +2721,14 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         std::wstring pathToOpen = wPath;
 
         if (!isPseudo && ResultDock::IsCurrentDocByFullPath(pathToOpen)) {
-            ResultDock::JumpSelectCenterActiveEditor(hit.pos, hit.length);
+            ResultDock::NavigateToHit(hit);
             ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
             const Sci_Position dockLineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
             ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockLineStart, 0);
             return 0;
         }
         if (isPseudo && ResultDock::IsCurrentDocByTitle(wPath)) {
-            ResultDock::JumpSelectCenterActiveEditor(hit.pos, hit.length);
+            ResultDock::NavigateToHit(hit);
             ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
             const Sci_Position dockLineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
             ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockLineStart, 0);
@@ -2350,11 +2739,12 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             if (pathToOpen.empty()) return 0;
         }
 
-        SetPendingJump(pathToOpen, hit.pos, hit.length);
+        // Store minimal hit data for robust cross-file navigation (no full Hit copy)
+        s_pending.setFromHit(pathToOpen, hit);
 
         const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(pathToOpen.c_str()));
         if (!ok) {
-            SetPendingJump(L"", 0, 0);
+            s_pending.clear();
             return 0;
         }
 
@@ -2369,13 +2759,127 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         if (wp == s_timerId)
         {
             ::KillTimer(hwnd, s_timerId);
-            if (s_hasPendingJump && s_targetEd && s_jumpState == 2)
+            if (s_pending.active && s_pending.targetEditor && s_pending.phase == 2)
             {
-                JumpSelectCenterActiveEditor(s_pendingPos, s_pendingLen);
-                s_hasPendingJump = false;
-                s_pendingPath.clear();
-                s_targetEd = nullptr;
-                s_jumpState = 0;
+                HWND hEd = s_pending.targetEditor;
+                bool jumped = false;
+
+                const int indId = NppStyleKit::gResultDockTrackingIndicatorId;
+
+                // Lazy Indicator Placement (for Find in Files)
+                // Only place indicators if they were not set at search time
+                if (indId >= 0 && s_pending.trackingTag > 0 && !s_pending.fullPathUtf8.empty()
+                    && !ResultDock::instance().hasIndicatorsForFile(s_pending.fullPathUtf8))
+                {
+                    ResultDock::ensureTrackingIndicatorsForFile(hEd, s_pending.fullPathUtf8);
+                }
+
+                // Strategy 1: Indicator-based tracking (precise, survives edits)
+                if (!jumped && indId >= 0 && s_pending.trackingTag > 0)
+                {
+                    // Check at original position first
+                    const int valAtOrig = static_cast<int>(::SendMessage(hEd, SCI_INDICATORVALUEAT, indId, s_pending.fallbackPos));
+                    if (valAtOrig == s_pending.trackingTag)
+                    {
+                        const Sci_Position start = ::SendMessage(hEd, SCI_INDICATORSTART, indId, s_pending.fallbackPos);
+                        const Sci_Position end = ::SendMessage(hEd, SCI_INDICATOREND, indId, s_pending.fallbackPos);
+                        if (start < end) {
+                            JumpSelectCenterActiveEditor(start, end - start);
+                            jumped = true;
+                        }
+                    }
+
+                    // If not found at original pos, scan nearby
+                    if (!jumped)
+                    {
+                        const Sci_Position docLen = ::SendMessage(hEd, SCI_GETLENGTH, 0, 0);
+                        const Sci_Position scanFrom = (s_pending.fallbackPos > 5000) ? (s_pending.fallbackPos - 5000) : 0;
+                        const Sci_Position scanTo = ((s_pending.fallbackPos + 5000) < docLen) ? (s_pending.fallbackPos + 5000) : docLen;
+
+                        Sci_Position probe = scanFrom;
+                        while (probe < scanTo)
+                        {
+                            const int v = static_cast<int>(::SendMessage(hEd, SCI_INDICATORVALUEAT, indId, probe));
+                            if (v == s_pending.trackingTag)
+                            {
+                                const Sci_Position start = ::SendMessage(hEd, SCI_INDICATORSTART, indId, probe);
+                                const Sci_Position end = ::SendMessage(hEd, SCI_INDICATOREND, indId, probe);
+                                if (start < end) {
+                                    JumpSelectCenterActiveEditor(start, end - start);
+                                    jumped = true;
+                                    break;
+                                }
+                            }
+                            const Sci_Position nextEnd = ::SendMessage(hEd, SCI_INDICATOREND, indId, probe);
+                            probe = (nextEnd > probe) ? nextEnd : (probe + 1);
+                        }
+                    }
+                }
+
+                // Strategy 2: Line-based re-search (fallback when indicator gone)
+                // When multiple matches exist on the same line, prefer the one closest to original position
+                if (!jumped && s_pending.docLine >= 0 && !s_pending.findTextW.empty())
+                {
+                    const int lineCount = static_cast<int>(::SendMessage(hEd, SCI_GETLINECOUNT, 0, 0));
+                    if (s_pending.docLine < lineCount)
+                    {
+                        const Sci_Position lineStart = ::SendMessage(hEd, SCI_POSITIONFROMLINE, s_pending.docLine, 0);
+                        const Sci_Position lineEnd = ::SendMessage(hEd, SCI_GETLINEENDPOSITION, s_pending.docLine, 0);
+
+                        const int docCp = static_cast<int>(::SendMessage(hEd, SCI_GETCODEPAGE, 0, 0));
+                        const std::string findBytes = Encoding::wstringToBytes(s_pending.findTextW, docCp);
+
+                        if (!findBytes.empty())
+                        {
+                            ::SendMessage(hEd, SCI_SETSEARCHFLAGS, s_pending.searchFlags, 0);
+
+                            // Find ALL matches on the line and pick the one closest to fallbackPos
+                            Sci_Position bestPos = -1;
+                            Sci_Position bestLen = 0;
+                            Sci_Position bestDistance = 0x7FFFFFFF; // Large value for distance comparison
+
+                            Sci_Position searchFrom = lineStart;
+                            while (searchFrom < lineEnd) {
+                                ::SendMessage(hEd, SCI_SETTARGETRANGE, searchFrom, lineEnd);
+                                const Sci_Position found = ::SendMessage(hEd, SCI_SEARCHINTARGET,
+                                    findBytes.size(), reinterpret_cast<LPARAM>(findBytes.c_str()));
+
+                                if (found < 0) break;
+
+                                const Sci_Position foundEnd = ::SendMessage(hEd, SCI_GETTARGETEND, 0, 0);
+                                const Sci_Position foundLen = foundEnd - found;
+
+                                // Calculate distance to original position
+                                Sci_Position distance = (found > s_pending.fallbackPos)
+                                    ? (found - s_pending.fallbackPos)
+                                    : (s_pending.fallbackPos - found);
+                                if (distance < bestDistance) {
+                                    bestDistance = distance;
+                                    bestPos = found;
+                                    bestLen = foundLen;
+                                }
+
+                                // Move past this match
+                                searchFrom = foundEnd;
+                                if (searchFrom <= found) break; // Safety: avoid infinite loop
+                            }
+
+                            if (bestPos >= 0)
+                            {
+                                JumpSelectCenterActiveEditor(bestPos, bestLen);
+                                jumped = true;
+                            }
+                        }
+                    }
+                }
+
+                // Strategy 3: Direct position fallback
+                if (!jumped)
+                {
+                    JumpSelectCenterActiveEditor(s_pending.fallbackPos, s_pending.fallbackLen);
+                }
+
+                s_pending.clear();
             }
             return 0;
         }
@@ -2549,29 +3053,29 @@ void ResultDock::onNppNotification(const SCNotification* notify)
     if (!notify)
         return;
 
-    if (!s_hasPendingJump || s_pendingPath.empty())
+    if (!s_pending.active || s_pending.path.empty())
         return;
 
     if (notify->nmhdr.code == NPPN_BUFFERACTIVATED)
     {
         wchar_t cur[MAX_PATH] = {};
         ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(cur));
-        if (!cur[0] || _wcsicmp(cur, s_pendingPath.c_str()) != 0)
+        if (!cur[0] || _wcsicmp(cur, s_pending.path.c_str()) != 0)
             return;
 
         int whichView = 0;
         ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&whichView));
-        s_targetEd = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
-        s_jumpState = 1;
+        s_pending.targetEditor = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+        s_pending.phase = 1;
         return;
     }
 
     if (notify->nmhdr.code == SCN_UPDATEUI)
     {
-        if (!s_targetEd || notify->nmhdr.hwndFrom != s_targetEd || s_jumpState != 1)
+        if (!s_pending.targetEditor || notify->nmhdr.hwndFrom != s_pending.targetEditor || s_pending.phase != 1)
             return;
 
-        s_jumpState = 2;
+        s_pending.phase = 2;
         if (_hSci)
             ::SetTimer(_hSci, s_timerId, 1, nullptr);
         return;

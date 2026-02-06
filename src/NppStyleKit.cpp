@@ -24,6 +24,7 @@ namespace NppStyleKit {
     IndicatorCoordinator gIndicatorCoord;
     IndicatorRegistry    gIndicatorReg;
     int                  gColumnTabsIndicatorId = -1;
+    int                  gResultDockTrackingIndicatorId = -1;
 
     // --- Scintilla direct ----------------------------------------------------
     // Local helper: fast Scintilla calls with per-thread cached direct function.
