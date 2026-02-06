@@ -49,6 +49,43 @@ namespace {
     static int          s_jumpState = 0;        // 0=idle, 1=activated, 2=update-seen
     static const UINT   s_timerId = 1001;       // one-shot timer id
 
+        // Fallback position if re-search fails
+        Sci_Position fallbackPos = 0;
+        Sci_Position fallbackLen = 0;
+
+        // Navigation state machine
+        HWND targetEditor = nullptr;    // Active editor to watch
+        int phase = 0;                  // 0=idle, 1=buffer-activated, 2=update-seen
+
+        void clear() {
+            active = false;
+            path.clear();
+            docLine = -1;
+            searchFlags = 0;
+            findTextW.clear();
+            fallbackPos = 0;
+            fallbackLen = 0;
+            targetEditor = nullptr;
+            phase = 0;
+        }
+
+        void setFromHit(const std::wstring& targetPath, const ResultDock::Hit& hit) {
+            active = !targetPath.empty();
+            path = targetPath;
+            docLine = hit.docLine;
+            searchFlags = hit.searchFlags;
+            findTextW = hit.findTextW;
+            fallbackPos = hit.pos;
+            fallbackLen = hit.length;
+            targetEditor = nullptr;
+            phase = 0;
+        }
+    };
+
+    static PendingJumpState s_pending;
+    static const UINT s_timerId = 1001;
+
+    // Legacy function signature for compatibility with SwitchAndJump
     static void SetPendingJump(const std::wstring& path, Sci_Position pos, Sci_Position len)
     {
         s_pendingPath = path;
