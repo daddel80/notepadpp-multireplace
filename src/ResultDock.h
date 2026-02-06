@@ -51,12 +51,10 @@ public:
         int          searchFlags{ 0 };   // SCFIND_MATCHCASE | SCFIND_WHOLEWORD | SCFIND_REGEXP
 
         std::wstring findTextW;
-        int          trackingTag{ 0 };   // unique per-search tag for INDIC_HIDDEN tracking
 
         std::vector<std::wstring> allFindTexts;
         std::vector<Sci_Position> allPositions;
         std::vector<Sci_Position> allLengths;
-        std::vector<int>          allTrackingTags; // parallel to allPositions
 
         int displayLineStart{ -1 };
         int numberStart{ 0 };
@@ -86,14 +84,15 @@ public:
         std::wstring wPath;
         int hitCount = 0;
         std::vector<CritAgg> crits;
-        bool indicatorsPlaced = false;  // true if INDIC_HIDDEN indicators were set for this file
     };
     using FileMap = std::unordered_map<std::string, FileAgg>;
 
     // --------------- Singleton & API methods ------------------
     static ResultDock& instance();
 
-    void ensureCreatedAndVisible(const NppData& npp);
+    void ensureCreated(const NppData& npp);           // Create dock without showing
+    void ensureCreatedAndVisible(const NppData& npp); // Create and show dock
+    void hide(const NppData& npp);                    // Hide dock (keep data)
 
     void clear();              // Remove all text and hits
     void rebuildFolding();     // Re-calculate folding markers
@@ -103,9 +102,8 @@ public:
 
     const std::vector<Hit>& hits() const { return _hits; }
 
-    // Per-file indicator tracking
-    bool hasIndicatorsForFile(const std::string& fullPathUtf8) const;
-    void setIndicatorsForFile(const std::string& fullPathUtf8, bool placed);
+    // Check if ResultDock has any hits for a given file path
+    bool hasHitsForFile(const std::string& fullPathUtf8) const;
 
     static bool  wrapEnabled() { return _wrapEnabled; }
     static bool  purgeEnabled() { return _purgeOnNextSearch; }
@@ -134,18 +132,14 @@ public:
     static void NavigateToHit(const Hit& hit);  // Robust line-based navigation with re-search
     void scrollToHitAndHighlight(int displayLineStart);
 
-    // ------------------- Position Tracking (INDIC_HIDDEN) -----
-    // Mark hit positions in the editor with invisible indicators for robust tracking.
-    // Call after all hits are collected for a document, before inserting into the dock.
-    static void placeTrackingIndicators(HWND hEditor, const std::vector<Hit>& hits);
-    // Clear all tracking indicators from the given editor.
-    static void clearTrackingIndicators(HWND hEditor);
-    // Clear tracking indicators from ALL open buffers (used by clear() to prevent orphaned indicators)
-    static void clearTrackingIndicatorsFromAllBuffers();
-    // Lazily place indicators for a file when first navigating to it (for Find in Files)
-    static void ensureTrackingIndicatorsForFile(HWND hEditor, const std::string& filePathUtf8);
-    // Generate next unique tracking tag for a hit
-    static int nextTrackingTag();
+    // ------------------- FlowTab Position Adjustment -----------
+    // Adjust stored hit positions when FlowTabs insert/remove padding characters.
+    // paddingRanges: pairs of (startPos, length) for each padding range, collected
+    //   BEFORE removal (for turn-off) or AFTER insertion (for turn-on).
+    // added: true if padding was added (positions shift forward), false if removed (shift back).
+    void adjustHitPositionsForFlowTab(const std::string& filePathUtf8,
+        const std::vector<std::pair<Sci_Position, Sci_Position>>& paddingRanges,
+        bool added);
 
     // ------------------- Color Utilities ----------------------
     static COLORREF generateColorFromText(const std::wstring& text, bool darkMode);
@@ -343,7 +337,6 @@ private:
 
     // Core data
     std::vector<Hit> _hits;
-    std::unordered_map<std::string, bool> _fileIndicatorsPlaced;  // fullPathUtf8 → indicatorsPlaced
     tTbData _dockData{};
 
     // Pending block build state
@@ -373,7 +366,4 @@ private:
     // O(1) mapping from absolute line start to hit index
     void rebuildHitLineIndex();
     std::unordered_map<int, int> _lineStartToHitIndex;
-
-    // Monotonic tracking tag counter for INDIC_HIDDEN values
-    inline static int _nextTrackingTag = 1;
 };

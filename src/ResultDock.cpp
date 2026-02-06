@@ -51,15 +51,12 @@ namespace {
     struct PendingJumpState {
         bool active = false;
         std::wstring path;              // Target file path for validation
-        std::string fullPathUtf8;       // UTF-8 path for indicator lookup
+        std::string fullPathUtf8;       // UTF-8 path for file matching
 
         // Minimal fields needed for NavigateToHit-style re-search
         int docLine = -1;               // 0-based line number in target document
         int searchFlags = 0;            // SCFIND_MATCHCASE | SCFIND_WHOLEWORD | SCFIND_REGEXP
         std::wstring findTextW;         // Search text for re-search on line
-
-        // Indicator-based tracking
-        int trackingTag = 0;            // INDIC_HIDDEN value for precise position tracking
 
         // Fallback position if re-search fails
         Sci_Position fallbackPos = 0;
@@ -76,7 +73,6 @@ namespace {
             docLine = -1;
             searchFlags = 0;
             findTextW.clear();
-            trackingTag = 0;
             fallbackPos = 0;
             fallbackLen = 0;
             targetEditor = nullptr;
@@ -90,7 +86,6 @@ namespace {
             docLine = hit.docLine;
             searchFlags = hit.searchFlags;
             findTextW = hit.findTextW;
-            trackingTag = hit.trackingTag;
             fallbackPos = hit.pos;
             fallbackLen = hit.length;
             targetEditor = nullptr;
@@ -131,34 +126,44 @@ ResultDock& ResultDock::instance()
     return s;
 }
 
+void ResultDock::ensureCreated(const NppData& npp)
+{
+    // Create the dock if it doesn't exist yet (but don't show it)
+    if (!_hSci)
+        create(npp);
+}
+
 void ResultDock::ensureCreatedAndVisible(const NppData& npp)
 {
     // 1) first-time creation
     if (!_hSci)                // _hSci is initialized in create()
         create(npp);
 
-    // 2) show again – MUST use the client handle!
-    if (_hSci)
+    // 2) show – MUST use the client handle!
+    if (_hSci) {
         ::SendMessage(npp._nppHandle, NPPM_DMMSHOW, 0, reinterpret_cast<LPARAM>(_hSci));
+    }
 }
 
-// Helper to normalize path for case-insensitive lookup
-static std::string normalizePathForLookup(const std::string& path) {
-    std::string lower = path;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-        [](unsigned char c) { return static_cast<char>(::tolower(c)); });
-    return lower;
-}
-
-bool ResultDock::hasIndicatorsForFile(const std::string& fullPathUtf8) const
+void ResultDock::hide(const NppData& npp)
 {
-    auto it = _fileIndicatorsPlaced.find(normalizePathForLookup(fullPathUtf8));
-    return (it != _fileIndicatorsPlaced.end()) ? it->second : false;
+    if (_hSci) {
+        ::SendMessage(npp._nppHandle, NPPM_DMMHIDE, 0, reinterpret_cast<LPARAM>(_hSci));
+
+        // Force editor to repaint the area where dock was
+        ::InvalidateRect(npp._scintillaMainHandle, nullptr, TRUE);
+        ::InvalidateRect(npp._scintillaSecondHandle, nullptr, TRUE);
+        ::UpdateWindow(npp._nppHandle);
+    }
 }
 
-void ResultDock::setIndicatorsForFile(const std::string& fullPathUtf8, bool placed)
+bool ResultDock::hasHitsForFile(const std::string& fullPathUtf8) const
 {
-    _fileIndicatorsPlaced[normalizePathForLookup(fullPathUtf8)] = placed;
+    for (const auto& hit : _hits) {
+        if (pathsEqualUtf8(hit.fullPathUtf8, fullPathUtf8))
+            return true;
+    }
+    return false;
 }
 
 void ResultDock::clear()
@@ -166,17 +171,9 @@ void ResultDock::clear()
     // ----- Data structures -------------------------------------------------
     _hits.clear();
     _lineStartToHitIndex.clear();
-    _fileIndicatorsPlaced.clear();
 
     _searchHeaderLines.clear();
     _slotToColor.clear();
-
-    // Reset tracking tag counter (safe since all hits are gone)
-    _nextTrackingTag = 1;
-
-    // Clear tracking indicators from ALL open buffers (not just visible editors)
-    // This prevents orphaned indicators from colliding with new tags after purge
-    clearTrackingIndicatorsFromAllBuffers();
 
     if (!_hSci)
         return;
@@ -1232,18 +1229,33 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     size_t currentRowLenU8 = 0;
 
     std::string  cachedRaw;
-    std::string  cachedRawFiltered;  // Raw bytes with FlowTabs padding removed
+    std::string  cachedRawFiltered;  // Only populated when FlowTabs padding exists
     std::string  origU8;
     std::string  displayU8;
     std::wstring displayW;
     Sci_Position cachedAbsLineStart = 0;
 
+    // Pointer to the effective raw bytes (either cachedRaw or cachedRawFiltered)
+    const std::string* effectiveRaw = &cachedRaw;
+
     // FlowTabs filtering: mapping from original raw byte index to filtered byte index
+    // Only populated when the document actually has FlowTabs padding.
     std::vector<size_t> mapRawToFiltered;
 
-    // FlowTabs filtering: always query the indicator to strip padding,
-    // regardless of CT_GetCurDocHasPads state.
+    // FlowTabs filtering: only scan when the document actually has padding.
     const int flowTabsIndicatorId = ColumnTabs::CT_GetIndicatorId();
+    bool docHasFlowTabPadding = false;
+    if (flowTabsIndicatorId >= 0) {
+        // Quick check: does the document have any indicator at all?
+        const Sci_Position docLen = static_cast<Sci_Position>(sciSend(SCI_GETLENGTH, 0, 0));
+        if (docLen > 0) {
+            const Sci_Position firstEnd = static_cast<Sci_Position>(
+                sciSend(SCI_INDICATOREND, static_cast<WPARAM>(flowTabsIndicatorId), 0));
+            const int firstVal = static_cast<int>(
+                sciSend(SCI_INDICATORVALUEAT, static_cast<WPARAM>(flowTabsIndicatorId), 0));
+            docHasFlowTabPadding = (firstVal != 0) || (firstEnd > 0 && firstEnd < docLen);
+        }
+    }
 
     std::vector<size_t> mapOrigToDisp;
     std::unordered_map<size_t, size_t> u8PrefixLenByByte;
@@ -1263,43 +1275,71 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 
             cachedAbsLineStart = sciSend(SCI_POSITIONFROMLINE, line0, 0);
 
-            // Filter out FlowTabs padding: always check indicator per byte
+            // Filter out FlowTabs padding using range-based indicator scan
             mapRawToFiltered.clear();
-            if (flowTabsIndicatorId >= 0 && !cachedRaw.empty()) {
+            if (docHasFlowTabPadding && !cachedRaw.empty()) {
                 cachedRawFiltered.clear();
                 cachedRawFiltered.reserve(cachedRaw.size());
                 mapRawToFiltered.reserve(cachedRaw.size() + 1);
 
-                for (size_t i = 0; i < cachedRaw.size(); ++i) {
-                    const Sci_Position docPos = cachedAbsLineStart + static_cast<Sci_Position>(i);
-                    const int indicVal = static_cast<int>(sciSend(SCI_INDICATORVALUEAT,
-                        static_cast<WPARAM>(flowTabsIndicatorId),
-                        static_cast<LPARAM>(docPos)));
+                // Build a set of padding ranges on this line using SCI_INDICATOREND
+                // (O(ranges) Scintilla calls instead of O(bytes))
+                const Sci_Position lineEndDoc = cachedAbsLineStart + static_cast<Sci_Position>(cachedRaw.size());
+                std::vector<std::pair<Sci_Position, Sci_Position>> padRanges;
+                {
+                    Sci_Position scanPos = cachedAbsLineStart;
+                    while (scanPos < lineEndDoc) {
+                        const Sci_Position rangeEnd = static_cast<Sci_Position>(
+                            sciSend(SCI_INDICATOREND, static_cast<WPARAM>(flowTabsIndicatorId),
+                                static_cast<LPARAM>(scanPos)));
+                        if (rangeEnd <= scanPos) break;
 
-                    if (indicVal != 0) {
-                        // This byte is FlowTabs padding - skip it
-                        mapRawToFiltered.push_back(cachedRawFiltered.size());
-                    }
-                    else {
-                        // Keep this byte
-                        mapRawToFiltered.push_back(cachedRawFiltered.size());
-                        cachedRawFiltered.push_back(cachedRaw[i]);
+                        const int val = static_cast<int>(
+                            sciSend(SCI_INDICATORVALUEAT, static_cast<WPARAM>(flowTabsIndicatorId),
+                                static_cast<LPARAM>(scanPos)));
+                        if (val != 0) {
+                            // This range [scanPos..rangeEnd) is padding
+                            const Sci_Position clampedEnd = (rangeEnd < lineEndDoc) ? rangeEnd : lineEndDoc;
+                            padRanges.emplace_back(scanPos, clampedEnd);
+                        }
+                        scanPos = rangeEnd;
                     }
                 }
-                // Final entry: position after last byte
-                mapRawToFiltered.push_back(cachedRawFiltered.size());
+
+                if (padRanges.empty()) {
+                    // No padding on this line - use cachedRaw directly
+                    effectiveRaw = &cachedRaw;
+                }
+                else {
+                    // Filter using ranges (no per-byte Scintilla calls)
+                    size_t padIdx = 0;
+                    for (size_t i = 0; i < cachedRaw.size(); ++i) {
+                        const Sci_Position docPos = cachedAbsLineStart + static_cast<Sci_Position>(i);
+
+                        // Advance past ranges that end before this position
+                        while (padIdx < padRanges.size() && padRanges[padIdx].second <= docPos)
+                            ++padIdx;
+
+                        const bool isPadding = (padIdx < padRanges.size()
+                            && docPos >= padRanges[padIdx].first
+                            && docPos < padRanges[padIdx].second);
+
+                        mapRawToFiltered.push_back(cachedRawFiltered.size());
+                        if (!isPadding) {
+                            cachedRawFiltered.push_back(cachedRaw[i]);
+                        }
+                    }
+                    mapRawToFiltered.push_back(cachedRawFiltered.size());
+                    effectiveRaw = &cachedRawFiltered;
+                }
             }
             else {
-                // No FlowTabs - use raw directly, identity mapping
-                cachedRawFiltered = cachedRaw;
-                mapRawToFiltered.resize(cachedRaw.size() + 1);
-                for (size_t i = 0; i <= cachedRaw.size(); ++i) {
-                    mapRawToFiltered[i] = i;
-                }
+                // No FlowTabs padding - use raw directly, no mapping needed
+                effectiveRaw = &cachedRaw;
             }
 
-            // original as UTF-8 (for mapping) - use filtered version
-            origU8 = Encoding::bytesToUtf8(cachedRawFiltered, docCp);
+            // original as UTF-8 (for mapping) - use effective raw bytes
+            origU8 = Encoding::bytesToUtf8(*effectiveRaw, docCp);
 
             // classify helpers
             auto isCtlWide = [](wchar_t ch)->bool {
@@ -1328,18 +1368,18 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                 const UINT cp = (UINT)docCp;
                 const UINT wcp = (cp == 0 ? CP_ACP : cp);
                 if (cp == SC_CP_UTF8) {
-                    wide = Encoding::utf8ToWString(cachedRawFiltered);
+                    wide = Encoding::utf8ToWString(*effectiveRaw);
                 }
                 else {
                     int wlen = ::MultiByteToWideChar(wcp, MB_ERR_INVALID_CHARS,
-                        cachedRawFiltered.data(), (int)cachedRawFiltered.size(), nullptr, 0);
+                        effectiveRaw->data(), (int)effectiveRaw->size(), nullptr, 0);
                     if (wlen <= 0)
                         wlen = ::MultiByteToWideChar(wcp, 0,
-                            cachedRawFiltered.data(), (int)cachedRawFiltered.size(), nullptr, 0);
+                            effectiveRaw->data(), (int)effectiveRaw->size(), nullptr, 0);
                     wide.resize((size_t)wlen);
                     if (wlen > 0)
                         ::MultiByteToWideChar(wcp, 0,
-                            cachedRawFiltered.data(), (int)cachedRawFiltered.size(),
+                            effectiveRaw->data(), (int)effectiveRaw->size(),
                             &wide[0], wlen);
                 }
             }
@@ -1416,10 +1456,12 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         };
 
     // Convert raw byte position to filtered byte position
+    // When no padding is present (effectiveRaw == &cachedRaw), this is identity.
     auto rawToFilteredPos = [&](size_t rawPos) -> size_t {
-        if (rawPos >= mapRawToFiltered.size()) {
+        if (effectiveRaw == &cachedRaw)
+            return rawPos;  // No padding: identity mapping
+        if (rawPos >= mapRawToFiltered.size())
             return mapRawToFiltered.empty() ? 0 : mapRawToFiltered.back();
-        }
         return mapRawToFiltered[rawPos];
         };
 
@@ -1428,7 +1470,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         if (it != u8PrefixLenByByte.end()) return it->second;
         // Map raw byte count to filtered byte count
         const size_t filteredByteCount = rawToFilteredPos(byteCount);
-        size_t val = Encoding::bytesToUtf8(cachedRawFiltered.substr(0, filteredByteCount), docCp).size();
+        size_t val = Encoding::bytesToUtf8(effectiveRaw->substr(0, filteredByteCount), docCp).size();
         u8PrefixLenByByte.emplace(byteCount, val);
         return val;
         };
@@ -1446,7 +1488,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         const size_t filteredStart = rawToFilteredPos(relBytes);
         const size_t filteredEnd = rawToFilteredPos(relBytes + h.length);
         const size_t filteredLen = (filteredEnd > filteredStart) ? (filteredEnd - filteredStart) : 0;
-        size_t hitLenU8_orig = Encoding::bytesToUtf8(cachedRawFiltered.substr(filteredStart, filteredLen), docCp).size();
+        size_t hitLenU8_orig = Encoding::bytesToUtf8(effectiveRaw->substr(filteredStart, filteredLen), docCp).size();
 
         auto mapToDisp = [&](size_t offU8) -> size_t {
             if (offU8 >= mapOrigToDisp.size()) return mapOrigToDisp.empty() ? 0 : mapOrigToDisp.back();
@@ -1481,8 +1523,6 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             firstHitOnRow->allPositions.push_back(h.pos);
             firstHitOnRow->allLengths.clear();
             firstHitOnRow->allLengths.push_back(h.length);
-            firstHitOnRow->allTrackingTags.clear();
-            firstHitOnRow->allTrackingTags.push_back(h.trackingTag);
 
             if (dispStart < displayU8.size()) {
                 size_t safeLen = dispLen;
@@ -1519,7 +1559,6 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                 firstHitOnRow->allFindTexts.push_back(h.findTextW);
                 firstHitOnRow->allPositions.push_back(h.pos);
                 firstHitOnRow->allLengths.push_back(h.length);
-                firstHitOnRow->allTrackingTags.push_back(h.trackingTag);
             }
             h.displayLineStart = -1;
         }
@@ -1841,58 +1880,7 @@ void ResultDock::NavigateToHit(const Hit& hit)
     if (!hEd)
         return;
 
-    const int indId = NppStyleKit::gResultDockTrackingIndicatorId;
-
-    // ---- Lazy Indicator Placement (for Find in Files) ----
-    // Only place indicators if this hit was not marked at search time
-    if (indId >= 0 && hit.trackingTag > 0 && !instance().hasIndicatorsForFile(hit.fullPathUtf8))
-    {
-        ensureTrackingIndicatorsForFile(hEd, hit.fullPathUtf8);
-    }
-
-    // ---- Strategy 1: Indicator-based tracking (precise, survives edits) ----
-    if (indId >= 0 && hit.trackingTag > 0)
-    {
-        // Probe original position first — if the indicator is still there, it's the fastest path
-        const int valAtOrig = static_cast<int>(::SendMessage(hEd, SCI_INDICATORVALUEAT, indId, hit.pos));
-        if (valAtOrig == hit.trackingTag)
-        {
-            // Indicator still at original pos — Scintilla may have shifted it, get exact range
-            const Sci_Position start = ::SendMessage(hEd, SCI_INDICATORSTART, indId, hit.pos);
-            const Sci_Position end = ::SendMessage(hEd, SCI_INDICATOREND, indId, hit.pos);
-            if (start < end) {
-                JumpSelectCenterActiveEditor(start, end - start);
-                return;
-            }
-        }
-
-        // Indicator might have moved — scan document for matching tag value
-        // We search around the original position (±5000 chars) for efficiency
-        const Sci_Position docLen = ::SendMessage(hEd, SCI_GETLENGTH, 0, 0);
-        const Sci_Position scanFrom = (hit.pos > 5000) ? (hit.pos - 5000) : 0;
-        const Sci_Position scanTo = ((hit.pos + 5000) < docLen) ? (hit.pos + 5000) : docLen;
-
-        Sci_Position probe = scanFrom;
-        while (probe < scanTo)
-        {
-            const int v = static_cast<int>(::SendMessage(hEd, SCI_INDICATORVALUEAT, indId, probe));
-            if (v == hit.trackingTag)
-            {
-                const Sci_Position start = ::SendMessage(hEd, SCI_INDICATORSTART, indId, probe);
-                const Sci_Position end = ::SendMessage(hEd, SCI_INDICATOREND, indId, probe);
-                if (start < end) {
-                    JumpSelectCenterActiveEditor(start, end - start);
-                    return;
-                }
-            }
-            // Jump to end of current indicator range to skip efficiently
-            const Sci_Position nextEnd = ::SendMessage(hEd, SCI_INDICATOREND, indId, probe);
-            probe = (nextEnd > probe) ? nextEnd : (probe + 1);
-        }
-    }
-
-    // ---- Strategy 2: Line-based re-search (fallback when indicator gone) ----
-    // When multiple matches exist on the same line, prefer the one closest to original position
+    // ---- Line-based re-search: find the match closest to stored position ----
     if (hit.docLine < 0) {
         JumpSelectCenterActiveEditor(hit.pos, hit.length);
         return;
@@ -1919,12 +1907,12 @@ void ResultDock::NavigateToHit(const Hit& hit)
         return;
     }
 
-    // Find ALL matches on the line and pick the one closest to the original position
+    // Find ALL matches on the line and pick the one closest to stored position
     ::SendMessage(hEd, SCI_SETSEARCHFLAGS, hit.searchFlags, 0);
 
     Sci_Position bestPos = -1;
     Sci_Position bestLen = 0;
-    Sci_Position bestDistance = 0x7FFFFFFF; // Large value for distance comparison
+    Sci_Position bestDistance = 0x7FFFFFFF;
 
     Sci_Position searchFrom = lineStart;
     while (searchFrom < lineEnd) {
@@ -1937,7 +1925,6 @@ void ResultDock::NavigateToHit(const Hit& hit)
         const Sci_Position foundEnd = ::SendMessage(hEd, SCI_GETTARGETEND, 0, 0);
         const Sci_Position foundLen = foundEnd - found;
 
-        // Calculate distance to original position
         Sci_Position distance = (found > hit.pos) ? (found - hit.pos) : (hit.pos - found);
         if (distance < bestDistance) {
             bestDistance = distance;
@@ -1945,9 +1932,8 @@ void ResultDock::NavigateToHit(const Hit& hit)
             bestLen = foundLen;
         }
 
-        // Move past this match
         searchFrom = foundEnd;
-        if (searchFrom <= found) break; // Safety: avoid infinite loop
+        if (searchFrom <= found) break;
     }
 
     if (bestPos >= 0) {
@@ -1958,159 +1944,76 @@ void ResultDock::NavigateToHit(const Hit& hit)
     }
 }
 
-// ------------------- Position Tracking (INDIC_HIDDEN) -----
+// ------------------- FlowTab Position Adjustment -----------
 
-int ResultDock::nextTrackingTag()
+void ResultDock::adjustHitPositionsForFlowTab(
+    const std::string& filePathUtf8,
+    const std::vector<std::pair<Sci_Position, Sci_Position>>& paddingRanges,
+    bool added)
 {
-    return _nextTrackingTag++;
-}
-
-void ResultDock::placeTrackingIndicators(HWND hEditor, const std::vector<Hit>& hits)
-{
-    const int indId = NppStyleKit::gResultDockTrackingIndicatorId;
-    if (!hEditor || indId < 0)
+    if (paddingRanges.empty() || filePathUtf8.empty())
         return;
 
-    // Configure as INDIC_HIDDEN (invisible, no visual effect)
-    ::SendMessage(hEditor, SCI_INDICSETSTYLE, indId, INDIC_HIDDEN);
-    ::SendMessage(hEditor, SCI_INDICSETUNDER, indId, TRUE);
-    // Enable indicator values - required for SCI_INDICATORVALUEAT to return our tags
-    ::SendMessage(hEditor, SCI_INDICSETFLAGS, indId, SC_INDICFLAG_VALUEFORE);
+    // paddingRanges: sorted by position, pairs of (start, end) for each padding region.
+    //
+    // REMOVAL (added=false):
+    //   paddingRanges are in pre-removal coordinates (same as hit.pos).
+    //   For each hit, count total padding bytes before hit.pos, then subtract.
+    //
+    // INSERTION (added=true):
+    //   paddingRanges are in post-insertion coordinates.
+    //   hit.pos is in pre-insertion coordinates (no pads yet).
+    //   We track cumulative delta: a padding at post-pos P corresponds to
+    //   original pos (P - cumulativeDeltaSoFar). If that original pos <= hit.pos,
+    //   this padding shifts the hit forward.
 
-    for (const auto& h : hits) {
-        if (h.length <= 0) continue;
-
-        // Always mark the primary position first
-        if (h.pos >= 0 && h.trackingTag > 0) {
-            ::SendMessage(hEditor, SCI_SETINDICATORCURRENT, indId, 0);
-            ::SendMessage(hEditor, SCI_SETINDICATORVALUE, h.trackingTag, 0);
-            ::SendMessage(hEditor, SCI_INDICATORFILLRANGE, h.pos, h.length);
-        }
-
-        // If this hit was merged (allPositions populated), also mark all sub-positions
-        if (!h.allPositions.empty()) {
-            for (size_t i = 0; i < h.allPositions.size(); ++i) {
-                Sci_Position p = h.allPositions[i];
-                Sci_Position len = (i < h.allLengths.size()) ? h.allLengths[i] : h.length;
-                int tag = (i < h.allTrackingTags.size()) ? h.allTrackingTags[i] : h.trackingTag;
-                if (p >= 0 && len > 0 && tag > 0) {
-                    ::SendMessage(hEditor, SCI_SETINDICATORCURRENT, indId, 0);
-                    ::SendMessage(hEditor, SCI_SETINDICATORVALUE, tag, 0);
-                    ::SendMessage(hEditor, SCI_INDICATORFILLRANGE, p, len);
-                }
+    auto computeDelta = [&](Sci_Position hitPos) -> Sci_Position {
+        Sci_Position delta = 0;
+        if (added) {
+            // Post-insertion ranges: need to find how many pad bytes map to original positions <= hitPos
+            for (const auto& [padStart, padEnd] : paddingRanges)
+            {
+                const Sci_Position padLen = padEnd - padStart;
+                // The original position of this padding (before it was inserted) is padStart - delta
+                const Sci_Position origPadPos = padStart - delta;
+                if (origPadPos <= hitPos)
+                    delta += padLen;
+                else
+                    break; // Sorted: remaining pads are after hitPos in original coords
             }
         }
-    }
-}
+        else {
+            // Pre-removal ranges: same coordinate system as hitPos
+            for (const auto& [padStart, padEnd] : paddingRanges)
+            {
+                if (padStart < hitPos)
+                    delta += (padEnd - padStart);
+                else
+                    break; // Sorted: remaining pads are at or after hitPos
+            }
+        }
+        return delta;
+        };
 
-void ResultDock::clearTrackingIndicators(HWND hEditor)
-{
-    const int indId = NppStyleKit::gResultDockTrackingIndicatorId;
-    if (!hEditor || indId < 0)
-        return;
+    const Sci_Position sign = added ? 1 : -1;
 
-    const Sci_Position docLen = ::SendMessage(hEditor, SCI_GETLENGTH, 0, 0);
-    if (docLen <= 0) return;
-
-    ::SendMessage(hEditor, SCI_SETINDICATORCURRENT, indId, 0);
-    ::SendMessage(hEditor, SCI_INDICATORCLEARRANGE, 0, docLen);
-}
-
-void ResultDock::ensureTrackingIndicatorsForFile(HWND hEditor, const std::string& filePathUtf8)
-{
-    const int indId = NppStyleKit::gResultDockTrackingIndicatorId;
-    if (!hEditor || indId < 0 || filePathUtf8.empty())
-        return;
-
-    // Configure indicator style (in case it wasn't set yet for this buffer)
-    ::SendMessage(hEditor, SCI_INDICSETSTYLE, indId, INDIC_HIDDEN);
-    ::SendMessage(hEditor, SCI_INDICSETUNDER, indId, TRUE);
-    // Enable indicator values - required for SCI_INDICATORVALUEAT to return our tags
-    ::SendMessage(hEditor, SCI_INDICSETFLAGS, indId, SC_INDICFLAG_VALUEFORE);
-
-    // Collect all hits for this file from the ResultDock
-    const auto& allHits = instance()._hits;
-    bool placedAny = false;
-
-    for (const auto& hit : allHits)
+    for (auto& hit : _hits)
     {
         if (!pathsEqualUtf8(hit.fullPathUtf8, filePathUtf8))
             continue;
 
-        if (hit.trackingTag <= 0 || hit.length <= 0)
-            continue;
+        // Adjust primary position
+        Sci_Position d = computeDelta(hit.pos);
+        hit.pos += sign * d;
+        if (hit.pos < 0) hit.pos = 0;
 
-        // Place indicator for primary position
-        if (hit.pos >= 0) {
-            ::SendMessage(hEditor, SCI_SETINDICATORCURRENT, indId, 0);
-            ::SendMessage(hEditor, SCI_SETINDICATORVALUE, hit.trackingTag, 0);
-            ::SendMessage(hEditor, SCI_INDICATORFILLRANGE, hit.pos, hit.length);
-            placedAny = true;
-        }
-
-        // Place indicators for merged positions (multiple hits on same row)
-        for (size_t i = 0; i < hit.allPositions.size(); ++i)
+        // Adjust merged positions (multiple hits on same display row)
+        for (auto& aPos : hit.allPositions)
         {
-            Sci_Position p = hit.allPositions[i];
-            Sci_Position len = (i < hit.allLengths.size()) ? hit.allLengths[i] : hit.length;
-            int tag = (i < hit.allTrackingTags.size()) ? hit.allTrackingTags[i] : hit.trackingTag;
-
-            if (p >= 0 && len > 0 && tag > 0) {
-                ::SendMessage(hEditor, SCI_SETINDICATORCURRENT, indId, 0);
-                ::SendMessage(hEditor, SCI_SETINDICATORVALUE, tag, 0);
-                ::SendMessage(hEditor, SCI_INDICATORFILLRANGE, p, len);
-                placedAny = true;
-            }
+            d = computeDelta(aPos);
+            aPos += sign * d;
+            if (aPos < 0) aPos = 0;
         }
-    }
-
-    // Mark this file as having indicators placed (for future navigation)
-    if (placedAny) {
-        instance().setIndicatorsForFile(filePathUtf8, true);
-    }
-}
-
-void ResultDock::clearTrackingIndicatorsFromAllBuffers()
-{
-    const int indId = NppStyleKit::gResultDockTrackingIndicatorId;
-    if (indId < 0)
-        return;
-
-    // Save current document index to restore later
-    LRESULT savedMainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
-    LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW);
-
-    // Determine which view is currently active
-    int whichView = 0;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&whichView));
-
-    const bool mainVis = ::IsWindowVisible(nppData._scintillaMainHandle) != 0;
-    const bool subVis = ::IsWindowVisible(nppData._scintillaSecondHandle) != 0;
-
-    // Clear indicators from all buffers in main view
-    if (mainVis) {
-        LRESULT nbMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
-        for (LRESULT i = 0; i < nbMain; ++i) {
-            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
-            clearTrackingIndicators(nppData._scintillaMainHandle);
-        }
-    }
-
-    // Clear indicators from all buffers in sub view
-    if (subVis) {
-        LRESULT nbSub = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
-        for (LRESULT i = 0; i < nbSub; ++i) {
-            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, i);
-            clearTrackingIndicators(nppData._scintillaSecondHandle);
-        }
-    }
-
-    // Restore original document in each view
-    if (mainVis && savedMainIdx >= 0) {
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, savedMainIdx);
-    }
-    if (subVis && savedSubIdx >= 0) {
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, savedSubIdx);
     }
 }
 
@@ -2764,60 +2667,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
                 HWND hEd = s_pending.targetEditor;
                 bool jumped = false;
 
-                const int indId = NppStyleKit::gResultDockTrackingIndicatorId;
-
-                // Lazy Indicator Placement (for Find in Files)
-                // Only place indicators if they were not set at search time
-                if (indId >= 0 && s_pending.trackingTag > 0 && !s_pending.fullPathUtf8.empty()
-                    && !ResultDock::instance().hasIndicatorsForFile(s_pending.fullPathUtf8))
-                {
-                    ResultDock::ensureTrackingIndicatorsForFile(hEd, s_pending.fullPathUtf8);
-                }
-
-                // Strategy 1: Indicator-based tracking (precise, survives edits)
-                if (!jumped && indId >= 0 && s_pending.trackingTag > 0)
-                {
-                    // Check at original position first
-                    const int valAtOrig = static_cast<int>(::SendMessage(hEd, SCI_INDICATORVALUEAT, indId, s_pending.fallbackPos));
-                    if (valAtOrig == s_pending.trackingTag)
-                    {
-                        const Sci_Position start = ::SendMessage(hEd, SCI_INDICATORSTART, indId, s_pending.fallbackPos);
-                        const Sci_Position end = ::SendMessage(hEd, SCI_INDICATOREND, indId, s_pending.fallbackPos);
-                        if (start < end) {
-                            JumpSelectCenterActiveEditor(start, end - start);
-                            jumped = true;
-                        }
-                    }
-
-                    // If not found at original pos, scan nearby
-                    if (!jumped)
-                    {
-                        const Sci_Position docLen = ::SendMessage(hEd, SCI_GETLENGTH, 0, 0);
-                        const Sci_Position scanFrom = (s_pending.fallbackPos > 5000) ? (s_pending.fallbackPos - 5000) : 0;
-                        const Sci_Position scanTo = ((s_pending.fallbackPos + 5000) < docLen) ? (s_pending.fallbackPos + 5000) : docLen;
-
-                        Sci_Position probe = scanFrom;
-                        while (probe < scanTo)
-                        {
-                            const int v = static_cast<int>(::SendMessage(hEd, SCI_INDICATORVALUEAT, indId, probe));
-                            if (v == s_pending.trackingTag)
-                            {
-                                const Sci_Position start = ::SendMessage(hEd, SCI_INDICATORSTART, indId, probe);
-                                const Sci_Position end = ::SendMessage(hEd, SCI_INDICATOREND, indId, probe);
-                                if (start < end) {
-                                    JumpSelectCenterActiveEditor(start, end - start);
-                                    jumped = true;
-                                    break;
-                                }
-                            }
-                            const Sci_Position nextEnd = ::SendMessage(hEd, SCI_INDICATOREND, indId, probe);
-                            probe = (nextEnd > probe) ? nextEnd : (probe + 1);
-                        }
-                    }
-                }
-
-                // Strategy 2: Line-based re-search (fallback when indicator gone)
-                // When multiple matches exist on the same line, prefer the one closest to original position
+                // Line-based re-search: find match closest to stored position
                 if (!jumped && s_pending.docLine >= 0 && !s_pending.findTextW.empty())
                 {
                     const int lineCount = static_cast<int>(::SendMessage(hEd, SCI_GETLINECOUNT, 0, 0));
@@ -2833,10 +2683,9 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
                         {
                             ::SendMessage(hEd, SCI_SETSEARCHFLAGS, s_pending.searchFlags, 0);
 
-                            // Find ALL matches on the line and pick the one closest to fallbackPos
                             Sci_Position bestPos = -1;
                             Sci_Position bestLen = 0;
-                            Sci_Position bestDistance = 0x7FFFFFFF; // Large value for distance comparison
+                            Sci_Position bestDistance = 0x7FFFFFFF;
 
                             Sci_Position searchFrom = lineStart;
                             while (searchFrom < lineEnd) {
@@ -2849,7 +2698,6 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
                                 const Sci_Position foundEnd = ::SendMessage(hEd, SCI_GETTARGETEND, 0, 0);
                                 const Sci_Position foundLen = foundEnd - found;
 
-                                // Calculate distance to original position
                                 Sci_Position distance = (found > s_pending.fallbackPos)
                                     ? (found - s_pending.fallbackPos)
                                     : (s_pending.fallbackPos - found);
@@ -2859,9 +2707,8 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
                                     bestLen = foundLen;
                                 }
 
-                                // Move past this match
                                 searchFrom = foundEnd;
-                                if (searchFrom <= found) break; // Safety: avoid infinite loop
+                                if (searchFrom <= found) break;
                             }
 
                             if (bestPos >= 0)
@@ -2873,7 +2720,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
                     }
                 }
 
-                // Strategy 3: Direct position fallback
+                // Direct position fallback
                 if (!jumped)
                 {
                     JumpSelectCenterActiveEditor(s_pending.fallbackPos, s_pending.fallbackLen);

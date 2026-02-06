@@ -145,6 +145,7 @@ struct SearchContext {
     std::string findText = "";      // search string in Scintilla encoding
     int searchFlags = 0;            // Search flags (e.g., SCFIND_MATCHCASE, SCFIND_WHOLEWORD, etc.)
     LRESULT docLength = 0;          // Cached document length
+    int cachedCodepage = -1;        // Cached document codepage (-1 = not set, use SCI_GETCODEPAGE)
     bool isColumnMode = false;      // Cached state: true if Column Mode is active
     bool isSelectionMode = false;   // Cached state: true if Selection Mode is active
     bool retrieveFoundText = false; // If true, retrieve the found text from Scintilla
@@ -965,7 +966,7 @@ private:
     //Lua Engine
     void captureLuaGlobals(lua_State* L);
     void fillLuaMatchVars(LuaVariables& vars, Sci_Position matchPos, const std::string& foundText, int cnt, int lcnt, bool isColumnMode, int documentCodepage);
-    bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex, bool showDebugWindow = true);
+    bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex, bool showDebugWindow = true, int docCodepage = -1);
     void setLuaVariable(lua_State* L, const std::string& varName, const std::string& value);
     void updateFilePathCache(const std::filesystem::path* explicitPath = nullptr);
     void setLuaFileVars(LuaVariables& vars);
@@ -1014,7 +1015,7 @@ private:
     //Mark
     void handleMarkMatchesButton();
     int markString(const SearchContext& context, Sci_Position initialStart, const std::wstring& findText = L"");
-    void highlightTextRange(LRESULT pos, LRESULT len, const std::wstring& findText = L"");
+    int resolveIndicatorForText(const std::wstring& findText);
     void handleClearTextMarksButton();
     void handleCopyMarkedTextToClipboardButton();
     void copyTextToClipboard(const std::wstring& text, int textCount);

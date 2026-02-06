@@ -597,16 +597,6 @@ void MultiReplace::ensureIndicatorContext()
     }
     ColumnTabs::CT_SetIndicatorId(NppStyleKit::gColumnTabsIndicatorId);
 
-    // ResultDock tracking: reserve INDIC_HIDDEN indicator for position tracking
-    const bool trackIdValid =
-        (NppStyleKit::gResultDockTrackingIndicatorId >= 0) &&
-        NppStyleKit::gIndicatorCoord.isIndicatorReserved(NppStyleKit::gResultDockTrackingIndicatorId);
-
-    if (!trackIdValid) {
-        NppStyleKit::gResultDockTrackingIndicatorId =
-            NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("ResultDockTracking", -1);
-    }
-
     // Registry gets the full remaining pool (no dedicated standard id)
     auto remaining = NppStyleKit::gIndicatorCoord.availableIndicatorPool();
     NppStyleKit::gIndicatorReg.init(hSci0, hSci1, remaining, /*capacityHint*/100);
@@ -4012,7 +4002,7 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
 
     // 2. Collect match positions from ResultDock hits that match this list entry
     //    This ensures Column-Scope filtering is respected (only actual search hits are used)
-    struct MatchRange { Sci_Position start; Sci_Position length; int docLine; int trackingTag; size_t hitIdx; };
+    struct MatchRange { Sci_Position start; Sci_Position length; int docLine; size_t hitIdx; };
     std::vector<MatchRange> ranges;
 
     ResultDock& dock = ResultDock::instance();
@@ -4023,14 +4013,7 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
     ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(curPath));
     std::string curPathUtf8 = Encoding::wstringToUtf8(curPath);
 
-    const int trackIndId = NppStyleKit::gResultDockTrackingIndicatorId;
-    Sci_Position docLen = static_cast<Sci_Position>(send(SCI_GETLENGTH, 0, 0));
-
-    // Build set of valid tracking tags for this list entry in current document
-    // (needed for Strategy A)
-    std::unordered_set<int> validTags;
-    std::unordered_map<int, size_t> tagToHitIdx;
-
+    // Collect all matching hits from ResultDock (stored positions)
     for (size_t i = 0; i < allHits.size(); ++i)
     {
         const auto& hit = allHits[i];
@@ -4047,96 +4030,23 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
         if (!textMatch)
             continue;
 
-        // Collect primary tag
-        if (hit.trackingTag > 0) {
-            validTags.insert(hit.trackingTag);
-            tagToHitIdx[hit.trackingTag] = i;
-        }
-        // Collect merged tags (multiple hits on same row)
-        for (int tag : hit.allTrackingTags) {
-            if (tag > 0) {
-                validTags.insert(tag);
-                tagToHitIdx[tag] = i;
-            }
-        }
-    }
+        // Add primary position
+        ranges.push_back({ hit.pos, hit.length, hit.docLine, i });
 
-    // Lazy Indicator Placement (for Find in Files)
-    // Only place indicators if hits exist but were not marked at search time
-    if (trackIndId >= 0 && !validTags.empty() && !dock.hasIndicatorsForFile(curPathUtf8))
-    {
-        int whichView = 0;
-        ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&whichView));
-        HWND hEd = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
-        ResultDock::ensureTrackingIndicatorsForFile(hEd, curPathUtf8);
-    }
-
-    // Strategy A: Use INDIC_HIDDEN tracking indicators (precise, survives edits)
-    //             Only collect positions where the tracking indicator is still present
-    if (trackIndId >= 0 && !validTags.empty())
-    {
-        // Scan document for INDIC_HIDDEN positions with valid tags
-        Sci_Position pos = 0;
-        while (pos < docLen)
+        // Add merged positions (if any)
+        for (size_t j = 0; j < hit.allPositions.size(); ++j)
         {
-            int v = static_cast<int>(send(SCI_INDICATORVALUEAT, trackIndId, pos));
-            if (v > 0 && validTags.count(v))
-            {
-                Sci_Position rangeStart = static_cast<Sci_Position>(send(SCI_INDICATORSTART, trackIndId, pos));
-                Sci_Position rangeEnd = static_cast<Sci_Position>(send(SCI_INDICATOREND, trackIndId, pos));
-                if (rangeEnd > rangeStart)
-                {
-                    int line = static_cast<int>(send(SCI_LINEFROMPOSITION, rangeStart, 0));
-                    size_t hitIdx = (tagToHitIdx.count(v)) ? tagToHitIdx[v] : SIZE_MAX;
-                    ranges.push_back({ rangeStart, rangeEnd - rangeStart, line, v, hitIdx });
-                }
-            }
-            Sci_Position next = static_cast<Sci_Position>(send(SCI_INDICATOREND, trackIndId, pos));
-            pos = (next > pos) ? next : (pos + 1);
+            Sci_Position len = (j < hit.allLengths.size()) ? hit.allLengths[j] : hit.length;
+            int line = (hit.docLine >= 0) ? hit.docLine : static_cast<int>(send(SCI_LINEFROMPOSITION, hit.allPositions[j], 0));
+            ranges.push_back({ hit.allPositions[j], len, line, i });
         }
     }
 
-    // Strategy B: Fallback to ResultDock stored positions (for folder search or if indicators gone)
-    if (ranges.empty() && !allHits.empty())
-    {
-        for (size_t i = 0; i < allHits.size(); ++i)
-        {
-            const auto& hit = allHits[i];
-            if (!pathsEqualUtf8(hit.fullPathUtf8, curPathUtf8))
-                continue;
+    // Sort by position
+    std::sort(ranges.begin(), ranges.end(),
+        [](const MatchRange& a, const MatchRange& b) { return a.start < b.start; });
 
-            bool textMatch = (hit.findTextW == item.findText);
-            if (!textMatch) {
-                for (const auto& ft : hit.allFindTexts) {
-                    if (ft == item.findText) { textMatch = true; break; }
-                }
-            }
-            if (!textMatch)
-                continue;
-
-            // Add primary position
-            ranges.push_back({ hit.pos, hit.length, hit.docLine, hit.trackingTag, i });
-
-            // Add merged positions (if any)
-            for (size_t j = 0; j < hit.allPositions.size(); ++j)
-            {
-                int tag = (j < hit.allTrackingTags.size()) ? hit.allTrackingTags[j] : 0;
-                Sci_Position len = (j < hit.allLengths.size()) ? hit.allLengths[j] : hit.length;
-                int line = (hit.docLine >= 0) ? hit.docLine : static_cast<int>(send(SCI_LINEFROMPOSITION, hit.allPositions[j], 0));
-                ranges.push_back({ hit.allPositions[j], len, line, tag, i });
-            }
-        }
-
-        // Sort by position
-        std::sort(ranges.begin(), ranges.end(),
-            [](const MatchRange& a, const MatchRange& b) { return a.start < b.start; });
-    }
-
-    // No Strategy C (live search) anymore!
-    // Rationale: Live search would ignore Column-Scope settings, leading to
-    // incorrect navigation outside the user's intended search scope.
-    // Rule: Navigation only works with validated data from "Find All" or "Find in Files".
-
+    // No live search fallback - navigation only works with validated Find All data
     if (ranges.empty()) {
         showStatusMessage(LM.get(L"status_no_results_linked"), MessageStatus::Error);
         return;
@@ -5864,7 +5774,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 LuaVariables vars;
                 fillLuaMatchVars(vars, searchResult.pos, searchResult.foundText, 1, 1, context.isColumnMode, documentCodepage);
 
-                if (!resolveLuaSyntax(luaTemplateUtf8, vars, skipReplace, itemData.regex)) {
+                if (!resolveLuaSyntax(luaTemplateUtf8, vars, skipReplace, itemData.regex, true, documentCodepage)) {
                     return false;
                 }
 
@@ -5917,6 +5827,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     context.findText = convertAndExtendW(itemData.findText, itemData.extended);
     context.searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
     context.docLength = send(SCI_GETLENGTH, 0, 0);
+    context.cachedCodepage = documentCodepage;
     context.isColumnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED;
     context.isSelectionMode = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED;
     context.retrieveFoundText = itemData.useVariables;
@@ -5932,15 +5843,16 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     // --- Replace at matches---
     bool useMatchList = IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED;
-    std::vector<int> matchList;
+    std::unordered_set<int> matchSet;
     if (useMatchList) {
         std::wstring sel = getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT);
         if (sel.empty()) {
             showStatusMessage(LM.get(L"status_missing_match_selection"), MessageStatus::Error);
             return false;
         }
-        matchList = parseNumberRanges(sel, LM.get(L"status_invalid_range_in_match_data"));
+        std::vector<int> matchList = parseNumberRanges(sel, LM.get(L"status_invalid_range_in_match_data"));
         if (matchList.empty()) return false;
+        matchSet.insert(matchList.begin(), matchList.end());
     }
 
     // --- Prepare replacement text template (only if needed for Lua) ---
@@ -5968,7 +5880,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         if (itemIndex != SIZE_MAX) updateCountColumns(itemIndex, findCount);
 
         const bool replaceThisHit =
-            !useMatchList || (std::find(matchList.begin(), matchList.end(), findCount) != matchList.end());
+            !useMatchList || (matchSet.count(findCount) != 0);
 
         Sci_Position nextPos; // declared before both branches use it
 
@@ -5988,7 +5900,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                     LuaVariables vars;
                     fillLuaMatchVars(vars, searchResult.pos, searchResult.foundText, findCount, lineFindCount, context.isColumnMode, documentCodepage);
 
-                    if (!resolveLuaSyntax(luaWorkingUtf8, vars, skipReplace, itemData.regex)) {
+                    if (!resolveLuaSyntax(luaWorkingUtf8, vars, skipReplace, itemData.regex, true, documentCodepage)) {
                         return false;
                     }
 
@@ -6142,6 +6054,12 @@ void MultiReplace::captureLuaGlobals(lua_State* L) {
     lua_pushglobaltable(L);
     lua_pushnil(L);
     while (lua_next(L, -2) != 0) {
+        // Skip non-string keys: lua_tostring on a numeric key would convert it
+        // in-place and break lua_next traversal (Lua 5.4 reference §4.6).
+        if (lua_type(L, -2) != LUA_TSTRING) {
+            lua_pop(L, 1);
+            continue;
+        }
         const char* key = lua_tostring(L, -2);
         LuaVariable luaVar;
         luaVar.name = key;
@@ -6345,7 +6263,7 @@ bool MultiReplace::ensureLuaCodeCompiled(const std::string& luaCode)
     return true;
 }
 
-bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex, bool showDebugWindow)
+bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex, bool showDebugWindow, int docCodepage)
 {
     // 1) Stack-checkpoint
     const int stackBase = lua_gettop(_luaState);
@@ -6374,8 +6292,8 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     // 6) CAP# globals (regex only)
     std::vector<std::string> capNames;
     if (regex) {
-        // get documentCodepage for Encoding
-        const int docCp = static_cast<int>(send(SCI_GETCODEPAGE));
+        // Use passed codepage or fall back to Scintilla query
+        const int docCp = (docCodepage >= 0) ? docCodepage : static_cast<int>(send(SCI_GETCODEPAGE));
         for (int i = 1; i <= MAX_CAP_GROUPS; ++i) {
             sptr_t len = send(SCI_GETTAG, i, 0, true);
             if (len < 0) { break; }
@@ -6606,13 +6524,11 @@ void MultiReplace::applyLuaSafeMode(lua_State* L)
 #pragma region Lua Debug Window
 
 int MultiReplace::ShowDebugWindow(const std::string& message) {
-    const int buffer_size = 4096;
-    wchar_t wMessage[buffer_size];
     debugWindowResponse = -1;
 
-    // Convert the message from UTF-8 to UTF-16
-    int result = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, wMessage, buffer_size);
-    if (result == 0) {
+    // Convert the message from UTF-8 to UTF-16 (dynamic size)
+    std::wstring wMessage = Encoding::utf8ToWString(message);
+    if (wMessage.empty() && !message.empty()) {
         MessageBox(nppData._nppHandle, L"Error converting message", L"Error", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
         return -1;
     }
@@ -7464,60 +7380,42 @@ void MultiReplace::trimHitToFirstLine(
     const std::function<LRESULT(UINT, WPARAM, LPARAM)>& sciSend,
     ResultDock::Hit& h)
 {
-    // Determine EOL sequence based on document setting
-    int eolMode = static_cast<int>(sciSend(SCI_GETEOLMODE, 0, 0));
-    std::string eolSeq =
-        eolMode == SC_EOL_CRLF ? "\r\n" :
-        (eolMode == SC_EOL_CR ? "\r" : "\n");
+    // Only regex matches can span line boundaries.
+    // Normal, Extended, and WholeWord searches always stay within a single line,
+    // so trimming is unnecessary and we can skip 3 Scintilla calls per hit.
+    if (!(h.searchFlags & SCFIND_REGEXP))
+        return;
 
-    // Get line index and start position
-    int lineZero = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, h.pos, 0));
-    Sci_Position lineStart = sciSend(SCI_POSITIONFROMLINE, lineZero, 0);
+    // Quick check: if hit doesn't extend beyond line end, no trimming needed.
+    // This avoids further work for regex matches that stay within one line.
+    const int lineZero = (h.docLine >= 0)
+        ? h.docLine
+        : static_cast<int>(sciSend(SCI_LINEFROMPOSITION, h.pos, 0));
+    const Sci_Position lineStart = sciSend(SCI_POSITIONFROMLINE, lineZero, 0);
+    const Sci_Position lineEnd = sciSend(SCI_GETLINEENDPOSITION, lineZero, 0);
 
-    // Read raw line including EOL
-    int rawLen = static_cast<int>(sciSend(SCI_LINELENGTH, lineZero, 0));
+    // If match fits entirely within the line content (before EOL), no trim needed
+    if (h.pos >= lineStart && (h.pos + h.length) <= lineEnd)
+        return;
 
-    // Allocate +1 for the terminating NUL written by SCI_GETLINE
-    // (keep full rawLen bytes; do NOT stop at embedded NULs)
-    std::string raw;
-    raw.resize(rawLen + 1, '\0');                     // NEW: length-aware buffer
-    sciSend(SCI_GETLINE, lineZero, reinterpret_cast<LPARAM>(raw.data()));
-    raw.resize(rawLen);                                // NEW: keep exact line length
-
-    // Find EOL position
-    size_t eolPos = raw.find(eolSeq);
-    if (eolPos == std::string::npos) {
-        size_t posCR = raw.find('\r');
-        size_t posLF = raw.find('\n');
-        if (posCR != std::string::npos && posLF != std::string::npos)
-            eolPos = std::min(posCR, posLF);
-        else
-            eolPos = (posCR != std::string::npos ? posCR : posLF);
+    // Match extends beyond line end - need to trim
+    if (h.pos >= lineEnd) {
+        // Match starts at or after EOL
+        h.length = std::min<Sci_Position>(h.length, 1);
+        return;
     }
 
-    // Trim match length to not exceed first line
-    if (eolPos != std::string::npos) {
-        Sci_Position matchOffset = h.pos - lineStart;
-        Sci_Position eolOff = static_cast<Sci_Position>(eolPos);
-
-        if (matchOffset < eolOff) {
-            Sci_Position maxLen = eolOff - matchOffset;
-            h.length = std::max<Sci_Position>(0, std::min(h.length, maxLen));
-        }
-        else if (matchOffset == eolOff) {
-            // EOL-only match (e.g., "\r\n"): do not trim it away!
-            // Keep at least 1 character so the hit is counted/displayed.
-            h.length = std::min<Sci_Position>(h.length, 1);
-        }
-        else {
-            h.length = 0;
-        }
-    }
+    // Match spans from within line content past EOL - trim to line end
+    h.length = std::max<Sci_Position>(0, lineEnd - h.pos);
 }
 
 void MultiReplace::handleFindAllButton()
 {
     if (!validateDelimiterData()) return;
+
+    // Close any open autocomplete/calltip windows to prevent visual artifacts during search
+    ::SendMessage(_hScintilla, SCI_AUTOCCANCEL, 0, 0);
+    ::SendMessage(_hScintilla, SCI_CALLTIPCANCEL, 0, 0);
 
     if (!useListEnabled) {
         std::wstring earlyFind = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
@@ -7525,11 +7423,10 @@ void MultiReplace::handleFindAllButton()
     }
 
     ResultDock& dock = ResultDock::instance();
-    dock.ensureCreatedAndVisible(nppData);
-    if (ResultDock::purgeEnabled()) dock.clear();
-
-    // Clear old tracking indicators from current editor before new search
-    ResultDock::clearTrackingIndicators(_hScintilla);
+    // Create dock and immediately hide it (like Notepad++ does)
+    // This prevents visual artifacts during search
+    dock.ensureCreated(nppData);
+    dock.hide(nppData);
 
     auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
         return ::SendMessage(_hScintilla, m, w, l);
@@ -7604,7 +7501,6 @@ void MultiReplace::handleFindAllButton()
                 if (h.length > 0) {
                     h.findTextW = item.findText;
                     h.colorIndex = slotIndex;
-                    h.trackingTag = ResultDock::nextTrackingTag();
                     rawHits.push_back(std::move(h));
                 }
             }
@@ -7614,11 +7510,6 @@ void MultiReplace::handleFindAllButton()
             updateCountColumns(idx, hitCnt);
 
             if (hitCnt > 0) {
-                // Place invisible tracking indicators in the editor
-                ResultDock::placeTrackingIndicators(_hScintilla, rawHits);
-                // Mark this file as having indicators placed
-                dock.setIndicatorsForFile(utf8FilePath, true);
-
                 auto& agg = fileMap[utf8FilePath];
                 agg.wPath = wFilePath;
                 agg.hitCount += hitCnt;
@@ -7658,16 +7549,11 @@ void MultiReplace::handleFindAllButton()
             if (h.length > 0) {
                 h.findTextW = findW;
                 h.colorIndex = 0;
-                h.trackingTag = ResultDock::nextTrackingTag();
                 rawHits.push_back(std::move(h));
             }
         }
 
         if (!rawHits.empty()) {
-            ResultDock::placeTrackingIndicators(_hScintilla, rawHits);
-            // Mark this file as having indicators placed
-            dock.setIndicatorsForFile(utf8FilePath, true);
-
             auto& agg = fileMap[utf8FilePath];
             agg.wPath = wFilePath;
             agg.hitCount = static_cast<int>(rawHits.size());
@@ -7681,6 +7567,10 @@ void MultiReplace::handleFindAllButton()
         ? LM.get(L"dock_list_header", { std::to_wstring(totalHits), std::to_wstring(fileCount) })
         : LM.get(L"dock_single_header", { this->sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)), std::to_wstring(totalHits), std::to_wstring(fileCount) });
 
+    // NOW show the dock (after search is complete, like Notepad++ does)
+    dock.ensureCreatedAndVisible(nppData);
+    if (ResultDock::purgeEnabled()) dock.clear();
+
     dock.startSearchBlock(header, useListEnabled ? groupResultsEnabled : false, false);
     if (fileCount > 0) dock.appendFileBlock(fileMap, sciSend);
     dock.closeSearchBlock(totalHits, static_cast<int>(fileCount));
@@ -7692,14 +7582,19 @@ void MultiReplace::handleFindAllInDocsButton()
 {
     if (!validateDelimiterData()) return;
 
+    // Close any open autocomplete/calltip windows to prevent visual artifacts during search
+    ::SendMessage(_hScintilla, SCI_AUTOCCANCEL, 0, 0);
+    ::SendMessage(_hScintilla, SCI_CALLTIPCANCEL, 0, 0);
+
     if (!useListEnabled) {
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
     }
 
     ResultDock& dock = ResultDock::instance();
-    dock.ensureCreatedAndVisible(nppData);
-    if (ResultDock::purgeEnabled()) dock.clear();
+    // Create dock and immediately hide it (like Notepad++ does)
+    dock.ensureCreated(nppData);
+    dock.hide(nppData);
 
     int totalHits = 0;
     std::unordered_set<std::string> uniqueFiles;
@@ -7745,9 +7640,6 @@ void MultiReplace::handleFindAllInDocsButton()
         pointerToScintilla();
         auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT { return ::SendMessage(_hScintilla, m, w, l); };
 
-        // Clear old tracking indicators for this buffer
-        ResultDock::clearTrackingIndicators(_hScintilla);
-
         wchar_t wBuf[MAX_PATH] = {};
         ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(wBuf));
         std::wstring wPath = *wBuf ? wBuf : L"<untitled>";
@@ -7785,7 +7677,6 @@ void MultiReplace::handleFindAllInDocsButton()
                         h.colorIndex = slot;
                     }
                     else { h.colorIndex = 0; }
-                    h.trackingTag = ResultDock::nextTrackingTag();
                     raw.push_back(std::move(h));
                 }
             }
@@ -7793,10 +7684,6 @@ void MultiReplace::handleFindAllInDocsButton()
             if (useListEnabled && critIdx < listHitTotals.size())
                 listHitTotals[critIdx] += hitCnt;
             if (hitCnt == 0) return;
-
-            ResultDock::placeTrackingIndicators(_hScintilla, raw);
-            // Mark this file as having indicators placed
-            dock.setIndicatorsForFile(u8Path, true);
 
             auto& agg = fileMap[u8Path];
             agg.wPath = wPath;
@@ -7870,12 +7757,20 @@ void MultiReplace::handleFindAllInDocsButton()
         refreshUIListView();
     }
 
+    // NOW show the dock (after search is complete, like Notepad++ does)
+    dock.ensureCreatedAndVisible(nppData);
+    if (ResultDock::purgeEnabled()) dock.clear();
+
     dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
 
     showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
 
 void MultiReplace::handleFindInFiles() {
+    // Close any open autocomplete/calltip windows to prevent visual artifacts during search
+    ::SendMessage(_hScintilla, SCI_AUTOCCANCEL, 0, 0);
+    ::SendMessage(_hScintilla, SCI_CALLTIPCANCEL, 0, 0);
+
     HiddenSciGuard guard;
     if (!guard.create()) {
         showStatusMessage(LM.get(L"status_error_hidden_buffer"), MessageStatus::Error);
@@ -7928,8 +7823,9 @@ void MultiReplace::handleFindInFiles() {
     }
 
     ResultDock& dock = ResultDock::instance();
-    dock.ensureCreatedAndVisible(nppData);
-    if (ResultDock::purgeEnabled()) dock.clear();
+    // Create dock and immediately hide it (like Notepad++ does)
+    dock.ensureCreated(nppData);
+    dock.hide(nppData);
 
     int totalHits = 0;
     std::unordered_set<std::string> uniqueFiles;
@@ -8065,7 +7961,6 @@ void MultiReplace::handleFindInFiles() {
                         h.colorIndex = slot;
                     }
                     else { h.colorIndex = 0; }
-                    h.trackingTag = ResultDock::nextTrackingTag();
                     raw.push_back(std::move(h));
                 }
             }
@@ -8118,6 +8013,10 @@ void MultiReplace::handleFindInFiles() {
             uniqueFiles.insert(u8Path);
         }
     }
+
+    // NOW show the dock (after search is complete, like Notepad++ does)
+    dock.ensureCreatedAndVisible(nppData);
+    if (ResultDock::purgeEnabled()) dock.clear();
 
     dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
 
@@ -8390,7 +8289,9 @@ SearchResult MultiReplace::performSingleSearch(const SearchContext& context, Sel
 
     // Retrieve found text only when requested
     if (context.retrieveFoundText) {
-        const int codepage = static_cast<int>(send(SCI_GETCODEPAGE));
+        const int codepage = (context.cachedCodepage >= 0)
+            ? context.cachedCodepage
+            : static_cast<int>(send(SCI_GETCODEPAGE));
         const size_t bytesPerChar = (codepage == SC_CP_UTF8) ? 4u : 1u;
 
         const size_t charsInTarget = static_cast<size_t>(result.length);
@@ -8543,6 +8444,11 @@ SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRE
 
         // Iterate over columns in the specified direction
         for (; (isBackward ? (column >= endColumnIdx) : (column <= endColumnIdx)); column += columnStep) {
+            // Skip columns not specified in columnDelimiterData (check BEFORE bounds calculation)
+            if (columnDelimiterData.columns.find(static_cast<int>(column)) == columnDelimiterData.columns.end()) {
+                continue;
+            }
+
             LRESULT startColumn = 0;
             LRESULT endColumn = 0;
 
@@ -8564,11 +8470,6 @@ SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRE
                 endColumn = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
             }
 
-            // Skip columns not specified in columnDelimiterData
-            if (columnDelimiterData.columns.find(static_cast<int>(column)) == columnDelimiterData.columns.end()) {
-                continue;
-            }
-
             // Adjust the target range based on start position and search direction
             if (isBackward && start >= startColumn && start <= endColumn) {
                 endColumn = start;
@@ -8582,7 +8483,7 @@ SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRE
             targetRange.end = isBackward ? startColumn : endColumn;
 
             // Perform search within the target range
-            result = std::move(performSingleSearch(context, targetRange));
+            result = performSingleSearch(context, targetRange);
 
             // Return immediately if a match is found
             if (result.pos >= 0) {
@@ -8922,6 +8823,13 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
 {
     if (context.findText.empty()) return 0;
 
+    // Resolve indicator once before the loop
+    const int indicId = resolveIndicatorForText(findText);
+    if (indicId < 0) return 0;
+
+    // Set current indicator once — stays valid for all INDICATORFILLRANGE calls
+    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicId, 0);
+
     int markCount = 0;
     LRESULT pos = initialStart;
     send(SCI_SETSEARCHFLAGS, context.searchFlags);
@@ -8931,8 +8839,7 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
         r = performSearchForward(context, pos))
     {
         if (r.length > 0) {
-            // Pass forcedColorIndex to highlighter
-            highlightTextRange(r.pos, r.length, findText);
+            ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, r.pos, r.length);
             ++markCount;
         }
         pos = advanceAfterMatch(r);
@@ -8944,18 +8851,11 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
     return markCount;
 }
 
-void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::wstring& findText)
+int MultiReplace::resolveIndicatorForText(const std::wstring& findText)
 {
-    if (len <= 0) return;
-
-    if (_textMarkerIds.empty()) return;
-
-    bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-    int alpha = isDark ? EDITOR_MARK_ALPHA_DARK : EDITOR_MARK_ALPHA_LIGHT;
-    int outlineAlpha = isDark ? EDITOR_OUTLINE_ALPHA_DARK : EDITOR_OUTLINE_ALPHA_LIGHT;
+    if (_textMarkerIds.empty()) return -1;
 
     int indicId = -1;
-    COLORREF color;
 
     int editorLimit = static_cast<int>(_textMarkerIds.size());
     int dockLimit = ResultDock::MAX_ENTRY_COLORS;
@@ -8967,37 +8867,31 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::wstri
         auto it = textToSlot.find(findText);
 
         if (it != textToSlot.end()) {
-
             int slot = it->second;
             if (slot < static_cast<int>(_textMarkerIds.size())) {
                 indicId = _textMarkerIds[slot];
-
-                // Ensure style/color is set (dynamic update)
-                color = ResultDock::generateColorFromText(findText, isDark);
-                ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicId, INDIC_ROUNDBOX);
-                ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicId, color);
-                ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicId, alpha);
-                ::SendMessage(_hScintilla, SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
-                ::SendMessage(_hScintilla, SCI_INDICSETUNDER, indicId, TRUE);
             }
         }
         else {
-            // Neuer Text
+            // New text — allocate slot
             int currentSlot = nextSlot;
-
             if (currentSlot >= maxListSlots) {
                 currentSlot = maxListSlots - 1;
             }
             else {
                 nextSlot++;
             }
-
-            // Map update
             textToSlot[findText] = currentSlot;
             indicId = _textMarkerIds[currentSlot];
+        }
 
-            // Farbe setzen
-            color = ResultDock::generateColorFromText(findText, isDark);
+        // Configure indicator style once for this findText
+        if (indicId >= 0) {
+            bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+            int alpha = isDark ? EDITOR_MARK_ALPHA_DARK : EDITOR_MARK_ALPHA_LIGHT;
+            int outlineAlpha = isDark ? EDITOR_OUTLINE_ALPHA_DARK : EDITOR_OUTLINE_ALPHA_LIGHT;
+            COLORREF color = ResultDock::generateColorFromText(findText, isDark);
+
             ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicId, INDIC_ROUNDBOX);
             ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicId, color);
             ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicId, alpha);
@@ -9006,16 +8900,14 @@ void MultiReplace::highlightTextRange(LRESULT pos, LRESULT len, const std::wstri
         }
     }
     else {
+        // Single mode — use the last marker
         int singleIndex = static_cast<int>(_textMarkerIds.size()) - 1;
         if (singleIndex >= 0) {
             indicId = _textMarkerIds[singleIndex];
         }
     }
 
-    if (indicId < 0) return;
-
-    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicId, 0);
-    ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, pos, len);
+    return indicId;
 }
 
 void MultiReplace::handleClearTextMarksButton()
@@ -9033,7 +8925,7 @@ void MultiReplace::handleClearTextMarksButton()
         }
     }
 
-    // Reset static color mapping in highlightTextRange
+    // Reset color mapping used by resolveIndicatorForText
     // (This is handled by the static map being cleared when no indicators are used)
 
     markedStringsCount = 0;
@@ -9682,6 +9574,36 @@ void MultiReplace::handleColumnGridTabsButton()
         isLoggingEnabled = false;
         logChanges.clear();
 
+        // Collect padding ranges BEFORE removal (for ResultDock position adjustment)
+        std::vector<std::pair<Sci_Position, Sci_Position>> paddingRanges;
+        std::string curFileUtf8;
+        {
+            wchar_t pathBuf[MAX_PATH] = {};
+            ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(pathBuf));
+            curFileUtf8 = Encoding::wstringToUtf8(pathBuf);
+        }
+
+        ResultDock& dock = ResultDock::instance();
+        const bool hasResultHits = dock.hasHitsForFile(curFileUtf8);
+
+        if (hasResultHits)
+        {
+            // Scan for ColumnTabs indicator ranges (same pattern as CT_RemoveAlignedPadding Phase 1)
+            const int ctInd = ColumnTabs::CT_GetIndicatorId();
+            const Sci_Position docLen = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+            Sci_Position scanPos = 0;
+            while (scanPos < docLen) {
+                const Sci_Position end = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_INDICATOREND, ctInd, scanPos));
+                if (end <= scanPos) break;
+                if (static_cast<int>(::SendMessage(_hScintilla, SCI_INDICATORVALUEAT, ctInd, scanPos)) != 0) {
+                    const Sci_Position start = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_INDICATORSTART, ctInd, scanPos));
+                    if (end > start)
+                        paddingRanges.emplace_back(start, end);
+                }
+                scanPos = end;
+            }
+        }
+
         {
             ScopedRedrawLock redrawLock(_hScintilla);
 
@@ -9693,6 +9615,11 @@ void MultiReplace::handleColumnGridTabsButton()
             g_padBufs.erase(bufId);
 
             findAllDelimitersInDocument();
+        }
+
+        // Adjust ResultDock hit positions: padding was removed, positions shift backward
+        if (hasResultHits && !paddingRanges.empty()) {
+            dock.adjustHitPositionsForFlowTab(curFileUtf8, paddingRanges, /*added=*/false);
         }
 
         _flowTabsActive = false;
@@ -9816,6 +9743,38 @@ void MultiReplace::handleColumnGridTabsButton()
         }
     }
     // ScopedRedrawLock released here - screen redraws once
+
+    // Adjust ResultDock hit positions if padding was successfully inserted
+    if (operationSuccess)
+    {
+        wchar_t pathBuf[MAX_PATH] = {};
+        ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(pathBuf));
+        std::string curFileUtf8 = Encoding::wstringToUtf8(pathBuf);
+
+        ResultDock& dock = ResultDock::instance();
+        if (dock.hasHitsForFile(curFileUtf8))
+        {
+            // Scan for newly inserted padding ranges (ColumnTabs indicator)
+            std::vector<std::pair<Sci_Position, Sci_Position>> paddingRanges;
+            const int ctInd = ColumnTabs::CT_GetIndicatorId();
+            const Sci_Position docLen = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+            Sci_Position scanPos = 0;
+            while (scanPos < docLen) {
+                const Sci_Position end = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_INDICATOREND, ctInd, scanPos));
+                if (end <= scanPos) break;
+                if (static_cast<int>(::SendMessage(_hScintilla, SCI_INDICATORVALUEAT, ctInd, scanPos)) != 0) {
+                    const Sci_Position start = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_INDICATORSTART, ctInd, scanPos));
+                    if (end > start)
+                        paddingRanges.emplace_back(start, end);
+                }
+                scanPos = end;
+            }
+
+            if (!paddingRanges.empty()) {
+                dock.adjustHitPositionsForFlowTab(curFileUtf8, paddingRanges, /*added=*/true);
+            }
+        }
+    }
 
     // Restore logging
     isLoggingEnabled = wasLoggingEnabled;
@@ -10270,6 +10229,35 @@ void MultiReplace::clearFlowTabsIfAny()
     const bool hadPad = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
     const bool hadVis = ColumnTabs::CT_HasFlowTabStops();
 
+    // Collect padding ranges BEFORE removal for ResultDock position adjustment
+    std::vector<std::pair<Sci_Position, Sci_Position>> paddingRanges;
+    std::string curFileUtf8;
+    bool hasResultHits = false;
+
+    if (hadPad)
+    {
+        wchar_t pathBuf[MAX_PATH] = {};
+        ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(pathBuf));
+        curFileUtf8 = Encoding::wstringToUtf8(pathBuf);
+        hasResultHits = ResultDock::instance().hasHitsForFile(curFileUtf8);
+
+        if (hasResultHits) {
+            const int ctInd = ColumnTabs::CT_GetIndicatorId();
+            const Sci_Position docLen = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
+            Sci_Position scanPos = 0;
+            while (scanPos < docLen) {
+                const Sci_Position end = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_INDICATOREND, ctInd, scanPos));
+                if (end <= scanPos) break;
+                if (static_cast<int>(::SendMessage(_hScintilla, SCI_INDICATORVALUEAT, ctInd, scanPos)) != 0) {
+                    const Sci_Position start = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_INDICATORSTART, ctInd, scanPos));
+                    if (end > start)
+                        paddingRanges.emplace_back(start, end);
+                }
+                scanPos = end;
+            }
+        }
+    }
+
     if (hadPad) ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
     if (hadVis) ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
     if (hadVis) ColumnTabs::CT_ResetFlowVisualState();
@@ -10281,6 +10269,11 @@ void MultiReplace::clearFlowTabsIfAny()
         const BufferId bufId = (BufferId)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
         g_padBufs.erase(bufId);
         findAllDelimitersInDocument(); // offsets changed
+
+        // Adjust ResultDock hit positions: padding was removed, positions shift backward
+        if (hasResultHits && !paddingRanges.empty()) {
+            ResultDock::instance().adjustHitPositionsForFlowTab(curFileUtf8, paddingRanges, /*added=*/false);
+        }
     }
 
     if (hadPad || hadVis) {
@@ -11180,8 +11173,7 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
 }
 
 ColumnInfo MultiReplace::getColumnInfo(LRESULT startPosition) {
-    if (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) != BST_CHECKED ||
-        columnDelimiterData.columns.empty() ||
+    if (columnDelimiterData.columns.empty() ||
         columnDelimiterData.extendedDelimiter.empty() ||
         lineDelimiterPositions.empty())
     {
@@ -13702,10 +13694,43 @@ void MultiReplace::onDocumentSwitched()
 
         const BOOL ro = (BOOL)::SendMessage(hSci, SCI_GETREADONLY, 0, 0);
         if (!ro) {
+            // Collect padding ranges BEFORE removal for ResultDock position adjustment
+            std::vector<std::pair<Sci_Position, Sci_Position>> paddingRanges;
+            std::string cleanFileUtf8;
+            bool hasResultHits = false;
+
+            if (ColumnTabs::CT_HasAlignedPadding(hSci)) {
+                wchar_t pathBuf[MAX_PATH] = {};
+                ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(pathBuf));
+                cleanFileUtf8 = Encoding::wstringToUtf8(pathBuf);
+                hasResultHits = ResultDock::instance().hasHitsForFile(cleanFileUtf8);
+
+                if (hasResultHits) {
+                    const int ctInd = ColumnTabs::CT_GetIndicatorId();
+                    const Sci_Position docLen = static_cast<Sci_Position>(::SendMessage(hSci, SCI_GETLENGTH, 0, 0));
+                    Sci_Position scanPos = 0;
+                    while (scanPos < docLen) {
+                        const Sci_Position end = static_cast<Sci_Position>(::SendMessage(hSci, SCI_INDICATOREND, ctInd, scanPos));
+                        if (end <= scanPos) break;
+                        if (static_cast<int>(::SendMessage(hSci, SCI_INDICATORVALUEAT, ctInd, scanPos)) != 0) {
+                            const Sci_Position start = static_cast<Sci_Position>(::SendMessage(hSci, SCI_INDICATORSTART, ctInd, scanPos));
+                            if (end > start)
+                                paddingRanges.emplace_back(start, end);
+                        }
+                        scanPos = end;
+                    }
+                }
+            }
+
             ColumnTabs::CT_RemoveAlignedPadding(hSci); // removes only our marked ranges (or fallback)
             ColumnTabs::CT_SetCurDocHasPads(hSci, false);
 
             ColumnTabs::CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
+
+            // Adjust ResultDock hit positions after padding removal
+            if (hasResultHits && !paddingRanges.empty()) {
+                ResultDock::instance().adjustHitPositionsForFlowTab(cleanFileUtf8, paddingRanges, /*added=*/false);
+            }
         }
         // Update O(1) gate: cleaned
         g_padBufs.erase(currBufId);

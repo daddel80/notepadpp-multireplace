@@ -506,24 +506,25 @@ namespace ColumnTabs {
         const int ind = CT_GetIndicatorId();
         S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
 
-        // Phase 1: Collect all indicator ranges (forward iteration)
-        std::vector<std::pair<Sci_Position, Sci_Position>> ranges;
+        // Phase 1: Collect all indicator ranges forward using SCI_INDICATOREND.
+        //          This is O(ranges) Scintilla calls instead of the previous
+        //          O(docLength) backward per-byte scan.
         const Sci_Position docLen = (Sci_Position)S(SCI_GETLENGTH);
-        Sci_Position pos = 0;
+        std::vector<std::pair<Sci_Position, Sci_Position>> ranges;
 
-        while (pos < docLen) {
-            // Find next indicator range
-            const Sci_Position end = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)pos);
-            if (end <= pos) break;  // No more indicators
+        {
+            Sci_Position scanPos = 0;
+            while (scanPos < docLen) {
+                const Sci_Position rangeEnd = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)scanPos);
+                if (rangeEnd <= scanPos) break;  // safety: no progress
 
-            // Check if this position is actually inside an indicator
-            if ((int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)pos) != 0) {
-                const Sci_Position start = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)pos);
-                if (end > start) {
-                    ranges.emplace_back(start, end);
+                if ((int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)scanPos) != 0) {
+                    const Sci_Position rangeStart = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)scanPos);
+                    if (rangeEnd > rangeStart)
+                        ranges.emplace_back(rangeStart, rangeEnd);
                 }
+                scanPos = rangeEnd;
             }
-            pos = end;  // Jump to end of current range
         }
 
         if (ranges.empty()) {
@@ -531,13 +532,13 @@ namespace ColumnTabs {
             return false;
         }
 
-        // Phase 2: Delete ranges in reverse order (preserves positions)
-        OptionalRedrawGuard rg(hSci, ranges.size() * 2);  // ~2 ops per range
-
+        // Phase 2: Delete ranges back-to-front so earlier positions stay valid.
         S(SCI_BEGINUNDOACTION);
         for (auto it = ranges.rbegin(); it != ranges.rend(); ++it) {
-            S(SCI_INDICATORCLEARRANGE, (uptr_t)it->first, (sptr_t)(it->second - it->first));
-            S(SCI_DELETERANGE, (uptr_t)it->first, (sptr_t)(it->second - it->first));
+            const Sci_Position start = it->first;
+            const Sci_Position len = it->second - it->first;
+            S(SCI_INDICATORCLEARRANGE, (uptr_t)start, (sptr_t)len);
+            S(SCI_DELETERANGE, (uptr_t)start, (sptr_t)len);
         }
         S(SCI_ENDUNDOACTION);
 

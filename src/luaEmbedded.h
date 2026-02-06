@@ -181,13 +181,13 @@ hashTables = {}
 function lkp(key, hpath, inner)
   local res = { result = '', skip = false }
 
+  if key == nil then
+    error('lkp: key passed to file is nil in ' .. tostring(hpath))
+  end
   if type(key) == 'number' then
     key = tostring(key)
   end
 
-  if key == nil then
-    error('lkp: key passed to file is nil in ' .. tostring(hpath))
-  end
   if hpath == nil or hpath == '' then
     error('lkp: file path is invalid or empty')
   end
