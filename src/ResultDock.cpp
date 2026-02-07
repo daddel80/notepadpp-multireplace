@@ -466,20 +466,59 @@ void ResultDock::closeSearchBlock(int totalHits, int totalFiles)
 {
     if (!_blockOpen) return;
 
-    // Replace placeholders in the pending header line
+    // Replace placeholders in the pending header line ONLY (first line)
     const std::wstring hitsStr = std::to_wstring(totalHits);
     const std::wstring filesStr = std::to_wstring(totalFiles);
 
-    size_t p = _pendingText.find_first_of(L"0123456789", /*start*/1);
-    if (p != std::wstring::npos) {
-        size_t e = _pendingText.find_first_not_of(L"0123456789", p);
-        _pendingText.replace(p, (e == std::wstring::npos ? _pendingText.size() - p : e - p), hitsStr);
+    // Limit search to the first header line to avoid matching digits in
+    // user search patterns or file content that follows
+    const size_t headerEnd = _pendingText.find(L"\r\n");
+    const size_t searchLimit = (headerEnd != std::wstring::npos) ? headerEnd : _pendingText.size();
 
-        size_t p2 = _pendingText.find_first_of(L"0123456789", p + hitsStr.size());
-        if (p2 != std::wstring::npos) {
-            size_t e2 = _pendingText.find_first_not_of(L"0123456789", p2);
-            _pendingText.replace(p2, (e2 == std::wstring::npos ? _pendingText.size() - p2 : e2 - p2), filesStr);
+    // Search backwards from the end of the header to find the placeholder numbers
+    // which are always the last two number sequences before the closing parenthesis.
+    // Pattern: "... (0 hits in 0 files)\r\n"
+    //                ^hits       ^files
+    size_t p2End = std::wstring::npos;
+    size_t p2Start = std::wstring::npos;
+    {
+        // Find last digit sequence before searchLimit
+        size_t pos = searchLimit;
+        while (pos > 0) {
+            --pos;
+            if (_pendingText[pos] >= L'0' && _pendingText[pos] <= L'9') {
+                p2End = pos + 1;
+                while (pos > 0 && _pendingText[pos - 1] >= L'0' && _pendingText[pos - 1] <= L'9')
+                    --pos;
+                p2Start = pos;
+                break;
+            }
         }
+    }
+
+    // Find second-to-last digit sequence (hits count)
+    size_t p1Start = std::wstring::npos;
+    size_t p1End = std::wstring::npos;
+    if (p2Start != std::wstring::npos && p2Start > 0) {
+        size_t pos = p2Start;
+        while (pos > 0) {
+            --pos;
+            if (_pendingText[pos] >= L'0' && _pendingText[pos] <= L'9') {
+                p1End = pos + 1;
+                while (pos > 0 && _pendingText[pos - 1] >= L'0' && _pendingText[pos - 1] <= L'9')
+                    --pos;
+                p1Start = pos;
+                break;
+            }
+        }
+    }
+
+    // Replace files count first (higher position), then hits count
+    if (p2Start != std::wstring::npos) {
+        _pendingText.replace(p2Start, p2End - p2Start, filesStr);
+    }
+    if (p1Start != std::wstring::npos) {
+        _pendingText.replace(p1Start, p1End - p1Start, hitsStr);
     }
 
     // Adjust byte offsets due to the replaced numbers
@@ -810,8 +849,8 @@ void ResultDock::applyTheme()
         S(SCI_MARKERSETBACKSELECTED, id, theme.foldHighlight);
     }
 
-    // Caret line
-    S(SCI_SETCARETLINEVISIBLE, TRUE, 0);
+    // Caret line (always visible, even when dock loses focus after navigation)
+    S(SCI_SETCARETLINEVISIBLEALWAYS, TRUE, 0);
     S(SCI_SETCARETLINEBACK, theme.caretLineBg, 0);
     S(SCI_SETCARETLINEBACKALPHA, theme.caretLineAlpha);
 
