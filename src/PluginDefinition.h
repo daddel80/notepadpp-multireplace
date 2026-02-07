@@ -36,7 +36,7 @@ const TCHAR NPP_PLUGIN_NAME[] = TEXT("MultiReplace");
 //
 // Here define the number of your plugin commands
 //
-const int nbFunc = 5;
+const int nbFunc = 10;
 
 
 //
@@ -74,6 +74,9 @@ void multiReplace();
 void openHelpLink();
 void about();
 void multiReplaceConfig();
+void focusResultDock();
+void gotoNextFound();
+void gotoPrevFound();
 
 //
 // Plugin menu language refresh (called on NPPN_NATIVELANGCHANGED)

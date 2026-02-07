@@ -45,8 +45,7 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
   - [Context Menu and Keyboard Shortcuts](#context-menu-and-keyboard-shortcuts)
   - [List Columns](#list-columns)
   - [List Toggling](#list-toggling)
-- [Column Locking](#column-locking)
-- [Data Handling](#data-handling)
+  - [Column Locking](#column-locking)
   - [List Saving and Loading](#list-saving-and-loading)
 - [Settings and Customization](#settings-and-customization)
   - [1. Search and Replace](#1-search-and-replace)
@@ -174,16 +173,32 @@ The **Search Results Window** is a dedicated dockable panel that displays all ma
 
 - **Hierarchical Display** — Results are organized in a collapsible tree structure: Search Header → File → Criterion → Individual Hits. Each level can be expanded or collapsed for easy navigation.
 - **Color-Coded Matches** — When using the replacement list, each search term is highlighted in its own distinct color (up to 28 colors). This visual distinction makes it easy to identify which list entry produced each match.
-- **One-Click Navigation** — Double-click any result line to open the file and jump to the exact match position. To navigate from a specific point: first click a line in the Search Results Window to set your starting position, then double-click the **Matches** count in the replacement list to jump to the next match after that point.
+- **Double-Click Navigation** — Double-click any result line to open the file and jump to the exact match position.
+- **Navigate via Matches Column** — After a Find All, double-click the **Matches** count of any list entry to jump to its next match in the editor. Navigation starts from the current cursor position in the Search Results Window and wraps to the first match at the end.
 - **Context Menu** — Right-click to access options like Copy Lines, Copy Paths, Open Selected Files, Fold/Unfold All, and Clear Results.
 - **Persistent Results** — By default, new searches append to existing results, allowing you to accumulate findings. Enable "Purge on new search" in the context menu to clear previous results automatically.
 - **Word Wrap** — Toggle word wrap via the context menu for long lines.
 
-### Options
+### Keyboard Shortcuts
 
-The following options in [Settings > Appearance](#4-appearance) control the Search Results Window behavior:
+The following keyboard shortcuts are available when the Search Results Window has focus:
 
-- **Use list colors in search results** — When checked, matches are color-coded to match their corresponding list entry. When unchecked, all results use a uniform standard color.
+| Key       | Action                                                                 |
+|-----------|------------------------------------------------------------------------|
+| Enter     | Navigate to the selected match in the editor, or toggle fold on a header line. |
+| Space     | Toggle fold on a header line.                                          |
+| Escape    | Close the Search Results Window.                                       |
+| Delete    | Remove the selected result line(s).                                    |
+
+Additionally, three navigation commands are available from the **Plugins > MultiReplace** menu and can be assigned to custom keyboard shortcuts via **Settings > Shortcut Mapper > Plugin Commands**:
+
+| Command                  | Description                                                            |
+|--------------------------|------------------------------------------------------------------------|
+| Focus Search Results     | Show the Search Results Window and set keyboard focus to it.           |
+| Next Search Result       | Jump to the next match in the editor and highlight it in the results.  |
+| Previous Search Result   | Jump to the previous match in the editor and highlight it in the results. |
+
+The color-coding of search results can be configured in [Settings > Appearance](#5-appearance) via the **Use list colors in search results** option.
 
 <br>
 
@@ -615,7 +630,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
   - **E** — Extended search mode.
   - **R** — Regular expression mode.
 - **Additional Columns:**
-  - **Matches** — Shows the hit count for each entry. After Find All, double-click to navigate through matches starting from the cursor position in the Search Results Window; wraps to first match at the end.
+  - **Matches** — Shows the hit count for each entry. Double-click to navigate through matches (see [Search Results Window](#search-results-window)).
   - **Replaced** — Shows the number of replacements made for each 'Replace with' string.
   - **Comments** — Add custom comments to entries for annotations or additional context.
   - **Delete** — Contains a delete button for each entry, allowing quick removal from the list.
@@ -625,15 +640,13 @@ You can manage the visibility of the additional columns via the **Header Column 
 ### List Toggling
 The **"Use List"** button toggles between processing the entire list or just the single "Find what" / "Replace with" fields.
 
-## Column Locking
+### Column Locking
 
 You can lock specific column widths to prevent them from resizing automatically when the window layout changes. This is particularly useful for keeping key columns like **Find**, **Replace**, or **Comments** visible at a fixed size.
 
 - **How to Lock** — Double-click the column divider line in the list header.
 - **Visual Feedback** — A lock icon (🔒) appears in the header of the locked column.
 - **Effect** — Locked columns maintain their exact pixel width, while unlocked columns adjust dynamically to fill the remaining space.
-
-## Data Handling
 
 ### List Saving and Loading
 - **Save List / Load List** — Store and reload your search/replace entries as CSV files.

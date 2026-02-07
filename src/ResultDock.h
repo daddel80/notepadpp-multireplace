@@ -132,6 +132,11 @@ public:
     static void NavigateToHit(const Hit& hit);  // Robust line-based navigation with re-search
     void scrollToHitAndHighlight(int displayLineStart);
 
+    // ------------------- Global Shortcut Actions -----------------
+    void focusDock();                     // F7: Show dock and set keyboard focus
+    void gotoNextHit();                   // F4: Navigate to next hit
+    void gotoPrevHit();                   // Shift+F4: Navigate to previous hit
+
     // ------------------- FlowTab Position Adjustment -----------
     // Adjust stored hit positions when FlowTabs insert/remove padding characters.
     // paddingRanges: pairs of (startPos, length) for each padding range, collected
@@ -248,6 +253,8 @@ private:
     static void deleteSelectedItems(HWND hSci);
 
     // -------------------- Callbacks/Subclassing ---------------
+    static void toggleFoldAtLine(HWND hSci, int line);
+    static bool navigateFromDockLine(HWND hSci, int dispLine);
     static LRESULT CALLBACK sciSubclassProc(HWND, UINT, WPARAM, LPARAM);
     static inline WNDPROC s_prevSciProc = nullptr;
 

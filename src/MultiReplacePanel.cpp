@@ -7423,10 +7423,8 @@ void MultiReplace::handleFindAllButton()
     }
 
     ResultDock& dock = ResultDock::instance();
-    // Create dock and immediately hide it (like Notepad++ does)
-    // This prevents visual artifacts during search
-    dock.ensureCreated(nppData);
-    dock.hide(nppData);
+    dock.ensureCreated(nppData);                    // register dock (no-op if exists; does NOT show)
+    if (ResultDock::purgeEnabled()) dock.clear();    // clear old results → brief blank if already visible
 
     auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
         return ::SendMessage(_hScintilla, m, w, l);
@@ -7567,13 +7565,11 @@ void MultiReplace::handleFindAllButton()
         ? LM.get(L"dock_list_header", { std::to_wstring(totalHits), std::to_wstring(fileCount) })
         : LM.get(L"dock_single_header", { this->sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)), std::to_wstring(totalHits), std::to_wstring(fileCount) });
 
-    // NOW show the dock (after search is complete, like Notepad++ does)
-    dock.ensureCreatedAndVisible(nppData);
-    if (ResultDock::purgeEnabled()) dock.clear();
-
     dock.startSearchBlock(header, useListEnabled ? groupResultsEnabled : false, false);
     if (fileCount > 0) dock.appendFileBlock(fileMap, sciSend);
     dock.closeSearchBlock(totalHits, static_cast<int>(fileCount));
+
+    dock.ensureCreatedAndVisible(nppData);  // show panel only after results are fully written
 
     showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
@@ -7592,9 +7588,8 @@ void MultiReplace::handleFindAllInDocsButton()
     }
 
     ResultDock& dock = ResultDock::instance();
-    // Create dock and immediately hide it (like Notepad++ does)
     dock.ensureCreated(nppData);
-    dock.hide(nppData);
+    if (ResultDock::purgeEnabled()) dock.clear();
 
     int totalHits = 0;
     std::unordered_set<std::string> uniqueFiles;
@@ -7757,11 +7752,9 @@ void MultiReplace::handleFindAllInDocsButton()
         refreshUIListView();
     }
 
-    // NOW show the dock (after search is complete, like Notepad++ does)
-    dock.ensureCreatedAndVisible(nppData);
-    if (ResultDock::purgeEnabled()) dock.clear();
-
     dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
+
+    dock.ensureCreatedAndVisible(nppData);  // show panel only after results are fully written
 
     showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
@@ -7823,9 +7816,8 @@ void MultiReplace::handleFindInFiles() {
     }
 
     ResultDock& dock = ResultDock::instance();
-    // Create dock and immediately hide it (like Notepad++ does)
     dock.ensureCreated(nppData);
-    dock.hide(nppData);
+    if (ResultDock::purgeEnabled()) dock.clear();
 
     int totalHits = 0;
     std::unordered_set<std::string> uniqueFiles;
@@ -8014,11 +8006,9 @@ void MultiReplace::handleFindInFiles() {
         }
     }
 
-    // NOW show the dock (after search is complete, like Notepad++ does)
-    dock.ensureCreatedAndVisible(nppData);
-    if (ResultDock::purgeEnabled()) dock.clear();
-
     dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
+
+    dock.ensureCreatedAndVisible(nppData);  // show panel only after results are fully written
 
     if (useListEnabled) {
         for (size_t i = 0; i < listHitTotals.size(); ++i) {

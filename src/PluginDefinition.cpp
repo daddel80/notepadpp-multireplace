@@ -20,6 +20,7 @@
 #include "AboutDialog.h"
 #include "MultiReplaceConfigDialog.h"
 #include "LanguageManager.h"
+#include "ResultDock.h"
 #include <string>
 
 
@@ -79,7 +80,14 @@ void commandMenuInit()
     setCommand(1, TEXT("SEPARATOR"), NULL, NULL, false);
     setCommand(2, const_cast<TCHAR*>(LM.getLPCW(L"menu_settings")), multiReplaceConfig, NULL, false);
     setCommand(3, const_cast<TCHAR*>(LM.getLPCW(L"menu_documentation")), openHelpLink, NULL, false);
-    setCommand(4, const_cast<TCHAR*>(LM.getLPCW(L"menu_about")), about, NULL, false);
+    setCommand(4, TEXT("SEPARATOR"), NULL, NULL, false);
+
+    // ResultDock navigation commands (assignable via Settings > Shortcut Mapper > Plugin Commands)
+    setCommand(5, const_cast<TCHAR*>(LM.getLPCW(L"cmd_focus_results")), focusResultDock, NULL, false);
+    setCommand(6, const_cast<TCHAR*>(LM.getLPCW(L"cmd_next_result")), gotoNextFound, NULL, false);
+    setCommand(7, const_cast<TCHAR*>(LM.getLPCW(L"cmd_prev_result")), gotoPrevFound, NULL, false);
+    setCommand(8, TEXT("SEPARATOR"), NULL, NULL, false);
+    setCommand(9, const_cast<TCHAR*>(LM.getLPCW(L"menu_about")), about, NULL, false);
 }
 
 //
@@ -154,6 +162,21 @@ void multiReplaceConfig()
     _MultiReplaceConfig.display(true);
 }
 
+void focusResultDock()
+{
+    ResultDock::instance().focusDock();
+}
+
+void gotoNextFound()
+{
+    ResultDock::instance().gotoNextHit();
+}
+
+void gotoPrevFound()
+{
+    ResultDock::instance().gotoPrevHit();
+}
+
 //
 // Refresh plugin menu text when UI language changes (NPPN_NATIVELANGCHANGED)
 // This updates the menu items without requiring Notepad++ restart
@@ -172,7 +195,12 @@ void refreshPluginMenu()
         // Index 1 is SEPARATOR - skip
         { 2, L"menu_settings" },
         { 3, L"menu_documentation" },
-        { 4, L"menu_about" },
+        // Index 4 is SEPARATOR - skip
+        { 5, L"cmd_focus_results" },
+        { 6, L"cmd_next_result" },
+        { 7, L"cmd_prev_result" },
+        // Index 8 is SEPARATOR - skip
+        { 9, L"menu_about" },
     };
 
     // Get main menu handle from Notepad++

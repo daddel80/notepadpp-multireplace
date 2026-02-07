@@ -724,6 +724,12 @@ void ResultDock::create(const NppData& npp)
         ::MessageBoxW(npp._nppHandle, L"ERROR: Docking registration failed.", L"ResultDock Error", MB_OK | MB_ICONERROR);
         return;
     }
+
+    // Hide immediately after registration to prevent empty panel flash.
+    // N++ does the same: display(false) right after NPPM_DMMREGASDCKDLG.
+    // The caller shows the panel later via ensureCreatedAndVisible().
+    ::SendMessage(npp._nppHandle, NPPM_DMMHIDE, 0, reinterpret_cast<LPARAM>(_hSci));
+
     ::SendMessageW(npp._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME,
         static_cast<WPARAM>(NppDarkMode::dmfInit),
         reinterpret_cast<LPARAM>(_hDock));
@@ -2144,6 +2150,86 @@ void ResultDock::scrollToHitAndHighlight(int displayLineStart)
     ::RedrawWindow(_hSci, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
 }
 
+// ------------------- Global Shortcut Actions -----------------
+
+void ResultDock::focusDock()
+{
+    extern NppData nppData;
+    if (!_hSci) return;
+
+    // Show dock if hidden, then set keyboard focus to the Scintilla control
+    ensureCreatedAndVisible(nppData);
+    ::SetFocus(_hSci);
+}
+
+void ResultDock::gotoNextHit()
+{
+    if (!_hSci || _hits.empty()) return;
+
+    // Determine current position: if dock has focus, use dock cursor; otherwise start from 0
+    Sci_Position curPos = S(SCI_GETCURRENTPOS, 0, 0);
+    int curLine = static_cast<int>(S(SCI_LINEFROMPOSITION, curPos, 0));
+    Sci_Position curLineStart = S(SCI_POSITIONFROMLINE, curLine, 0);
+
+    // Find the current hit index (if cursor is on a hit line)
+    auto it = _lineStartToHitIndex.find(static_cast<int>(curLineStart));
+    size_t nextIdx;
+
+    if (it != _lineStartToHitIndex.end()) {
+        // On a hit line: advance to the next hit (wrap around)
+        nextIdx = (it->second + 1) % _hits.size();
+    }
+    else {
+        // Not on a hit line: find the first hit after the current line
+        nextIdx = 0;
+        for (size_t i = 0; i < _hits.size(); ++i) {
+            if (_hits[i].displayLineStart > static_cast<int>(curLineStart)) {
+                nextIdx = i;
+                break;
+            }
+        }
+    }
+
+    // Navigate to the hit in the editor
+    navigateFromDockLine(_hSci,
+        static_cast<int>(S(SCI_LINEFROMPOSITION, _hits[nextIdx].displayLineStart, 0)));
+
+    // Scroll dock to show the navigated hit
+    scrollToHitAndHighlight(_hits[nextIdx].displayLineStart);
+}
+
+void ResultDock::gotoPrevHit()
+{
+    if (!_hSci || _hits.empty()) return;
+
+    Sci_Position curPos = S(SCI_GETCURRENTPOS, 0, 0);
+    int curLine = static_cast<int>(S(SCI_LINEFROMPOSITION, curPos, 0));
+    Sci_Position curLineStart = S(SCI_POSITIONFROMLINE, curLine, 0);
+
+    auto it = _lineStartToHitIndex.find(static_cast<int>(curLineStart));
+    size_t prevIdx;
+
+    if (it != _lineStartToHitIndex.end()) {
+        // On a hit line: go to previous (wrap around)
+        prevIdx = (it->second == 0) ? _hits.size() - 1 : it->second - 1;
+    }
+    else {
+        // Not on a hit line: find the last hit before the current line
+        prevIdx = _hits.size() - 1;
+        for (size_t i = _hits.size(); i-- > 0;) {
+            if (_hits[i].displayLineStart < static_cast<int>(curLineStart)) {
+                prevIdx = i;
+                break;
+            }
+        }
+    }
+
+    navigateFromDockLine(_hSci,
+        static_cast<int>(S(SCI_LINEFROMPOSITION, _hits[prevIdx].displayLineStart, 0)));
+
+    scrollToHitAndHighlight(_hits[prevIdx].displayLineStart);
+}
+
 ResultDock::CursorHitInfo ResultDock::getCurrentCursorHitInfo() const {
     CursorHitInfo info;
     if (!_hSci) return info;
@@ -2554,6 +2640,92 @@ void ResultDock::deleteSelectedItems(HWND hSci)
 
 // -------------------- Callbacks/Subclassing ---------------
 
+// Toggle fold on a header line: move cursor to start, toggle, reset scroll.
+void ResultDock::toggleFoldAtLine(HWND hwnd, int line)
+{
+    const Sci_Position lineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, line, 0);
+    ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStart, 0);
+    ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
+    ::SendMessage(hwnd, SCI_TOGGLEFOLD, line, 0);
+    ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
+}
+
+// Navigate from a result dock line to the corresponding hit in the editor.
+// Returns true if the line was a hit and navigation was initiated.
+bool ResultDock::navigateFromDockLine(HWND hwnd, int dispLine)
+{
+    extern NppData nppData;
+
+    const int lineLen = static_cast<int>(::SendMessage(hwnd, SCI_LINELENGTH, dispLine, 0));
+    if (lineLen <= 0) return false;
+
+    std::string raw(lineLen, '\0');
+    ::SendMessage(hwnd, SCI_GETLINE, dispLine, reinterpret_cast<LPARAM>(raw.data()));
+    raw.resize(strnlen(raw.c_str(), lineLen));
+    if (classify(raw) != LineKind::HitLine) return false;
+
+    const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
+    ResultDock& dock = instance();
+    const size_t hitIndex = dock.getHitIndexAtLineStart(static_cast<int>(lineStartPos));
+    if (hitIndex == SIZE_MAX) return false;
+
+    const auto& allHits = dock.hits();
+    if (hitIndex >= allHits.size()) return false;
+    const Hit& hit = allHits[hitIndex];
+
+    std::wstring wPath;
+    if (!hit.fullPathUtf8.empty()) {
+        const int needed = ::MultiByteToWideChar(CP_UTF8, 0,
+            hit.fullPathUtf8.c_str(), static_cast<int>(hit.fullPathUtf8.size()),
+            nullptr, 0);
+        if (needed > 0) {
+            wPath.resize(needed);
+            ::MultiByteToWideChar(CP_UTF8, 0,
+                hit.fullPathUtf8.c_str(), static_cast<int>(hit.fullPathUtf8.size()),
+                &wPath[0], needed);
+        }
+    }
+    if (wPath.empty()) return false;
+
+    // Preserve dock scroll and cursor position across navigation
+    const int firstVisible = static_cast<int>(::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0));
+
+    auto restoreDockView = [&]() {
+        ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
+        const Sci_Position dockLineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
+        ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockLineStart, 0);
+        };
+
+    const bool isPseudo = IsPseudoPath(wPath);
+    std::wstring pathToOpen = wPath;
+
+    if (!isPseudo && IsCurrentDocByFullPath(pathToOpen)) {
+        NavigateToHit(hit);
+        restoreDockView();
+        return true;
+    }
+    if (isPseudo && IsCurrentDocByTitle(wPath)) {
+        NavigateToHit(hit);
+        restoreDockView();
+        return true;
+    }
+    if (isPseudo) {
+        pathToOpen = BuildDefaultPathForPseudo(wPath);
+        if (pathToOpen.empty()) return false;
+    }
+
+    s_pending.setFromHit(pathToOpen, hit);
+
+    const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(pathToOpen.c_str()));
+    if (!ok) {
+        s_pending.clear();
+        return false;
+    }
+
+    restoreDockView();
+    return true;
+}
+
 LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     extern NppData nppData;
@@ -2564,7 +2736,6 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         int x = GET_X_LPARAM(lp);
         int y = GET_Y_LPARAM(lp);
 
-        // Get margin widths to determine if click is in fold margin
         int margin0Width = static_cast<int>(::SendMessage(hwnd, SCI_GETMARGINWIDTHN, 0, 0));
         int margin1Width = static_cast<int>(::SendMessage(hwnd, SCI_GETMARGINWIDTHN, 1, 0));
         int margin2Width = static_cast<int>(::SendMessage(hwnd, SCI_GETMARGINWIDTHN, 2, 0));
@@ -2573,30 +2744,16 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         int foldMarginEnd = foldMarginStart + margin2Width;
 
         if (x >= foldMarginStart && x < foldMarginEnd) {
-            // Click is in fold margin - handle it ourselves
             Sci_Position pos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y);
             int line = static_cast<int>(::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0));
             int level = static_cast<int>(::SendMessage(hwnd, SCI_GETFOLDLEVEL, line, 0));
 
             if (level & SC_FOLDLEVELHEADERFLAG) {
-                // This is a fold header line - toggle it
-                // Move cursor to line start first to prevent horizontal scroll
-                Sci_Position lineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, line, 0);
-                ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStart, 0);
-
-                // Set horizontal scroll to 0
-                ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
-
-                // Toggle the fold
-                ::SendMessage(hwnd, SCI_TOGGLEFOLD, line, 0);
-
-                // Ensure horizontal scroll stays at 0
-                ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
-
-                return 0;  // We handled it
+                toggleFoldAtLine(hwnd, line);
+                return 0;
             }
         }
-        break;  // Let default handler process non-fold-margin clicks
+        break;
     }
 
     case WM_NOTIFY: {
@@ -2610,8 +2767,6 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
     case WM_LBUTTONDBLCLK:
     {
-        const int firstVisible = static_cast<int>(::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0));
-
         const int x = LOWORD(lp);
         const int y = HIWORD(lp);
         const Sci_Position posInDock = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMPOINT, x, y);
@@ -2621,81 +2776,11 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
         const int level = static_cast<int>(::SendMessage(hwnd, SCI_GETFOLDLEVEL, dispLine, 0));
         if (level & SC_FOLDLEVELHEADERFLAG) {
-            // Move cursor to line start first to prevent horizontal scroll
-            const Sci_Position foldLineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
-            ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, foldLineStart, 0);
-            ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
-
-            // Toggle the fold
-            ::SendMessage(hwnd, SCI_TOGGLEFOLD, dispLine, 0);
-
-            // Ensure horizontal scroll stays at 0
-            ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
+            toggleFoldAtLine(hwnd, dispLine);
             return 0;
         }
 
-        const int lineLen = static_cast<int>(::SendMessage(hwnd, SCI_LINELENGTH, dispLine, 0));
-        if (lineLen <= 0) return 0;
-
-        std::string raw(lineLen, '\0');
-        ::SendMessage(hwnd, SCI_GETLINE, dispLine, reinterpret_cast<LPARAM>(raw.data()));
-        raw.resize(strnlen(raw.c_str(), lineLen));
-        if (ResultDock::classify(raw) != LineKind::HitLine) return 0;
-
-        // O(1) hit lookup by line start position (works for both grouped and flat view)
-        const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
-        ResultDock& dock = ResultDock::instance();
-        const size_t hitIndex = dock.getHitIndexAtLineStart(static_cast<int>(lineStartPos));
-        if (hitIndex == SIZE_MAX) return 0;
-
-        const auto& hits = dock.hits();
-        if (hitIndex >= hits.size()) return 0;
-        const Hit& hit = hits[hitIndex];
-
-        std::wstring wPath;
-        if (!hit.fullPathUtf8.empty()) {
-            const int wlen = ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, nullptr, 0);
-            if (wlen > 0) {
-                wPath.resize(wlen - 1);
-                ::MultiByteToWideChar(CP_UTF8, 0, hit.fullPathUtf8.c_str(), -1, &wPath[0], wlen);
-            }
-        }
-        if (wPath.empty()) return 0;
-
-        const bool isPseudo = ResultDock::IsPseudoPath(wPath);
-        std::wstring pathToOpen = wPath;
-
-        if (!isPseudo && ResultDock::IsCurrentDocByFullPath(pathToOpen)) {
-            ResultDock::NavigateToHit(hit);
-            ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
-            const Sci_Position dockLineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
-            ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockLineStart, 0);
-            return 0;
-        }
-        if (isPseudo && ResultDock::IsCurrentDocByTitle(wPath)) {
-            ResultDock::NavigateToHit(hit);
-            ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
-            const Sci_Position dockLineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
-            ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockLineStart, 0);
-            return 0;
-        }
-        if (isPseudo) {
-            pathToOpen = ResultDock::BuildDefaultPathForPseudo(wPath);
-            if (pathToOpen.empty()) return 0;
-        }
-
-        // Store minimal hit data for robust cross-file navigation (no full Hit copy)
-        s_pending.setFromHit(pathToOpen, hit);
-
-        const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(pathToOpen.c_str()));
-        if (!ok) {
-            s_pending.clear();
-            return 0;
-        }
-
-        ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
-        const Sci_Position dockLineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
-        ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockLineStart, 0);
+        navigateFromDockLine(hwnd, dispLine);
         return 0;
     }
 
@@ -2782,25 +2867,29 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         return TRUE;
 
     case WM_KEYDOWN: {
+        if (wp == VK_ESCAPE) {
+            // Match N++ behavior: ESC in search results panel hides it
+            ResultDock::instance().hide(nppData);
+            return 0;
+        }
         if (wp == VK_DELETE) {
             deleteSelectedItems(hwnd);
             return 0;
         }
-        if (wp == VK_SPACE || wp == VK_RETURN) {
+
+        if (wp == VK_RETURN || wp == VK_SPACE) {
             Sci_Position pos = ::SendMessage(hwnd, SCI_GETCURRENTPOS, 0, 0);
             int line = static_cast<int>(::SendMessage(hwnd, SCI_LINEFROMPOSITION, pos, 0));
             int level = static_cast<int>(::SendMessage(hwnd, SCI_GETFOLDLEVEL, line, 0));
+
             if (level & SC_FOLDLEVELHEADERFLAG) {
-                // Move cursor to line start to prevent horizontal scroll
-                Sci_Position lineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, line, 0);
-                ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStart, 0);
-                ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
+                toggleFoldAtLine(hwnd, line);
+                return 0;
+            }
 
-                // Toggle the fold
-                ::SendMessage(hwnd, SCI_TOGGLEFOLD, line, 0);
-
-                // Ensure horizontal scroll stays at 0
-                ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
+            // Enter on a hit line navigates to the match in the editor
+            if (wp == VK_RETURN) {
+                navigateFromDockLine(hwnd, line);
                 return 0;
             }
         }

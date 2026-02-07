@@ -183,6 +183,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_tabs_aligned", L"Flow Tabs: ALIGNED." },
 { L"status_nothing_to_align", L"Flow Tabs: nothing to align." },
 { L"status_no_selection", L"No text selected." },
+{ L"status_select_area_first", L"Please select an area first." },
 { L"status_export_failed", L"Export to clipboard failed." },
 { L"status_no_results_linked", L"No results linked to this entry – run Find All." },
 { L"status_match_position", L"Match $REPLACE_STRING1/$REPLACE_STRING2" },
@@ -362,7 +363,12 @@ const LangKV kEnglishPairs[] = {
 { L"menu_open", L"&MultiReplace..." },
 { L"menu_settings", L"&Settings..." },
 { L"menu_documentation", L"&Documentation" },
-{ L"menu_about", L"&About MultiReplace" },
+{ L"menu_about", L"&About" },
+
+// Plugin Commands (assignable via Settings > Shortcut Mapper > Plugin Commands)
+{ L"cmd_focus_results", L"Focus Search Results" },
+{ L"cmd_next_result", L"Next Search Result" },
+{ L"cmd_prev_result", L"Previous Search Result" },
 
 // About Dialog
 { L"about_title", L"MultiReplace Plugin" },
