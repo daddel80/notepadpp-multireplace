@@ -1509,7 +1509,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         if (it != u8PrefixLenByByte.end()) return it->second;
         // Map raw byte count to filtered byte count
         const size_t filteredByteCount = rawToFilteredPos(byteCount);
-        size_t val = Encoding::bytesToUtf8(effectiveRaw->substr(0, filteredByteCount), docCp).size();
+        size_t val = Encoding::bytesToUtf8(effectiveRaw->data(), filteredByteCount, docCp).size();
         u8PrefixLenByByte.emplace(byteCount, val);
         return val;
         };
@@ -1527,7 +1527,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         const size_t filteredStart = rawToFilteredPos(relBytes);
         const size_t filteredEnd = rawToFilteredPos(relBytes + h.length);
         const size_t filteredLen = (filteredEnd > filteredStart) ? (filteredEnd - filteredStart) : 0;
-        size_t hitLenU8_orig = Encoding::bytesToUtf8(effectiveRaw->substr(filteredStart, filteredLen), docCp).size();
+        size_t hitLenU8_orig = Encoding::bytesToUtf8(effectiveRaw->data() + filteredStart, filteredLen, docCp).size();
 
         auto mapToDisp = [&](size_t offU8) -> size_t {
             if (offU8 >= mapOrigToDisp.size()) return mapOrigToDisp.empty() ? 0 : mapOrigToDisp.back();

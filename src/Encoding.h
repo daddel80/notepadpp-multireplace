@@ -65,8 +65,10 @@ namespace Encoding {
 
     // ---------- String conversions ----------
     std::wstring bytesToWString(const std::string& bytes, UINT cp);
+    std::wstring bytesToWString(const char* data, size_t len, UINT cp);
     std::string  wstringToBytes(const std::wstring& w, UINT cp);
     std::string  bytesToUtf8(const std::string& bytes, UINT cp);
+    std::string  bytesToUtf8(const char* data, size_t len, UINT cp);
     std::string  wstringToUtf8(const std::wstring& w);
     std::wstring utf8ToWString(const std::string& u8);
     std::string  utf8ToBytes(const std::string& u8, UINT cp);

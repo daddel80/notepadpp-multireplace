@@ -223,13 +223,17 @@ namespace Encoding {
 
     // ---------- string conversions ----------
 
-    std::wstring bytesToWString(const std::string& bytes, UINT cp) {
-        if (bytes.empty()) return std::wstring();
-        int wlen = MultiByteToWideChar(cp, 0, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0);
+    std::wstring bytesToWString(const char* data, size_t len, UINT cp) {
+        if (!data || len == 0) return std::wstring();
+        int wlen = MultiByteToWideChar(cp, 0, data, static_cast<int>(len), nullptr, 0);
         if (wlen <= 0) return std::wstring();
         std::wstring w(static_cast<size_t>(wlen), L'\0');
-        MultiByteToWideChar(cp, 0, bytes.data(), static_cast<int>(bytes.size()), w.data(), wlen);
+        MultiByteToWideChar(cp, 0, data, static_cast<int>(len), w.data(), wlen);
         return w;
+    }
+
+    std::wstring bytesToWString(const std::string& bytes, UINT cp) {
+        return bytesToWString(bytes.data(), bytes.size(), cp);
     }
 
     // FIX: Restored to v4.4 behavior - always use permissive mode (flags = 0).
@@ -246,8 +250,12 @@ namespace Encoding {
         return out;
     }
 
+    std::string bytesToUtf8(const char* data, size_t len, UINT cp) {
+        return wstringToUtf8(bytesToWString(data, len, cp));
+    }
+
     std::string bytesToUtf8(const std::string& bytes, UINT cp) {
-        return wstringToUtf8(bytesToWString(bytes, cp));
+        return bytesToUtf8(bytes.data(), bytes.size(), cp);
     }
 
     std::string wstringToUtf8(const std::wstring& w) {
