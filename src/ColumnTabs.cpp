@@ -506,9 +506,7 @@ namespace ColumnTabs {
         const int ind = CT_GetIndicatorId();
         S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
 
-        // Phase 1: Collect all indicator ranges forward using SCI_INDICATOREND.
-        //          This is O(ranges) Scintilla calls instead of the previous
-        //          O(docLength) backward per-byte scan.
+        // Phase 1: Collect all indicator ranges forward using SCI_INDICATOREND — O(ranges) calls.
         const Sci_Position docLen = (Sci_Position)S(SCI_GETLENGTH);
         std::vector<std::pair<Sci_Position, Sci_Position>> ranges;
 

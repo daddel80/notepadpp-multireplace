@@ -236,9 +236,8 @@ namespace Encoding {
         return bytesToWString(bytes.data(), bytes.size(), cp);
     }
 
-    // FIX: Restored to v4.4 behavior - always use permissive mode (flags = 0).
-    // The strict WC_NO_BEST_FIT_CHARS + usedDefault check caused search failures
-    // on certain codepages (CP866, CP1251, etc.) where even simple ASCII failed.
+    // Permissive mode (flags=0): strict WC_NO_BEST_FIT_CHARS fails on
+    // certain codepages (CP866, CP1251, etc.) even for simple ASCII roundtrips.
     std::string wstringToBytes(const std::wstring& w, UINT cp) {
         if (w.empty()) return std::string();
         int mlen = WideCharToMultiByte(cp, 0, w.data(), static_cast<int>(w.size()),

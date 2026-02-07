@@ -10611,8 +10611,8 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
         combinedData.push_back(std::move(rowData));
     }
 
-    // NOTE: detectNumericColumns is now called by sortRowsByColumn after sanitization
-    // This avoids duplicate processing
+    // detectNumericColumns is called by sortRowsByColumn after sanitization
+    // to avoid duplicate processing
 
     return combinedData;
 }

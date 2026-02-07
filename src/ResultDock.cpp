@@ -297,7 +297,6 @@ void ResultDock::applyStyling() const
     }
 
     // 2) Clear dynamic entry indicators (Range 0 to MAX_ENTRY_COLORS)
-    // FIX: Clear the full dynamic range we now support
     for (int i = 0; i < MAX_ENTRY_COLORS; ++i) {
         S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + i);
         S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
@@ -962,13 +961,10 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
         for (const auto& h : newHits) {
             if (h.displayLineStart < 0) continue;
             for (size_t i = 0; i < h.matchStarts.size(); ++i) {
-                // Determine color index
-                // FIX: Use 'matchColors' instead of 'matchColorIndices'
                 const int colorIdx = (i < h.matchColors.size())
                     ? h.matchColors[i]
                     : h.colorIndex;  // fallback
 
-                // FIX: Use 'MAX_ENTRY_COLORS' instead of 'COLOR_PALETTE_SIZE'
                 if (colorIdx >= 0 && colorIdx < MAX_ENTRY_COLORS) {
                     S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + colorIdx);
                     S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
@@ -1217,6 +1213,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     size_t& utf8Pos) const
 {
     const UINT docCp = (UINT)sciSend(SCI_GETCODEPAGE, 0, 0);
+    const bool isUtf8Doc = (docCp == SC_CP_UTF8);
 
     const std::wstring indentHitW = getIndentString(LineLevel::HitLine);
     const size_t       indentHitU8 = getIndentUtf8Length(LineLevel::HitLine);
@@ -1225,7 +1222,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     const size_t kLineU8 = Encoding::wstringToUtf8(kLineW).size();  // No static: supports runtime language change
     constexpr size_t    kColonSpaceU8 = 2; // ": "
 
-    constexpr size_t kMaxHitTextUtf8 = 2048;
+    constexpr size_t kMaxHitTextUtf8 = 2048; // cap display text to limit memory/rendering cost on very long lines
 
     auto capUtf8WithEllipsis = [](std::string& s, size_t maxBytes) {
         if (s.size() <= maxBytes) return;
@@ -1292,6 +1289,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                 sciSend(SCI_INDICATOREND, static_cast<WPARAM>(flowTabsIndicatorId), 0));
             const int firstVal = static_cast<int>(
                 sciSend(SCI_INDICATORVALUEAT, static_cast<WPARAM>(flowTabsIndicatorId), 0));
+            // firstVal != 0: padding starts at pos 0.
+            // firstEnd check: padding may start after pos 0, so detect any range boundary.
             docHasFlowTabPadding = (firstVal != 0) || (firstEnd > 0 && firstEnd < docLen);
         }
     }
@@ -1377,8 +1376,11 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                 effectiveRaw = &cachedRaw;
             }
 
-            // original as UTF-8 (for mapping) - use effective raw bytes
-            origU8 = Encoding::bytesToUtf8(*effectiveRaw, docCp);
+            // Build origU8 — for UTF-8 docs the raw bytes are already UTF-8
+            if (isUtf8Doc)
+                origU8 = *effectiveRaw;
+            else
+                origU8 = Encoding::bytesToUtf8(*effectiveRaw, docCp);
 
             // classify helpers
             auto isCtlWide = [](wchar_t ch)->bool {
@@ -1505,9 +1507,9 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         };
 
     auto u8PrefixFromRawBytes = [&](size_t byteCount)->size_t {
+        if (isUtf8Doc) return rawToFilteredPos(byteCount); // byte pos == UTF-8 pos
         auto it = u8PrefixLenByByte.find(byteCount);
         if (it != u8PrefixLenByByte.end()) return it->second;
-        // Map raw byte count to filtered byte count
         const size_t filteredByteCount = rawToFilteredPos(byteCount);
         size_t val = Encoding::bytesToUtf8(effectiveRaw->data(), filteredByteCount, docCp).size();
         u8PrefixLenByByte.emplace(byteCount, val);
@@ -1527,7 +1529,9 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         const size_t filteredStart = rawToFilteredPos(relBytes);
         const size_t filteredEnd = rawToFilteredPos(relBytes + h.length);
         const size_t filteredLen = (filteredEnd > filteredStart) ? (filteredEnd - filteredStart) : 0;
-        size_t hitLenU8_orig = Encoding::bytesToUtf8(effectiveRaw->data() + filteredStart, filteredLen, docCp).size();
+        const size_t hitLenU8_orig = isUtf8Doc
+            ? filteredLen
+            : Encoding::bytesToUtf8(effectiveRaw->data() + filteredStart, filteredLen, docCp).size();
 
         auto mapToDisp = [&](size_t offU8) -> size_t {
             if (offU8 >= mapOrigToDisp.size()) return mapOrigToDisp.empty() ? 0 : mapOrigToDisp.back();
@@ -2194,7 +2198,7 @@ void ResultDock::copySelectedLines(HWND hSci) {
         return fn ? fn(ptr, m, w, l) : ::SendMessage(hSci, m, w, l);
         };
 
-    auto indentOf = [](ResultDock::LineLevel lvl) -> int {                                                                  // NEW
+    auto indentOf = [](ResultDock::LineLevel lvl) -> int {
         return ResultDock::INDENT_SPACES[static_cast<int>(lvl)];
         };
 
@@ -2638,8 +2642,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         raw.resize(strnlen(raw.c_str(), lineLen));
         if (ResultDock::classify(raw) != LineKind::HitLine) return 0;
 
-        // Use O(1) lookup via getHitIndexAtLineStart instead of sequential counting
-        // This correctly handles different grouping modes (grouped vs flat view)
+        // O(1) hit lookup by line start position (works for both grouped and flat view)
         const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
         ResultDock& dock = ResultDock::instance();
         const size_t hitIndex = dock.getHitIndexAtLineStart(static_cast<int>(lineStartPos));
