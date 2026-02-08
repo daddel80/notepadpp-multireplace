@@ -6313,9 +6313,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
                 }
             }
             std::string capName = "CAP" + std::to_string(i);
-            if (!capVal.empty()) {
-                setLuaVariable(_luaState, capName, capVal);
-            }
+            setLuaVariable(_luaState, capName, capVal);
             capNames.push_back(capName);  // Always track for cleanup
         }
     }
@@ -7286,10 +7284,9 @@ void MultiReplace::handleReplaceInFiles() {
         if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) { continue; }
 
         Encoding::DetectOptions dopts;
-        const std::vector<char> raw(original.begin(), original.end());
-        const Encoding::EncodingInfo enc = Encoding::detectEncoding(raw.data(), raw.size(), dopts);
+        const Encoding::EncodingInfo enc = Encoding::detectEncoding(original.data(), original.size(), dopts);
         std::string u8in;
-        if (!Encoding::convertBufferToUtf8(raw, enc, u8in)) { continue; }
+        if (!Encoding::convertBufferToUtf8(original.data(), original.size(), enc, u8in)) { continue; }
 
         // Bind hidden buffer for the file scope
         {
@@ -7317,10 +7314,9 @@ void MultiReplace::handleReplaceInFiles() {
             // Write back only if content changed
             std::string u8out = guard.getText();
             if (u8out != u8in) {
-                std::vector<char> outBytes;
+                std::string outBytes;
                 if (Encoding::convertUtf8ToOriginal(u8out, enc, outBytes)) {
-                    std::string finalBuf(outBytes.begin(), outBytes.end());
-                    if (guard.writeFile(fp, finalBuf)) {
+                    if (guard.writeFile(fp, outBytes)) {
                         ++changed;
                     }
                 }
@@ -7423,8 +7419,10 @@ void MultiReplace::handleFindAllButton()
     }
 
     ResultDock& dock = ResultDock::instance();
-    dock.ensureCreated(nppData);                    // register dock (no-op if exists; does NOT show)
-    if (ResultDock::purgeEnabled()) dock.clear();    // clear old results → brief blank if already visible
+    // Create dock and immediately hide it (like Notepad++ does)
+    // This prevents visual artifacts during search
+    dock.ensureCreated(nppData);
+    dock.hide(nppData);
 
     auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
         return ::SendMessage(_hScintilla, m, w, l);
@@ -7565,11 +7563,13 @@ void MultiReplace::handleFindAllButton()
         ? LM.get(L"dock_list_header", { std::to_wstring(totalHits), std::to_wstring(fileCount) })
         : LM.get(L"dock_single_header", { this->sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)), std::to_wstring(totalHits), std::to_wstring(fileCount) });
 
+    // NOW show the dock (after search is complete, like Notepad++ does)
+    dock.ensureCreatedAndVisible(nppData);
+    if (ResultDock::purgeEnabled()) dock.clear();
+
     dock.startSearchBlock(header, useListEnabled ? groupResultsEnabled : false, false);
     if (fileCount > 0) dock.appendFileBlock(fileMap, sciSend);
     dock.closeSearchBlock(totalHits, static_cast<int>(fileCount));
-
-    dock.ensureCreatedAndVisible(nppData);  // show panel only after results are fully written
 
     showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
@@ -7588,8 +7588,9 @@ void MultiReplace::handleFindAllInDocsButton()
     }
 
     ResultDock& dock = ResultDock::instance();
+    // Create dock and immediately hide it (like Notepad++ does)
     dock.ensureCreated(nppData);
-    if (ResultDock::purgeEnabled()) dock.clear();
+    dock.hide(nppData);
 
     int totalHits = 0;
     std::unordered_set<std::string> uniqueFiles;
@@ -7752,9 +7753,11 @@ void MultiReplace::handleFindAllInDocsButton()
         refreshUIListView();
     }
 
-    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
+    // NOW show the dock (after search is complete, like Notepad++ does)
+    dock.ensureCreatedAndVisible(nppData);
+    if (ResultDock::purgeEnabled()) dock.clear();
 
-    dock.ensureCreatedAndVisible(nppData);  // show panel only after results are fully written
+    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
 
     showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
@@ -7816,8 +7819,9 @@ void MultiReplace::handleFindInFiles() {
     }
 
     ResultDock& dock = ResultDock::instance();
+    // Create dock and immediately hide it (like Notepad++ does)
     dock.ensureCreated(nppData);
-    if (ResultDock::purgeEnabled()) dock.clear();
+    dock.hide(nppData);
 
     int totalHits = 0;
     std::unordered_set<std::string> uniqueFiles;
@@ -7914,10 +7918,9 @@ void MultiReplace::handleFindInFiles() {
         }
         else {
             Encoding::DetectOptions dopts;
-            const std::vector<char> raw(original.begin(), original.end());
-            const Encoding::EncodingInfo enc = Encoding::detectEncoding(raw.data(), raw.size(), dopts);
+            const Encoding::EncodingInfo enc = Encoding::detectEncoding(original.data(), original.size(), dopts);
             std::string u8;
-            if (!Encoding::convertBufferToUtf8(raw, enc, u8)) continue;
+            if (!Encoding::convertBufferToUtf8(original.data(), original.size(), enc, u8)) continue;
             send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
             send(SCI_ADDTEXT, (WPARAM)u8.length(), reinterpret_cast<sptr_t>(u8.data()));
         }
@@ -8006,9 +8009,11 @@ void MultiReplace::handleFindInFiles() {
         }
     }
 
-    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
+    // NOW show the dock (after search is complete, like Notepad++ does)
+    dock.ensureCreatedAndVisible(nppData);
+    if (ResultDock::purgeEnabled()) dock.clear();
 
-    dock.ensureCreatedAndVisible(nppData);  // show panel only after results are fully written
+    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
 
     if (useListEnabled) {
         for (size_t i = 0; i < listHitTotals.size(); ++i) {
@@ -10601,8 +10606,8 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
         combinedData.push_back(std::move(rowData));
     }
 
-    // detectNumericColumns is called by sortRowsByColumn after sanitization
-    // to avoid duplicate processing
+    // NOTE: detectNumericColumns is now called by sortRowsByColumn after sanitization
+    // This avoids duplicate processing
 
     return combinedData;
 }

@@ -67,14 +67,13 @@ namespace Encoding {
     std::wstring bytesToWString(const std::string& bytes, UINT cp);
     std::wstring bytesToWString(const char* data, size_t len, UINT cp);
     std::string  wstringToBytes(const std::wstring& w, UINT cp);
-    std::string  bytesToUtf8(const std::string& bytes, UINT cp);
     std::string  bytesToUtf8(const char* data, size_t len, UINT cp);
     std::string  wstringToUtf8(const std::wstring& w);
     std::wstring utf8ToWString(const std::string& u8);
     std::string  utf8ToBytes(const std::string& u8, UINT cp);
 
     // ---------- Buffer conversions with BOM handling ----------
-    bool convertBufferToUtf8(const std::vector<char>& in, const EncodingInfo& src, std::string& outUtf8);
-    bool convertUtf8ToOriginal(const std::string& u8, const EncodingInfo& dst, std::vector<char>& outBytes);
+    bool convertBufferToUtf8(const char* data, size_t len, const EncodingInfo& src, std::string& outUtf8);
+    bool convertUtf8ToOriginal(const std::string& u8, const EncodingInfo& dst, std::string& outBytes);
 
 } // namespace Encoding

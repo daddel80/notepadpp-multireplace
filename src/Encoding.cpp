@@ -253,10 +253,6 @@ namespace Encoding {
         return wstringToUtf8(bytesToWString(data, len, cp));
     }
 
-    std::string bytesToUtf8(const std::string& bytes, UINT cp) {
-        return bytesToUtf8(bytes.data(), bytes.size(), cp);
-    }
-
     std::string wstringToUtf8(const std::wstring& w) {
         if (w.empty()) return std::string();
         int mlen = WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()),
@@ -285,27 +281,24 @@ namespace Encoding {
 
     // ---------- buffer conversions + BOM ----------
 
-    static inline void appendBOM(Kind kind, std::vector<char>& out) {
+    static inline void appendBOM(Kind kind, std::string& out) {
         if (kind == Kind::UTF8) {
             const unsigned char b[3] = { 0xEF, 0xBB, 0xBF };
-            out.insert(out.end(), reinterpret_cast<const char*>(b), reinterpret_cast<const char*>(b) + 3);
+            out.append(reinterpret_cast<const char*>(b), 3);
         }
         else if (kind == Kind::UTF16LE) {
             const unsigned char b[2] = { 0xFF, 0xFE };
-            out.insert(out.end(), reinterpret_cast<const char*>(b), reinterpret_cast<const char*>(b) + 2);
+            out.append(reinterpret_cast<const char*>(b), 2);
         }
         else if (kind == Kind::UTF16BE) {
             const unsigned char b[2] = { 0xFE, 0xFF };
-            out.insert(out.end(), reinterpret_cast<const char*>(b), reinterpret_cast<const char*>(b) + 2);
+            out.append(reinterpret_cast<const char*>(b), 2);
         }
     }
 
-    bool convertBufferToUtf8(const std::vector<char>& in, const EncodingInfo& src, std::string& outUtf8) {
+    bool convertBufferToUtf8(const char* data, size_t len, const EncodingInfo& src, std::string& outUtf8) {
         outUtf8.clear();
-        if (in.empty()) return true;
-
-        const char* data = in.data();
-        size_t len = in.size();
+        if (!data || len == 0) return true;
 
         // Skip BOM bytes if present
         if (src.bomBytes > 0 && static_cast<size_t>(src.bomBytes) <= len) {
@@ -343,16 +336,16 @@ namespace Encoding {
         }
 
         // ANSI
-        outUtf8 = bytesToUtf8(std::string(data, data + len), src.codepage);
+        outUtf8 = bytesToUtf8(data, len, src.codepage);
         return !outUtf8.empty() || len == 0;
     }
 
-    bool convertUtf8ToOriginal(const std::string& u8, const EncodingInfo& dst, std::vector<char>& outBytes) {
+    bool convertUtf8ToOriginal(const std::string& u8, const EncodingInfo& dst, std::string& outBytes) {
         outBytes.clear();
 
         if (dst.kind == Kind::UTF8) {
             if (dst.withBOM) appendBOM(Kind::UTF8, outBytes);
-            outBytes.insert(outBytes.end(), u8.begin(), u8.end());
+            outBytes.append(u8);
             return true;
         }
 
@@ -385,7 +378,7 @@ namespace Encoding {
             std::string mbs = wstringToBytes(w, dst.codepage);
             if (mbs.empty() && !w.empty()) return false;
             // ANSI doesn't use BOM; ignore dst.withBOM
-            outBytes.insert(outBytes.end(), mbs.begin(), mbs.end());
+            outBytes.append(mbs);
             return true;
         }
     }

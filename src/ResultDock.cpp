@@ -1386,7 +1386,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             if (isUtf8Doc)
                 origU8 = *effectiveRaw;
             else
-                origU8 = Encoding::bytesToUtf8(*effectiveRaw, docCp);
+                origU8 = Encoding::bytesToUtf8(effectiveRaw->data(), effectiveRaw->size(), docCp);
 
             // classify helpers
             auto isCtlWide = [](wchar_t ch)->bool {
