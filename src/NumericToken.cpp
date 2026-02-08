@@ -1,4 +1,4 @@
-// This file is part of the MultiReplace plugin for Notepad++.
+ï»¿// This file is part of the MultiReplace plugin for Notepad++.
 // Copyright (C) 2023 Thomas Knoefel
 //
 // This program is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ namespace mr {
         // Internal Constants
         // =========================================================================
 
-        // Maximum length for currency/unit prefix or suffix (e.g. "$", "USD", "€")
+        // Maximum length for currency/unit prefix or suffix (e.g. "$", "USD", "ï¿½")
         static constexpr std::size_t MAX_AFFIX_LENGTH = 4;
 
         // =========================================================================
@@ -105,7 +105,7 @@ namespace mr {
         // - ".5" -> "0.5", "-.5" -> "-0.5"
         // - "12." -> "12"
         // Returns false if token becomes invalid after normalization.
-        static bool normalize_token(std::string& token) noexcept
+        static bool normalize_token(std::string& token)
         {
             // Replace comma with dot
             for (char& ch : token) {
@@ -138,7 +138,7 @@ namespace mr {
 
         // Parse the first numeric token from a string.
         // Returns NumericToken with ok=true on success.
-        static NumericToken parse_first_numeric_token(std::string_view field) noexcept
+        static NumericToken parse_first_numeric_token(std::string_view field)
         {
             NumericToken out{};
             const std::size_t n = field.size();
