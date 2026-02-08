@@ -10856,10 +10856,10 @@ void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalO
 void MultiReplace::extractLineContent(size_t idx, std::string& content, const std::string& lineBreak) {
     LRESULT lineStart = send(SCI_POSITIONFROMLINE, idx);
     LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, idx);
-    std::vector<char> buffer(static_cast<size_t>(lineEnd - lineStart) + 1);
-    Sci_TextRangeFull tr{ lineStart, lineEnd, buffer.data() };
+    size_t len = static_cast<size_t>(lineEnd - lineStart);
+    content.resize(len);
+    Sci_TextRangeFull tr{ lineStart, lineEnd, content.data() };
     send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
-    content.assign(buffer.begin(), buffer.end() - 1); // Remove the null terminator
     content += lineBreak;
 }
 
