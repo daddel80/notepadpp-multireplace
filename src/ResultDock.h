@@ -75,6 +75,11 @@ public:
     };
     CursorHitInfo getCurrentCursorHitInfo() const;
 
+    // Returns the hit index range [firstIdx, lastIdx] belonging to the same
+    // search block as the given hitIndex.  Both bounds are inclusive.
+    struct BlockRange { size_t first = 0; size_t last = 0; bool valid = false; };
+    BlockRange getBlockRangeForHit(size_t hitIndex) const;
+
     // Get hit index at a specific line start position (for double-click navigation)
     // Returns SIZE_MAX if no hit found at that position
     size_t getHitIndexAtLineStart(int lineStartPos) const;
@@ -126,6 +131,10 @@ public:
     void onNppNotification(const SCNotification* notify);
 
     // ------------------- Jump Navigation ----------------------
+    // Status callback for navigation errors (set by MultiReplace during init)
+    using StatusCallback = std::function<void(const std::wstring& msg, bool isError)>;
+    static void setStatusCallback(StatusCallback cb) { _statusCallback = std::move(cb); }
+
     static void SwitchToFileIfOpenByFullPath(const std::wstring& fullPath);
     static void JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len);
     static void SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, Sci_Position len);
@@ -360,6 +369,7 @@ private:
     inline static bool _wrapEnabled = false;
     inline static bool _purgeOnNextSearch = false;
     inline static bool _perEntryColorsEnabled = false;  // Per-entry coloring option
+    inline static StatusCallback _statusCallback;
 
     // --- Call acceleration (Scintilla DirectFunction) ---
     using SciFnDirect_t = sptr_t(__cdecl*)(sptr_t, unsigned int, uptr_t, sptr_t);

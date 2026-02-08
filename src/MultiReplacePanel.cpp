@@ -3998,6 +3998,9 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
     // 1. Basic validation
     if (listIndex >= replaceListData.size()) return;
 
+    // Ensure we read cursor position from the correct editor view
+    pointerToScintilla();
+
     const auto& item = replaceListData[listIndex];
 
     // 2. Collect match positions from ResultDock hits that match this list entry
@@ -4055,17 +4058,48 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
         return;
     }
 
-    // 3. Determine anchor position
-    Sci_Position anchorPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
+    // 3. Determine anchor position and block scope
+    //    Priority: If the dock cursor is on a hit line for the current file,
+    //    use that hit's document position as anchor (allows user to set start
+    //    point by clicking in dock) and restrict to the same search block.
+    //    Otherwise fall back to editor cursor with all hits.
+    Sci_Position anchorPos = 0;
+    size_t blockFirst = 0;
+    size_t blockLast = allHits.size();  // exclusive
+    bool blockScoped = false;
+
+    auto cursorInfo = dock.getCurrentCursorHitInfo();
+    if (cursorInfo.valid && cursorInfo.hitIndex < allHits.size()) {
+        const ResultDock::Hit& anchorHit = allHits[cursorInfo.hitIndex];
+        if (pathsEqualUtf8(anchorHit.fullPathUtf8, curPathUtf8)) {
+            anchorPos = anchorHit.pos + anchorHit.length;
+
+            // Restrict to the search block the dock cursor is in
+            auto br = dock.getBlockRangeForHit(cursorInfo.hitIndex);
+            if (br.valid) {
+                blockFirst = br.first;
+                blockLast = br.last + 1;  // make exclusive
+                blockScoped = true;
+            }
+        }
+    }
 
     if (anchorPos == 0) {
-        auto cursorInfo = dock.getCurrentCursorHitInfo();
-        if (cursorInfo.valid && cursorInfo.hitIndex < allHits.size()) {
-            int anchorLine = allHits[cursorInfo.hitIndex].docLine;
-            Sci_Position lineStart = static_cast<Sci_Position>(send(SCI_POSITIONFROMLINE, anchorLine, 0));
-            if (lineStart > 0) {
-                anchorPos = lineStart;
-            }
+        anchorPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
+    }
+
+    // 3b. Remove ranges whose hitIdx is outside the block scope
+    if (blockScoped) {
+        ranges.erase(
+            std::remove_if(ranges.begin(), ranges.end(),
+                [&](const MatchRange& r) {
+                    return r.hitIdx < blockFirst || r.hitIdx >= blockLast;
+                }),
+            ranges.end());
+
+        if (ranges.empty()) {
+            showStatusMessage(LM.get(L"status_no_results_linked"), MessageStatus::Error);
+            return;
         }
     }
 
@@ -4162,6 +4196,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_INITDIALOG:
     {
         ResultDock::setPerEntryColorsEnabled(true);  // Enable per-entry coloring for testing
+        ResultDock::setStatusCallback([this](const std::wstring& msg, bool isError) {
+            showStatusMessage(msg, isError ? MessageStatus::Error : MessageStatus::Info);
+            });
 
         dpiMgr = new DPIManager(_hSelf);
         initializeWindowSize();

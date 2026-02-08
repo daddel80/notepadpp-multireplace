@@ -2166,36 +2166,63 @@ void ResultDock::gotoNextHit()
 {
     if (!_hSci || _hits.empty()) return;
 
-    // Determine current position: if dock has focus, use dock cursor; otherwise start from 0
     Sci_Position curPos = S(SCI_GETCURRENTPOS, 0, 0);
     int curLine = static_cast<int>(S(SCI_LINEFROMPOSITION, curPos, 0));
+
+    // Determine search block boundaries (like N++: navigate within one block only)
+    const int searchHdrLevel = SC_FOLDLEVELBASE + static_cast<int>(LineLevel::SearchHdr);
+    int blockStart = curLine;
+    {
+        int line = curLine;
+        for (;;) {
+            int level = static_cast<int>(S(SCI_GETFOLDLEVEL, line)) & SC_FOLDLEVELNUMBERMASK;
+            if (level <= searchHdrLevel) { blockStart = line; break; }
+            int parent = static_cast<int>(S(SCI_GETFOLDPARENT, line, 0));
+            if (parent < 0 || parent == line) { blockStart = 0; break; }
+            line = parent;
+        }
+    }
+    int blockEnd = static_cast<int>(S(SCI_GETLASTCHILD, blockStart, searchHdrLevel));
+    if (blockEnd < blockStart) blockEnd = static_cast<int>(S(SCI_GETLINECOUNT)) - 1;
+
+    // Collect hit indices within this block's line range
+    Sci_Position blockStartPos = S(SCI_POSITIONFROMLINE, blockStart, 0);
+    Sci_Position blockEndPos = S(SCI_GETLINEENDPOSITION, blockEnd, 0);
+    std::vector<size_t> blockHits;
+    for (size_t i = 0; i < _hits.size(); ++i) {
+        int dls = _hits[i].displayLineStart;
+        if (dls >= static_cast<int>(blockStartPos) && dls <= static_cast<int>(blockEndPos))
+            blockHits.push_back(i);
+    }
+    if (blockHits.empty()) return;
+
+    // Find current position among block hits and advance
     Sci_Position curLineStart = S(SCI_POSITIONFROMLINE, curLine, 0);
-
-    // Find the current hit index (if cursor is on a hit line)
-    auto it = _lineStartToHitIndex.find(static_cast<int>(curLineStart));
-    size_t nextIdx;
-
-    if (it != _lineStartToHitIndex.end()) {
-        // On a hit line: advance to the next hit (wrap around)
-        nextIdx = (it->second + 1) % _hits.size();
+    size_t pick = 0;
+    auto curIt = _lineStartToHitIndex.find(static_cast<int>(curLineStart));
+    if (curIt != _lineStartToHitIndex.end()) {
+        // Currently on a hit line — find it in blockHits and advance
+        for (size_t b = 0; b < blockHits.size(); ++b) {
+            if (blockHits[b] == curIt->second) {
+                pick = (b + 1) % blockHits.size();
+                break;
+            }
+        }
     }
     else {
-        // Not on a hit line: find the first hit after the current line
-        nextIdx = 0;
-        for (size_t i = 0; i < _hits.size(); ++i) {
-            if (_hits[i].displayLineStart > static_cast<int>(curLineStart)) {
-                nextIdx = i;
+        // Not on a hit line — find first hit after cursor
+        for (size_t b = 0; b < blockHits.size(); ++b) {
+            if (_hits[blockHits[b]].displayLineStart > static_cast<int>(curLineStart)) {
+                pick = b;
                 break;
             }
         }
     }
 
-    // Navigate to the hit in the editor
+    size_t hitIdx = blockHits[pick];
     navigateFromDockLine(_hSci,
-        static_cast<int>(S(SCI_LINEFROMPOSITION, _hits[nextIdx].displayLineStart, 0)));
-
-    // Scroll dock to show the navigated hit
-    scrollToHitAndHighlight(_hits[nextIdx].displayLineStart);
+        static_cast<int>(S(SCI_LINEFROMPOSITION, _hits[hitIdx].displayLineStart, 0)));
+    scrollToHitAndHighlight(_hits[hitIdx].displayLineStart);
 }
 
 void ResultDock::gotoPrevHit()
@@ -2204,30 +2231,60 @@ void ResultDock::gotoPrevHit()
 
     Sci_Position curPos = S(SCI_GETCURRENTPOS, 0, 0);
     int curLine = static_cast<int>(S(SCI_LINEFROMPOSITION, curPos, 0));
+
+    // Determine search block boundaries
+    const int searchHdrLevel = SC_FOLDLEVELBASE + static_cast<int>(LineLevel::SearchHdr);
+    int blockStart = curLine;
+    {
+        int line = curLine;
+        for (;;) {
+            int level = static_cast<int>(S(SCI_GETFOLDLEVEL, line)) & SC_FOLDLEVELNUMBERMASK;
+            if (level <= searchHdrLevel) { blockStart = line; break; }
+            int parent = static_cast<int>(S(SCI_GETFOLDPARENT, line, 0));
+            if (parent < 0 || parent == line) { blockStart = 0; break; }
+            line = parent;
+        }
+    }
+    int blockEnd = static_cast<int>(S(SCI_GETLASTCHILD, blockStart, searchHdrLevel));
+    if (blockEnd < blockStart) blockEnd = static_cast<int>(S(SCI_GETLINECOUNT)) - 1;
+
+    // Collect hit indices within this block
+    Sci_Position blockStartPos = S(SCI_POSITIONFROMLINE, blockStart, 0);
+    Sci_Position blockEndPos = S(SCI_GETLINEENDPOSITION, blockEnd, 0);
+    std::vector<size_t> blockHits;
+    for (size_t i = 0; i < _hits.size(); ++i) {
+        int dls = _hits[i].displayLineStart;
+        if (dls >= static_cast<int>(blockStartPos) && dls <= static_cast<int>(blockEndPos))
+            blockHits.push_back(i);
+    }
+    if (blockHits.empty()) return;
+
+    // Find current position among block hits and go back
     Sci_Position curLineStart = S(SCI_POSITIONFROMLINE, curLine, 0);
-
-    auto it = _lineStartToHitIndex.find(static_cast<int>(curLineStart));
-    size_t prevIdx;
-
-    if (it != _lineStartToHitIndex.end()) {
-        // On a hit line: go to previous (wrap around)
-        prevIdx = (it->second == 0) ? _hits.size() - 1 : it->second - 1;
+    size_t pick = blockHits.size() - 1;
+    auto curIt = _lineStartToHitIndex.find(static_cast<int>(curLineStart));
+    if (curIt != _lineStartToHitIndex.end()) {
+        for (size_t b = 0; b < blockHits.size(); ++b) {
+            if (blockHits[b] == curIt->second) {
+                pick = (b == 0) ? blockHits.size() - 1 : b - 1;
+                break;
+            }
+        }
     }
     else {
-        // Not on a hit line: find the last hit before the current line
-        prevIdx = _hits.size() - 1;
-        for (size_t i = _hits.size(); i-- > 0;) {
-            if (_hits[i].displayLineStart < static_cast<int>(curLineStart)) {
-                prevIdx = i;
+        // Not on a hit line — find last hit before cursor
+        for (size_t b = blockHits.size(); b-- > 0;) {
+            if (_hits[blockHits[b]].displayLineStart < static_cast<int>(curLineStart)) {
+                pick = b;
                 break;
             }
         }
     }
 
+    size_t hitIdx = blockHits[pick];
     navigateFromDockLine(_hSci,
-        static_cast<int>(S(SCI_LINEFROMPOSITION, _hits[prevIdx].displayLineStart, 0)));
-
-    scrollToHitAndHighlight(_hits[prevIdx].displayLineStart);
+        static_cast<int>(S(SCI_LINEFROMPOSITION, _hits[hitIdx].displayLineStart, 0)));
+    scrollToHitAndHighlight(_hits[hitIdx].displayLineStart);
 }
 
 ResultDock::CursorHitInfo ResultDock::getCurrentCursorHitInfo() const {
@@ -2250,6 +2307,50 @@ ResultDock::CursorHitInfo ResultDock::getCurrentCursorHitInfo() const {
     info.hitIndex = hitIdx;
 
     return info;
+}
+
+ResultDock::BlockRange ResultDock::getBlockRangeForHit(size_t hitIndex) const
+{
+    BlockRange br;
+    if (!_hSci || hitIndex >= _hits.size()) return br;
+
+    int dls = _hits[hitIndex].displayLineStart;
+    if (dls < 0) return br;
+
+    int curLine = static_cast<int>(S(SCI_LINEFROMPOSITION, dls, 0));
+
+    // Walk up to the SearchHeader via fold parents
+    const int searchHdrLevel = SC_FOLDLEVELBASE + static_cast<int>(LineLevel::SearchHdr);
+    int blockStartLine = curLine;
+    {
+        int line = curLine;
+        for (;;) {
+            int level = static_cast<int>(S(SCI_GETFOLDLEVEL, line)) & SC_FOLDLEVELNUMBERMASK;
+            if (level <= searchHdrLevel) { blockStartLine = line; break; }
+            int parent = static_cast<int>(S(SCI_GETFOLDPARENT, line, 0));
+            if (parent < 0 || parent == line) { blockStartLine = 0; break; }
+            line = parent;
+        }
+    }
+    int blockEndLine = static_cast<int>(S(SCI_GETLASTCHILD, blockStartLine, searchHdrLevel));
+    if (blockEndLine < blockStartLine)
+        blockEndLine = static_cast<int>(S(SCI_GETLINECOUNT)) - 1;
+
+    Sci_Position blockStartPos = S(SCI_POSITIONFROMLINE, blockStartLine, 0);
+    Sci_Position blockEndPos = S(SCI_GETLINEENDPOSITION, blockEndLine, 0);
+
+    // Find first and last hit index within this block
+    br.first = _hits.size();
+    br.last = 0;
+    for (size_t i = 0; i < _hits.size(); ++i) {
+        int d = _hits[i].displayLineStart;
+        if (d >= static_cast<int>(blockStartPos) && d <= static_cast<int>(blockEndPos)) {
+            if (i < br.first) br.first = i;
+            br.last = i;
+        }
+    }
+    br.valid = (br.first <= br.last);
+    return br;
 }
 
 size_t ResultDock::getHitIndexAtLineStart(int lineStartPos) const
@@ -2711,7 +2812,11 @@ bool ResultDock::navigateFromDockLine(HWND hwnd, int dispLine)
     }
     if (isPseudo) {
         pathToOpen = BuildDefaultPathForPseudo(wPath);
-        if (pathToOpen.empty()) return false;
+        if (pathToOpen.empty()) {
+            if (_statusCallback)
+                _statusCallback(LM.get(L"status_tab_not_found", { wPath }), true);
+            return false;
+        }
     }
 
     s_pending.setFromHit(pathToOpen, hit);
@@ -2719,6 +2824,13 @@ bool ResultDock::navigateFromDockLine(HWND hwnd, int dispLine)
     const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(pathToOpen.c_str()));
     if (!ok) {
         s_pending.clear();
+        if (_statusCallback) {
+            DWORD attr = ::GetFileAttributesW(pathToOpen.c_str());
+            if (attr == INVALID_FILE_ATTRIBUTES)
+                _statusCallback(LM.get(L"status_file_not_found", { pathToOpen }), true);
+            else
+                _statusCallback(LM.get(L"status_unable_to_open_file", { pathToOpen }), true);
+        }
         return false;
     }
 

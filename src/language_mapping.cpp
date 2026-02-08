@@ -205,6 +205,8 @@ const LangKV kEnglishPairs[] = {
 { L"status_deleted_fields_count", L"Deleted $REPLACE_STRING fields." },
 { L"status_line_and_column_position", L" (Line: $REPLACE_STRING1, Column: $REPLACE_STRING2)" },
 { L"status_unable_to_open_file", L"Failed to open the file: $REPLACE_STRING" },
+{ L"status_file_not_found", L"File not found: $REPLACE_STRING" },
+{ L"status_tab_not_found", L"Tab not found: $REPLACE_STRING" },
 { L"status_no_data_for_duplicates", L"No data rows to check for duplicates." },
 { L"status_no_duplicates_found", L"No duplicates found." },
 { L"status_duplicates_deleted", L"Deleted $REPLACE_STRING duplicate rows." },
