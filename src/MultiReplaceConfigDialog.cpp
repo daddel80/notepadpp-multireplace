@@ -1179,7 +1179,6 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.stayAfterReplaceEnabled = false;
     def.allFromCursorEnabled = false;
     def.muteSounds = false;
-    def.isDeleteButtonVisible = true;
     def.limitFileSizeEnabled = false;
     def.maxFileSizeMB = 100;
     def.highlightMatchEnabled = true;
