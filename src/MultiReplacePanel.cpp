@@ -4028,23 +4028,21 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
         if (!pathsEqualUtf8(hit.fullPathUtf8, curPathUtf8))
             continue;
 
-        // Check merged positions (flat view: multiple criteria on same line)
-        if (!hit.allFindTexts.empty()) {
-            for (size_t j = 0; j < hit.allFindTexts.size(); ++j)
-            {
-                if (hit.allFindTexts[j] != item.findText)
-                    continue;
-                if (j < hit.allPositions.size()) {
-                    Sci_Position mPos = hit.allPositions[j];
-                    Sci_Position mLen = (j < hit.allLengths.size()) ? hit.allLengths[j] : hit.length;
-                    int line = (hit.docLine >= 0) ? hit.docLine : static_cast<int>(send(SCI_LINEFROMPOSITION, mPos, 0));
-                    ranges.push_back({ mPos, mLen, line, i });
-                }
+        // Each hit always has allFindTexts/allPositions/allLengths/allSearchFlags
+        // populated by formatHitsLines (even for single matches on a line).
+        for (size_t j = 0; j < hit.allFindTexts.size(); ++j)
+        {
+            if (hit.allFindTexts[j] != item.findText)
+                continue;
+            int subFlags = (j < hit.allSearchFlags.size()) ? hit.allSearchFlags[j] : hit.searchFlags;
+            if (subFlags != itemFlags)
+                continue;
+            if (j < hit.allPositions.size()) {
+                Sci_Position mPos = hit.allPositions[j];
+                Sci_Position mLen = (j < hit.allLengths.size()) ? hit.allLengths[j] : hit.length;
+                int line = (hit.docLine >= 0) ? hit.docLine : static_cast<int>(send(SCI_LINEFROMPOSITION, mPos, 0));
+                ranges.push_back({ mPos, mLen, line, i });
             }
-        }
-        // Non-merged hit (grouped view or single criterion): match text + flags
-        else if (hit.findTextW == item.findText && hit.searchFlags == itemFlags) {
-            ranges.push_back({ hit.pos, hit.length, hit.docLine, i });
         }
     }
 

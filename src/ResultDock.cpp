@@ -1572,6 +1572,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             firstHitOnRow->allPositions.push_back(h.pos);
             firstHitOnRow->allLengths.clear();
             firstHitOnRow->allLengths.push_back(h.length);
+            firstHitOnRow->allSearchFlags.clear();
+            firstHitOnRow->allSearchFlags.push_back(h.searchFlags);
 
             if (dispStart < displayU8.size()) {
                 size_t safeLen = dispLen;
@@ -1608,6 +1610,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                 firstHitOnRow->allFindTexts.push_back(h.findTextW);
                 firstHitOnRow->allPositions.push_back(h.pos);
                 firstHitOnRow->allLengths.push_back(h.length);
+                firstHitOnRow->allSearchFlags.push_back(h.searchFlags);
             }
             h.displayLineStart = -1;
         }

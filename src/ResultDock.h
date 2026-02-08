@@ -55,6 +55,7 @@ public:
         std::vector<std::wstring> allFindTexts;
         std::vector<Sci_Position> allPositions;
         std::vector<Sci_Position> allLengths;
+        std::vector<int>          allSearchFlags;
 
         int displayLineStart{ -1 };
         int numberStart{ 0 };
