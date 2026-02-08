@@ -2206,7 +2206,7 @@ void ResultDock::gotoNextHit()
     if (curIt != _lineStartToHitIndex.end()) {
         // Currently on a hit line — find it in blockHits and advance
         for (size_t b = 0; b < blockHits.size(); ++b) {
-            if (blockHits[b] == curIt->second) {
+            if (blockHits[b] == static_cast<size_t>(curIt->second)) {
                 pick = (b + 1) % blockHits.size();
                 break;
             }
@@ -2268,7 +2268,7 @@ void ResultDock::gotoPrevHit()
     auto curIt = _lineStartToHitIndex.find(static_cast<int>(curLineStart));
     if (curIt != _lineStartToHitIndex.end()) {
         for (size_t b = 0; b < blockHits.size(); ++b) {
-            if (blockHits[b] == curIt->second) {
+            if (blockHits[b] == static_cast<size_t>(curIt->second)) {
                 pick = (b == 0) ? blockHits.size() - 1 : b - 1;
                 break;
             }
