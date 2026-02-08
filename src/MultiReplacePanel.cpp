@@ -4013,6 +4013,11 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
     ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(curPath));
     std::string curPathUtf8 = Encoding::wstringToUtf8(curPath);
 
+    // Build expected searchFlags for this list entry
+    const int itemFlags = (item.wholeWord ? SCFIND_WHOLEWORD : 0)
+        | (item.matchCase ? SCFIND_MATCHCASE : 0)
+        | (item.regex ? SCFIND_REGEXP : 0);
+
     // Collect all matching hits from ResultDock (stored positions)
     for (size_t i = 0; i < allHits.size(); ++i)
     {
@@ -4020,25 +4025,23 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
         if (!pathsEqualUtf8(hit.fullPathUtf8, curPathUtf8))
             continue;
 
-        // Check if this hit belongs to the requested list entry (by findText match)
-        bool textMatch = (hit.findTextW == item.findText);
-        if (!textMatch) {
-            for (const auto& ft : hit.allFindTexts) {
-                if (ft == item.findText) { textMatch = true; break; }
+        // Check merged positions (flat view: multiple criteria on same line)
+        if (!hit.allFindTexts.empty()) {
+            for (size_t j = 0; j < hit.allFindTexts.size(); ++j)
+            {
+                if (hit.allFindTexts[j] != item.findText)
+                    continue;
+                if (j < hit.allPositions.size()) {
+                    Sci_Position mPos = hit.allPositions[j];
+                    Sci_Position mLen = (j < hit.allLengths.size()) ? hit.allLengths[j] : hit.length;
+                    int line = (hit.docLine >= 0) ? hit.docLine : static_cast<int>(send(SCI_LINEFROMPOSITION, mPos, 0));
+                    ranges.push_back({ mPos, mLen, line, i });
+                }
             }
         }
-        if (!textMatch)
-            continue;
-
-        // Add primary position
-        ranges.push_back({ hit.pos, hit.length, hit.docLine, i });
-
-        // Add merged positions (if any)
-        for (size_t j = 0; j < hit.allPositions.size(); ++j)
-        {
-            Sci_Position len = (j < hit.allLengths.size()) ? hit.allLengths[j] : hit.length;
-            int line = (hit.docLine >= 0) ? hit.docLine : static_cast<int>(send(SCI_LINEFROMPOSITION, hit.allPositions[j], 0));
-            ranges.push_back({ hit.allPositions[j], len, line, i });
+        // Non-merged hit (grouped view or single criterion): match text + flags
+        else if (hit.findTextW == item.findText && hit.searchFlags == itemFlags) {
+            ranges.push_back({ hit.pos, hit.length, hit.docLine, i });
         }
     }
 
@@ -7419,10 +7422,7 @@ void MultiReplace::handleFindAllButton()
     }
 
     ResultDock& dock = ResultDock::instance();
-    // Create dock and immediately hide it (like Notepad++ does)
-    // This prevents visual artifacts during search
     dock.ensureCreated(nppData);
-    dock.hide(nppData);
 
     auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
         return ::SendMessage(_hScintilla, m, w, l);
@@ -7588,9 +7588,7 @@ void MultiReplace::handleFindAllInDocsButton()
     }
 
     ResultDock& dock = ResultDock::instance();
-    // Create dock and immediately hide it (like Notepad++ does)
     dock.ensureCreated(nppData);
-    dock.hide(nppData);
 
     int totalHits = 0;
     std::unordered_set<std::string> uniqueFiles;
@@ -7819,9 +7817,7 @@ void MultiReplace::handleFindInFiles() {
     }
 
     ResultDock& dock = ResultDock::instance();
-    // Create dock and immediately hide it (like Notepad++ does)
     dock.ensureCreated(nppData);
-    dock.hide(nppData);
 
     int totalHits = 0;
     std::unordered_set<std::string> uniqueFiles;
