@@ -737,4 +737,4 @@ MultiReplace supports multiple languages. The plugin automatically detects the l
 You can customize the translations by editing the `languages.ini` file located in:
 `C:\Program Files\Notepad++\plugins\MultiReplace\` (or your specific installation path).
 
-Contributions to the `languages.ini` file on GitHub are welcome!
+Contributions to the `languages.ini` file on [GitHub](https://github.com/dein-user/notepadpp-multireplace) are welcome!
