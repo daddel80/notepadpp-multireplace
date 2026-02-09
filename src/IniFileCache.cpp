@@ -19,8 +19,10 @@
 #include "StringUtils.h"
 #include <fstream>
 #include <sstream>
+#include <regex>
 #include <limits>
 #include <algorithm>
+#include <codecvt>
 #include <windows.h>
 #include <filesystem> 
 
@@ -31,6 +33,7 @@
 bool IniFileCache::load(const std::wstring& iniFile)
 {
     _data.clear();
+    _quotedKeys.clear();
     return parse(iniFile);
 }
 
@@ -97,6 +100,12 @@ bool IniFileCache::parse(const std::wstring& iniFilePath)
 
         std::wstring key = StringUtils::trim(line.substr(0, eq));
         std::wstring value = StringUtils::trim(line.substr(eq + 1));
+
+        // Track whether the value was quoted (= string type, needs escaping on save)
+        if (value.size() >= 2 && value.front() == L'"' && value.back() == L'"') {
+            _quotedKeys.insert(section + L"|" + key);
+        }
+
         _data[section][key] = StringUtils::unescapeCsvValue(value);
     }
     return true;

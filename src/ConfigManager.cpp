@@ -49,8 +49,12 @@ bool ConfigManager::load(const std::wstring& iniFile)
     }
 
     _iniPath = iniFile;
-    _stringKeys.clear();  // Clear on reload
     bool result = _cache.load(iniFile);
+    if (result) {
+        // Adopt the quoted-key info from the parser so save() can
+        // re-escape them correctly, even before any writeString() call.
+        _stringKeys = _cache.quotedKeys();
+    }
     _isLoaded = result;
     return result;
 }
@@ -59,7 +63,8 @@ void ConfigManager::forceReload(const std::wstring& iniFile)
 {
     _isLoaded = false;
     _iniPath.clear();
-    _stringKeys.clear();
+    // Note: do NOT clear _stringKeys here — load() will replace it
+    // with the freshly parsed quoted keys from the INI file.
     load(iniFile);
 }
 
