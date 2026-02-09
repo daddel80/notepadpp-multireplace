@@ -33,7 +33,6 @@
 bool IniFileCache::load(const std::wstring& iniFile)
 {
     _data.clear();
-    _quotedKeys.clear();
     return parse(iniFile);
 }
 
@@ -41,7 +40,7 @@ bool IniFileCache::load(const std::wstring& iniFile)
 // ------------------------------------------------------------------
 //  Parser (direct copy of old logic)
 // ------------------------------------------------------------------
-bool IniFileCache::parse(const std::wstring& iniFilePath)
+bool IniFileCache::parse(const std::wstring& iniFilePath, std::set<std::wstring>* stringKeys)
 {
     // Open via filesystem::path (wide) → WinAPI 'W' path, Unicode-safe
     std::ifstream ini(std::filesystem::path(iniFilePath), std::ios::binary);
@@ -101,9 +100,11 @@ bool IniFileCache::parse(const std::wstring& iniFilePath)
         std::wstring key = StringUtils::trim(line.substr(0, eq));
         std::wstring value = StringUtils::trim(line.substr(eq + 1));
 
-        // Track whether the value was quoted (= string type, needs escaping on save)
-        if (value.size() >= 2 && value.front() == L'"' && value.back() == L'"') {
-            _quotedKeys.insert(section + L"|" + key);
+        // Record quoted values as string keys for proper escaping on save
+        if (stringKeys && value.size() >= 2
+            && value.front() == L'"' && value.back() == L'"')
+        {
+            stringKeys->insert(section + L"|" + key);
         }
 
         _data[section][key] = StringUtils::unescapeCsvValue(value);

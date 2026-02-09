@@ -19,7 +19,6 @@
 //  IniFileCache
 //  • Parses a Windows‑style INI file (UTF‑8, UTF‑8‑BOM, or ANSI)
 //  • Stores key/value pairs hierarchically in memory
-//  • Tracks which keys were stored as quoted strings in the INI
 //  • Offers typed getters (string, int, bool …)
 // --------------------------------------------------------------
 
@@ -60,10 +59,6 @@ public:
         const std::wstring& key,
         size_t def = 0) const;
 
-    // Keys that were quoted (i.e. string values) in the parsed INI file.
-    // Format: "Section|Key". Used by ConfigManager to preserve escaping.
-    const std::set<std::wstring>& quotedKeys() const { return _quotedKeys; }
-
     // Direct access (rarely needed) ---------------------------------------
     using Section = std::unordered_map<std::wstring, std::wstring>;
     const std::unordered_map<std::wstring, Section>& raw() const { return _data; }
@@ -71,9 +66,11 @@ public:
     friend class ConfigManager;
 
 private:
-    bool parse(const std::wstring& iniFile);   // core parser
+    // Core parser. If stringKeys is provided, keys whose values were
+    // quoted in the INI file are recorded as "Section|Key" so that
+    // ConfigManager::save() can re-escape them correctly.
+    bool parse(const std::wstring& iniFile, std::set<std::wstring>* stringKeys = nullptr);
 
     using IniData = std::unordered_map<std::wstring, Section>;
     IniData _data;
-    std::set<std::wstring> _quotedKeys;         // "Section|Key" for quoted values
 };
