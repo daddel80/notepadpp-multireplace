@@ -5414,12 +5414,30 @@ void MultiReplace::replaceAllInOpenedDocs()
     bool visibleMain = IsWindowVisible(nppData._scintillaMainHandle);
     bool visibleSecond = IsWindowVisible(nppData._scintillaSecondHandle);
 
-    // Remember which doc was active
-    LRESULT currentDocIndex = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
+    // Remember which doc was active in each view, and which view had focus
+    LRESULT savedMainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
+    LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SECOND_VIEW);
+    int savedView = -1;
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&savedView));
+
+    // Local lambda to rebind _hScintilla to a specific view.
+    // Cannot use pointerToScintilla() here because NPPM_GETCURRENTSCINTILLA
+    // returns the *focused* view, not the one we just activated via NPPM_ACTIVATEDOC.
+    auto bindToView = [&](int view) {
+        _hScintilla = (view == PRIMARY_VIEW)
+            ? nppData._scintillaMainHandle
+            : nppData._scintillaSecondHandle;
+        s_hScintilla = _hScintilla;
+        pSciMsg = reinterpret_cast<SciFnDirect>(
+            ::SendMessage(_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0));
+        pSciWndData = static_cast<sptr_t>(
+            ::SendMessage(_hScintilla, SCI_GETDIRECTPOINTER, 0, 0));
+        };
 
     // Local lambda to process one document
     auto processOneDoc = [&](int view, LRESULT idx) -> bool {
         ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, view, idx);
+        bindToView(view);  // rebind _hScintilla to the activated view
         handleDelimiterPositions(DelimiterOperation::LoadAll);
         if (!handleReplaceAllButton()) return false; // aborted via Stop/Error
 
@@ -5447,11 +5465,18 @@ void MultiReplace::replaceAllInOpenedDocs()
         }
     }
 
-    // Restore the originally active document
-    ::SendMessage(nppData._nppHandle,
-        NPPM_ACTIVATEDOC,
-        visibleMain ? PRIMARY_VIEW : SECOND_VIEW,
-        currentDocIndex);
+    // Restore the originally active document in each view
+    if (visibleMain)
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, PRIMARY_VIEW, savedMainIdx);
+    if (visibleSecond)
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SECOND_VIEW, savedSubIdx);
+
+    // Restore focus to the view that was originally active
+    int restoreView = (savedView == 0) ? PRIMARY_VIEW : SECOND_VIEW;
+    LRESULT restoreIdx = (savedView == 0) ? savedMainIdx : savedSubIdx;
+    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, restoreView, restoreIdx);
+    bindToView(restoreView);
+    ::SetFocus(_hScintilla);  // give keyboard focus back to the original view
 
     // Write back only the enabled entries
     for (size_t j = 0; j < replaceListData.size(); ++j) {
@@ -7665,8 +7690,22 @@ void MultiReplace::handleFindAllInDocsButton()
 
     dock.startSearchBlock(placeholder, useListEnabled ? groupResultsEnabled : false, false);
 
-    auto processCurrentBuffer = [&]() {
-        pointerToScintilla();
+    // Rebind _hScintilla to a specific view (not focus-dependent).
+    // NPPM_GETCURRENTSCINTILLA follows keyboard focus, not NPPM_ACTIVATEDOC,
+    // so we must bind explicitly when iterating across views.
+    auto bindToView = [&](int view) {
+        _hScintilla = (view == MAIN_VIEW)
+            ? nppData._scintillaMainHandle
+            : nppData._scintillaSecondHandle;
+        s_hScintilla = _hScintilla;
+        pSciMsg = reinterpret_cast<SciFnDirect>(
+            ::SendMessage(_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0));
+        pSciWndData = static_cast<sptr_t>(
+            ::SendMessage(_hScintilla, SCI_GETDIRECTPOINTER, 0, 0));
+        };
+
+    auto processCurrentBuffer = [&](int view) {
+        bindToView(view);
         auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT { return ::SendMessage(_hScintilla, m, w, l); };
 
         wchar_t wBuf[MAX_PATH] = {};
@@ -7755,7 +7794,10 @@ void MultiReplace::handleFindAllInDocsButton()
         }
         };
 
-    LRESULT savedIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
+    LRESULT savedMainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
+    LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SECOND_VIEW);
+    int savedView = -1;
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&savedView));
     const bool mainVis = !!::IsWindowVisible(nppData._scintillaMainHandle);
     const bool subVis = !!::IsWindowVisible(nppData._scintillaSecondHandle);
 
@@ -7764,7 +7806,7 @@ void MultiReplace::handleFindAllInDocsButton()
         for (LRESULT i = 0; i < nbMain; ++i) {
             ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
             handleDelimiterPositions(DelimiterOperation::LoadAll);
-            processCurrentBuffer();
+            processCurrentBuffer(MAIN_VIEW);
         }
     }
     if (subVis) {
@@ -7772,10 +7814,21 @@ void MultiReplace::handleFindAllInDocsButton()
         for (LRESULT i = 0; i < nbSub; ++i) {
             ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, i);
             handleDelimiterPositions(DelimiterOperation::LoadAll);
-            processCurrentBuffer();
+            processCurrentBuffer(SUB_VIEW);
         }
     }
-    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, mainVis ? MAIN_VIEW : SUB_VIEW, savedIdx);
+    // Restore the originally active document in each view
+    if (mainVis)
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, savedMainIdx);
+    if (subVis)
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, savedSubIdx);
+
+    // Restore focus to the view that was originally active
+    int restoreView = (savedView == 0) ? MAIN_VIEW : SUB_VIEW;
+    LRESULT restoreIdx = (savedView == 0) ? savedMainIdx : savedSubIdx;
+    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, restoreView, restoreIdx);
+    bindToView(restoreView);
+    ::SetFocus(_hScintilla);  // give keyboard focus back to the original view
 
     if (useListEnabled) {
         for (size_t i = 0; i < listHitTotals.size(); ++i) {
