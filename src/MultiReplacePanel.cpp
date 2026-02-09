@@ -7589,7 +7589,7 @@ void MultiReplace::handleFindAllButton()
         dock.defineSlotColor(0, c);
 
         context.findText = convertAndExtendW(findW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-        context.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) ? SCFIND_REGEXP : 0);
+        context.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
         sciSend(SCI_SETSEARCHFLAGS, context.searchFlags);
 
         std::vector<ResultDock::Hit> rawHits;
@@ -7785,7 +7785,7 @@ void MultiReplace::handleFindAllInDocsButton()
                 ctx.docLength = sciSend(SCI_GETLENGTH);
                 ctx.isColumnMode = columnMode; ctx.isSelectionMode = selMode;
                 ctx.findText = convertAndExtendW(findW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) ? SCFIND_REGEXP : 0);
+                ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
                 sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
                 collect(0, sanitizeSearchPattern(findW), ctx);
             }
@@ -8076,7 +8076,7 @@ void MultiReplace::handleFindInFiles() {
                 SearchContext ctx{};
                 ctx.docLength = send(SCI_GETLENGTH); ctx.isColumnMode = columnMode; ctx.isSelectionMode = false;
                 ctx.findText = convertAndExtendW(findW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) ? SCFIND_REGEXP : 0);
+                ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
                 send(SCI_SETSEARCHFLAGS, ctx.searchFlags, 0);
                 collect(0, findW, ctx);
             }
