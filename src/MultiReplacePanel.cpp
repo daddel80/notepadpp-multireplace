@@ -1413,8 +1413,18 @@ bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Directio
     }
 
     // Perform the move
-    for (size_t i = 0; i < preMoveIndices.size(); ++i) {
-        std::swap(replaceListData[preMoveIndices[i]], replaceListData[indices[i]]);
+    // DOWN: iterate in reverse to prevent cascading swap overwrites
+    // UP:   iterate forward  for the same reason
+    bool reverseIterate = (direction == Direction::Down);
+    if (reverseIterate) {
+        for (size_t i = preMoveIndices.size(); i-- > 0;) {
+            std::swap(replaceListData[preMoveIndices[i]], replaceListData[indices[i]]);
+        }
+    }
+    else {
+        for (size_t i = 0; i < preMoveIndices.size(); ++i) {
+            std::swap(replaceListData[preMoveIndices[i]], replaceListData[indices[i]]);
+        }
     }
 
     // Update the ListView
@@ -1424,10 +1434,17 @@ bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Directio
     // Create Undo/Redo actions
     UndoRedoAction action;
 
-    action.undoAction = [this, preMoveIndices, indices]() {
-        // Swap back the moved items
-        for (size_t i = 0; i < preMoveIndices.size(); ++i) {
-            std::swap(replaceListData[preMoveIndices[i]], replaceListData[indices[i]]);
+    action.undoAction = [this, preMoveIndices, indices, reverseIterate]() {
+        // Undo uses the opposite iteration direction
+        if (!reverseIterate) {
+            for (size_t i = preMoveIndices.size(); i-- > 0;) {
+                std::swap(replaceListData[preMoveIndices[i]], replaceListData[indices[i]]);
+            }
+        }
+        else {
+            for (size_t i = 0; i < preMoveIndices.size(); ++i) {
+                std::swap(replaceListData[preMoveIndices[i]], replaceListData[indices[i]]);
+            }
         }
 
         // Update the ListView
@@ -1448,10 +1465,16 @@ bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Directio
         scrollToIndices(firstIndex, lastIndex);
         };
 
-    action.redoAction = [this, preMoveIndices, indices]() {
-        // Swap items to their new positions again
-        for (size_t i = 0; i < preMoveIndices.size(); ++i) {
-            std::swap(replaceListData[preMoveIndices[i]], replaceListData[indices[i]]);
+    action.redoAction = [this, preMoveIndices, indices, reverseIterate]() {
+        if (reverseIterate) {
+            for (size_t i = preMoveIndices.size(); i-- > 0;) {
+                std::swap(replaceListData[preMoveIndices[i]], replaceListData[indices[i]]);
+            }
+        }
+        else {
+            for (size_t i = 0; i < preMoveIndices.size(); ++i) {
+                std::swap(replaceListData[preMoveIndices[i]], replaceListData[indices[i]]);
+            }
         }
 
         // Update the ListView
@@ -2538,6 +2561,9 @@ void MultiReplace::clearList() {
 
     // Set the original list hash to a default value when list is cleared
     originalListHash = 0;
+
+    // Clear Undo and Redo stacks (stale actions would reference invalid indices)
+    URM.clear();
 }
 
 void MultiReplace::refreshUIListView()
