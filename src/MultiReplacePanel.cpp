@@ -5709,6 +5709,7 @@ void MultiReplace::handleReplaceButton() {
 
                 wasReplaced = replaceOne(replaceListData[i], selection, searchResult, newPos, i, context);
                 if (wasReplaced) {
+                    context.docLength = send(SCI_GETLENGTH); // Update after replacement changed document size
                     refreshUIListView(); // Refresh the ListView to show updated statistic
                     break;
                 }
@@ -5774,12 +5775,15 @@ void MultiReplace::handleReplaceButton() {
 
         bool wasReplaced = replaceOne(replaceItem, selection, searchResult, newPos, SIZE_MAX, context);
 
+        if (wasReplaced) {
+            context.docLength = send(SCI_GETLENGTH); // Update after replacement changed document size
+        }
+
         if (!(wasReplaced && stayAfterReplaceEnabled)) {
+            searchResult = performSearchForward(context, newPos);
+
             if (searchResult.pos < 0 && wrapAroundEnabled) {
                 searchResult = performSearchForward(context, 0);
-            }
-            else if (searchResult.pos >= 0) {
-                searchResult = performSearchForward(context, newPos);
             }
         }
 
