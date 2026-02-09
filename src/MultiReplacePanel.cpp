@@ -4029,33 +4029,46 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
 
     const auto& item = replaceListData[listIndex];
 
-    // 2. Collect match positions from ResultDock hits that match this list entry
-    //    This ensures Column-Scope filtering is respected (only actual search hits are used)
-    struct MatchRange { Sci_Position start; Sci_Position length; int docLine; size_t hitIdx; };
+    // 2. Collect matching hits from ALL files within the active search block.
+    //    Filtered on findText + searchFlags to show only hits for THIS list entry.
+    struct MatchRange {
+        Sci_Position start; Sci_Position length; int docLine;
+        size_t hitIdx; std::string filePathUtf8; bool isCurrentDoc;
+    };
     std::vector<MatchRange> ranges;
 
     ResultDock& dock = ResultDock::instance();
     const auto& allHits = dock.hits();
 
-    // Get current document path for filtering
+    // Current document path (for same-file vs cross-file distinction)
     wchar_t curPath[MAX_PATH] = {};
     ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(curPath));
     std::string curPathUtf8 = Encoding::wstringToUtf8(curPath);
 
-    // Build expected searchFlags for this list entry
+    // Expected searchFlags for this list entry
     const int itemFlags = (item.wholeWord ? SCFIND_WHOLEWORD : 0)
         | (item.matchCase ? SCFIND_MATCHCASE : 0)
         | (item.regex ? SCFIND_REGEXP : 0);
 
-    // Collect all matching hits from ResultDock (stored positions)
-    for (size_t i = 0; i < allHits.size(); ++i)
+    // Determine block scope from dock cursor (independent of which file it points to)
+    size_t blockFirst = 0;
+    size_t blockLast = allHits.size();
+
+    auto cursorInfo = dock.getCurrentCursorHitInfo();
+    if (cursorInfo.valid && cursorInfo.hitIndex < allHits.size()) {
+        auto br = dock.getBlockRangeForHit(cursorInfo.hitIndex);
+        if (br.valid) {
+            blockFirst = br.first;
+            blockLast = br.last + 1;
+        }
+    }
+
+    // Collect matching hits across all files within the block
+    for (size_t i = blockFirst; i < blockLast && i < allHits.size(); ++i)
     {
         const auto& hit = allHits[i];
-        if (!pathsEqualUtf8(hit.fullPathUtf8, curPathUtf8))
-            continue;
+        const bool isCurDoc = pathsEqualUtf8(hit.fullPathUtf8, curPathUtf8);
 
-        // Each hit always has allFindTexts/allPositions/allLengths/allSearchFlags
-        // populated by formatHitsLines (even for single matches on a line).
         for (size_t j = 0; j < hit.allFindTexts.size(); ++j)
         {
             if (hit.allFindTexts[j] != item.findText)
@@ -4066,92 +4079,101 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
             if (j < hit.allPositions.size()) {
                 Sci_Position mPos = hit.allPositions[j];
                 Sci_Position mLen = (j < hit.allLengths.size()) ? hit.allLengths[j] : hit.length;
-                int line = (hit.docLine >= 0) ? hit.docLine : static_cast<int>(send(SCI_LINEFROMPOSITION, mPos, 0));
-                ranges.push_back({ mPos, mLen, line, i });
+                int line = (hit.docLine >= 0) ? hit.docLine
+                    : (isCurDoc ? static_cast<int>(send(SCI_LINEFROMPOSITION, mPos, 0)) : -1);
+                ranges.push_back({ mPos, mLen, line, i, hit.fullPathUtf8, isCurDoc });
             }
         }
     }
 
-    // Sort by position
+    // Sort by hit index (preserves cross-file order from ResultDock block)
     std::sort(ranges.begin(), ranges.end(),
-        [](const MatchRange& a, const MatchRange& b) { return a.start < b.start; });
+        [](const MatchRange& a, const MatchRange& b) { return a.hitIdx < b.hitIdx; });
 
-    // No live search fallback - navigation only works with validated Find All data
     if (ranges.empty()) {
         showStatusMessage(LM.get(L"status_no_results_linked"), MessageStatus::Error);
         return;
     }
 
-    // 3. Determine anchor position and block scope
-    //    Priority: If the dock cursor is on a hit line for the current file,
-    //    use that hit's document position as anchor (allows user to set start
-    //    point by clicking in dock) and restrict to the same search block.
-    //    Otherwise fall back to editor cursor with all hits.
-    Sci_Position anchorPos = 0;
-    size_t blockFirst = 0;
-    size_t blockLast = allHits.size();  // exclusive
-    bool blockScoped = false;
+    // 3. Determine anchor and find next hit
+    //    When the dock cursor is on a hit: use hitIdx as primary anchor, and the
+    //    editor cursor position to distinguish sub-matches within the same dock line.
+    //    When no dock cursor: use editor cursor position only.
+    size_t foundIdx = SIZE_MAX;
+    bool wrapped = false;
+    Sci_Position editorPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
 
-    auto cursorInfo = dock.getCurrentCursorHitInfo();
     if (cursorInfo.valid && cursorInfo.hitIndex < allHits.size()) {
-        const ResultDock::Hit& anchorHit = allHits[cursorInfo.hitIndex];
-        if (pathsEqualUtf8(anchorHit.fullPathUtf8, curPathUtf8)) {
-            anchorPos = anchorHit.pos + anchorHit.length;
+        // Dock-anchored: start from the dock cursor position in block order.
+        const size_t anchorHitIdx = cursorInfo.hitIndex;
 
-            // Restrict to the search block the dock cursor is in
-            auto br = dock.getBlockRangeForHit(cursorInfo.hitIndex);
-            if (br.valid) {
-                blockFirst = br.first;
-                blockLast = br.last + 1;  // make exclusive
-                blockScoped = true;
+        for (size_t i = 0; i < ranges.size(); ++i) {
+            if (ranges[i].hitIdx > anchorHitIdx) {
+                // Past the dock line — next hit in block order (any file)
+                foundIdx = i;
+                break;
+            }
+            if (ranges[i].hitIdx == anchorHitIdx
+                && ranges[i].isCurrentDoc && ranges[i].start >= editorPos) {
+                // Same dock line, same file — advance by position within sub-matches
+                foundIdx = i;
+                break;
+            }
+        }
+    }
+    else {
+        // No dock cursor — use editor position as anchor
+        for (size_t i = 0; i < ranges.size(); ++i) {
+            if (ranges[i].isCurrentDoc && ranges[i].start >= editorPos) {
+                foundIdx = i;
+                break;
+            }
+        }
+        // Current doc exhausted — find next hit in block order (cross-file)
+        if (foundIdx == SIZE_MAX) {
+            size_t maxCurDocHitIdx = 0;
+            for (const auto& r : ranges) {
+                if (r.isCurrentDoc && r.hitIdx > maxCurDocHitIdx)
+                    maxCurDocHitIdx = r.hitIdx;
+            }
+            for (size_t i = 0; i < ranges.size(); ++i) {
+                if (ranges[i].hitIdx > maxCurDocHitIdx) {
+                    foundIdx = i;
+                    break;
+                }
             }
         }
     }
 
-    if (anchorPos == 0) {
-        anchorPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
-    }
-
-    // 3b. Remove ranges whose hitIdx is outside the block scope
-    if (blockScoped) {
-        ranges.erase(
-            std::remove_if(ranges.begin(), ranges.end(),
-                [&](const MatchRange& r) {
-                    return r.hitIdx < blockFirst || r.hitIdx >= blockLast;
-                }),
-            ranges.end());
-
-        if (ranges.empty()) {
-            showStatusMessage(LM.get(L"status_no_results_linked"), MessageStatus::Error);
-            return;
-        }
-    }
-
-    // 4. Find next range at or after anchor position
-    size_t foundIdx = SIZE_MAX;
-    bool wrapped = false;
-
-    for (size_t i = 0; i < ranges.size(); ++i) {
-        if (ranges[i].start >= anchorPos) {
-            foundIdx = i;
-            break;
-        }
-    }
-
-    // 5. Wrap-around
+    // 4. Wrap-around
     if (foundIdx == SIZE_MAX) {
         foundIdx = 0;
         wrapped = true;
     }
 
-    // 6. Jump to the found range
-    Sci_Position jumpPos = ranges[foundIdx].start;
-    Sci_Position jumpLen = ranges[foundIdx].length;
-
-    displayResultCentered(jumpPos, jumpPos + jumpLen, true);
-
-    // 7. Sync ResultDock to the matching hit
+    // 5. Jump to the found range
     size_t hitIdx = ranges[foundIdx].hitIdx;
+    bool crossFile = !ranges[foundIdx].isCurrentDoc;
+
+    if (crossFile) {
+        // Cross-file: open/switch to target file and navigate to hit
+        if (hitIdx < allHits.size()) {
+            const auto& targetHit = allHits[hitIdx];
+            std::wstring wPath = Encoding::utf8ToWString(targetHit.fullPathUtf8);
+            std::wstring openedPath;
+            if (!ResultDock::EnsureFileOpenOrOfferCreate(wPath, openedPath)) {
+                showStatusMessage(LM.get(L"status_unable_to_open_file", { wPath }), MessageStatus::Error);
+                return;
+            }
+            ResultDock::NavigateToHit(targetHit);
+        }
+    }
+    else {
+        // Same file: jump directly in the editor
+        displayResultCentered(ranges[foundIdx].start, ranges[foundIdx].start + ranges[foundIdx].length, true);
+    }
+
+    // 6. Sync ResultDock to the matching hit
     if (hitIdx < allHits.size() && allHits[hitIdx].displayLineStart >= 0) {
         dock.scrollToHitAndHighlight(allHits[hitIdx].displayLineStart);
     }
@@ -4175,7 +4197,7 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
         }
     }
 
-    // 8. Status message
+    // 7. Status message
     size_t total = ranges.size();
     size_t current = foundIdx + 1;
 

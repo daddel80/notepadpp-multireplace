@@ -140,12 +140,14 @@ public:
     static void JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len);
     static void SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, Sci_Position len);
     static void NavigateToHit(const Hit& hit);  // Robust line-based navigation with re-search
+    static bool EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath,
+        std::wstring& outOpenedPath, bool* isNowActive = nullptr);
     void scrollToHitAndHighlight(int displayLineStart);
 
     // ------------------- Global Shortcut Actions -----------------
     void focusDock();                     // F7: Show dock and set keyboard focus
-    void gotoNextHit();                   // F4: Navigate to next hit
-    void gotoPrevHit();                   // Shift+F4: Navigate to previous hit
+    void gotoNextHit();                   // F4: Navigate to next hit in block
+    void gotoPrevHit();                   // Shift+F4: Navigate to previous hit in block
 
     // ------------------- FlowTab Position Adjustment -----------
     // Adjust stored hit positions when FlowTabs insert/remove padding characters.
@@ -253,7 +255,6 @@ private:
     static bool IsCurrentDocByFullPath(const std::wstring& fullPath);
     static bool IsCurrentDocByTitle(const std::wstring& titleOnly);
     static std::wstring BuildDefaultPathForPseudo(const std::wstring& label);
-    static bool EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, std::wstring& outOpenedPath);
 
     // --------------- Context Menu Command Handlers ------------
     static void copySelectedLines(HWND hSci);
@@ -265,6 +266,7 @@ private:
     // -------------------- Callbacks/Subclassing ---------------
     static void toggleFoldAtLine(HWND hSci, int line);
     static bool navigateFromDockLine(HWND hSci, int dispLine);
+    void gotoAdjacentHit(int direction);  // shared impl for gotoNextHit/gotoPrevHit
     static LRESULT CALLBACK sciSubclassProc(HWND, UINT, WPARAM, LPARAM);
     static inline WNDPROC s_prevSciProc = nullptr;
 

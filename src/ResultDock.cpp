@@ -726,7 +726,6 @@ void ResultDock::create(const NppData& npp)
     }
 
     // Hide immediately after registration to prevent empty panel flash.
-    // N++ does the same: display(false) right after NPPM_DMMREGASDCKDLG.
     // The caller shows the panel later via ensureCreatedAndVisible().
     ::SendMessage(npp._nppHandle, NPPM_DMMHIDE, 0, reinterpret_cast<LPARAM>(_hSci));
 
@@ -1807,9 +1806,13 @@ std::wstring ResultDock::BuildDefaultPathForPseudo(const std::wstring& label)
     return dir + L"\\" + label;
 }
 
-bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, std::wstring& outOpenedPath)
+bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath,
+    std::wstring& outOpenedPath, bool* isNowActive)
 {
     extern NppData nppData;
+
+    // Helper: report that the document is now the active tab.
+    auto setActive = [&](bool active) { if (isNowActive) *isNowActive = active; };
 
     // Detect pseudo (e.g., "new 1") and normalize to a real path if needed.
     const bool isPseudo = IsPseudoPath(desiredPath);
@@ -1817,6 +1820,7 @@ bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, st
     // Fast path: if it's a pseudo-name and that tab is currently open, done.
     if (isPseudo && IsCurrentDocByTitle(desiredPath)) {
         outOpenedPath = desiredPath;
+        setActive(true);
         return true;
     }
 
@@ -1828,18 +1832,23 @@ bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, st
     // Try to activate if already open (by full path)
     if (IsCurrentDocByFullPath(targetPath)) {
         outOpenedPath = targetPath;
+        setActive(true);
         return true;
     }
     SwitchToFileIfOpenByFullPath(targetPath);
     if (IsCurrentDocByFullPath(targetPath)) {
         outOpenedPath = targetPath;
+        setActive(true);
         return true;
     }
 
-    // Not currently active: try NPPM_DOOPEN (opens existing file or activates tab)
+    // Not currently active: try NPPM_DOOPEN (opens existing file or activates tab).
     if (FileExistsW(targetPath)) {
         ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(targetPath.c_str()));
         outOpenedPath = targetPath;
+        // SendMessage is synchronous — the tab is typically active after return.
+        // Check rather than assume, so callers can navigate immediately.
+        setActive(IsCurrentDocByFullPath(targetPath));
         return true;
     }
 
@@ -1865,6 +1874,7 @@ bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, st
     const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(targetPath.c_str()));
     if (ok) {
         outOpenedPath = targetPath;
+        setActive(IsCurrentDocByFullPath(targetPath));
         return true;
     }
 
@@ -2079,23 +2089,19 @@ void ResultDock::adjustHitPositionsForFlowTab(
 
 void ResultDock::SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, Sci_Position len)
 {
-    // Already in the correct document? Jump directly.
-    if (!IsPseudoPath(fullPath) && IsCurrentDocByFullPath(fullPath)) {
-        JumpSelectCenterActiveEditor(pos, len);
-        return;
-    }
-    if (IsPseudoPath(fullPath) && IsCurrentDocByTitle(fullPath)) {
-        JumpSelectCenterActiveEditor(pos, len);
-        return;
-    }
-
-    // Open/switch/create via central function
     std::wstring openedPath;
-    if (!EnsureFileOpenOrOfferCreate(fullPath, openedPath))
+    bool active = false;
+    if (!EnsureFileOpenOrOfferCreate(fullPath, openedPath, &active))
         return;
 
-    // Set pending jump (executed when NPPN_BUFFERACTIVATED fires)
-    SetPendingJump(openedPath, pos, len);
+    if (active) {
+        // Document is already the active tab — jump directly
+        JumpSelectCenterActiveEditor(pos, len);
+    }
+    else {
+        // Tab switch is pending (async) — jump when NPPN_BUFFERACTIVATED fires
+        SetPendingJump(openedPath, pos, len);
+    }
 }
 
 void ResultDock::scrollToHitAndHighlight(int displayLineStart)
@@ -2162,12 +2168,22 @@ void ResultDock::focusDock()
 
 void ResultDock::gotoNextHit()
 {
+    gotoAdjacentHit(+1);
+}
+
+void ResultDock::gotoPrevHit()
+{
+    gotoAdjacentHit(-1);
+}
+
+void ResultDock::gotoAdjacentHit(int direction)
+{
     if (!_hSci || _hits.empty()) return;
 
     Sci_Position curPos = S(SCI_GETCURRENTPOS, 0, 0);
     int curLine = static_cast<int>(S(SCI_LINEFROMPOSITION, curPos, 0));
 
-    // Determine search block boundaries (like N++: navigate within one block only)
+    // Determine search block boundaries (navigate within one block only)
     const int searchHdrLevel = SC_FOLDLEVELBASE + static_cast<int>(LineLevel::SearchHdr);
     int blockStart = curLine;
     {
@@ -2194,87 +2210,39 @@ void ResultDock::gotoNextHit()
     }
     if (blockHits.empty()) return;
 
-    // Find current position among block hits and advance
+    // Find current position among block hits and step in the given direction
+    const size_t n = blockHits.size();
     Sci_Position curLineStart = S(SCI_POSITIONFROMLINE, curLine, 0);
-    size_t pick = 0;
+
+    // Default: first hit (forward) or last hit (backward)
+    size_t pick = (direction > 0) ? 0 : n - 1;
+
     auto curIt = _lineStartToHitIndex.find(static_cast<int>(curLineStart));
     if (curIt != _lineStartToHitIndex.end()) {
-        // Currently on a hit line — find it in blockHits and advance
-        for (size_t b = 0; b < blockHits.size(); ++b) {
+        // Currently on a hit line — advance by one step in direction
+        for (size_t b = 0; b < n; ++b) {
             if (blockHits[b] == static_cast<size_t>(curIt->second)) {
-                pick = (b + 1) % blockHits.size();
+                pick = (b + direction + n) % n;
                 break;
             }
         }
     }
     else {
-        // Not on a hit line — find first hit after cursor
-        for (size_t b = 0; b < blockHits.size(); ++b) {
-            if (_hits[blockHits[b]].displayLineStart > static_cast<int>(curLineStart)) {
-                pick = b;
-                break;
+        // Not on a hit line — find nearest hit in the travel direction
+        if (direction > 0) {
+            for (size_t b = 0; b < n; ++b) {
+                if (_hits[blockHits[b]].displayLineStart > static_cast<int>(curLineStart)) {
+                    pick = b;
+                    break;
+                }
             }
         }
-    }
-
-    size_t hitIdx = blockHits[pick];
-    navigateFromDockLine(_hSci,
-        static_cast<int>(S(SCI_LINEFROMPOSITION, _hits[hitIdx].displayLineStart, 0)));
-    scrollToHitAndHighlight(_hits[hitIdx].displayLineStart);
-}
-
-void ResultDock::gotoPrevHit()
-{
-    if (!_hSci || _hits.empty()) return;
-
-    Sci_Position curPos = S(SCI_GETCURRENTPOS, 0, 0);
-    int curLine = static_cast<int>(S(SCI_LINEFROMPOSITION, curPos, 0));
-
-    // Determine search block boundaries
-    const int searchHdrLevel = SC_FOLDLEVELBASE + static_cast<int>(LineLevel::SearchHdr);
-    int blockStart = curLine;
-    {
-        int line = curLine;
-        for (;;) {
-            int level = static_cast<int>(S(SCI_GETFOLDLEVEL, line)) & SC_FOLDLEVELNUMBERMASK;
-            if (level <= searchHdrLevel) { blockStart = line; break; }
-            int parent = static_cast<int>(S(SCI_GETFOLDPARENT, line, 0));
-            if (parent < 0 || parent == line) { blockStart = 0; break; }
-            line = parent;
-        }
-    }
-    int blockEnd = static_cast<int>(S(SCI_GETLASTCHILD, blockStart, searchHdrLevel));
-    if (blockEnd < blockStart) blockEnd = static_cast<int>(S(SCI_GETLINECOUNT)) - 1;
-
-    // Collect hit indices within this block
-    Sci_Position blockStartPos = S(SCI_POSITIONFROMLINE, blockStart, 0);
-    Sci_Position blockEndPos = S(SCI_GETLINEENDPOSITION, blockEnd, 0);
-    std::vector<size_t> blockHits;
-    for (size_t i = 0; i < _hits.size(); ++i) {
-        int dls = _hits[i].displayLineStart;
-        if (dls >= static_cast<int>(blockStartPos) && dls <= static_cast<int>(blockEndPos))
-            blockHits.push_back(i);
-    }
-    if (blockHits.empty()) return;
-
-    // Find current position among block hits and go back
-    Sci_Position curLineStart = S(SCI_POSITIONFROMLINE, curLine, 0);
-    size_t pick = blockHits.size() - 1;
-    auto curIt = _lineStartToHitIndex.find(static_cast<int>(curLineStart));
-    if (curIt != _lineStartToHitIndex.end()) {
-        for (size_t b = 0; b < blockHits.size(); ++b) {
-            if (blockHits[b] == static_cast<size_t>(curIt->second)) {
-                pick = (b == 0) ? blockHits.size() - 1 : b - 1;
-                break;
-            }
-        }
-    }
-    else {
-        // Not on a hit line — find last hit before cursor
-        for (size_t b = blockHits.size(); b-- > 0;) {
-            if (_hits[blockHits[b]].displayLineStart < static_cast<int>(curLineStart)) {
-                pick = b;
-                break;
+        else {
+            for (size_t b = n; b-- > 0;) {
+                if (_hits[blockHits[b]].displayLineStart < static_cast<int>(curLineStart)) {
+                    pick = b;
+                    break;
+                }
             }
         }
     }
@@ -2770,35 +2738,33 @@ bool ResultDock::navigateFromDockLine(HWND hwnd, int dispLine)
     if (hitIndex >= allHits.size()) return false;
     const Hit& hit = allHits[hitIndex];
 
-    // Convert hit path to wide string
     const std::wstring wPath = Encoding::utf8ToWString(hit.fullPathUtf8);
     if (wPath.empty()) return false;
 
     // Preserve dock scroll and cursor position across navigation
     const int firstVisible = static_cast<int>(::SendMessage(hwnd, SCI_GETFIRSTVISIBLELINE, 0, 0));
-
     auto restoreDockView = [&]() {
         ::SendMessage(hwnd, SCI_SETFIRSTVISIBLELINE, firstVisible, 0);
         const Sci_Position dockLineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);
         ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockLineStart, 0);
         };
 
-    // Central open/switch/create — handles pseudo-paths, tab switch, file creation
+    // Open/switch/create the target file
     std::wstring openedPath;
-    if (!EnsureFileOpenOrOfferCreate(wPath, openedPath)) {
+    bool active = false;
+    if (!EnsureFileOpenOrOfferCreate(wPath, openedPath, &active)) {
         if (_statusCallback)
             _statusCallback(LM.get(L"status_tab_not_found", { wPath }), true);
         return false;
     }
 
-    // Set pending jump for cross-file navigation (NPPN_BUFFERACTIVATED)
-    s_pending.setFromHit(openedPath, hit);
-
-    // If file was already active, navigate immediately
-    if (IsCurrentDocByFullPath(openedPath) ||
-        (IsPseudoPath(wPath) && IsCurrentDocByTitle(wPath))) {
+    if (active) {
+        // Document is already the active tab — navigate immediately
         NavigateToHit(hit);
-        s_pending.clear();
+    }
+    else {
+        // Tab switch is pending (async) — navigate when NPPN_BUFFERACTIVATED fires
+        s_pending.setFromHit(openedPath, hit);
     }
 
     restoreDockView();
@@ -2947,7 +2913,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
     case WM_KEYDOWN: {
         if (wp == VK_ESCAPE) {
-            // Match N++ behavior: ESC in search results panel hides it
+            // ESC hides the results panel
             ResultDock::instance().hide(nppData);
             return 0;
         }
@@ -3076,7 +3042,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             ResultDock::instance().clear();
             return 0;
 
-            // ── open paths in N++ ─────────────────────────
+            // ── open paths ─────────────────────────
         case IDM_RD_OPEN_PATHS:
             openSelectedPaths(hwnd);
             return 0;
