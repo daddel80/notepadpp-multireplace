@@ -1809,61 +1809,69 @@ std::wstring ResultDock::BuildDefaultPathForPseudo(const std::wstring& label)
 
 bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, std::wstring& outOpenedPath)
 {
+    extern NppData nppData;
+
     // Detect pseudo (e.g., "new 1") and normalize to a real path if needed.
     const bool isPseudo = IsPseudoPath(desiredPath);
 
-    // Fast path: if it's a pseudo-name and that tab is currently open, just return.
+    // Fast path: if it's a pseudo-name and that tab is currently open, done.
     if (isPseudo && IsCurrentDocByTitle(desiredPath)) {
         outOpenedPath = desiredPath;
         return true;
     }
 
-    // Normalize pseudo names to a full path upfront (e.g., "<NppDir>\new 1")
+    // Normalize pseudo names to a full path upfront (e.g., "<NppDir>\new 1").
+    // All subsequent operations use targetPath, NOT desiredPath.
     const std::wstring targetPath = isPseudo ? BuildDefaultPathForPseudo(desiredPath)
         : desiredPath;
 
-    // Try to activate if already open
-    SwitchToFileIfOpenByFullPath(desiredPath);
-    if (IsCurrentDocByFullPath(desiredPath)) {
-        outOpenedPath = desiredPath;
+    // Try to activate if already open (by full path)
+    if (IsCurrentDocByFullPath(targetPath)) {
+        outOpenedPath = targetPath;
+        return true;
+    }
+    SwitchToFileIfOpenByFullPath(targetPath);
+    if (IsCurrentDocByFullPath(targetPath)) {
+        outOpenedPath = targetPath;
         return true;
     }
 
-    // Not open: try to open if it exists
-    if (FileExistsW(desiredPath)) {
-        ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(desiredPath.c_str()));
-        outOpenedPath = desiredPath;
+    // Not currently active: try NPPM_DOOPEN (opens existing file or activates tab)
+    if (FileExistsW(targetPath)) {
+        ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(targetPath.c_str()));
+        outOpenedPath = targetPath;
         return true;
     }
 
-    // Missing: prompt to create at the desiredPath
+    // File doesn't exist: prompt user to create it
     const std::wstring title = LM.get(L"msgbox_title_create_file");
-    const std::wstring prompt = LM.get(L"msgbox_prompt_create_file", { desiredPath });
+    const std::wstring prompt = LM.get(L"msgbox_prompt_create_file", { targetPath });
 
-    const int res = ::MessageBoxW(nppData._nppHandle, prompt.c_str(), title.c_str(), MB_YESNO | MB_APPLMODAL);
+    const int res = ::MessageBoxW(nppData._nppHandle, prompt.c_str(), title.c_str(),
+        MB_YESNO | MB_ICONQUESTION | MB_APPLMODAL);
     if (res != IDYES) return false;
 
-    // Try to create an empty file; if it fails, show error
-    HANDLE hFile = ::CreateFileW(desiredPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+    // Create the empty file
+    HANDLE hFile = ::CreateFileW(targetPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
         CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (hFile == INVALID_HANDLE_VALUE) {
-        const std::wstring err = LM.get(L"msgbox_error_create_file", { desiredPath });
-        ::MessageBoxW(nppData._nppHandle, err.c_str(), title.c_str(), MB_OK | MB_APPLMODAL);
+        const std::wstring err = LM.get(L"msgbox_error_create_file", { targetPath });
+        ::MessageBoxW(nppData._nppHandle, err.c_str(), title.c_str(), MB_OK | MB_ICONERROR | MB_APPLMODAL);
         return false;
     }
     ::CloseHandle(hFile);
 
-    // Open the just created file
-    const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(desiredPath.c_str()));
+    // Open the newly created file
+    const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(targetPath.c_str()));
     if (ok) {
-        outOpenedPath = desiredPath;
+        outOpenedPath = targetPath;
         return true;
     }
 
-    // Should not happen, but keep safe fallback
-    const std::wstring err = LM.get(L"msgbox_error_create_file", { desiredPath });
-    ::MessageBoxW(nppData._nppHandle, err.c_str(), title.c_str(), MB_OK | MB_APPLMODAL);
-    return true;
+    // Shouldn't happen, but handle gracefully
+    const std::wstring err = LM.get(L"msgbox_error_create_file", { targetPath });
+    ::MessageBoxW(nppData._nppHandle, err.c_str(), title.c_str(), MB_OK | MB_ICONERROR | MB_APPLMODAL);
+    return false;
 }
 
 void ResultDock::JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len)
@@ -2071,36 +2079,23 @@ void ResultDock::adjustHitPositionsForFlowTab(
 
 void ResultDock::SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, Sci_Position len)
 {
-    // Check for pseudo-paths (like <untitled>)
-    const bool isPseudo = IsPseudoPath(fullPath);
-
-    // Check if already in the correct document
-    wchar_t currentPath[MAX_PATH] = {};
-    ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(currentPath));
-
-    if (!isPseudo && _wcsicmp(currentPath, fullPath.c_str()) == 0) {
-        // Already in correct document - jump directly
+    // Already in the correct document? Jump directly.
+    if (!IsPseudoPath(fullPath) && IsCurrentDocByFullPath(fullPath)) {
+        JumpSelectCenterActiveEditor(pos, len);
+        return;
+    }
+    if (IsPseudoPath(fullPath) && IsCurrentDocByTitle(fullPath)) {
         JumpSelectCenterActiveEditor(pos, len);
         return;
     }
 
-    if (isPseudo && IsCurrentDocByTitle(fullPath)) {
-        // Already in correct pseudo document - jump directly
-        JumpSelectCenterActiveEditor(pos, len);
+    // Open/switch/create via central function
+    std::wstring openedPath;
+    if (!EnsureFileOpenOrOfferCreate(fullPath, openedPath))
         return;
-    }
 
-    // Need to switch/open document
-    std::wstring pathToOpen = fullPath;
-    if (isPseudo) {
-        pathToOpen = BuildDefaultPathForPseudo(fullPath);
-        if (pathToOpen.empty()) return;
-    }
-
-    SetPendingJump(pathToOpen, pos, len);
-
-    // Use NPPM_DOOPEN instead to open files that aren't already open
-    ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(pathToOpen.c_str()));
+    // Set pending jump (executed when NPPN_BUFFERACTIVATED fires)
+    SetPendingJump(openedPath, pos, len);
 }
 
 void ResultDock::scrollToHitAndHighlight(int displayLineStart)
@@ -2590,18 +2585,18 @@ void ResultDock::openSelectedPaths(HWND hSci) {
         raw.resize(strnlen(raw.c_str(), len));
         LineKind k = classify(raw);
 
+        std::wstring p;
         if (k == LineKind::FileHdr) {
-            std::wstring p = pathFromFileHdr(Encoding::utf8ToWString(raw));
-            if (opened.insert(p).second)
-                ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(p.c_str()));
+            p = pathFromFileHdr(Encoding::utf8ToWString(raw));
         }
         else if (k == LineKind::HitLine || k == LineKind::CritHdr) {
             int fLine = ancestorFileLine(hSci, l);
-            if (fLine != -1) {
-                std::wstring p = pathFromFileHdr(getLineW(hSci, fLine));
-                if (opened.insert(p).second)
-                    ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(p.c_str()));
-            }
+            if (fLine != -1)
+                p = pathFromFileHdr(getLineW(hSci, fLine));
+        }
+        if (!p.empty() && opened.insert(p).second) {
+            std::wstring openedPath;
+            EnsureFileOpenOrOfferCreate(p, openedPath);
         }
     }
 }
@@ -2758,8 +2753,6 @@ void ResultDock::toggleFoldAtLine(HWND hwnd, int line)
 // Returns true if the line was a hit and navigation was initiated.
 bool ResultDock::navigateFromDockLine(HWND hwnd, int dispLine)
 {
-    extern NppData nppData;
-
     const int lineLen = static_cast<int>(::SendMessage(hwnd, SCI_LINELENGTH, dispLine, 0));
     if (lineLen <= 0) return false;
 
@@ -2777,18 +2770,8 @@ bool ResultDock::navigateFromDockLine(HWND hwnd, int dispLine)
     if (hitIndex >= allHits.size()) return false;
     const Hit& hit = allHits[hitIndex];
 
-    std::wstring wPath;
-    if (!hit.fullPathUtf8.empty()) {
-        const int needed = ::MultiByteToWideChar(CP_UTF8, 0,
-            hit.fullPathUtf8.c_str(), static_cast<int>(hit.fullPathUtf8.size()),
-            nullptr, 0);
-        if (needed > 0) {
-            wPath.resize(needed);
-            ::MultiByteToWideChar(CP_UTF8, 0,
-                hit.fullPathUtf8.c_str(), static_cast<int>(hit.fullPathUtf8.size()),
-                &wPath[0], needed);
-        }
-    }
+    // Convert hit path to wide string
+    const std::wstring wPath = Encoding::utf8ToWString(hit.fullPathUtf8);
     if (wPath.empty()) return false;
 
     // Preserve dock scroll and cursor position across navigation
@@ -2800,41 +2783,22 @@ bool ResultDock::navigateFromDockLine(HWND hwnd, int dispLine)
         ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockLineStart, 0);
         };
 
-    const bool isPseudo = IsPseudoPath(wPath);
-    std::wstring pathToOpen = wPath;
-
-    if (!isPseudo && IsCurrentDocByFullPath(pathToOpen)) {
-        NavigateToHit(hit);
-        restoreDockView();
-        return true;
-    }
-    if (isPseudo && IsCurrentDocByTitle(wPath)) {
-        NavigateToHit(hit);
-        restoreDockView();
-        return true;
-    }
-    if (isPseudo) {
-        pathToOpen = BuildDefaultPathForPseudo(wPath);
-        if (pathToOpen.empty()) {
-            if (_statusCallback)
-                _statusCallback(LM.get(L"status_tab_not_found", { wPath }), true);
-            return false;
-        }
-    }
-
-    s_pending.setFromHit(pathToOpen, hit);
-
-    const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(pathToOpen.c_str()));
-    if (!ok) {
-        s_pending.clear();
-        if (_statusCallback) {
-            DWORD attr = ::GetFileAttributesW(pathToOpen.c_str());
-            if (attr == INVALID_FILE_ATTRIBUTES)
-                _statusCallback(LM.get(L"status_file_not_found", { pathToOpen }), true);
-            else
-                _statusCallback(LM.get(L"status_unable_to_open_file", { pathToOpen }), true);
-        }
+    // Central open/switch/create — handles pseudo-paths, tab switch, file creation
+    std::wstring openedPath;
+    if (!EnsureFileOpenOrOfferCreate(wPath, openedPath)) {
+        if (_statusCallback)
+            _statusCallback(LM.get(L"status_tab_not_found", { wPath }), true);
         return false;
+    }
+
+    // Set pending jump for cross-file navigation (NPPN_BUFFERACTIVATED)
+    s_pending.setFromHit(openedPath, hit);
+
+    // If file was already active, navigate immediately
+    if (IsCurrentDocByFullPath(openedPath) ||
+        (IsPseudoPath(wPath) && IsCurrentDocByTitle(wPath))) {
+        NavigateToHit(hit);
+        s_pending.clear();
     }
 
     restoreDockView();
