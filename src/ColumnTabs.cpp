@@ -441,51 +441,137 @@ namespace ColumnTabs {
             return true;
 
         RedrawGuard rd(hSci);
+
+        // Suppress undo collection: FlowTab padding is cosmetic, the toggle
+        // button serves as the undo mechanism.  We keep BEGIN/ENDUNDOACTION
+        // as a performance hint so Scintilla optimises its gap buffer.
+        const bool undoWasOn = Sci(SCI_GETUNDOCOLLECTION) != 0;
+        if (undoWasOn) Sci(SCI_SETUNDOCOLLECTION, 0);
+
+        // Suppress modification notifications during bulk insert — prevents
+        // Notepad++ from re-lexing/folding after each individual edit.
+        const int savedEventMask = (int)Sci(SCI_GETMODEVENTMASK);
+        Sci(SCI_SETMODEVENTMASK, 0);
+
         Sci(SCI_BEGINUNDOACTION);
+
         Sci(SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
         Sci(SCI_INDICSETSTYLE, g_CT_IndicatorId, INDIC_HIDDEN);
         Sci(SCI_INDICSETALPHA, g_CT_IndicatorId, 0);
 
         bool madePads = false;
 
+        // Bulk approach: build modified text per line in memory, then replace
+        // the whole line via SCI_REPLACETARGET (one Scintilla call per line
+        // instead of one per delimiter — avoids O(n²) gap-buffer shifts).
         auto fetch = [&](int ln)->CT_ColumnLineInfo {
             return detail::fetchLine(model, ln);
             };
 
         for (int ln = line0; ln <= line1; ++ln) {
             const auto L = fetch(ln);
-            const Sci_Position base = (Sci_Position)Sci(SCI_POSITIONFROMLINE, (uptr_t)ln);
-            Sci_Position delta = 0;
-
             const size_t nDelims = L.delimiterOffsets.size();
             if (nDelims == 0) continue;
 
-            for (size_t c = 0; c < nDelims; ++c) {
-                const Sci_Position lineEndNow = (Sci_Position)Sci(SCI_GETLINEENDPOSITION, (uptr_t)ln);
-                const Sci_Position delimPos = base + (Sci_Position)L.delimiterOffsets[c] + delta;
-                if (delimPos < base || delimPos > lineEndNow) continue;
+            const Sci_Position lineStart = (Sci_Position)Sci(SCI_POSITIONFROMLINE, (uptr_t)ln);
+            const Sci_Position lineEnd = (Sci_Position)Sci(SCI_GETLINEENDPOSITION, (uptr_t)ln);
+            const Sci_Position lineLen = lineEnd - lineStart;
+            if (lineLen <= 0) continue;
 
-                Sci_Position wsStart = delimPos;
-                while (wsStart > base) {
-                    const int ch = (int)Sci(SCI_GETCHARAT, (uptr_t)(wsStart - 1));
-                    if (ch == ' ' || ch == '\t') --wsStart; else break;
+            // Collect existing indicator runs on this line (e.g. from NumericPadding)
+            // as byte offsets relative to lineStart.  REPLACETARGET destroys them,
+            // so we must capture and re-apply after the replace.
+            std::vector<std::pair<size_t, size_t>> existingIndicRuns; // (offset, len)
+            {
+                Sci_Position p = lineStart;
+                while (p < lineEnd) {
+                    int val = (int)Sci(SCI_INDICATORVALUEAT, (uptr_t)g_CT_IndicatorId, (sptr_t)p);
+                    Sci_Position runEnd = (Sci_Position)Sci(SCI_INDICATOREND, (uptr_t)g_CT_IndicatorId, (sptr_t)p);
+                    if (runEnd <= p) break;
+                    if (runEnd > lineEnd) runEnd = lineEnd;
+                    if (val != 0) {
+                        existingIndicRuns.push_back({
+                            (size_t)(p - lineStart),
+                            (size_t)(runEnd - p) });
+                    }
+                    p = runEnd;
                 }
+            }
 
-                const bool keepExistingTab =
-                    (wsStart < delimPos) &&
-                    ((int)Sci(SCI_GETCHARAT, (uptr_t)(delimPos - 1)) == '\t');
+            // Read current line text
+            std::string origLine((size_t)lineLen, '\0');
+            Sci_TextRangeFull tr{};
+            tr.chrg.cpMin = lineStart;
+            tr.chrg.cpMax = lineEnd;
+            tr.lpstrText = origLine.data();
+            Sci(SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
+
+            // Build new line with tabs inserted before delimiters.
+            std::string newLine;
+            newLine.reserve(origLine.size() + nDelims);
+            std::vector<std::pair<size_t, size_t>> indicRanges; // (pos, len) in newLine
+            std::vector<size_t> tabInsertOffsets;                // original offsets of insertions
+
+            size_t prevOff = 0;
+            int tabsInserted = 0;
+            for (size_t c = 0; c < nDelims; ++c) {
+                size_t delimOff = (size_t)L.delimiterOffsets[c];
+                if (delimOff > origLine.size()) continue;
+
+                size_t wsStart = delimOff;
+                while (wsStart > 0 && (origLine[wsStart - 1] == ' ' || origLine[wsStart - 1] == '\t'))
+                    --wsStart;
+
+                bool keepExistingTab =
+                    (wsStart < delimOff) && (origLine[delimOff - 1] == '\t');
+
+                newLine.append(origLine, prevOff, delimOff - prevOff);
 
                 if (!keepExistingTab) {
-                    const Sci_Position tabPos = delimPos;
-                    Sci(SCI_INSERTTEXT, (uptr_t)tabPos, (sptr_t)"\t");
-                    Sci(SCI_INDICATORFILLRANGE, (uptr_t)tabPos, (sptr_t)1);
-                    delta += 1;
+                    size_t tabPos = newLine.size();
+                    newLine += '\t';
+                    indicRanges.push_back({ tabPos, 1 });
+                    tabInsertOffsets.push_back(delimOff);
+                    ++tabsInserted;
                     madePads = true;
                 }
+
+                prevOff = delimOff;
+            }
+            newLine.append(origLine, prevOff, origLine.size() - prevOff);
+
+            if (tabsInserted == 0) continue;
+
+            // Remap existing indicator runs to new positions (shifted by inserted tabs).
+            for (const auto& er : existingIndicRuns) {
+                size_t origOff = er.first;
+                size_t shift = 0;
+                for (size_t tOff : tabInsertOffsets) {
+                    if (tOff <= origOff) ++shift;
+                    else break;
+                }
+                indicRanges.push_back({ origOff + shift, er.second });
+            }
+
+            // Replace the entire line in one shot
+            Sci(SCI_SETTARGETRANGE, (uptr_t)lineStart, (sptr_t)lineEnd);
+            Sci(SCI_REPLACETARGET, (uptr_t)newLine.size(), (sptr_t)newLine.c_str());
+
+            // Re-apply all indicators (new tabs + remapped existing)
+            for (const auto& ir : indicRanges) {
+                Sci(SCI_INDICATORFILLRANGE,
+                    (uptr_t)(lineStart + (Sci_Position)ir.first),
+                    (sptr_t)ir.second);
             }
         }
 
         Sci(SCI_ENDUNDOACTION);
+        Sci(SCI_SETMODEVENTMASK, (uptr_t)savedEventMask);
+
+        if (undoWasOn) {
+            Sci(SCI_SETUNDOCOLLECTION, 1);
+            if (madePads) Sci(SCI_EMPTYUNDOBUFFER);
+        }
 
         if (madePads) {
             CT_SetCurDocHasPads(hSci, true);
@@ -506,39 +592,97 @@ namespace ColumnTabs {
         const int ind = CT_GetIndicatorId();
         S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
 
-        // Phase 1: Collect all indicator ranges forward using SCI_INDICATOREND — O(ranges) calls.
         const Sci_Position docLen = (Sci_Position)S(SCI_GETLENGTH);
-        std::vector<std::pair<Sci_Position, Sci_Position>> ranges;
-
-        {
-            Sci_Position scanPos = 0;
-            while (scanPos < docLen) {
-                const Sci_Position rangeEnd = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)scanPos);
-                if (rangeEnd <= scanPos) break;  // safety: no progress
-
-                if ((int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)scanPos) != 0) {
-                    const Sci_Position rangeStart = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)scanPos);
-                    if (rangeEnd > rangeStart)
-                        ranges.emplace_back(rangeStart, rangeEnd);
-                }
-                scanPos = rangeEnd;
-            }
-        }
-
-        if (ranges.empty()) {
+        if (docLen <= 0) {
             ColumnTabs::CT_SetCurDocHasPads(hSci, false);
             return false;
         }
 
-        // Phase 2: Delete ranges back-to-front so earlier positions stay valid.
+        // Suppress undo collection and modification notifications.
+        const bool undoWasOn = S(SCI_GETUNDOCOLLECTION) != 0;
+        if (undoWasOn) S(SCI_SETUNDOCOLLECTION, 0);
+
+        const int savedEventMask = (int)S(SCI_GETMODEVENTMASK);
+        S(SCI_SETMODEVENTMASK, 0);
+
         S(SCI_BEGINUNDOACTION);
-        for (auto it = ranges.rbegin(); it != ranges.rend(); ++it) {
-            const Sci_Position start = it->first;
-            const Sci_Position len = it->second - it->first;
-            S(SCI_INDICATORCLEARRANGE, (uptr_t)start, (sptr_t)len);
-            S(SCI_DELETERANGE, (uptr_t)start, (sptr_t)len);
+
+        // Bulk removal: for each line that contains indicator-marked bytes,
+        // build a new line without them and replace via SCI_REPLACETARGET.
+        // Iterating back-to-front keeps earlier line positions stable.
+        const int lineCount = (int)S(SCI_GETLINECOUNT);
+
+        for (int ln = lineCount - 1; ln >= 0; --ln) {
+            const Sci_Position lineStart = (Sci_Position)S(SCI_POSITIONFROMLINE, (uptr_t)ln);
+            const Sci_Position lineEnd = (Sci_Position)S(SCI_GETLINEENDPOSITION, (uptr_t)ln);
+            const Sci_Position lineLen = lineEnd - lineStart;
+            if (lineLen <= 0) continue;
+
+            // Quick check: any indicator on this line?
+            bool hasIndicator = false;
+            {
+                Sci_Position p = lineStart;
+                while (p < lineEnd) {
+                    if ((int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)p) != 0) {
+                        hasIndicator = true;
+                        break;
+                    }
+                    Sci_Position nextEnd = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)p);
+                    if (nextEnd <= p) break;
+                    p = nextEnd;
+                }
+            }
+            if (!hasIndicator) continue;
+
+            // Read line text
+            std::string origLine((size_t)lineLen, '\0');
+            Sci_TextRangeFull tr{};
+            tr.chrg.cpMin = lineStart;
+            tr.chrg.cpMax = lineEnd;
+            tr.lpstrText = origLine.data();
+            S(SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
+
+            // Build new line without indicator-marked bytes
+            std::string newLine;
+            newLine.reserve(origLine.size());
+
+            Sci_Position p = lineStart;
+            size_t srcIdx = 0;
+            while (p < lineEnd) {
+                int val = (int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)p);
+                Sci_Position runEnd = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)p);
+                if (runEnd <= p) break;
+                if (runEnd > lineEnd) runEnd = lineEnd;
+
+                const size_t runLen = (size_t)(runEnd - p);
+
+                if (val == 0) {
+                    newLine.append(origLine, srcIdx, runLen);
+                }
+                // else: skip indicator-marked padding bytes
+
+                srcIdx += runLen;
+                p = runEnd;
+            }
+
+            if (newLine.size() == (size_t)lineLen) continue;
+
+            S(SCI_INDICATORCLEARRANGE, (uptr_t)lineStart, (sptr_t)lineLen);
+            S(SCI_SETTARGETRANGE, (uptr_t)lineStart, (sptr_t)lineEnd);
+            S(SCI_REPLACETARGET, (uptr_t)newLine.size(), (sptr_t)newLine.c_str());
         }
+
         S(SCI_ENDUNDOACTION);
+        S(SCI_SETMODEVENTMASK, (uptr_t)savedEventMask);
+
+        if (undoWasOn) {
+            S(SCI_SETUNDOCOLLECTION, 1);
+            S(SCI_EMPTYUNDOBUFFER);
+        }
+
+        // Safety: clear any leftover indicator fragments across entire doc
+        S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
+        S(SCI_INDICATORCLEARRANGE, 0, (sptr_t)S(SCI_GETLENGTH));
 
         ColumnTabs::CT_SetCurDocHasPads(hSci, false);
         return true;
@@ -653,6 +797,11 @@ namespace ColumnTabs {
         }
 
         // PASS 2: apply padding and decimal alignment
+        // Suppress undo and notifications — same rationale as CT_InsertAlignedPadding.
+        const bool undoWasOn = S(SCI_GETUNDOCOLLECTION) != 0;
+        if (undoWasOn) S(SCI_SETUNDOCOLLECTION, 0);
+        const int savedEventMask = (int)S(SCI_GETMODEVENTMASK);
+        S(SCI_SETMODEVENTMASK, 0);
         S(SCI_BEGINUNDOACTION);
         bool madeAny = false;
 
@@ -756,6 +905,11 @@ namespace ColumnTabs {
         }
 
         S(SCI_ENDUNDOACTION);
+        S(SCI_SETMODEVENTMASK, (uptr_t)savedEventMask);
+        if (undoWasOn) {
+            S(SCI_SETUNDOCOLLECTION, 1);
+            if (madeAny) S(SCI_EMPTYUNDOBUFFER);
+        }
         if (madeAny) CT_SetCurDocHasPads(hSci, true);
         return true;
     }

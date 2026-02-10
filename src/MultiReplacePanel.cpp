@@ -9813,8 +9813,8 @@ void MultiReplace::handleColumnGridTabsButton()
         ScopedRedrawLock redrawLock(_hScintilla);
 
         {
-            // We want NumericPadding + InsertAlignedPadding to be one single undo step.
-            ScopedUndoAction undo(*this);
+            // Undo suppression is handled inside CT_ApplyNumericPadding and
+            // CT_InsertAlignedPadding — no ScopedUndoAction needed here.
 
             // Step 1: numeric alignment (optional; modifies text, inserts numeric left padding)
             if (flowTabsNumericAlignEnabled) {
