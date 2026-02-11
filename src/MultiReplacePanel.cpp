@@ -5601,6 +5601,11 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         const Sci_Position  fixedStart = computeAllStartPos(startCtx, wrapAroundEnabled, allFromCursor);
 
         {
+            // Suppress modification notifications during bulk replace to avoid
+            // per-edit re-lexing and folding overhead.
+            const LRESULT savedEventMask = send(SCI_GETMODEVENTMASK, 0, 0);
+            send(SCI_SETMODEVENTMASK, 0, 0);
+
             ScopedUndoAction undo(*this);
             for (size_t i = 0; i < replaceListData.size(); ++i)
             {
@@ -5643,6 +5648,8 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
                     }
                 }
             }
+
+            send(SCI_SETMODEVENTMASK, savedEventMask, 0);
         }
 
     }
@@ -5661,9 +5668,14 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
 
         {
+            const LRESULT savedEventMask = send(SCI_GETMODEVENTMASK, 0, 0);
+            send(SCI_SETMODEVENTMASK, 0, 0);
+
             ScopedUndoAction undo(*this);
             int findCount = 0;
             replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount);
+
+            send(SCI_SETMODEVENTMASK, savedEventMask, 0);
         }
 
     }
@@ -9336,6 +9348,10 @@ void MultiReplace::handleDeleteColumns()
     int deletedFieldsCount = 0;
 
     {
+        // Suppress modification notifications during bulk column deletion.
+        const LRESULT savedEventMask = send(SCI_GETMODEVENTMASK, 0, 0);
+        send(SCI_SETMODEVENTMASK, 0, 0);
+
         ScopedUndoAction undo(*this);
 
         SIZE_T lineCount = lineDelimiterPositions.size();
@@ -9431,6 +9447,7 @@ void MultiReplace::handleDeleteColumns()
             }
         }
 
+        send(SCI_SETMODEVENTMASK, savedEventMask, 0);
     }
     // Display a status message with the number of deleted fields.
     showStatusMessage(LM.get(L"status_deleted_fields_count", { std::to_wstring(deletedFieldsCount) }), MessageStatus::Success);
@@ -10295,6 +10312,10 @@ void MultiReplace::deleteDuplicateLines()
 
     // Delete the marked duplicate lines
     runCsvWithFlowTabs(CsvOp::DeleteColumns, [&]() -> bool {
+        // Suppress modification notifications during bulk line deletion.
+        const LRESULT savedEventMask = send(SCI_GETMODEVENTMASK, 0, 0);
+        send(SCI_SETMODEVENTMASK, 0, 0);
+
         ScopedUndoAction undo(*this);
 
         // Sort descending - delete from bottom to top to keep indices valid
@@ -10327,6 +10348,7 @@ void MultiReplace::deleteDuplicateLines()
             updateUnsortedDocument(lineIdx, 1, ChangeType::Delete);
         }
 
+        send(SCI_SETMODEVENTMASK, savedEventMask, 0);
         return true;
         });
 
@@ -10742,8 +10764,8 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
         combinedData.push_back(std::move(rowData));
     }
 
-    // NOTE: detectNumericColumns is now called by sortRowsByColumn after sanitization
-    // This avoids duplicate processing
+    // detectNumericColumns is called by sortRowsByColumn after sanitization
+    // to avoid duplicate processing.
 
     return combinedData;
 }
@@ -12224,8 +12246,8 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageSta
     HWND hStatusMessage = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
     SetWindowText(hStatusMessage, strMessage.c_str());
 
-    // --- KEY CHANGE: Invalidate the PARENT window's area BEHIND the control ---
-    // This forces the N++ themed dialog to erase the background for us with the correct color.
+    // Invalidate the parent window's area behind the control so the themed
+    // dialog repaints the background with the correct color.
     RECT rect;
     GetWindowRect(hStatusMessage, &rect);
     MapWindowPoints(HWND_DESKTOP, GetParent(hStatusMessage), (LPPOINT)&rect, 2);
@@ -13246,7 +13268,7 @@ void MultiReplace::loadSettingsToPanelUI() {
     maxFileSizeMB = static_cast<size_t>(CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100));
 
     // --- Load Column Settings (Widths & Visibility) ---
-    // NOTE: We read them here, and apply them in the 'instance' block below
+    // Column widths and visibility are read here, then applied in the 'instance' block below.
     findCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
     replaceCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceCountWidth", DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
     findColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindWidth", DEFAULT_COLUMN_WIDTH_FIND_scaled), MIN_GENERAL_WIDTH_scaled);

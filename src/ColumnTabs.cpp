@@ -448,8 +448,8 @@ namespace ColumnTabs {
         const bool undoWasOn = Sci(SCI_GETUNDOCOLLECTION) != 0;
         if (undoWasOn) Sci(SCI_SETUNDOCOLLECTION, 0);
 
-        // Suppress modification notifications during bulk insert — prevents
-        // Notepad++ from re-lexing/folding after each individual edit.
+        // Suppress modification notifications during bulk insert to avoid
+        // per-edit re-lexing and folding overhead.
         const int savedEventMask = (int)Sci(SCI_GETMODEVENTMASK);
         Sci(SCI_SETMODEVENTMASK, 0);
 
@@ -797,7 +797,7 @@ namespace ColumnTabs {
         }
 
         // PASS 2: apply padding and decimal alignment
-        // Suppress undo and notifications — same rationale as CT_InsertAlignedPadding.
+        // Suppress undo and modification notifications during bulk padding.
         const bool undoWasOn = S(SCI_GETUNDOCOLLECTION) != 0;
         if (undoWasOn) S(SCI_SETUNDOCOLLECTION, 0);
         const int savedEventMask = (int)S(SCI_GETMODEVENTMASK);
