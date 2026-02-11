@@ -795,8 +795,9 @@ HWND MultiReplaceConfigDialog::createCheckBox(HWND parent, int left, int top, in
 HWND MultiReplaceConfigDialog::createStaticText(HWND parent, int left, int top, int width, int height, int id, const TCHAR* text, DWORD extraStyle) {
     return ::CreateWindowEx(0, WC_STATIC, text, WS_CHILD | WS_VISIBLE | extraStyle, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
 }
-HWND MultiReplaceConfigDialog::createNumberEdit(HWND parent, int left, int top, int width, int /*height*/, int id) {
-    return ::CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, TEXT(""), WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_LEFT | ES_AUTOHSCROLL | ES_NUMBER, scaleX(left), scaleY(top), scaleX(width), _editHeight, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
+HWND MultiReplaceConfigDialog::createNumberEdit(HWND parent, int left, int top, int width, int height, int id) {
+    int h = (height > 0) ? scaleY(height) : _editHeight;
+    return ::CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, TEXT(""), WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_LEFT | ES_AUTOHSCROLL | ES_NUMBER, scaleX(left), scaleY(top), scaleX(width), h, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
 }
 HWND MultiReplaceConfigDialog::createComboDropDownList(HWND parent, int left, int top, int width, int height, int id) {
     return ::CreateWindowEx(0, WC_COMBOBOX, TEXT(""), WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS, scaleX(left), scaleY(top), scaleX(width), scaleY(height), parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), _hInst, nullptr);
