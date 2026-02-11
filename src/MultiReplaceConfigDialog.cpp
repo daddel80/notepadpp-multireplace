@@ -196,7 +196,7 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_STAY_AFTER_REPLACE,      L"config_chk_stay_after_replace",  386, 18 },
         { IDC_CFG_ALL_FROM_CURSOR,         L"config_chk_all_from_cursor",     386, 18 },
         { IDC_CFG_MUTE_SOUNDS,             L"config_chk_mute_sounds",         386, 18 },
-        { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize",      386, 18 },
+        { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize",      260, 18 },
 
         // List View Panel - Columns: leftColWidth=210, innerWidth=210-24=186
         { IDC_CFG_GRP_LIST_COLUMNS,        L"config_grp_list_columns",        0, 0 },
@@ -499,7 +499,6 @@ void MultiReplaceConfigDialog::showCategory(int index) {
     ShowWindow(_hCsvFlowTabsPanel, index == 2 ? SW_SHOW : SW_HIDE);
     ShowWindow(_hExportPanel, index == 3 ? SW_SHOW : SW_HIDE);
     ShowWindow(_hAppearancePanel, index == 4 ? SW_SHOW : SW_HIDE);
-    if (_hCategoryFont) applyFonts();
 }
 
 void MultiReplaceConfigDialog::createUI() {
@@ -687,6 +686,14 @@ LRESULT CALLBACK MultiReplaceConfigDialog::PanelSubclassProc(HWND hWnd, UINT uMs
         }
     }
 
+    // Forward WM_CTLCOLOREDIT to parent dialog for edit controls
+    if (uMsg == WM_CTLCOLOREDIT) {
+        HWND hParent = ::GetParent(hWnd);
+        if (hParent) {
+            return ::SendMessage(hParent, WM_CTLCOLOREDIT, wParam, lParam);
+        }
+    }
+
     if (uMsg == WM_CTLCOLORSTATIC) {
         HDC hdc = reinterpret_cast<HDC>(wParam);
         HWND hCtrl = reinterpret_cast<HWND>(lParam);
@@ -696,20 +703,30 @@ LRESULT CALLBACK MultiReplaceConfigDialog::PanelSubclassProc(HWND hWnd, UINT uMs
         if (::GetClassName(hCtrl, className, 64)) {
             if (lstrcmpi(className, TRACKBAR_CLASS) == 0) {
 
-                // TRACKBARS NEED SOLID BACKGROUNDS (Fixes the black box issue)
                 bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
 
-                static HBRUSH hBrushDark = ::CreateSolidBrush(RGB(45, 45, 48));
-                static HBRUSH hBrushLight = ::CreateSolidBrush(::GetSysColor(COLOR_WINDOW));
-
                 if (isDark) {
+                    static HBRUSH hBrushDark = ::CreateSolidBrush(RGB(45, 45, 48));
                     ::SetTextColor(hdc, RGB(220, 220, 220));
                     ::SetBkColor(hdc, RGB(45, 45, 48));
                     return reinterpret_cast<LRESULT>(hBrushDark);
                 }
                 else {
+                    // Query the actual panel background to match exactly
+                    HDC hPanelDC = ::GetDC(hWnd);
+                    COLORREF bgColor = ::GetPixel(hPanelDC, 2, 2);
+                    ::ReleaseDC(hWnd, hPanelDC);
+                    if (bgColor == CLR_INVALID) bgColor = ::GetSysColor(COLOR_BTNFACE);
+
+                    static HBRUSH hBrushLight = nullptr;
+                    static COLORREF lastColor = CLR_INVALID;
+                    if (bgColor != lastColor) {
+                        if (hBrushLight) ::DeleteObject(hBrushLight);
+                        hBrushLight = ::CreateSolidBrush(bgColor);
+                        lastColor = bgColor;
+                    }
                     ::SetTextColor(hdc, RGB(0, 0, 0));
-                    ::SetBkColor(hdc, ::GetSysColor(COLOR_WINDOW));
+                    ::SetBkColor(hdc, bgColor);
                     return reinterpret_cast<LRESULT>(hBrushLight);
                 }
             }
@@ -748,7 +765,7 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
     lb.AddCheckbox(IDC_CFG_MUTE_SOUNDS, LM.getLPCW(L"config_chk_mute_sounds"));
 
     // File size limit: Checkbox + Edit + "MB" label
-    HWND hChkLimit = createCheckBox(_hSearchReplacePanel, innerLeft, lb.y, innerWidth, IDC_CFG_LIMIT_FILESIZE, LM.getLPCW(L"config_chk_limit_filesize"));
+    HWND hChkLimit = createCheckBox(_hSearchReplacePanel, innerLeft, lb.y, 260, IDC_CFG_LIMIT_FILESIZE, LM.getLPCW(L"config_chk_limit_filesize"));
     lb.y += lb.stepY;
 
     // Subclass the checkbox to notify dialog on click
@@ -1131,6 +1148,8 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         int finalH = rc.bottom - rc.top;
         SetWindowPos(_hSelf, nullptr, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
+        int savedCategory = _currentCategory;
+
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
         safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
         safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
@@ -1140,7 +1159,7 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         calculateControlHeights();
 
         createUI();
-        _currentCategory = -1;
+        _currentCategory = savedCategory;
         initUI();
 
         loadSettingsToConfigUI(false);
@@ -1234,13 +1253,15 @@ void MultiReplaceConfigDialog::resetToDefaults()
 
         SetWindowPos(_hSelf, nullptr, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
+        int savedCategory = _currentCategory;
+
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
         safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
         safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
         safeDestroy(_hCsvFlowTabsPanel); safeDestroy(_hAppearancePanel); safeDestroy(_hExportPanel);
 
         createUI();
-        _currentCategory = -1;
+        _currentCategory = savedCategory;
         initUI();
         loadSettingsToConfigUI(false);
 
