@@ -732,7 +732,7 @@ LRESULT CALLBACK MultiReplaceConfigDialog::PanelSubclassProc(HWND hWnd, UINT uMs
 
 void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
     if (!_hSearchReplacePanel) return;
-    const int groupW = 420;
+    const int groupW = 460;
     const int left = 70;
     int y = 20;
 
@@ -883,7 +883,7 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
 
     const int left = 70;
     const int top = 20;
-    const int groupW = 570;
+    const int groupW = 460;
     const int groupH = 158;
 
     createGroupBox(_hCsvFlowTabsPanel, left, top, groupW, groupH,
@@ -1256,6 +1256,93 @@ void MultiReplaceConfigDialog::resetToDefaults()
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCsvFlowTabsPanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hExportPanel));
     }
+}
+
+void MultiReplaceConfigDialog::onThemeChanged() {
+    if (!_hSelf || !IsWindow(_hSelf) || !IsWindowVisible(_hSelf))
+        return;
+
+    int savedCategory = _currentCategory;
+
+    // Save current UI values in memory before destroying controls
+    registerBindingsOnce();
+    MultiReplace::Settings savedSettings{};
+    readBindingsFromUI_Generic((void*)&savedSettings);
+
+    int savedFg = 255, savedBg = 190, savedScale = 100;
+    if (_hAppearancePanel) {
+        if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_FOREGROUND_SLIDER))
+            savedFg = (int)::SendMessage(h, TBM_GETPOS, 0, 0);
+        if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_BACKGROUND_SLIDER))
+            savedBg = (int)::SendMessage(h, TBM_GETPOS, 0, 0);
+        if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_SCALE_SLIDER))
+            savedScale = (int)::SendMessage(h, TBM_GETPOS, 0, 0);
+    }
+
+    wchar_t savedTemplate[1024] = {};
+    bool savedExportEscape = false, savedExportHeader = false;
+    if (_hExportPanel) {
+        if (HWND hEdit = GetDlgItem(_hExportPanel, IDC_CFG_EXPORT_TEMPLATE_EDIT))
+            GetWindowTextW(hEdit, savedTemplate, 1024);
+        savedExportEscape = (IsDlgButtonChecked(_hExportPanel, IDC_CFG_EXPORT_ESCAPE_CHECK) == BST_CHECKED);
+        savedExportHeader = (IsDlgButtonChecked(_hExportPanel, IDC_CFG_EXPORT_HEADER_CHECK) == BST_CHECKED);
+    }
+
+    // Rebuild all controls
+    auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
+    safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
+    safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
+    safeDestroy(_hCsvFlowTabsPanel); safeDestroy(_hAppearancePanel); safeDestroy(_hExportPanel);
+
+    createFonts();
+    calculateControlHeights();
+
+    createUI();
+    _currentCategory = savedCategory;
+    initUI();
+
+    // Restore saved values directly into new controls
+    applyBindingsToUI_Generic((void*)&savedSettings);
+
+    if (_hAppearancePanel) {
+        if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_FOREGROUND_SLIDER)) {
+            ::SendMessage(h, TBM_SETRANGE, TRUE, MAKELPARAM(0, 255));
+            ::SendMessage(h, TBM_SETPOS, TRUE, savedFg);
+        }
+        if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_BACKGROUND_SLIDER)) {
+            ::SendMessage(h, TBM_SETRANGE, TRUE, MAKELPARAM(0, 255));
+            ::SendMessage(h, TBM_SETPOS, TRUE, savedBg);
+        }
+        if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_SCALE_SLIDER)) {
+            ::SendMessage(h, TBM_SETRANGE, TRUE, MAKELPARAM(50, 200));
+            ::SendMessage(h, TBM_SETPOS, TRUE, savedScale);
+        }
+    }
+
+    if (_hExportPanel) {
+        if (HWND hEdit = GetDlgItem(_hExportPanel, IDC_CFG_EXPORT_TEMPLATE_EDIT))
+            SetWindowTextW(hEdit, savedTemplate);
+        CheckDlgButton(_hExportPanel, IDC_CFG_EXPORT_ESCAPE_CHECK, savedExportEscape ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(_hExportPanel, IDC_CFG_EXPORT_HEADER_CHECK, savedExportHeader ? BST_CHECKED : BST_UNCHECKED);
+    }
+
+    if (_hSearchReplacePanel) {
+        BOOL checked = (::IsDlgButtonChecked(_hSearchReplacePanel, IDC_CFG_LIMIT_FILESIZE) == BST_CHECKED);
+        ::EnableWindow(::GetDlgItem(_hSearchReplacePanel, IDC_CFG_MAX_FILESIZE_EDIT), checked);
+    }
+
+    applyFonts();
+    resizeUI();
+
+    WPARAM mode = static_cast<WPARAM>(NppDarkMode::dmfInit);
+    SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSelf));
+    SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSearchReplacePanel));
+    SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hListViewLayoutPanel));
+    SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hAppearancePanel));
+    SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCsvFlowTabsPanel));
+    SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hExportPanel));
+
+    RedrawWindow(_hSelf, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
 
 void MultiReplaceConfigDialog::applyInternalTheme() {

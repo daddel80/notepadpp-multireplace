@@ -168,8 +168,9 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
     {
         MultiReplace::onThemeChanged();
         ResultDock::instance().onThemeChanged();
+        _MultiReplaceConfig.onThemeChanged();
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(NppDarkMode::dmfHandleChange), reinterpret_cast<LPARAM>(_MultiReplace.getHSelf()));
-        ::SetWindowPos(_MultiReplace.getHSelf(), nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED); // to redraw titlebar and window
+        ::SetWindowPos(_MultiReplace.getHSelf(), nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
         break;
     }
     case NPPN_NATIVELANGCHANGED:

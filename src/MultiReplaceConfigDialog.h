@@ -32,6 +32,7 @@ public:
 
     void init(HINSTANCE hInst, HWND hParent);
     void refreshUILanguage();
+    void onThemeChanged();
 
 protected:
     intptr_t CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
