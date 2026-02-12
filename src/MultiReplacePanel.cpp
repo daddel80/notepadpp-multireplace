@@ -5080,6 +5080,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleReplaceAllButton();
+            if (isColumnHighlighted) {
+                findAllDelimitersInDocument();
+                reapplyColumnHighlighting();
+            }
             return TRUE;
         }
 
@@ -5102,6 +5106,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 resetCountColumns();
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
                 handleReplaceAllButton();
+                if (isColumnHighlighted) {
+                    findAllDelimitersInDocument();
+                    reapplyColumnHighlighting();
+                }
             }
             return TRUE;
         }
@@ -5532,6 +5540,12 @@ void MultiReplace::replaceAllInOpenedDocs()
         updateCountColumns(j, listFindTotals[j], listReplaceTotals[j]);
     }
     refreshUIListView();
+
+    // Refresh column highlighting on the now-active document (suppressed during bulk replace)
+    if (isColumnHighlighted) {
+        findAllDelimitersInDocument();
+        reapplyColumnHighlighting();
+    }
 
 }
 
@@ -9449,6 +9463,13 @@ void MultiReplace::handleDeleteColumns()
 
         send(SCI_SETMODEVENTMASK, savedEventMask, 0);
     }
+
+    // Rescan delimiters and refresh column highlighting (suppressed during bulk deletion)
+    findAllDelimitersInDocument();
+    if (isColumnHighlighted) {
+        reapplyColumnHighlighting();
+    }
+
     // Display a status message with the number of deleted fields.
     showStatusMessage(LM.get(L"status_deleted_fields_count", { std::to_wstring(deletedFieldsCount) }), MessageStatus::Success);
 }
@@ -10364,9 +10385,6 @@ void MultiReplace::deleteDuplicateLines()
     _markedDuplicateLines.clear();
     _duplicateGroupCount = 0;
 
-    // Refresh delimiter positions
-    findAllDelimitersInDocument();
-
     // Show success message
     showStatusMessage(LM.get(L"status_duplicates_deleted", { std::to_wstring(deleteCount) }), MessageStatus::Success);
 }
@@ -10526,6 +10544,13 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
     if (needsRedrawLock) {
         ::SendMessage(_hScintilla, WM_SETREDRAW, TRUE, 0);
         ::InvalidateRect(_hScintilla, nullptr, TRUE);
+    }
+
+    // Re-apply column highlighting after bulk CSV operation (sort, delete, etc.)
+    // Indicators are destroyed by text modifications; delimiter positions were
+    // already rescanned by findAllDelimitersInDocument() above.
+    if (isColumnHighlighted) {
+        reapplyColumnHighlighting();
     }
 
     return ok;
@@ -11476,6 +11501,17 @@ void MultiReplace::handleHighlightColumnsInDocument() {
 
     // --- Viewport restore
     restoreViewStateExact(vs);
+}
+
+void MultiReplace::reapplyColumnHighlighting() {
+    // Lightweight rehighlight: re-applies column indicators on all lines
+    // without viewport save/restore, style re-init, or status message.
+    // Use after bulk operations that invalidate indicators when
+    // isColumnHighlighted is already true and styles are already set up.
+    LRESULT totalLines = static_cast<LRESULT>(lineDelimiterPositions.size());
+    for (LRESULT line = 0; line < totalLines; ++line) {
+        highlightColumnsInLine(line);
+    }
 }
 
 void MultiReplace::fixHighlightAtDocumentEnd() {

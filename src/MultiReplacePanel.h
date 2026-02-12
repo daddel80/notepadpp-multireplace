@@ -1065,6 +1065,7 @@ private:
     LRESULT adjustForegroundForDarkMode(LRESULT textColor, LRESULT backgroundColor);
     void initializeColumnStyles();
     void handleHighlightColumnsInDocument();
+    void reapplyColumnHighlighting();
     void highlightColumnsInLine(LRESULT line);
     void fixHighlightAtDocumentEnd();
     void handleClearColumnMarks();
