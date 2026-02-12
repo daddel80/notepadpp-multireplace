@@ -3173,6 +3173,37 @@ COLORREF ResultDock::generateColorFromText(const std::wstring& text, bool darkMo
     saturation += satVar;
     lightness += litVar;
 
+    // ── Perceptual lightness correction per hue region ──
+    // Human vision perceives equal HSL lightness very differently across hues:
+    // Yellow/Green appears too bright, Blue/Violet appears too dark,
+    // Red appears aggressive. Correct to achieve uniform perceived brightness.
+    const double hueDeg = hue01 * 360.0;
+
+    if (hueDeg >= 40.0 && hueDeg < 110.0) {
+        // Yellow–Green zone: reduce lightness (perceptually too bright)
+        double t = (hueDeg - 40.0) / 70.0;                 // 0..1 across zone
+        double peak = 1.0 - (2.0 * t - 1.0) * (2.0 * t - 1.0);  // bell: 0 at edges, 1 at center
+        lightness -= 0.07 * peak;
+        // Yellow core (50-70°): also desaturate slightly to avoid neon effect
+        if (hueDeg >= 50.0 && hueDeg < 70.0) {
+            double yt = 1.0 - fabs(hueDeg - 60.0) / 10.0;  // peak at 60°
+            saturation -= 0.08 * yt;
+        }
+    }
+    else if (hueDeg >= 210.0 && hueDeg < 280.0) {
+        // Blue–Violet zone: increase lightness (perceptually too dark)
+        double t = (hueDeg - 210.0) / 70.0;
+        double peak = 1.0 - (2.0 * t - 1.0) * (2.0 * t - 1.0);  // bell: 0 at edges, 1 at center
+        lightness += 0.06 * peak;
+    }
+    else if (hueDeg >= 330.0 || hueDeg < 15.0) {
+        // Red zone: slightly desaturate (perceptually aggressive)
+        double t = (hueDeg >= 330.0) ? (hueDeg - 330.0) / 30.0
+            : (hueDeg + 30.0) / 45.0;
+        double peak = 1.0 - (2.0 * t - 1.0) * (2.0 * t - 1.0);
+        saturation -= 0.06 * peak;
+    }
+
     return hslToRgb(hue01, saturation, lightness);
 }
 

@@ -167,24 +167,24 @@ public:
     // Adjust these values to fine-tune the generated colors
 
     // Base Saturation (0.0 - 1.0): Higher = more vivid/intense colors
-    static constexpr double TUNE_SAT_LIGHT = 0.75;    // Light mode
-    static constexpr double TUNE_SAT_DARK = 0.70;    // Dark mode
+    static constexpr double TUNE_SAT_LIGHT = 0.65;    // Light mode
+    static constexpr double TUNE_SAT_DARK = 0.60;    // Dark mode
 
     // Base Lightness (0.0 - 1.0): Higher = brighter
-    static constexpr double TUNE_LIT_LIGHT = 0.85;    // Light mode
-    static constexpr double TUNE_LIT_DARK = 0.0;    // Dark mode
+    static constexpr double TUNE_LIT_LIGHT = 0.58;    // Light mode (range with ±VAR: 0.48–0.68)
+    static constexpr double TUNE_LIT_DARK = 0.52;    // Dark mode  (range with ±VAR: 0.42–0.62)
 
     // Lightness bounds (prevents too dark or too pale)
-    static constexpr double TUNE_LIT_MIN = 0.40;    // Minimum lightness
-    static constexpr double TUNE_LIT_MAX = 0.65;    // Maximum lightness
+    static constexpr double TUNE_LIT_MIN = 0.35;    // Minimum lightness
+    static constexpr double TUNE_LIT_MAX = 0.72;    // Maximum lightness
 
     // Saturation bounds
-    static constexpr double TUNE_SAT_MIN = 0.50;    // Minimum saturation
-    static constexpr double TUNE_SAT_MAX = 0.90;    // Maximum saturation
+    static constexpr double TUNE_SAT_MIN = 0.45;    // Minimum saturation
+    static constexpr double TUNE_SAT_MAX = 0.85;    // Maximum saturation
 
     // Variation range (uses hash bits for slight per-color variation)
     static constexpr double TUNE_SAT_VAR = 0.15;    // Saturation variation ±
-    static constexpr double TUNE_LIT_VAR = 0.08;    // Lightness variation ±
+    static constexpr double TUNE_LIT_VAR = 0.10;    // Lightness variation ±
     // ===============================================================
 
     // Alpha values for ResultDock
