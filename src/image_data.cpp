@@ -628,8 +628,8 @@ static void ScaleBitmapData(const uint8_t* src, int srcWidth, int srcHeight,
     std::vector<uint8_t>& dst, int dstWidth, int dstHeight) {
     for (int y = 0; y < dstHeight; ++y) {
         for (int x = 0; x < dstWidth; ++x) {
-            int srcX = static_cast<int>(std::round(static_cast<float>(x) / dstWidth * (srcWidth - 1)));
-            int srcY = static_cast<int>(std::round(static_cast<float>(y) / dstHeight * (srcHeight - 1)));
+            int srcX = static_cast<int>((x + 0.5f) * srcWidth / dstWidth);
+            int srcY = static_cast<int>((y + 0.5f) * srcHeight / dstHeight);
             srcX = (std::min)(srcX, srcWidth - 1);
             srcY = (std::min)(srcY, srcHeight - 1);
             const uint8_t* pixel = &src[(srcY * srcWidth + srcX) * 4];
