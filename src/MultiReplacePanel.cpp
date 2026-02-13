@@ -5536,6 +5536,14 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         }
     }
 
+    updateSelectionScope();
+
+    // Selection mode requires valid scope
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && m_selectionScope.empty()) {
+        showStatusMessage(LM.get(L"status_select_area_first"), MessageStatus::Error, true);
+        return false;
+    }
+
     // First check if the document is read-only
     LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
@@ -5576,10 +5584,16 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         startCtx.docLength = send(SCI_GETLENGTH, 0, 0);
         startCtx.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
         startCtx.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+        startCtx.useStoredSelections = startCtx.isSelectionMode;
         startCtx.retrieveFoundText = false;
         startCtx.highlightMatch = false;
 
-        const SelectionInfo fixedSel = getSelectionInfo(false);
+        // Use stored scope bounds when available (survives Find Next/Prev)
+        const SelectionInfo fixedSel = (startCtx.isSelectionMode && !m_selectionScope.empty())
+            ? SelectionInfo{ static_cast<Sci_Position>(m_selectionScope.front().start),
+                             static_cast<Sci_Position>(m_selectionScope.back().end),
+                             static_cast<Sci_Position>(m_selectionScope.back().end - m_selectionScope.front().start) }
+        : getSelectionInfo(false);
         const Sci_Position  fixedStart = computeAllStartPos(startCtx, wrapAroundEnabled, allFromCursor);
 
         {
@@ -5941,6 +5955,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     context.cachedCodepage = documentCodepage;
     context.isColumnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED;
     context.isSelectionMode = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED;
+    context.useStoredSelections = context.isSelectionMode;
     context.retrieveFoundText = itemData.useVariables;
     context.highlightMatch = false;
 
@@ -6148,8 +6163,11 @@ SelectionInfo MultiReplace::getSelectionInfo(bool isBackward) {
 
 Sci_Position MultiReplace::computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled)
 {
-    SelectionInfo selInfo = getSelectionInfo(false);
     if (context.isSelectionMode) {
+        if (context.useStoredSelections && !m_selectionScope.empty()) {
+            return static_cast<Sci_Position>(m_selectionScope.front().start);
+        }
+        SelectionInfo selInfo = getSelectionInfo(false);
         return selInfo.startPos;
     }
     const Sci_Position caretPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
@@ -7520,6 +7538,23 @@ void MultiReplace::handleFindAllButton()
 {
     if (!validateDelimiterData()) return;
 
+    // Safety: Selection mode with no selection → do nothing
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+        SelectionInfo sel = getSelectionInfo(false);
+        if (sel.length == 0) {
+            showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
+            return;
+        }
+    }
+
+    updateSelectionScope();
+
+    // Selection mode requires valid scope
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && m_selectionScope.empty()) {
+        showStatusMessage(LM.get(L"status_select_area_first"), MessageStatus::Error, true);
+        return;
+    }
+
     // Close any open autocomplete/calltip windows to prevent visual artifacts during search
     ::SendMessage(_hScintilla, SCI_AUTOCCANCEL, 0, 0);
     ::SendMessage(_hScintilla, SCI_CALLTIPCANCEL, 0, 0);
@@ -7545,6 +7580,7 @@ void MultiReplace::handleFindAllButton()
     context.docLength = sciSend(SCI_GETLENGTH);
     context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
     context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    context.useStoredSelections = context.isSelectionMode;
     context.retrieveFoundText = false;
     context.highlightMatch = false;
 
@@ -8860,6 +8896,23 @@ void MultiReplace::handleMarkMatchesButton() {
     ensureIndicatorContext();
     if (!validateDelimiterData()) return;
 
+    // Safety: Selection mode with no selection → do nothing
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+        SelectionInfo sel = getSelectionInfo(false);
+        if (sel.length == 0) {
+            showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
+            return;
+        }
+    }
+
+    updateSelectionScope();
+
+    // Selection mode requires valid scope
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && m_selectionScope.empty()) {
+        showStatusMessage(LM.get(L"status_select_area_first"), MessageStatus::Error, true);
+        return;
+    }
+
     int totalMatchCount = 0;
     markedStringsCount = 0;
     textToSlot.clear();
@@ -8900,13 +8953,15 @@ void MultiReplace::handleMarkMatchesButton() {
             context.docLength = send(SCI_GETLENGTH, 0, 0);
             context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
             context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+            context.useStoredSelections = context.isSelectionMode;
             context.retrieveFoundText = false;
             context.highlightMatch = false;
 
             Sci_Position startPos = 0;
             if (context.isSelectionMode) {
-                const SelectionInfo selInfo = getSelectionInfo(false);
-                startPos = selInfo.startPos;
+                startPos = !m_selectionScope.empty()
+                    ? static_cast<Sci_Position>(m_selectionScope.front().start)
+                    : getSelectionInfo(false).startPos;
             }
             else if (wrapAroundEnabled) {
                 startPos = 0;
@@ -8935,9 +8990,14 @@ void MultiReplace::handleMarkMatchesButton() {
         context.docLength = send(SCI_GETLENGTH, 0, 0);
         context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
         context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+        context.useStoredSelections = context.isSelectionMode;
 
         Sci_Position startPos = 0;
-        if (context.isSelectionMode) startPos = getSelectionInfo(false).startPos;
+        if (context.isSelectionMode) {
+            startPos = !m_selectionScope.empty()
+                ? static_cast<Sci_Position>(m_selectionScope.front().start)
+                : getSelectionInfo(false).startPos;
+        }
         else if (!wrapAroundEnabled) startPos = allFromCursorEnabled ? (Sci_Position)send(SCI_GETCURRENTPOS) : 0;
 
         totalMatchCount = markString(context, startPos, findText);
