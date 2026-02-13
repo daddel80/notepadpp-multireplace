@@ -543,6 +543,7 @@ public:
     inline static bool textModified = true;
     inline static bool documentSwitched = false;
     inline static int  scannedDelimiterBufferID = -1;
+    inline static bool _delimiterPositionsStale = false;
     inline static bool isLoggingEnabled = true;
     inline static bool isCaretPositionEnabled = false;
     inline static bool isLuaErrorDialogEnabled = true;
@@ -891,8 +892,7 @@ private:
     void sortItemsInReplaceList(const std::vector<size_t>& originalOrder, const std::vector<size_t>& newOrder, const std::map<int, SortDirection>& previousColumnSortOrder, int columnID, SortDirection direction);
     void scrollToIndices(size_t firstIndex, size_t lastIndex);
     void exportDataToClipboard();
-    static std::wstring replaceTemplateVar(const std::wstring& tmpl, const std::wstring& var, const std::wstring& value);
-    static std::wstring processTemplateEscapes(const std::wstring& tmpl);
+
 
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);

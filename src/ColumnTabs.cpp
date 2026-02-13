@@ -222,24 +222,17 @@ namespace ColumnTabs::detail {
             return (w > 0) ? w : (int)s.size() * ((spacePx > 0) ? spacePx : 8);
             };
 
-        // PASS 1: collect maxima per column and per-line EOL-x under same rules.
+        // PASS 1: collect max cell width and max delimiter width per column.
         std::vector<int> maxCellWidthPx(maxCols, 0);
         std::vector<int> maxDelimiterWidthPx(stopsCount, 0);
-        struct LM { std::vector<int> cellW, delimW; int lastIdx = -1; int eolX = 0; };
-        std::vector<LM> lines; lines.reserve((size_t)(line1 - line0 + 1));
 
         for (int ln = line0; ln <= line1; ++ln) {
             const auto L = fetchLine(model, ln);
             const size_t nDel = L.delimiterOffsets.size();
             const size_t nFld = nDel + 1;
-
-            LM lm{};
-            if (nFld == 0) { lines.push_back(std::move(lm)); continue; }
+            if (nFld == 0) continue;
 
             const Sci_Position base = (Sci_Position)S(hSci, SCI_POSITIONFROMLINE, (uptr_t)ln);
-            lm.cellW.assign(nFld, 0);
-            lm.delimW.assign(stopsCount, 0);
-            lm.lastIdx = (int)nFld - 1;
 
             // Cells
             for (size_t k = 0; k < nFld; ++k) {
@@ -260,7 +253,6 @@ namespace ColumnTabs::detail {
                     cell.erase(std::remove(cell.begin(), cell.end(), '\t'), cell.end());
 
                 const int w = measurePx(cell);
-                lm.cellW[k] = w;
                 if (w > maxCellWidthPx[k]) maxCellWidthPx[k] = w;
             }
 
@@ -272,54 +264,21 @@ namespace ColumnTabs::detail {
                     std::string del;
                     getSubText(d0, d1, del);
                     const int dw = measurePx(del);
-                    lm.delimW[d] = dw;
                     if (dw > maxDelimiterWidthPx[d]) maxDelimiterWidthPx[d] = dw;
                 }
             }
-            else {
-                std::fill(lm.delimW.begin(), lm.delimW.end(), 0);
-            }
-
-            // EOL under the same layout model.
-            int eol = 0;
-            for (int k = 0; k < lm.lastIdx; ++k) {
-                eol += lm.cellW[(size_t)k] + gapBeforePx;
-                eol += lm.delimW[(size_t)k] + gapAfterPx; // 0
-            }
-            if (lm.lastIdx >= 0)
-                eol += lm.cellW[(size_t)lm.lastIdx];
-            lm.eolX = eol;
-
-            lines.push_back(std::move(lm));
         }
 
-        // PASS 2: preferred stops from maxima (+ safety margin).
-        std::vector<int> stopPref(stopsCount, 0);
+        // PASS 2: compute tab stops from maxima (+ safety margin), enforce monotonicity.
+        stopPx.assign(stopsCount, 0);
         {
             int acc = 0;
             for (size_t c = 0; c < stopsCount; ++c) {
                 acc += maxCellWidthPx[c] + gapBeforePx + minAdvancePx; // strictly beyond widest cell
-                stopPref[c] = acc;
+                stopPx[c] = acc;
                 acc += maxDelimiterWidthPx[c] + gapAfterPx;            // 0
+                // Monotonicity is guaranteed by cumulative addition
             }
-        }
-
-        // PASS 3: EOL clamps — never beyond preferred (guard rail).
-        std::vector<int> clamp(stopsCount, 0);
-        for (const auto& lm : lines) {
-            if (lm.lastIdx < 0) continue;
-            for (size_t c = (size_t)lm.lastIdx; c < stopsCount; ++c) {
-                const int capped = (lm.eolX < stopPref[c]) ? lm.eolX : stopPref[c];
-                if (capped > clamp[c]) clamp[c] = capped;
-            }
-        }
-
-        // Final: max(preferred, clamp) and enforce monotonicity.
-        stopPx.assign(stopsCount, 0);
-        for (size_t c = 0; c < stopsCount; ++c) {
-            int target = (stopPref[c] < clamp[c]) ? clamp[c] : stopPref[c];
-            if (c > 0 && target < stopPx[c - 1]) target = stopPx[c - 1];
-            stopPx[c] = target;
         }
 
         return true;

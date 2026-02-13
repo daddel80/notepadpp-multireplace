@@ -61,4 +61,11 @@ namespace StringUtils {
     // Format number with locale-specific thousand separator (e.g., 1,234 or 1.234)
     std::wstring formatNumber(size_t number);
 
+    // ---- Template helpers (moved from MultiReplacePanel) ----
+    // Replace all occurrences of a placeholder variable in a template string
+    std::wstring replaceTemplateVar(const std::wstring& tmpl, const std::wstring& var, const std::wstring& value);
+
+    // Translate simple escape sequences (\t, \n, \r, \\) in a template string
+    std::wstring processTemplateEscapes(const std::wstring& tmpl);
+
 } // namespace StringUtils

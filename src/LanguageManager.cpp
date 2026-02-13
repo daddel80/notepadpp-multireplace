@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // -----------------------------------------------------------------------------
-//  Centralised undo / redo stack – no plugin‑specific code in here
+//  LanguageManager – centralised language and localisation
 // -----------------------------------------------------------------------------
 
 #include "LanguageManager.h"

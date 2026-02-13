@@ -491,5 +491,38 @@ namespace StringUtils {
         return numStr;
     }
 
+    std::wstring replaceTemplateVar(const std::wstring& tmpl,
+        const std::wstring& var,
+        const std::wstring& value) {
+        std::wstring result = tmpl;
+        size_t pos = 0;
+        while ((pos = result.find(var, pos)) != std::wstring::npos) {
+            result.replace(pos, var.length(), value);
+            pos += value.length();
+        }
+        return result;
+    }
+
+    std::wstring processTemplateEscapes(const std::wstring& tmpl) {
+        std::wstring result;
+        result.reserve(tmpl.size());
+
+        for (size_t i = 0; i < tmpl.size(); ++i) {
+            if (tmpl[i] == L'\\' && i + 1 < tmpl.size()) {
+                switch (tmpl[i + 1]) {
+                case L't': result += L'\t'; ++i; break;
+                case L'n': result += L'\n'; ++i; break;
+                case L'r': result += L'\r'; ++i; break;
+                case L'\\': result += L'\\'; ++i; break;
+                default: result += tmpl[i]; break;
+                }
+            }
+            else {
+                result += tmpl[i];
+            }
+        }
+        return result;
+    }
+
 
 } // namespace StringUtils
