@@ -5682,6 +5682,10 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
     WaitForDebugWindowClose();
 
     // Display status message
+    // Clear stored scope — document positions are invalidated by replacements
+    m_selectionScope.clear();
+
+    // Display status message
     if (replaceSuccess && showCompletionMessage) {
         showStatusMessage(LM.get(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), MessageStatus::Success);
     }
