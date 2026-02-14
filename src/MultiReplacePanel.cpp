@@ -602,7 +602,6 @@ void MultiReplace::ensureIndicatorContext()
     NppStyleKit::gIndicatorReg.init(hSci0, hSci1, remaining, /*capacityHint*/100);
 
     textStyles = remaining;
-    textStylesList = remaining;
 
 }
 
@@ -7605,11 +7604,7 @@ void MultiReplace::handleFindAllButton()
         std::vector<size_t> workIndices = getIndicesOfUniqueEnabledItems(true);
 
         // Synchronized Limit Calculation
-        int editorLimit = static_cast<int>(_textMarkerIds.size());
-        int dockLimit = ResultDock::MAX_ENTRY_COLORS;
-        int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
-        if (effectiveLimit < 1) effectiveLimit = 1;
-        int maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
+        int maxListSlots = calcMaxListSlots();
         bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
 
         for (size_t idx : workIndices)
@@ -7748,15 +7743,10 @@ void MultiReplace::handleFindAllInDocsButton()
         workIndices = getIndicesOfUniqueEnabledItems(true);
     }
 
-    int maxListSlots = 1;
+    int maxListSlots = calcMaxListSlots();
     bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
 
     if (useListEnabled) {
-        int editorLimit = static_cast<int>(_textMarkerIds.size());
-        int dockLimit = ResultDock::MAX_ENTRY_COLORS;
-        int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
-        if (effectiveLimit < 1) effectiveLimit = 1;
-        maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
 
         // Define Colors Loop (using clean list)
         for (size_t idx : workIndices) {
@@ -8005,15 +7995,10 @@ void MultiReplace::handleFindInFiles() {
         workIndices = getIndicesOfUniqueEnabledItems(true);
     }
 
-    int maxListSlots = 1;
+    int maxListSlots = calcMaxListSlots();
     bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
 
     if (useListEnabled) {
-        int editorLimit = static_cast<int>(_textMarkerIds.size());
-        int dockLimit = ResultDock::MAX_ENTRY_COLORS;
-        int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
-        if (effectiveLimit < 1) effectiveLimit = 1;
-        maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
 
         // Define Colors (Clean loop)
         for (size_t idx : workIndices) {
@@ -8932,12 +8917,8 @@ void MultiReplace::handleMarkMatchesButton() {
 
         std::vector<size_t> workIndices = getIndicesOfUniqueEnabledItems(true);
 
-        // Synchronized Limit Calculation (from QA Fix)
-        int editorLimit = static_cast<int>(_textMarkerIds.size());
-        int dockLimit = ResultDock::MAX_ENTRY_COLORS;
-        int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
-        if (effectiveLimit < 1) effectiveLimit = 1;
-        int maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
+        // Synchronized Limit Calculation
+        int maxListSlots = calcMaxListSlots();
 
         // Clean Loop over validated unique items
         for (size_t i : workIndices) {
@@ -9042,16 +9023,22 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
     return markCount;
 }
 
+int MultiReplace::calcMaxListSlots() const
+{
+    int editorLimit = static_cast<int>(_textMarkerIds.size());
+    int dockLimit = ResultDock::MAX_ENTRY_COLORS;
+    int effectiveLimit = (std::min)(editorLimit, dockLimit);
+    if (effectiveLimit < 1) effectiveLimit = 1;
+    return (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
+}
+
 int MultiReplace::resolveIndicatorForText(const std::wstring& findText)
 {
     if (_textMarkerIds.empty()) return -1;
 
     int indicId = -1;
 
-    int editorLimit = static_cast<int>(_textMarkerIds.size());
-    int dockLimit = ResultDock::MAX_ENTRY_COLORS;
-    int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
-    int maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
+    int maxListSlots = calcMaxListSlots();
 
     if (useListEnabled && useListColorsForMarking && !findText.empty()) {
 
@@ -9273,11 +9260,7 @@ void MultiReplace::updateTextMarkerStyles()
     if (useListEnabled) {
         ResultDock& dock = ResultDock::instance();
 
-        int editorLimit = static_cast<int>(_textMarkerIds.size());
-        int dockLimit = ResultDock::MAX_ENTRY_COLORS;
-        int effectiveLimit = (editorLimit < dockLimit) ? editorLimit : dockLimit;
-        if (effectiveLimit < 1) effectiveLimit = 1;
-        int maxListSlots = (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
+        int maxListSlots = calcMaxListSlots();
 
         // Update ResultDock slots
         for (size_t i = 0; i < replaceListData.size(); ++i) {

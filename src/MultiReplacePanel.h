@@ -106,12 +106,7 @@ struct UndoRedoAction {
     std::function<void()> redoAction;
 };
 
-struct WindowSettings {
-    int posX;
-    int posY;
-    int width;
-    int height;
-};
+
 
 enum class FontRole {
     Standard = 0,
@@ -213,10 +208,7 @@ struct ColumnInfo {
     SIZE_T startColumnIndex;
 };
 
-struct ContextMenuInfo {
-    int hitItem = -1;
-    int clickedColumn = -1;
-};
+
 
 struct HighlightedTabs {
     std::unordered_set<int> bufferIDs;  // Stores buffer IDs with active highlighting
@@ -237,7 +229,6 @@ struct HighlightedTabs {
 struct MenuState {
     bool listNotEmpty = false;
     bool canEdit = false;
-    bool canCopy = false;
     bool canPaste = false;
     bool hasSelection = false;
     bool clickedOnItem = false;
@@ -436,13 +427,7 @@ public:
     MultiReplace() :
         hInstance(nullptr),
         _hScintilla(nullptr),
-        _hClearMarksButton(nullptr),
-        _hCopyMarkedTextButton(nullptr),
-        _hInListCheckbox(nullptr),
-        _hMarkMatchesButton(nullptr),
-        _hReplaceAllButton(nullptr),
         _replaceListView(nullptr),
-        _hStatusMessage(nullptr),
         _statusMessageColor(RGB(0, 0, 0))
     {
         setInstance(this);
@@ -608,7 +593,6 @@ private:
     static constexpr int MARKER_COLOR_DARK = 0x0050D2;  // Color for non-list Marker (Orange)
     static constexpr int DUPLICATE_MARKER_COLOR_LIGHT = 0xE6E0B0; // Color for Duplicate Marker (Light Ice Blue)
     static constexpr int DUPLICATE_MARKER_COLOR_DARK = 0x909060;  // Color for Duplicate Marker (Muted Teal)
-    static constexpr LRESULT PROGRESS_THRESHOLD = 50000; // Will show progress bar if total exceeds defined threshold
     static constexpr int REPLACE_FILES_PANEL_HEIGHT = 88;
     bool isReplaceAllInDocs = false; // True if replacing in all open documents, false for current document only.
     bool isReplaceInFiles = false;   // True if replacing in files, false for current document only.
@@ -632,7 +616,6 @@ private:
     static constexpr int MIN_EDIT_FIELD_SIZE = 2; // Minimum size for Multiline Editor
     static constexpr int MAX_EDIT_FIELD_SIZE = 20; // Maximum size for Multiline Editor
 
-    static constexpr int STEP_SIZE = 5; // Speed for opening and closing Count Columns
     static constexpr wchar_t* symbolSortAsc = L"▼";
     static constexpr wchar_t* symbolSortDesc = L"▲";
     static constexpr wchar_t* symbolSortAscUnsorted = L"▽";
@@ -651,13 +634,7 @@ private:
     // Instance-specific GUI-related variables 
     HINSTANCE hInstance;
     HWND _hScintilla;
-    HWND _hClearMarksButton;
-    HWND _hCopyMarkedTextButton;
-    HWND _hInListCheckbox;
-    HWND _hMarkMatchesButton;
-    HWND _hReplaceAllButton;
     HWND _replaceListView;
-    HWND _hStatusMessage;
     std::array<HFONT, static_cast<size_t>(FontRole::Count)> _fontHandles{};
     COLORREF COLOR_SUCCESS;
     COLORREF COLOR_ERROR;
@@ -668,7 +645,6 @@ private:
     HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
     HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button
 
-    // ContextMenuInfo structure instance
     POINT _contextMenuClickPoint;
 
     // Style-related variables and constants
@@ -694,14 +670,11 @@ private:
 
     // Preferences (input)
     int preferredColumnTabsStyleId = 30; // preferred ColumnTabs id; -1 = auto
-    int preferredStandardMarkerStyle = 9; // preferred standard marker id; -1 = auto
+
 
     // Assigned (output)
-    int standardMarkerStyleId = -1;        // resolved id for non-list marker
-
     // Pools (runtime)
     std::vector<int> textStyles;           // highlight pool (excludes ColumnTabs + standard)
-    std::vector<int> textStylesList;       // list-only pool (same as textStyles)
 
     // Coordinator config
     inline static constexpr int kPreferredIds[] = {
@@ -718,7 +691,6 @@ private:
     // Data-related variables 
     size_t markedStringsCount = 0;
     bool allSelected = true;
-    std::vector<char> stylesBuffer;
     std::unordered_map<int, int> colorToStyleMap;
     std::map<int, SortDirection> columnSortOrder;
     ColumnDelimiterData columnDelimiterData;
@@ -728,10 +700,8 @@ private:
     std::vector<char> styleBuffer; // reusable Buffer for highlightColumnsInLine()
     std::vector<char> tagBuffer;  // reusable Buffer for SCI_GETTAG in resolveLuaSyntax()
     bool isColumnHighlighted = false;
-    std::map<int, bool> stateSnapshot; // stores the state of the Elements
     LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
     SIZE_T CSVheaderLinesCount = 1; // Number of header lines not included in CSV sorting
-    bool isStatisticsColumnsExpanded = false;
     inline static POINT debugWindowPosition{ CW_USEDEFAULT, CW_USEDEFAULT };
     inline static bool  debugWindowPositionSet = false;
     inline static int   debugWindowResponse = -1;
@@ -746,7 +716,6 @@ private:
     std::string _lastCompiledLuaCode;             // Cached Lua code for reuse
 
     // Debugging and logging related 
-    std::string messageBoxContent;  // just for temporary debugging usage
     std::wstring findNextButtonText;        // member variable to ensure persists for button label throughout the object's lifetime.
 
     // Scintilla related 
@@ -851,10 +820,7 @@ private:
     int MIN_WIDTH_scaled;
     int MIN_HEIGHT_scaled;
     int SHRUNK_HEIGHT_scaled;
-    int COUNT_COLUMN_WIDTH_scaled;
-    int MIN_FIND_REPLACE_WIDTH_scaled;
     int MIN_GENERAL_WIDTH_scaled;
-    int COMMENTS_COLUMN_WIDTH_scaled;
     int DEFAULT_COLUMN_WIDTH_FIND_scaled;
     int DEFAULT_COLUMN_WIDTH_REPLACE_scaled;
     int DEFAULT_COLUMN_WIDTH_COMMENTS_scaled;
@@ -1015,6 +981,7 @@ private:
     //Mark
     void handleMarkMatchesButton();
     int markString(const SearchContext& context, Sci_Position initialStart, const std::wstring& findText = L"");
+    int calcMaxListSlots() const;
     int resolveIndicatorForText(const std::wstring& findText);
     void handleClearTextMarksButton();
     void handleCopyMarkedTextToClipboardButton();
