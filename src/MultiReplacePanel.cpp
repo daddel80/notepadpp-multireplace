@@ -4857,6 +4857,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_SORT_ASC_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             if (columnDelimiterData.isValid()) {
                 handleSortStateAndSort(SortDirection::Ascending);
@@ -4867,6 +4869,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_SORT_DESC_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             if (columnDelimiterData.isValid()) {
                 handleSortStateAndSort(SortDirection::Descending);
@@ -4877,6 +4881,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_DROP_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             if (confirmColumnDeletion()) {
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
                 if (columnDelimiterData.isValid()) {
@@ -4888,6 +4894,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_COPY_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             if (columnDelimiterData.isValid()) {
                 handleCopyColumnsToClipboard();
@@ -4897,6 +4905,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_HIGHLIGHT_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             int currentBufferID = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
 
             if (!highlightedTabs.isHighlighted(currentBufferID)) {
@@ -4914,6 +4924,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_GRIDTABS_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             if (columnDelimiterData.isValid()) {
                 handleColumnGridTabsButton();
@@ -4923,6 +4935,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_DUPLICATES_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             if (columnDelimiterData.isValid()) {
                 handleDuplicatesButton();
@@ -4973,6 +4987,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_FIND_ALL_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             CloseDebugWindow();
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
@@ -5043,6 +5059,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_SMALL_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             CloseDebugWindow(); // Close the Lua debug window if it is open
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
@@ -5056,6 +5074,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             CloseDebugWindow();
 
             if (isReplaceAllInDocs)
@@ -5090,6 +5110,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleClearTextMarksButton();
@@ -5099,6 +5121,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_CLEAR_MARKS_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             handleClearTextMarksButton();
             clearDuplicateMarks();
             showStatusMessage(LM.get(L"status_all_marks_cleared"), MessageStatus::Success);
@@ -5107,6 +5131,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COPY_MARKED_TEXT_BUTTON:
         {
+            OperationGuard op(_isOperationRunning);
+            if (!op) return TRUE;
             handleCopyMarkedTextToClipboardButton();
             return TRUE;
         }
