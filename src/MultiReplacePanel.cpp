@@ -11052,15 +11052,6 @@ void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalO
     send(SCI_APPENDTEXT, combinedLines.length(), reinterpret_cast<sptr_t>(combinedLines.c_str()));
 }
 
-void MultiReplace::extractLineContent(size_t idx, std::string& content, const std::string& lineBreak) {
-    LRESULT lineStart = send(SCI_POSITIONFROMLINE, idx);
-    LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, idx);
-    size_t len = static_cast<size_t>(lineEnd - lineStart);
-    content.resize(len);
-    Sci_TextRangeFull tr{ lineStart, lineEnd, content.data() };
-    send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
-    content += lineBreak;
-}
 
 void MultiReplace::UpdateSortButtonSymbols() {
     HWND hwndAscButton = GetDlgItem(_hSelf, IDC_COLUMN_SORT_ASC_BUTTON);
@@ -12562,28 +12553,6 @@ int MultiReplace::getFontHeight(HWND hwnd, HFONT hFont) {
     int fontHeight = tm.tmHeight;  // Extract the font height
     ReleaseDC(hwnd, hdc);  // Release the device context
     return fontHeight;  // Return the font height
-}
-
-int MultiReplace::getCharacterWidth(int elementID, const wchar_t* character) {
-    // Get the HWND of the element by its ID
-    HWND hwndElement = GetDlgItem(_hSelf, elementID);
-
-    // Get the font used by the element
-    HFONT hFont = reinterpret_cast<HFONT>(SendMessage(hwndElement, WM_GETFONT, 0, 0));
-
-    // Get the device context for measuring text
-    HDC hdc = GetDC(hwndElement);
-    SelectObject(hdc, hFont);  // Use the font of the given element
-
-    // Measure the width of the character
-    SIZE size;
-    GetTextExtentPoint32W(hdc, character, 1, &size);
-
-    // Release the device context
-    ReleaseDC(hwndElement, hdc);
-
-    // Return the width of the character
-    return size.cx;
 }
 
 std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage)

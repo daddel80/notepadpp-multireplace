@@ -1016,7 +1016,6 @@ private:
     void sortRowsByColumn(SortDirection sortDirection);
     void reorderLinesInScintilla(const std::vector<size_t>& sortedIndex);
     void restoreOriginalLineOrder(const std::vector<size_t>& originalOrder);
-    void extractLineContent(size_t idx, std::string& content, const std::string& lineBreak);
     void UpdateSortButtonSymbols();
     void handleSortStateAndSort(SortDirection direction);
     void updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType);
@@ -1060,7 +1059,6 @@ private:
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true) const;
     bool normalizeAndValidateNumber(std::string& str);
     std::vector<WCHAR> createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
-    int getCharacterWidth(int elementID, const wchar_t* character);
     int getFontHeight(HWND hwnd, HFONT hFont);
     std::vector<int> parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
     UINT getCurrentDocCodePage();
