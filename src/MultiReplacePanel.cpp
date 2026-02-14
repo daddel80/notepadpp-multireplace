@@ -4857,56 +4857,50 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_SORT_ASC_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             if (columnDelimiterData.isValid()) {
                 handleSortStateAndSort(SortDirection::Ascending);
                 UpdateSortButtonSymbols();
             }
+            drainMessageQueue();
             return TRUE;
         }
 
         case IDC_COLUMN_SORT_DESC_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             if (columnDelimiterData.isValid()) {
                 handleSortStateAndSort(SortDirection::Descending);
                 UpdateSortButtonSymbols();
             }
+            drainMessageQueue();
             return TRUE;
         }
 
         case IDC_COLUMN_DROP_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             if (confirmColumnDeletion()) {
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
                 if (columnDelimiterData.isValid()) {
                     handleDeleteColumns();
                 }
             }
+            drainMessageQueue();
             return TRUE;
         }
 
         case IDC_COLUMN_COPY_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             if (columnDelimiterData.isValid()) {
                 handleCopyColumnsToClipboard();
             }
+            drainMessageQueue();
             return TRUE;
         }
 
         case IDC_COLUMN_HIGHLIGHT_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             int currentBufferID = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
 
             if (!highlightedTabs.isHighlighted(currentBufferID)) {
@@ -4919,28 +4913,27 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 handleClearColumnMarks();
                 showStatusMessage(LanguageManager::instance().get(L"status_column_marks_cleared"), MessageStatus::Success);
             }
+            drainMessageQueue();
             return TRUE;
         }
 
         case IDC_COLUMN_GRIDTABS_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             if (columnDelimiterData.isValid()) {
                 handleColumnGridTabsButton();
             }
+            drainMessageQueue();
             return TRUE;
         }
 
         case IDC_COLUMN_DUPLICATES_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             if (columnDelimiterData.isValid()) {
                 handleDuplicatesButton();
             }
+            drainMessageQueue();
             return TRUE;
         }
 
@@ -4987,8 +4980,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_FIND_ALL_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             CloseDebugWindow();
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
@@ -5000,6 +4991,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             else
                 handleFindAllButton();
 
+            drainMessageQueue();
             return TRUE;
         }
 
@@ -5059,8 +5051,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_SMALL_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             CloseDebugWindow(); // Close the Lua debug window if it is open
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
@@ -5069,13 +5059,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 findAllDelimitersInDocument();
                 reapplyColumnHighlighting();
             }
+            drainMessageQueue();
             return TRUE;
         }
 
         case IDC_REPLACE_ALL_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             CloseDebugWindow();
 
             if (isReplaceAllInDocs)
@@ -5098,6 +5087,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     reapplyColumnHighlighting();
                 }
             }
+            drainMessageQueue();
             return TRUE;
         }
 
@@ -5110,30 +5100,27 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleClearTextMarksButton();
             handleMarkMatchesButton();
+            drainMessageQueue();
             return TRUE;
         }
 
         case IDC_CLEAR_MARKS_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             handleClearTextMarksButton();
             clearDuplicateMarks();
             showStatusMessage(LM.get(L"status_all_marks_cleared"), MessageStatus::Success);
+            drainMessageQueue();
             return TRUE;
         }
 
         case IDC_COPY_MARKED_TEXT_BUTTON:
         {
-            OperationGuard op(_isOperationRunning);
-            if (!op) return TRUE;
             handleCopyMarkedTextToClipboardButton();
+            drainMessageQueue();
             return TRUE;
         }
 
@@ -12274,6 +12261,29 @@ void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
         }
         };
     URM.push(action.undoAction, action.redoAction, (value ? L"Set " : L"Clear ") + optionName);
+}
+
+void MultiReplace::drainMessageQueue()
+{
+    // Discard mouse and button-click messages that accumulated in the
+    // Windows message queue while a long-running synchronous operation
+    // was blocking the UI thread.  Without this, rapid repeated clicks
+    // (e.g. double-clicking FlowTabs) would queue a second WM_COMMAND
+    // that re-triggers the operation as soon as the first one finishes.
+    //
+    // Safety:
+    //  - Mouse messages (NULL HWND): drains from the calling thread only;
+    //    other processes/threads are never affected.  Losing stale mouse
+    //    events after a bulk operation is harmless – the user was waiting,
+    //    not editing.
+    //  - WM_COMMAND (_hSelf only): only our dialog's button notifications
+    //    are removed.  Notepad++ menus, hotkeys, and other plugins are
+    //    unaffected because their WM_COMMAND targets different HWNDs.
+    //  - Keyboard messages are deliberately left untouched.
+
+    MSG msg;
+    while (::PeekMessage(&msg, nullptr, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE)) {}
+    while (::PeekMessage(&msg, _hSelf, WM_COMMAND, WM_COMMAND, PM_REMOVE)) {}
 }
 
 void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound, bool isTransient)

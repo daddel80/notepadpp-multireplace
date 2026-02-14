@@ -775,19 +775,6 @@ private:
     bool _editIsExpanded = false; // track expand state
     bool _isCancelRequested = false; // Flag to signal cancellation in Replace Files
     inline static bool  _isShuttingDown = false; // Flag to signal app shutdown
-    bool _isOperationRunning = false; // Reentry guard for long-running UI operations
-
-    // RAII guard that prevents reentrant execution of slow operations.
-    // Acquires on construction, releases on destruction. Evaluates to true if acquired.
-    struct OperationGuard {
-        bool& flag;
-        bool acquired;
-        OperationGuard(bool& f) : flag(f), acquired(!f) { if (acquired) flag = true; }
-        ~OperationGuard() { if (acquired) flag = false; }
-        explicit operator bool() const { return acquired; }
-        OperationGuard(const OperationGuard&) = delete;
-        OperationGuard& operator=(const OperationGuard&) = delete;
-    };
     HBRUSH _hDlgBrush = nullptr; // Handle for the dialog's background brush
     bool _flowTabsActive = false;   // current visual state (editor tabstops)
     int  _flowPaddingPx = 8;       // min pixel gap after each column
@@ -1063,6 +1050,7 @@ private:
     void setSelections(bool select, bool onlySelected = false);
     void setOptionForSelection(SearchOption option, bool value);
     void showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound = false, bool isTransient = false);
+    void drainMessageQueue();
     void applyThemePalette();
     void refreshColumnStylesIfNeeded();
     std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
