@@ -67,8 +67,10 @@
 #include <windows.h>
 #include <Commctrl.h>
 #include <uxtheme.h>
+#include <shlwapi.h>
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "shlwapi.lib")
 
 static LanguageManager& LM = LanguageManager::instance();
 static ConfigManager& CFG = ConfigManager::instance();
@@ -236,7 +238,7 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
 
     // Add extra room if “Replace in Files” panel is visible AND we're not in Two-Buttons-Mode
     bool twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
-    int panelExtra = ((isReplaceInFiles || isFindAllInFiles) && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
+    int panelExtra = (isFilesPanelNeeded() && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
 
     int minHeight = minContentHeight + panelExtra;
     int minWidth = MIN_WIDTH_scaled;
@@ -273,7 +275,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     // Calculate dimensions without scaling
     BOOL twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
-    int filesOffsetY = ((isReplaceInFiles || isFindAllInFiles) && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
+    int filesOffsetY = (isFilesPanelNeeded() && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
     int buttonX = windowWidth - sx(33 + 128);
     int checkbox2X = buttonX + sx(134);
     int useListButtonX = buttonX + sx(133);
@@ -416,6 +418,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(27), sy(230), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(27), sy(257), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_ALL_DOCS_CHECKBOX] = { comboWidth - sx(27), sy(230), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_all_documents"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
 }
 
 HFONT MultiReplace::font(FontRole role) const {
@@ -470,7 +473,7 @@ bool MultiReplace::createAndShowWindows() {
         IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
         IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
         IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
-        IDC_CANCEL_REPLACE_BUTTON
+        IDC_CANCEL_REPLACE_BUTTON, IDC_ALL_DOCS_CHECKBOX
     };
 
     // IDs of List Search Bar controls (initially hidden)
@@ -487,7 +490,7 @@ bool MultiReplace::createAndShowWindows() {
         };
 
     const bool twoButtonsMode = (IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED);
-    const bool initialShow = (isReplaceInFiles || isFindAllInFiles) && !twoButtonsMode;
+    const bool initialShow = isFilesPanelNeeded() && !twoButtonsMode;
 
     for (auto& pair : ctrlMap)
     {
@@ -758,7 +761,7 @@ void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title)
         IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
         IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
         IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
-        IDC_CANCEL_REPLACE_BUTTON
+        IDC_CANCEL_REPLACE_BUTTON, IDC_ALL_DOCS_CHECKBOX
     };
 
     // Keep the caption in sync
@@ -793,6 +796,85 @@ void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title)
     }
 }
 
+// ------------------------------------------------------------------
+// isFilesPanelNeeded – single source of truth for panel visibility.
+// Used by positionAndResizeControls, createAndShowWindows, and
+// updateFilesPanel to decide whether the panel area is allocated.
+// ------------------------------------------------------------------
+bool MultiReplace::isFilesPanelNeeded() const
+{
+    return isReplaceInFiles || isFindAllInFiles || isReplaceAllInDocs || isFindAllInDocs;
+}
+
+// ------------------------------------------------------------------
+// matchesDocFilter – check a filename against a semicolon-separated
+// wildcard filter string.  Supports positive patterns (*.log) and
+// exclusion patterns (!*.bak).  Uses the same syntax as the "Filter"
+// field in the "Replace in Files" panel.
+// ------------------------------------------------------------------
+bool MultiReplace::matchesDocFilter(const std::wstring& fileName, const std::wstring& filter) const
+{
+    if (filter.empty() || filter == L"*.*" || filter == L"*")
+        return true;
+
+    bool hasPositivePattern = false;
+    bool matchedPositive = false;
+
+    std::wstring remaining = filter;
+    while (!remaining.empty()) {
+        size_t sep = remaining.find(L';');
+        std::wstring pattern = (sep == std::wstring::npos)
+            ? remaining : remaining.substr(0, sep);
+        remaining = (sep == std::wstring::npos) ? L"" : remaining.substr(sep + 1);
+
+        // Trim whitespace
+        size_t s = pattern.find_first_not_of(L" \t");
+        if (s == std::wstring::npos) continue;
+        size_t e = pattern.find_last_not_of(L" \t");
+        pattern = pattern.substr(s, e - s + 1);
+        if (pattern.empty()) continue;
+
+        if (pattern[0] == L'!') {
+            std::wstring excl = pattern.substr(1);
+            if (!excl.empty() && PathMatchSpecW(fileName.c_str(), excl.c_str()))
+                return false;   // exclusion hit → reject
+        }
+        else {
+            hasPositivePattern = true;
+            if (PathMatchSpecW(fileName.c_str(), pattern.c_str()))
+                matchedPositive = true;
+        }
+    }
+    // No positive patterns (only exclusions) → include everything not excluded.
+    // Positive patterns present but none matched → reject.
+    return hasPositivePattern ? matchedPositive : true;
+}
+
+// ------------------------------------------------------------------
+// updateAllDocsCheckboxState – enable/disable the filter controls
+// based on the "All documents" checkbox.  Called on checkbox click
+// and when the panel switches to Docs mode.
+// ------------------------------------------------------------------
+void MultiReplace::updateAllDocsCheckboxState()
+{
+    bool allDocs = (IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) == BST_CHECKED);
+    EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_EDIT), !allDocs);
+    EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_STATIC), !allDocs);
+    // IDC_FILTER_HELP (?) stays always enabled so its tooltip remains accessible
+}
+
+// ------------------------------------------------------------------
+// drainMessageQueue – discard stale mouse/command messages after a
+// synchronous UI-blocking operation, preventing double-execution
+// from queued clicks.
+// ------------------------------------------------------------------
+void MultiReplace::drainMessageQueue()
+{
+    MSG msg;
+    while (::PeekMessage(&msg, nullptr, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE)) {}
+    while (::PeekMessage(&msg, _hSelf, WM_COMMAND, WM_COMMAND, PM_REMOVE)) {}
+}
+
 void MultiReplace::updateFilesPanel()
 {
     // All controls inside the "Replace/Find in Files" panel
@@ -801,31 +883,36 @@ void MultiReplace::updateFilesPanel()
         IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
         IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
         IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
-        IDC_CANCEL_REPLACE_BUTTON
+        IDC_CANCEL_REPLACE_BUTTON, IDC_ALL_DOCS_CHECKBOX
     };
 
     // Persisted UI state to avoid unnecessary work
     static bool lastShow = false;
+    static bool lastInDocsMode = false;
     static std::wstring lastTitleKey;
 
     const bool twoButtonsMode = (IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED);
-    const bool show = (isReplaceInFiles || isFindAllInFiles) && !twoButtonsMode;
+    const bool inDocsMode = (isReplaceAllInDocs || isFindAllInDocs);
+    const bool inFilesMode = (isReplaceInFiles || isFindAllInFiles);
+    const bool show = (inFilesMode || inDocsMode) && !twoButtonsMode;
 
-    // Determine title
+    // Determine title – unified logic for both Files and Docs panels.
+    // The panel GroupBox always has the same size; only title and
+    // which inner controls are visible changes between modes.
     std::wstring titleKey;
-    std::wstring titleText;
-    if (isReplaceInFiles && isFindAllInFiles) {
-        titleKey = L"panel_find_replace_in_files";
-        titleText = LM.get(titleKey);
-    }
-    else if (isFindAllInFiles) {
-        titleKey = L"panel_find_in_files";
-        titleText = LM.get(titleKey);
+    if (inDocsMode && !inFilesMode) {
+        bool both = isReplaceAllInDocs && isFindAllInDocs;
+        titleKey = both ? L"panel_find_replace_in_docs"
+            : isFindAllInDocs ? L"panel_find_in_docs"
+            : L"panel_replace_in_docs";
     }
     else {
-        titleKey = L"panel_replace_in_files";
-        titleText = LM.get(titleKey);
+        bool both = isReplaceInFiles && isFindAllInFiles;
+        titleKey = both ? L"panel_find_replace_in_files"
+            : isFindAllInFiles ? L"panel_find_in_files"
+            : L"panel_replace_in_files";
     }
+    std::wstring titleText = LM.get(titleKey);
 
     HWND hGrp = GetDlgItem(_hSelf, IDC_FILE_OPS_GROUP);
     HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
@@ -871,11 +958,35 @@ void MultiReplace::updateFilesPanel()
 
         if (show) {
             EnableWindow(GetDlgItem(_hSelf, IDC_CANCEL_REPLACE_BUTTON), FALSE);
+
+            // Mode-specific control visibility within the panel.
+            // Both modes share: GroupBox, Filter label, Filter edit, Filter help, Cancel.
+            // Files mode adds:  Dir label, Dir edit, Browse, Subfolders, Hidden.
+            // Docs mode  adds:  "All documents" checkbox.
+            const int filesOnlyIds[] = {
+                IDC_DIR_STATIC, IDC_DIR_EDIT, IDC_BROWSE_DIR_BUTTON,
+                IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
+                IDC_CANCEL_REPLACE_BUTTON
+            };
+            for (int id : filesOnlyIds)
+                ShowWindow(GetDlgItem(_hSelf, id), inFilesMode ? SW_SHOW : SW_HIDE);
+            ShowWindow(GetDlgItem(_hSelf, IDC_ALL_DOCS_CHECKBOX), inDocsMode ? SW_SHOW : SW_HIDE);
+
+            // In docs mode: apply "All documents" checkbox state to filter enable/disable
+            if (inDocsMode)
+                updateAllDocsCheckboxState();
+            else {
+                // Files mode: filter is always enabled (no "All documents" checkbox)
+                EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_EDIT), TRUE);
+                EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_STATIC), TRUE);
+            }
+
             // Showing: repaint panel (title + frame + children) safely
             repaintPanelContents(hGrp, titleText);
-            // Clear selection in both edit fields after opening the panel
+            // Clear selection in edit fields after opening the panel
             SendMessage(GetDlgItem(_hSelf, IDC_FILTER_EDIT), CB_SETEDITSEL, 0, 0);
-            SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_SETEDITSEL, 0, 0);
+            if (inFilesMode)
+                SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_SETEDITSEL, 0, 0);
         }
         else {
 
@@ -901,21 +1012,59 @@ void MultiReplace::updateFilesPanel()
         RedrawWindow(_hSelf, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
 
         lastShow = show;
-        if (show) lastTitleKey = titleKey;
+        if (show) {
+            lastTitleKey = titleKey;
+            lastInDocsMode = inDocsMode;
+        }
         return;
     }
 
     // Case B) Still hidden: nothing to do (keep state clean)
     if (!show) {
         lastShow = false;
+        lastInDocsMode = false;
         lastTitleKey.clear();
         return;
     }
 
-    // Case C) Visible and only the title changed
+    // Case C) Visible – mode changed (Files↔Docs) or only the title changed
+    const bool modeChanged = (inDocsMode != lastInDocsMode);
+
+    if (modeChanged)
+    {
+        // Swap filter text: save current edit to outgoing mode, load incoming mode
+        if (inDocsMode) {
+            _filesFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+            setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, _docsFilter);
+        }
+        else {
+            _docsFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+            setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, _filesFilter);
+        }
+
+        // Switch controls between Files mode and Docs mode
+        const int filesOnlyIds[] = {
+            IDC_DIR_STATIC, IDC_DIR_EDIT, IDC_BROWSE_DIR_BUTTON,
+            IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
+            IDC_CANCEL_REPLACE_BUTTON
+        };
+        for (int id : filesOnlyIds)
+            ShowWindow(GetDlgItem(_hSelf, id), inFilesMode ? SW_SHOW : SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_ALL_DOCS_CHECKBOX), inDocsMode ? SW_SHOW : SW_HIDE);
+
+        if (inDocsMode)
+            updateAllDocsCheckboxState();
+        else {
+            EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_EDIT), TRUE);
+            EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_STATIC), TRUE);
+        }
+
+        lastInDocsMode = inDocsMode;
+    }
+
     if (titleKey != lastTitleKey)
     {
-        // Repaint only the panel contents/title without relayout
+        // Repaint panel contents/title without relayout
         repaintPanelContents(hGrp, titleText);
         lastTitleKey = titleKey;
     }
@@ -4418,7 +4567,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             RECT rc; ::GetWindowRect(pnmh->hwndFrom, &rc);
             HMENU hMenu = CreatePopupMenu();
             AppendMenu(hMenu, MF_STRING, ID_REPLACE_ALL_OPTION, LM.getW(L"split_menu_replace_all"));
-            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_ALL_DOCS_OPTION, LM.getW(L"split_menu_replace_all_in_docs"));
+            AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_DOCS_OPTION, LM.getW(L"split_menu_replace_in_docs"));
             AppendMenu(hMenu, MF_STRING, ID_REPLACE_IN_FILES_OPTION, LM.getW(L"split_menu_replace_all_in_files"));
             AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
             AppendMenu(hMenu, MF_STRING | (_debugModeEnabled ? MF_CHECKED : MF_UNCHECKED), ID_DEBUG_MODE_OPTION, LM.getW(L"split_menu_debug_mode"));
@@ -4433,7 +4582,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             RECT rc; ::GetWindowRect(pnmh->hwndFrom, &rc);
             HMENU hMenu = CreatePopupMenu();
             AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_OPTION, LM.getW(L"split_menu_find_all"));
-            AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_ALL_DOCS_OPTION, LM.getW(L"split_menu_find_all_in_docs"));
+            AppendMenu(hMenu, MF_STRING, ID_FIND_IN_DOCS_OPTION, LM.getW(L"split_menu_find_in_docs"));
             AppendMenu(hMenu, MF_STRING, ID_FIND_ALL_IN_FILES_OPTION, LM.getW(L"split_menu_find_all_in_files"));
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, nullptr);
             DestroyMenu(hMenu);
@@ -4803,6 +4952,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
+        case IDC_ALL_DOCS_CHECKBOX:
+        {
+            if (HIWORD(wParam) == BN_CLICKED)
+                updateAllDocsCheckboxState();
+            return TRUE;
+        }
+
         case IDC_2_BUTTONS_MODE:
         {
             // Check if the Find checkbox has been clicked
@@ -5004,11 +5160,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case ID_FIND_ALL_IN_ALL_DOCS_OPTION:
+        case ID_FIND_IN_DOCS_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getW(L"split_button_find_all_in_docs"));
+            SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getW(L"split_button_find_in_docs"));
             isFindAllInDocs = true;
             isFindAllInFiles = false;
+            // Sync: if Replace is "in Files", pull it to "in Docs"
+            if (isReplaceInFiles) {
+                isReplaceInFiles = false;
+                isReplaceAllInDocs = true;
+                SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getW(L"split_button_replace_in_docs"));
+            }
             updateFilesPanel();
             return TRUE;
         }
@@ -5018,6 +5180,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getW(L"split_button_find_all_in_files"));
             isFindAllInDocs = false;
             isFindAllInFiles = true;
+            // Sync: if Replace is "in Docs", pull it to "in Files"
+            if (isReplaceAllInDocs) {
+                isReplaceAllInDocs = false;
+                isReplaceInFiles = true;
+                SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getW(L"split_button_replace_all_in_files"));
+            }
             updateFilesPanel();
             return TRUE;
         }
@@ -5225,11 +5393,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case ID_REPLACE_IN_ALL_DOCS_OPTION:
+        case ID_REPLACE_IN_DOCS_OPTION:
         {
-            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getW(L"split_button_replace_all_in_docs"));
+            SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getW(L"split_button_replace_in_docs"));
             isReplaceAllInDocs = true;
             isReplaceInFiles = false;
+            // Sync: if Find is "in Files", pull it to "in Docs"
+            if (isFindAllInFiles) {
+                isFindAllInFiles = false;
+                isFindAllInDocs = true;
+                SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getW(L"split_button_find_in_docs"));
+            }
             updateFilesPanel();
             return TRUE;
         }
@@ -5239,6 +5413,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             SetDlgItemText(_hSelf, IDC_REPLACE_ALL_BUTTON, LM.getW(L"split_button_replace_all_in_files"));
             isReplaceAllInDocs = false;
             isReplaceInFiles = true;
+            // Sync: if Find is "in Docs", pull it to "in Files"
+            if (isFindAllInDocs) {
+                isFindAllInDocs = false;
+                isFindAllInFiles = true;
+                SetDlgItemText(_hSelf, IDC_FIND_ALL_BUTTON, LM.getW(L"split_button_find_all_in_files"));
+            }
             updateFilesPanel();
             return TRUE;
         }
@@ -5470,9 +5650,30 @@ void MultiReplace::replaceAllInOpenedDocs()
             ::SendMessage(_hScintilla, SCI_GETDIRECTPOINTER, 0, 0));
         };
 
+    // Read document filter: when "All documents" is unchecked in the
+    // Open Documents panel, skip files that don't match the filter.
+    // An empty filter is treated as *.* (match all) – same as "in Files".
+    const bool filterDocs = (isReplaceAllInDocs || isFindAllInDocs)
+        && (IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) != BST_CHECKED);
+    std::wstring docFilter;
+    if (filterDocs) {
+        docFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+        if (docFilter.empty()) docFilter = L"*.*";
+    }
+
     // Local lambda to process one document
     auto processOneDoc = [&](int view, LRESULT idx) -> bool {
         ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, view, idx);
+
+        // Apply document filter (skip non-matching files)
+        if (filterDocs) {
+            wchar_t fnBuf[MAX_PATH]{};
+            ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH,
+                reinterpret_cast<LPARAM>(fnBuf));
+            if (!matchesDocFilter(fnBuf, docFilter))
+                return true;  // skip this doc, continue with next
+        }
+
         bindToView(view);  // rebind _hScintilla to the activated view
         handleDelimiterPositions(DelimiterOperation::LoadAll);
         if (!handleReplaceAllButton()) return false; // aborted via Stop/Error
@@ -7318,7 +7519,11 @@ void MultiReplace::handleReplaceInFiles() {
     if (!validateDelimiterData()) return;
 
     // parse filter after UI/defaults/checks
-    guard.parseFilter(wFilter);
+    // Normalize filter: semicolons → spaces for guard compatibility
+    // (UI shows semicolon syntax; guard.parseFilter expects spaces)
+    std::wstring guardFilter = wFilter;
+    std::replace(guardFilter.begin(), guardFilter.end(), L';', L' ');
+    guard.parseFilter(guardFilter);
 
     // Apply file size limit settings
     guard.setFileSizeLimitEnabled(limitFileSizeEnabled);
@@ -7892,10 +8097,25 @@ void MultiReplace::handleFindAllInDocsButton()
     const bool mainVis = !!::IsWindowVisible(nppData._scintillaMainHandle);
     const bool subVis = !!::IsWindowVisible(nppData._scintillaSecondHandle);
 
+    // Document filter – same logic as in replaceAllInOpenedDocs
+    const bool filterDocs = (isReplaceAllInDocs || isFindAllInDocs)
+        && (IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) != BST_CHECKED);
+    std::wstring docFilter;
+    if (filterDocs) {
+        docFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+        if (docFilter.empty()) docFilter = L"*.*";
+    }
+
     if (mainVis) {
         LRESULT nbMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
         for (LRESULT i = 0; i < nbMain; ++i) {
             ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
+            if (filterDocs) {
+                wchar_t fnBuf[MAX_PATH]{};
+                ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH,
+                    reinterpret_cast<LPARAM>(fnBuf));
+                if (!matchesDocFilter(fnBuf, docFilter)) continue;
+            }
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             processCurrentBuffer(MAIN_VIEW);
         }
@@ -7904,6 +8124,12 @@ void MultiReplace::handleFindAllInDocsButton()
         LRESULT nbSub = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
         for (LRESULT i = 0; i < nbSub; ++i) {
             ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, i);
+            if (filterDocs) {
+                wchar_t fnBuf[MAX_PATH]{};
+                ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH,
+                    reinterpret_cast<LPARAM>(fnBuf));
+                if (!matchesDocFilter(fnBuf, docFilter)) continue;
+            }
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             processCurrentBuffer(SUB_VIEW);
         }
@@ -7967,7 +8193,11 @@ void MultiReplace::handleFindInFiles() {
         return;
     }
     if (!validateDelimiterData()) return;
-    guard.parseFilter(wFilter);
+    // Normalize filter: semicolons → spaces for guard compatibility
+    // (UI shows semicolon syntax; guard.parseFilter expects spaces)
+    std::wstring guardFilter = wFilter;
+    std::replace(guardFilter.begin(), guardFilter.end(), L';', L' ');
+    guard.parseFilter(guardFilter);
     guard.setFileSizeLimitEnabled(limitFileSizeEnabled);
     guard.setMaxFileSizeMB(maxFileSizeMB);
 
@@ -12263,29 +12493,6 @@ void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
     URM.push(action.undoAction, action.redoAction, (value ? L"Set " : L"Clear ") + optionName);
 }
 
-void MultiReplace::drainMessageQueue()
-{
-    // Discard mouse and button-click messages that accumulated in the
-    // Windows message queue while a long-running synchronous operation
-    // was blocking the UI thread.  Without this, rapid repeated clicks
-    // (e.g. double-clicking FlowTabs) would queue a second WM_COMMAND
-    // that re-triggers the operation as soon as the first one finishes.
-    //
-    // Safety:
-    //  - Mouse messages (NULL HWND): drains from the calling thread only;
-    //    other processes/threads are never affected.  Losing stale mouse
-    //    events after a bulk operation is harmless – the user was waiting,
-    //    not editing.
-    //  - WM_COMMAND (_hSelf only): only our dialog's button notifications
-    //    are removed.  Notepad++ menus, hotkeys, and other plugins are
-    //    unaffected because their WM_COMMAND targets different HWNDs.
-    //  - Keyboard messages are deliberately left untouched.
-
-    MSG msg;
-    while (::PeekMessage(&msg, nullptr, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE)) {}
-    while (::PeekMessage(&msg, _hSelf, WM_COMMAND, WM_COMMAND, PM_REMOVE)) {}
-}
-
 void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound, bool isTransient)
 {
     const size_t MAX_DISPLAY_LENGTH = 150;
@@ -13311,9 +13518,8 @@ void MultiReplace::loadSettingsToPanelUI() {
 
     CSVheaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
 
-    // --- Load “Replace in Files” settings --------------------------
-    std::wstring filter = CFG.readString(L"ReplaceInFiles", L"Filter", L"*.*");
-    setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, filter);
+    // --- Load "Replace in Files" settings --------------------------
+    _filesFilter = CFG.readString(L"ReplaceInFiles", L"Filter", L"*.*");
 
     std::wstring dir = CFG.readString(L"ReplaceInFiles", L"Directory", L"");
     setTextInDialogItem(_hSelf, IDC_DIR_EDIT, dir);
@@ -13326,6 +13532,17 @@ void MultiReplace::loadSettingsToPanelUI() {
 
     limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     maxFileSizeMB = static_cast<size_t>(CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100));
+
+    // --- Load "Open Documents" panel settings ---
+    _docsFilter = CFG.readString(L"OpenDocs", L"Filter", L"*.*");
+
+    bool allDocs = CFG.readBool(L"OpenDocs", L"AllDocuments", true);
+    SendMessage(GetDlgItem(_hSelf, IDC_ALL_DOCS_CHECKBOX), BM_SETCHECK,
+        allDocs ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    // Set filter edit field to the active mode's value
+    const bool docsActive = (isReplaceAllInDocs || isFindAllInDocs);
+    setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, docsActive ? _docsFilter : _filesFilter);
 
     // --- Load Column Settings (Widths & Visibility) ---
     // Column widths and visibility are read here, then applied in the 'instance' block below.
@@ -13710,13 +13927,25 @@ void MultiReplace::syncUIToCache()
     CFG.writeString(L"Scope", L"QuoteChar", getTextFromDialogItem(_hSelf, IDC_QUOTECHAR_EDIT));
     CFG.writeInt(L"Scope", L"HeaderLines", static_cast<int>(CSVheaderLinesCount));
 
-    // Replace in Files Settings
-    CFG.writeString(L"ReplaceInFiles", L"Filter", getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT));
+    // Persist the current filter edit field into the active mode's member variable
+    const bool savingDocsMode = (isReplaceAllInDocs || isFindAllInDocs);
+    if (savingDocsMode)
+        _docsFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+    else
+        _filesFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+
+    // Replace in Files settings
+    CFG.writeString(L"ReplaceInFiles", L"Filter", _filesFilter);
     CFG.writeString(L"ReplaceInFiles", L"Directory", getTextFromDialogItem(_hSelf, IDC_DIR_EDIT));
     CFG.writeBool(L"ReplaceInFiles", L"InSubfolders", IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED);
     CFG.writeBool(L"ReplaceInFiles", L"InHiddenFolders", IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED);
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", static_cast<int>(maxFileSizeMB));
+
+    // Open Documents panel settings
+    CFG.writeString(L"OpenDocs", L"Filter", _docsFilter);
+    CFG.writeBool(L"OpenDocs", L"AllDocuments",
+        IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) == BST_CHECKED);
 
     // File Info
     CFG.writeString(L"File", L"ListFilePath", listFilePath);

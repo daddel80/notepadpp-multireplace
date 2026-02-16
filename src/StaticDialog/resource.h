@@ -85,7 +85,7 @@
 // ===================================================================
 //  Replace-All split options
 #define ID_REPLACE_ALL_OPTION           5031
-#define ID_REPLACE_IN_ALL_DOCS_OPTION   5032
+#define ID_REPLACE_IN_DOCS_OPTION   5032
 #define ID_REPLACE_IN_FILES_OPTION      5033
 #define ID_DEBUG_MODE_OPTION            5034
 
@@ -165,8 +165,9 @@
 #define IDC_BROWSE_DIR_BUTTON           5475
 #define IDC_SUBFOLDERS_CHECKBOX         5476
 #define IDC_HIDDENFILES_CHECKBOX        5477
-#define IDC_DIR_PROGRESS_STATIC         5478
-#define IDC_DIR_PROGRESS_BAR            5479
+#define IDC_ALL_DOCS_CHECKBOX           5478
+#define IDC_DIR_PROGRESS_STATIC         5479
+#define IDC_DIR_PROGRESS_BAR            5480
 
 
 
@@ -246,7 +247,7 @@
 #define IDD_MULTIREPLACE_RESULT_DOCK    6100    // dock panel template
 #define IDC_FINDALL_BUTTON              6105    // big split-button
 #define ID_FIND_ALL_OPTION              6110
-#define ID_FIND_ALL_IN_ALL_DOCS_OPTION  6115
+#define ID_FIND_IN_DOCS_OPTION ´        6115
 #define ID_FIND_ALL_IN_FILES_OPTION     6120
 
 

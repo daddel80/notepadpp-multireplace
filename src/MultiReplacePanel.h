@@ -601,6 +601,10 @@ private:
     bool isFindAllInFiles = false;
     bool _listSearchBarVisible = false;
 
+    // Separate filter strings for each panel mode (swapped into IDC_FILTER_EDIT on mode switch)
+    std::wstring _filesFilter = L"*.*";
+    std::wstring _docsFilter = L"*.*";
+
     static constexpr int MIN_GENERAL_WIDTH = 40;
     static constexpr int DEFAULT_COLUMN_WIDTH_FIND = 150;   // Default size for Find Column
     static constexpr int DEFAULT_COLUMN_WIDTH_REPLACE = 150; // Default size for Replace Column
@@ -844,6 +848,9 @@ private:
     void updateListViewFrame();
     void repaintPanelContents(HWND hGrp, const std::wstring& title);
     void updateFilesPanel();
+    void updateAllDocsCheckboxState();
+    bool isFilesPanelNeeded() const;
+    bool matchesDocFilter(const std::wstring& fileName, const std::wstring& filter) const;
     void setUIElementVisibility();
     void drawGripper();
     void SetWindowTransparency(HWND hwnd, BYTE alpha);

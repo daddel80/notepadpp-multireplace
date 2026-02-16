@@ -57,7 +57,7 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
 
 ## Key Features
 
-- **Batch Replacement Lists** — Run any number of search-and-replace pairs in a single pass, either in the current document or across all open documents.
+- **Batch Replacement Lists** — Run any number of search-and-replace pairs in a single pass, either in the current document, across filtered open documents, or in entire directory trees.
 - **CSV Column Toolkit** — Search, replace, sort, or delete specific columns; numeric-aware sorting and header exclusion included.
 - **Reusable Replacement Lists** — Save, load, and drag-and-drop lists with all options intact—perfect for recurring workflows.
 - **Rule-Driven & Variable Replacements** — Lua-powered variables, conditions, and calculations enable dynamic, context-aware substitutions.
@@ -101,7 +101,7 @@ These options refine the search behavior across all modes.
 - **Match Case** — Makes the search case-sensitive, treating `Hello` and `hello` as distinct terms.
 - **Use Variables** — Allows the use of variables within the replacement string for dynamic and conditional replacements. See the [chapter 'Use Variables'](#option-use-variables) for details.
 - **Wrap Around** — If active, the search continues from the beginning of the document after reaching the end.
-- **Replace matches** — Applies to all **Replace All** actions (current document, all open docs, and in files). Allows you to specify exactly which occurrences of a match to replace. Accepts single numbers, commas, or ranges (e.g., `1,3,5-7`).
+- **Replace matches** — Applies to all **Replace All** actions (current document, open documents, and in files). Allows you to specify exactly which occurrences of a match to replace. Accepts single numbers, commas, or ranges (e.g., `1,3,5-7`).
 
 ## Search Scopes and Targets
 This section describes **where** to search (Scopes) and **in which files** (Targets).
@@ -137,25 +137,29 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
   - Optionally set bookmarks on duplicates for navigation — enable in [Settings > CSV Options](#3-csv-options).
 
 ### Execution Targets
-Execution targets define **which files** an operation is applied to. They are accessible via the **Replace All** split-button menu.
+Execution targets define **which files** an operation is applied to. They are accessible via the **Replace All** and **Find All** split-button menus.
 
-- **Replace All** — Executes the replacement in the **current document only**.
-- **Replace All in All Open Docs** — Executes the replacement across **all open files** in Notepad++.
-- **Replace in Files** — Extends the replacement scope to entire directory structures. When selected, the main window expands to show a dedicated panel for configuration.
+- **Replace All** / **Find All** — Executes the operation in the **current document only**.
+- **Replace All in Open Documents** / **Find All in Open Documents** — Executes the operation across **open documents** in Notepad++. When selected, a filter panel appears for configuration.
+  - **All documents** — When checked, all open documents are processed. When unchecked, only documents matching the filter pattern are included.
+  - **Filters:** Semicolon-separated list of filename patterns to include or exclude (e.g., `*.cpp; *.h; !test_*`). Supports filenames with spaces.
+- **Replace All in Files** / **Find All in Files** — Extends the operation scope to entire directory structures. When selected, a dedicated panel appears for configuration.
   - **Directory:** The starting folder for the file search.
-  - **Filters:** Space-separated list of patterns to include or exclude files and folders.
+  - **Filters:** Semicolon-separated list of patterns to include or exclude files and folders (e.g., `*.cpp; *.h; !*.bak`).
   - **In Subfolders:** Recursively include all subdirectories.
   - **In Hidden Files:** Include hidden files and folders.
 - **Debug Mode** — Runs a simulation of the replacement to inspect variables without modifying the document. See [Debug Mode](#debug-mode) for details.
 
 **Filter Syntax**
 
-| Prefix   | Example      | Description                                                            |
-|----------|--------------|------------------------------------------------------------------------|
-| *(none)* | `*.cpp *.h`  | Includes files matching the pattern.                                   |
-| `!`      | `!*.bak`     | Excludes files matching the pattern.                                   |
-| `!\`     | `!\obj\`     | Excludes the specified folder *non-recursive*.                         |
-| `!+\`    | `!+\logs\`   | Excludes the specified folder **and** all its subfolders *recursive*.  |
+Patterns are separated by semicolons (`;`). Spaces around semicolons are ignored, and filenames containing spaces are fully supported.
+
+| Prefix   | Example              | Description                                                            |
+|----------|----------------------|------------------------------------------------------------------------|
+| *(none)* | `*.cpp; *.h`         | Includes files matching the pattern.                                   |
+| `!`      | `!*.bak`             | Excludes files matching the pattern.                                   |
+| `!\`     | `!\obj\`             | Excludes the specified folder *non-recursive* (Files mode only).       |
+| `!+\`    | `!+\logs\`           | Excludes the specified folder **and** all its subfolders *recursive* (Files mode only). |
 
 **Operation Control**
 
@@ -251,7 +255,7 @@ Enable the '**Use Variables**' option to enhance replacements with calculations 
 | **CAP1**, **CAP2**, ... | Equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Always strings; use `tonum(CAP1)` for calculations. Note: Standard counterparts (`$1`, `$2`, ...) cannot be used in this environment. |
 
 **Notes:**
-- `FNAME` and `FPATH` are updated for each file processed by `Replace All in All Open Docs` and `Replace All in Files`. This ensures that variables always refer to the file currently being modified.
+- `FNAME` and `FPATH` are updated for each file processed by `Replace All in Open Documents` and `Replace All in Files`. This ensures that variables always refer to the file currently being modified.
 - **String Variables:** `MATCH` and `CAP` variables are always strings. For calculations, use `tonum(CAP1)`. Both dot (.) and comma (,) are recognized as decimal separators. Thousands separators are not supported.
 
 <br>
@@ -719,8 +723,6 @@ Customize the look and feel of the plugin window.
   - **Use list colors for text marking** — When checked, highlights matches in the editor using the specific color defined in the list entry. When unchecked, all marked text uses a single standard highlight color.
 
 <br>
-
-> **Note:** All settings configured in this panel are automatically saved to `MultiReplace.ini` in your Notepad++ plugins configuration directory.
 
 ### INI-Only Settings
 

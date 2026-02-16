@@ -53,6 +53,10 @@ const LangKV kEnglishPairs[] = {
 { L"panel_replace_in_files", L"Replace in Files" },
 { L"panel_find_in_files", L"Find in Files" },
 { L"panel_find_replace_in_files", L"Find/Replace in Files" },
+{ L"panel_replace_in_docs", L"Replace in Open Documents" },
+{ L"panel_find_in_docs", L"Find in Open Documents" },
+{ L"panel_find_replace_in_docs", L"Find/Replace in Open Documents" },
+{ L"panel_all_documents", L"All documents" },
 { L"panel_directory", L"Directory: " },
 { L"panel_filter", L"Filter: " },
 { L"panel_in_subfolders", L"In all sub-folders" },
@@ -82,7 +86,7 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_save", L"Save List" },
 { L"tooltip_enable_list", L"Enable list" },
 { L"tooltip_disable_list", L"Disable list" },
-{ L"tooltip_filter_help", L"Find in cpp, cxx, h, hxx & hpp:\n*.cpp *.cxx *.h *.hxx *.hpp\n\nFind in all files except exe, obj & log:\n*.* !*.exe !*.obj !*.log\n\nFind in all files but exclude folders\ntests, bin & bin64:\n*.* !\\tests\\ !\\bin*\n\nFind in all files but exclude all folders\nlog or logs recursively:\n*.* !+\\log*" },
+{ L"tooltip_filter_help", L"Separate patterns with semicolons (;)\n\nFind in specific file types:\n*.cpp; *.h; *.txt\n\nExclude file patterns:\n*.*; !*.exe; !*.obj; !*.log\n\nMatch a specific filename:\nmy report.txt\n\nExclude folders (in Files mode):\n*.*; !\\tests\\; !\\bin*\n\nExclude folders recursively:\n*.*; !+\\log*" },
 { L"tooltip_export_template_help", L"Available placeholders:\n\nData fields:\n  %FIND%              - Find pattern\n  %REPLACE%       - Replace text\n  %COMMENT%    - Comment\n  %FCOUNT%        - Find count\n  %RCOUNT%        - Replace count\n\nRow info:\n  %ROW%              - Row number\n  %SEL%                 - Selected (1/0)\n\nOptions:\n  %REGEX%           - Regex enabled (1/0)\n  %CASE%             - Match case (1/0)\n  %WORD%           - Whole word (1/0)\n  %EXT%                - Extended (1/0)\n  %VAR%               - Variables (1/0)\n\nUse \\t for tab delimiter" },
 { L"tooltip_move_up", L"Move selected lines up" },
 { L"tooltip_move_down", L"Move selected lines down" },
@@ -110,17 +114,17 @@ const LangKV kEnglishPairs[] = {
 
 // SplitButton entries
 { L"split_menu_replace_all", L"Replace All" },
-{ L"split_menu_replace_all_in_docs", L"Replace All in All opened Documents" },
+{ L"split_menu_replace_in_docs", L"Replace All in Open Documents" },
 { L"split_menu_replace_all_in_files", L"Replace All in Files" },
 { L"split_menu_debug_mode", L"Debug Mode" },
 { L"split_button_replace_all", L"Replace All" },
-{ L"split_button_replace_all_in_docs", L"Replace All in Docs" },
+{ L"split_button_replace_in_docs", L"Replace in Docs" },
 { L"split_button_replace_all_in_files", L"Replace in Files" },
 { L"split_menu_find_all", L"Find All" },
-{ L"split_menu_find_all_in_docs", L"Find All in All opened Documents" },
+{ L"split_menu_find_in_docs", L"Find All in Open Documents" },
 { L"split_menu_find_all_in_files", L"Find All in Files" },
 { L"split_button_find_all", L"Find All" },
-{ L"split_button_find_all_in_docs", L"Find All in Docs" },
+{ L"split_button_find_in_docs", L"Find in Docs" },
 { L"split_button_find_all_in_files", L"Find in Files" },
 
 // Static Status message entries
@@ -443,6 +447,7 @@ const UITextMapping kControlTextMappings[] = {
     { IDC_FILTER_STATIC,               L"panel_filter" },
     { IDC_SUBFOLDERS_CHECKBOX,         L"panel_in_subfolders" },
     { IDC_HIDDENFILES_CHECKBOX,        L"panel_in_hidden_folders" },
+    { IDC_ALL_DOCS_CHECKBOX,           L"panel_all_documents" },
     { IDC_CANCEL_REPLACE_BUTTON,       L"panel_cancel_replace" },
 };
 
