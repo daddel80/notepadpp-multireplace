@@ -1269,6 +1269,51 @@ void MultiReplace::refreshUILanguage()
             SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
+    // The ctrlMap loop above resets split-button labels to their defaults
+    // ("Find All" / "Replace All").  Re-apply the correct texts for the
+    // currently active mode so the buttons stay in sync with the panel.
+    if (_MultiReplace.isFindAllInDocs)
+        SetDlgItemText(_MultiReplace._hSelf, IDC_FIND_ALL_BUTTON,
+            LM.getW(L"split_button_find_in_docs"));
+    else if (_MultiReplace.isFindAllInFiles)
+        SetDlgItemText(_MultiReplace._hSelf, IDC_FIND_ALL_BUTTON,
+            LM.getW(L"split_button_find_all_in_files"));
+
+    if (_MultiReplace.isReplaceAllInDocs)
+        SetDlgItemText(_MultiReplace._hSelf, IDC_REPLACE_ALL_BUTTON,
+            LM.getW(L"split_button_replace_in_docs"));
+    else if (_MultiReplace.isReplaceInFiles)
+        SetDlgItemText(_MultiReplace._hSelf, IDC_REPLACE_ALL_BUTTON,
+            LM.getW(L"split_button_replace_all_in_files"));
+
+    // Refresh the Files/Docs panel title in the new language.
+    // updateFilesPanel skips repaint when the title key is unchanged,
+    // so repaint the GroupBox directly with the freshly translated text.
+    {
+        HWND hGrp = GetDlgItem(_MultiReplace._hSelf, IDC_FILE_OPS_GROUP);
+        if (hGrp && IsWindowVisible(hGrp)) {
+            const bool inDocsMode = (_MultiReplace.isReplaceAllInDocs || _MultiReplace.isFindAllInDocs);
+            const bool inFilesMode = (_MultiReplace.isReplaceInFiles || _MultiReplace.isFindAllInFiles);
+
+            std::wstring titleKey;
+            if (inDocsMode && !inFilesMode) {
+                bool both = _MultiReplace.isReplaceAllInDocs && _MultiReplace.isFindAllInDocs;
+                titleKey = both ? L"panel_find_replace_in_docs"
+                    : _MultiReplace.isFindAllInDocs ? L"panel_find_in_docs"
+                    : L"panel_replace_in_docs";
+            }
+            else if (inFilesMode) {
+                bool both = _MultiReplace.isReplaceInFiles && _MultiReplace.isFindAllInFiles;
+                titleKey = both ? L"panel_find_replace_in_files"
+                    : _MultiReplace.isFindAllInFiles ? L"panel_find_in_files"
+                    : L"panel_replace_in_files";
+            }
+
+            if (!titleKey.empty())
+                _MultiReplace.repaintPanelContents(hGrp, LM.get(titleKey));
+        }
+    }
+
     // Update ListView headers
     if (_MultiReplace._replaceListView) {
         auto& colIndices = _MultiReplace.columnIndices;
@@ -13366,9 +13411,9 @@ std::pair<std::wstring, std::wstring> MultiReplace::generateConfigFilePaths() {
     ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, reinterpret_cast<LPARAM>(configDir));
     configDir[MAX_PATH - 1] = '\0'; // Ensure null-termination
 
-    std::wstring iniFilePath = std::wstring(configDir) + L"\\MultiReplace.ini";
-    std::wstring csvFilePath = std::wstring(configDir) + L"\\MultiReplaceList.ini";
-    return { iniFilePath, csvFilePath };
+    std::wstring settingsPath = std::wstring(configDir) + L"\\MultiReplace.ini";
+    std::wstring configListPath = std::wstring(configDir) + L"\\MultiReplaceList.ini";
+    return { settingsPath, configListPath };
 }
 
 void MultiReplace::saveSettings() {
@@ -13377,12 +13422,14 @@ void MultiReplace::saveSettings() {
         return;
     }
 
-    auto [iniFilePath, csvFilePath] = generateConfigFilePaths();
+    auto configPaths = generateConfigFilePaths();
+    const auto& settingsPath = configPaths.first;
+    const auto& configListPath = configPaths.second;
 
     try {
         syncUIToCache();
-        CFG.save(iniFilePath);
-        saveListToCsvSilent(csvFilePath, replaceListData);
+        CFG.save(settingsPath);
+        saveListToCsvSilent(configListPath, replaceListData);
     }
     catch (const std::exception& ex) {
         std::wstring errorMessage = LM.get(L"msgbox_error_saving_settings",
@@ -13613,13 +13660,13 @@ void MultiReplace::loadSettingsToPanelUI() {
 }
 
 void MultiReplace::loadSettings() {
-    auto [_, csvFilePath] = generateConfigFilePaths();
+    const auto configListPath = generateConfigFilePaths().second;
 
     // Read all settings from the cache
     loadSettingsToPanelUI();
 
     try {
-        loadListFromCsvSilent(csvFilePath, replaceListData);
+        loadListFromCsvSilent(configListPath, replaceListData);
     }
     catch (const CsvLoadException& ex) {
         std::wstring errorMessage = L"An error occurred while loading the settings: ";
@@ -13825,8 +13872,8 @@ void MultiReplace::writeStructToConfig(const Settings& s)
 
 void MultiReplace::loadConfigOnce()
 {
-    auto [iniFilePath, _] = generateConfigFilePaths();
-    CFG.load(iniFilePath);
+    const auto settingsPath = generateConfigFilePaths().first;
+    CFG.load(settingsPath);
 }
 
 void MultiReplace::syncUIToCache()
