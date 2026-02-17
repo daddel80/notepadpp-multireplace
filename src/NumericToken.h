@@ -28,10 +28,10 @@
 //   [prefix] [sign] DIGITS [sep DIGITS] [suffix]
 //   [prefix] [sign] sep DIGITS [suffix]           (leading decimal: .5, -.5)
 //   
-//   Examples:  "123", "-45.67", ".5", "-.5", "$100", "100EUR", "€50.00"
+//   Examples:  "123", "-45.67", ".5", "-.5", "$100", "100EUR", "USD50.00"
 //
 // Rules:
-//   - Prefix/suffix max 4 chars, must be symbols ($€£) OR letters (USD, EUR)
+//   - Prefix/suffix max 4 chars, must be symbols ($) OR letters (USD, EUR)
 //   - Affixes can be adjacent or space-separated: "$100", "100EUR", "100 EUR"
 //   - Mixed letters+symbols in affix not allowed: "$USD" fails
 //
