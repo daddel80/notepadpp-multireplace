@@ -53,6 +53,7 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
   - [3. CSV Options](#3-csv-options)
   - [4. Export](#4-export)
   - [5. Appearance](#5-appearance)
+  - [INI-Only Settings](#ini-only-settings)
 - [Multilingual UI Support](#multilingual-ui-support)
 
 ## Key Features
