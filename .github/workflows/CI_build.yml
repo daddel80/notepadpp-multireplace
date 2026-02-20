@@ -32,7 +32,7 @@ jobs:
       run: dir vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}
 
     - name: Archive
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
           name: MultiReplace-${{ matrix.build_configuration }}-${{ matrix.build_platform }}
           path: vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}\MultiReplace.dll
