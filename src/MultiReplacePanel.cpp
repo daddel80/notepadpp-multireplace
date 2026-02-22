@@ -4019,6 +4019,8 @@ void MultiReplace::pasteItemsIntoList() {
     // Use addItemsToReplaceList to insert items at the specified position
     addItemsToReplaceList(itemsToInsert, static_cast<size_t>(insertPosition));
 
+    autoShowCommentsColumn();
+
     // Deselect all items first
     ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
 
@@ -13238,6 +13240,8 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
         // Clear Undo and Redo stacks
         URM.clear();
 
+        autoShowCommentsColumn();
+
         // Update the ListView
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, nullptr, TRUE);
@@ -13252,6 +13256,23 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
     }
     catch (const CsvLoadException& ex) {
         showStatusMessage(Encoding::utf8ToWString(ex.what()), MessageStatus::Error);
+    }
+}
+
+void MultiReplace::autoShowCommentsColumn() {
+    if (isCommentsColumnVisible) return;
+
+    bool hasComments = std::any_of(replaceListData.begin(), replaceListData.end(),
+        [](const ReplaceItemData& item) { return !item.comments.empty(); });
+
+    if (hasComments) {
+        isCommentsColumnVisible = true;
+        CFG.writeBool(L"ListColumns", L"CommentsVisible", true);
+        CFG.save(L"");
+        if (_replaceListView) {
+            createListViewColumns();
+            InvalidateRect(_replaceListView, nullptr, TRUE);
+        }
     }
 }
 
@@ -13273,6 +13294,7 @@ void MultiReplace::checkForFileChangesAtStartup() {
             if (response == IDYES) {
                 replaceListData = tempListFromFile;
                 originalListHash = newFileHash;
+                autoShowCommentsColumn();
                 ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
                 InvalidateRect(_replaceListView, nullptr, TRUE);
             }
@@ -13673,6 +13695,7 @@ void MultiReplace::loadSettings() {
         errorMessage += std::wstring(ex.what(), ex.what() + strlen(ex.what()));
         // MessageBox(nullptr, errorMessage.c_str(), L"Error", MB_OK | MB_ICONERROR);
     }
+    autoShowCommentsColumn();
     updateHeaderSelection();
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, nullptr, TRUE);

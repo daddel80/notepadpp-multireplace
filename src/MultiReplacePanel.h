@@ -1081,6 +1081,7 @@ private:
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
+    void autoShowCommentsColumn();
     void checkForFileChangesAtStartup();
     void exportToBashScript(const std::wstring& fileName);
 
