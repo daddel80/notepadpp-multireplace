@@ -723,8 +723,6 @@ Customize the look and feel of the plugin window.
   - **Use list colors in search results** — When checked, search hits in the result docking window are color-coded matching the specific color assigned to their list entry. When unchecked, all search results use a uniform standard color.
   - **Use list colors for text marking** — When checked, highlights matches in the editor using the specific color defined in the list entry. When unchecked, all marked text uses a single standard highlight color.
 
-<br>
-
 ### INI-Only Settings
 
 Some advanced options are not exposed in the UI and can only be configured by editing `MultiReplace.ini` directly:
