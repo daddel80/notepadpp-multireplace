@@ -666,7 +666,7 @@ You can customize the behavior and appearance of MultiReplace via the dedicated 
 Control the behavior of search operations and cursor movement.
 
 - **Replace: Don't move to the following occurrence** — If checked, the cursor remains on the current match after clicking "Replace". If unchecked, it automatically jumps to the next match (standard behavior).
-- **Find: Search from cursor position** — If checked, "Find All" and "Replace All" start from the current cursor position. If unchecked, operations always process the entire defined scope.
+- **Find: Search from cursor position** — If checked,  "Find All", "Replace All", and "Mark" start from the current cursor position. If unchecked, operations always process the entire defined scope.
 - **Mute all sounds** — Disables the notification sound (beep) when a search yields no results. The window will still flash visually to indicate "not found".
 - **File Search: Skip files larger than** — Defines a maximum size (in MB) for **Find/Replace in Files**. Skips larger files to ensure responsiveness and prevent high memory usage.
 
