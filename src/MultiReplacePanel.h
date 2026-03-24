@@ -733,7 +733,6 @@ private:
     const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ /uused for Hashing
     std::size_t originalListHash = 0;
     int useListOnHeight = MIN_HEIGHT;      // Default height when "Use List" is on
-    const int useListOffHeight = SHRUNK_HEIGHT; // Height when "Use List" is off (constant)
     int checkMarkWidth_scaled;
     int crossWidth_scaled;
     int boxWidth_scaled;

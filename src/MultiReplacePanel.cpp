@@ -1162,7 +1162,7 @@ void MultiReplace::adjustWindowSize() {
     int currentX = currentRect.left;
     int currentY = currentRect.top;
 
-    int newHeight = useListEnabled ? std::max(useListOnHeight, minHeight) : useListOffHeight;
+    int newHeight = useListEnabled ? std::max(useListOnHeight, minHeight) : SHRUNK_HEIGHT_scaled;
 
     // Adjust the window size while keeping the current position and width
     SetWindowPos(_hSelf, nullptr, currentX, currentY, currentWidth, newHeight, SWP_NOZORDER);
@@ -13724,8 +13724,11 @@ void MultiReplace::loadUIConfigFromIni()
     MIN_GENERAL_WIDTH_scaled = sx(MIN_GENERAL_WIDTH);
 
     // --- Hot-Reload Logic for Scaling --------------------------
+    float ratio = 1.0f;  // No change by default
     if (std::abs(oldScale - customScaleFactor) > 0.001f)
     {
+        ratio = customScaleFactor / oldScale;
+
         createFonts();
         applyFonts();
 
@@ -13734,8 +13737,6 @@ void MultiReplace::loadUIConfigFromIni()
         {
             int currentW = rc.right - rc.left;
             int currentH = rc.bottom - rc.top;
-
-            float ratio = customScaleFactor / oldScale;
 
             int newW = static_cast<int>(currentW * ratio);
             int newH = static_cast<int>(currentH * ratio);
@@ -13759,12 +13760,19 @@ void MultiReplace::loadUIConfigFromIni()
     updateUseListState(false);
 
     int savedWidth = CFG.readInt(L"Window", L"Width", sx(INIT_WIDTH));
+    if (ratio != 1.0f) {
+        savedWidth = static_cast<int>(savedWidth * ratio);
+    }
     int width = (savedWidth < MIN_WIDTH_scaled) ? MIN_WIDTH_scaled : savedWidth;
 
     useListOnHeight = CFG.readInt(L"Window", L"Height", sy(INIT_HEIGHT));
+    // When scaling changed, the config value is at the old scale — rescale it
+    if (ratio != 1.0f) {
+        useListOnHeight = static_cast<int>(useListOnHeight * ratio);
+    }
     if (useListOnHeight < MIN_HEIGHT_scaled) useListOnHeight = MIN_HEIGHT_scaled;
 
-    int height = useListEnabled ? useListOnHeight : useListOffHeight;
+    int height = useListEnabled ? useListOnHeight : SHRUNK_HEIGHT_scaled;
 
     // Center over Notepad++ on first run (when no position saved in INI)
     if (savedLeft == CENTER_ON_NPP || savedTop == CENTER_ON_NPP) {
@@ -13794,6 +13802,13 @@ void MultiReplace::loadUIConfigFromIni()
     commentsColumnWidth = std::max(CFG.readInt(L"ListColumns", L"CommentsWidth", DEFAULT_COLUMN_WIDTH_COMMENTS_scaled), MIN_GENERAL_WIDTH_scaled);
     findCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
     replaceCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceCountWidth", DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
+    if (ratio != 1.0f) {
+        findColumnWidth = std::max(static_cast<int>(findColumnWidth * ratio), MIN_GENERAL_WIDTH_scaled);
+        replaceColumnWidth = std::max(static_cast<int>(replaceColumnWidth * ratio), MIN_GENERAL_WIDTH_scaled);
+        commentsColumnWidth = std::max(static_cast<int>(commentsColumnWidth * ratio), MIN_GENERAL_WIDTH_scaled);
+        findCountColumnWidth = std::max(static_cast<int>(findCountColumnWidth * ratio), MIN_GENERAL_WIDTH_scaled);
+        replaceCountColumnWidth = std::max(static_cast<int>(replaceCountColumnWidth * ratio), MIN_GENERAL_WIDTH_scaled);
+    }
 
     isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
     isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
