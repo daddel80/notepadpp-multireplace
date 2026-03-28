@@ -89,6 +89,9 @@
 #define ID_REPLACE_IN_FILES_OPTION      5033
 #define ID_DEBUG_MODE_OPTION            5034
 
+//  Save split-button option
+#define ID_SAVE_AS_OPTION               5035
+
 //  Stand-alone list toggle button
 #define IDC_USE_LIST_BUTTON             5040
 
@@ -387,7 +390,7 @@
 // --- Main Panel: Window Size (resizable) ---
 #define MIN_WIDTH                   811     // Minimum width (resize limit)
 #define MIN_HEIGHT                  370     // Minimum height with list (resize limit)
-#define SHRUNK_HEIGHT               224     // Minimum height without list
+#define SHRUNK_HEIGHT               234     // Minimum height without list (status row at 209 + toggle at 207)
 #define INIT_WIDTH                  MIN_WIDTH   // Initial client-area width on first run
 #define INIT_HEIGHT                 MIN_HEIGHT  // Initial client-area height on first runn
 

@@ -276,21 +276,31 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // Calculate dimensions without scaling
     BOOL twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
     int filesOffsetY = (isFilesPanelNeeded() && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
-    int buttonX = windowWidth - sx(33 + 128);
-    int checkbox2X = buttonX + sx(134);
-    int useListButtonX = buttonX + sx(133);
-    int swapButtonX = windowWidth - sx(33 + 128 + 26);
-    int comboWidth = windowWidth - sx(289);
-    int listWidth = windowWidth - sx(207);
+    int buttonX = windowWidth - sx(25 + 128);          // Right margin reduced: 33 → 25 (no elements right of buttons)
+    int swapButtonX = windowWidth - sx(25 + 128 + 26);
+    int comboWidth = windowWidth - sx(281);             // Adjusted for reduced right margin (289 - 8)
+
+    // --- New layout: list uses full width, file/move buttons in status row ---
+    int listWidth = windowWidth - sx(39);              // Full width (left margin 14 + right margin 25)
     int pathDisplayY = windowHeight - sy(22);
     int searchBarHeight = sy(22);
     int searchBarGap = sy(2);
     int searchBarY = pathDisplayY - searchBarHeight - searchBarGap;
-    int listStartY = sy(227) + filesOffsetY;
+    int statusRowY = sy(209) + filesOffsetY;           // 10px gap after Clear all marks (bottom=199)
+    int statusRowH = sy(24);                           // Taller than before (was 19) to fit buttons
+    int listStartY = statusRowY + statusRowH + sy(4);  // 4px gap between buttons and list
     int listGap = sy(2);
     int listEndY = _listSearchBarVisible ? (searchBarY - listGap) : (pathDisplayY - listGap);
     int listHeight = std::max(listEndY - listStartY, sy(20));
-    int useListButtonY = windowHeight - sy(34);
+
+    // 2-Buttons-Mode checkbox: moved to the left of Replace All button
+    int checkbox2X = buttonX - sx(24);                 // Left of button column
+
+    // UseList toggle: when expanded → path display row; when collapsed → below Clear all marks
+    int useListButtonX = buttonX + sx(106);            // Right-aligned within button column (128 - 22)
+    int useListButtonY = useListEnabled
+        ? (pathDisplayY)                               // In path display row when list open
+        : (sy(207) + filesOffsetY);                    // 8px gap below Clear all marks when list closed
 
     // Apply scaling only when assigning to ctrlMap
    // --- STATIC CONTROLS ---
@@ -371,26 +381,28 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
-    // Status Message -> Normal1
-    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), sy(205) + filesOffsetY, listWidth - sx(5), sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, nullptr, false, FontRole::Normal1 };
+    // Status Message -> Normal1 (narrower when list open to make room for toolbar buttons)
+    int toolbarButtonsWidth = useListEnabled ? sx(128 + 10) : 0;  // 5 buttons + gap, or 0 when collapsed
+    int statusWidth = listWidth - toolbarButtonsWidth;
+    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), statusRowY + sy(2), statusWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, nullptr, false, FontRole::Normal1 };
 
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX, sy(227) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_load_list"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX + sx(100), sy(227) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_new_list"), false, FontRole::Standard };
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_list"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    // --- Toolbar buttons in status row: [➕][📂][💾▾]  [▲][▼] ---
+    // Layout: 5 buttons exactly 128px wide, right-aligned with action buttons above
+    // Save is BS_SPLITBUTTON (32px), Up/Down are 20px, New/Load are 24px
+    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX, statusRowY, sx(24), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_new_list"), false, FontRole::Standard };
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX + sx(26), statusRowY, sx(24), sy(24), WC_BUTTON, L"📂", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"panel_load_list"), false, FontRole::Standard };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX + sx(52), statusRowY, sx(32), sy(24), WC_BUTTON, L"💾", BS_SPLITBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save"), false, FontRole::Normal3 };
+    ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(86), statusRowY, sx(20), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, LM.getLPCW(L"tooltip_move_up"), false, FontRole::Standard };
+    ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(108), statusRowY, sx(20), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, LM.getLPCW(L"tooltip_move_down"), false, FontRole::Standard };
 
-    // Save -> Normal3
-    ctrlMap[IDC_SAVE_BUTTON] = { buttonX, sy(255) + filesOffsetY, sx(28), sy(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save"), false, FontRole::Normal3 };
+    // Legacy buttons: repositioned but hidden (kept for handler compatibility)
+    ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX + sx(26), statusRowY, sx(24), sy(24), WC_BUTTON, L"📂", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"panel_load_list"), false, FontRole::Standard };
+    ctrlMap[IDC_SAVE_BUTTON] = { buttonX + sx(52), statusRowY, sx(24), sy(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save"), false, FontRole::Normal3 };
+    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(52), statusRowY, sx(24), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, statusRowY, sx(24), sy(24), WC_BUTTON, L"", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
-    ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(32), sy(255) + filesOffsetY, sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, sy(283) + filesOffsetY, sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_export_to_bash"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-
-    // Move Buttons - positioned at right edge of list, vertically fixed at list start
-    int moveButtonX = sx(14) + listWidth + sx(4);  // 4px gap to list
-    int moveButtonY = sy(227) + filesOffsetY;       // Same Y as list start
-    ctrlMap[IDC_UP_BUTTON] = { moveButtonX, moveButtonY, sx(20), sy(20), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, LM.getLPCW(L"tooltip_move_up"), false, FontRole::Standard };
-    ctrlMap[IDC_DOWN_BUTTON] = { moveButtonX, moveButtonY + sy(28), sx(20), sy(20), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, LM.getLPCW(L"tooltip_move_down"), false, FontRole::Standard };
-    ctrlMap[IDC_REPLACE_LIST] = { sx(14), sy(227) + filesOffsetY, listWidth, listHeight, WC_LISTVIEW, nullptr, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, nullptr, false, FontRole::Standard };
+    // List (full width)
+    ctrlMap[IDC_REPLACE_LIST] = { sx(14), listStartY, listWidth, listHeight, WC_LISTVIEW, nullptr, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, nullptr, false, FontRole::Standard };
 
     // List Search Bar (between list and path display)
     int searchComboWidth = listWidth - sx(24 + 24 + 4);  // 2 buttons + spacing
@@ -398,12 +410,13 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_LIST_SEARCH_BUTTON] = { sx(14) + searchComboWidth + sx(2), searchBarY, sx(24), sy(22), WC_BUTTON, L"▶", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_LIST_SEARCH_CLOSE] = { sx(14) + searchComboWidth + sx(28), searchBarY, sx(24), sy(22), WC_BUTTON, L"×", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
-    // Path/Stats -> Normal1
-    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), pathDisplayY, listWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, nullptr, false, FontRole::Normal1 };
-    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + listWidth, pathDisplayY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, nullptr, false, FontRole::Normal1 };
+    // Path/Stats -> Normal1 (path is narrower when list open to leave room for ˄ toggle)
+    int pathWidth = useListEnabled ? (listWidth - sx(26)) : listWidth;
+    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), pathDisplayY, pathWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, nullptr, false, FontRole::Normal1 };
+    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + pathWidth, pathDisplayY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, nullptr, false, FontRole::Normal1 };
 
-    // Use List -> Normal5
-    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY , sx(22), sy(22), WC_BUTTON, useListEnabled ? L"˄" : L"˅", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Normal5 };
+    // Use List toggle -> Normal5
+    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY, sx(22), sy(22), WC_BUTTON, useListEnabled ? L"˄" : L"˅", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Normal5 };
 
     ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_FILE_OPS_GROUP] = { sx(14), sy(210), listWidth, sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, nullptr, false, FontRole::Standard };
@@ -445,8 +458,13 @@ void MultiReplace::initializeCtrlMap() {
         return;
     }
 
-    // Show or hide the "Export to Bash" button according to the ExportToBash option
-    ShowWindow(GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON), exportToBashEnabled ? SW_SHOW : SW_HIDE);
+    // Show or hide the "Export to Bash" button — deprecated, always hidden
+    ShowWindow(GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON), SW_HIDE);
+
+    // Legacy buttons: always hidden (replaced by icon buttons in status row)
+    ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_LIST_BUTTON), SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_BUTTON), SW_HIDE);
+    ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_AS_BUTTON), SW_HIDE);
 
     // immediately hide or show the files sub-panel
     updateFilesPanel();
@@ -454,10 +472,16 @@ void MultiReplace::initializeCtrlMap() {
     // Initialize the tooltip for the "Use List" button with dynamic text
     updateUseListState(false);
 
-    // Hide path and stats display if list is not enabled
+    // Hide list-related controls if list is not enabled
     if (!useListEnabled) {
         ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_HIDE);
+        // Hide toolbar icon buttons when list is collapsed
+        ShowWindow(GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_UP_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_DOWN_BUTTON), SW_HIDE);
     }
 
     // Limit the input for IDC_QUOTECHAR_EDIT to one character
@@ -733,13 +757,8 @@ void MultiReplace::updateTwoButtonsVisibility() {
     setVisibility({ IDC_MARK_MATCHES_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON }, twoButtonsMode);
     setVisibility({ IDC_MARK_BUTTON }, !twoButtonsMode);
 
-    // Load-Buttons (only depend on twoButtonsMode now)
-    setVisibility({ IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON }, twoButtonsMode);
-    setVisibility({ IDC_LOAD_FROM_CSV_BUTTON }, !twoButtonsMode);
-
-    // Save-Buttons (only depend on twoButtonsMode now)
-    setVisibility({ IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON }, twoButtonsMode);
-    setVisibility({ IDC_SAVE_TO_CSV_BUTTON }, !twoButtonsMode);
+    // Legacy buttons: always hidden (Load/Save are now icon buttons in status row)
+    setVisibility({ IDC_LOAD_LIST_BUTTON, IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_EXPORT_BASH_BUTTON }, false);
 
     updateFilesPanel();
 }
@@ -2974,8 +2993,9 @@ void MultiReplace::showListFilePath()
         ShowWindow(hStatsDisplay, SW_HIDE);
     }
 
-    // Adjust path field to use remaining space
-    int pathWidth = listWidth - statsWidth - (listStatisticsEnabled ? spacing : 0);
+    // Adjust path field to use remaining space (reserve room for ˄/˅ toggle button)
+    int toggleReserve = useListEnabled ? sx(26) : 0;
+    int pathWidth = listWidth - statsWidth - (listStatisticsEnabled ? spacing : 0) - toggleReserve;
     pathWidth = std::max(pathWidth, 0);
     MoveWindow(hPathDisplay, listX, fieldY, pathWidth, fieldHeight, TRUE);
 
@@ -4636,6 +4656,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
+        if (pnmh->code == BCN_DROPDOWN && pnmh->hwndFrom == GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON))
+        {
+            // split-button menu for Save
+            RECT rc; ::GetWindowRect(pnmh->hwndFrom, &rc);
+            HMENU hMenu = CreatePopupMenu();
+            AppendMenu(hMenu, MF_STRING, ID_SAVE_AS_OPTION, LM.getW(L"panel_save_as"));
+            TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, nullptr);
+            DestroyMenu(hMenu);
+            return TRUE;
+        }
+
         if (pnmh->idFrom == IDC_REPLACE_LIST) {
             switch (pnmh->code) {
             case NM_CLICK:
@@ -5144,11 +5175,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             useListEnabled = !useListEnabled;
 
+            // Toolbar icon buttons that belong to the list
+            const std::vector<int> listToolbarButtons = {
+                IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+                IDC_UP_BUTTON, IDC_DOWN_BUTTON
+            };
+
             if (!useListEnabled) {
                 // Closing: First hide controls, then resize
                 if (_listSearchBarVisible) {
                     hideListSearchBar();
                 }
+                for (int id : listToolbarButtons)
+                    ShowWindow(GetDlgItem(_hSelf, id), SW_HIDE);
                 ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_HIDE);
                 ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_HIDE);
                 updateUseListState(true);
@@ -5158,6 +5197,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // Opening: First resize, then show controls
                 updateUseListState(true);
                 adjustWindowSize();
+                for (int id : listToolbarButtons)
+                    ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
                 ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_SHOW);
                 ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_SHOW);
             }
@@ -5340,8 +5381,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
 
         case IDC_SAVE_AS_BUTTON:
-        case IDC_SAVE_TO_CSV_BUTTON:
+        case ID_SAVE_AS_OPTION:
         {
+            // Save As: always prompt for file path
             std::wstring filePath = promptSaveListToCsv();
 
             if (!filePath.empty()) {
@@ -5352,7 +5394,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         }
 
         case IDC_SAVE_BUTTON:
+        case IDC_SAVE_TO_CSV_BUTTON:
         {
+            // Quick-Save: use existing path, or prompt if none
             if (!listFilePath.empty()) {
                 saveListToCsv(listFilePath, replaceListData);
             }
@@ -13663,9 +13707,18 @@ void MultiReplace::loadSettingsToPanelUI() {
         instance->updateUseListState(false);
         instance->showListFilePath();
 
-        // 3. Update Export Button visibility
+        // 2b. Sync toolbar icon button visibility with list state
+        {
+            int showCmd = instance->useListEnabled ? SW_SHOW : SW_HIDE;
+            for (int id : { IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+                IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
+                ShowWindow(GetDlgItem(instance->_hSelf, id), showCmd);
+            }
+        }
+
+        // 3. Export Button — deprecated, always hidden
         HWND hBash = GetDlgItem(instance->_hSelf, IDC_EXPORT_BASH_BUTTON);
-        if (hBash) ShowWindow(hBash, exportToBashEnabled ? SW_SHOW : SW_HIDE);
+        if (hBash) ShowWindow(hBash, SW_HIDE);
 
         // 4. Rebuild ListView columns to reflect visibility changes
         if (instance->_replaceListView) {
@@ -14123,12 +14176,21 @@ void MultiReplace::applyConfigSettingsOnly()
     backgroundTransparency = static_cast<BYTE>(bg);
     if (_hSelf) SetWindowTransparency(_hSelf, foregroundTransparency);
 
-    // UI Updates
+    // UI Updates — Export Bash deprecated, always hidden
     HWND hBash = GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON);
-    if (hBash) ShowWindow(hBash, exportToBashEnabled ? SW_SHOW : SW_HIDE);
+    if (hBash) ShowWindow(hBash, SW_HIDE);
 
     updateUseListState(false);
     showListFilePath();
+
+    // Sync toolbar icon button visibility with list state
+    {
+        int showCmd = useListEnabled ? SW_SHOW : SW_HIDE;
+        for (int id : { IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+            IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
+            ShowWindow(GetDlgItem(_hSelf, id), showCmd);
+        }
+    }
 
     if (_replaceListView) {
         createListViewColumns();
