@@ -95,6 +95,39 @@ static bool     g_cleanInProgress = false;
 // O(1) gate: which buffers currently have flow-pads
 static std::unordered_set<BufferId> g_padBufs;
 
+// Static member: thread-local message filter hook for Alt+Up/Down
+HHOOK MultiReplace::_hMsgFilterHook = nullptr;
+
+LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode >= 0 && instance && instance->_hSelf) {
+        MSG* pMsg = reinterpret_cast<MSG*>(lParam);
+        if (pMsg->message == WM_SYSKEYDOWN && (GetKeyState(VK_MENU) & 0x8000)) {
+            // Only intercept when focus is inside our panel
+            HWND hFocus = GetFocus();
+            if (hFocus && (hFocus == instance->_hSelf || IsChild(instance->_hSelf, hFocus))) {
+                if (pMsg->wParam == VK_UP) {
+                    // Alt+Up: Transfer selected row → input fields
+                    int iItem = ListView_GetNextItem(instance->_replaceListView, -1, LVNI_SELECTED);
+                    if (iItem >= 0) {
+                        NMITEMACTIVATE nmia{};
+                        nmia.iItem = iItem;
+                        instance->handleCopyBack(&nmia);
+                    }
+                    pMsg->message = WM_NULL;  // Consume the message
+                    return 1;                 // Prevent IsDialogMessage from processing it
+                }
+                if (pMsg->wParam == VK_DOWN) {
+                    // Alt+Down: Transfer input fields → selected rows
+                    instance->handleUpdateFromFields();
+                    pMsg->message = WM_NULL;
+                    return 1;
+                }
+            }
+        }
+    }
+    return CallNextHookEx(_hMsgFilterHook, nCode, wParam, lParam);
+}
+
 #pragma region Initialization
 
 void MultiReplace::initializeWindowSize()
@@ -1556,6 +1589,19 @@ void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& 
     // Modify the item
     replaceListData[index] = newData;
 
+    // Mark dirty only for content changes (not enable/disable toggle)
+    bool contentChanged = originalData.findText != newData.findText ||
+        originalData.replaceText != newData.replaceText ||
+        originalData.wholeWord != newData.wholeWord ||
+        originalData.matchCase != newData.matchCase ||
+        originalData.useVariables != newData.useVariables ||
+        originalData.extended != newData.extended ||
+        originalData.regex != newData.regex ||
+        originalData.comments != newData.comments;
+    if (contentChanged) {
+        replaceListData[index].isDirty = true;
+    }
+
     // Update the ListView item
     updateListViewItem(index);
 
@@ -2179,6 +2225,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     }
 
     std::vector<ReplaceItemData> itemsToAdd = { itemData };
+    itemsToAdd[0].isDirty = true;
     addItemsToReplaceList(itemsToAdd);
 
     // Show a status message indicating the value added to the list
@@ -2438,6 +2485,100 @@ void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
     }
     // Apply enable/disable rules (disables the checkbox if regex is on)
     setUIElementVisibility();
+}
+
+void MultiReplace::handleUpdateFromFields() {
+
+    // Collect all selected indices
+    std::vector<size_t> selectedIndices;
+    int idx = -1;
+    while ((idx = ListView_GetNextItem(_replaceListView, idx, LVNI_SELECTED)) != -1) {
+        selectedIndices.push_back(static_cast<size_t>(idx));
+    }
+
+    if (selectedIndices.empty()) {
+        showStatusMessage(LM.get(L"status_no_rows_selected_to_shift"), MessageStatus::Error);
+        return;
+    }
+
+    // Read current values from input fields
+    ReplaceItemData newData;
+    newData.findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+    newData.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
+    newData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
+    newData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
+    newData.useVariables = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
+    newData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+    newData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+
+    // Store original data for undo
+    std::vector<std::pair<size_t, ReplaceItemData>> originalItems;
+    for (size_t i : selectedIndices) {
+        originalItems.emplace_back(i, replaceListData[i]);
+    }
+
+    // Apply new data to all selected rows
+    for (size_t i : selectedIndices) {
+        ReplaceItemData& item = replaceListData[i];
+        item.findText = newData.findText;
+        item.replaceText = newData.replaceText;
+        item.wholeWord = newData.wholeWord;
+        item.matchCase = newData.matchCase;
+        item.useVariables = newData.useVariables;
+        item.extended = newData.extended;
+        item.regex = newData.regex;
+        item.findCount = -1;
+        item.replaceCount = -1;
+        item.isDirty = true;
+        updateListViewItem(i);
+    }
+
+    // Undo/Redo
+    UndoRedoAction action;
+
+    action.undoAction = [this, originalItems]() {
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+        for (const auto& [index, origData] : originalItems) {
+            replaceListData[index] = origData;
+            updateListViewItem(index);
+            ListView_SetItemState(_replaceListView, static_cast<int>(index), LVIS_SELECTED, LVIS_SELECTED);
+        }
+        if (!originalItems.empty()) {
+            scrollToIndices(originalItems.front().first, originalItems.back().first);
+        }
+        SetFocus(_replaceListView);
+        };
+
+    action.redoAction = [this, selectedIndices, newData]() {
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
+        for (size_t i : selectedIndices) {
+            ReplaceItemData& item = replaceListData[i];
+            item.findText = newData.findText;
+            item.replaceText = newData.replaceText;
+            item.wholeWord = newData.wholeWord;
+            item.matchCase = newData.matchCase;
+            item.useVariables = newData.useVariables;
+            item.extended = newData.extended;
+            item.regex = newData.regex;
+            item.findCount = -1;
+            item.replaceCount = -1;
+            item.isDirty = true;
+            updateListViewItem(i);
+            ListView_SetItemState(_replaceListView, static_cast<int>(i), LVIS_SELECTED, LVIS_SELECTED);
+        }
+        if (!selectedIndices.empty()) {
+            scrollToIndices(selectedIndices.front(), selectedIndices.back());
+        }
+        SetFocus(_replaceListView);
+        };
+
+    URM.push(action.undoAction, action.redoAction, L"Update from fields");
+
+    // Add to combo history
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), newData.findText);
+    addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), newData.replaceText);
+
+    showListFilePath();
 }
 
 void MultiReplace::shiftListItem(const Direction& direction) {
@@ -3569,12 +3710,8 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
 
     case WM_SYSKEYDOWN:
     {
-        if ((GetKeyState(VK_MENU) & 0x8000) && wParam == VK_UP) {
-            int iItem = ListView_GetNextItem(hwnd, -1, LVNI_SELECTED);
-            if (iItem >= 0) { NMITEMACTIVATE nmia{}; nmia.iItem = iItem; pThis->handleCopyBack(&nmia); }
-            return 0;
-        }
-        // Optional fallback for Alt+E / Alt+D
+        // Alt+Up/Down handled globally by MsgFilterHookProc (focus-independent)
+        // Alt+E / Alt+D only when ListView has focus
         if (GetKeyState(VK_MENU) & 0x8000) {
             if (wParam == 'E') { pThis->setSelections(true, ListView_GetSelectedCount(hwnd) > 0);  return 0; }
             if (wParam == 'D') { pThis->setSelections(false, ListView_GetSelectedCount(hwnd) > 0);  return 0; }
@@ -3684,6 +3821,7 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
         AppendMenu(hMenu, MF_STRING, IDM_ADD_NEW_LINE, LM.get(L"ctxmenu_add_new_line").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, LM.get(L"ctxmenu_transfer_to_input_fields").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_UPDATE_FROM_FIELDS, LM.get(L"ctxmenu_update_from_input_fields").c_str());
         AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_EXPORT_DATA, LM.get(L"ctxmenu_export_data").c_str());
         AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_SEARCH_IN_LIST, LM.get(L"ctxmenu_search_in_list").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
@@ -3890,6 +4028,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
             insertPosition = ListView_GetItemCount(_replaceListView);
         }
         ReplaceItemData newItem; // Default-initialized
+        newItem.isDirty = true;
         std::vector<ReplaceItemData> itemsToAdd = { newItem };
         addItemsToReplaceList(itemsToAdd, static_cast<size_t>(insertPosition));
 
@@ -4035,6 +4174,11 @@ void MultiReplace::pasteItemsIntoList() {
 
     // No items were collected, so nothing to insert
     if (itemsToInsert.empty()) return;
+
+    // Mark all pasted items as dirty
+    for (auto& item : itemsToInsert) {
+        item.isDirty = true;
+    }
 
     // Use addItemsToReplaceList to insert items at the specified position
     addItemsToReplaceList(itemsToInsert, static_cast<size_t>(insertPosition));
@@ -4457,6 +4601,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         // Post a custom message to perform post-initialization tasks after the dialog is shown
         PostMessage(_hSelf, WM_POST_INIT, 0, 0);
 
+        // Install thread-local message filter hook so Alt+Up/Down reach the
+        // plugin even when IsDialogMessage would normally consume them.
+        if (!_hMsgFilterHook) {
+            _hMsgFilterHook = SetWindowsHookEx(WH_MSGFILTER, MsgFilterHookProc, nullptr, GetCurrentThreadId());
+        }
+
         return TRUE;
     }
 
@@ -4526,6 +4676,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_DESTROY:
     {
+        // Remove Alt+Up/Down message filter hook
+        if (_hMsgFilterHook) {
+            UnhookWindowsHookEx(_hMsgFilterHook);
+            _hMsgFilterHook = nullptr;
+        }
 
         if (_replaceListView && originalListViewProc) {
             SetWindowLongPtr(_replaceListView, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(originalListViewProc));
@@ -4627,6 +4782,49 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_NOTIFY:
     {
         NMHDR* pnmh = reinterpret_cast<NMHDR*>(lParam);
+
+        // --- Dirty-flag indicator: subtle stripe at left edge of modified rows ---
+        if (pnmh->hwndFrom == _replaceListView && pnmh->code == NM_CUSTOMDRAW) {
+            LPNMLVCUSTOMDRAW lvcd = reinterpret_cast<LPNMLVCUSTOMDRAW>(lParam);
+            switch (lvcd->nmcd.dwDrawStage) {
+            case CDDS_PREPAINT:
+                SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, CDRF_NOTIFYITEMDRAW);
+                return TRUE;
+            case CDDS_ITEMPREPAINT:
+            {
+                int idx = static_cast<int>(lvcd->nmcd.dwItemSpec);
+                if (idx >= 0 && idx < static_cast<int>(replaceListData.size()) && replaceListData[idx].isDirty) {
+                    SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, CDRF_NOTIFYPOSTPAINT);
+                }
+                else {
+                    SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, CDRF_DODEFAULT);
+                }
+                return TRUE;
+            }
+            case CDDS_ITEMPOSTPAINT:
+            {
+                int idx = static_cast<int>(lvcd->nmcd.dwItemSpec);
+                if (idx >= 0 && idx < static_cast<int>(replaceListData.size()) && replaceListData[idx].isDirty) {
+                    RECT rcItem;
+                    ListView_GetItemRect(_replaceListView, idx, &rcItem, LVIR_BOUNDS);
+                    RECT rcStripe = { rcItem.left, rcItem.top, rcItem.left + sx(2), rcItem.bottom };
+                    // Use a muted version of the text color for theme-consistent appearance
+                    COLORREF textClr = ListView_GetTextColor(_replaceListView);
+                    COLORREF bgClr = ListView_GetBkColor(_replaceListView);
+                    // Blend: 40% text color + 60% background → subtle but visible
+                    COLORREF stripe = RGB(
+                        (GetRValue(textClr) * 2 + GetRValue(bgClr) * 3) / 5,
+                        (GetGValue(textClr) * 2 + GetGValue(bgClr) * 3) / 5,
+                        (GetBValue(textClr) * 2 + GetBValue(bgClr) * 3) / 5);
+                    HBRUSH hBrush = CreateSolidBrush(stripe);
+                    FillRect(lvcd->nmcd.hdc, &rcStripe, hBrush);
+                    DeleteObject(hBrush);
+                }
+                SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, CDRF_DODEFAULT);
+                return TRUE;
+            }
+            }
+        }
 
         if (pnmh->code == BCN_DROPDOWN && pnmh->hwndFrom == GetDlgItem(_hSelf, IDC_REPLACE_ALL_BUTTON))
         {
@@ -5547,6 +5745,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             NMITEMACTIVATE nmia = {};
             nmia.iItem = ListView_HitTest(_replaceListView, &_contextMenuClickPoint);
             handleCopyBack(&nmia);
+            return TRUE;
+        }
+
+        case IDM_UPDATE_FROM_FIELDS:
+        {
+            handleUpdateFromFields();
             return TRUE;
         }
 
@@ -12541,6 +12745,7 @@ void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
                 if (value) replaceListData[i].extended = false;
                 break;
             }
+            replaceListData[i].isDirty = true;
         }
     }
     if (originalDataList.empty()) return;
@@ -13129,6 +13334,14 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     // Update the file path and original hash after a successful save
     listFilePath = filePath;
     originalListHash = computeListHash(list);
+
+    // Clear dirty flags — list is now in sync with file
+    for (auto& item : replaceListData) {
+        if (item.isDirty) {
+            item.isDirty = false;
+        }
+    }
+    InvalidateRect(_replaceListView, nullptr, TRUE);
 
     // Update the displayed file path below the list
     showListFilePath();

@@ -68,6 +68,7 @@ struct ReplaceItemData
     bool extended = false;
     bool regex = false;
     std::wstring comments = L"";
+    bool isDirty = false;           // Session-only: marks row as modified since last save/load
 
     bool operator==(const ReplaceItemData& rhs) const {
         return
@@ -434,6 +435,8 @@ public:
     };
 
     inline static MultiReplace* instance = nullptr; // Static instance of the class
+    static HHOOK _hMsgFilterHook;                   // Thread-local hook for Alt+Up/Down
+    static LRESULT CALLBACK MsgFilterHookProc(int nCode, WPARAM wParam, LPARAM lParam);
 
     // Helper functions for scaling
     inline int sx(int value) { return dpiMgr->scaleX(value); }
@@ -880,6 +883,7 @@ private:
     void updateHeaderSortDirection();
     void showColumnVisibilityMenu(HWND hWnd, POINT pt);
     void handleCopyBack(NMITEMACTIVATE* pnmia);
+    void handleUpdateFromFields();
     void shiftListItem(const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);
     void deleteSelectedLines();

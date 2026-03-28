@@ -226,6 +226,7 @@
 #define IDM_CLEAR_VARIABLES             5722
 #define IDM_CLEAR_EXTENDED              5723
 #define IDM_CLEAR_REGEX                 5724
+#define IDM_UPDATE_FROM_FIELDS          5725
 
 // List Search Bar
 #define IDC_LIST_SEARCH_COMBO           5726
