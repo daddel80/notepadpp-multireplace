@@ -69,6 +69,7 @@ struct ReplaceItemData
     bool regex = false;
     std::wstring comments = L"";
     bool isDirty = false;           // Session-only: marks row as modified since last save/load
+    std::wstring lastModified;      // Persistent timestamp: set on content change, saved in CSV
 
     bool operator==(const ReplaceItemData& rhs) const {
         return
@@ -310,7 +311,8 @@ enum ColumnID {
     EXTENDED,           // 8
     REGEX,              // 9
     COMMENTS,           // 10
-    DELETE_BUTTON       // 11
+    LAST_MODIFIED,      // 11
+    DELETE_BUTTON       // 12
 };
 
 struct ResizableColWidths {
@@ -321,6 +323,7 @@ struct ResizableColWidths {
     int findWidth;
     int replaceWidth;
     int commentsWidth;
+    int timestampWidth;
     int deleteWidth;
     int margin;
 };
@@ -495,6 +498,7 @@ public:
         bool isFindCountVisible;
         bool isReplaceCountVisible;
         bool isCommentsColumnVisible;
+        bool isTimestampColumnVisible;
         bool isDeleteButtonVisible;
         int  editFieldSize;
         int  csvHeaderLinesCount;
@@ -739,6 +743,7 @@ private:
     int checkMarkWidth_scaled;
     int crossWidth_scaled;
     int boxWidth_scaled;
+    int timestampWidth_scaled;
 
     std::map<ColumnID, int> columnIndices;  // Mapping of ColumnID to ColumnIndex due to dynamic Columns
     int lastTooltipRow;
@@ -817,6 +822,7 @@ private:
     bool isFindCountVisible;         // Visibility of the "Find Count" column
     bool isReplaceCountVisible;      // Visibility of the "Replace Count" column
     bool isCommentsColumnVisible;    // Visibility of the "Comments" column
+    bool isTimestampColumnVisible;   // Visibility of the "Timestamp" column
     bool isDeleteButtonVisible;      // Visibility of the "Delete" column
     bool findColumnLockedEnabled;    // Indicates if the "Find what" column is locked
     bool replaceColumnLockedEnabled; // Indicates if the "Replace" column is locked
@@ -884,6 +890,7 @@ private:
     void showColumnVisibilityMenu(HWND hWnd, POINT pt);
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void handleUpdateFromFields();
+    static std::wstring getCurrentTimestamp();
     void shiftListItem(const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);
     void deleteSelectedLines();

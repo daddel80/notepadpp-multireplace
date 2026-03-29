@@ -98,6 +98,7 @@ const LangKV kEnglishPairs[] = {
 { L"header_find", L"Find" },
 { L"header_replace", L"Replace" },
 { L"header_comments", L"Comments" },
+{ L"header_timestamp", L"Modified" },
 { L"header_delete_button", L"Delete Entry" },
 { L"header_whole_word", L"W" },
 { L"header_match_case", L"C" },
@@ -493,6 +494,7 @@ const UIHeaderMapping kHeaderTextMappings[] = {
     { ColumnID::EXTENDED,      L"header_extended" },
     { ColumnID::REGEX,         L"header_regex" },
     { ColumnID::COMMENTS,      L"header_comments" },
+    { ColumnID::LAST_MODIFIED, L"header_timestamp" },
 };
 
 const size_t kHeaderTextMappingsCount = sizeof(kHeaderTextMappings) / sizeof(kHeaderTextMappings[0]);

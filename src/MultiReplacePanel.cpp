@@ -223,9 +223,19 @@ void MultiReplace::createFonts() {
             return size.cx;
             };
 
+        // Measure full string width for timestamp column
+        auto measureString = [&](const wchar_t* text) -> int {
+            SIZE size;
+            HGDIOBJ oldFont = SelectObject(hdc, font(FontRole::Standard));
+            GetTextExtentPoint32W(hdc, text, static_cast<int>(wcslen(text)), &size);
+            SelectObject(hdc, oldFont);
+            return size.cx;
+            };
+
         checkMarkWidth_scaled = measure(L"\u2714") + 15;
         crossWidth_scaled = measure(L"\u2716") + 15;
         boxWidth_scaled = measure(L"\u2610") + 15;
+        timestampWidth_scaled = measureString(L"2026-03-29 13:07:42") + 20; // Padding for header + sorting arrow
 
         ReleaseDC(nullptr, hdc);
     }
@@ -1600,6 +1610,7 @@ void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& 
         originalData.comments != newData.comments;
     if (contentChanged) {
         replaceListData[index].isDirty = true;
+        replaceListData[index].lastModified = getCurrentTimestamp();
     }
 
     // Update the ListView item
@@ -1929,6 +1940,7 @@ void MultiReplace::exportDataToClipboard() {
         headerLine = StringUtils::replaceTemplateVar(headerLine, L"%WORD%", L"WholeWord");
         headerLine = StringUtils::replaceTemplateVar(headerLine, L"%EXT%", L"Extended");
         headerLine = StringUtils::replaceTemplateVar(headerLine, L"%VAR%", L"Variables");
+        headerLine = StringUtils::replaceTemplateVar(headerLine, L"%MODIFIED%", L"Modified");
 
         // NO processTemplateEscapes here - already done above
         output += headerLine;
@@ -1977,6 +1989,7 @@ void MultiReplace::exportDataToClipboard() {
         line = StringUtils::replaceTemplateVar(line, L"%WORD%", item.wholeWord ? L"1" : L"0");
         line = StringUtils::replaceTemplateVar(line, L"%EXT%", item.extended ? L"1" : L"0");
         line = StringUtils::replaceTemplateVar(line, L"%VAR%", item.useVariables ? L"1" : L"0");
+        line = StringUtils::replaceTemplateVar(line, L"%MODIFIED%", item.lastModified);
 
         output += line;
 
@@ -2089,6 +2102,7 @@ void MultiReplace::createListViewColumns() {
         findColumnWidth,
         replaceColumnWidth,
         (isCommentsColumnVisible) ? commentsColumnWidth : 0,
+        (isTimestampColumnVisible) ? timestampWidth_scaled : 0,
         (isDeleteButtonVisible) ? deleteButtonColumnWidth : 0,
         GetSystemMetrics(SM_CXVSCROLL)
     };
@@ -2185,7 +2199,21 @@ void MultiReplace::createListViewColumns() {
         columnIndices[ColumnID::COMMENTS] = -1;  // Mark as not visible
     }
 
-    // Column 12: Delete Button (fixed width)
+    // Column 12: Timestamp (fixed width, optional)
+    if (isTimestampColumnVisible) {
+        lvc.iSubItem = currentIndex;
+        lvc.pszText = LM.getW(L"header_timestamp");
+        lvc.cx = timestampWidth_scaled;
+        lvc.fmt = LVCFMT_LEFT | LVCFMT_FIXED_WIDTH;
+        ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
+        columnIndices[ColumnID::LAST_MODIFIED] = currentIndex;
+        ++currentIndex;
+    }
+    else {
+        columnIndices[ColumnID::LAST_MODIFIED] = -1;
+    }
+
+    // Column 13: Delete Button (fixed width)
     if (isDeleteButtonVisible) {
         lvc.iSubItem = currentIndex;
         lvc.pszText = L"";
@@ -2226,6 +2254,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
 
     std::vector<ReplaceItemData> itemsToAdd = { itemData };
     itemsToAdd[0].isDirty = true;
+    itemsToAdd[0].lastModified = getCurrentTimestamp();
     addItemsToReplaceList(itemsToAdd);
 
     // Show a status message indicating the value added to the list
@@ -2314,6 +2343,9 @@ int MultiReplace::getColumnWidth(ColumnID columnID) {
             case ColumnID::COMMENTS:
                 width = commentsColumnWidth;
                 break;
+            case ColumnID::LAST_MODIFIED:
+                width = timestampWidth_scaled;
+                break;
             default:
                 width = MIN_GENERAL_WIDTH_scaled; // Fallback to minimum width
                 break;
@@ -2334,6 +2366,7 @@ int MultiReplace::calcDynamicColWidth(const ResizableColWidths& widths) {
     int totalWidthFixedColumns = boxWidth_scaled + (checkMarkWidth_scaled * 5)
         + widths.findCountWidth
         + widths.replaceCountWidth
+        + widths.timestampWidth
         + widths.deleteWidth;
 
     // Calculate the remaining width by subtracting fixed widths and visible static column widths
@@ -2380,6 +2413,7 @@ void MultiReplace::updateListViewAndColumns() {
         findColumnWidth,
         replaceColumnWidth,
         (isCommentsColumnVisible) ? commentsColumnWidth : 0,
+        (isTimestampColumnVisible) ? timestampWidth_scaled : 0,
         (isDeleteButtonVisible) ? deleteButtonColumnWidth : 0,
         GetSystemMetrics(SM_CXVSCROLL)
     };
@@ -2426,6 +2460,7 @@ void MultiReplace::updateListViewItem(size_t index) {
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::FIND_TEXT], const_cast<LPWSTR>(item.findText.c_str()));
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::REPLACE_TEXT], const_cast<LPWSTR>(item.replaceText.c_str()));
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::COMMENTS], const_cast<LPWSTR>(item.comments.c_str()));
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::LAST_MODIFIED], const_cast<LPWSTR>(item.lastModified.c_str()));
 
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::WHOLE_WORD], item.wholeWord ? L"\u2714" : L"");
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::MATCH_CASE], item.matchCase ? L"\u2714" : L"");
@@ -2435,6 +2470,14 @@ void MultiReplace::updateListViewItem(size_t index) {
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::SELECTION], item.isEnabled ? L"\u25A0" : L"\u2610");
 
     ListView_RedrawItems(_replaceListView, static_cast<int>(index), static_cast<int>(index));
+}
+
+std::wstring MultiReplace::getCurrentTimestamp() {
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    wchar_t buf[24];
+    swprintf_s(buf, L"%04d-%02d-%02d %02d:%02d:%02d", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    return buf;
 }
 
 void MultiReplace::updateListViewTooltips() {
@@ -2530,6 +2573,7 @@ void MultiReplace::handleUpdateFromFields() {
         item.findCount = -1;
         item.replaceCount = -1;
         item.isDirty = true;
+        item.lastModified = getCurrentTimestamp();
         updateListViewItem(i);
     }
 
@@ -2563,6 +2607,7 @@ void MultiReplace::handleUpdateFromFields() {
             item.findCount = -1;
             item.replaceCount = -1;
             item.isDirty = true;
+            item.lastModified = getCurrentTimestamp();
             updateListViewItem(i);
             ListView_SetItemState(_replaceListView, static_cast<int>(i), LVIS_SELECTED, LVIS_SELECTED);
         }
@@ -2687,7 +2732,8 @@ void MultiReplace::sortReplaceListData(int columnID) {
         columnID != ColumnID::REPLACE_COUNT &&
         columnID != ColumnID::FIND_TEXT &&
         columnID != ColumnID::REPLACE_TEXT &&
-        columnID != ColumnID::COMMENTS) {
+        columnID != ColumnID::COMMENTS &&
+        columnID != ColumnID::LAST_MODIFIED) {
         return;
     }
 
@@ -2755,6 +2801,12 @@ void MultiReplace::sortReplaceListData(int columnID) {
             case ColumnID::COMMENTS:
             {
                 int cmp = lstrcmpiW(a.comments.c_str(), b.comments.c_str());
+                return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
+            }
+            case ColumnID::LAST_MODIFIED:
+            {
+                // YYYY-MM-DD HH:MM format sorts correctly lexicographically
+                int cmp = lstrcmpW(a.lastModified.c_str(), b.lastModified.c_str());
                 return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
             }
             default:
@@ -2909,6 +2961,10 @@ void MultiReplace::handleColumnVisibilityToggle(UINT menuId) {
         isCommentsColumnVisible = !isCommentsColumnVisible;
         CFG.writeBool(L"ListColumns", L"CommentsVisible", isCommentsColumnVisible);
         break;
+    case IDM_TOGGLE_TIMESTAMP:
+        isTimestampColumnVisible = !isTimestampColumnVisible;
+        CFG.writeBool(L"ListColumns", L"TimestampVisible", isTimestampColumnVisible);
+        break;
     case IDM_TOGGLE_DELETE:
         isDeleteButtonVisible = !isDeleteButtonVisible;
         CFG.writeBool(L"ListColumns", L"DeleteButtonVisible", isDeleteButtonVisible);
@@ -3010,7 +3066,8 @@ void MultiReplace::updateHeaderSortDirection() {
             columnID != ColumnID::REPLACE_COUNT &&
             columnID != ColumnID::FIND_TEXT &&
             columnID != ColumnID::REPLACE_TEXT &&
-            columnID != ColumnID::COMMENTS) {
+            columnID != ColumnID::COMMENTS &&
+            columnID != ColumnID::LAST_MODIFIED) {
             continue;
         }
 
@@ -3042,6 +3099,9 @@ void MultiReplace::updateHeaderSortDirection() {
             if (commentsColumnLockedEnabled) {
                 headerText += lockedSymbol;
             }
+            break;
+        case ColumnID::LAST_MODIFIED:
+            headerText = LM.get(L"header_timestamp");
             break;
         default:
             continue; // Skip if it's not a sortable column
@@ -3168,6 +3228,7 @@ void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
     AppendMenu(hMenu, MF_STRING | (isFindCountVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_FIND_COUNT, LM.getLPCW(L"header_find_count"));
     AppendMenu(hMenu, MF_STRING | (isReplaceCountVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_REPLACE_COUNT, LM.getLPCW(L"header_replace_count"));
     AppendMenu(hMenu, MF_STRING | (isCommentsColumnVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_COMMENTS, LM.getLPCW(L"header_comments"));
+    AppendMenu(hMenu, MF_STRING | (isTimestampColumnVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_TIMESTAMP, LM.getLPCW(L"header_timestamp"));
     AppendMenu(hMenu, MF_STRING | (isDeleteButtonVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_DELETE, LM.getLPCW(L"header_delete_button"));
 
     // Display the menu at the specified location
@@ -4029,6 +4090,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         }
         ReplaceItemData newItem; // Default-initialized
         newItem.isDirty = true;
+        newItem.lastModified = getCurrentTimestamp();
         std::vector<ReplaceItemData> itemsToAdd = { newItem };
         addItemsToReplaceList(itemsToAdd, static_cast<size_t>(insertPosition));
 
@@ -4109,7 +4171,7 @@ bool MultiReplace::canPasteFromClipboard() {
             continue;
         }
         auto columns = StringUtils::parseCsvLine(line);
-        if (columns.size() == 8 || columns.size() == 9) {
+        if (columns.size() == 8 || columns.size() == 9 || columns.size() == 10) {
             return true;
         }
     }
@@ -4151,7 +4213,7 @@ void MultiReplace::pasteItemsIntoList() {
         std::vector<std::wstring> columns = StringUtils::parseCsvLine(line);
 
         // Check for proper column count before adding to the list
-        if ((columns.size() != 8 && columns.size() != 9)) continue;
+        if (columns.size() < 8 || columns.size() > 10) continue;
 
         ReplaceItemData item;
         try {
@@ -4163,7 +4225,8 @@ void MultiReplace::pasteItemsIntoList() {
             item.useVariables = std::stoi(columns[5]) != 0;
             item.extended = std::stoi(columns[6]) != 0;
             item.regex = std::stoi(columns[7]) != 0;
-            item.comments = (columns.size() == 9 ? columns[8] : L"");
+            item.comments = (columns.size() >= 9 ? columns[8] : L"");
+            item.lastModified = (columns.size() >= 10 ? columns[9] : L"");
         }
         catch (const std::exception&) {
             continue; // Silently ignore lines with conversion errors
@@ -4176,8 +4239,10 @@ void MultiReplace::pasteItemsIntoList() {
     if (itemsToInsert.empty()) return;
 
     // Mark all pasted items as dirty
+    std::wstring now = getCurrentTimestamp();
     for (auto& item : itemsToInsert) {
         item.isDirty = true;
+        item.lastModified = now;
     }
 
     // Use addItemsToReplaceList to insert items at the specified position
@@ -4975,6 +5040,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
                 else if (columnIndices[ColumnID::COMMENTS] != -1 && subItem == columnIndices[ColumnID::COMMENTS]) {
                     (void)lstrcpynW(plvdi->item.pszText, d.comments.c_str(), plvdi->item.cchTextMax);
+                }
+                else if (columnIndices[ColumnID::LAST_MODIFIED] != -1 && subItem == columnIndices[ColumnID::LAST_MODIFIED]) {
+                    (void)lstrcpynW(plvdi->item.pszText, d.lastModified.c_str(), plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::DELETE_BUTTON] != -1 && subItem == columnIndices[ColumnID::DELETE_BUTTON]) {
                     (void)lstrcpynW(plvdi->item.pszText, L"\u2716", plvdi->item.cchTextMax);
@@ -5873,6 +5941,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDM_TOGGLE_FIND_COUNT:
         case IDM_TOGGLE_REPLACE_COUNT:
         case IDM_TOGGLE_COMMENTS:
+        case IDM_TOGGLE_TIMESTAMP:
         case IDM_TOGGLE_DELETE:
         {
             // Toggle the visibility based on the menu selection
@@ -12746,6 +12815,7 @@ void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
                 break;
             }
             replaceListData[i].isDirty = true;
+            replaceListData[i].lastModified = getCurrentTimestamp();
         }
     }
     if (originalDataList.empty()) return;
@@ -13300,7 +13370,7 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
     outFile.write("\xEF\xBB\xBF", 3);
 
     // Convert and Write CSV header
-    std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Extended,Regex,Comments\n");
+    std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Extended,Regex,Comments,LastModified\n");
     outFile << utf8Header;
 
     // Write list items to CSV file
@@ -13313,7 +13383,8 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
             std::to_wstring(item.useVariables) + L"," +
             std::to_wstring(item.extended) + L"," +
             std::to_wstring(item.regex) + L"," +
-            StringUtils::escapeCsvValue(item.comments) + L"\n";
+            StringUtils::escapeCsvValue(item.comments) + L"," +
+            StringUtils::escapeCsvValue(item.lastModified) + L"\n";
         std::string utf8Line = Encoding::wstringToUtf8(line);
         outFile << utf8Line;
     }
@@ -13446,8 +13517,8 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     while (std::getline(contentStream, line)) {
         std::vector<std::wstring> columns = StringUtils::parseCsvLine(line);
 
-        // Check if column count is valid
-        if (columns.size() < 8 || columns.size() > 9) {
+        // Check if column count is valid (8=legacy, 9=with comments, 10=with timestamp)
+        if (columns.size() < 8 || columns.size() > 10) {
             throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_invalid_column_count")));
         }
 
@@ -13461,7 +13532,8 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
             item.useVariables = std::stoi(columns[5]) != 0;
             item.extended = std::stoi(columns[6]) != 0;
             item.regex = std::stoi(columns[7]) != 0;
-            item.comments = (columns.size() == 9) ? columns[8] : L"";
+            item.comments = (columns.size() >= 9) ? columns[8] : L"";
+            item.lastModified = (columns.size() >= 10) ? columns[9] : L"";
             tempList.push_back(item);
         }
         catch (const std::exception&) {
@@ -13881,6 +13953,7 @@ void MultiReplace::loadSettingsToPanelUI() {
     isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
     isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
     isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
+    isTimestampColumnVisible = CFG.readBool(L"ListColumns", L"TimestampVisible", false);
     isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
 
     findColumnLockedEnabled = CFG.readBool(L"ListColumns", L"FindColumnLocked", true);
@@ -14137,6 +14210,7 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
     s.isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
     s.isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
+    s.isTimestampColumnVisible = CFG.readBool(L"ListColumns", L"TimestampVisible", false);
     s.isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
     s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
@@ -14166,6 +14240,7 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeBool(L"ListColumns", L"FindCountVisible", s.isFindCountVisible);
     CFG.writeBool(L"ListColumns", L"ReplaceCountVisible", s.isReplaceCountVisible);
     CFG.writeBool(L"ListColumns", L"CommentsVisible", s.isCommentsColumnVisible);
+    CFG.writeBool(L"ListColumns", L"TimestampVisible", s.isTimestampColumnVisible);
     CFG.writeBool(L"ListColumns", L"DeleteButtonVisible", s.isDeleteButtonVisible);
     CFG.writeInt(L"Options", L"EditFieldSize", s.editFieldSize);
     CFG.writeInt(L"Scope", L"HeaderLines", s.csvHeaderLinesCount);
@@ -14229,6 +14304,7 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(L"ListColumns", L"FindCountVisible", isFindCountVisible);
     CFG.writeBool(L"ListColumns", L"ReplaceCountVisible", isReplaceCountVisible);
     CFG.writeBool(L"ListColumns", L"CommentsVisible", isCommentsColumnVisible);
+    CFG.writeBool(L"ListColumns", L"TimestampVisible", isTimestampColumnVisible);
     CFG.writeBool(L"ListColumns", L"DeleteButtonVisible", isDeleteButtonVisible);
     CFG.writeBool(L"ListColumns", L"FindColumnLocked", findColumnLockedEnabled);
     CFG.writeBool(L"ListColumns", L"ReplaceColumnLocked", replaceColumnLockedEnabled);
