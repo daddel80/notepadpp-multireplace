@@ -27,7 +27,7 @@
 #include <commctrl.h>
 
 namespace {
-    static const wchar_t* kDefaultExportTemplate = L"%FIND%\\t%REPLACE%\\t%FCOUNT%\\t%RCOUNT%\\t%COMMENT%";
+    static const wchar_t* kDefaultExportTemplate = L"%FIND%\\t%REPLACE%\\t%FCOUNT%\\t%RCOUNT%\\t%COMMENT%\\t%MODIFIED%";
 }
 
 extern NppData nppData;
@@ -70,6 +70,7 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_REPLACECOUNT_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isReplaceCountVisible), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_COMMENTS_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isCommentsColumnVisible), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_DELETEBUTTON_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isDeleteButtonVisible), 0, 0 });
+    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_TIMESTAMP_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isTimestampColumnVisible), 0, 0 });
 
     // Search
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_STAY_AFTER_REPLACE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, stayAfterReplaceEnabled), 0, 0 });
@@ -828,9 +829,9 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     const int rightColWidth = 330;
     const int columnSpacing = 20;
 
-    const int leftGroupH = 140;
+    const int leftGroupH = 156;
     const int rightGroupH = 85;
-    const int gapAfterTop = 10;
+    const int gapAfterTop = 14;
     const int bottomGroupH = 140;
     const int topRowY = marginY;
 
@@ -840,6 +841,7 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
         lb.AddCheckbox(IDC_CFG_FINDCOUNT_VISIBLE, LM.getLPCW(L"config_chk_find_count"));
         lb.AddCheckbox(IDC_CFG_REPLACECOUNT_VISIBLE, LM.getLPCW(L"config_chk_replace_count"));
         lb.AddCheckbox(IDC_CFG_COMMENTS_VISIBLE, LM.getLPCW(L"config_chk_comments"));
+        lb.AddCheckbox(IDC_CFG_TIMESTAMP_VISIBLE, LM.getLPCW(L"config_chk_timestamp"));
         lb.AddCheckbox(IDC_CFG_DELETEBUTTON_VISIBLE, LM.getLPCW(L"config_chk_delete_button"));
     }
 

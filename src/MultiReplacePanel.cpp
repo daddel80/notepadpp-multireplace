@@ -14152,6 +14152,7 @@ void MultiReplace::loadUIConfigFromIni()
     isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
     isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
     isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
+    isTimestampColumnVisible = CFG.readBool(L"ListColumns", L"TimestampVisible", false);
     isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
 
     findColumnLockedEnabled = CFG.readBool(L"ListColumns", L"FindColumnLocked", true);
@@ -14454,6 +14455,7 @@ void MultiReplace::applyConfigSettingsOnly()
     isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
     isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
     isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
+    isTimestampColumnVisible = CFG.readBool(L"ListColumns", L"TimestampVisible", false);
     isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
 
     // Transparency

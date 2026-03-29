@@ -306,6 +306,7 @@
 #define IDC_CFG_REPLACECOUNT_VISIBLE      7912
 #define IDC_CFG_COMMENTS_VISIBLE          7913
 #define IDC_CFG_DELETEBUTTON_VISIBLE      7914
+#define IDC_CFG_TIMESTAMP_VISIBLE         7915
 
 // -------------------------------------------------------------------
 //  List View Panel - Results Group (7920-7929)
