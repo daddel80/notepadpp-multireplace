@@ -243,6 +243,7 @@
 #define IDM_TOGGLE_COMMENTS             5803
 #define IDM_TOGGLE_TIMESTAMP            5805
 #define IDM_TOGGLE_DELETE               5804
+#define IDM_RESET_COLUMN_ORDER          5806
 
 // ===================================================================
 //  6000-6120 - Miscellaneous & Result Dock

@@ -267,6 +267,7 @@ const LangKV kEnglishPairs[] = {
 // Context Menu List
 { L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },
 { L"ctxmenu_update_from_input_fields", L"&Update from Input Fields\tAlt+Down" },
+{ L"ctxmenu_reset_column_order", L"Reset Column Order" },
 { L"ctxmenu_search_in_list", L"&Search in List\tCtrl+F" },
 { L"ctxmenu_cut", L"Cu&t\tCtrl+X" },
 { L"ctxmenu_copy", L"&Copy\tCtrl+C" },

@@ -746,6 +746,8 @@ private:
     int timestampWidth_scaled;
 
     std::map<ColumnID, int> columnIndices;  // Mapping of ColumnID to ColumnIndex due to dynamic Columns
+    std::vector<ColumnID> columnOrder;      // User-configurable column order
+    static const std::vector<ColumnID> defaultColumnOrder;
     int lastTooltipRow;
     int lastTooltipSubItem;
     int lastMouseX;
@@ -879,6 +881,11 @@ private:
     HWND CreateHeaderTooltip(HWND hwndParent);
     void AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnIndex, LPCTSTR pszText);
     void createListViewColumns();
+    void insertSingleColumn(ColumnID id, int& currentIndex, int perColumnWidth, LVCOLUMN& lvc);
+    bool isColumnVisible(ColumnID id) const;
+    bool validateColumnOrder(const std::vector<ColumnID>& order) const;
+    void syncColumnOrderFromHeader();
+    void initColumnOrder();
     void insertReplaceListItem(const ReplaceItemData& itemData);
     int  getColumnWidth(ColumnID columnID);
     int  calcDynamicColWidth(const ResizableColWidths& widths);

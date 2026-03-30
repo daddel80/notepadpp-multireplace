@@ -682,7 +682,7 @@ void MultiReplace::initializeListView() {
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
     // Set tooltips based on isHoverTextEnabled
-    DWORD extendedStyle = LVS_EX_FULLROWSELECT;
+    DWORD extendedStyle = LVS_EX_FULLROWSELECT | LVS_EX_HEADERDRAGDROP;
     if (isHoverTextEnabled) {
         extendedStyle |= LVS_EX_INFOTIP; // Enable tooltips
     }
@@ -2070,13 +2070,187 @@ void MultiReplace::AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnInde
     SendMessage(hwndTT, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
 }
 
+// Default column order — used for initialization and reset
+const std::vector<ColumnID> MultiReplace::defaultColumnOrder = {
+    ColumnID::FIND_COUNT,
+    ColumnID::REPLACE_COUNT,
+    ColumnID::SELECTION,
+    ColumnID::FIND_TEXT,
+    ColumnID::REPLACE_TEXT,
+    ColumnID::WHOLE_WORD,
+    ColumnID::MATCH_CASE,
+    ColumnID::USE_VARIABLES,
+    ColumnID::EXTENDED,
+    ColumnID::REGEX,
+    ColumnID::COMMENTS,
+    ColumnID::LAST_MODIFIED,
+    ColumnID::DELETE_BUTTON
+};
+
+bool MultiReplace::isColumnVisible(ColumnID id) const {
+    switch (id) {
+    case ColumnID::FIND_COUNT:    return isFindCountVisible;
+    case ColumnID::REPLACE_COUNT: return isReplaceCountVisible;
+    case ColumnID::COMMENTS:      return isCommentsColumnVisible;
+    case ColumnID::LAST_MODIFIED: return isTimestampColumnVisible;
+    case ColumnID::DELETE_BUTTON: return isDeleteButtonVisible;
+        // Always-visible columns
+    case ColumnID::SELECTION:
+    case ColumnID::FIND_TEXT:
+    case ColumnID::REPLACE_TEXT:
+    case ColumnID::WHOLE_WORD:
+    case ColumnID::MATCH_CASE:
+    case ColumnID::USE_VARIABLES:
+    case ColumnID::EXTENDED:
+    case ColumnID::REGEX:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool MultiReplace::validateColumnOrder(const std::vector<ColumnID>& order) const {
+    // Must contain all ColumnIDs — no duplicates, no missing
+    if (order.size() != defaultColumnOrder.size()) return false;
+
+    std::set<ColumnID> seen(order.begin(), order.end());
+    std::set<ColumnID> expected(defaultColumnOrder.begin(), defaultColumnOrder.end());
+    return seen == expected;
+}
+
+void MultiReplace::syncColumnOrderFromHeader() {
+    if (!_replaceListView) return;
+
+    HWND hwndHeader = ListView_GetHeader(_replaceListView);
+    int colCount = Header_GetItemCount(hwndHeader);
+    if (colCount <= 0) return;
+
+    // Read the visual column order from the header
+    std::vector<int> visualOrder(colCount);
+    ListView_GetColumnOrderArray(_replaceListView, colCount, visualOrder.data());
+
+    // Build new columnOrder from visual positions
+    std::vector<ColumnID> newOrder;
+    for (int visualIdx : visualOrder) {
+        ColumnID id = getColumnIDFromIndex(visualIdx);
+        if (id != ColumnID::INVALID) {
+            newOrder.push_back(id);
+        }
+    }
+
+    // Re-add hidden columns at their original relative positions
+    // (hidden columns are not in the ListView but must stay in columnOrder)
+    std::vector<ColumnID> fullOrder;
+    size_t visIdx = 0;
+    for (ColumnID id : columnOrder) {
+        if (!isColumnVisible(id)) {
+            fullOrder.push_back(id);
+        }
+        else if (visIdx < newOrder.size()) {
+            fullOrder.push_back(newOrder[visIdx]);
+            ++visIdx;
+        }
+    }
+    // Append any remaining visible columns (safety net)
+    while (visIdx < newOrder.size()) {
+        fullOrder.push_back(newOrder[visIdx++]);
+    }
+
+    if (validateColumnOrder(fullOrder)) {
+        columnOrder = fullOrder;
+    }
+}
+
+void MultiReplace::initColumnOrder() {
+    if (columnOrder.empty() || !validateColumnOrder(columnOrder)) {
+        columnOrder = defaultColumnOrder;
+    }
+}
+
+void MultiReplace::insertSingleColumn(ColumnID id, int& currentIndex, int perColumnWidth, LVCOLUMN& lvc) {
+    lvc.iSubItem = currentIndex;
+
+    switch (id) {
+    case ColumnID::FIND_COUNT:
+        lvc.pszText = LM.getW(L"header_find_count");
+        lvc.cx = findCountColumnWidth;
+        lvc.fmt = LVCFMT_LEFT;
+        break;
+    case ColumnID::REPLACE_COUNT:
+        lvc.pszText = LM.getW(L"header_replace_count");
+        lvc.cx = replaceCountColumnWidth;
+        lvc.fmt = LVCFMT_LEFT;
+        break;
+    case ColumnID::SELECTION:
+        lvc.pszText = L"\u2610";
+        lvc.cx = getColumnWidth(ColumnID::SELECTION);
+        lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
+        break;
+    case ColumnID::FIND_TEXT:
+        lvc.pszText = LM.getW(L"header_find");
+        lvc.cx = (findColumnLockedEnabled ? findColumnWidth : perColumnWidth);
+        lvc.fmt = LVCFMT_LEFT;
+        break;
+    case ColumnID::REPLACE_TEXT:
+        lvc.pszText = LM.getW(L"header_replace");
+        lvc.cx = (replaceColumnLockedEnabled ? replaceColumnWidth : perColumnWidth);
+        lvc.fmt = LVCFMT_LEFT;
+        break;
+    case ColumnID::WHOLE_WORD:
+        lvc.pszText = LM.getW(L"header_whole_word");
+        lvc.cx = checkMarkWidth_scaled;
+        lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
+        break;
+    case ColumnID::MATCH_CASE:
+        lvc.pszText = LM.getW(L"header_match_case");
+        lvc.cx = checkMarkWidth_scaled;
+        lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
+        break;
+    case ColumnID::USE_VARIABLES:
+        lvc.pszText = LM.getW(L"header_use_variables");
+        lvc.cx = checkMarkWidth_scaled;
+        lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
+        break;
+    case ColumnID::EXTENDED:
+        lvc.pszText = LM.getW(L"header_extended");
+        lvc.cx = checkMarkWidth_scaled;
+        lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
+        break;
+    case ColumnID::REGEX:
+        lvc.pszText = LM.getW(L"header_regex");
+        lvc.cx = checkMarkWidth_scaled;
+        lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
+        break;
+    case ColumnID::COMMENTS:
+        lvc.pszText = LM.getW(L"header_comments");
+        lvc.cx = (commentsColumnLockedEnabled ? commentsColumnWidth : perColumnWidth);
+        lvc.fmt = LVCFMT_LEFT;
+        break;
+    case ColumnID::LAST_MODIFIED:
+        lvc.pszText = LM.getW(L"header_timestamp");
+        lvc.cx = timestampWidth_scaled;
+        lvc.fmt = LVCFMT_LEFT | LVCFMT_FIXED_WIDTH;
+        break;
+    case ColumnID::DELETE_BUTTON:
+        lvc.pszText = L"";
+        lvc.cx = crossWidth_scaled;
+        lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
+        break;
+    default:
+        return; // Unknown column — do not insert
+    }
+
+    ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
+    columnIndices[id] = currentIndex;
+    ++currentIndex;
+}
+
 void MultiReplace::createListViewColumns() {
     LVCOLUMN lvc;
     ZeroMemory(&lvc, sizeof(lvc));
-
     lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
 
-    // Retrieve column widths
+    // Retrieve current column widths (before deleting columns)
     findCountColumnWidth = getColumnWidth(ColumnID::FIND_COUNT);
     replaceCountColumnWidth = getColumnWidth(ColumnID::REPLACE_COUNT);
     findColumnWidth = getColumnWidth(ColumnID::FIND_TEXT);
@@ -2089,11 +2263,14 @@ void MultiReplace::createListViewColumns() {
     for (int i = columnCount - 1; i >= 0; --i) {
         ListView_DeleteColumn(_replaceListView, i);
     }
-    columnIndices.clear();  // Clear previous indices after deleting
+    columnIndices.clear();
+
+    // Ensure column order is valid
+    initColumnOrder();
 
     const ControlInfo& listCtrlInfo = ctrlMap[IDC_REPLACE_LIST];
 
-    // Define the ResizableColWidths struct to pass to calcDynamicColWidth
+    // Calculate dynamic column widths
     ResizableColWidths widths = {
         _replaceListView,
         listCtrlInfo.cx,
@@ -2106,125 +2283,17 @@ void MultiReplace::createListViewColumns() {
         (isDeleteButtonVisible) ? deleteButtonColumnWidth : 0,
         GetSystemMetrics(SM_CXVSCROLL)
     };
-
-    // Calculate dynamic width for Find, Replace, and Comments columns
     int perColumnWidth = calcDynamicColWidth(widths);
 
-    int currentIndex = 0;  // Start tracking columns
-
-    // Column 1: Find Count
-    if (isFindCountVisible) {
-        lvc.iSubItem = currentIndex;
-        lvc.pszText = LM.getW(L"header_find_count");
-        lvc.cx = findCountColumnWidth;
-        lvc.fmt = LVCFMT_LEFT;
-        ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
-        columnIndices[ColumnID::FIND_COUNT] = currentIndex;
-        ++currentIndex;
-    }
-    else {
-        columnIndices[ColumnID::FIND_COUNT] = -1;  // Mark as not visible
-    }
-
-    // Column 2: Replace Count
-    if (isReplaceCountVisible) {
-        lvc.iSubItem = currentIndex;
-        lvc.pszText = LM.getW(L"header_replace_count");
-        lvc.cx = replaceCountColumnWidth;
-        lvc.fmt = LVCFMT_LEFT;
-        ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
-        columnIndices[ColumnID::REPLACE_COUNT] = currentIndex;
-        ++currentIndex;
-    }
-    else {
-        columnIndices[ColumnID::REPLACE_COUNT] = -1;  // Mark as not visible
-    }
-
-    // Column 3: Selection Checkbox
-    lvc.iSubItem = currentIndex;
-    lvc.pszText = L"\u2610";
-    lvc.cx = getColumnWidth(ColumnID::SELECTION);
-    lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
-    ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
-    columnIndices[ColumnID::SELECTION] = currentIndex;
-    ++currentIndex;
-
-    // Column 4: Find Text (dynamic width)
-    lvc.iSubItem = currentIndex;
-    lvc.pszText = LM.getW(L"header_find");
-    lvc.cx = (findColumnLockedEnabled ? findColumnWidth : perColumnWidth);
-    lvc.fmt = LVCFMT_LEFT;
-    ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
-    columnIndices[ColumnID::FIND_TEXT] = currentIndex;
-    ++currentIndex;
-
-    // Column 5: Replace Text (dynamic width)
-    lvc.iSubItem = currentIndex;
-    lvc.pszText = LM.getW(L"header_replace");
-    lvc.cx = (replaceColumnLockedEnabled ? replaceColumnWidth : perColumnWidth);
-    lvc.fmt = LVCFMT_LEFT;
-    ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
-    columnIndices[ColumnID::REPLACE_TEXT] = currentIndex;
-    ++currentIndex;
-
-    // Columns 6 to 10: Options (fixed width)
-    const std::wstring options[] = {
-        L"header_whole_word",
-        L"header_match_case",
-        L"header_use_variables",
-        L"header_extended",
-        L"header_regex"
-    };
-    for (int i = 0; i < 5; ++i) {
-        lvc.iSubItem = currentIndex;
-        lvc.pszText = LM.getW(options[i]);
-        lvc.cx = checkMarkWidth_scaled;
-        lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
-        ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
-        columnIndices[static_cast<ColumnID>(static_cast<int>(ColumnID::WHOLE_WORD) + i)] = currentIndex;
-        ++currentIndex;
-    }
-
-    // Column 11: Comments (dynamic width)
-    if (isCommentsColumnVisible) {
-        lvc.iSubItem = currentIndex;
-        lvc.pszText = LM.getW(L"header_comments");
-        lvc.cx = (commentsColumnLockedEnabled ? commentsColumnWidth : perColumnWidth);
-        lvc.fmt = LVCFMT_LEFT;
-        ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
-        columnIndices[ColumnID::COMMENTS] = currentIndex;
-        ++currentIndex;
-    }
-    else {
-        columnIndices[ColumnID::COMMENTS] = -1;  // Mark as not visible
-    }
-
-    // Column 12: Timestamp (fixed width, optional)
-    if (isTimestampColumnVisible) {
-        lvc.iSubItem = currentIndex;
-        lvc.pszText = LM.getW(L"header_timestamp");
-        lvc.cx = timestampWidth_scaled;
-        lvc.fmt = LVCFMT_LEFT | LVCFMT_FIXED_WIDTH;
-        ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
-        columnIndices[ColumnID::LAST_MODIFIED] = currentIndex;
-        ++currentIndex;
-    }
-    else {
-        columnIndices[ColumnID::LAST_MODIFIED] = -1;
-    }
-
-    // Column 13: Delete Button (fixed width)
-    if (isDeleteButtonVisible) {
-        lvc.iSubItem = currentIndex;
-        lvc.pszText = L"";
-        lvc.cx = crossWidth_scaled;
-        lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
-        ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
-        columnIndices[ColumnID::DELETE_BUTTON] = currentIndex;
-        ++currentIndex;
-    }
-    else {
-        columnIndices[ColumnID::DELETE_BUTTON] = -1;
+    // Create columns in user-defined order
+    int currentIndex = 0;
+    for (ColumnID id : columnOrder) {
+        if (isColumnVisible(id)) {
+            insertSingleColumn(id, currentIndex, perColumnWidth, lvc);
+        }
+        else {
+            columnIndices[id] = -1;  // Mark as not visible
+        }
     }
 
     updateHeaderSortDirection();
@@ -3230,6 +3299,8 @@ void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
     AppendMenu(hMenu, MF_STRING | (isCommentsColumnVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_COMMENTS, LM.getLPCW(L"header_comments"));
     AppendMenu(hMenu, MF_STRING | (isTimestampColumnVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_TIMESTAMP, LM.getLPCW(L"header_timestamp"));
     AppendMenu(hMenu, MF_STRING | (isDeleteButtonVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_DELETE, LM.getLPCW(L"header_delete_button"));
+    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hMenu, MF_STRING, IDM_RESET_COLUMN_ORDER, LM.getLPCW(L"ctxmenu_reset_column_order"));
 
     // Display the menu at the specified location
     TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, hWnd, NULL);
@@ -3667,6 +3738,21 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         // Allow the default list view procedure to handle standard scrolling
         break;
     }
+    case WM_APP + 100: {
+        // Deferred column order sync after header drag-and-drop
+        std::vector<ColumnID> previousOrder = pThis->columnOrder;
+        pThis->syncColumnOrderFromHeader();
+        if (!pThis->validateColumnOrder(pThis->columnOrder)) {
+            // Invalid order — revert and rebuild
+            pThis->columnOrder = previousOrder;
+            pThis->createListViewColumns();
+            ListView_SetItemCountEx(pThis->_replaceListView,
+                static_cast<int>(pThis->replaceListData.size()), LVSICF_NOINVALIDATEALL);
+            InvalidateRect(pThis->_replaceListView, nullptr, TRUE);
+        }
+        pThis->updateListViewTooltips();
+        return 0;
+    }
     case WM_NOTIFY: {
         NMHDR* pnmhdr = reinterpret_cast<NMHDR*>(lParam);
         // Check notifications from header
@@ -3675,6 +3761,14 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
 
             if (code == HDN_ITEMCHANGED) {
                 pThis->updateListViewTooltips(); //Updating Positions of Column Tooltips
+            }
+
+            // Handle column drag-and-drop reorder
+            if (code == HDN_ENDDRAG) {
+                // Defer sync to after the header has finished updating
+                PostMessage(hwnd, WM_APP + 100, 0, 0);
+                // Return FALSE to allow the drag to complete
+                return FALSE;
             }
 
             // Handle right-click (NM_RCLICK) on the header
@@ -3687,6 +3781,25 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
                 pThis->showColumnVisibilityMenu(pThis->_hSelf, ptScreen);
 
                 return TRUE; // Indicate that the message has been handled
+            }
+
+            // Block manual resize on fixed-width columns
+            if (code == HDN_BEGINTRACKW || code == HDN_BEGINTRACKA) {
+                NMHEADER* phdn = reinterpret_cast<NMHEADER*>(lParam);
+                ColumnID id = pThis->getColumnIDFromIndex(phdn->iItem);
+                switch (id) {
+                case ColumnID::SELECTION:
+                case ColumnID::WHOLE_WORD:
+                case ColumnID::MATCH_CASE:
+                case ColumnID::USE_VARIABLES:
+                case ColumnID::EXTENDED:
+                case ColumnID::REGEX:
+                case ColumnID::LAST_MODIFIED:
+                case ColumnID::DELETE_BUTTON:
+                    return TRUE; // Block resize
+                default:
+                    break;
+                }
             }
 
             if (code == HDN_DIVIDERDBLCLICK) {
@@ -5946,6 +6059,18 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             // Toggle the visibility based on the menu selection
             handleColumnVisibilityToggle(LOWORD(wParam));
+            return TRUE;
+        }
+
+        case IDM_RESET_COLUMN_ORDER:
+        {
+            columnOrder = defaultColumnOrder;
+            CFG.writeString(L"ListColumns", L"ColumnOrder", L"");
+            CFG.save(L"");
+            createListViewColumns();
+            ListView_SetItemCountEx(_replaceListView,
+                static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+            InvalidateRect(_replaceListView, nullptr, TRUE);
             return TRUE;
         }
 
@@ -13960,6 +14085,24 @@ void MultiReplace::loadSettingsToPanelUI() {
     replaceColumnLockedEnabled = CFG.readBool(L"ListColumns", L"ReplaceColumnLocked", false);
     commentsColumnLockedEnabled = CFG.readBool(L"ListColumns", L"CommentsColumnLocked", true);
 
+    // Column order — load from comma-separated ColumnID int values
+    {
+        std::wstring orderStr = CFG.readString(L"ListColumns", L"ColumnOrder", L"");
+        columnOrder.clear();
+        if (!orderStr.empty()) {
+            std::wstringstream ss(orderStr);
+            std::wstring token;
+            while (std::getline(ss, token, L',')) {
+                try {
+                    int val = std::stoi(token);
+                    columnOrder.push_back(static_cast<ColumnID>(val));
+                }
+                catch (...) { /* skip invalid tokens */ }
+            }
+        }
+        initColumnOrder();  // Validates and falls back to default if needed
+    }
+
     // Load file path and original hash
     listFilePath = CFG.readString(L"File", L"ListFilePath", L"");
     originalListHash = CFG.readSizeT(L"File", L"OriginalListHash", 0);
@@ -14310,6 +14453,16 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(L"ListColumns", L"FindColumnLocked", findColumnLockedEnabled);
     CFG.writeBool(L"ListColumns", L"ReplaceColumnLocked", replaceColumnLockedEnabled);
     CFG.writeBool(L"ListColumns", L"CommentsColumnLocked", commentsColumnLockedEnabled);
+
+    // Column order — save as comma-separated ColumnID int values
+    {
+        std::wstring orderStr;
+        for (size_t i = 0; i < columnOrder.size(); ++i) {
+            if (i > 0) orderStr += L",";
+            orderStr += std::to_wstring(static_cast<int>(columnOrder[i]));
+        }
+        CFG.writeString(L"ListColumns", L"ColumnOrder", orderStr);
+    }
 
     // Current Find/Replace Text
     CFG.writeString(L"Current", L"FindText", getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
