@@ -3748,8 +3748,9 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
             pThis->createListViewColumns();
             ListView_SetItemCountEx(pThis->_replaceListView,
                 static_cast<int>(pThis->replaceListData.size()), LVSICF_NOINVALIDATEALL);
-            InvalidateRect(pThis->_replaceListView, nullptr, TRUE);
         }
+        // Always force full redraw after column reorder
+        InvalidateRect(pThis->_replaceListView, nullptr, TRUE);
         pThis->updateListViewTooltips();
         return 0;
     }
