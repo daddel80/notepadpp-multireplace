@@ -609,6 +609,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | Undo                     | Ctrl+Z        | Reverts the last change made to the list, including sorting and moving rows. |
 | Redo                     | Ctrl+Y        | Reapplies the last action that was undone, restoring previous changes. |
 | Transfer to Input Fields | Alt+Up        | Transfers the selected entry to the input fields for editing. |
+| Update from Input Fields | Alt+Down      | Updates the selected entries with the current content of the input fields. |
 | Search in List           | Ctrl+F        | Initiates a search within the list entries. Inputs are entered in the "Find what" and "Replace with" fields. |
 | Cut                      | Ctrl+X        | Cuts the selected entry to the clipboard.                   |
 | Copy                     | Ctrl+C        | Copies the selected entry to the clipboard.                 |
@@ -624,6 +625,8 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 **Additional Interactions:**
 - **Space Key** — Toggles the activation state of selected entries.
 - **Double-Click** — Allows direct in-place editing (configurable in Settings).
+- **Ctrl+Up / Ctrl+Down** — Moves selected rows up or down in the list. Hold the keys for auto-repeat.
+- **Ctrl+L** — Toggles the list visibility (collapse/expand).
 
 ### List Columns
 - **Find** — The text or pattern to search for.
@@ -638,12 +641,15 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
   - **Matches** — Shows the hit count for each entry. Double-click to navigate through matches (see [Search Results Window](#search-results-window)).
   - **Replaced** — Shows the number of replacements made for each 'Replace with' string.
   - **Comments** — Add custom comments to entries for annotations or additional context.
+  - **Modified** — Shows a persistent timestamp (YYYY-MM-DD HH:MM:SS) recording when each entry was last changed. Updated automatically on content changes, saved in CSV files.
   - **Delete** — Contains a delete button for each entry, allowing quick removal from the list.
 
-You can manage the visibility of the additional columns via the **Header Column Menu** by right-clicking on the header row.
+- **Dirty-Flag Indicator** — A subtle stripe appears at the left edge of rows that have been modified since the last save or load, providing a quick visual cue for unsaved changes.
+
+You can manage the visibility of the additional columns via the **Header Column Menu** by right-clicking on the header row. Columns can also be **reordered by dragging** their headers. Use **Reset Column Order** from the header right-click menu to restore the default layout.
 
 ### List Toggling
-The **"Use List"** button toggles between processing the entire list or just the single "Find what" / "Replace with" fields.
+The **"Use List"** button toggles between processing the entire list or just the single "Find what" / "Replace with" fields. You can also press **Ctrl+L** from anywhere in the panel to toggle the list.
 
 ### Column Locking
 
@@ -677,6 +683,7 @@ Manage the visual elements and behavior of the replacement list to save screen s
   - **Matches** — Toggles the column displaying the number of hits for each entry.
   - **Replaced** — Toggles the column displaying the number of replacements made.
   - **Comments** — Toggles the user comment column.
+  - **Modified** — Toggles the timestamp column showing when each entry was last changed.
   - **Delete Button** — Toggles the column containing the 'X' button for deleting rows.
 - **List Results:**
   - **Show list statistics** — Displays a summary line below the list (Active entries, Total items, Selected items).
@@ -704,6 +711,7 @@ Configure how list data is exported to the clipboard via **Export Data** from th
   - `%COMMENT%` — Comment
   - `%FCOUNT%` — Find count
   - `%RCOUNT%` — Replace count
+  - `%MODIFIED%` — Last modified timestamp
   - `%ROW%` — Row number
   - `%SEL%` — Selected state (1/0)
   - `%REGEX%`, `%CASE%`, `%WORD%`, `%EXT%`, `%VAR%` — Option flags (1/0)
