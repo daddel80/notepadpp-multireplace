@@ -84,12 +84,12 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_copy_marked_text", L"Copy Marked Text" },
 { L"tooltip_new_list", L"New List" },
 { L"tooltip_save", L"Save List" },
-{ L"tooltip_enable_list", L"Enable list" },
-{ L"tooltip_disable_list", L"Disable list" },
+{ L"tooltip_enable_list", L"Enable list (Ctrl+L)" },
+{ L"tooltip_disable_list", L"Disable list (Ctrl+L)" },
 { L"tooltip_filter_help", L"Separate patterns with semicolons (;)\n\nFind in specific file types:\n*.cpp; *.h; *.txt\n\nExclude file patterns:\n*.*; !*.exe; !*.obj; !*.log\n\nMatch a specific filename:\nmy report.txt\n\nExclude folders (in Files mode):\n*.*; !\\tests\\; !\\bin*\n\nExclude folders recursively:\n*.*; !+\\log*" },
 { L"tooltip_export_template_help", L"Available placeholders:\n\nData fields:\n  %FIND%              - Find pattern\n  %REPLACE%       - Replace text\n  %COMMENT%    - Comment\n  %FCOUNT%        - Find count\n  %RCOUNT%        - Replace count\n  %MODIFIED%      - Modified\n\nRow info:\n  %ROW%              - Row number\n  %SEL%                 - Selected (1/0)\n\nOptions:\n  %REGEX%           - Regex enabled (1/0)\n  %CASE%             - Match case (1/0)\n  %WORD%           - Whole word (1/0)\n  %EXT%                - Extended (1/0)\n  %VAR%               - Variables (1/0)\n\nUse \\t for tab delimiter" },
-{ L"tooltip_move_up", L"Move selected lines up" },
-{ L"tooltip_move_down", L"Move selected lines down" },
+{ L"tooltip_move_up", L"Move selected lines up (Ctrl+Up)" },
+{ L"tooltip_move_down", L"Move selected lines down (Ctrl+Down)" },
 { L"tooltip_find_duplicates", L"Find Duplicates" },
 
 // header entries

@@ -101,6 +101,17 @@ HHOOK MultiReplace::_hMsgFilterHook = nullptr;
 LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode >= 0 && instance && instance->_hSelf) {
         MSG* pMsg = reinterpret_cast<MSG*>(lParam);
+
+        // Ctrl+L: Toggle list collapse/expand (focus-independent within panel)
+        if (pMsg->message == WM_KEYDOWN && pMsg->wParam == 'L' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+            HWND hFocus = GetFocus();
+            if (hFocus && (hFocus == instance->_hSelf || IsChild(instance->_hSelf, hFocus))) {
+                SendMessage(instance->_hSelf, WM_COMMAND, MAKEWPARAM(IDC_USE_LIST_BUTTON, BN_CLICKED), 0);
+                pMsg->message = WM_NULL;
+                return 1;
+            }
+        }
+
         if (pMsg->message == WM_SYSKEYDOWN && (GetKeyState(VK_MENU) & 0x8000)) {
             // Only intercept when focus is inside our panel
             HWND hFocus = GetFocus();
@@ -3738,6 +3749,21 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         // Allow the default list view procedure to handle standard scrolling
         break;
     }
+    case WM_KEYDOWN: {
+        // Intercept Ctrl+Up/Down here to prevent the ListView from
+        // moving the focus after we shift the row
+        if (GetKeyState(VK_CONTROL) & 0x8000) {
+            if (wParam == VK_UP) {
+                pThis->shiftListItem(Direction::Up);
+                return 0; // Consume — do not pass to ListView
+            }
+            if (wParam == VK_DOWN) {
+                pThis->shiftListItem(Direction::Down);
+                return 0; // Consume — do not pass to ListView
+            }
+        }
+        break;
+    }
     case WM_APP + 100: {
         // Deferred column order sync after header drag-and-drop
         std::vector<ColumnID> previousOrder = pThis->columnOrder;
@@ -4932,14 +4958,24 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // Calculate Position for all Elements
             positionAndResizeControls(newWidth, newHeight);
 
-            // Move and resize the List
-            updateListViewAndColumns();
+            // Only update list columns when the list is visible
+            if (useListEnabled) {
+                updateListViewAndColumns();
+            }
 
             // Move all Elements
             moveAndResizeControls(false);
 
-            // Refresh UI and gripper by invalidating window
-            InvalidateRect(_hSelf, nullptr, TRUE);
+            // Targeted refresh: invalidate without erase for controls,
+            // but erase the gripper corner to prevent artifacts
+            InvalidateRect(_hSelf, nullptr, FALSE);
+            {
+                RECT rc;
+                GetClientRect(_hSelf, &rc);
+                int gripperSize = sx(11) + sx(4); // gripper + margin
+                RECT gripperRect = { rc.right - gripperSize, rc.bottom - gripperSize, rc.right, rc.bottom };
+                InvalidateRect(_hSelf, &gripperRect, TRUE);
+            }
 
             if (useListEnabled) {
                 // Update useListOnHeight with the new height
@@ -5562,10 +5598,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             };
 
             if (!useListEnabled) {
-                // Closing: First hide controls, then resize
+                // Closing: hide controls first, then shrink window
                 if (_listSearchBarVisible) {
                     hideListSearchBar();
                 }
+                ShowWindow(_replaceListView, SW_HIDE);
                 for (int id : listToolbarButtons)
                     ShowWindow(GetDlgItem(_hSelf, id), SW_HIDE);
                 ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_HIDE);
@@ -5574,9 +5611,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 adjustWindowSize();
             }
             else {
-                // Opening: First resize, then show controls
+                // Opening: resize first, then show controls
                 updateUseListState(true);
                 adjustWindowSize();
+                ShowWindow(_replaceListView, SW_SHOW);
                 for (int id : listToolbarButtons)
                     ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
                 ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_SHOW);
