@@ -662,7 +662,7 @@ You can lock specific column widths to prevent them from resizing automatically 
 ### List Saving and Loading
 - **Save List / Load List** — Store and reload your search/replace entries as CSV files.
 - **Drag & Drop** — You can load lists by dragging CSV files onto the plugin window.
-- **Format** — Files follow RFC 4180 CSV standards.
+- **Format** — CSV with quoted fields. Special characters are escaped: `\` → `\\`, newline → `\n`, carriage return → `\r`, `"` → `""`.
 
 ## Settings and Customization
 
