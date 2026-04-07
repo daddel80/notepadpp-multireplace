@@ -779,6 +779,7 @@ private:
     // Selection Scope Management for interactive search
     std::vector<SelectionRange> m_selectionScope;
     SelectionRange m_lastFindResult = { -1, -1 };
+    void adjustSelectionScope(Sci_Position replacePos, Sci_Position oldLen, Sci_Position newLen);
 
     inline static HWND  hDebugWnd = nullptr; // Handle for the debug window
     inline static HWND  hDebugListView = nullptr;  // ListView handle for content updates

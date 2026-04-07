@@ -6329,13 +6329,7 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         startCtx.retrieveFoundText = false;
         startCtx.highlightMatch = false;
 
-        // Use stored scope bounds when available (survives Find Next/Prev)
-        const SelectionInfo fixedSel = (startCtx.isSelectionMode && !m_selectionScope.empty())
-            ? SelectionInfo{ static_cast<Sci_Position>(m_selectionScope.front().start),
-                             static_cast<Sci_Position>(m_selectionScope.back().end),
-                             static_cast<Sci_Position>(m_selectionScope.back().end - m_selectionScope.front().start) }
-        : getSelectionInfo(false);
-        const Sci_Position  fixedStart = computeAllStartPos(startCtx, wrapAroundEnabled, allFromCursor);
+        const Sci_Position fixedStart = computeAllStartPos(startCtx, wrapAroundEnabled, allFromCursor);
 
         {
             // Suppress modification notifications during bulk replace to avoid
@@ -6355,13 +6349,13 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
                             return (p < 0) ? 0 : (p > docLenNow ? docLenNow : p);
                             };
 
-                        if (startCtx.isSelectionMode) {
-                            Sci_Position s = clamp(fixedSel.startPos);
-                            Sci_Position e = clamp(fixedSel.endPos);
+                        if (startCtx.isSelectionMode && !m_selectionScope.empty()) {
+                            Sci_Position s = clamp(static_cast<Sci_Position>(m_selectionScope.front().start));
+                            Sci_Position e = clamp(static_cast<Sci_Position>(m_selectionScope.back().end));
                             if (e < s) std::swap(s, e);
                             send(SCI_SETSEL, s, e);
                         }
-                        else {
+                        else if (!startCtx.isSelectionMode) {
                             const Sci_Position s = clamp(fixedStart);
                             send(SCI_GOTOPOS, s, 0);
                         }
@@ -6422,8 +6416,17 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
     // If debug window is still open after all matches, wait for user to close it
     WaitForDebugWindowClose();
 
-    // Display status message
-    // Clear stored scope — document positions are invalidated by replacements
+    if (!m_selectionScope.empty() && totalReplaceCount > 0) {
+        if (m_selectionScope.size() == 1) {
+            send(SCI_SETSEL, m_selectionScope[0].start, m_selectionScope[0].end);
+        }
+        else {
+            send(SCI_SETSELECTION, m_selectionScope[0].end, m_selectionScope[0].start);
+            for (size_t i = 1; i < m_selectionScope.size(); ++i) {
+                send(SCI_ADDSELECTION, m_selectionScope[i].end, m_selectionScope[i].start);
+            }
+        }
+    }
     m_selectionScope.clear();
 
     // Display status message
@@ -6662,6 +6665,11 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                     ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
                     : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
 
+                Sci_Position newLen = newPos - searchResult.pos;
+                if (context.isSelectionMode) {
+                    adjustSelectionScope(searchResult.pos, searchResult.length, newLen);
+                }
+
                 // Only skip advancing when we deleted a non-empty match:
                 if (searchResult.length == 0 || newPos != searchResult.pos) {
                     newPos = ensureForwardProgress(newPos, searchResult);
@@ -6791,6 +6799,11 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                     nextPos = itemData.regex
                         ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
                         : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
+                }
+
+                Sci_Position newLen = nextPos - searchResult.pos;
+                if (context.isSelectionMode) {
+                    adjustSelectionScope(searchResult.pos, searchResult.length, newLen);
                 }
 
                 ++replaceCount;
@@ -9596,6 +9609,7 @@ void MultiReplace::updateSelectionScope() {
 
     Sci_Position selStart = static_cast<Sci_Position>(send(SCI_GETSELECTIONSTART, 0, 0));
     Sci_Position selEnd = static_cast<Sci_Position>(send(SCI_GETSELECTIONEND, 0, 0));
+    if (selStart > selEnd) std::swap(selStart, selEnd);
 
     bool isStaleSelection = (static_cast<LRESULT>(selStart) == m_lastFindResult.start &&
         static_cast<LRESULT>(selEnd) == m_lastFindResult.end);
@@ -9634,8 +9648,30 @@ void MultiReplace::captureCurrentSelectionAsScope() {
         SelectionRange range;
         range.start = send(SCI_GETSELECTIONNSTART, i, 0);
         range.end = send(SCI_GETSELECTIONNEND, i, 0);
+        if (range.start > range.end) std::swap(range.start, range.end);
         if (range.end > range.start) {
             m_selectionScope.push_back(range);
+        }
+    }
+    std::sort(m_selectionScope.begin(), m_selectionScope.end(),
+        [](const SelectionRange& a, const SelectionRange& b) { return a.start < b.start; });
+}
+
+void MultiReplace::adjustSelectionScope(Sci_Position replacePos, Sci_Position oldLen, Sci_Position newLen) {
+    if (m_selectionScope.empty()) return;
+
+    Sci_Position delta = newLen - oldLen;
+    if (delta == 0) return;
+
+    Sci_Position replaceEnd = replacePos + oldLen;
+
+    for (auto& range : m_selectionScope) {
+        if (replaceEnd <= range.start) {
+            range.start += delta;
+            range.end += delta;
+        }
+        else if (replacePos < range.end) {
+            range.end += delta;
         }
     }
 }
