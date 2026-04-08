@@ -1132,6 +1132,7 @@ void MultiReplace::updateFilesPanel()
             EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_STATIC), TRUE);
         }
 
+        onSelectionChanged();
         lastInDocsMode = inDocsMode;
     }
 
@@ -9635,7 +9636,7 @@ void MultiReplace::updateSelectionScope() {
     }
 
     // Case 2: No scope yet - need new user selection
-    if (hasUserSelection) {
+    if (selEnd > selStart) {
         captureCurrentSelectionAsScope();
     }
     // Case 3: Stale selection or just click - no valid scope (m_selectionScope stays empty)
@@ -14987,8 +14988,13 @@ void MultiReplace::onSelectionChanged()
     }
 
     // -----------------------------------------------------------------------
-    // 2) Normal modes: No auto-disable, no auto-switch
+    // 2) Normal modes: ensure Selection radio is enabled
     // -----------------------------------------------------------------------
+    HWND hSel = ::GetDlgItem(hDlg, IDC_SELECTION_RADIO);
+    if (!::IsWindowEnabled(hSel)) {
+        ::EnableWindow(hSel, TRUE);
+    }
+
     Sci_Position start = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONSTART, 0, 0);
     Sci_Position end = ::SendMessage(getScintillaHandle(), SCI_GETSELECTIONEND, 0, 0);
     bool isTextSelected = (start != end);
