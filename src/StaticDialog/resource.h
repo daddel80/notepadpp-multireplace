@@ -392,7 +392,7 @@
 #define CENTER_ON_NPP               -9999   // Sentinel: center over N++ on first run
 
 // --- Main Panel: Window Size (resizable) ---
-#define MIN_WIDTH                   811     // Minimum width (resize limit)
+#define MIN_WIDTH                   804     // Minimum width (resize limit)
 #define MIN_HEIGHT                  370     // Minimum height with list (resize limit)
 #define SHRUNK_HEIGHT               234     // Minimum height without list (status row at 209 + toggle at 207)
 #define INIT_WIDTH                  MIN_WIDTH   // Initial client-area width on first run
