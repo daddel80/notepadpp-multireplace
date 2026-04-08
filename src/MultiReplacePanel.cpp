@@ -348,7 +348,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int listHeight = std::max(listEndY - listStartY, sy(20));
 
     // 2-Buttons-Mode checkbox: moved to the left of Replace All button
-    int checkbox2X = buttonX - sx(24);                 // Left of button column
+    int checkbox2X = buttonX - sx(22);                 // Left of button column
 
     // UseList toggle: when expanded → path display row; when collapsed → below Clear all marks
     int useListButtonX = buttonX + sx(106);            // Right-aligned within button column (128 - 22)
@@ -378,7 +378,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_EXTENDED_RADIO] = { sx(188), sy(126), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_extended"), BS_AUTORADIOBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_REGEX_RADIO] = { sx(188), sy(150), sx(162), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_regular_expression"), BS_AUTORADIOBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
 
-    ctrlMap[IDC_SCOPE_GROUP] = { sx(367), sy(79), sx(252), sy(125), WC_BUTTON, LM.getLPCW(L"panel_scope"), BS_GROUPBOX, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_SCOPE_GROUP] = { sx(367), sy(79), sx(247), sy(125), WC_BUTTON, LM.getLPCW(L"panel_scope"), BS_GROUPBOX, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_ALL_TEXT_RADIO] = { sx(375), sy(101), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_all_text"), BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_SELECTION_RADIO] = { sx(375), sy(126), sx(189), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_selection"), BS_AUTORADIOBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_COLUMN_MODE_RADIO] = { sx(375), sy(150), sx(45), radioButtonHeight, WC_BUTTON, LM.getLPCW(L"panel_csv"), BS_AUTORADIOBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
