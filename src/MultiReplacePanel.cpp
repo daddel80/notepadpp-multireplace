@@ -417,7 +417,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
     // Replace All Small -> Normal6
-    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"↻", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_replace_all"), false, FontRole::Normal6 };
+    ctrlMap[IDC_REPLACE_ALL_SMALL_BUTTON] = { buttonX + sx(100), sy(91), sx(28), sy(24), WC_BUTTON, L"\u226B", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_replace_all"), false, FontRole::Normal6 };
 
     ctrlMap[IDC_2_BUTTONS_MODE] = { checkbox2X, sy(91), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, LM.getLPCW(L"tooltip_2_buttons_mode"), false, FontRole::Standard };
 
