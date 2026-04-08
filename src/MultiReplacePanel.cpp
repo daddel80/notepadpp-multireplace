@@ -1032,6 +1032,17 @@ void MultiReplace::updateFilesPanel()
         if (show) {
             EnableWindow(GetDlgItem(_hSelf, IDC_CANCEL_REPLACE_BUTTON), FALSE);
 
+            if (inDocsMode != lastInDocsMode) {
+                if (inDocsMode) {
+                    _filesFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+                    setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, _docsFilter);
+                }
+                else {
+                    _docsFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+                    setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, _filesFilter);
+                }
+            }
+
             // Mode-specific control visibility within the panel.
             // Both modes share: GroupBox, Filter label, Filter edit, Filter help, Cancel.
             // Files mode adds:  Dir label, Dir edit, Browse, Subfolders, Hidden.
@@ -5726,10 +5737,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_SMALL_BUTTON:
         {
-            CloseDebugWindow(); // Close the Lua debug window if it is open
+            CloseDebugWindow();
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
+            bool savedDocsFlag = isReplaceAllInDocs;
+            isReplaceAllInDocs = false;
             handleReplaceAllButton();
+            isReplaceAllInDocs = savedDocsFlag;
             if (isColumnHighlighted) {
                 findAllDelimitersInDocument();
                 reapplyColumnHighlighting();
