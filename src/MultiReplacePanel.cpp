@@ -6165,6 +6165,7 @@ void MultiReplace::replaceAllInOpenedDocs()
     resetCountColumns();
     std::vector<int> listFindTotals(replaceListData.size(), 0);
     std::vector<int> listReplaceTotals(replaceListData.size(), 0);
+    int grandTotalReplace = 0;
 
     // How many docs are open in each view?
     LRESULT docCountMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
@@ -6219,7 +6220,8 @@ void MultiReplace::replaceAllInOpenedDocs()
 
         bindToView(view);  // rebind _hScintilla to the activated view
         handleDelimiterPositions(DelimiterOperation::LoadAll);
-        if (!handleReplaceAllButton()) return false; // aborted via Stop/Error
+        if (!handleReplaceAllButton(false)) return false; // aborted via Stop/Error
+        grandTotalReplace += m_lastTotalReplaceCount;
 
         // Accumulate the per-list-entry counters from the UI
         for (size_t j = 0; j < replaceListData.size(); ++j) {
@@ -6265,6 +6267,10 @@ void MultiReplace::replaceAllInOpenedDocs()
     }
     refreshUIListView();
 
+    // Show summary: total replacements across all documents
+    showStatusMessage(LM.get(L"status_replace_in_docs_summary",
+        { std::to_wstring(grandTotalReplace) }), MessageStatus::Success);
+
     // Refresh column highlighting on the now-active document (suppressed during bulk replace)
     if (isColumnHighlighted) {
         findAllDelimitersInDocument();
@@ -6274,6 +6280,8 @@ void MultiReplace::replaceAllInOpenedDocs()
 }
 
 bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std::filesystem::path* explicitPath) {
+
+    m_lastTotalReplaceCount = 0;
 
     if (!validateDelimiterData()) {
         return false;
@@ -6443,6 +6451,9 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         }
     }
     m_selectionScope.clear();
+
+    // Store count for callers that need accumulated totals (e.g. replaceAllInOpenedDocs)
+    m_lastTotalReplaceCount = totalReplaceCount;
 
     // Display status message
     if (replaceSuccess && showCompletionMessage) {
@@ -11925,6 +11936,14 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
     }
     // Restore view state so the viewport stays on the same top line
     restoreViewStateExact(vs);
+
+    // Show status message
+    if (currentSortState == SortDirection::Unsorted) {
+        showStatusMessage(LM.get(L"status_sort_restored"), MessageStatus::Success);
+    }
+    else {
+        showStatusMessage(LM.get(L"status_rows_sorted"), MessageStatus::Success);
+    }
 }
 
 void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType) {
