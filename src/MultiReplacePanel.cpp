@@ -6289,7 +6289,7 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
 
     // Selection mode with no selection: different behavior for single-doc vs. multi-doc
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED &&
-        getSelectionInfo(false).length == 0)
+        getSelectionInfo(false).length == 0 && m_selectionScope.empty())
     {
         if (isReplaceAllInDocs) {
             return true;  // Multi-doc mode: skip to next document silently
@@ -6470,10 +6470,10 @@ void MultiReplace::handleReplaceButton() {
         return;
     }
 
-    // Safety: Selection mode with no selection → do nothing
+    // Safety: Selection mode with no selection and no stored scope → do nothing
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         SelectionInfo sel = getSelectionInfo(false);
-        if (sel.length == 0) {
+        if (sel.length == 0 && m_selectionScope.empty()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -8326,10 +8326,10 @@ void MultiReplace::handleFindAllButton()
 {
     if (!validateDelimiterData()) return;
 
-    // Safety: Selection mode with no selection → do nothing
+    // Safety: Selection mode with no selection and no stored scope → do nothing
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         SelectionInfo sel = getSelectionInfo(false);
-        if (sel.length == 0) {
+        if (sel.length == 0 && m_selectionScope.empty()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -9009,10 +9009,10 @@ void MultiReplace::handleFindNextButton() {
         return;
     }
 
-    // Safety: Selection mode with no selection → do nothing
+    // Safety: Selection mode with no selection and no stored scope → do nothing
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         SelectionInfo sel = getSelectionInfo(false);
-        if (sel.length == 0) {
+        if (sel.length == 0 && m_selectionScope.empty()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -9121,10 +9121,10 @@ void MultiReplace::handleFindPrevButton() {
         return;
     }
 
-    // Safety: Selection mode with no selection → do nothing
+    // Safety: Selection mode with no selection and no stored scope → do nothing
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         SelectionInfo sel = getSelectionInfo(false);
-        if (sel.length == 0) {
+        if (sel.length == 0 && m_selectionScope.empty()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -9718,10 +9718,10 @@ void MultiReplace::handleMarkMatchesButton() {
     ensureIndicatorContext();
     if (!validateDelimiterData()) return;
 
-    // Safety: Selection mode with no selection → do nothing
+    // Safety: Selection mode with no selection and no stored scope → do nothing
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         SelectionInfo sel = getSelectionInfo(false);
-        if (sel.length == 0) {
+        if (sel.length == 0 && m_selectionScope.empty()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
