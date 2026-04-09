@@ -6311,6 +6311,9 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
     // First check if the document is read-only
     LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
+        if (isReplaceAllInDocs) {
+            return true;  // Multi-doc mode: skip read-only document silently
+        }
         showStatusMessage(LM.get(L"status_cannot_replace_read_only"), MessageStatus::Error);
         return false;
     }
