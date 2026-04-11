@@ -102,6 +102,30 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
     if (nCode >= 0 && instance && instance->_hSelf) {
         MSG* pMsg = reinterpret_cast<MSG*>(lParam);
 
+        // Track Ctrl+Shift for momentary bypass (use input fields while list is open)
+        if (pMsg->wParam == VK_SHIFT) {
+            if (pMsg->message == WM_KEYDOWN && (GetKeyState(VK_CONTROL) & 0x8000)) {
+                if (!instance->_altBypassActive) {
+                    instance->_altBypassActive = true;
+                    InvalidateRect(instance->_replaceListView, nullptr, TRUE);
+                }
+            }
+            else if (pMsg->message == WM_KEYUP) {
+                if (instance->_altBypassActive) {
+                    instance->_altBypassActive = false;
+                    InvalidateRect(instance->_replaceListView, nullptr, TRUE);
+                }
+            }
+        }
+        if (pMsg->wParam == VK_CONTROL) {
+            if (pMsg->message == WM_KEYUP) {
+                if (instance->_altBypassActive) {
+                    instance->_altBypassActive = false;
+                    InvalidateRect(instance->_replaceListView, nullptr, TRUE);
+                }
+            }
+        }
+
         // Ctrl+L: Toggle list collapse/expand (focus-independent within panel)
         if (pMsg->message == WM_KEYDOWN && pMsg->wParam == 'L' && (GetKeyState(VK_CONTROL) & 0x8000)) {
             HWND hFocus = GetFocus();
@@ -5020,6 +5044,21 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             case CDDS_ITEMPREPAINT:
             {
                 int idx = static_cast<int>(lvcd->nmcd.dwItemSpec);
+
+                // Visual dimming when Ctrl+Shift bypass is active (momentary input-fields mode)
+                if (_altBypassActive) {
+                    COLORREF textClr = ListView_GetTextColor(_replaceListView);
+                    COLORREF bgClr = ListView_GetBkColor(_replaceListView);
+                    // Blend text color 70% toward background → visibly dimmed
+                    lvcd->clrText = RGB(
+                        (GetRValue(textClr) * 3 + GetRValue(bgClr) * 7) / 10,
+                        (GetGValue(textClr) * 3 + GetGValue(bgClr) * 7) / 10,
+                        (GetBValue(textClr) * 3 + GetBValue(bgClr) * 7) / 10);
+                    lvcd->clrTextBk = bgClr;
+                    SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, CDRF_NEWFONT | CDRF_NOTIFYPOSTPAINT);
+                    return TRUE;
+                }
+
                 if (idx >= 0 && idx < static_cast<int>(replaceListData.size()) && replaceListData[idx].isDirty) {
                     SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, CDRF_NOTIFYPOSTPAINT);
                 }
@@ -5424,6 +5463,16 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_COMMAND:
     {
+        // RAII guard: temporarily uses input fields instead of list when Ctrl+Shift is held
+        struct InputFieldsBypass {
+            bool& listFlag; bool saved;
+            InputFieldsBypass(bool& flag, bool bypass)
+                : listFlag(flag), saved(flag) {
+                if (saved && bypass) listFlag = false;
+            }
+            ~InputFieldsBypass() { listFlag = saved; }
+        };
+
         switch (LOWORD(wParam))
         {
 
@@ -5654,6 +5703,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_FIND_ALL_BUTTON:
         {
+            InputFieldsBypass bypass(useListEnabled,
+                _altBypassActive && !isFindAllInFiles && !isFindAllInDocs);
+
             CloseDebugWindow();
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
@@ -5710,7 +5762,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_FIND_NEXT_BUTTON:
         {
-            CloseDebugWindow(); // Close the Lua debug window if it is open
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive);
+
+            CloseDebugWindow();
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleFindNextButton();
@@ -5719,7 +5773,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_FIND_PREV_BUTTON:
         {
-            CloseDebugWindow(); // Close the Lua debug window if it is open
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive);
+
+            CloseDebugWindow();
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleFindPrevButton();
@@ -5728,7 +5784,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_BUTTON:
         {
-            CloseDebugWindow(); // Close the Lua debug window if it is open
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive);
+
+            CloseDebugWindow();
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleReplaceButton();
@@ -5737,6 +5795,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_SMALL_BUTTON:
         {
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive);
+
             CloseDebugWindow();
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
@@ -5754,6 +5814,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_BUTTON:
         {
+            InputFieldsBypass bypass(useListEnabled,
+                _altBypassActive && !isReplaceAllInDocs && !isReplaceInFiles);
+
             CloseDebugWindow();
 
             if (isReplaceAllInDocs)
@@ -5776,6 +5839,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     reapplyColumnHighlighting();
                 }
             }
+
             drainMessageQueue();
             return TRUE;
         }
@@ -5789,6 +5853,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
         {
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive);
+
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             handleClearTextMarksButton();

@@ -736,6 +736,7 @@ private:
 
     // List related
     bool useListEnabled; // status for List enabled
+    bool _altBypassActive = false; // momentary Alt-bypass: use input fields while list is open
     std::wstring listFilePath = L""; //to store the file path of loaded list
     const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ /uused for Hashing
     std::size_t originalListHash = 0;
