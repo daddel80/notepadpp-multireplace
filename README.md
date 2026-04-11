@@ -627,6 +627,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 - **Double-Click** — Allows direct in-place editing (configurable in Settings).
 - **Ctrl+Up / Ctrl+Down** — Moves selected rows up or down in the list. Hold the keys for auto-repeat.
 - **Ctrl+L** — Toggles the list visibility (collapse/expand).
+- **Ctrl+Shift + Button Click** — Temporarily bypasses the list and uses the input fields for the clicked action. The list dims visually while the keys are held.
 
 ### List Columns
 - **Find** — The text or pattern to search for.
