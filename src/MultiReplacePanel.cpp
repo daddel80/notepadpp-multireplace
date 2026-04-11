@@ -354,12 +354,12 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // Calculate dimensions without scaling
     BOOL twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
     int filesOffsetY = (isFilesPanelNeeded() && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
-    int buttonX = windowWidth - sx(25 + 128);          // Right margin reduced: 33 → 25 (no elements right of buttons)
-    int swapButtonX = windowWidth - sx(25 + 128 + 26);
-    int comboWidth = windowWidth - sx(281);             // Adjusted for reduced right margin (289 - 8)
+    int buttonX = windowWidth - sx(18 + 128);          // Right margin 18 (compromise: symmetric feel, room for resize grip)
+    int swapButtonX = windowWidth - sx(18 + 128 + 26);
+    int comboWidth = windowWidth - sx(274);             // Left offset 96 + gap to button column
 
     // --- New layout: list uses full width, file/move buttons in status row ---
-    int listWidth = windowWidth - sx(39);              // Full width (left margin 14 + right margin 25)
+    int listWidth = windowWidth - sx(32);              // Full width (left margin 14 + right margin 18)
     int pathDisplayY = windowHeight - sy(22);
     int searchBarHeight = sy(22);
     int searchBarGap = sy(2);
