@@ -493,6 +493,8 @@ public:
         bool stayAfterReplaceEnabled;
         bool groupResultsEnabled;
         bool allFromCursorEnabled;
+        bool keepListVisible;
+        int  listDimIntensity;
         bool limitFileSizeEnabled;
         int  maxFileSizeMB;
         bool isFindCountVisible;
@@ -766,6 +768,8 @@ private:
     inline static bool groupResultsEnabled = false;       // Status for flat list view
     inline static bool luaSafeModeEnabled = false;        // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
     inline static bool allFromCursorEnabled = false;      // Controls the starting point for Replace All, Find All and Mark when wrap is OFF.
+    inline static bool keepListVisible = false;            // Library mode: list stays visible when toggled off, only dims
+    inline static int  listDimIntensity = 50;               // INI setting [Options] DimIntensity (0-100): how strongly the inactive list is dimmed. Persisted, but not surfaced in the config dialog.
     inline static bool flowTabsIntroDontShowEnabled = false;
     inline static bool flowTabsNumericAlignEnabled = true;
     inline static bool limitFileSizeEnabled = false;

@@ -652,6 +652,10 @@ You can manage the visibility of the additional columns via the **Header Column 
 ### List Toggling
 The **"Use List"** button toggles between processing the entire list or just the single "Find what" / "Replace with" fields. You can also press **Ctrl+L** from anywhere in the panel to toggle the list.
 
+- **Classic behavior (default)** — Toggling the list off collapses it to save screen space.
+- **Keep list always visible** — When this option is enabled in the Settings (List View and Layout), the list stays visible even while it is inactive. Instead of collapsing, inactive entries are visually dimmed so the list remains usable as a reference while you work with the single input fields.
+- **Ctrl+Shift bypass** — Hold **Ctrl+Shift** at any time while clicking an action button (Find Next, Replace, Replace All, etc.) to temporarily bypass the list and run the action against the single input fields instead. Release the keys to return to normal list-based operation. Useful for quick one-off operations without toggling the list off and on again.
+
 ### Column Locking
 
 You can lock specific column widths to prevent them from resizing automatically when the window layout changes. This is particularly useful for keeping key columns like **Find**, **Replace**, or **Comments** visible at a fixed size.
@@ -694,6 +698,7 @@ Manage the visual elements and behavior of the replacement list to save screen s
   - **Edit in-place on double-click** — When On, double-clicking a cell allows editing the text directly. When Off, double-clicking transfers the entry content to the top input fields.
   - **Show full text on hover** — Displays a tooltip with the complete text for long entries that are truncated in the view.
   - **Expanded edit height (lines)** — Defines how many lines the in-place edit box expands to when modifying multiline text (Range: 2–20).
+  - **Keep list always visible** — When enabled, toggling the list off no longer collapses it. The list stays visible and is dimmed instead, so you can keep using it as a reference while working with the single input fields. See [List Toggling](#list-toggling) for details.
 
 ### 3. CSV Options
 Settings specific to the CSV column manipulation and alignment features.
@@ -739,6 +744,7 @@ Some advanced options are not exposed in the UI and can only be configured by ed
 | Section | Key | Default | Description |
 |---------|-----|---------|-------------|
 | `[Lua]` | `SafeMode` | `0` | When set to `1`, disables Lua libraries that access the file system (`os`, `io`, `package`, `dofile`, etc.) for security. When `0`, full Lua functionality is enabled (required for `lvars`, `lkp`, and `lcmd`). |
+| `[Options]` | `DimIntensity` | `50` | Controls how strongly the list is dimmed when inactive (with **Keep list always visible** enabled or during a Ctrl+Shift bypass). Range: `0` (no dimming, list looks identical whether active or not) to `100` (text fully blended into background). Changes take effect after restarting Notepad++. |
 
 ## Multilingual UI Support
 

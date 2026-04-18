@@ -53,6 +53,7 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_HIGHLIGHT_MATCH, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, highlightMatchEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_DOUBLECLICK_EDITS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, doubleClickEditsEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_HOVER_TEXT_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isHoverTextEnabled), 0, 0 });
+    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_KEEP_LIST_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, keepListVisible), 0, 0 });
 
     // CSV
     _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_HEADERLINES_EDIT, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, csvHeaderLinesCount), 0, 999 });
@@ -216,6 +217,7 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_HIGHLIGHT_MATCH,         L"config_chk_highlight_match",     536, 18 },
         { IDC_CFG_DOUBLECLICK_EDITS,       L"config_chk_doubleclick",         536, 18 },
         { IDC_CFG_HOVER_TEXT_ENABLED,      L"config_chk_hover_text",          536, 18 },
+        { IDC_CFG_KEEP_LIST_VISIBLE,       L"config_chk_keep_list_visible",   536, 18 },
         { IDC_CFG_EDITFIELD_LABEL,         L"config_lbl_edit_height",         190, 18 },
 
         // CSV Panel: groupW=570, innerWidth=570-24=546
@@ -866,8 +868,11 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
         lb.AddCheckbox(IDC_CFG_HOVER_TEXT_ENABLED, LM.getLPCW(L"config_chk_hover_text"));
         lb.AddSpace(6);
         lb.AddLabel(IDC_CFG_EDITFIELD_LABEL, LM.getLPCW(L"config_lbl_edit_height"), 190, 18);
-        lb.AddNumberEdit(IDC_CFG_EDITFIELD_SIZE_COMBO, 195, -2, 45, 22);
+        lb.AddNumberEdit(IDC_CFG_EDITFIELD_SIZE_COMBO, 198, -2, 45, 22);
     }
+
+    // "Keep list always visible" — standalone checkbox, aligned with the checkboxes in the List Results box above (rightColX + 22)
+    createCheckBox(_hListViewLayoutPanel, rightColX + 22, bottomY + 25, rightColWidth - 22, IDC_CFG_KEEP_LIST_VISIBLE, LM.getLPCW(L"config_chk_keep_list_visible"));
 }
 
 void MultiReplaceConfigDialog::createAppearancePanelControls() {
@@ -1008,12 +1013,14 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     s.stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
     s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
+    s.keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
     s.isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
     s.isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
     s.isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
     s.isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
+    s.isTimestampColumnVisible = CFG.readBool(L"ListColumns", L"TimestampVisible", false);
     s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
     s.resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);

@@ -344,6 +344,7 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_highlight_match", L"Select list entry on Find Next/Prev" },
 { L"config_chk_doubleclick", L"Edit in-place on double-click" },
 { L"config_chk_hover_text", L"Show full text on hover" },
+{ L"config_chk_keep_list_visible", L"Keep list always visible" },
 { L"config_lbl_edit_height", L"Expanded edit height (lines):" },
 
 // CSV Settings

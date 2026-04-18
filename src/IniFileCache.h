@@ -24,7 +24,7 @@
 
 #include <string>
 #include <set>
-#include <unordered_map>
+#include <map>
 #include <windows.h>    // BYTE
 #include "StringUtils.h"
 
@@ -60,8 +60,10 @@ public:
         size_t def = 0) const;
 
     // Direct access (rarely needed) ---------------------------------------
-    using Section = std::unordered_map<std::wstring, std::wstring>;
-    const std::unordered_map<std::wstring, Section>& raw() const { return _data; }
+    // Ordered map so keys within a section are written in a stable, alphabetical
+    // order on save (instead of the hash-dependent order of unordered_map).
+    using Section = std::map<std::wstring, std::wstring>;
+    const std::map<std::wstring, Section>& raw() const { return _data; }
 
     friend class ConfigManager;
 
@@ -71,6 +73,6 @@ private:
     // ConfigManager::save() can re-escape them correctly.
     bool parse(const std::wstring& iniFile, std::set<std::wstring>* stringKeys = nullptr);
 
-    using IniData = std::unordered_map<std::wstring, Section>;
+    using IniData = std::map<std::wstring, Section>;
     IniData _data;
 };

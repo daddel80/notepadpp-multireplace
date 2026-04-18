@@ -87,10 +87,8 @@
 #define ID_REPLACE_ALL_OPTION           5031
 #define ID_REPLACE_IN_DOCS_OPTION   5032
 #define ID_REPLACE_IN_FILES_OPTION      5033
-#define ID_DEBUG_MODE_OPTION            5034
-
-//  Save split-button option
 #define ID_SAVE_AS_OPTION               5035
+#define ID_DEBUG_MODE_OPTION            5034
 
 //  Stand-alone list toggle button
 #define IDC_USE_LIST_BUTTON             5040
@@ -241,8 +239,8 @@
 #define IDM_TOGGLE_FIND_COUNT           5801
 #define IDM_TOGGLE_REPLACE_COUNT        5802
 #define IDM_TOGGLE_COMMENTS             5803
-#define IDM_TOGGLE_TIMESTAMP            5805
 #define IDM_TOGGLE_DELETE               5804
+#define IDM_TOGGLE_TIMESTAMP            5805
 #define IDM_RESET_COLUMN_ORDER          5806
 
 // ===================================================================
@@ -325,6 +323,7 @@
 #define IDC_CFG_HOVER_TEXT_ENABLED        7933
 #define IDC_CFG_EDITFIELD_LABEL           7934
 #define IDC_CFG_EDITFIELD_SIZE_COMBO      7935
+#define IDC_CFG_KEEP_LIST_VISIBLE         7936
 
 // -------------------------------------------------------------------
 //  CSV Panel (7940-7949)

@@ -102,18 +102,23 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
     if (nCode >= 0 && instance && instance->_hSelf) {
         MSG* pMsg = reinterpret_cast<MSG*>(lParam);
 
-        // Track Ctrl+Shift for momentary bypass (use input fields while list is open)
+        // Track Ctrl+Shift for momentary bypass (use input fields while list is open).
+        // Only meaningful when the list is currently active — otherwise there is nothing to bypass.
+        // Ctrl+Shift is a modifier-hold (like Shift for text selection), so it works globally,
+        // not only when the panel has focus. Deactivation on KEYUP always runs to prevent a stuck bypass.
         if (pMsg->wParam == VK_SHIFT) {
             if (pMsg->message == WM_KEYDOWN && (GetKeyState(VK_CONTROL) & 0x8000)) {
-                if (!instance->_altBypassActive) {
+                if (!instance->_altBypassActive && instance->useListEnabled) {
                     instance->_altBypassActive = true;
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
+                    instance->showStatusMessage(LM.get(L"status_disable_list"), MessageStatus::Info);
                 }
             }
             else if (pMsg->message == WM_KEYUP) {
                 if (instance->_altBypassActive) {
                     instance->_altBypassActive = false;
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
+                    instance->showStatusMessage(LM.get(L"status_enable_list"), MessageStatus::Info);
                 }
             }
         }
@@ -122,6 +127,7 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
                 if (instance->_altBypassActive) {
                     instance->_altBypassActive = false;
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
+                    instance->showStatusMessage(LM.get(L"status_enable_list"), MessageStatus::Info);
                 }
             }
         }
@@ -312,7 +318,7 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     int titleBarHeight = (tempWindowRect.bottom - tempWindowRect.top) - (clientRect.bottom - clientRect.top) - borderWidth;
 
     // Base minimum content height (list on/off)
-    int minContentHeight = useListEnabled ? MIN_HEIGHT_scaled : SHRUNK_HEIGHT_scaled;
+    int minContentHeight = (useListEnabled || keepListVisible) ? MIN_HEIGHT_scaled : SHRUNK_HEIGHT_scaled;
 
     // Add extra room if “Replace in Files” panel is visible AND we're not in Two-Buttons-Mode
     bool twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
@@ -354,9 +360,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // Calculate dimensions without scaling
     BOOL twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
     int filesOffsetY = (isFilesPanelNeeded() && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
-    int buttonX = windowWidth - sx(18 + 128);          // Right margin 18 (compromise: symmetric feel, room for resize grip)
+    int buttonX = windowWidth - sx(18 + 128);          // Right margin 18px
     int swapButtonX = windowWidth - sx(18 + 128 + 26);
-    int comboWidth = windowWidth - sx(274);             // Left offset 96 + gap to button column
+    int comboWidth = windowWidth - sx(274);
 
     // --- New layout: list uses full width, file/move buttons in status row ---
     int listWidth = windowWidth - sx(32);              // Full width (left margin 14 + right margin 18)
@@ -376,7 +382,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     // UseList toggle: when expanded → path display row; when collapsed → below Clear all marks
     int useListButtonX = buttonX + sx(106);            // Right-aligned within button column (128 - 22)
-    int useListButtonY = useListEnabled
+    int useListButtonY = (useListEnabled || keepListVisible)
         ? (pathDisplayY)                               // In path display row when list open
         : (sy(207) + filesOffsetY);                    // 8px gap below Clear all marks when list closed
 
@@ -460,7 +466,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
     // Status Message -> Normal1 (narrower when list open to make room for toolbar buttons)
-    int toolbarButtonsWidth = useListEnabled ? sx(128 + 10) : 0;  // 5 buttons + gap, or 0 when collapsed
+    int toolbarButtonsWidth = (useListEnabled || keepListVisible) ? sx(128 + 10) : 0;  // 5 buttons + gap, or 0 when collapsed
     int statusWidth = listWidth - toolbarButtonsWidth;
     ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), statusRowY + sy(2), statusWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, nullptr, false, FontRole::Normal1 };
 
@@ -488,13 +494,19 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_LIST_SEARCH_BUTTON] = { sx(14) + searchComboWidth + sx(2), searchBarY, sx(24), sy(22), WC_BUTTON, L"▶", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_LIST_SEARCH_CLOSE] = { sx(14) + searchComboWidth + sx(28), searchBarY, sx(24), sy(22), WC_BUTTON, L"×", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
-    // Path/Stats -> Normal1 (path is narrower when list open to leave room for ˄ toggle)
-    int pathWidth = useListEnabled ? (listWidth - sx(26)) : listWidth;
+    // Path/Stats -> Normal1 (path is narrower when list open to leave room for toggle button)
+    int pathWidth = (useListEnabled || keepListVisible) ? (listWidth - sx(26)) : listWidth;
     ctrlMap[IDC_PATH_DISPLAY] = { sx(14), pathDisplayY, pathWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, nullptr, false, FontRole::Normal1 };
     ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + pathWidth, pathDisplayY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, nullptr, false, FontRole::Normal1 };
 
     // Use List toggle -> Normal5
-    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY, sx(22), sy(22), WC_BUTTON, useListEnabled ? L"˄" : L"˅", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Normal5 };
+    // Icon convention: shows what happens on click (same as classic chevron).
+    //   Classic mode: ˅ (click → expand list), ˄ (click → collapse list)
+    //   Library mode: ☰ (click → switch to list mode), ─ (click → switch to single mode)
+    LPCWSTR useListBtnText = keepListVisible
+        ? (useListEnabled ? L"\u2500" : L"\u2630")
+        : (useListEnabled ? L"\u02C4" : L"\u02C5");
+    ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY, sx(22), sy(22), WC_BUTTON, useListBtnText, BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Normal5 };
 
     ctrlMap[IDC_CANCEL_REPLACE_BUTTON] = { buttonX, sy(260), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_cancel_replace"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_FILE_OPS_GROUP] = { sx(14), sy(210), windowWidth - sx(199), sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, nullptr, false, FontRole::Standard };
@@ -550,8 +562,8 @@ void MultiReplace::initializeCtrlMap() {
     // Initialize the tooltip for the "Use List" button with dynamic text
     updateUseListState(false);
 
-    // Hide list-related controls if list is not enabled
-    if (!useListEnabled) {
+    // Hide list-related controls if list is not enabled (unless Library Mode keeps them visible)
+    if (!useListEnabled && !keepListVisible) {
         ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_HIDE);
         // Hide toolbar icon buttons when list is collapsed
@@ -1271,7 +1283,7 @@ void MultiReplace::adjustWindowSize() {
     int currentX = currentRect.left;
     int currentY = currentRect.top;
 
-    int newHeight = useListEnabled ? std::max(useListOnHeight, minHeight) : SHRUNK_HEIGHT_scaled;
+    int newHeight = (useListEnabled || keepListVisible) ? std::max(useListOnHeight, minHeight) : SHRUNK_HEIGHT_scaled;
 
     // Adjust the window size while keeping the current position and width
     SetWindowPos(_hSelf, nullptr, currentX, currentY, currentWidth, newHeight, SWP_NOZORDER);
@@ -1280,8 +1292,14 @@ void MultiReplace::adjustWindowSize() {
 void MultiReplace::updateUseListState(bool isUpdate)
 {   // isUpdate - specifies whether to update the existing tooltip (true) or create a new one (false)
 
-    // Set the button text based on the current state
-    SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"˄" : L"˅");
+    // Set the button text based on the current state and mode.
+    // Icon convention: the icon shows what happens on click (see positionAndResizeControls).
+    if (keepListVisible) {
+        SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"\u2500" : L"\u2630");
+    }
+    else {
+        SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"\u02C4" : L"\u02C5");
+    }
 
     // Set the status message based on the list state
     showStatusMessage(useListEnabled ? LM.get(L"status_enable_list") : LM.get(L"status_disable_list"), MessageStatus::Info);
@@ -1640,6 +1658,8 @@ void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indices
 }
 
 void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& newData) {
+    if (index >= replaceListData.size()) return;
+
     // Store the original data
     ReplaceItemData originalData = replaceListData[index];
 
@@ -3311,7 +3331,7 @@ void MultiReplace::showListFilePath()
     }
 
     // Adjust path field to use remaining space (reserve room for ˄/˅ toggle button)
-    int toggleReserve = useListEnabled ? sx(26) : 0;
+    int toggleReserve = (useListEnabled || keepListVisible) ? sx(26) : 0;
     int pathWidth = listWidth - statsWidth - (listStatisticsEnabled ? spacing : 0) - toggleReserve;
     pathWidth = std::max(pathWidth, 0);
     MoveWindow(hPathDisplay, listX, fieldY, pathWidth, fieldHeight, TRUE);
@@ -4476,7 +4496,7 @@ int MultiReplace::searchInListData(int startIdx, const std::wstring& searchText,
 }
 
 void MultiReplace::toggleListSearchBar() {
-    if (!useListEnabled) {
+    if (!useListEnabled && !keepListVisible) {
         return;
     }
 
@@ -4867,16 +4887,16 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         // Allow horizontal resizing up to a maximum value
         pMMI->ptMaxTrackSize.x = MAXLONG;
 
-        if (useListEnabled) {
+        if (useListEnabled || keepListVisible) {
             // Set minimum window height
             pMMI->ptMinTrackSize.y = adjustedSize.bottom;
             // Allow vertical resizing up to a maximum value
             pMMI->ptMaxTrackSize.y = MAXLONG;
         }
         else {
-            // Set fixed window height
+            // Set fixed window height when list is collapsed
             pMMI->ptMinTrackSize.y = adjustedSize.bottom;
-            pMMI->ptMaxTrackSize.y = adjustedSize.bottom; // Fix the height when Use List is unchecked
+            pMMI->ptMaxTrackSize.y = adjustedSize.bottom;
         }
 
         return 0;
@@ -4995,7 +5015,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             positionAndResizeControls(newWidth, newHeight);
 
             // Only update list columns when the list is visible
-            if (useListEnabled) {
+            if (useListEnabled || keepListVisible) {
                 updateListViewAndColumns();
             }
 
@@ -5013,7 +5033,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 InvalidateRect(_hSelf, &gripperRect, TRUE);
             }
 
-            if (useListEnabled) {
+            if (useListEnabled || keepListVisible) {
                 // Update useListOnHeight with the new height
                 RECT currentRect;
                 GetWindowRect(_hSelf, &currentRect);
@@ -5045,15 +5065,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             {
                 int idx = static_cast<int>(lvcd->nmcd.dwItemSpec);
 
-                // Visual dimming when Ctrl+Shift bypass is active (momentary input-fields mode)
-                if (_altBypassActive) {
+                // Visual dimming: Ctrl+Shift momentary bypass or Library Mode inactive
+                bool dimList = _altBypassActive || (!useListEnabled && keepListVisible);
+                if (dimList) {
                     COLORREF textClr = ListView_GetTextColor(_replaceListView);
                     COLORREF bgClr = ListView_GetBkColor(_replaceListView);
-                    // Blend text color 70% toward background → visibly dimmed
+                    // Blend text toward background by listDimIntensity percent.
+                    // Default 50, configurable via INI key [Options] DimIntensity (not in UI).
+                    int d = listDimIntensity;
+                    int k = 100 - d;
                     lvcd->clrText = RGB(
-                        (GetRValue(textClr) * 3 + GetRValue(bgClr) * 7) / 10,
-                        (GetGValue(textClr) * 3 + GetGValue(bgClr) * 7) / 10,
-                        (GetBValue(textClr) * 3 + GetBValue(bgClr) * 7) / 10);
+                        (GetRValue(textClr) * k + GetRValue(bgClr) * d) / 100,
+                        (GetGValue(textClr) * k + GetGValue(bgClr) * d) / 100,
+                        (GetBValue(textClr) * k + GetBValue(bgClr) * d) / 100);
                     lvcd->clrTextBk = bgClr;
                     SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, CDRF_NEWFONT | CDRF_NOTIFYPOSTPAINT);
                     return TRUE;
@@ -5652,34 +5676,39 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             useListEnabled = !useListEnabled;
 
-            // Toolbar icon buttons that belong to the list
-            const std::vector<int> listToolbarButtons = {
-                IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-                IDC_UP_BUTTON, IDC_DOWN_BUTTON
-            };
-
-            if (!useListEnabled) {
-                // Closing: hide controls first, then shrink window
-                if (_listSearchBarVisible) {
-                    hideListSearchBar();
-                }
-                ShowWindow(_replaceListView, SW_HIDE);
-                for (int id : listToolbarButtons)
-                    ShowWindow(GetDlgItem(_hSelf, id), SW_HIDE);
-                ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_HIDE);
-                ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_HIDE);
+            if (keepListVisible) {
+                // Library mode: list stays visible, only toggle active state + dim
                 updateUseListState(true);
-                adjustWindowSize();
+                InvalidateRect(_replaceListView, nullptr, TRUE);
             }
             else {
-                // Opening: resize first, then show controls
-                updateUseListState(true);
-                adjustWindowSize();
-                ShowWindow(_replaceListView, SW_SHOW);
-                for (int id : listToolbarButtons)
-                    ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
-                ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_SHOW);
-                ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_SHOW);
+                // Classic mode: collapse/expand the list
+                const std::vector<int> listToolbarButtons = {
+                    IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+                    IDC_UP_BUTTON, IDC_DOWN_BUTTON
+                };
+
+                if (!useListEnabled) {
+                    if (_listSearchBarVisible) {
+                        hideListSearchBar();
+                    }
+                    ShowWindow(_replaceListView, SW_HIDE);
+                    for (int id : listToolbarButtons)
+                        ShowWindow(GetDlgItem(_hSelf, id), SW_HIDE);
+                    ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_HIDE);
+                    ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_HIDE);
+                    updateUseListState(true);
+                    adjustWindowSize();
+                }
+                else {
+                    updateUseListState(true);
+                    adjustWindowSize();
+                    ShowWindow(_replaceListView, SW_SHOW);
+                    for (int id : listToolbarButtons)
+                        ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
+                    ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_SHOW);
+                    ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_SHOW);
+                }
             }
             return TRUE;
         }
@@ -13957,9 +13986,14 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
 
     // Create date
     time_t currentTime = time(nullptr);
-    struct tm* localTime = localtime(&currentTime);
+    struct tm localTime;
     char dateBuffer[80];
-    strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", localTime);
+    if (localtime_s(&localTime, &currentTime) == 0) {
+        strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &localTime);
+    }
+    else {
+        dateBuffer[0] = '\0';
+    }
 
     file << "#!/bin/bash\n";
     file << "# Auto-generated by MultiReplace Notepad++\n";
@@ -14316,7 +14350,7 @@ void MultiReplace::loadSettingsToPanelUI() {
 
         // 2b. Sync toolbar icon button visibility with list state
         {
-            int showCmd = instance->useListEnabled ? SW_SHOW : SW_HIDE;
+            int showCmd = (instance->useListEnabled || instance->keepListVisible) ? SW_SHOW : SW_HIDE;
             for (int id : { IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
                 IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
                 ShowWindow(GetDlgItem(instance->_hSelf, id), showCmd);
@@ -14417,6 +14451,10 @@ void MultiReplace::loadUIConfigFromIni()
     int savedTop = CFG.readInt(L"Window", L"PosY", CENTER_ON_NPP);
 
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
+    keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
+    // Dim intensity for inactive list (0-100). Persisted but not in the config dialog.
+    int rawDim = CFG.readInt(L"Options", L"DimIntensity", 50);
+    listDimIntensity = (rawDim < 0) ? 0 : (rawDim > 100 ? 100 : rawDim);
     updateUseListState(false);
 
     int savedWidth = CFG.readInt(L"Window", L"Width", sx(INIT_WIDTH));
@@ -14432,7 +14470,7 @@ void MultiReplace::loadUIConfigFromIni()
     }
     if (useListOnHeight < MIN_HEIGHT_scaled) useListOnHeight = MIN_HEIGHT_scaled;
 
-    int height = useListEnabled ? useListOnHeight : SHRUNK_HEIGHT_scaled;
+    int height = (useListEnabled || keepListVisible) ? useListOnHeight : SHRUNK_HEIGHT_scaled;
 
     // Center over Notepad++ on first run (when no position saved in INI)
     if (savedLeft == CENTER_ON_NPP || savedTop == CENTER_ON_NPP) {
@@ -14527,6 +14565,8 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
     s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
+    s.keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
+    s.listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
     s.isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
@@ -14557,6 +14597,8 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeBool(L"Options", L"StayAfterReplace", s.stayAfterReplaceEnabled);
     CFG.writeBool(L"Options", L"GroupResults", s.groupResultsEnabled);
     CFG.writeBool(L"Options", L"AllFromCursor", s.allFromCursorEnabled);
+    CFG.writeBool(L"Options", L"KeepListVisible", s.keepListVisible);
+    CFG.writeInt(L"Options", L"DimIntensity", s.listDimIntensity);
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", s.maxFileSizeMB);
     CFG.writeBool(L"ListColumns", L"FindCountVisible", s.isFindCountVisible);
@@ -14672,6 +14714,8 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(L"Options", L"StayAfterReplace", stayAfterReplaceEnabled);
     CFG.writeBool(L"Options", L"AllFromCursor", allFromCursorEnabled);
     CFG.writeBool(L"Options", L"GroupResults", groupResultsEnabled);
+    CFG.writeBool(L"Options", L"KeepListVisible", keepListVisible);
+    CFG.writeInt(L"Options", L"DimIntensity", listDimIntensity);
     CFG.writeBool(L"Options", L"DockWrap", ResultDock::wrapEnabled());
     CFG.writeBool(L"Options", L"DockPurge", ResultDock::purgeEnabled());
 
@@ -14757,6 +14801,47 @@ void MultiReplace::applyConfigSettingsOnly()
     limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
 
+    // Library Mode: keep list visible
+    bool newKeepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
+    if (keepListVisible != newKeepListVisible) {
+        keepListVisible = newKeepListVisible;
+        if (keepListVisible && !useListEnabled) {
+            // Switching to Library Mode while list is collapsed → open it as inactive (dimmed)
+            adjustWindowSize();
+            ShowWindow(_replaceListView, SW_SHOW);
+            for (int id : { IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+                IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
+                ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
+            }
+            ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_SHOW);
+            ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_SHOW);
+            InvalidateRect(_replaceListView, nullptr, TRUE);
+        }
+        else if (!keepListVisible && !useListEnabled) {
+            // Switching from Library Mode while list is inactive → collapse it
+            if (_listSearchBarVisible) hideListSearchBar();
+            ShowWindow(_replaceListView, SW_HIDE);
+            for (int id : { IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+                IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
+                ShowWindow(GetDlgItem(_hSelf, id), SW_HIDE);
+            }
+            ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_HIDE);
+            ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_HIDE);
+            adjustWindowSize();
+        }
+    }
+
+    // Library Mode: dim intensity (hidden INI setting, not in config dialog)
+    {
+        int newDim = CFG.readInt(L"Options", L"DimIntensity", 50);
+        if (newDim < 0) newDim = 0;
+        if (newDim > 100) newDim = 100;
+        if (listDimIntensity != newDim) {
+            listDimIntensity = newDim;
+            if (_replaceListView) InvalidateRect(_replaceListView, nullptr, TRUE);
+        }
+    }
+
     resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
     useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
     ResultDock::setPerEntryColorsEnabled(resultDockPerEntryColorsEnabled);
@@ -14807,7 +14892,7 @@ void MultiReplace::applyConfigSettingsOnly()
 
     // Sync toolbar icon button visibility with list state
     {
-        int showCmd = useListEnabled ? SW_SHOW : SW_HIDE;
+        int showCmd = (useListEnabled || keepListVisible) ? SW_SHOW : SW_HIDE;
         for (int id : { IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
             IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
             ShowWindow(GetDlgItem(_hSelf, id), showCmd);
