@@ -36,6 +36,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <regex>
 #include <set>
 #include <string>
@@ -271,6 +272,19 @@ enum class SortDirection {
     Unsorted,
     Ascending,
     Descending
+};
+
+// Per-tab snapshot of all state that must survive a tab switch.
+// Global settings (input fields, scope, dialog options) stay on MultiReplace.
+struct TabState {
+    int          id = 0;
+    std::wstring name;
+    std::wstring filePath;            // real user-chosen path; empty for untitled
+    std::wstring snapshotPath;        // plugin-internal cache path
+    bool         isAutoCache = false; // true = snapshot-only, no real user file
+
+    std::vector<ReplaceItemData> data;
+    std::size_t                  originalHash = 0;
 };
 
 enum class SearchDirection {
@@ -521,6 +535,12 @@ public:
     void applyConfigSettingsOnly();
     static  std::pair<std::wstring, std::wstring> generateConfigFilePaths();
 
+    // Snapshot directory holds per-tab CSV shutdown caches (one file per tab).
+    // User-chosen CSVs stay at the user's own paths and are never moved here.
+    static std::wstring getSnapshotsDir();
+    static bool         snapshotsDirExists();
+    static bool         ensureSnapshotsDir();  // returns false only on filesystem error
+
     // Light Mode Colors for Message
     static constexpr COLORREF LMODE_SUCCESS = RGB(0, 128, 0);
     static constexpr COLORREF LMODE_ERROR = RGB(200, 0, 0);
@@ -580,10 +600,10 @@ public:
 
     // Drag-and-Drop functionality
     DropTarget* dropTarget = nullptr;  // Pointer to DropTarget instance
+    DropTarget* tabBarDropTarget = nullptr;  // Drop target on the tab bar
     void loadListFromCsv(const std::wstring& filePath); // used in DropTarget.cpp
-    void showListFilePath();
+    void loadListFromCsvIntoNewTab(const std::wstring& filePath);  // drop on tab bar
     void initializeDragAndDrop();
-    // std::wstring getLangStr(const std::wstring& id, const std::vector<std::wstring>& replacements = {});
 
     inline static HWND       hwndExpandBtn = nullptr;
     lua_State* _luaState = nullptr;   // Reused Lua state
@@ -735,6 +755,26 @@ private:
     SciFnDirect pSciMsg = nullptr;
     sptr_t pSciWndData = 0;
     HighlightedTabs highlightedTabs;
+
+    // Multi-tab storage. Active tab is _tabs[_activeTabIndex].
+    std::vector<std::unique_ptr<TabState>> _tabs;
+    int                                    _activeTabIndex = 0;
+    int                                    _nextTabId = 0;
+    int                                    _tabMenuTargetIndex = -1;   // set during context menu invocation
+    HWND                                   _hTabTooltip = nullptr;
+    std::wstring                           _tabTooltipText;   // owned storage; TTM_ADDTOOL keeps a pointer
+
+    // Inline rename state for the tab control.
+    HWND                                   _hTabRenameEdit = nullptr;
+    int                                    _tabRenameIndex = -1;
+    WNDPROC                                _prevTabEditProc = nullptr;
+    HHOOK                                  _hTabRenameMouseHook = nullptr;
+    static MultiReplace* _tabRenameHookOwner;
+
+    // Drag-reorder state for the tab control.
+    bool                                   _tabDragActive = false;
+    int                                    _tabDragSourceIdx = -1;   // set on WM_LBUTTONDOWN
+    POINT                                  _tabDragStartPt = { 0, 0 };
 
     // List related
     bool useListEnabled; // status for List enabled
@@ -917,7 +957,6 @@ private:
     void updateCountColumns(const size_t itemIndex, const int findCount, int replaceCount = -1);
     void clearList();
     void refreshUIListView();
-    void onPathDisplayDoubleClick();
     void handleColumnVisibilityToggle(UINT menuId);
     ColumnID getColumnIDFromIndex(int columnIndex) const;
     int getColumnIndexFromID(ColumnID columnID) const;
@@ -1114,6 +1153,59 @@ private:
     int checkForUnsavedChanges();
     void loadSettings();
     void syncHistoryToCache(HWND hComboBox, const std::wstring& keyPrefix);
+
+    // Multi-tab helpers. Live working state stays in the legacy
+    // members (replaceListData, listFilePath, ...); a TabState is
+    // a snapshot that is swapped in/out on tab switch.
+    void ensurePrimaryTabExists();
+    void captureStateIntoTab(TabState& tab) const;
+    void restoreStateFromTab(const TabState& tab);
+
+    // Multi-tab persistence.
+    void writeTabsToConfig();
+    void loadTabsFromConfig();
+    void migrateLegacyList();
+    void saveAllTabSnapshots();
+    void cleanupOrphanSnapshots();
+    void checkSingleTabForFileChange(TabState& tab);
+
+    // Tab control rendering.
+    void rebuildTabControl();
+    void updateTabTooltip(int tabIndex);
+    static std::wstring truncateTabName(const std::wstring& name, size_t maxChars = 14);
+
+    // Shows or hides the tab bar together with the rest of the list UI.
+    void setBottomRowVisible(bool visible);
+
+    // Switches active tab, capturing current state into the outgoing
+    // tab and restoring the incoming tab into the live working state.
+    void switchToTab(int newIndex);
+
+    // Creates a new empty untitled tab and makes it active.
+    void addNewTab();
+
+    // Reorders tabs: moves the tab at fromIdx so it sits at toIdx in
+    // the tab vector. Updates _activeTabIndex consistently and
+    // rebuilds the tab control. Idempotent if fromIdx == toIdx.
+    void moveTab(int fromIdx, int toIdx);
+
+    // Tab context menu actions.
+    void showTabContextMenu(int tabIndex, int screenX, int screenY);
+    void onTabRename(int tabIndex);
+    void onTabDuplicate(int tabIndex);
+    void onTabClose(int tabIndex);
+    void onTabSaveAs(int tabIndex);
+    void onTabLoad(int tabIndex);
+    void onTabOpenFileLocation(int tabIndex);
+
+    // Inline rename editing on a tab.
+    void beginInlineTabRename(int tabIndex);
+    void commitInlineTabRename();
+    void cancelInlineTabRename();
+    static LRESULT CALLBACK tabRenameEditProc(HWND, UINT, WPARAM, LPARAM);
+    static LRESULT CALLBACK tabControlSubclassProc(HWND, UINT, WPARAM, LPARAM,
+        UINT_PTR, DWORD_PTR);
+    static LRESULT CALLBACK tabRenameMouseHookProc(int, WPARAM, LPARAM);
 
     //Debug DPI Information
     void showDPIAndFontInfo();

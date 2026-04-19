@@ -15,7 +15,6 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #define NOMINMAX
-#define WM_UPDATE_FOCUS (WM_APP + 2)
 
 // Own header
 #include "MultiReplacePanel.h"
@@ -52,6 +51,7 @@
 #include <map>
 #include <numeric>
 #include <regex>
+#include <system_error>
 #include <set>
 #include <sstream>
 #include <string>
@@ -75,6 +75,11 @@
 static LanguageManager& LM = LanguageManager::instance();
 static ConfigManager& CFG = ConfigManager::instance();
 static UndoRedoManager& URM = UndoRedoManager::instance();
+
+// Owner pointer used by the global mouse hook installed during inline
+// tab rename. Only one rename can be active at a time, so a single
+// pointer is enough.
+MultiReplace* MultiReplace::_tabRenameHookOwner = nullptr;
 namespace SU = StringUtils;
 extern MultiReplaceConfigDialog _MultiReplaceConfig;
 
@@ -102,23 +107,18 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
     if (nCode >= 0 && instance && instance->_hSelf) {
         MSG* pMsg = reinterpret_cast<MSG*>(lParam);
 
-        // Track Ctrl+Shift for momentary bypass (use input fields while list is open).
-        // Only meaningful when the list is currently active — otherwise there is nothing to bypass.
-        // Ctrl+Shift is a modifier-hold (like Shift for text selection), so it works globally,
-        // not only when the panel has focus. Deactivation on KEYUP always runs to prevent a stuck bypass.
+        // Track Ctrl+Shift for momentary bypass (use input fields while list is open)
         if (pMsg->wParam == VK_SHIFT) {
             if (pMsg->message == WM_KEYDOWN && (GetKeyState(VK_CONTROL) & 0x8000)) {
-                if (!instance->_altBypassActive && instance->useListEnabled) {
+                if (!instance->_altBypassActive) {
                     instance->_altBypassActive = true;
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
-                    instance->showStatusMessage(LM.get(L"status_disable_list"), MessageStatus::Info);
                 }
             }
             else if (pMsg->message == WM_KEYUP) {
                 if (instance->_altBypassActive) {
                     instance->_altBypassActive = false;
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
-                    instance->showStatusMessage(LM.get(L"status_enable_list"), MessageStatus::Info);
                 }
             }
         }
@@ -127,7 +127,6 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
                 if (instance->_altBypassActive) {
                     instance->_altBypassActive = false;
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
-                    instance->showStatusMessage(LM.get(L"status_enable_list"), MessageStatus::Info);
                 }
             }
         }
@@ -494,17 +493,14 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_LIST_SEARCH_BUTTON] = { sx(14) + searchComboWidth + sx(2), searchBarY, sx(24), sy(22), WC_BUTTON, L"▶", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_LIST_SEARCH_CLOSE] = { sx(14) + searchComboWidth + sx(28), searchBarY, sx(24), sy(22), WC_BUTTON, L"×", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
-    // Path/Stats -> Normal1 (path is narrower when list open to leave room for toggle button)
+    // Tab bar for multi-tab lists. Lives below the list view.
     int pathWidth = (useListEnabled || keepListVisible) ? (listWidth - sx(26)) : listWidth;
-    ctrlMap[IDC_PATH_DISPLAY] = { sx(14), pathDisplayY, pathWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, nullptr, false, FontRole::Normal1 };
-    ctrlMap[IDC_STATS_DISPLAY] = { sx(14) + pathWidth, pathDisplayY, 0, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_NOTIFY, nullptr, false, FontRole::Normal1 };
+    ctrlMap[IDC_LIST_TABS] = { sx(14), pathDisplayY, pathWidth, sy(20), WC_TABCONTROL, L"",
+        TCS_BOTTOM | TCS_SINGLELINE | TCS_FOCUSNEVER | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
 
     // Use List toggle -> Normal5
-    // Icon convention: shows what happens on click (same as classic chevron).
-    //   Classic mode: ˅ (click → expand list), ˄ (click → collapse list)
-    //   Library mode: ☰ (click → switch to list mode), ─ (click → switch to single mode)
     LPCWSTR useListBtnText = keepListVisible
-        ? (useListEnabled ? L"\u2500" : L"\u2630")
+        ? (useListEnabled ? L"\u2630" : L"\u2500")
         : (useListEnabled ? L"\u02C4" : L"\u02C5");
     ctrlMap[IDC_USE_LIST_BUTTON] = { useListButtonX, useListButtonY, sx(22), sy(22), WC_BUTTON, useListBtnText, BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Normal5 };
 
@@ -564,8 +560,7 @@ void MultiReplace::initializeCtrlMap() {
 
     // Hide list-related controls if list is not enabled (unless Library Mode keeps them visible)
     if (!useListEnabled && !keepListVisible) {
-        ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_HIDE);
+        setBottomRowVisible(false);
         // Hide toolbar icon buttons when list is collapsed
         ShowWindow(GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), SW_HIDE);
@@ -610,6 +605,7 @@ bool MultiReplace::createAndShowWindows() {
     {
         const bool isFilesCtrl = isRepInFilesId(pair.first);
         const bool isSearchBarCtrl = isListSearchBarId(pair.first);
+        const bool isTabsCtrl = (pair.first == IDC_LIST_TABS);
 
         // Create all controls as children, but only set WS_VISIBLE if needed
         DWORD style = pair.second.style | WS_CHILD;
@@ -617,9 +613,10 @@ bool MultiReplace::createAndShowWindows() {
         // Determine visibility:
         // - Files panel controls: visible only if initialShow is true
         // - Search bar controls: always start hidden
+        // - Tab control: always start hidden (managed explicitly later)
         // - All other controls: always visible
-        if (isSearchBarCtrl) {
-            // Search bar: always start hidden (no WS_VISIBLE)
+        if (isSearchBarCtrl || isTabsCtrl) {
+            // start hidden (no WS_VISIBLE)
         }
         else if (isFilesCtrl) {
             // Files panel: visible only if initialShow
@@ -745,13 +742,25 @@ void MultiReplace::initializeListView() {
 }
 
 void MultiReplace::initializeDragAndDrop() {
-    dropTarget = new DropTarget(this);
+    dropTarget = new DropTarget(this, DropTargetKind::ListView);
     HRESULT hr = ::RegisterDragDrop(_replaceListView, dropTarget);
 
     if (FAILED(hr)) {
         // COM-correct cleanup: Release() will delete the object when refCount reaches 0
         dropTarget->Release();
         dropTarget = nullptr;
+    }
+
+    // Also allow dropping on the tab bar to open each dropped CSV in
+    // its own new tab.
+    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+    if (hTab) {
+        tabBarDropTarget = new DropTarget(this, DropTargetKind::TabBar);
+        HRESULT hr2 = ::RegisterDragDrop(hTab, tabBarDropTarget);
+        if (FAILED(hr2)) {
+            tabBarDropTarget->Release();
+            tabBarDropTarget = nullptr;
+        }
     }
 }
 
@@ -822,7 +831,6 @@ void MultiReplace::moveAndResizeControls(bool moveStatic) {
     EndDeferWindowPos(hdwp);
 
     if (anyLayoutChanged) {
-        showListFilePath();
     }
 }
 
@@ -1112,7 +1120,7 @@ void MultiReplace::updateFilesPanel()
 
             // Force controls that moved up to repaint (no erase to avoid flicker)
             const int idsShiftedUp[] = {
-                IDC_REPLACE_LIST, IDC_STATUS_MESSAGE, IDC_PATH_DISPLAY, IDC_STATS_DISPLAY,
+                IDC_REPLACE_LIST, IDC_STATUS_MESSAGE, IDC_LIST_TABS,
                 IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON,
                 IDC_SAVE_TO_CSV_BUTTON,  IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON,
                 IDC_EXPORT_BASH_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON
@@ -1292,10 +1300,9 @@ void MultiReplace::adjustWindowSize() {
 void MultiReplace::updateUseListState(bool isUpdate)
 {   // isUpdate - specifies whether to update the existing tooltip (true) or create a new one (false)
 
-    // Set the button text based on the current state and mode.
-    // Icon convention: the icon shows what happens on click (see positionAndResizeControls).
+    // Set the button text based on the current state and mode
     if (keepListVisible) {
-        SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"\u2500" : L"\u2630");
+        SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"\u2630" : L"\u2500");
     }
     else {
         SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"\u02C4" : L"\u02C5");
@@ -1658,8 +1665,6 @@ void MultiReplace::removeItemsFromReplaceList(const std::vector<size_t>& indices
 }
 
 void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& newData) {
-    if (index >= replaceListData.size()) return;
-
     // Store the original data
     ReplaceItemData originalData = replaceListData[index];
 
@@ -2759,7 +2764,6 @@ void MultiReplace::handleUpdateFromFields() {
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), newData.findText);
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), newData.replaceText);
 
-    showListFilePath();
 }
 
 void MultiReplace::shiftListItem(const Direction& direction) {
@@ -2795,7 +2799,6 @@ void MultiReplace::shiftListItem(const Direction& direction) {
     showStatusMessage(LM.get(L"status_rows_shifted", { std::to_wstring(selectedIndices.size()) }), MessageStatus::Success);
 
     // Show Statistics
-    showListFilePath();
 }
 
 void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
@@ -3016,8 +3019,7 @@ void MultiReplace::handleCopyToListButton() {
     useListEnabled = true;
     updateUseListState(true);
     adjustWindowSize();
-    ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_SHOW);
-    ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_SHOW);
+    setBottomRowVisible(true);
 }
 
 void MultiReplace::resetCountColumns() {
@@ -3064,9 +3066,6 @@ void MultiReplace::clearList() {
 
     // Reset listFilePath to an empty string
     listFilePath.clear();
-
-    // Call showListFilePath to update the UI with the cleared file path
-    showListFilePath();
 
     // Set the original list hash to a default value when list is cleared
     originalListHash = 0;
@@ -3138,15 +3137,6 @@ int MultiReplace::getColumnIndexFromID(ColumnID columnID) const {
         [columnID](const auto& pair) { return pair.first == columnID; });
 
     return (it != columnIndices.end()) ? it->second : -1; // Return -1 if not found
-}
-
-void MultiReplace::onPathDisplayDoubleClick()
-{
-    if (listFilePath.empty())
-        return;
-
-    std::wstring cmdParam = L"/select,\"" + listFilePath + L"\"";
-    ShellExecuteW(nullptr, L"open", L"explorer.exe", cmdParam.c_str(), nullptr, SW_SHOWNORMAL);
 }
 
 void MultiReplace::updateHeaderSelection() {
@@ -3263,91 +3253,6 @@ void MultiReplace::updateHeaderSortDirection() {
 
         // Update the column header using the correct index
         ListView_SetColumn(_replaceListView, columnIndex, &lvc);
-    }
-}
-
-void MultiReplace::showListFilePath()
-{
-    HWND hPathDisplay = GetDlgItem(_hSelf, IDC_PATH_DISPLAY);
-    HWND hStatsDisplay = GetDlgItem(_hSelf, IDC_STATS_DISPLAY);
-    HWND hListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
-
-    if (!hPathDisplay || !hListView)
-        return;
-
-    HDC hDC = GetDC(hPathDisplay);
-    HFONT hFont = reinterpret_cast<HFONT>(SendMessage(hPathDisplay, WM_GETFONT, 0, 0));
-    SelectObject(hDC, hFont);
-
-    // Get ListView width (X-Position bleibt relativ zur Liste)
-    RECT rcListView;
-    GetWindowRect(hListView, &rcListView);
-    MapWindowPoints(nullptr, _hSelf, reinterpret_cast<LPPOINT>(&rcListView), 2);
-    int listWidth = rcListView.right - rcListView.left;
-    int listX = rcListView.left;
-
-    const int spacing = sx(10);
-
-    const ControlInfo& pathInfo = ctrlMap[IDC_PATH_DISPLAY];
-    int fieldY = pathInfo.y;
-    int fieldHeight = pathInfo.cy;
-
-    int statsWidth = 0;
-
-    if (listStatisticsEnabled && hStatsDisplay)
-    {
-        // Gather statistics
-        int totalItems = static_cast<int>(replaceListData.size());
-        int selectedItems = ListView_GetSelectedCount(_replaceListView);
-        int activatedCount = static_cast<int>(std::count_if(replaceListData.begin(), replaceListData.end(),
-            [](const ReplaceItemData& item) { return item.isEnabled; }));
-        int focusedRow = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
-        int displayRow = (selectedItems > 0 && focusedRow != -1) ? (focusedRow + 1) : 0;
-
-        // Compose stats string
-        std::wstring statsString = L"A:" + std::to_wstring(activatedCount)
-            + L"  L:" + std::to_wstring(totalItems)
-            + L"  |  R:" + std::to_wstring(displayRow)
-            + L"  S:" + std::to_wstring(selectedItems);
-
-        // Measure stats string width
-        SIZE sz;
-        GetTextExtentPoint32(hDC, statsString.c_str(), static_cast<int>(statsString.size()), &sz);
-        statsWidth = sz.cx + sx(5); // padding
-
-        // Position stats field
-        int statsX = listX + listWidth - statsWidth;
-        MoveWindow(hStatsDisplay, statsX, fieldY, statsWidth, fieldHeight, TRUE);
-        SetWindowTextW(hStatsDisplay, statsString.c_str());
-        ShowWindow(hStatsDisplay, SW_SHOW);
-    }
-    else if (hStatsDisplay)
-    {
-        // Pragmatic solution: Set width to zero instead of hiding
-        statsWidth = 0;
-        MoveWindow(hStatsDisplay, listX + listWidth, fieldY, 0, fieldHeight, TRUE);
-        SetWindowTextW(hStatsDisplay, L"");
-        ShowWindow(hStatsDisplay, SW_HIDE);
-    }
-
-    // Adjust path field to use remaining space (reserve room for ˄/˅ toggle button)
-    int toggleReserve = (useListEnabled || keepListVisible) ? sx(26) : 0;
-    int pathWidth = listWidth - statsWidth - (listStatisticsEnabled ? spacing : 0) - toggleReserve;
-    pathWidth = std::max(pathWidth, 0);
-    MoveWindow(hPathDisplay, listX, fieldY, pathWidth, fieldHeight, TRUE);
-
-    // Update path display text
-    std::wstring shortenedPath = getShortenedFilePath(listFilePath, pathWidth, hDC);
-    SetWindowTextW(hPathDisplay, shortenedPath.c_str());
-
-    ReleaseDC(hPathDisplay, hDC);
-
-    // Immediate redraw
-    InvalidateRect(hPathDisplay, nullptr, TRUE);
-    UpdateWindow(hPathDisplay);
-    if (hStatsDisplay) {
-        InvalidateRect(hStatsDisplay, nullptr, TRUE);
-        UpdateWindow(hStatsDisplay);
     }
 }
 
@@ -4002,12 +3907,6 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         break;
     }
 
-    case WM_UPDATE_FOCUS:
-    {
-        pThis->showListFilePath();
-        return 0;
-    }
-
     default:
         break;
     }
@@ -4221,11 +4120,9 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
     switch (action) {
     case ItemAction::Undo:
         URM.undo();
-        showListFilePath();
         break;
     case ItemAction::Redo:
         URM.redo();
-        showListFilePath();
         break;
     case ItemAction::Search:
         toggleListSearchBar();
@@ -4233,14 +4130,12 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
     case ItemAction::Cut:
         copySelectedItemsToClipboard();
         deleteSelectedLines();
-        showListFilePath();
         break;
     case ItemAction::Copy:
         copySelectedItemsToClipboard();
         break;
     case ItemAction::Paste:
         pasteItemsIntoList();
-        showListFilePath();
         break;
     case ItemAction::Edit:
         if (columnID == ColumnID::FIND_TEXT ||
@@ -4255,7 +4150,6 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
             columnID == ColumnID::EXTENDED ||
             columnID == ColumnID::REGEX) {
             toggleBooleanAt(hitTestResult, columnID);
-            showListFilePath();
         }
         break;
     case ItemAction::Delete: {
@@ -4272,7 +4166,6 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         int msgBoxID = MessageBox(nppData._nppHandle, confirmationMessage.c_str(), LM.get(L"msgbox_title_confirm").c_str(), MB_ICONWARNING | MB_YESNO);
         if (msgBoxID == IDYES) {
             deleteSelectedLines();
-            showListFilePath();
         }
         break;
     }
@@ -4293,7 +4186,6 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED);
         ListView_SetItemState(_replaceListView, insertPosition, LVIS_SELECTED, LVIS_SELECTED);
         ListView_EnsureVisible(_replaceListView, insertPosition, FALSE);
-        showListFilePath();
         break;
     }
     }
@@ -4855,6 +4747,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         initializeListView();
         initializeDragAndDrop();
         adjustWindowSize();
+        rebuildTabControl();
 
         // Activate Dark Mode
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
@@ -4874,6 +4767,18 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_POST_INIT:
     {
         checkForFileChangesAtStartup();
+        return TRUE;
+    }
+
+    case WM_TAB_RENAME_COMMIT:
+    {
+        commitInlineTabRename();
+        return TRUE;
+    }
+
+    case WM_TAB_RENAME_CANCEL:
+    {
+        cancelInlineTabRename();
         return TRUE;
     }
 
@@ -4943,6 +4848,22 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             _hMsgFilterHook = nullptr;
         }
 
+        // Commit any pending edits so the user's last change is not
+        // lost when the panel closes. Tab rename edit first (so it
+        // cannot outlive the panel), then the list cell edit (so the
+        // current value lands in the active tab's data before save).
+        if (_hTabRenameEdit) {
+            commitInlineTabRename();
+        }
+        if (_hTabRenameMouseHook) {
+            UnhookWindowsHookEx(_hTabRenameMouseHook);
+            _hTabRenameMouseHook = nullptr;
+            _tabRenameHookOwner = nullptr;
+        }
+        if (hwndEdit) {
+            closeEditField(true);
+        }
+
         if (_replaceListView && originalListViewProc) {
             SetWindowLongPtr(_replaceListView, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(originalListViewProc));
         }
@@ -4954,6 +4875,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             RevokeDragDrop(_replaceListView);  // Calls Release(): refCount 2→1
             dropTarget->Release();              // Calls Release(): refCount 1→0, deletes itself
             dropTarget = nullptr;
+        }
+        if (tabBarDropTarget) {
+            HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+            if (hTab) RevokeDragDrop(hTab);
+            tabBarDropTarget->Release();
+            tabBarDropTarget = nullptr;
+        }
+
+        if (_hTabTooltip) {
+            DestroyWindow(_hTabTooltip);
+            _hTabTooltip = nullptr;
         }
 
         if (hwndEdit) {
@@ -5002,6 +4934,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_SIZE:
     {
         if (isWindowOpen) {
+            // Commit any inline tab rename before the tab control
+            // geometry changes -- otherwise the edit keeps its old
+            // absolute position over stale tab coordinates.
+            if (_hTabRenameEdit) {
+                commitInlineTabRename();
+            }
+
             // Force the edit control of the right mouse click to lose focus by setting focus to the main window
             if (isWindowOpen && hwndEdit && GetFocus() == hwndEdit) {
                 HWND hwndListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
@@ -5021,6 +4960,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             // Move all Elements
             moveAndResizeControls(false);
+
+            // Per-tab tooltip tools use absolute tab rects that change
+            // on resize; refresh them so hover still hits the right tab.
+            updateTabTooltip(_activeTabIndex);
 
             // Targeted refresh: invalidate without erase for controls,
             // but erase the gripper corner to prevent artifacts
@@ -5054,6 +4997,64 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         NMHDR* pnmh = reinterpret_cast<NMHDR*>(lParam);
 
+        // Provide tooltip text on demand for the tab bar. Tools are
+        // registered per tab, so idFrom is the tab index.
+        if (pnmh->code == TTN_GETDISPINFOW && pnmh->hwndFrom == _hTabTooltip) {
+            NMTTDISPINFOW* ttd = reinterpret_cast<NMTTDISPINFOW*>(lParam);
+            size_t idx = static_cast<size_t>(pnmh->idFrom);
+            if (idx < _tabs.size()) {
+                const TabState& t = *_tabs[idx];
+                _tabTooltipText = t.filePath.empty() ? t.name : t.filePath;
+            }
+            else {
+                _tabTooltipText.clear();
+            }
+            ttd->lpszText = const_cast<LPWSTR>(_tabTooltipText.c_str());
+            return TRUE;
+        }
+
+        // Tab switching.
+        if (pnmh->hwndFrom == GetDlgItem(_hSelf, IDC_LIST_TABS)) {
+            if (pnmh->code == TCN_SELCHANGE) {
+                int newIndex = TabCtrl_GetCurSel(pnmh->hwndFrom);
+                switchToTab(newIndex);
+                return TRUE;
+            }
+            if (pnmh->code == NM_RCLICK) {
+                HWND hTab = pnmh->hwndFrom;
+                POINT pt;
+                GetCursorPos(&pt);
+
+                // Translate screen coords into tab client area to find
+                // which tab (if any) is under the cursor.
+                POINT client = pt;
+                ScreenToClient(hTab, &client);
+
+                TCHITTESTINFO hti = {};
+                hti.pt = client;
+                int idx = TabCtrl_HitTest(hTab, &hti);
+                if (idx < 0) return TRUE;  // click on empty area
+
+                showTabContextMenu(idx, pt.x, pt.y);
+                return TRUE;
+            }
+            if (pnmh->code == NM_DBLCLK) {
+                HWND hTab = pnmh->hwndFrom;
+                POINT pt;
+                GetCursorPos(&pt);
+                POINT client = pt;
+                ScreenToClient(hTab, &client);
+
+                TCHITTESTINFO hti = {};
+                hti.pt = client;
+                int idx = TabCtrl_HitTest(hTab, &hti);
+                if (idx >= 0) {
+                    beginInlineTabRename(idx);
+                }
+                return TRUE;
+            }
+        }
+
         // --- Dirty-flag indicator: subtle stripe at left edge of modified rows ---
         if (pnmh->hwndFrom == _replaceListView && pnmh->code == NM_CUSTOMDRAW) {
             LPNMLVCUSTOMDRAW lvcd = reinterpret_cast<LPNMLVCUSTOMDRAW>(lParam);
@@ -5070,14 +5071,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 if (dimList) {
                     COLORREF textClr = ListView_GetTextColor(_replaceListView);
                     COLORREF bgClr = ListView_GetBkColor(_replaceListView);
-                    // Blend text toward background by listDimIntensity percent.
-                    // Default 50, configurable via INI key [Options] DimIntensity (not in UI).
-                    int d = listDimIntensity;
-                    int k = 100 - d;
+                    // Blend text color 70% toward background → visibly dimmed
                     lvcd->clrText = RGB(
-                        (GetRValue(textClr) * k + GetRValue(bgClr) * d) / 100,
-                        (GetGValue(textClr) * k + GetGValue(bgClr) * d) / 100,
-                        (GetBValue(textClr) * k + GetBValue(bgClr) * d) / 100);
+                        (GetRValue(textClr) * 3 + GetRValue(bgClr) * 7) / 10,
+                        (GetGValue(textClr) * 3 + GetGValue(bgClr) * 7) / 10,
+                        (GetBValue(textClr) * 3 + GetBValue(bgClr) * 7) / 10);
                     lvcd->clrTextBk = bgClr;
                     SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, CDRF_NEWFONT | CDRF_NOTIFYPOSTPAINT);
                     return TRUE;
@@ -5184,7 +5182,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         break;
                     }
 
-                    showListFilePath();
                 }
                 return TRUE;
             }
@@ -5307,11 +5304,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 LPNMLVKEYDOWN pnkd = reinterpret_cast<LPNMLVKEYDOWN>(pnmh);
                 int iItem = -1;
 
-                // For arrow keys and Page Up/Page Down, post a custom message to update the focus
+                // For arrow keys and Page Up/Page Down, nothing extra
+                // is needed here now that the path display is gone.
                 if (pnkd->wVKey == VK_UP || pnkd->wVKey == VK_DOWN ||
                     pnkd->wVKey == VK_PRIOR || pnkd->wVKey == VK_NEXT)
                 {
-                    PostMessage(_replaceListView, WM_UPDATE_FOCUS, 0, 0);
                     return TRUE;
                 }
 
@@ -5341,7 +5338,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                         break;
                     case 'A': // Ctrl+A for Select All
                         ListView_SetItemState(_replaceListView, -1, LVIS_SELECTED, LVIS_SELECTED);
-                        showListFilePath();
                         break;
                     case 'I': // Ctrl+I for Adding new Line
                         performItemAction(_contextMenuClickPoint, ItemAction::Add);
@@ -5499,16 +5495,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         switch (LOWORD(wParam))
         {
-
-        case IDC_PATH_DISPLAY:
-        {
-            if (HIWORD(wParam) == STN_DBLCLK)
-            {
-                onPathDisplayDoubleClick();
-                return TRUE;
-            }
-            return FALSE;
-        }
 
         case IDC_USE_VARIABLES_HELP:
         {
@@ -5695,8 +5681,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     ShowWindow(_replaceListView, SW_HIDE);
                     for (int id : listToolbarButtons)
                         ShowWindow(GetDlgItem(_hSelf, id), SW_HIDE);
-                    ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_HIDE);
-                    ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_HIDE);
+                    setBottomRowVisible(false);
                     updateUseListState(true);
                     adjustWindowSize();
                 }
@@ -5706,8 +5691,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     ShowWindow(_replaceListView, SW_SHOW);
                     for (int id : listToolbarButtons)
                         ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
-                    ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_SHOW);
-                    ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_SHOW);
+                    setBottomRowVisible(true);
                 }
             }
             return TRUE;
@@ -5961,8 +5945,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_NEW_LIST_BUTTON:
         {
-            clearList();
-            showStatusMessage(LM.get(L"status_new_list_created"), MessageStatus::Success);
+            addNewTab();
             return TRUE;
         }
 
@@ -6228,6 +6211,25 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             performItemAction(_contextMenuClickPoint, ItemAction::Add);
             return TRUE;
         }
+
+        case IDM_TAB_RENAME:
+            onTabRename(_tabMenuTargetIndex);
+            return TRUE;
+        case IDM_TAB_DUPLICATE:
+            onTabDuplicate(_tabMenuTargetIndex);
+            return TRUE;
+        case IDM_TAB_SAVE_AS:
+            onTabSaveAs(_tabMenuTargetIndex);
+            return TRUE;
+        case IDM_TAB_LOAD:
+            onTabLoad(_tabMenuTargetIndex);
+            return TRUE;
+        case IDM_TAB_OPEN_FILE_LOCATION:
+            onTabOpenFileLocation(_tabMenuTargetIndex);
+            return TRUE;
+        case IDM_TAB_CLOSE:
+            onTabClose(_tabMenuTargetIndex);
+            return TRUE;
 
         default:
             return FALSE;
@@ -13123,7 +13125,6 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
     URM.push(action.undoAction, action.redoAction, L"Set enabled");
 
     // Show Select Statisics
-    showListFilePath();
 }
 
 void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
@@ -13747,7 +13748,6 @@ void MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     InvalidateRect(_replaceListView, nullptr, TRUE);
 
     // Update the displayed file path below the list
-    showListFilePath();
 }
 
 int MultiReplace::checkForUnsavedChanges() {
@@ -13893,7 +13893,6 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
 
         // Update the file path and display it
         listFilePath = filePath;
-        showListFilePath();
 
         // Compute the hash of the loaded list
         originalListHash = computeListHash(replaceListData);
@@ -13920,6 +13919,64 @@ void MultiReplace::loadListFromCsv(const std::wstring& filePath) {
     }
 }
 
+void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
+{
+    // Try to load the CSV into a fresh vector first. If that fails,
+    // we don't want to create an empty tab.
+    std::vector<ReplaceItemData> loaded;
+    try {
+        loadListFromCsvSilent(filePath, loaded);
+    }
+    catch (const CsvLoadException& ex) {
+        showStatusMessage(Encoding::utf8ToWString(ex.what()), MessageStatus::Error);
+        return;
+    }
+
+    // Capture the outgoing tab before we push the new one.
+    if (hwndEdit) {
+        closeEditField(true);
+    }
+    if (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
+        captureStateIntoTab(*_tabs[_activeTabIndex]);
+    }
+
+    // Derive a tab name from the file stem (without extension).
+    std::wstring tabName;
+    try {
+        tabName = std::filesystem::path(filePath).stem().wstring();
+    }
+    catch (...) {}
+    if (tabName.empty()) tabName = LM.get(L"tab_untitled_prefix");
+
+    auto tab = std::make_unique<TabState>();
+    tab->id = _nextTabId++;
+    tab->name = tabName;
+    tab->filePath = filePath;
+    tab->isAutoCache = false;
+    tab->data = std::move(loaded);
+    tab->originalHash = computeListHash(tab->data);
+
+    _tabs.push_back(std::move(tab));
+    _activeTabIndex = static_cast<int>(_tabs.size()) - 1;
+
+    URM.setActiveTab(_tabs[_activeTabIndex]->id);
+    restoreStateFromTab(*_tabs[_activeTabIndex]);
+
+    rebuildTabControl();
+    autoShowCommentsColumn();
+    ListView_SetItemCountEx(_replaceListView,
+        static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
+
+    if (replaceListData.empty()) {
+        showStatusMessage(LM.get(L"status_no_valid_items_in_csv"), MessageStatus::Error);
+    }
+    else {
+        showStatusMessage(LM.get(L"status_items_loaded_from_csv",
+            { std::to_wstring(replaceListData.size()) }), MessageStatus::Success);
+    }
+}
+
 void MultiReplace::autoShowCommentsColumn() {
     if (isCommentsColumnVisible) return;
 
@@ -13938,37 +13995,31 @@ void MultiReplace::autoShowCommentsColumn() {
 }
 
 void MultiReplace::checkForFileChangesAtStartup() {
-    if (listFilePath.empty()) {
-        return;
-    }
+    // Walk all tabs and prompt per tab if its file has changed.
+    // Non-active tabs have their data updated in-place; the active
+    // tab also needs its live state (replaceListData / originalListHash)
+    // refreshed so the ListView reflects the new content.
+    for (size_t i = 0; i < _tabs.size(); ++i) {
+        TabState& tab = *_tabs[i];
+        if (tab.filePath.empty()) continue;
 
-    try {
-        std::vector<ReplaceItemData> tempListFromFile;
-        loadListFromCsvSilent(listFilePath, tempListFromFile);
+        const bool isActive = (static_cast<int>(i) == _activeTabIndex);
 
-        std::size_t newFileHash = computeListHash(tempListFromFile);
-        if (newFileHash != originalListHash) {
-            std::wstring shortenedFilePath = getShortenedFilePath(listFilePath, 500);
-            std::wstring message = LM.get(L"msgbox_file_modified_prompt", { shortenedFilePath });
+        checkSingleTabForFileChange(tab);
 
-            int response = MessageBox(nppData._nppHandle, message.c_str(), LM.get(L"msgbox_title_reload").c_str(), MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND);
-            if (response == IDYES) {
-                replaceListData = tempListFromFile;
-                originalListHash = newFileHash;
-                autoShowCommentsColumn();
-                ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-                InvalidateRect(_replaceListView, nullptr, TRUE);
-            }
+        if (isActive) {
+            // Mirror the (possibly updated) tab state back into the
+            // live working members.
+            replaceListData = tab.data;
+            listFilePath = tab.filePath;
+            originalListHash = tab.originalHash;
+            autoShowCommentsColumn();
+            ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+            InvalidateRect(_replaceListView, nullptr, TRUE);
         }
     }
-    catch (const CsvLoadException&) {
-        // File no longer accessible - silently clear reference, keep temp data
-        listFilePath.clear();
-        originalListHash = computeListHash(replaceListData);
-        showListFilePath();
-    }
 
-    // Status message for loaded list (from temp storage)
+    // Status message for the active tab's list (same as before).
     if (replaceListData.empty()) {
         showStatusMessage(LM.get(L"status_no_valid_items_in_csv"), MessageStatus::Error);
     }
@@ -13986,14 +14037,9 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
 
     // Create date
     time_t currentTime = time(nullptr);
-    struct tm localTime;
+    struct tm* localTime = localtime(&currentTime);
     char dateBuffer[80];
-    if (localtime_s(&localTime, &currentTime) == 0) {
-        strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &localTime);
-    }
-    else {
-        dateBuffer[0] = '\0';
-    }
+    strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", localTime);
 
     file << "#!/bin/bash\n";
     file << "# Auto-generated by MultiReplace Notepad++\n";
@@ -14104,6 +14150,27 @@ std::pair<std::wstring, std::wstring> MultiReplace::generateConfigFilePaths() {
     return { settingsPath, configListPath };
 }
 
+std::wstring MultiReplace::getSnapshotsDir()
+{
+    wchar_t configDir[MAX_PATH] = {};
+    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, reinterpret_cast<LPARAM>(configDir));
+    configDir[MAX_PATH - 1] = '\0';
+    return std::wstring(configDir) + L"\\MultiReplace\\snapshots";
+}
+
+bool MultiReplace::snapshotsDirExists()
+{
+    std::error_code ec;
+    return std::filesystem::exists(getSnapshotsDir(), ec) && !ec;
+}
+
+bool MultiReplace::ensureSnapshotsDir()
+{
+    std::error_code ec;
+    std::filesystem::create_directories(getSnapshotsDir(), ec);
+    return !ec;
+}
+
 void MultiReplace::saveSettings() {
     static bool settingsSaved = false;
     if (settingsSaved) {
@@ -14112,12 +14179,13 @@ void MultiReplace::saveSettings() {
 
     auto configPaths = generateConfigFilePaths();
     const auto& settingsPath = configPaths.first;
-    const auto& configListPath = configPaths.second;
 
     try {
         syncUIToCache();
+        writeTabsToConfig();
         CFG.save(settingsPath);
-        saveListToCsvSilent(configListPath, replaceListData);
+        saveAllTabSnapshots();
+        cleanupOrphanSnapshots();
     }
     catch (const std::exception& ex) {
         std::wstring errorMessage = LM.get(L"msgbox_error_saving_settings",
@@ -14344,9 +14412,8 @@ void MultiReplace::loadSettingsToPanelUI() {
             tooltipsEnabled = currentTooltips; // Ensure sync
         }
 
-        // 2. Update Stats/Path UI
+        // 2. Update toolbar / use-list state
         instance->updateUseListState(false);
-        instance->showListFilePath();
 
         // 2b. Sync toolbar icon button visibility with list state
         {
@@ -14376,25 +14443,1034 @@ void MultiReplace::loadSettingsToPanelUI() {
 }
 
 void MultiReplace::loadSettings() {
-    const auto configListPath = generateConfigFilePaths().second;
-
-    // Read all settings from the cache
     loadSettingsToPanelUI();
 
-    try {
-        loadListFromCsvSilent(configListPath, replaceListData);
+    if (snapshotsDirExists()) {
+        // New layout: load tabs from the snapshots directory.
+        loadTabsFromConfig();
+
+        if (_tabs.empty()) {
+            // Defensive: empty [Tabs] section but dir exists.
+            // Create an untitled primary tab so the UI has data.
+            replaceListData.clear();
+            listFilePath.clear();
+            originalListHash = computeListHash(replaceListData);
+            ensurePrimaryTabExists();
+        }
     }
-    catch (const CsvLoadException& ex) {
-        std::wstring errorMessage = L"An error occurred while loading the settings: ";
-        errorMessage += std::wstring(ex.what(), ex.what() + strlen(ex.what()));
-        // MessageBox(nullptr, errorMessage.c_str(), L"Error", MB_OK | MB_ICONERROR);
+    else {
+        // Legacy layout: old MultiReplaceList.ini + [File]/ListFilePath.
+        const auto configListPath = generateConfigFilePaths().second;
+        try {
+            loadListFromCsvSilent(configListPath, replaceListData);
+        }
+        catch (const CsvLoadException&) {
+            // silently start empty
+        }
+        migrateLegacyList();
     }
+
     autoShowCommentsColumn();
     updateHeaderSelection();
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
     InvalidateRect(_replaceListView, nullptr, TRUE);
 
-    showListFilePath();
+}
+
+void MultiReplace::ensurePrimaryTabExists()
+{
+    if (!_tabs.empty()) return;
+
+    auto tab = std::make_unique<TabState>();
+    tab->id = _nextTabId++;
+
+    if (!listFilePath.empty()) {
+        std::filesystem::path p(listFilePath);
+        tab->name = p.stem().wstring();
+        tab->filePath = listFilePath;
+        tab->isAutoCache = false;
+    }
+    else {
+        tab->name = LM.get(L"tab_untitled_prefix") + L" 1";
+        tab->filePath.clear();
+        tab->isAutoCache = true;
+    }
+
+    tab->data = replaceListData;
+    tab->originalHash = originalListHash;
+
+    _tabs.push_back(std::move(tab));
+    _activeTabIndex = 0;
+    URM.setActiveTab(_tabs[_activeTabIndex]->id);
+}
+
+void MultiReplace::captureStateIntoTab(TabState& tab) const
+{
+    tab.data = replaceListData;
+    tab.filePath = listFilePath;
+    tab.originalHash = originalListHash;
+}
+
+void MultiReplace::restoreStateFromTab(const TabState& tab)
+{
+    replaceListData = tab.data;
+    listFilePath = tab.filePath;
+    originalListHash = tab.originalHash;
+}
+
+void MultiReplace::writeTabsToConfig()
+{
+    // Make sure the active tab's metadata reflects the live working
+    // state (filePath may have changed via Save As, data via edits).
+    if (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
+        captureStateIntoTab(*_tabs[_activeTabIndex]);
+    }
+
+    CFG.writeInt(L"Tabs", L"Count", static_cast<int>(_tabs.size()));
+    CFG.writeInt(L"Tabs", L"Active", _activeTabIndex);
+
+    for (size_t i = 0; i < _tabs.size(); ++i) {
+        const TabState& t = *_tabs[i];
+        const std::wstring prefix = L"Tab" + std::to_wstring(i);
+
+        CFG.writeString(L"Tabs", prefix + L"_Name", t.name);
+        CFG.writeString(L"Tabs", prefix + L"_Path", t.filePath);
+        // Snapshot is stored as a filename relative to the snapshots dir.
+        std::wstring snapshotName = L"tab" + std::to_wstring(i) + L".csv";
+        CFG.writeString(L"Tabs", prefix + L"_Snapshot", snapshotName);
+        CFG.writeBool(L"Tabs", prefix + L"_IsAutoCache", t.isAutoCache);
+    }
+}
+
+void MultiReplace::saveAllTabSnapshots()
+{
+    if (!ensureSnapshotsDir()) return;
+
+    const std::wstring dir = getSnapshotsDir();
+
+    // Active tab was already captured in writeTabsToConfig(); no need
+    // to do it again here. Just write each tab's snapshot file.
+    for (size_t i = 0; i < _tabs.size(); ++i) {
+        TabState& t = *_tabs[i];
+        t.snapshotPath = dir + L"\\tab" + std::to_wstring(i) + L".csv";
+        saveListToCsvSilent(t.snapshotPath, t.data);
+    }
+}
+
+void MultiReplace::cleanupOrphanSnapshots()
+{
+    if (!snapshotsDirExists()) return;
+
+    std::unordered_set<std::wstring> valid;
+    for (const auto& t : _tabs) {
+        if (!t->snapshotPath.empty()) {
+            std::error_code ec;
+            auto canon = std::filesystem::weakly_canonical(t->snapshotPath, ec);
+            valid.insert(ec ? t->snapshotPath : canon.wstring());
+        }
+    }
+
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(getSnapshotsDir(), ec)) {
+        if (ec) break;
+        if (!entry.is_regular_file()) continue;
+        auto p = entry.path();
+        if (p.extension() != L".csv") continue;
+
+        std::error_code ec2;
+        auto canon = std::filesystem::weakly_canonical(p, ec2);
+        std::wstring key = ec2 ? p.wstring() : canon.wstring();
+        if (valid.find(key) == valid.end()) {
+            std::error_code dummy;
+            std::filesystem::remove(p, dummy);
+        }
+    }
+}
+
+void MultiReplace::loadTabsFromConfig()
+{
+    _tabs.clear();
+    _nextTabId = 0;
+
+    int count = CFG.readInt(L"Tabs", L"Count", 0);
+    if (count <= 0) return;
+
+    const std::wstring dir = getSnapshotsDir();
+
+    for (int i = 0; i < count; ++i) {
+        const std::wstring prefix = L"Tab" + std::to_wstring(i);
+
+        auto tab = std::make_unique<TabState>();
+        tab->id = _nextTabId++;
+        tab->name = CFG.readString(L"Tabs", prefix + L"_Name", L"");
+        tab->filePath = CFG.readString(L"Tabs", prefix + L"_Path", L"");
+        tab->isAutoCache = CFG.readBool(L"Tabs", prefix + L"_IsAutoCache", true);
+
+        std::wstring snapshotName = CFG.readString(L"Tabs", prefix + L"_Snapshot", L"");
+        if (snapshotName.empty()) {
+            snapshotName = L"tab" + std::to_wstring(i) + L".csv";
+        }
+        tab->snapshotPath = dir + L"\\" + snapshotName;
+
+        if (tab->name.empty()) {
+            tab->name = LM.get(L"tab_untitled_prefix") + L" " + std::to_wstring(i + 1);
+        }
+
+        try {
+            loadListFromCsvSilent(tab->snapshotPath, tab->data);
+            tab->originalHash = computeListHash(tab->data);
+        }
+        catch (const CsvLoadException&) {
+            // Missing or corrupt snapshot - keep tab with empty data.
+            tab->data.clear();
+            tab->originalHash = computeListHash(tab->data);
+        }
+
+        _tabs.push_back(std::move(tab));
+    }
+
+    int active = CFG.readInt(L"Tabs", L"Active", 0);
+    if (active < 0) active = 0;
+    if (active >= static_cast<int>(_tabs.size())) active = static_cast<int>(_tabs.size()) - 1;
+    _activeTabIndex = active;
+
+    // Restore the active tab into the live working state and point the
+    // undo/redo manager at the right per-tab stacks.
+    if (!_tabs.empty()) {
+        URM.setActiveTab(_tabs[_activeTabIndex]->id);
+        restoreStateFromTab(*_tabs[_activeTabIndex]);
+    }
+}
+
+void MultiReplace::migrateLegacyList()
+{
+    // Legacy state has already been read into replaceListData,
+    // listFilePath and originalListHash by loadSettings(). Wrap that
+    // state into a primary tab so further code paths uniformly use
+    // the tab model. snapshots/ is created on the next save.
+    ensurePrimaryTabExists();
+}
+
+void MultiReplace::checkSingleTabForFileChange(TabState& tab)
+{
+    if (tab.filePath.empty()) return;
+
+    try {
+        std::vector<ReplaceItemData> tempListFromFile;
+        loadListFromCsvSilent(tab.filePath, tempListFromFile);
+
+        std::size_t newFileHash = computeListHash(tempListFromFile);
+        if (newFileHash != tab.originalHash) {
+            std::wstring shortenedFilePath = getShortenedFilePath(tab.filePath, 500);
+            std::wstring message = LM.get(L"msgbox_file_modified_prompt", { shortenedFilePath });
+
+            int response = MessageBox(nppData._nppHandle, message.c_str(),
+                LM.get(L"msgbox_title_reload").c_str(),
+                MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND);
+            if (response == IDYES) {
+                tab.data = tempListFromFile;
+                tab.originalHash = newFileHash;
+            }
+        }
+    }
+    catch (const CsvLoadException&) {
+        // File no longer accessible - silently clear reference, keep tab data.
+        tab.filePath.clear();
+        tab.isAutoCache = true;
+        tab.originalHash = computeListHash(tab.data);
+    }
+}
+
+std::wstring MultiReplace::truncateTabName(const std::wstring& name, size_t maxChars)
+{
+    if (name.length() <= maxChars) return name;
+    if (maxChars <= 1) return std::wstring(L"\u2026");
+    return name.substr(0, maxChars - 1) + L"\u2026";
+}
+
+void MultiReplace::rebuildTabControl()
+{
+    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+    if (!hTab) return;
+
+    // Subclass the tab control so we can intercept double-click for
+    // inline rename. Windows' default tab control does not emit
+    // NM_DBLCLK in a usable way here. Idempotent: SetWindowSubclass
+    // with the same id+proc just updates the ref data.
+    SetWindowSubclass(hTab, &MultiReplace::tabControlSubclassProc, 1,
+        reinterpret_cast<DWORD_PTR>(this));
+
+    // Clear existing tab items.
+    TabCtrl_DeleteAllItems(hTab);
+
+    // Compact layout tuning.
+    TabCtrl_SetPadding(hTab, 6, 3);
+    TabCtrl_SetMinTabWidth(hTab, 40);
+
+    // Insert one tab item per TabState, with a truncated display name.
+    for (size_t i = 0; i < _tabs.size(); ++i) {
+        std::wstring label = truncateTabName(_tabs[i]->name);
+
+        TCITEM item = {};
+        item.mask = TCIF_TEXT;
+        item.pszText = const_cast<LPWSTR>(label.c_str());
+        TabCtrl_InsertItem(hTab, static_cast<int>(i), &item);
+    }
+
+    // Select the active tab.
+    if (!_tabs.empty()) {
+        int sel = _activeTabIndex;
+        if (sel < 0) sel = 0;
+        if (sel >= static_cast<int>(_tabs.size())) sel = static_cast<int>(_tabs.size()) - 1;
+        TabCtrl_SetCurSel(hTab, sel);
+    }
+
+    ShowWindow(hTab, SW_SHOW);
+    updateTabTooltip(_activeTabIndex);
+}
+
+void MultiReplace::setBottomRowVisible(bool visible)
+{
+    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+    if (hTab) ShowWindow(hTab, visible ? SW_SHOW : SW_HIDE);
+}
+
+void MultiReplace::updateTabTooltip(int /*tabIndex*/)
+{
+    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+    if (!hTab) return;
+
+    // Create the shared tooltip control on first use.
+    if (!_hTabTooltip) {
+        _hTabTooltip = CreateWindowEx(
+            WS_EX_TOPMOST, TOOLTIPS_CLASS, nullptr,
+            WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+            _hSelf, nullptr, (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE), nullptr);
+
+        if (_hTabTooltip) {
+            SendMessage(_hTabTooltip, TTM_SETMAXTIPWIDTH, 0, 600);
+        }
+    }
+    if (!_hTabTooltip) return;
+
+    // Wipe any previously registered tools so the layout matches the
+    // current tab set (tabs may have been renamed, added, removed).
+    // Tool ids are tab indices; we deregister up to a generous upper
+    // bound. A per-tab tool lets the tooltip re-trigger when the mouse
+    // crosses from one tab to another, which a single whole-control
+    // tool would suppress.
+    TOOLINFO tiDel = {};
+    tiDel.cbSize = sizeof(TOOLINFO);
+    tiDel.hwnd = hTab;
+    for (UINT_PTR i = 0; i < 64; ++i) {
+        tiDel.uId = i;
+        SendMessage(_hTabTooltip, TTM_DELTOOL, 0, reinterpret_cast<LPARAM>(&tiDel));
+    }
+
+    // Register one tool per tab, each covering just that tab's rect.
+    for (size_t i = 0; i < _tabs.size(); ++i) {
+        RECT rc = {};
+        if (!TabCtrl_GetItemRect(hTab, static_cast<int>(i), &rc)) continue;
+
+        TOOLINFO ti = {};
+        ti.cbSize = sizeof(TOOLINFO);
+        ti.uFlags = TTF_SUBCLASS;     // let the tooltip track mouse itself
+        ti.hwnd = hTab;
+        ti.uId = static_cast<UINT_PTR>(i);
+        ti.rect = rc;
+        ti.lpszText = LPSTR_TEXTCALLBACKW;
+        SendMessage(_hTabTooltip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
+    }
+}
+
+void MultiReplace::switchToTab(int newIndex)
+{
+    if (newIndex < 0 || newIndex >= static_cast<int>(_tabs.size())) return;
+    if (newIndex == _activeTabIndex) return;
+
+    // If a list cell edit is in progress, commit it to the outgoing
+    // tab's data first. Otherwise the edit control stays open, hovers
+    // over the new tab's content, and the user's change silently
+    // lands in the wrong list.
+    if (hwndEdit) {
+        closeEditField(true);
+    }
+
+    // Capture live state into the outgoing tab.
+    if (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
+        captureStateIntoTab(*_tabs[_activeTabIndex]);
+    }
+
+    _activeTabIndex = newIndex;
+    URM.setActiveTab(_tabs[newIndex]->id);
+
+    // Restore incoming tab into live working state.
+    restoreStateFromTab(*_tabs[newIndex]);
+
+    // Refresh the ListView to reflect the new data.
+    autoShowCommentsColumn();
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
+
+    updateTabTooltip(_activeTabIndex);
+}
+
+void MultiReplace::addNewTab()
+{
+    // Commit an in-progress list cell edit before we move away.
+    if (hwndEdit) {
+        closeEditField(true);
+    }
+
+    // Capture the outgoing tab first.
+    if (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
+        captureStateIntoTab(*_tabs[_activeTabIndex]);
+    }
+
+    // Build a unique "Untitled N" label.
+    const std::wstring prefix = LM.get(L"tab_untitled_prefix");
+    int n = 1;
+    for (;;) {
+        std::wstring candidate = prefix + L" " + std::to_wstring(n);
+        bool taken = false;
+        for (const auto& t : _tabs) {
+            if (t->name == candidate) { taken = true; break; }
+        }
+        if (!taken) break;
+        ++n;
+    }
+
+    auto tab = std::make_unique<TabState>();
+    tab->id = _nextTabId++;
+    tab->name = prefix + L" " + std::to_wstring(n);
+    tab->isAutoCache = true;
+    tab->originalHash = computeListHash(tab->data);
+
+    _tabs.push_back(std::move(tab));
+    _activeTabIndex = static_cast<int>(_tabs.size()) - 1;
+
+    URM.setActiveTab(_tabs[_activeTabIndex]->id);
+    restoreStateFromTab(*_tabs[_activeTabIndex]);
+
+    // Refresh UI.
+    rebuildTabControl();
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
+}
+
+void MultiReplace::moveTab(int fromIdx, int toIdx)
+{
+    const int n = static_cast<int>(_tabs.size());
+    if (fromIdx < 0 || fromIdx >= n) return;
+    if (toIdx < 0 || toIdx >= n) return;
+    if (fromIdx == toIdx) return;
+
+    // Remember the active tab by id so we can re-find it after the
+    // shuffle (the active tab's index usually shifts too).
+    int activeId = -1;
+    if (_activeTabIndex >= 0 && _activeTabIndex < n) {
+        activeId = _tabs[_activeTabIndex]->id;
+    }
+
+    // Extract the moving tab, then insert at the new index.
+    auto moving = std::move(_tabs[fromIdx]);
+    _tabs.erase(_tabs.begin() + fromIdx);
+    _tabs.insert(_tabs.begin() + toIdx, std::move(moving));
+
+    // Restore the active index by id lookup.
+    if (activeId >= 0) {
+        for (size_t i = 0; i < _tabs.size(); ++i) {
+            if (_tabs[i]->id == activeId) {
+                _activeTabIndex = static_cast<int>(i);
+                break;
+            }
+        }
+    }
+
+    // Suppress redraw during the delete-and-reinsert rebuild, then
+    // do a single atomic repaint. Without this the tab control paints
+    // the empty state between TabCtrl_DeleteAllItems and the first
+    // TabCtrl_InsertItem and the user sees a flicker.
+    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+    if (hTab) SendMessage(hTab, WM_SETREDRAW, FALSE, 0);
+    rebuildTabControl();
+    if (hTab) {
+        SendMessage(hTab, WM_SETREDRAW, TRUE, 0);
+        RedrawWindow(hTab, nullptr, nullptr,
+            RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE);
+    }
+    // Tab data itself did not change, only order; no ListView refresh
+    // needed.
+}
+
+void MultiReplace::showTabContextMenu(int tabIndex, int screenX, int screenY)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+
+    HMENU hMenu = CreatePopupMenu();
+    if (!hMenu) return;
+
+    const TabState& tab = *_tabs[tabIndex];
+    const bool canClose = (_tabs.size() > 1);
+    const bool hasFile = !tab.filePath.empty();
+
+    AppendMenu(hMenu, MF_STRING, IDM_TAB_RENAME, LM.get(L"tab_menu_rename").c_str());
+    AppendMenu(hMenu, MF_STRING, IDM_TAB_DUPLICATE, LM.get(L"tab_menu_duplicate").c_str());
+    AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenu(hMenu, MF_STRING, IDM_TAB_SAVE_AS, LM.get(L"tab_menu_save_as").c_str());
+    AppendMenu(hMenu, MF_STRING, IDM_TAB_LOAD, LM.get(L"tab_menu_load").c_str());
+    AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenu(hMenu, MF_STRING | (hasFile ? 0 : MF_GRAYED),
+        IDM_TAB_OPEN_FILE_LOCATION, LM.get(L"tab_menu_open_file_location").c_str());
+    AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenu(hMenu, MF_STRING | (canClose ? 0 : MF_GRAYED),
+        IDM_TAB_CLOSE, LM.get(L"tab_menu_close").c_str());
+
+    // Remember which tab the click targeted. Menu commands below use
+    // _tabMenuTargetIndex so the context is preserved across the
+    // modal popup lifecycle.
+    _tabMenuTargetIndex = tabIndex;
+
+    TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON,
+        screenX, screenY, 0, _hSelf, nullptr);
+
+    DestroyMenu(hMenu);
+}
+
+void MultiReplace::onTabRename(int tabIndex)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+    beginInlineTabRename(tabIndex);
+}
+
+void MultiReplace::onTabDuplicate(int tabIndex)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+
+    // Commit an in-progress list cell edit before we move away.
+    if (hwndEdit) {
+        closeEditField(true);
+    }
+
+    // Capture the outgoing tab so any unsaved edits are copied too.
+    if (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
+        captureStateIntoTab(*_tabs[_activeTabIndex]);
+    }
+
+    const TabState& src = *_tabs[tabIndex];
+
+    auto copy = std::make_unique<TabState>();
+    copy->id = _nextTabId++;
+    copy->name = src.name + L" " + LM.get(L"tab_duplicate_suffix");
+    copy->filePath.clear();
+    copy->snapshotPath.clear();
+    copy->isAutoCache = true;
+    copy->data = src.data;
+    copy->originalHash = computeListHash(copy->data);
+
+    _tabs.push_back(std::move(copy));
+    _activeTabIndex = static_cast<int>(_tabs.size()) - 1;
+
+    URM.setActiveTab(_tabs[_activeTabIndex]->id);
+    restoreStateFromTab(*_tabs[_activeTabIndex]);
+
+    rebuildTabControl();
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
+}
+
+void MultiReplace::onTabClose(int tabIndex)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+    if (_tabs.size() <= 1) return;  // last tab cannot be closed
+
+    // If the tab being closed is currently in inline rename, cancel
+    // the rename first; otherwise the edit control would outlive its
+    // target tab (and, worse, the user's keystrokes would end up in
+    // whatever tab slides into that slot).
+    if (_hTabRenameEdit && _tabRenameIndex == tabIndex) {
+        cancelInlineTabRename();
+    }
+
+    // Commit an in-progress list cell edit before we touch tabs.
+    if (hwndEdit) {
+        closeEditField(true);
+    }
+
+    // If the user is closing a tab other than the active one, capture
+    // the active tab's live state first. Otherwise the later
+    // restoreStateFromTab call would overwrite the current unsaved
+    // edits with the stale snapshot stored in TabState.
+    if (tabIndex != _activeTabIndex &&
+        _activeTabIndex >= 0 &&
+        _activeTabIndex < static_cast<int>(_tabs.size()))
+    {
+        captureStateIntoTab(*_tabs[_activeTabIndex]);
+    }
+
+    // Warn on unsaved changes (dirty = current data != originalHash).
+    TabState* tab = _tabs[tabIndex].get();
+
+    // For the active tab, the live working state has the most recent edits.
+    std::size_t liveHash = (tabIndex == _activeTabIndex)
+        ? computeListHash(replaceListData)
+        : computeListHash(tab->data);
+
+    if (liveHash != tab->originalHash) {
+        std::wstring msg = LM.get(L"msgbox_unsaved_changes");
+        int r = MessageBox(_hSelf, msg.c_str(),
+            LM.get(L"msgbox_title_reload").c_str(),
+            MB_YESNO | MB_ICONWARNING);
+        if (r != IDYES) return;
+    }
+
+    URM.removeTab(tab->id);
+
+    // Delete associated snapshot file (if any) so it doesn't linger.
+    if (!tab->snapshotPath.empty()) {
+        std::error_code ec;
+        std::filesystem::remove(tab->snapshotPath, ec);
+    }
+
+    const bool closedActive = (tabIndex == _activeTabIndex);
+    _tabs.erase(_tabs.begin() + tabIndex);
+
+    // Adjust _activeTabIndex for the shift:
+    //   - closed tab was before active -> active shifts down by 1
+    //   - closed tab was after  active -> active index unchanged
+    //   - closed tab WAS the active one -> pick a neighbor:
+    //         prefer the one now sitting at the same index
+    //         (i.e. the former right neighbor); clamp if last tab.
+    if (!closedActive) {
+        if (tabIndex < _activeTabIndex) {
+            --_activeTabIndex;
+        }
+    }
+    else {
+        if (_activeTabIndex >= static_cast<int>(_tabs.size())) {
+            _activeTabIndex = static_cast<int>(_tabs.size()) - 1;
+        }
+    }
+    if (_activeTabIndex < 0) _activeTabIndex = 0;
+
+    URM.setActiveTab(_tabs[_activeTabIndex]->id);
+
+    // Only reload live state from the tab if the active tab actually
+    // changed (closing a non-active tab leaves our live members
+    // already in sync with the still-active tab).
+    if (closedActive) {
+        restoreStateFromTab(*_tabs[_activeTabIndex]);
+    }
+
+    rebuildTabControl();
+    ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
+}
+
+void MultiReplace::onTabSaveAs(int tabIndex)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+
+    // For the active tab, the live data is what the user edits. For
+    // non-active tabs, the stored data is authoritative.
+    const bool isActive = (tabIndex == _activeTabIndex);
+    const std::vector<ReplaceItemData>& listToSave = isActive
+        ? replaceListData
+        : _tabs[tabIndex]->data;
+
+    std::wstring chosen = promptSaveListToCsv();
+    if (chosen.empty()) return;
+
+    if (!saveListToCsvSilent(chosen, listToSave)) {
+        showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
+        return;
+    }
+
+    _tabs[tabIndex]->filePath = chosen;
+    _tabs[tabIndex]->isAutoCache = false;
+    _tabs[tabIndex]->originalHash = computeListHash(listToSave);
+
+    if (isActive) {
+        listFilePath = chosen;
+        originalListHash = _tabs[tabIndex]->originalHash;
+        updateTabTooltip(tabIndex);
+    }
+}
+
+void MultiReplace::onTabLoad(int tabIndex)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+
+    // Warn on unsaved changes in the target tab.
+    TabState* tab = _tabs[tabIndex].get();
+    const bool isActive = (tabIndex == _activeTabIndex);
+
+    std::size_t liveHash = isActive
+        ? computeListHash(replaceListData)
+        : computeListHash(tab->data);
+    if (liveHash != tab->originalHash) {
+        int r = MessageBox(_hSelf,
+            LM.get(L"msgbox_unsaved_changes").c_str(),
+            LM.get(L"msgbox_title_reload").c_str(),
+            MB_YESNO | MB_ICONWARNING);
+        if (r != IDYES) return;
+    }
+
+    // Open file dialog.
+    std::wstring csvDesc = LM.get(L"filetype_csv");
+    std::wstring allDesc = LM.get(L"filetype_all_files");
+    std::vector<std::pair<std::wstring, std::wstring>> filters = {
+        { csvDesc, L"*.csv" }, { allDesc, L"*.*" }
+    };
+
+    std::wstring path = openFileDialog(false, filters,
+        LM.get(L"panel_load_list").c_str(),
+        OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST, L"csv", L"");
+    if (path.empty()) return;
+
+    std::vector<ReplaceItemData> loaded;
+    try {
+        loadListFromCsvSilent(path, loaded);
+    }
+    catch (const CsvLoadException& ex) {
+        std::wstring err = std::wstring(ex.what(), ex.what() + strlen(ex.what()));
+        showStatusMessage(err, MessageStatus::Error);
+        return;
+    }
+
+    tab->data = loaded;
+    tab->filePath = path;
+    tab->isAutoCache = false;
+    tab->originalHash = computeListHash(loaded);
+
+    if (isActive) {
+        replaceListData = loaded;
+        listFilePath = path;
+        originalListHash = tab->originalHash;
+        autoShowCommentsColumn();
+        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
+        updateTabTooltip(tabIndex);
+    }
+}
+
+void MultiReplace::onTabOpenFileLocation(int tabIndex)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+    const std::wstring& path = _tabs[tabIndex]->filePath;
+    if (path.empty()) return;
+
+    std::wstring cmdParam = L"/select,\"" + path + L"\"";
+    ShellExecute(nullptr, L"open", L"explorer.exe", cmdParam.c_str(), nullptr, SW_SHOWNORMAL);
+}
+
+void MultiReplace::beginInlineTabRename(int tabIndex)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+
+    // If an edit is already open (e.g. user double-clicked another tab
+    // while one was still pending commit), commit the current one first
+    // so the new edit starts cleanly.
+    if (_hTabRenameEdit) {
+        commitInlineTabRename();
+    }
+
+    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+    if (!hTab) return;
+
+    RECT rc = {};
+    if (!TabCtrl_GetItemRect(hTab, tabIndex, &rc)) return;
+
+    // Map tab-local coords to the panel client area so the edit
+    // control sits exactly over the tab.
+    POINT tl = { rc.left, rc.top };
+    POINT br = { rc.right, rc.bottom };
+    MapWindowPoints(hTab, _hSelf, &tl, 1);
+    MapWindowPoints(hTab, _hSelf, &br, 1);
+
+    _tabRenameIndex = tabIndex;
+
+    const std::wstring& current = _tabs[tabIndex]->name;
+
+    _hTabRenameEdit = CreateWindowExW(
+        WS_EX_CLIENTEDGE,
+        L"EDIT", current.c_str(),
+        WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+        tl.x, tl.y, br.x - tl.x, br.y - tl.y,
+        _hSelf, nullptr,
+        (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE), nullptr);
+
+    if (!_hTabRenameEdit) {
+        _tabRenameIndex = -1;
+        return;
+    }
+
+    // Keep the edit on top of the tab control in the Z-order so it is
+    // not covered when the tab control repaints itself.
+    SetWindowPos(_hTabRenameEdit, HWND_TOP, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+    // Apply the panel font so the edit looks consistent.
+    HFONT hFont = reinterpret_cast<HFONT>(SendMessage(hTab, WM_GETFONT, 0, 0));
+    if (hFont) SendMessage(_hTabRenameEdit, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
+
+    // Subclass so Enter / Escape / focus-lost end the edit cleanly.
+    SetWindowLongPtr(_hTabRenameEdit, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+    _prevTabEditProc = reinterpret_cast<WNDPROC>(
+        SetWindowLongPtr(_hTabRenameEdit, GWLP_WNDPROC,
+            reinterpret_cast<LONG_PTR>(&MultiReplace::tabRenameEditProc)));
+
+    SendMessage(_hTabRenameEdit, EM_SETSEL, 0, -1);
+    SetFocus(_hTabRenameEdit);
+
+    // Install a thread-local mouse hook so that any click outside the
+    // edit control commits (or cancels) the rename. WM_KILLFOCUS alone
+    // is not reliable here: some targets (list view body, empty panel
+    // area) do not steal focus, and clicks on sibling child controls
+    // also skip the focus-loss path.
+    _tabRenameHookOwner = this;
+    _hTabRenameMouseHook = SetWindowsHookEx(
+        WH_MOUSE, &MultiReplace::tabRenameMouseHookProc,
+        nullptr, GetCurrentThreadId());
+}
+
+void MultiReplace::commitInlineTabRename()
+{
+    if (!_hTabRenameEdit) return;
+
+    if (_hTabRenameMouseHook) {
+        UnhookWindowsHookEx(_hTabRenameMouseHook);
+        _hTabRenameMouseHook = nullptr;
+        _tabRenameHookOwner = nullptr;
+    }
+
+    wchar_t buf[512] = {};
+    GetWindowTextW(_hTabRenameEdit, buf, 512);
+    std::wstring newName = buf;
+
+    int idx = _tabRenameIndex;
+
+    // Tear down the edit first so focus/paint stays clean.
+    DestroyWindow(_hTabRenameEdit);
+    _hTabRenameEdit = nullptr;
+    _prevTabEditProc = nullptr;
+    _tabRenameIndex = -1;
+
+    if (idx < 0 || idx >= static_cast<int>(_tabs.size())) return;
+
+    // Empty name is rejected silently - keep the old name.
+    if (!newName.empty() && newName != _tabs[idx]->name) {
+        _tabs[idx]->name = newName;
+        rebuildTabControl();
+        if (idx == _activeTabIndex) updateTabTooltip(idx);
+    }
+}
+
+void MultiReplace::cancelInlineTabRename()
+{
+    if (!_hTabRenameEdit) return;
+
+    if (_hTabRenameMouseHook) {
+        UnhookWindowsHookEx(_hTabRenameMouseHook);
+        _hTabRenameMouseHook = nullptr;
+        _tabRenameHookOwner = nullptr;
+    }
+
+    DestroyWindow(_hTabRenameEdit);
+    _hTabRenameEdit = nullptr;
+    _prevTabEditProc = nullptr;
+    _tabRenameIndex = -1;
+}
+
+LRESULT CALLBACK MultiReplace::tabRenameEditProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+    MultiReplace* self = reinterpret_cast<MultiReplace*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+    WNDPROC prev = self ? self->_prevTabEditProc : nullptr;
+
+    switch (msg) {
+    case WM_KEYDOWN:
+        if (wp == VK_RETURN) {
+            if (self) PostMessage(self->_hSelf, WM_TAB_RENAME_COMMIT, 0, 0);
+            return 0;
+        }
+        if (wp == VK_ESCAPE) {
+            if (self) PostMessage(self->_hSelf, WM_TAB_RENAME_CANCEL, 0, 0);
+            return 0;
+        }
+        break;
+
+    case WM_KILLFOCUS:
+        // Focus loss commits. We post the commit so that DestroyWindow
+        // runs after the current message dispatch unwinds, otherwise
+        // the edit would be destroyed inside its own WM_KILLFOCUS and
+        // Windows leaves repaint state inconsistent.
+        if (self) PostMessage(self->_hSelf, WM_TAB_RENAME_COMMIT, 0, 0);
+        break;  // still let DefWindowProc handle the focus change
+
+    case WM_GETDLGCODE: {
+        // Ask for Enter and Escape on top of whatever the default edit
+        // control wants. Returning only DLGC_WANTALLKEYS would strip
+        // useful defaults like arrow-key handling.
+        LRESULT def = prev ? CallWindowProc(prev, hwnd, msg, wp, lp)
+            : DefWindowProc(hwnd, msg, wp, lp);
+        return def | DLGC_WANTALLKEYS | DLGC_WANTCHARS;
+    }
+    }
+
+    return prev ? CallWindowProc(prev, hwnd, msg, wp, lp)
+        : DefWindowProc(hwnd, msg, wp, lp);
+}
+
+LRESULT CALLBACK MultiReplace::tabControlSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+    UINT_PTR /*uIdSubclass*/, DWORD_PTR dwRefData)
+{
+    MultiReplace* self = reinterpret_cast<MultiReplace*>(dwRefData);
+    if (!self) return DefSubclassProc(hwnd, msg, wp, lp);
+
+    switch (msg) {
+    case WM_LBUTTONDBLCLK: {
+        POINT pt = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+        TCHITTESTINFO hti = {};
+        hti.pt = pt;
+        int idx = TabCtrl_HitTest(hwnd, &hti);
+        if (idx >= 0) {
+            self->beginInlineTabRename(idx);
+            return 0;
+        }
+        break;
+    }
+
+    case WM_LBUTTONDOWN: {
+        // Cancel an in-progress rename first so the user doesn't end
+        // up reorder-dragging while an edit is open over the tab.
+        if (self->_hTabRenameEdit) {
+            self->commitInlineTabRename();
+        }
+
+        POINT pt = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+        TCHITTESTINFO hti = {};
+        hti.pt = pt;
+        int idx = TabCtrl_HitTest(hwnd, &hti);
+        if (idx >= 0) {
+            self->_tabDragSourceIdx = idx;
+            self->_tabDragStartPt = pt;
+            self->_tabDragActive = false;   // becomes true after threshold
+            SetCapture(hwnd);
+        }
+        break;  // let default proc also switch the selected tab
+    }
+
+    case WM_MOUSEMOVE: {
+        if (!(wp & MK_LBUTTON) || self->_tabDragSourceIdx < 0) break;
+
+        POINT pt = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+
+        // Activate drag mode once the mouse has moved far enough from
+        // the initial press, using the Windows standard drag threshold.
+        if (!self->_tabDragActive) {
+            int dx = abs(pt.x - self->_tabDragStartPt.x);
+            int dy = abs(pt.y - self->_tabDragStartPt.y);
+            int thX = GetSystemMetrics(SM_CXDRAG);
+            int thY = GetSystemMetrics(SM_CYDRAG);
+            if (dx > thX || dy > thY) {
+                self->_tabDragActive = true;
+            }
+            else {
+                break;
+            }
+        }
+
+        // Midpoint-based swap logic to avoid flicker. A naive
+        // "whatever tab the mouse is over" rule oscillates when the
+        // source and neighbor tabs have different widths: swapping a
+        // narrow tab over a wider one leaves the mouse still hovering
+        // the old neighbor at its new position, which would swap back
+        // on the very next mouse move.
+        //
+        // The rule used here: swap with the right neighbor only once
+        // the mouse has crossed its center; symmetrically for the
+        // left neighbor. This guarantees that after a swap the cursor
+        // is on the far side of the new neighbor's center, so the
+        // reverse swap is never triggered by a tiny jitter.
+        const int src = self->_tabDragSourceIdx;
+        const int n = static_cast<int>(self->_tabs.size());
+
+        // Try right neighbor first.
+        if (src + 1 < n) {
+            RECT rcR = {};
+            if (TabCtrl_GetItemRect(hwnd, src + 1, &rcR)) {
+                int midX = (rcR.left + rcR.right) / 2;
+                if (pt.x > midX) {
+                    self->moveTab(src, src + 1);
+                    self->_tabDragSourceIdx = src + 1;
+                    break;
+                }
+            }
+        }
+        // Then left neighbor.
+        if (src - 1 >= 0) {
+            RECT rcL = {};
+            if (TabCtrl_GetItemRect(hwnd, src - 1, &rcL)) {
+                int midX = (rcL.left + rcL.right) / 2;
+                if (pt.x < midX) {
+                    self->moveTab(src, src - 1);
+                    self->_tabDragSourceIdx = src - 1;
+                    break;
+                }
+            }
+        }
+        break;
+    }
+
+    case WM_LBUTTONUP: {
+        if (GetCapture() == hwnd) ReleaseCapture();
+        self->_tabDragActive = false;
+        self->_tabDragSourceIdx = -1;
+        break;
+    }
+
+    case WM_CAPTURECHANGED: {
+        // Capture can be stolen (alt-tab, menu, modal). Clean up.
+        self->_tabDragActive = false;
+        self->_tabDragSourceIdx = -1;
+        break;
+    }
+
+    case WM_SETCURSOR: {
+        if (self->_tabDragActive) {
+            SetCursor(LoadCursor(nullptr, IDC_SIZEWE));
+            return TRUE;
+        }
+        break;
+    }
+    }
+
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+LRESULT CALLBACK MultiReplace::tabRenameMouseHookProc(int code, WPARAM wp, LPARAM lp)
+{
+    MultiReplace* owner = _tabRenameHookOwner;
+
+    if (code == HC_ACTION && owner && owner->_hTabRenameEdit) {
+        // React only to button-down messages. Button-up or move would
+        // fire far too often and risk premature commits.
+        if (wp == WM_LBUTTONDOWN || wp == WM_RBUTTONDOWN ||
+            wp == WM_MBUTTONDOWN || wp == WM_NCLBUTTONDOWN ||
+            wp == WM_NCRBUTTONDOWN || wp == WM_NCMBUTTONDOWN)
+        {
+            MOUSEHOOKSTRUCT* mh = reinterpret_cast<MOUSEHOOKSTRUCT*>(lp);
+            if (mh) {
+                // If the click is NOT on the edit control itself, commit.
+                if (mh->hwnd != owner->_hTabRenameEdit) {
+                    PostMessage(owner->_hSelf, WM_TAB_RENAME_COMMIT, 0, 0);
+                }
+            }
+        }
+    }
+
+    return CallNextHookEx(nullptr, code, wp, lp);
 }
 
 void MultiReplace::loadUIConfigFromIni()
@@ -14452,9 +15528,6 @@ void MultiReplace::loadUIConfigFromIni()
 
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
-    // Dim intensity for inactive list (0-100). Persisted but not in the config dialog.
-    int rawDim = CFG.readInt(L"Options", L"DimIntensity", 50);
-    listDimIntensity = (rawDim < 0) ? 0 : (rawDim > 100 ? 100 : rawDim);
     updateUseListState(false);
 
     int savedWidth = CFG.readInt(L"Window", L"Width", sx(INIT_WIDTH));
@@ -14566,7 +15639,6 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
     s.keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
-    s.listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
     s.isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
@@ -14598,7 +15670,6 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeBool(L"Options", L"GroupResults", s.groupResultsEnabled);
     CFG.writeBool(L"Options", L"AllFromCursor", s.allFromCursorEnabled);
     CFG.writeBool(L"Options", L"KeepListVisible", s.keepListVisible);
-    CFG.writeInt(L"Options", L"DimIntensity", s.listDimIntensity);
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", s.maxFileSizeMB);
     CFG.writeBool(L"ListColumns", L"FindCountVisible", s.isFindCountVisible);
@@ -14715,7 +15786,6 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(L"Options", L"AllFromCursor", allFromCursorEnabled);
     CFG.writeBool(L"Options", L"GroupResults", groupResultsEnabled);
     CFG.writeBool(L"Options", L"KeepListVisible", keepListVisible);
-    CFG.writeInt(L"Options", L"DimIntensity", listDimIntensity);
     CFG.writeBool(L"Options", L"DockWrap", ResultDock::wrapEnabled());
     CFG.writeBool(L"Options", L"DockPurge", ResultDock::purgeEnabled());
 
@@ -14750,9 +15820,11 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(L"OpenDocs", L"AllDocuments",
         IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) == BST_CHECKED);
 
-    // File Info
-    CFG.writeString(L"File", L"ListFilePath", listFilePath);
-    CFG.writeSizeT(L"File", L"OriginalListHash", originalListHash);
+    // NOTE: [File]/ListFilePath and [File]/OriginalListHash are no
+    // longer written here. The per-tab equivalents live under [Tabs]
+    // (TabN_Path) and in each tab's snapshot file hash. Reads of the
+    // legacy keys remain in loadSettingsToPanelUI for one-time
+    // migration on first upgrade.
 
     // History 
     syncHistoryToCache(GetDlgItem(_hSelf, IDC_FIND_EDIT), L"FindTextHistory");
@@ -14813,8 +15885,7 @@ void MultiReplace::applyConfigSettingsOnly()
                 IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
                 ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
             }
-            ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_SHOW);
-            ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_SHOW);
+            setBottomRowVisible(true);
             InvalidateRect(_replaceListView, nullptr, TRUE);
         }
         else if (!keepListVisible && !useListEnabled) {
@@ -14825,20 +15896,8 @@ void MultiReplace::applyConfigSettingsOnly()
                 IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
                 ShowWindow(GetDlgItem(_hSelf, id), SW_HIDE);
             }
-            ShowWindow(GetDlgItem(_hSelf, IDC_PATH_DISPLAY), SW_HIDE);
-            ShowWindow(GetDlgItem(_hSelf, IDC_STATS_DISPLAY), SW_HIDE);
+            setBottomRowVisible(false);
             adjustWindowSize();
-        }
-    }
-
-    // Library Mode: dim intensity (hidden INI setting, not in config dialog)
-    {
-        int newDim = CFG.readInt(L"Options", L"DimIntensity", 50);
-        if (newDim < 0) newDim = 0;
-        if (newDim > 100) newDim = 100;
-        if (listDimIntensity != newDim) {
-            listDimIntensity = newDim;
-            if (_replaceListView) InvalidateRect(_replaceListView, nullptr, TRUE);
         }
     }
 
@@ -14888,7 +15947,6 @@ void MultiReplace::applyConfigSettingsOnly()
     if (hBash) ShowWindow(hBash, SW_HIDE);
 
     updateUseListState(false);
-    showListFilePath();
 
     // Sync toolbar icon button visibility with list state
     {

@@ -17,8 +17,8 @@
 #include "DropTarget.h"
 #include "MultiReplacePanel.h"
 
-DropTarget::DropTarget(MultiReplace* parent)
-    : _refCount(1), _parent(parent) {
+DropTarget::DropTarget(MultiReplace* parent, DropTargetKind kind)
+    : _refCount(1), _parent(parent), _kind(kind) {
 }
 
 HRESULT DropTarget::DragEnter(IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DWORD* pdwEffect) {
@@ -56,21 +56,33 @@ HRESULT DropTarget::Drop(IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DW
             HDROP hDrop = static_cast<HDROP>(GlobalLock(stgMedium.hGlobal));
             if (hDrop) {
                 UINT numFiles = DragQueryFile(hDrop, 0xFFFFFFFF, NULL, 0);
-                if (numFiles > 0) {
-                    wchar_t filePath[MAX_PATH];
-                    DragQueryFile(hDrop, 0, filePath, MAX_PATH);
-                    _parent->loadListFromCsv(filePath);  // Load CSV file
+
+                if (_kind == DropTargetKind::ListView) {
+                    // Legacy behavior: load the first file into the
+                    // active tab, replacing its content.
+                    if (numFiles > 0) {
+                        wchar_t filePath[MAX_PATH];
+                        DragQueryFile(hDrop, 0, filePath, MAX_PATH);
+                        _parent->loadListFromCsv(filePath);
+                    }
                 }
-                GlobalUnlock(stgMedium.hGlobal); // Unlock the global memory object
+                else {
+                    // Tab bar drop: open each file in its own new tab.
+                    for (UINT i = 0; i < numFiles; ++i) {
+                        wchar_t filePath[MAX_PATH];
+                        DragQueryFile(hDrop, i, filePath, MAX_PATH);
+                        _parent->loadListFromCsvIntoNewTab(filePath);
+                    }
+                }
+                GlobalUnlock(stgMedium.hGlobal);
             }
-            ReleaseStgMedium(&stgMedium); // Release the storage medium
+            ReleaseStgMedium(&stgMedium);
         }
 
-        *pdwEffect = DROPEFFECT_COPY; // Indicate that the operation was a copy
+        *pdwEffect = DROPEFFECT_COPY;
         return S_OK;
     }
     catch (...) {
-        // Handle errors silently
         *pdwEffect = DROPEFFECT_NONE;
         return E_FAIL;
     }

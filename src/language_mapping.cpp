@@ -403,6 +403,16 @@ const LangKV kEnglishPairs[] = {
 { L"debug_col_type", L"Type" },
 { L"debug_col_value", L"Value" },
 
+// Tab bar (multi-tab lists)
+{ L"tab_menu_rename",              L"Rename" },
+{ L"tab_menu_duplicate",           L"Duplicate" },
+{ L"tab_menu_save_as",             L"Save As..." },
+{ L"tab_menu_load",                L"Load..." },
+{ L"tab_menu_open_file_location",  L"Open File Location" },
+{ L"tab_menu_close",               L"Close" },
+{ L"tab_untitled_prefix",          L"Untitled" },
+{ L"tab_duplicate_suffix",         L"(copy)" },
+
 };
 
 const size_t kEnglishPairsCount = sizeof(kEnglishPairs) / sizeof(kEnglishPairs[0]);

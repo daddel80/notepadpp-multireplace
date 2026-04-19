@@ -3,53 +3,61 @@
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
+// the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-// You should have received a copy of the GNU General Public License
+// GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #pragma once
 // --------------------------------------------------------------
 //  UndoRedoManager  (singleton)
-//  • Keeps two stacks of lambda pairs (undo / redo)
-//  • Totally framework‑agnostic – STL only
-//  • Optional label field enables later history UI
+//  • Keeps undo/redo stacks per tab id
+//  • push/undo/redo/clear operate on the currently active tab
+//  • Totally framework-agnostic - STL only
 // --------------------------------------------------------------
 
+#include <deque>
 #include <functional>
 #include <string>
-#include <deque>
+#include <unordered_map>
 
 class UndoRedoManager
 {
 public:
-    /// Global accessor – same idiom as ConfigManager / LanguageManager
     static UndoRedoManager& instance();
 
     using Action = std::function<void()>;
 
+    // Tab management. Default active tab id is 0, which matches the
+    // default id used by the primary tab, so callers that never touch
+    // these methods keep working as a single-tab setup.
+    void setActiveTab(int tabId);
+    void removeTab(int tabId);
+    void clearAll();
+
+    // Operate on the active tab.
     void push(Action undoAction,
         Action redoAction,
         std::wstring label = L"");
 
     bool undo();          // returns false if nothing to undo
     bool redo();          // returns false if nothing to redo
-    void clear();
+    void clear();         // clears only the active tab
 
-    [[nodiscard]] bool   canUndo()   const { return !_undo.empty(); }
-    [[nodiscard]] bool   canRedo()   const { return !_redo.empty(); }
-    [[nodiscard]] size_t undoCount() const { return _undo.size(); }
-    [[nodiscard]] size_t redoCount() const { return _redo.size(); }
+    [[nodiscard]] bool   canUndo()   const;
+    [[nodiscard]] bool   canRedo()   const;
+    [[nodiscard]] size_t undoCount() const;
+    [[nodiscard]] size_t redoCount() const;
 
     [[nodiscard]] std::wstring peekUndoLabel() const;
     [[nodiscard]] std::wstring peekRedoLabel() const;
 
-    void setCapacity(size_t cap) { _capacity = cap; trim(); }
+    void   setCapacity(size_t cap);
     size_t capacity() const { return _capacity; }
 
 private:
@@ -64,16 +72,19 @@ private:
         std::wstring  label;
     };
 
-    std::deque<Item> _undo;   // deque for O(1) pop_front during trim
-    std::deque<Item> _redo;
+    struct Stacks {
+        std::deque<Item> undo;   // deque for O(1) pop_front during trim
+        std::deque<Item> redo;
+    };
 
     // Default capacity of 200 steps is suitable for typical usage.
     // Setting capacity to 0 means unlimited (use with caution).
     size_t _capacity = 200;
 
-    void trim() {
-        if (_capacity == 0) return;  // 0 means unlimited
-        while (_undo.size() > _capacity) _undo.pop_front();
-        while (_redo.size() > _capacity) _redo.pop_front();
-    }
+    int _activeTabId = 0;
+    std::unordered_map<int, Stacks> _perTab;
+
+    Stacks& active();
+    const Stacks& active() const;
+    void          trim(Stacks& s);
 };

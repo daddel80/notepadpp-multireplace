@@ -101,8 +101,7 @@
 #define IDC_STATIC_FIND                 5100
 #define IDC_STATIC_REPLACE              5101
 #define IDC_STATUS_MESSAGE              5102
-#define IDC_PATH_DISPLAY                5103
-#define IDC_STATS_DISPLAY               5104
+#define IDC_LIST_TABS                   5105
 
 
 
@@ -242,6 +241,16 @@
 #define IDM_TOGGLE_DELETE               5804
 #define IDM_TOGGLE_TIMESTAMP            5805
 #define IDM_RESET_COLUMN_ORDER          5806
+
+// ===================================================================
+//  5900-5910 - Tab context menu command IDs
+// ===================================================================
+#define IDM_TAB_RENAME                  5900
+#define IDM_TAB_DUPLICATE               5901
+#define IDM_TAB_SAVE_AS                 5902
+#define IDM_TAB_LOAD                    5903
+#define IDM_TAB_OPEN_FILE_LOCATION      5904
+#define IDM_TAB_CLOSE                   5905
 
 // ===================================================================
 //  6000-6120 - Miscellaneous & Result Dock
@@ -402,6 +411,8 @@
 #define CONFIG_DLG_HEIGHT           380     // Fixed height
 
 #define WM_POST_INIT        (WM_APP + 1)    // posted after the dialog is shown
+#define WM_TAB_RENAME_COMMIT (WM_APP + 2)   // posted from tab rename edit to defer commit
+#define WM_TAB_RENAME_CANCEL (WM_APP + 3)   // posted from tab rename edit to defer cancel
 
 #define IDC_WEBSITE_LINK_VALUE TEXT("https://github.com/daddel80/notepadpp-multireplace/issues")
 
