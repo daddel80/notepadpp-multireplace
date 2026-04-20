@@ -13781,17 +13781,26 @@ namespace {
         SuppressWidthSyncGuard& operator=(const SuppressWidthSyncGuard&) = delete;
     };
 
-    void writeSettingsLineUtf8(std::ofstream& out, const wchar_t* key, const std::wstring& value) {
-        std::wstring line = std::wstring(key) + L"=" + value + L"\n";
+    // Helper: emit one raw Key=Value line (no escaping).
+    void writeRawSettingsLine(std::ofstream& out, const wchar_t* key, const std::wstring& rawValue) {
+        std::wstring line = std::wstring(key) + L"=" + rawValue + L"\n";
         out << Encoding::wstringToUtf8(line);
     }
 
+    // String values are CSV-escaped so they roundtrip safely through
+    // the preamble parser even if they contain '=', '\n', '"' or '\\'.
+    // Matches the string-handling convention used in the INI.
+    void writeSettingsLineUtf8(std::ofstream& out, const wchar_t* key, const std::wstring& value) {
+        writeRawSettingsLine(out, key, StringUtils::escapeCsvValue(value));
+    }
+
+    // Numeric values are written raw (no quotes). Same convention as the INI.
     void writeSettingsLineUtf8(std::ofstream& out, const wchar_t* key, int value) {
-        writeSettingsLineUtf8(out, key, std::to_wstring(value));
+        writeRawSettingsLine(out, key, std::to_wstring(value));
     }
 
     void writeSettingsLineUtf8(std::ofstream& out, const wchar_t* key, bool value) {
-        writeSettingsLineUtf8(out, key, std::wstring(value ? L"1" : L"0"));
+        writeRawSettingsLine(out, key, std::wstring(value ? L"1" : L"0"));
     }
 
     // Local helpers mirroring CFG.readXxx(section, key, default).
@@ -13814,6 +13823,9 @@ namespace {
         return it->second;
     }
 
+    // Bumped when the settings-block schema changes.
+    constexpr int kSettingsFormatVersion = 1;
+
     // Write the per-list settings block into an open CSV stream.
     // Contains only LIST semantics (search mode, scope). Workspace
     // preferences like column widths / visibility / locks / order
@@ -13821,6 +13833,8 @@ namespace {
     // leak one user's layout to another when the CSV is shared.
     void writeSettingsBlock(std::ofstream& out, const TabState& tab) {
         out << "[MultiReplace-Settings]\n";
+
+        writeSettingsLineUtf8(out, L"FormatVersion", kSettingsFormatVersion);
 
         writeSettingsLineUtf8(out, L"SearchMode", tab.searchMode);
         writeSettingsLineUtf8(out, L"WholeWord", tab.wholeWord);
@@ -13841,6 +13855,9 @@ namespace {
     // Peek the first line; if it is the settings block header, parse
     // the block into the map and return true. Otherwise rewind the
     // stream so the caller can read the CSV header row normally.
+    // String values are unescaped here so map consumers work with the
+    // final value. unescapeCsvValue is safe on unquoted numeric values
+    // (passes them through unchanged).
     bool tryReadSettingsBlock(std::wstringstream& in, std::map<std::wstring, std::wstring>& out) {
         std::streampos start = in.tellg();
         std::wstring line;
@@ -13861,7 +13878,7 @@ namespace {
 
             const size_t eq = line.find(L'=');
             if (eq == std::wstring::npos) continue; // skip malformed
-            out[line.substr(0, eq)] = line.substr(eq + 1);
+            out[line.substr(0, eq)] = StringUtils::unescapeCsvValue(line.substr(eq + 1));
         }
 
         // Missing [End] - treat as malformed: keep what we parsed so
@@ -13873,6 +13890,10 @@ namespace {
     // writeSettingsBlock: only list-semantic fields are read; layout
     // fields are ignored (older CSVs may still contain them).
     void applySettingsMapToTab(const std::map<std::wstring, std::wstring>& s, TabState& tab) {
+        // Reserved for future schema branching; old files default to 1.
+        const int version = readMapInt(s, L"FormatVersion", 1);
+        (void)version;
+
         tab.searchMode = readMapInt(s, L"SearchMode", 0);
         tab.wholeWord = readMapBool(s, L"WholeWord", false);
         tab.matchCase = readMapBool(s, L"MatchCase", false);
