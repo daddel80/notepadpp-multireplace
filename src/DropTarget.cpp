@@ -17,8 +17,8 @@
 #include "DropTarget.h"
 #include "MultiReplacePanel.h"
 
-DropTarget::DropTarget(MultiReplace* parent, DropTargetKind kind)
-    : _refCount(1), _parent(parent), _kind(kind) {
+DropTarget::DropTarget(MultiReplace* parent)
+    : _refCount(1), _parent(parent) {
 }
 
 HRESULT DropTarget::DragEnter(IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DWORD* pdwEffect) {
@@ -57,22 +57,12 @@ HRESULT DropTarget::Drop(IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DW
             if (hDrop) {
                 UINT numFiles = DragQueryFile(hDrop, 0xFFFFFFFF, NULL, 0);
 
-                if (_kind == DropTargetKind::ListView) {
-                    // Legacy behavior: load the first file into the
-                    // active tab, replacing its content.
-                    if (numFiles > 0) {
-                        wchar_t filePath[MAX_PATH];
-                        DragQueryFile(hDrop, 0, filePath, MAX_PATH);
-                        _parent->loadListFromCsv(filePath);
-                    }
-                }
-                else {
-                    // Tab bar drop: open each file in its own new tab.
-                    for (UINT i = 0; i < numFiles; ++i) {
-                        wchar_t filePath[MAX_PATH];
-                        DragQueryFile(hDrop, i, filePath, MAX_PATH);
-                        _parent->loadListFromCsvIntoNewTab(filePath);
-                    }
+                // Each dropped file opens in its own new tab -
+                // standard editor behavior for file drops.
+                for (UINT i = 0; i < numFiles; ++i) {
+                    wchar_t filePath[MAX_PATH];
+                    DragQueryFile(hDrop, i, filePath, MAX_PATH);
+                    _parent->loadListFromCsvIntoNewTab(filePath);
                 }
                 GlobalUnlock(stgMedium.hGlobal);
             }

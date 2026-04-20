@@ -667,6 +667,7 @@ You can lock specific column widths to prevent them from resizing automatically 
 ### List Saving and Loading
 - **Save List / Load List** — Store and reload your search/replace entries as CSV files.
 - **Drag & Drop** — You can load lists by dragging CSV files onto the plugin window.
+- **Tabs** — Keep multiple lists open side by side. Click **+** to add a tab, double-click to rename, drag to reorder, right-click for options (save as, load, duplicate, close). Dropping a CSV on the tab bar opens it in its own tab. Tabs and their contents persist across sessions.
 - **Format** — CSV with quoted fields. Special characters are escaped: `\` → `\\`, newline → `\n`, carriage return → `\r`, `"` → `""`.
 
 ## Settings and Customization

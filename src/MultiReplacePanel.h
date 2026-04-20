@@ -274,17 +274,89 @@ enum class SortDirection {
     Descending
 };
 
+enum ColumnID {
+    INVALID = -1,
+    FIND_COUNT,         // 0
+    REPLACE_COUNT,      // 1
+    SELECTION,          // 2
+    FIND_TEXT,          // 3
+    REPLACE_TEXT,       // 4
+    WHOLE_WORD,         // 5
+    MATCH_CASE,         // 6
+    USE_VARIABLES,      // 7
+    EXTENDED,           // 8
+    REGEX,              // 9
+    COMMENTS,           // 10
+    LAST_MODIFIED,      // 11
+    DELETE_BUTTON       // 12
+};
+
 // Per-tab snapshot of all state that must survive a tab switch.
-// Global settings (input fields, scope, dialog options) stay on MultiReplace.
+// Panel-level settings (scope, search options, column layout, input
+// field contents) live here. Settings-dialog options and UI
+// preferences stay global on MultiReplace.
 struct TabState {
+    // Identity
     int          id = 0;
     std::wstring name;
     std::wstring filePath;            // real user-chosen path; empty for untitled
     std::wstring snapshotPath;        // plugin-internal cache path
     bool         isAutoCache = false; // true = snapshot-only, no real user file
 
+    // List data
     std::vector<ReplaceItemData> data;
     std::size_t                  originalHash = 0;
+
+    // Dirty indicator (runtime-only cache, not persisted).
+    // Set by edit actions, cleared by save/load. Drives the visual
+    // dirty marker on the tab. Uses cache-boolean semantics like
+    // VS Code / JetBrains: any edit flips to true, a manual revert
+    // does NOT automatically flip back - only save or load clears it.
+    bool         isDirty = false;
+
+    // Search options
+    int          searchMode = 0;     // 0=Normal, 1=Extended, 2=Regex
+    bool         wholeWord = false;
+    bool         matchCase = false;
+    bool         useVariables = false;
+    bool         wrapAround = false;
+    bool         replaceAtMatches = false;
+    std::wstring replaceAtMatchesEdit = L"1";
+
+    // Scope
+    int          scope = 0;     // 0=AllText, 1=Selection, 2=CSV
+    std::wstring csvCols = L"1-50";
+    std::wstring csvDelim = L",";
+    std::wstring csvQuote = L"\"";
+
+    // Input fields
+    std::wstring findText;
+    std::wstring replaceText;
+
+    // Files / OpenDocs panel
+    std::wstring filesFilter = L"*.*";
+    std::wstring docsFilter = L"*.*";
+    std::wstring directory;
+    bool         inSubfolders = false;
+    bool         inHiddenFolders = false;
+    bool         allDocuments = false;
+
+    // Column layout
+    int          findCountWidth = 50;
+    int          replaceCountWidth = 50;
+    int          findWidth = 50;
+    int          replaceWidth = 50;
+    int          commentsWidth = 50;
+    bool         findCountVisible = false;
+    bool         replaceCountVisible = false;
+    bool         commentsVisible = false;
+    bool         timestampVisible = false;
+    bool         deleteButtonVisible = true;
+    bool         findLocked = true;
+    bool         replaceLocked = false;
+    bool         commentsLocked = true;
+    std::vector<ColumnID>         columnOrder;
+    std::map<int, SortDirection>  columnSortOrder;
 };
 
 enum class SearchDirection {
@@ -310,23 +382,6 @@ enum class LuaVariableType {
     Number,
     Boolean,
     None
-};
-
-enum ColumnID {
-    INVALID = -1,
-    FIND_COUNT,         // 0
-    REPLACE_COUNT,      // 1
-    SELECTION,          // 2
-    FIND_TEXT,          // 3
-    REPLACE_TEXT,       // 4
-    WHOLE_WORD,         // 5
-    MATCH_CASE,         // 6
-    USE_VARIABLES,      // 7
-    EXTENDED,           // 8
-    REGEX,              // 9
-    COMMENTS,           // 10
-    LAST_MODIFIED,      // 11
-    DELETE_BUTTON       // 12
 };
 
 struct ResizableColWidths {
@@ -511,11 +566,6 @@ public:
         int  listDimIntensity;
         bool limitFileSizeEnabled;
         int  maxFileSizeMB;
-        bool isFindCountVisible;
-        bool isReplaceCountVisible;
-        bool isCommentsColumnVisible;
-        bool isTimestampColumnVisible;
-        bool isDeleteButtonVisible;
         int  editFieldSize;
         int  csvHeaderLinesCount;
         bool resultDockPerEntryColorsEnabled;
@@ -540,6 +590,7 @@ public:
     static std::wstring getSnapshotsDir();
     static bool         snapshotsDirExists();
     static bool         ensureSnapshotsDir();  // returns false only on filesystem error
+    static void         migrateSnapshotsDir(); // one-shot move from legacy nested path
 
     // Light Mode Colors for Message
     static constexpr COLORREF LMODE_SUCCESS = RGB(0, 128, 0);
@@ -601,8 +652,7 @@ public:
     // Drag-and-Drop functionality
     DropTarget* dropTarget = nullptr;  // Pointer to DropTarget instance
     DropTarget* tabBarDropTarget = nullptr;  // Drop target on the tab bar
-    void loadListFromCsv(const std::wstring& filePath); // used in DropTarget.cpp
-    void loadListFromCsvIntoNewTab(const std::wstring& filePath);  // drop on tab bar
+    void loadListFromCsvIntoNewTab(const std::wstring& filePath);  // used by DropTarget for all drops
     void initializeDragAndDrop();
 
     inline static HWND       hwndExpandBtn = nullptr;
@@ -779,6 +829,15 @@ private:
     // List related
     bool useListEnabled; // status for List enabled
     bool _altBypassActive = false; // momentary Alt-bypass: use input fields while list is open
+    // During a tab-switch, load, or new-tab refresh, the ListView
+    // briefly still shows the OUTGOING tab's columns while we are
+    // already setting up the INCOMING tab's width globals. If
+    // createListViewColumns reads live column widths in that moment
+    // it would overwrite the just-restored incoming widths with the
+    // outgoing ones, and widths would "leak" between tabs. This flag
+    // tells the column rebuild path to skip the live-read in those
+    // specific moments.
+    bool _suppressLiveWidthSync = false;
     std::wstring listFilePath = L""; //to store the file path of loaded list
     const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ /uused for Hashing
     std::size_t originalListHash = 0;
@@ -955,7 +1014,6 @@ private:
     void handleCopyToListButton();
     void resetCountColumns();
     void updateCountColumns(const size_t itemIndex, const int findCount, int replaceCount = -1);
-    void clearList();
     void refreshUIListView();
     void handleColumnVisibilityToggle(UINT menuId);
     ColumnID getColumnIDFromIndex(int columnIndex) const;
@@ -1115,7 +1173,7 @@ private:
     std::string convertAndExtendW(const std::wstring& input, bool extended, UINT cp) const;
     std::string convertAndExtendW(const std::wstring& input, bool extended);
     static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 100);
-    std::wstring getTextFromDialogItem(HWND hwnd, int itemID);
+    std::wstring getTextFromDialogItem(HWND hwnd, int itemID) const;
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);
     void setSelections(bool select, bool onlySelected = false);
     void setOptionForSelection(SearchOption option, bool value);
@@ -1142,15 +1200,23 @@ private:
     std::wstring promptSaveListToCsv();
     std::wstring openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath);
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
-    void saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
-    void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list);
+    bool saveListToCsvWithSettings(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab);
+    bool saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
+    void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings = nullptr);
     void autoShowCommentsColumn();
     void checkForFileChangesAtStartup();
     void exportToBashScript(const std::wstring& fileName);
 
+    // Save-All: writes every dirty tab. Tabs with a path are saved
+    // silently; tabs without a path show a Save As dialog per tab
+    // (user can cancel individually, like Notepad++).
+    void saveAllTabs();
+
     //INI
     void saveSettings();
-    int checkForUnsavedChanges();
+    // 3-button Save/Don't save/Cancel prompt. tabIndex < 0 = active
+    // tab via globals; concrete index queries that tab directly.
+    int checkForUnsavedChanges(int tabIndex = -1);
     void loadSettings();
     void syncHistoryToCache(HWND hComboBox, const std::wstring& keyPrefix);
 
@@ -1158,8 +1224,12 @@ private:
     // members (replaceListData, listFilePath, ...); a TabState is
     // a snapshot that is swapped in/out on tab switch.
     void ensurePrimaryTabExists();
-    void captureStateIntoTab(TabState& tab) const;
+    void captureStateIntoTab(TabState& tab);
     void restoreStateFromTab(const TabState& tab);
+
+    // Syncs live ListView column widths back into the global width
+    // members so subsequent captures see the user's latest resize.
+    void readColumnWidthsFromListView();
 
     // Multi-tab persistence.
     void writeTabsToConfig();
@@ -1167,12 +1237,25 @@ private:
     void migrateLegacyList();
     void saveAllTabSnapshots();
     void cleanupOrphanSnapshots();
-    void checkSingleTabForFileChange(TabState& tab);
+    void checkSingleTabForFileChange(int tabIndex);
 
     // Tab control rendering.
     void rebuildTabControl();
     void updateTabTooltip(int tabIndex);
     static std::wstring truncateTabName(const std::wstring& name, size_t maxChars = 14);
+
+    // Tab dirty-indicator management. markActiveTabDirty is called
+    // after every list-mutating action (add, remove, move, sort,
+    // inline edit commit, toggle flags, undo, redo, ...). It compares
+    // the current list hash against the baseline captured at the last
+    // save/load, and flips the dirty flag accordingly - undoing back
+    // to the saved state therefore clears the flag automatically.
+    // clearTabDirty is called after a successful save to force-clear
+    // the flag (the baseline hash is updated separately in the save path).
+    // Both functions rebuildTabControl only when the flag actually
+    // changes state.
+    void markActiveTabDirty();
+    void clearTabDirty(int tabIndex);
 
     // Shows or hides the tab bar together with the rest of the list UI.
     void setBottomRowVisible(bool visible);
@@ -1195,7 +1278,6 @@ private:
     void onTabDuplicate(int tabIndex);
     void onTabClose(int tabIndex);
     void onTabSaveAs(int tabIndex);
-    void onTabLoad(int tabIndex);
     void onTabOpenFileLocation(int tabIndex);
 
     // Inline rename editing on a tab.

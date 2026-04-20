@@ -22,17 +22,9 @@
 
 class MultiReplace;  // Forward declaration to avoid circular dependency
 
-// Distinguishes what a dropped CSV should do, so the same class can
-// serve both the list view (replace current tab) and the tab bar
-// (open in a new tab).
-enum class DropTargetKind {
-    ListView,
-    TabBar
-};
-
 class DropTarget : public IDropTarget {
 public:
-    explicit DropTarget(MultiReplace* parent, DropTargetKind kind = DropTargetKind::ListView);
+    explicit DropTarget(MultiReplace* parent);
     virtual ~DropTarget() {}
 
     // Implement all IDropTarget methods
@@ -49,7 +41,6 @@ public:
 private:
     LONG _refCount;
     MultiReplace* _parent;
-    DropTargetKind _kind;
 };
 
 #endif // DROP_TARGET_H

@@ -66,13 +66,6 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_RESULT_DOCK_ENTRY_COLORS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, resultDockPerEntryColorsEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_USE_LIST_COLORS_MARKING, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, useListColorsForMarking), 0, 0 });
 
-    // Columns
-    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_FINDCOUNT_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isFindCountVisible), 0, 0 });
-    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_REPLACECOUNT_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isReplaceCountVisible), 0, 0 });
-    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_COMMENTS_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isCommentsColumnVisible), 0, 0 });
-    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_DELETEBUTTON_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isDeleteButtonVisible), 0, 0 });
-    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_TIMESTAMP_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isTimestampColumnVisible), 0, 0 });
-
     // Search
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_STAY_AFTER_REPLACE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, stayAfterReplaceEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_ALL_FROM_CURSOR, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, allFromCursorEnabled), 0, 0 });
@@ -200,24 +193,17 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_MUTE_SOUNDS,             L"config_chk_mute_sounds",         386, 18 },
         { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize",      260, 18 },
 
-        // List View Panel - Columns: leftColWidth=210, innerWidth=210-24=186
-        { IDC_CFG_GRP_LIST_COLUMNS,        L"config_grp_list_columns",        0, 0 },
-        { IDC_CFG_FINDCOUNT_VISIBLE,       L"config_chk_find_count",          186, 18 },
-        { IDC_CFG_REPLACECOUNT_VISIBLE,    L"config_chk_replace_count",       186, 18 },
-        { IDC_CFG_COMMENTS_VISIBLE,        L"config_chk_comments",            186, 18 },
-        { IDC_CFG_DELETEBUTTON_VISIBLE,    L"config_chk_delete_button",       186, 18 },
-
-        // List View Panel - Results: rightColWidth=330, innerWidth=330-24=306
+        // List View Panel - Results: groupW=460, innerWidth=460-44=416
         { IDC_CFG_GRP_LIST_STATS,          L"config_grp_list_results",        0, 0 },
-        { IDC_CFG_LISTSTATISTICS_ENABLED,  L"config_chk_list_stats",          306, 18 },
-        { IDC_CFG_GROUPRESULTS_ENABLED,    L"config_chk_group_results",       306, 18 },
+        { IDC_CFG_LISTSTATISTICS_ENABLED,  L"config_chk_list_stats",          416, 18 },
+        { IDC_CFG_GROUPRESULTS_ENABLED,    L"config_chk_group_results",       416, 18 },
 
-        // List View Panel - Interaction: totalWidth=560, innerWidth=560-24=536
+        // List View Panel - Interaction: groupW=460, innerWidth=460-44=416
         { IDC_CFG_GRP_LIST_INTERACTION,    L"config_grp_list_interaction",    0, 0 },
-        { IDC_CFG_HIGHLIGHT_MATCH,         L"config_chk_highlight_match",     536, 18 },
-        { IDC_CFG_DOUBLECLICK_EDITS,       L"config_chk_doubleclick",         536, 18 },
-        { IDC_CFG_HOVER_TEXT_ENABLED,      L"config_chk_hover_text",          536, 18 },
-        { IDC_CFG_KEEP_LIST_VISIBLE,       L"config_chk_keep_list_visible",   536, 18 },
+        { IDC_CFG_HIGHLIGHT_MATCH,         L"config_chk_highlight_match",     416, 18 },
+        { IDC_CFG_DOUBLECLICK_EDITS,       L"config_chk_doubleclick",         416, 18 },
+        { IDC_CFG_HOVER_TEXT_ENABLED,      L"config_chk_hover_text",          416, 18 },
+        { IDC_CFG_KEEP_LIST_VISIBLE,       L"config_chk_keep_list_visible",   416, 18 },
         { IDC_CFG_EDITFIELD_LABEL,         L"config_lbl_edit_height",         190, 18 },
 
         // CSV Panel: groupW=570, innerWidth=570-24=546
@@ -824,55 +810,46 @@ HWND MultiReplaceConfigDialog::createSlider(HWND parent, int left, int top, int 
 void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     if (!_hListViewLayoutPanel) return;
 
-    const int marginX = 30;
-    const int marginY = 10;
+    // Layout aligned with the other panels (Search/Replace, CSV, Appearance):
+    // left=70, groupW=460. Column visibility is per-tab now and lives in
+    // the ListView header's context menu rather than in this dialog.
+    const int left = 70;
+    const int groupW = 460;
+    const int topY = 20;
+    const int topGroupH = 85;
+    const int gapBetween = 14;
+    const int bottomGroupH = 170;
 
-    const int leftColWidth = 210;
-    const int rightColWidth = 330;
-    const int columnSpacing = 20;
-
-    const int leftGroupH = 156;
-    const int rightGroupH = 85;
-    const int gapAfterTop = 14;
-    const int bottomGroupH = 140;
-    const int topRowY = marginY;
-
-    createGroupBox(_hListViewLayoutPanel, marginX, topRowY, leftColWidth, leftGroupH, IDC_CFG_GRP_LIST_COLUMNS, LM.getLPCW(L"config_grp_list_columns"));
+    createGroupBox(_hListViewLayoutPanel, left, topY, groupW, topGroupH,
+        IDC_CFG_GRP_LIST_STATS, LM.getLPCW(L"config_grp_list_results"));
     {
-        LayoutBuilder lb(this, _hListViewLayoutPanel, marginX + 22, topRowY + 25, leftColWidth - 24, 24);
-        lb.AddCheckbox(IDC_CFG_FINDCOUNT_VISIBLE, LM.getLPCW(L"config_chk_find_count"));
-        lb.AddCheckbox(IDC_CFG_REPLACECOUNT_VISIBLE, LM.getLPCW(L"config_chk_replace_count"));
-        lb.AddCheckbox(IDC_CFG_COMMENTS_VISIBLE, LM.getLPCW(L"config_chk_comments"));
-        lb.AddCheckbox(IDC_CFG_TIMESTAMP_VISIBLE, LM.getLPCW(L"config_chk_timestamp"));
-        lb.AddCheckbox(IDC_CFG_DELETEBUTTON_VISIBLE, LM.getLPCW(L"config_chk_delete_button"));
-    }
+        const int innerLeft = left + 22;
+        const int innerTop = topY + 30;
+        const int innerWidth = groupW - 44;
 
-    const int rightColX = marginX + leftColWidth + columnSpacing;
-
-    createGroupBox(_hListViewLayoutPanel, rightColX, topRowY, rightColWidth, rightGroupH, IDC_CFG_GRP_LIST_STATS, LM.getLPCW(L"config_grp_list_results"));
-    {
-        LayoutBuilder lb(this, _hListViewLayoutPanel, rightColX + 22, topRowY + 25, rightColWidth - 24, 24);
+        LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, innerTop, innerWidth, 24);
         lb.AddCheckbox(IDC_CFG_LISTSTATISTICS_ENABLED, LM.getLPCW(L"config_chk_list_stats"));
         lb.AddCheckbox(IDC_CFG_GROUPRESULTS_ENABLED, LM.getLPCW(L"config_chk_group_results"));
     }
 
-    const int bottomY = topRowY + (leftGroupH > rightGroupH ? leftGroupH : rightGroupH) + gapAfterTop;
+    const int bottomY = topY + topGroupH + gapBetween;
 
-    const int totalWidth = leftColWidth + columnSpacing + rightColWidth;
-
-    createGroupBox(_hListViewLayoutPanel, marginX, bottomY, totalWidth, bottomGroupH, IDC_CFG_GRP_LIST_INTERACTION, LM.getLPCW(L"config_grp_list_interaction"));
+    createGroupBox(_hListViewLayoutPanel, left, bottomY, groupW, bottomGroupH,
+        IDC_CFG_GRP_LIST_INTERACTION, LM.getLPCW(L"config_grp_list_interaction"));
     {
-        LayoutBuilder lb(this, _hListViewLayoutPanel, marginX + 22, bottomY + 25, totalWidth - 24, 24);
+        const int innerLeft = left + 22;
+        const int innerTop = bottomY + 30;
+        const int innerWidth = groupW - 44;
+
+        LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, innerTop, innerWidth, 24);
         lb.AddCheckbox(IDC_CFG_HIGHLIGHT_MATCH, LM.getLPCW(L"config_chk_highlight_match"));
         lb.AddCheckbox(IDC_CFG_DOUBLECLICK_EDITS, LM.getLPCW(L"config_chk_doubleclick"));
         lb.AddCheckbox(IDC_CFG_HOVER_TEXT_ENABLED, LM.getLPCW(L"config_chk_hover_text"));
+        lb.AddCheckbox(IDC_CFG_KEEP_LIST_VISIBLE, LM.getLPCW(L"config_chk_keep_list_visible"));
         lb.AddSpace(6);
         lb.AddLabel(IDC_CFG_EDITFIELD_LABEL, LM.getLPCW(L"config_lbl_edit_height"), 190, 18);
         lb.AddNumberEdit(IDC_CFG_EDITFIELD_SIZE_COMBO, 198, -2, 45, 22);
     }
-
-    // "Keep list always visible" — standalone checkbox, aligned with the checkboxes in the List Results box above (rightColX + 22)
-    createCheckBox(_hListViewLayoutPanel, rightColX + 22, bottomY + 25, rightColWidth - 22, IDC_CFG_KEEP_LIST_VISIBLE, LM.getLPCW(L"config_chk_keep_list_visible"));
 }
 
 void MultiReplaceConfigDialog::createAppearancePanelControls() {
@@ -1016,11 +993,6 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     s.keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
-    s.isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
-    s.isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
-    s.isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
-    s.isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
-    s.isTimestampColumnVisible = CFG.readBool(L"ListColumns", L"TimestampVisible", false);
     s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
     s.resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
@@ -1218,10 +1190,6 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.flowTabsIntroDontShowEnabled = false;
     def.duplicateBookmarksEnabled = false;
     def.exportToBashEnabled = false;
-    def.isFindCountVisible = false;
-    def.isReplaceCountVisible = false;
-    def.isCommentsColumnVisible = false;
-    def.isDeleteButtonVisible = true;
     def.resultDockPerEntryColorsEnabled = true;
     def.useListColorsForMarking = true;
 
