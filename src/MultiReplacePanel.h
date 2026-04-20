@@ -301,7 +301,6 @@ struct TabState {
     std::wstring name;
     std::wstring filePath;            // real user-chosen path; empty for untitled
     std::wstring snapshotPath;        // plugin-internal cache path
-    bool         isAutoCache = false; // true = snapshot-only, no real user file
 
     // List data
     std::vector<ReplaceItemData> data;

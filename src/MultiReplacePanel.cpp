@@ -3355,6 +3355,13 @@ void MultiReplace::destroyAllTooltipWindows()
             if (hOwner != pThis->_hSelf && !IsChild(pThis->_hSelf, hOwner))
                 return TRUE;
 
+            // Keep the tab-bar tooltip: it shows file paths for named
+            // tabs, which is informational (not explanatory) and so
+            // must survive the tooltipsEnabled=false toggle - same
+            // rationale as the "(?)" filter help tooltip below.
+            if (hwnd == pThis->_hTabTooltip)
+                return TRUE;
+
             // keep the "(?)" filter help tooltip if present among tools
             HWND hFilterHelp = GetDlgItem(pThis->_hSelf, IDC_FILTER_HELP);
             if (hFilterHelp) {
@@ -5102,11 +5109,18 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 if (dimList) {
                     COLORREF textClr = ListView_GetTextColor(_replaceListView);
                     COLORREF bgClr = ListView_GetBkColor(_replaceListView);
-                    // Blend text color 70% toward background → visibly dimmed
+                    // Blend text toward background using listDimIntensity
+                    // (0..100 from INI [Options] DimIntensity). 0 = no dim,
+                    // 100 = text fully blended into background.
+                    int i = listDimIntensity;
+                    if (i < 0)   i = 0;
+                    if (i > 100) i = 100;
+                    const int tw = 100 - i;  // text weight
+                    const int bw = i;        // background weight
                     lvcd->clrText = RGB(
-                        (GetRValue(textClr) * 3 + GetRValue(bgClr) * 7) / 10,
-                        (GetGValue(textClr) * 3 + GetGValue(bgClr) * 7) / 10,
-                        (GetBValue(textClr) * 3 + GetBValue(bgClr) * 7) / 10);
+                        (GetRValue(textClr) * tw + GetRValue(bgClr) * bw) / 100,
+                        (GetGValue(textClr) * tw + GetGValue(bgClr) * bw) / 100,
+                        (GetBValue(textClr) * tw + GetBValue(bgClr) * bw) / 100);
                     lvcd->clrTextBk = bgClr;
                     SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, CDRF_NEWFONT | CDRF_NOTIFYPOSTPAINT);
                     return TRUE;
@@ -13986,7 +14000,6 @@ bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
         TabState& tab = *_tabs[_activeTabIndex];
         const bool wasUntitled = tab.filePath.empty();
         tab.filePath = filePath;
-        tab.isAutoCache = false;
         tab.originalHash = originalListHash;
         for (auto& item : tab.data) item.isDirty = false;
 
@@ -14053,7 +14066,6 @@ void MultiReplace::saveAllTabs()
 
         const bool wasUntitled = tab.filePath.empty();
         tab.filePath = targetPath;
-        tab.isAutoCache = false;
         tab.originalHash = computeListHash(data);
 
         if (wasUntitled) {
@@ -14362,7 +14374,6 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
     tab->id = _nextTabId++;
     tab->name = tabName;
     tab->filePath = filePath;
-    tab->isAutoCache = false;
     tab->data = std::move(loaded);
     tab->originalHash = computeListHash(tab->data);
 
@@ -14943,12 +14954,10 @@ void MultiReplace::ensurePrimaryTabExists()
         std::filesystem::path p(listFilePath);
         tab->name = p.stem().wstring();
         tab->filePath = listFilePath;
-        tab->isAutoCache = false;
     }
     else {
         tab->name = LM.get(L"tab_untitled_prefix") + L" 1";
         tab->filePath.clear();
-        tab->isAutoCache = true;
     }
 
     tab->data = replaceListData;
@@ -15150,7 +15159,6 @@ void MultiReplace::writeTabsToConfig()
         // Snapshot is stored as a filename relative to the snapshots dir.
         std::wstring snapshotName = L"tab" + std::to_wstring(i) + L".csv";
         CFG.writeString(L"Tabs", prefix + L"_Snapshot", snapshotName);
-        CFG.writeBool(L"Tabs", prefix + L"_IsAutoCache", t.isAutoCache);
 
         // Persisted baseline hash so dirty state survives a restart.
         // Without this, reopen would set the baseline from the snapshot
@@ -15317,7 +15325,6 @@ void MultiReplace::loadTabsFromConfig()
         tab->id = _nextTabId++;
         tab->name = CFG.readString(L"Tabs", prefix + L"_Name", L"");
         tab->filePath = CFG.readString(L"Tabs", prefix + L"_Path", L"");
-        tab->isAutoCache = CFG.readBool(L"Tabs", prefix + L"_IsAutoCache", true);
 
         std::wstring snapshotName = CFG.readString(L"Tabs", prefix + L"_Snapshot", L"");
         if (snapshotName.empty()) {
@@ -15422,7 +15429,6 @@ void MultiReplace::loadTabsFromConfig()
                     // we don't keep prompting about it. Matches the
                     // error-path behavior in checkSingleTabForFileChange.
                     tab->filePath.clear();
-                    tab->isAutoCache = true;
                 }
             }
             if (!haveBaseline) {
@@ -15496,7 +15502,6 @@ void MultiReplace::checkSingleTabForFileChange(int tabIndex)
     catch (const CsvLoadException&) {
         // File no longer accessible - silently clear reference, keep tab data.
         tab.filePath.clear();
-        tab.isAutoCache = true;
         tab.originalHash = computeListHash(tab.data);
         // The tab now has no external baseline to be dirty against,
         // so clear the flag through the centralized helper (also
@@ -15606,15 +15611,23 @@ void MultiReplace::updateTabTooltip(int /*tabIndex*/)
     HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
     if (!hTab) return;
 
-    // Create the shared tooltip control on first use.
+    // Create the shared tooltip control on first use. This tooltip is
+    // informational (shows the tab's file path) rather than explanatory,
+    // so it deliberately ignores the tooltipsEnabled option - same
+    // rationale as IDC_FILTER_HELP's "(?)" marker which also stays on.
     if (!_hTabTooltip) {
         _hTabTooltip = CreateWindowEx(
             WS_EX_TOPMOST, TOOLTIPS_CLASS, nullptr,
-            WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+            WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON | TTS_NOPREFIX,
             CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
             _hSelf, nullptr, (HINSTANCE)GetWindowLongPtr(_hSelf, GWLP_HINSTANCE), nullptr);
 
         if (_hTabTooltip) {
+            // Match the visual style used for the regular control
+            // tooltips: dark theme when Notepad++ is in dark mode.
+            if (NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle)) {
+                SetWindowTheme(_hTabTooltip, L"DarkMode_Explorer", nullptr);
+            }
             SendMessage(_hTabTooltip, TTM_SETMAXTIPWIDTH, 0, 600);
         }
     }
@@ -15723,7 +15736,6 @@ void MultiReplace::addNewTab()
     auto tab = std::make_unique<TabState>();
     tab->id = _nextTabId++;
     tab->name = prefix + L" " + std::to_wstring(n);
-    tab->isAutoCache = true;
 
     // Inherit panel state from the outgoing tab so the user keeps
     // their current mode/scope (Regex+CSV etc.) rather than being
@@ -15908,7 +15920,6 @@ void MultiReplace::onTabDuplicate(int tabIndex)
     copy->name = src.name + L" " + LM.get(L"tab_duplicate_suffix");
     copy->filePath.clear();
     copy->snapshotPath.clear();
-    copy->isAutoCache = true;
     copy->originalHash = computeListHash(copy->data);
     // Fresh AutoCache tab - not inheriting the source's dirty state.
     // Any edits will re-mark dirty through markActiveTabDirty.
@@ -16073,7 +16084,6 @@ void MultiReplace::onTabSaveAs(int tabIndex)
     TabState& tab = *_tabs[tabIndex];
     const bool wasUntitled = tab.filePath.empty();
     tab.filePath = chosen;
-    tab.isAutoCache = false;
     tab.originalHash = computeListHash(listToSave);
 
     // Adopt the file stem as the tab name if this was previously an
@@ -16479,6 +16489,7 @@ void MultiReplace::loadUIConfigFromIni()
 
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
+    listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
     updateUseListState(false);
 
     int savedWidth = CFG.readInt(L"Window", L"Width", sx(INIT_WIDTH));
@@ -16590,6 +16601,7 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
     s.keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
+    s.listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
     s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
@@ -16616,6 +16628,7 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeBool(L"Options", L"GroupResults", s.groupResultsEnabled);
     CFG.writeBool(L"Options", L"AllFromCursor", s.allFromCursorEnabled);
     CFG.writeBool(L"Options", L"KeepListVisible", s.keepListVisible);
+    CFG.writeInt(L"Options", L"DimIntensity", s.listDimIntensity);
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", s.maxFileSizeMB);
     CFG.writeInt(L"Options", L"EditFieldSize", s.editFieldSize);
@@ -16685,6 +16698,7 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(L"Options", L"AllFromCursor", allFromCursorEnabled);
     CFG.writeBool(L"Options", L"GroupResults", groupResultsEnabled);
     CFG.writeBool(L"Options", L"KeepListVisible", keepListVisible);
+    CFG.writeInt(L"Options", L"DimIntensity", listDimIntensity);
     CFG.writeBool(L"Options", L"DockWrap", ResultDock::wrapEnabled());
     CFG.writeBool(L"Options", L"DockPurge", ResultDock::purgeEnabled());
 
@@ -16781,6 +16795,19 @@ void MultiReplace::applyConfigSettingsOnly()
             }
             setBottomRowVisible(false);
             adjustWindowSize();
+        }
+    }
+
+    // Dim intensity (0..100). A value change only affects the next
+    // repaint of the dimmed list; no explicit refresh is needed here.
+    int newDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
+    if (listDimIntensity != newDimIntensity) {
+        listDimIntensity = newDimIntensity;
+        // Repaint if the list is currently dimmed so the change is
+        // visible immediately; otherwise it will naturally pick up
+        // the new value at the next dim event.
+        if (_replaceListView && (_altBypassActive || (!useListEnabled && keepListVisible))) {
+            InvalidateRect(_replaceListView, nullptr, TRUE);
         }
     }
 
