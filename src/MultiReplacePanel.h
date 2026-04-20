@@ -1235,6 +1235,7 @@ private:
     void writeTabsToConfig();
     void loadTabsFromConfig();
     void migrateLegacyList();
+    void dropLegacyConfigEntries();
     void saveAllTabSnapshots();
     void cleanupOrphanSnapshots();
     void checkSingleTabForFileChange(int tabIndex);

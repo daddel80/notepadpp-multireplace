@@ -84,6 +84,15 @@ public:
     void writeByte(const std::wstring& sec, const std::wstring& key, BYTE val);
     void writeSizeT(const std::wstring& sec, const std::wstring& key, size_t val);
 
+    // ---------------------------------------------------------------------
+    // Erase helpers
+    // Remove entries from the in-memory cache so the next save() does
+    // not serialize them to disk. Used for one-time migration cleanup
+    // (drop legacy INI keys after their values have been consumed).
+    // ---------------------------------------------------------------------
+    void eraseKey(const std::wstring& sec, const std::wstring& key);
+    void eraseSection(const std::wstring& sec);
+
     // Raw access if absolutely necessary
     const IniFileCache& ini() const { return _cache; }
 

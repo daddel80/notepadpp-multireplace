@@ -157,3 +157,36 @@ void ConfigManager::writeByte(const std::wstring& sec, const std::wstring& key,
     _cache._data[sec][key] = std::to_wstring(static_cast<int>(val));
     // Don't add to _stringKeys - numeric values are not escaped
 }
+
+//
+//  Erase helpers — remove entries from the cache so save() does not
+//  serialize them on the next shutdown. Used for one-time migration
+//  cleanup of legacy INI keys whose values have already been consumed
+//  by the migration code path.
+//
+void ConfigManager::eraseKey(const std::wstring& sec, const std::wstring& key)
+{
+    auto it = _cache._data.find(sec);
+    if (it == _cache._data.end()) return;
+    it->second.erase(key);
+    if (it->second.empty()) {
+        _cache._data.erase(it);
+    }
+    _stringKeys.erase(sec + L"|" + key);
+}
+
+void ConfigManager::eraseSection(const std::wstring& sec)
+{
+    _cache._data.erase(sec);
+    // Drop any _stringKeys entries that belonged to this section so
+    // the tracking set stays consistent with _data.
+    const std::wstring prefix = sec + L"|";
+    for (auto it = _stringKeys.begin(); it != _stringKeys.end(); ) {
+        if (it->compare(0, prefix.size(), prefix) == 0) {
+            it = _stringKeys.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+}

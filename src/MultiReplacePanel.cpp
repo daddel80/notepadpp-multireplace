@@ -14900,6 +14900,48 @@ void MultiReplace::loadSettingsToPanelUI() {
     }
 }
 
+// Remove legacy INI entries from the cache after they have been
+// consumed by the migration paths (loadTabsFromConfig / migrateLegacyList).
+// The next save() writes only the current multi-tab layout.
+void MultiReplace::dropLegacyConfigEntries()
+{
+    // Sections that no longer exist in the current schema: every key
+    // in them has a per-tab equivalent under [Tabs].
+    static const wchar_t* const legacySections[] = {
+        L"File", L"Current", L"OpenDocs", L"ListColumns"
+    };
+    for (const wchar_t* sec : legacySections) {
+        CFG.eraseSection(sec);
+    }
+
+    // Individual keys that moved from [Options]/[Scope]/[ReplaceInFiles]
+    // into per-tab storage. The sections themselves stay because they
+    // still hold current globals (Tooltips, HeaderLines, LimitFileSize…).
+    struct LegacyKey { const wchar_t* sec; const wchar_t* key; };
+    static const LegacyKey legacyKeys[] = {
+        { L"Options",        L"WholeWord"        },
+        { L"Options",        L"MatchCase"        },
+        { L"Options",        L"UseVariables"     },
+        { L"Options",        L"WrapAround"       },
+        { L"Options",        L"ReplaceAtMatches" },
+        { L"Options",        L"EditAtMatches"    },
+        { L"Options",        L"Extended"         },
+        { L"Options",        L"Regex"            },
+        { L"Scope",          L"Selection"        },
+        { L"Scope",          L"ColumnMode"       },
+        { L"Scope",          L"ColumnNum"        },
+        { L"Scope",          L"Delimiter"        },
+        { L"Scope",          L"QuoteChar"        },
+        { L"ReplaceInFiles", L"Filter"           },
+        { L"ReplaceInFiles", L"Directory"        },
+        { L"ReplaceInFiles", L"InSubfolders"     },
+        { L"ReplaceInFiles", L"InHiddenFolders"  },
+    };
+    for (const auto& e : legacyKeys) {
+        CFG.eraseKey(e.sec, e.key);
+    }
+}
+
 void MultiReplace::loadSettings() {
     loadSettingsToPanelUI();
 
@@ -14930,6 +14972,13 @@ void MultiReplace::loadSettings() {
         }
         migrateLegacyList();
     }
+
+    // One-time legacy cleanup. After the migration above, the pre-
+    // multi-tab INI keys have served their purpose: their values are
+    // now in Tab 0 (legacy path) or were never needed (multi-tab
+    // path). Drop them from the cache so the next shutdown writes a
+    // clean, tab-only INI.
+    dropLegacyConfigEntries();
 
     autoShowCommentsColumn();
     updateHeaderSelection();
@@ -15277,47 +15326,11 @@ void MultiReplace::loadTabsFromConfig()
 
     const std::wstring dir = getSnapshotsDir();
 
-    // Legacy global panel settings: fallback for tabs whose per-tab
-    // keys don't exist yet (first run after upgrade from a pre-multi-tab
-    // version). Next save makes them irrelevant for new sessions.
-    const bool         legacyWholeWord = CFG.readBool(L"Options", L"WholeWord", false);
-    const bool         legacyMatchCase = CFG.readBool(L"Options", L"MatchCase", false);
-    const bool         legacyUseVariables = CFG.readBool(L"Options", L"UseVariables", false);
-    const bool         legacyWrapAround = CFG.readBool(L"Options", L"WrapAround", false);
-    const bool         legacyReplaceAtMatches = CFG.readBool(L"Options", L"ReplaceAtMatches", false);
-    const std::wstring legacyEditAtMatches = CFG.readString(L"Options", L"EditAtMatches", L"1");
-    const bool         legacyExtended = CFG.readBool(L"Options", L"Extended", false);
-    const bool         legacyRegex = CFG.readBool(L"Options", L"Regex", false);
-    const int          legacySearchMode = legacyRegex ? 2 : (legacyExtended ? 1 : 0);
-    const bool         legacySelection = CFG.readBool(L"Scope", L"Selection", false);
-    const bool         legacyColumnMode = CFG.readBool(L"Scope", L"ColumnMode", false);
-    const int          legacyScope = legacyColumnMode ? 2 : (legacySelection ? 1 : 0);
-    const std::wstring legacyCSVCols = CFG.readString(L"Scope", L"ColumnNum", L"1-50");
-    const std::wstring legacyCSVDelim = CFG.readString(L"Scope", L"Delimiter", L",");
-    const std::wstring legacyCSVQuote = CFG.readString(L"Scope", L"QuoteChar", L"\"");
-    const std::wstring legacyFindText = CFG.readString(L"Current", L"FindText", L"");
-    const std::wstring legacyReplaceText = CFG.readString(L"Current", L"ReplaceText", L"");
-    const std::wstring legacyFilesFilter = CFG.readString(L"ReplaceInFiles", L"Filter", L"*.*");
-    const std::wstring legacyDirectory = CFG.readString(L"ReplaceInFiles", L"Directory", L"");
-    const bool         legacyInSubfolders = CFG.readBool(L"ReplaceInFiles", L"InSubfolders", false);
-    const bool         legacyInHiddenFolders = CFG.readBool(L"ReplaceInFiles", L"InHiddenFolders", false);
-    const std::wstring legacyDocsFilter = CFG.readString(L"OpenDocs", L"Filter", L"*.*");
-    const bool         legacyAllDocuments = CFG.readBool(L"OpenDocs", L"AllDocuments", false);
-    const int          legacyFindCountWidth = CFG.readInt(L"ListColumns", L"FindCountWidth", 50);
-    const int          legacyReplaceCountWidth = CFG.readInt(L"ListColumns", L"ReplaceCountWidth", 50);
-    const int          legacyFindWidth = CFG.readInt(L"ListColumns", L"FindWidth", 50);
-    const int          legacyReplaceWidth = CFG.readInt(L"ListColumns", L"ReplaceWidth", 50);
-    const int          legacyCommentsWidth = CFG.readInt(L"ListColumns", L"CommentsWidth", 50);
-    const bool         legacyFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
-    const bool         legacyReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
-    const bool         legacyCommentsVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
-    const bool         legacyTimestampVisible = CFG.readBool(L"ListColumns", L"TimestampVisible", false);
-    const bool         legacyDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
-    const bool         legacyFindLocked = CFG.readBool(L"ListColumns", L"FindColumnLocked", true);
-    const bool         legacyReplaceLocked = CFG.readBool(L"ListColumns", L"ReplaceColumnLocked", false);
-    const bool         legacyCommentsLocked = CFG.readBool(L"ListColumns", L"CommentsColumnLocked", true);
-    const std::wstring legacyColumnOrder = CFG.readString(L"ListColumns", L"ColumnOrder", L"");
-
+    // snapshots/ exists → multi-tab era INI. Missing per-tab keys
+    // take the regular TabState member-initializer defaults (kept in
+    // sync with the readXxx defaults below). Legacy INI keys from the
+    // pre-multi-tab layout are handled exclusively in the else branch
+    // of loadSettings(); they are not consulted here.
     for (int i = 0; i < count; ++i) {
         const std::wstring prefix = L"Tab" + std::to_wstring(i);
 
@@ -15336,46 +15349,49 @@ void MultiReplace::loadTabsFromConfig()
             tab->name = LM.get(L"tab_untitled_prefix") + L" " + std::to_wstring(i + 1);
         }
 
-        // Panel settings: per-tab keys override the legacy fallbacks above.
-        tab->searchMode = CFG.readInt(L"Tabs", prefix + L"_SearchMode", legacySearchMode);
-        tab->wholeWord = CFG.readBool(L"Tabs", prefix + L"_WholeWord", legacyWholeWord);
-        tab->matchCase = CFG.readBool(L"Tabs", prefix + L"_MatchCase", legacyMatchCase);
-        tab->useVariables = CFG.readBool(L"Tabs", prefix + L"_UseVariables", legacyUseVariables);
-        tab->wrapAround = CFG.readBool(L"Tabs", prefix + L"_WrapAround", legacyWrapAround);
-        tab->replaceAtMatches = CFG.readBool(L"Tabs", prefix + L"_ReplaceAtMatches", legacyReplaceAtMatches);
-        tab->replaceAtMatchesEdit = CFG.readString(L"Tabs", prefix + L"_ReplaceAtMatchesEdit", legacyEditAtMatches);
+        // Panel settings. Defaults here match TabState's member
+        // initializers so a missing key leaves the field at its
+        // declared default.
+        tab->searchMode = CFG.readInt(L"Tabs", prefix + L"_SearchMode", 0);
+        tab->wholeWord = CFG.readBool(L"Tabs", prefix + L"_WholeWord", false);
+        tab->matchCase = CFG.readBool(L"Tabs", prefix + L"_MatchCase", false);
+        tab->useVariables = CFG.readBool(L"Tabs", prefix + L"_UseVariables", false);
+        tab->wrapAround = CFG.readBool(L"Tabs", prefix + L"_WrapAround", false);
+        tab->replaceAtMatches = CFG.readBool(L"Tabs", prefix + L"_ReplaceAtMatches", false);
+        tab->replaceAtMatchesEdit = CFG.readString(L"Tabs", prefix + L"_ReplaceAtMatchesEdit", L"1");
 
-        tab->scope = CFG.readInt(L"Tabs", prefix + L"_Scope", legacyScope);
-        tab->csvCols = CFG.readString(L"Tabs", prefix + L"_CSVCols", legacyCSVCols);
-        tab->csvDelim = CFG.readString(L"Tabs", prefix + L"_CSVDelim", legacyCSVDelim);
-        tab->csvQuote = CFG.readString(L"Tabs", prefix + L"_CSVQuote", legacyCSVQuote);
+        tab->scope = CFG.readInt(L"Tabs", prefix + L"_Scope", 0);
+        tab->csvCols = CFG.readString(L"Tabs", prefix + L"_CSVCols", L"1-50");
+        tab->csvDelim = CFG.readString(L"Tabs", prefix + L"_CSVDelim", L",");
+        tab->csvQuote = CFG.readString(L"Tabs", prefix + L"_CSVQuote", L"\"");
 
-        tab->findText = CFG.readString(L"Tabs", prefix + L"_FindText", legacyFindText);
-        tab->replaceText = CFG.readString(L"Tabs", prefix + L"_ReplaceText", legacyReplaceText);
+        tab->findText = CFG.readString(L"Tabs", prefix + L"_FindText", L"");
+        tab->replaceText = CFG.readString(L"Tabs", prefix + L"_ReplaceText", L"");
 
-        tab->filesFilter = CFG.readString(L"Tabs", prefix + L"_FilesFilter", legacyFilesFilter);
-        tab->docsFilter = CFG.readString(L"Tabs", prefix + L"_DocsFilter", legacyDocsFilter);
-        tab->directory = CFG.readString(L"Tabs", prefix + L"_Directory", legacyDirectory);
-        tab->inSubfolders = CFG.readBool(L"Tabs", prefix + L"_InSubfolders", legacyInSubfolders);
-        tab->inHiddenFolders = CFG.readBool(L"Tabs", prefix + L"_InHiddenFolders", legacyInHiddenFolders);
-        tab->allDocuments = CFG.readBool(L"Tabs", prefix + L"_AllDocuments", legacyAllDocuments);
+        tab->filesFilter = CFG.readString(L"Tabs", prefix + L"_FilesFilter", L"*.*");
+        tab->docsFilter = CFG.readString(L"Tabs", prefix + L"_DocsFilter", L"*.*");
+        tab->directory = CFG.readString(L"Tabs", prefix + L"_Directory", L"");
+        tab->inSubfolders = CFG.readBool(L"Tabs", prefix + L"_InSubfolders", false);
+        tab->inHiddenFolders = CFG.readBool(L"Tabs", prefix + L"_InHiddenFolders", false);
+        tab->allDocuments = CFG.readBool(L"Tabs", prefix + L"_AllDocuments", false);
 
-        tab->findCountWidth = CFG.readInt(L"Tabs", prefix + L"_FindCountWidth", legacyFindCountWidth);
-        tab->replaceCountWidth = CFG.readInt(L"Tabs", prefix + L"_ReplaceCountWidth", legacyReplaceCountWidth);
-        tab->findWidth = CFG.readInt(L"Tabs", prefix + L"_FindWidth", legacyFindWidth);
-        tab->replaceWidth = CFG.readInt(L"Tabs", prefix + L"_ReplaceWidth", legacyReplaceWidth);
-        tab->commentsWidth = CFG.readInt(L"Tabs", prefix + L"_CommentsWidth", legacyCommentsWidth);
-        tab->findCountVisible = CFG.readBool(L"Tabs", prefix + L"_FindCountVisible", legacyFindCountVisible);
-        tab->replaceCountVisible = CFG.readBool(L"Tabs", prefix + L"_ReplaceCountVisible", legacyReplaceCountVisible);
-        tab->commentsVisible = CFG.readBool(L"Tabs", prefix + L"_CommentsVisible", legacyCommentsVisible);
-        tab->timestampVisible = CFG.readBool(L"Tabs", prefix + L"_TimestampVisible", legacyTimestampVisible);
-        tab->deleteButtonVisible = CFG.readBool(L"Tabs", prefix + L"_DeleteButtonVisible", legacyDeleteButtonVisible);
-        tab->findLocked = CFG.readBool(L"Tabs", prefix + L"_FindLocked", legacyFindLocked);
-        tab->replaceLocked = CFG.readBool(L"Tabs", prefix + L"_ReplaceLocked", legacyReplaceLocked);
-        tab->commentsLocked = CFG.readBool(L"Tabs", prefix + L"_CommentsLocked", legacyCommentsLocked);
+        tab->findCountWidth = CFG.readInt(L"Tabs", prefix + L"_FindCountWidth", 50);
+        tab->replaceCountWidth = CFG.readInt(L"Tabs", prefix + L"_ReplaceCountWidth", 50);
+        tab->findWidth = CFG.readInt(L"Tabs", prefix + L"_FindWidth", 50);
+        tab->replaceWidth = CFG.readInt(L"Tabs", prefix + L"_ReplaceWidth", 50);
+        tab->commentsWidth = CFG.readInt(L"Tabs", prefix + L"_CommentsWidth", 50);
+        tab->findCountVisible = CFG.readBool(L"Tabs", prefix + L"_FindCountVisible", false);
+        tab->replaceCountVisible = CFG.readBool(L"Tabs", prefix + L"_ReplaceCountVisible", false);
+        tab->commentsVisible = CFG.readBool(L"Tabs", prefix + L"_CommentsVisible", false);
+        tab->timestampVisible = CFG.readBool(L"Tabs", prefix + L"_TimestampVisible", false);
+        tab->deleteButtonVisible = CFG.readBool(L"Tabs", prefix + L"_DeleteButtonVisible", true);
+        tab->findLocked = CFG.readBool(L"Tabs", prefix + L"_FindLocked", true);
+        tab->replaceLocked = CFG.readBool(L"Tabs", prefix + L"_ReplaceLocked", false);
+        tab->commentsLocked = CFG.readBool(L"Tabs", prefix + L"_CommentsLocked", true);
 
-        // Column order: comma-separated ColumnID ints, legacy global as fallback
-        std::wstring orderStr = CFG.readString(L"Tabs", prefix + L"_ColumnOrder", legacyColumnOrder);
+        // Column order: comma-separated ColumnID ints. Default empty
+        // triggers a fallback to the standard order elsewhere.
+        std::wstring orderStr = CFG.readString(L"Tabs", prefix + L"_ColumnOrder", L"");
         tab->columnOrder.clear();
         if (!orderStr.empty()) {
             std::wstringstream ss(orderStr);
@@ -16836,12 +16852,11 @@ void MultiReplace::applyConfigSettingsOnly()
 
     CSVheaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
 
-    // Column Visibility
-    isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
-    isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
-    isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
-    isTimestampColumnVisible = CFG.readBool(L"ListColumns", L"TimestampVisible", false);
-    isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
+    // Column visibility used to live in [ListColumns] globals. It is
+    // now per-tab and maintained via restoreStateFromTab on tab
+    // switch. Reading [ListColumns] here would reset the active tab's
+    // column visibility whenever the user clicks Apply in the config
+    // dialog, so the block is intentionally gone.
 
     // Transparency
     int fg = CFG.readInt(L"Window", L"ForegroundTransparency", 255);
