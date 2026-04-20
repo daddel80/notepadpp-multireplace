@@ -6417,9 +6417,11 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         return false;
     }
 
-    // Selection mode with no selection: different behavior for single-doc vs. multi-doc
+    // Selection mode with no selection: different behavior for single-doc vs. multi-doc.
+    // Use hasAnyNonEmptySelection() so rectangular selections (where some
+    // sub-selections can legitimately be zero-length) are handled correctly.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED &&
-        getSelectionInfo(false).length == 0 && m_selectionScope.empty())
+        !hasAnyNonEmptySelection() && m_selectionScope.empty())
     {
         if (isReplaceAllInDocs) {
             return true;  // Multi-doc mode: skip to next document silently
@@ -6603,10 +6605,11 @@ void MultiReplace::handleReplaceButton() {
         return;
     }
 
-    // Safety: Selection mode with no selection and no stored scope → do nothing
+    // Safety: Selection mode with no selection and no stored scope → do nothing.
+    // hasAnyNonEmptySelection() covers rectangular selections whose first
+    // sub-selection may be zero-length (Scintilla quirk for column mode).
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        SelectionInfo sel = getSelectionInfo(false);
-        if (sel.length == 0 && m_selectionScope.empty()) {
+        if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -7076,6 +7079,30 @@ SelectionInfo MultiReplace::getSelectionInfo(bool isBackward) {
     // Calculate the selection length
     Sci_Position selectionLength = correspondingEnd - selectedStart;
     return SelectionInfo{ selectedStart, correspondingEnd, selectionLength };
+}
+
+bool MultiReplace::hasAnyNonEmptySelection() {
+    // Iterates ALL Scintilla sub-selections and returns true if any of
+    // them has non-zero length. This is the only reliable probe when
+    // the user may have:
+    //   - a normal single range selection
+    //   - a multi-selection (Ctrl+click adds ranges)
+    //   - a rectangular selection (Alt+shift or column mode; Scintilla
+    //     exposes one sub-selection per covered line, some of which can
+    //     be zero-length when a line is shorter than the rect width)
+    //   - a reverse selection (anchor > caret)
+    //
+    // Checking only SCI_GETSELECTIONN{START,END}(0) - as an earlier
+    // version did - misses the rectangular case: selection 0 can be
+    // the zero-length caret marker even though visually a block of
+    // text is selected.
+    const LRESULT count = send(SCI_GETSELECTIONS, 0, 0);
+    for (LRESULT i = 0; i < count; ++i) {
+        const Sci_Position s = send(SCI_GETSELECTIONNSTART, i, 0);
+        const Sci_Position e = send(SCI_GETSELECTIONNEND, i, 0);
+        if (s != e) return true;
+    }
+    return false;
 }
 
 Sci_Position MultiReplace::computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled)
@@ -8459,10 +8486,10 @@ void MultiReplace::handleFindAllButton()
 {
     if (!validateDelimiterData()) return;
 
-    // Safety: Selection mode with no selection and no stored scope → do nothing
+    // Safety: Selection mode with no selection and no stored scope → do nothing.
+    // hasAnyNonEmptySelection() is rectangular-safe.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        SelectionInfo sel = getSelectionInfo(false);
-        if (sel.length == 0 && m_selectionScope.empty()) {
+        if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -9139,10 +9166,10 @@ void MultiReplace::handleFindNextButton() {
         return;
     }
 
-    // Safety: Selection mode with no selection and no stored scope → do nothing
+    // Safety: Selection mode with no selection and no stored scope → do nothing.
+    // hasAnyNonEmptySelection() is rectangular-safe.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        SelectionInfo sel = getSelectionInfo(false);
-        if (sel.length == 0 && m_selectionScope.empty()) {
+        if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -9251,10 +9278,10 @@ void MultiReplace::handleFindPrevButton() {
         return;
     }
 
-    // Safety: Selection mode with no selection and no stored scope → do nothing
+    // Safety: Selection mode with no selection and no stored scope → do nothing.
+    // hasAnyNonEmptySelection() is rectangular-safe.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        SelectionInfo sel = getSelectionInfo(false);
-        if (sel.length == 0 && m_selectionScope.empty()) {
+        if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -9848,10 +9875,10 @@ void MultiReplace::handleMarkMatchesButton() {
     ensureIndicatorContext();
     if (!validateDelimiterData()) return;
 
-    // Safety: Selection mode with no selection and no stored scope → do nothing
+    // Safety: Selection mode with no selection and no stored scope → do nothing.
+    // hasAnyNonEmptySelection() is rectangular-safe.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        SelectionInfo sel = getSelectionInfo(false);
-        if (sel.length == 0 && m_selectionScope.empty()) {
+        if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }

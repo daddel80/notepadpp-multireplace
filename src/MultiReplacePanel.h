@@ -1055,6 +1055,7 @@ private:
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     bool preProcessListForReplace(bool highlight);
     SelectionInfo getSelectionInfo(bool isBackward);
+    bool hasAnyNonEmptySelection();
     Sci_Position computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled);
 
     //Lua Engine
