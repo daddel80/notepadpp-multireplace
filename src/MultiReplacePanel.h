@@ -1055,6 +1055,7 @@ private:
     bool preProcessListForReplace(bool highlight);
     SelectionInfo getSelectionInfo(bool isBackward);
     bool hasAnyNonEmptySelection();
+    bool hasAnySelectedEntry() const;
     Sci_Position computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled);
 
     //Lua Engine

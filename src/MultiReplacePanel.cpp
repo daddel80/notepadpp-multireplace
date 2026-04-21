@@ -6295,6 +6295,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
 void MultiReplace::replaceAllInOpenedDocs()
 {
+    // Fail fast before confirming: asking "really replace in all docs"
+    // makes no sense when nothing in the list can actually run.
+    if (useListEnabled) {
+        if (replaceListData.empty()) {
+            showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            return;
+        }
+        if (!hasAnySelectedEntry()) {
+            showStatusMessage(LM.get(L"status_no_entries_selected"), MessageStatus::Error);
+            return;
+        }
+    }
+
     if (MessageBox(
         nppData._nppHandle,
         LM.get(L"msgbox_confirm_replace_all").c_str(),
@@ -6480,7 +6493,11 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
     {
         // Check if the replaceListData is empty and warn the user if so
         if (replaceListData.empty()) {
-            showStatusMessage(LM.get(L"status_add_values_instructions"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            return false;
+        }
+        if (!hasAnySelectedEntry()) {
+            showStatusMessage(LM.get(L"status_no_entries_selected"), MessageStatus::Error);
             return false;
         }
 
@@ -6670,6 +6687,10 @@ void MultiReplace::handleReplaceButton() {
     if (useListEnabled) {
         if (replaceListData.empty()) {
             showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            return;
+        }
+        if (!hasAnySelectedEntry()) {
+            showStatusMessage(LM.get(L"status_no_entries_selected"), MessageStatus::Error);
             return;
         }
 
@@ -7115,6 +7136,16 @@ bool MultiReplace::hasAnyNonEmptySelection() {
         const Sci_Position s = send(SCI_GETSELECTIONNSTART, i, 0);
         const Sci_Position e = send(SCI_GETSELECTIONNEND, i, 0);
         if (s != e) return true;
+    }
+    return false;
+}
+
+bool MultiReplace::hasAnySelectedEntry() const {
+    // Any row with its Select checkbox ticked. Used to distinguish
+    // "nothing to run" (user action can't do anything) from
+    // "search completed with zero matches" in action handlers.
+    for (const auto& item : replaceListData) {
+        if (item.isEnabled) return true;
     }
     return false;
 }
@@ -8249,6 +8280,18 @@ void MultiReplace::handleReplaceInFiles() {
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replW);
     }
+    else {
+        // Fail fast before scanning the directory: avoids a pointless
+        // file enumeration when nothing in the list can actually run.
+        if (replaceListData.empty()) {
+            showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            return;
+        }
+        if (!hasAnySelectedEntry()) {
+            showStatusMessage(LM.get(L"status_no_entries_selected"), MessageStatus::Error);
+            return;
+        }
+    }
 
     // validate directory
     if (wDir.empty() || !std::filesystem::exists(wDir)) {
@@ -8558,6 +8601,10 @@ void MultiReplace::handleFindAllButton()
             showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
             return;
         }
+        if (!hasAnySelectedEntry()) {
+            showStatusMessage(LM.get(L"status_no_entries_selected"), MessageStatus::Error);
+            return;
+        }
         resetCountColumns();
 
         std::vector<size_t> workIndices = getIndicesOfUniqueEnabledItems(true);
@@ -8687,6 +8734,18 @@ void MultiReplace::handleFindAllInDocsButton()
     if (!useListEnabled) {
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
+    }
+    else {
+        // Bail out before touching the dock / iterating documents
+        // when the list has nothing to run.
+        if (replaceListData.empty()) {
+            showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            return;
+        }
+        if (!hasAnySelectedEntry()) {
+            showStatusMessage(LM.get(L"status_no_entries_selected"), MessageStatus::Error);
+            return;
+        }
     }
 
     ResultDock& dock = ResultDock::instance();
@@ -8928,6 +8987,18 @@ void MultiReplace::handleFindInFiles() {
     if (!useListEnabled) {
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findW);
+    }
+    else {
+        // Fail fast before scanning the directory: avoids a pointless
+        // file enumeration when nothing in the list can actually run.
+        if (replaceListData.empty()) {
+            showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            return;
+        }
+        if (!hasAnySelectedEntry()) {
+            showStatusMessage(LM.get(L"status_no_entries_selected"), MessageStatus::Error);
+            return;
+        }
     }
     if (wDir.empty() || !std::filesystem::exists(wDir)) {
         showStatusMessage(LM.get(L"status_error_invalid_directory"), MessageStatus::Error);
@@ -9224,7 +9295,11 @@ void MultiReplace::handleFindNextButton() {
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
-            showStatusMessage(LM.get(L"status_add_values_or_find_directly"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            return;
+        }
+        if (!hasAnySelectedEntry()) {
+            showStatusMessage(LM.get(L"status_no_entries_selected"), MessageStatus::Error);
             return;
         }
 
@@ -9338,7 +9413,11 @@ void MultiReplace::handleFindPrevButton() {
     if (useListEnabled) {
         size_t matchIndex = std::numeric_limits<size_t>::max();
         if (replaceListData.empty()) {
-            showStatusMessage(LM.get(L"status_add_values_or_find_directly"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            return;
+        }
+        if (!hasAnySelectedEntry()) {
+            showStatusMessage(LM.get(L"status_no_entries_selected"), MessageStatus::Error);
             return;
         }
         SearchResult result = performListSearchBackward(replaceListData, searchPos, matchIndex, context);
@@ -9915,7 +9994,11 @@ void MultiReplace::handleMarkMatchesButton() {
 
     if (useListEnabled) {
         if (replaceListData.empty()) {
-            showStatusMessage(LM.get(L"status_add_values_or_mark_directly"), MessageStatus::Error);
+            showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            return;
+        }
+        if (!hasAnySelectedEntry()) {
+            showStatusMessage(LM.get(L"status_no_entries_selected"), MessageStatus::Error);
             return;
         }
 
