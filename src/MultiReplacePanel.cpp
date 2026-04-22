@@ -113,12 +113,18 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
                 if (!instance->_altBypassActive) {
                     instance->_altBypassActive = true;
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
+                    if (instance->useListEnabled) {
+                        instance->showStatusMessage(LM.get(L"status_disable_list"), MessageStatus::Info);
+                    }
                 }
             }
             else if (pMsg->message == WM_KEYUP) {
                 if (instance->_altBypassActive) {
                     instance->_altBypassActive = false;
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
+                    if (instance->useListEnabled) {
+                        instance->showStatusMessage(LM.get(L"status_enable_list"), MessageStatus::Info);
+                    }
                 }
             }
         }
@@ -127,6 +133,9 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
                 if (instance->_altBypassActive) {
                     instance->_altBypassActive = false;
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
+                    if (instance->useListEnabled) {
+                        instance->showStatusMessage(LM.get(L"status_enable_list"), MessageStatus::Info);
+                    }
                 }
             }
         }
@@ -7120,20 +7129,10 @@ SelectionInfo MultiReplace::getSelectionInfo(bool isBackward) {
 }
 
 bool MultiReplace::hasAnyNonEmptySelection() {
-    // Iterates ALL Scintilla sub-selections and returns true if any of
-    // them has non-zero length. This is the only reliable probe when
-    // the user may have:
-    //   - a normal single range selection
-    //   - a multi-selection (Ctrl+click adds ranges)
-    //   - a rectangular selection (Alt+shift or column mode; Scintilla
-    //     exposes one sub-selection per covered line, some of which can
-    //     be zero-length when a line is shorter than the rect width)
-    //   - a reverse selection (anchor > caret)
-    //
-    // Checking only SCI_GETSELECTIONN{START,END}(0) - as an earlier
-    // version did - misses the rectangular case: selection 0 can be
-    // the zero-length caret marker even though visually a block of
-    // text is selected.
+    // Iterates ALL Scintilla sub-selections: a rectangular selection
+    // exposes one sub-selection per covered line, some zero-length
+    // when a line is shorter than the rect width. Probing only
+    // sub-selection 0 misses that case.
     const LRESULT count = send(SCI_GETSELECTIONS, 0, 0);
     for (LRESULT i = 0; i < count; ++i) {
         const Sci_Position s = send(SCI_GETSELECTIONNSTART, i, 0);
@@ -14465,11 +14464,7 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
     // Build the new tab. If the load fails we discard it before pushing.
     auto tab = std::make_unique<TabState>();
 
-    // Inherit column layout from the (now up-to-date) outgoing tab so
-    // the user's workspace preferences - column order, widths,
-    // visibility, locks - carry over. The preamble only writes list
-    // semantics (search mode, scope, CSV config), never layout, so
-    // the two concerns stay disjoint.
+    // Inherit layout from the (now up-to-date) outgoing tab.
     inheritLayoutFromActiveTab(*tab);
 
     std::vector<ReplaceItemData> loaded;
@@ -15299,13 +15294,10 @@ void MultiReplace::writeTabsToConfig()
         captureStateIntoTab(*_tabs[_activeTabIndex]);
     }
 
-    // Untitled tabs have no saved file to reference, so their baseline
-    // must be the snapshot itself. Without this, every untitled tab
-    // would come back dirty after a restart: the snapshot carries the
-    // current data, but the persisted _BaselineHash would still be the
-    // stale hash from when the tab was first created (usually empty).
-    // Named tabs keep their existing baseline so the dirty indicator
-    // correctly survives across sessions for unsaved edits.
+    // Untitled tabs have no saved file as reference - their baseline
+    // is the snapshot itself. Without this, they would come back
+    // dirty after every restart. Named tabs keep their existing
+    // baseline so unsaved edits survive correctly.
     for (auto& tabPtr : _tabs) {
         TabState& t = *tabPtr;
         if (t.filePath.empty()) {
@@ -15526,14 +15518,10 @@ void MultiReplace::loadTabsFromConfig()
         try {
             loadListFromCsvSilent(tab->snapshotPath, tab->data);
 
-            // Resolve the baseline hash. Three sources in priority:
-            //   1. Persisted BaselineHash from _BaselineHash key (set
-            //      at shutdown) - preserves exact state across sessions.
-            //   2. Hash of the on-disk file, if filePath is reachable -
-            //      fallback for first run after upgrade. Won't detect
-            //      external mods during the restart window.
-            //   3. Hash of the snapshot - last resort, natural baseline
-            //      for untitled auto-cache tabs.
+            // Baseline hash, in priority order:
+            //   1. Persisted BaselineHash from the INI (set at shutdown).
+            //   2. Hash of the on-disk file, if filePath is reachable.
+            //   3. Hash of the snapshot (fallback for untitled tabs).
             const std::wstring hashStr =
                 CFG.readString(L"Tabs", prefix + L"_BaselineHash", L"");
             bool haveBaseline = false;
@@ -15705,11 +15693,9 @@ void MultiReplace::markActiveTabDirty()
 
     TabState& tab = *_tabs[_activeTabIndex];
 
-    // Content-based dirty detection: the tab is dirty if, and only
-    // if, the current list content differs from what was last saved
-    // or loaded. Undo-ing back to the saved state therefore clears
-    // the dirty flag automatically, matching the behavior of other
-    // editors (VS Code, Visual Studio, etc.).
+    // Content-based dirty detection: the tab is dirty iff the current
+    // list content differs from what was last saved or loaded. Undoing
+    // back to the saved state therefore clears the flag automatically.
     const std::size_t currentHash = computeListHash(replaceListData);
     const bool shouldBeDirty = (currentHash != tab.originalHash);
 

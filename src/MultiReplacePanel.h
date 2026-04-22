@@ -306,11 +306,9 @@ struct TabState {
     std::vector<ReplaceItemData> data;
     std::size_t                  originalHash = 0;
 
-    // Dirty indicator (runtime-only cache, not persisted).
-    // Set by edit actions, cleared by save/load. Drives the visual
-    // dirty marker on the tab. Uses cache-boolean semantics like
-    // VS Code / JetBrains: any edit flips to true, a manual revert
-    // does NOT automatically flip back - only save or load clears it.
+    // Dirty indicator (runtime-only, drives the tab's dirty marker).
+    // Set on any edit, cleared only by save/load - a manual revert
+    // does not flip it back.
     bool         isDirty = false;
 
     // Search options
@@ -827,18 +825,13 @@ private:
 
     // List related
     bool useListEnabled; // status for List enabled
-    bool _altBypassActive = false; // momentary Alt-bypass: use input fields while list is open
-    // During a tab-switch, load, or new-tab refresh, the ListView
-    // briefly still shows the OUTGOING tab's columns while we are
-    // already setting up the INCOMING tab's width globals. If
-    // createListViewColumns reads live column widths in that moment
-    // it would overwrite the just-restored incoming widths with the
-    // outgoing ones, and widths would "leak" between tabs. This flag
-    // tells the column rebuild path to skip the live-read in those
-    // specific moments.
+    bool _altBypassActive = false; // momentary Ctrl+Shift bypass: use input fields while list is open
+    // Suppresses live column-width read during tab switches. Without
+    // this, createListViewColumns would sample the outgoing tab's
+    // widths and leak them into the incoming tab.
     bool _suppressLiveWidthSync = false;
-    std::wstring listFilePath = L""; //to store the file path of loaded list
-    const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ /uused for Hashing
+    std::wstring listFilePath = L"";
+    const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ, used for hashing
     std::size_t originalListHash = 0;
     int useListOnHeight = MIN_HEIGHT;      // Default height when "Use List" is on
     int checkMarkWidth_scaled;
@@ -1246,16 +1239,12 @@ private:
     void updateTabTooltip(int tabIndex);
     static std::wstring truncateTabName(const std::wstring& name, size_t maxChars = 14);
 
-    // Tab dirty-indicator management. markActiveTabDirty is called
-    // after every list-mutating action (add, remove, move, sort,
-    // inline edit commit, toggle flags, undo, redo, ...). It compares
-    // the current list hash against the baseline captured at the last
-    // save/load, and flips the dirty flag accordingly - undoing back
-    // to the saved state therefore clears the flag automatically.
-    // clearTabDirty is called after a successful save to force-clear
-    // the flag (the baseline hash is updated separately in the save path).
-    // Both functions rebuildTabControl only when the flag actually
-    // changes state.
+    // Tab dirty-indicator management. markActiveTabDirty compares the
+    // current list hash against the baseline from the last save/load
+    // and toggles the flag; undoing back to the saved state therefore
+    // clears it automatically. clearTabDirty force-clears after a
+    // successful save. Both rebuild the tab control only on real
+    // state changes.
     void markActiveTabDirty();
     void clearTabDirty(int tabIndex);
 
@@ -1269,12 +1258,10 @@ private:
     // Creates a new empty untitled tab and makes it active.
     void addNewTab();
 
-    // Copies column layout fields (widths, visibility, locks, order)
-    // from the currently active tab into the given destination tab.
-    // Called when creating a new tab so the user does not have to
-    // rebuild their preferred layout every time. Sort order and data
-    // content are not copied - only presentation/workspace preferences.
-    // If no active tab exists, the destination keeps its defaults.
+    // Copies column layout (widths, visibility, locks, order) from
+    // the active tab into the destination tab so new tabs inherit
+    // the user's workspace preferences. Sort order and list data
+    // are intentionally not copied. No-op if no active tab exists.
     void inheritLayoutFromActiveTab(TabState& dst) const;
 
     // Reorders tabs: moves the tab at fromIdx so it sits at toIdx in
