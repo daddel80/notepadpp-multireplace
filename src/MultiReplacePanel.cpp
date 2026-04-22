@@ -5051,8 +5051,38 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         // event hook) keeps the coupling to N++ loose - if anything
         // goes wrong, worst case is MR stops following; N++ itself is
         // never touched.
-        if (_tandemActive && wParam == _tandemTimerId) {
+        //
+        // While the user is actively dragging MR, we skip the tick so
+        // the panel can be moved freely without jittering back.
+        if (_tandemActive && !_tandemUserDragging && wParam == _tandemTimerId) {
             onTandemTick();
+        }
+        return 0;
+    }
+
+    case WM_ENTERSIZEMOVE:
+    {
+        // User grabbed the title bar or a resize edge. Let them drag
+        // freely - the snap-back happens in WM_EXITSIZEMOVE.
+        if (_tandemActive) {
+            _tandemUserDragging = true;
+        }
+        return 0;
+    }
+
+    case WM_EXITSIZEMOVE:
+    {
+        // User released the mouse. If tandem is still on, snap MR
+        // back to N++'s bottom edge immediately - otherwise the user
+        // would see MR drift back on the next tick, which feels
+        // sluggish.
+        if (_tandemActive) {
+            _tandemUserDragging = false;
+            RECT r{};
+            if (IsWindow(nppData._nppHandle) && GetWindowRect(nppData._nppHandle, &r)) {
+                applyTandemLayout(r);
+                _tandemLastNppRect = r;
+            }
         }
         return 0;
     }
@@ -15921,6 +15951,7 @@ void MultiReplace::enableTandemMode()
     if (!IsWindow(nppData._nppHandle)) return;
 
     _tandemActive = true;
+    _tandemUserDragging = false;
     _tandemLastNppRect = {};  // force a first apply on next tick
 
     // 50ms polling gives a responsive "sticks to N++" feel without
@@ -15951,6 +15982,7 @@ void MultiReplace::disableTandemMode()
         _tandemTimerId = 0;
     }
     _tandemActive = false;
+    _tandemUserDragging = false;
 
     SetDlgItemTextW(_hSelf, IDC_TANDEM_BUTTON, L"@");
 

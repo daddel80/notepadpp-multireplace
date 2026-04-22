@@ -835,6 +835,7 @@ private:
     // isolated) rather than window event hooks so there is zero
     // chance of interfering with N++'s own message flow.
     bool _tandemActive = false;
+    bool _tandemUserDragging = false;  // true between WM_ENTERSIZEMOVE/WM_EXITSIZEMOVE
     UINT_PTR _tandemTimerId = 0;
     RECT _tandemLastNppRect = {};
 
