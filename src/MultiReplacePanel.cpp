@@ -1259,7 +1259,6 @@ void MultiReplace::drawGripper() {
     RECT rect;
     GetClientRect(_hSelf, &rect);
 
-    // Gripper position and dimensions
     constexpr int GRIPPER_BASE_SIZE = 11;
     int gripperSize = sx(GRIPPER_BASE_SIZE);
     POINT startPoint = { rect.right - gripperSize, rect.bottom - gripperSize };
@@ -1267,9 +1266,10 @@ void MultiReplace::drawGripper() {
     int dotSize = sx(2);
     int gap = std::max(sx(1), 1);
 
-    // Dark Mode aware color
+    // Dark Mode aware color. Matches Notepad++'s own gripper (light
+    // dots on dark background, dark dots on light background).
     bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-    COLORREF dotColor = isDark ? RGB(100, 100, 100) : RGB(200, 200, 200);
+    COLORREF dotColor = isDark ? RGB(200, 200, 200) : RGB(80, 80, 80);
     HBRUSH hBrush = CreateSolidBrush(dotColor);
 
     // Triangle pattern: 6 dots
