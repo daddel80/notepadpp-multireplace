@@ -68,9 +68,11 @@
 #include <Commctrl.h>
 #include <uxtheme.h>
 #include <shlwapi.h>
+#include <dwmapi.h>
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "dwmapi.lib")
 
 static LanguageManager& LM = LanguageManager::instance();
 static ConfigManager& CFG = ConfigManager::instance();
@@ -15944,6 +15946,26 @@ void MultiReplace::inheritLayoutFromActiveTab(TabState& dst) const
 // subclassing on N++. If the timer fails or N++ is gone, MR simply
 // stops following; nothing catastrophic can happen.
 
+namespace {
+    // GetWindowRect reports the bounding rectangle including the
+    // invisible resize-shadow border that DWM adds on Windows 10/11
+    // (typically 7-8 px on each side except the top). Using it
+    // directly would leave a visible gap between N++ and MR when
+    // docking. DwmGetWindowAttribute with DWMWA_EXTENDED_FRAME_BOUNDS
+    // returns the visible pixel bounds. Falls back to GetWindowRect
+    // on older Windows or if the DWM call fails.
+    RECT getVisualBounds(HWND hwnd)
+    {
+        RECT r{};
+        if (SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS,
+            &r, sizeof(r)))) {
+            return r;
+        }
+        GetWindowRect(hwnd, &r);
+        return r;
+    }
+}
+
 void MultiReplace::enableTandemMode()
 {
     if (_tandemActive) return;
@@ -16033,14 +16055,33 @@ void MultiReplace::applyTandemLayout(const RECT& nppRect)
     // yanked into oblivion.
     if (nppRect.left < -10000 || nppRect.top < -10000) return;
 
-    RECT mrRect{};
-    if (!GetWindowRect(_hSelf, &mrRect)) return;
-    const int mrHeight = mrRect.bottom - mrRect.top;
+    // Windows 10/11 add an invisible resize-shadow border around
+    // every window. SetWindowPos expects coordinates in that outer
+    // space; DWM tells us the visible inner bounds. We work in the
+    // visible space, then compensate for the shadow delta when
+    // calling SetWindowPos so the visible edges actually touch.
+    const RECT nppVisual = getVisualBounds(nppData._nppHandle);
+    const RECT mrFull = [this] { RECT r{}; GetWindowRect(_hSelf, &r); return r; }();
+    const RECT mrVisual = getVisualBounds(_hSelf);
 
-    const int newX = nppRect.left;
-    const int newY = nppRect.bottom;        // immediately below N++
-    const int newW = nppRect.right - nppRect.left;
-    const int newH = mrHeight;
+    // MR's shadow offsets (difference between outer and visual rects).
+    const int mrShadowL = mrVisual.left - mrFull.left;   // >= 0
+    const int mrShadowT = mrVisual.top - mrFull.top;    // >= 0
+    const int mrShadowR = mrFull.right - mrVisual.right;
+    const int mrShadowB = mrFull.bottom - mrVisual.bottom;
+
+    // Desired visible MR rectangle: width matches N++'s visible
+    // width, top sits exactly at N++'s visible bottom.
+    const int visibleW = nppVisual.right - nppVisual.left;
+    const int visibleH = mrVisual.bottom - mrVisual.top;
+    const int visibleX = nppVisual.left;
+    const int visibleY = nppVisual.bottom;
+
+    // Convert back to outer coordinates for SetWindowPos.
+    const int newX = visibleX - mrShadowL;
+    const int newY = visibleY - mrShadowT;
+    const int newW = visibleW + mrShadowL + mrShadowR;
+    const int newH = visibleH + mrShadowT + mrShadowB;
 
     SetWindowPos(_hSelf, nullptr, newX, newY, newW, newH,
         SWP_NOZORDER | SWP_NOACTIVATE);
