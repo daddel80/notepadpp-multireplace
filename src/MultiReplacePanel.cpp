@@ -5977,16 +5977,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_LOAD_LIST_BUTTON:
         case IDC_LOAD_FROM_CSV_BUTTON:
         {
-            std::wstring csvDescription = LM.get(L"filetype_csv");  // "CSV Files (*.csv)"
+            std::wstring mrlDescription = LM.get(L"filetype_mrl");  // "MultiReplace Lists (*.mrl; *.csv)"
             std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
 
+            // Single combined filter: .mrl is the current format, .csv
+            // is accepted for backward compatibility with lists saved
+            // by earlier builds. The on-disk format is the same.
             std::vector<std::pair<std::wstring, std::wstring>> filters = {
-                {csvDescription, L"*.csv"},
+                {mrlDescription, L"*.mrl;*.csv"},
                 {allFilesDescription, L"*.*"}
             };
 
             std::wstring dialogTitle = LM.get(L"panel_load_list");
-            std::wstring filePath = openFileDialog(false, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST, L"csv", L"");
+            std::wstring filePath = openFileDialog(false, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST, L"mrl", L"");
 
             if (!filePath.empty()) {
                 // Load opens in a new tab - standard editor behavior.
@@ -13812,11 +13815,13 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::
 }
 
 std::wstring MultiReplace::promptSaveListToCsv() {
-    std::wstring csvDescription = LM.get(L"filetype_csv");  // "CSV Files (*.csv)"
+    std::wstring mrlDescription = LM.get(L"filetype_mrl");  // "MultiReplace Lists (*.mrl; *.csv)"
     std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
 
+    // Single combined filter: new saves default to .mrl; .csv is still
+    // matched so users can overwrite their existing .csv lists in place.
     std::vector<std::pair<std::wstring, std::wstring>> filters = {
-        {csvDescription, L"*.csv"},
+        {mrlDescription, L"*.mrl;*.csv"},
         {allFilesDescription, L"*.*"}
     };
 
@@ -13830,7 +13835,7 @@ std::wstring MultiReplace::promptSaveListToCsv() {
     else {
         // If no file path is set, provide a default file name with a sequential number
         static int fileCounter = 1;
-        defaultFileName = L"Replace_List_" + std::to_wstring(++fileCounter) + L".csv";
+        defaultFileName = L"Replace_List_" + std::to_wstring(++fileCounter) + L".mrl";
     }
 
     // Call openFileDialog with the default file path and name
@@ -13839,7 +13844,7 @@ std::wstring MultiReplace::promptSaveListToCsv() {
         filters,
         dialogTitle.c_str(),
         OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT,
-        L"csv",
+        L"mrl",
         defaultFileName
     );
 

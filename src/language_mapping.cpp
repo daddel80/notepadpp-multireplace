@@ -66,7 +66,7 @@ const LangKV kEnglishPairs[] = {
 
 // File Dialog
 { L"filetype_all_files", L"All Files (*.*)" },
-{ L"filetype_csv", L"CSV Files (*.csv)" },
+{ L"filetype_mrl", L"MultiReplace Lists (*.mrl; *.csv)" },
 { L"filetype_bash", L"Bash Files (*.sh)" },
 
 // Tooltips

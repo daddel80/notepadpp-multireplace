@@ -642,7 +642,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
   - **Matches** — Shows the hit count for each entry. Double-click to navigate through matches (see [Search Results Window](#search-results-window)).
   - **Replaced** — Shows the number of replacements made for each 'Replace with' string.
   - **Comments** — Add custom comments to entries for annotations or additional context.
-  - **Modified** — Shows a persistent timestamp (YYYY-MM-DD HH:MM:SS) recording when each entry was last changed. Updated automatically on content changes, saved in CSV files.
+  - **Modified** — Shows a persistent timestamp (YYYY-MM-DD HH:MM:SS) recording when each entry was last changed. Updated automatically on content changes, saved in list files.
   - **Delete** — Contains a delete button for each entry, allowing quick removal from the list.
 
 - **Dirty-Flag Indicator** — A subtle stripe appears at the left edge of rows that have been modified since the last save or load, providing a quick visual cue for unsaved changes.
@@ -665,10 +665,10 @@ You can lock specific column widths to prevent them from resizing automatically 
 - **Effect** — Locked columns maintain their exact pixel width, while unlocked columns adjust dynamically to fill the remaining space.
 
 ### List Saving and Loading
-- **Save List / Load List** — Store and reload your search/replace entries as CSV files.
-- **Drag & Drop** — You can load lists by dragging CSV files onto the plugin window.
-- **Tabs** — Keep multiple lists open side by side. Click **+** to add a tab, double-click to rename, drag to reorder, right-click for options (save as, load, duplicate, close). Dropping a CSV on the tab bar opens it in its own tab. Tabs and their contents persist across sessions.
-- **Format** — CSV with quoted fields. Special characters are escaped: `\` → `\\`, newline → `\n`, carriage return → `\r`, `"` → `""`.
+- **Save List / Load List** — Store and reload your search/replace entries as `.mrl` files (MultiReplace List). Older `.csv` list files from earlier plugin versions remain loadable without conversion.
+- **Drag & Drop** — You can load lists by dragging `.mrl` or `.csv` files onto the plugin window.
+- **Tabs** — Keep multiple lists open side by side. Click **+** to add a tab, double-click to rename, drag to reorder, right-click for options (save as, load, duplicate, close). Dropping a list file on the tab bar opens it in its own tab. Tabs and their contents persist across sessions.
+- **Format** — Plain-text, line-based. Each file starts with a `[MultiReplace-Settings]...[End]` preamble storing per-list options (search mode, scope, CSV column/delimiter/quote settings), followed by a CSV-style body of entries with quoted fields. Special characters are escaped: `\` → `\\`, newline → `\n`, carriage return → `\r`, `"` → `""`. The preamble makes the file non-conformant to raw CSV, which is why the `.mrl` extension was introduced; workspace preferences (column widths, visibility, order) stay local to each user's INI and are not written into the file, so lists remain portable across machines and users.
 
 ## Settings and Customization
 
