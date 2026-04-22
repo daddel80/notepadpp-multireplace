@@ -92,6 +92,7 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_move_up", L"Move selected lines up (Ctrl+Up)" },
 { L"tooltip_move_down", L"Move selected lines down (Ctrl+Down)" },
 { L"tooltip_find_duplicates", L"Find Duplicates" },
+{ L"tooltip_tandem_mode", L"Tandem mode: dock MR to the bottom of Notepad++" },
 
 // header entries
 { L"header_find_count", L"Find Count" },

@@ -828,6 +828,16 @@ private:
     // List related
     bool useListEnabled; // status for List enabled
     bool _altBypassActive = false; // momentary Alt-bypass: use input fields while list is open
+
+    // Tandem mode (experimental): when enabled, the MR panel docks
+    // itself to the bottom edge of the Notepad++ main window and
+    // follows its movement/resizing. Uses a polling timer (cheap,
+    // isolated) rather than window event hooks so there is zero
+    // chance of interfering with N++'s own message flow.
+    bool _tandemActive = false;
+    UINT_PTR _tandemTimerId = 0;
+    RECT _tandemLastNppRect = {};
+
     // During a tab-switch, load, or new-tab refresh, the ListView
     // briefly still shows the OUTGOING tab's columns while we are
     // already setting up the INCOMING tab's width globals. If
@@ -1276,6 +1286,16 @@ private:
     // content are not copied - only presentation/workspace preferences.
     // If no active tab exists, the destination keeps its defaults.
     void inheritLayoutFromActiveTab(TabState& dst) const;
+
+    // Tandem mode (experimental): docks MR to the bottom edge of the
+    // Notepad++ main window and follows it on move/resize. Timer-
+    // based polling (50ms) keeps the implementation simple and the
+    // coupling to N++ loose.
+    void enableTandemMode();
+    void disableTandemMode();
+    void toggleTandemMode();
+    void onTandemTick();
+    void applyTandemLayout(const RECT& nppRect);
 
     // Reorders tabs: moves the tab at fromIdx so it sits at toIdx in
     // the tab vector. Updates _activeTabIndex consistently and

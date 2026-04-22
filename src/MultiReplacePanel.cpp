@@ -454,6 +454,12 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // Swap Button -> Bold1
     ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Bold1 };
 
+    // Tandem toggle (experimental): sits right below the swap button,
+    // forming a small utility column. Plain push button, same style
+    // as the swap button above - active state is indicated by the
+    // glyph ('@' when inactive, '#' when active) and the tooltip.
+    ctrlMap[IDC_TANDEM_BUTTON] = { swapButtonX, sy(54), sx(22), sy(22), WC_BUTTON, L"@", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_tandem_mode"), false, FontRole::Standard };
+
     ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(14), sx(128), sy(52), WC_BUTTON, LM.getLPCW(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(91), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
@@ -4886,6 +4892,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             _hMsgFilterHook = nullptr;
         }
 
+        // Shut down the tandem-mode ticker if it was running.
+        if (_tandemTimerId) {
+            KillTimer(_hSelf, _tandemTimerId);
+            _tandemTimerId = 0;
+        }
+        _tandemActive = false;
+
         // Commit any pending edits so the user's last change is not
         // lost when the panel closes. Tab rename edit first (so it
         // cannot outlive the panel), then the list cell edit (so the
@@ -5027,6 +5040,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // Ensure useListOnHeight is at least the minimum height
                 useListOnHeight = std::max(currentHeight, minHeight);
             }
+        }
+        return 0;
+    }
+
+    case WM_TIMER:
+    {
+        // Tandem mode ticker: poll the N++ main window and follow its
+        // position/size changes. Using a timer (instead of a window
+        // event hook) keeps the coupling to N++ loose - if anything
+        // goes wrong, worst case is MR stops following; N++ itself is
+        // never touched.
+        if (_tandemActive && wParam == _tandemTimerId) {
+            onTandemTick();
         }
         return 0;
     }
@@ -5750,6 +5776,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // Swap the content of the two text fields
             SetDlgItemTextW(_hSelf, IDC_FIND_EDIT, replaceText.c_str());
             SetDlgItemTextW(_hSelf, IDC_REPLACE_EDIT, findText.c_str());
+            return TRUE;
+        }
+
+        case IDC_TANDEM_BUTTON:
+        {
+            toggleTandemMode();
             return TRUE;
         }
 
@@ -15871,6 +15903,115 @@ void MultiReplace::inheritLayoutFromActiveTab(TabState& dst) const
     // Column order. Sort order is intentionally NOT inherited:
     // it is content-dependent and should start fresh for a new tab.
     dst.columnOrder = src.columnOrder;
+}
+
+// ===================================================================
+// Tandem mode (experimental)
+// ===================================================================
+// Makes the MR panel stick to the bottom edge of the Notepad++ main
+// window and follow it when N++ is moved or resized. Implemented as
+// a loose coupling via a polling timer - no window hooks, no message
+// subclassing on N++. If the timer fails or N++ is gone, MR simply
+// stops following; nothing catastrophic can happen.
+
+void MultiReplace::enableTandemMode()
+{
+    if (_tandemActive) return;
+
+    if (!IsWindow(nppData._nppHandle)) return;
+
+    _tandemActive = true;
+    _tandemLastNppRect = {};  // force a first apply on next tick
+
+    // 50ms polling gives a responsive "sticks to N++" feel without
+    // measurable CPU cost (one GetWindowRect per tick is cheap).
+    _tandemTimerId = SetTimer(_hSelf, 0xFADE /* arbitrary marker */, 50, nullptr);
+
+    // Reflect in the toggle button state, just in case we were called
+    // from somewhere other than the button click.
+    SetDlgItemTextW(_hSelf, IDC_TANDEM_BUTTON, L"#");
+
+    // Snap immediately so the user sees the effect without waiting
+    // for the first tick.
+    RECT r{};
+    if (GetWindowRect(nppData._nppHandle, &r)) {
+        applyTandemLayout(r);
+        _tandemLastNppRect = r;
+    }
+
+    showStatusMessage(L"Tandem mode enabled.", MessageStatus::Info);
+}
+
+void MultiReplace::disableTandemMode()
+{
+    if (!_tandemActive) return;
+
+    if (_tandemTimerId) {
+        KillTimer(_hSelf, _tandemTimerId);
+        _tandemTimerId = 0;
+    }
+    _tandemActive = false;
+
+    SetDlgItemTextW(_hSelf, IDC_TANDEM_BUTTON, L"@");
+
+    showStatusMessage(L"Tandem mode disabled.", MessageStatus::Info);
+}
+
+void MultiReplace::toggleTandemMode()
+{
+    if (_tandemActive) {
+        disableTandemMode();
+    }
+    else {
+        enableTandemMode();
+    }
+}
+
+void MultiReplace::onTandemTick()
+{
+    // N++ gone -> stop following gracefully.
+    if (!IsWindow(nppData._nppHandle)) {
+        disableTandemMode();
+        return;
+    }
+
+    RECT r{};
+    if (!GetWindowRect(nppData._nppHandle, &r)) return;
+
+    // Only apply if N++ actually moved or resized. This avoids
+    // unnecessary SetWindowPos calls when nothing changed.
+    if (r.left == _tandemLastNppRect.left &&
+        r.top == _tandemLastNppRect.top &&
+        r.right == _tandemLastNppRect.right &&
+        r.bottom == _tandemLastNppRect.bottom) {
+        return;
+    }
+
+    applyTandemLayout(r);
+    _tandemLastNppRect = r;
+}
+
+void MultiReplace::applyTandemLayout(const RECT& nppRect)
+{
+    // Position MR flush against the bottom edge of N++ and match its
+    // horizontal width. MR keeps its own height (user-controlled).
+    //
+    // If N++ is minimized, GetWindowRect returns off-screen coords
+    // (e.g. -32000). Treat that as "don't follow" so MR doesn't get
+    // yanked into oblivion.
+    if (nppRect.left < -10000 || nppRect.top < -10000) return;
+
+    RECT mrRect{};
+    if (!GetWindowRect(_hSelf, &mrRect)) return;
+    const int mrHeight = mrRect.bottom - mrRect.top;
+
+    const int newX = nppRect.left;
+    const int newY = nppRect.bottom;        // immediately below N++
+    const int newW = nppRect.right - nppRect.left;
+    const int newH = mrHeight;
+
+    SetWindowPos(_hSelf, nullptr, newX, newY, newW, newH,
+        SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void MultiReplace::addNewTab()
