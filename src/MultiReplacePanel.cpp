@@ -14446,10 +14446,27 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
 void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
 {
-    // Build the new tab up front so the settings block from the file,
-    // if present, can be merged directly into its state. If the load
-    // fails we discard the tab before pushing it.
+    // Commit an in-progress list cell edit before we move away, and
+    // capture live UI state (column widths, search options, etc.)
+    // into the outgoing tab so the incoming tab's layout inheritance
+    // sees up-to-date values.
+    if (hwndEdit) {
+        closeEditField(true);
+    }
+    if (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
+        captureStateIntoTab(*_tabs[_activeTabIndex]);
+    }
+
+    // Build the new tab. If the load fails we discard it before pushing.
     auto tab = std::make_unique<TabState>();
+
+    // Inherit column layout from the (now up-to-date) outgoing tab so
+    // the user's workspace preferences - column order, widths,
+    // visibility, locks - carry over. The preamble only writes list
+    // semantics (search mode, scope, CSV config), never layout, so
+    // the two concerns stay disjoint.
+    inheritLayoutFromActiveTab(*tab);
+
     std::vector<ReplaceItemData> loaded;
     try {
         loadListFromCsvSilent(filePath, loaded, tab.get());
@@ -14457,14 +14474,6 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
     catch (const CsvLoadException& ex) {
         showStatusMessage(Encoding::utf8ToWString(ex.what()), MessageStatus::Error);
         return;
-    }
-
-    // Capture the outgoing tab before we push the new one.
-    if (hwndEdit) {
-        closeEditField(true);
-    }
-    if (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
-        captureStateIntoTab(*_tabs[_activeTabIndex]);
     }
 
     // Derive a tab name from the file stem (without extension).
@@ -15828,6 +15837,37 @@ void MultiReplace::switchToTab(int newIndex)
     updateTabTooltip(_activeTabIndex);
 }
 
+void MultiReplace::inheritLayoutFromActiveTab(TabState& dst) const
+{
+    if (_activeTabIndex < 0 || _activeTabIndex >= static_cast<int>(_tabs.size())) {
+        return;
+    }
+    const TabState& src = *_tabs[_activeTabIndex];
+
+    // Column widths
+    dst.findCountWidth = src.findCountWidth;
+    dst.replaceCountWidth = src.replaceCountWidth;
+    dst.findWidth = src.findWidth;
+    dst.replaceWidth = src.replaceWidth;
+    dst.commentsWidth = src.commentsWidth;
+
+    // Column visibility
+    dst.findCountVisible = src.findCountVisible;
+    dst.replaceCountVisible = src.replaceCountVisible;
+    dst.commentsVisible = src.commentsVisible;
+    dst.timestampVisible = src.timestampVisible;
+    dst.deleteButtonVisible = src.deleteButtonVisible;
+
+    // Column locks
+    dst.findLocked = src.findLocked;
+    dst.replaceLocked = src.replaceLocked;
+    dst.commentsLocked = src.commentsLocked;
+
+    // Column order. Sort order is intentionally NOT inherited:
+    // it is content-dependent and should start fresh for a new tab.
+    dst.columnOrder = src.columnOrder;
+}
+
 void MultiReplace::addNewTab()
 {
     // Commit an in-progress list cell edit before we move away.
@@ -15886,23 +15926,11 @@ void MultiReplace::addNewTab()
         tab->inSubfolders = src.inSubfolders;
         tab->inHiddenFolders = src.inHiddenFolders;
         tab->allDocuments = src.allDocuments;
-        // Column layout
-        tab->findCountWidth = src.findCountWidth;
-        tab->replaceCountWidth = src.replaceCountWidth;
-        tab->findWidth = src.findWidth;
-        tab->replaceWidth = src.replaceWidth;
-        tab->commentsWidth = src.commentsWidth;
-        tab->findCountVisible = src.findCountVisible;
-        tab->replaceCountVisible = src.replaceCountVisible;
-        tab->commentsVisible = src.commentsVisible;
-        tab->timestampVisible = src.timestampVisible;
-        tab->deleteButtonVisible = src.deleteButtonVisible;
-        tab->findLocked = src.findLocked;
-        tab->replaceLocked = src.replaceLocked;
-        tab->commentsLocked = src.commentsLocked;
-        tab->columnOrder = src.columnOrder;
-        tab->columnSortOrder = src.columnSortOrder;
     }
+
+    // Column layout inherited via the shared helper (same path used by
+    // loadListFromCsvIntoNewTab). Sort order is not inherited by design.
+    inheritLayoutFromActiveTab(*tab);
 
     tab->originalHash = computeListHash(tab->data);
 

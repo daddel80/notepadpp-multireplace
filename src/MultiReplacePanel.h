@@ -1269,6 +1269,14 @@ private:
     // Creates a new empty untitled tab and makes it active.
     void addNewTab();
 
+    // Copies column layout fields (widths, visibility, locks, order)
+    // from the currently active tab into the given destination tab.
+    // Called when creating a new tab so the user does not have to
+    // rebuild their preferred layout every time. Sort order and data
+    // content are not copied - only presentation/workspace preferences.
+    // If no active tab exists, the destination keeps its defaults.
+    void inheritLayoutFromActiveTab(TabState& dst) const;
+
     // Reorders tabs: moves the tab at fromIdx so it sits at toIdx in
     // the tab vector. Updates _activeTabIndex consistently and
     // rebuilds the tab control. Idempotent if fromIdx == toIdx.
