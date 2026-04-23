@@ -835,7 +835,7 @@ private:
     bool _altBypassActive = false; // momentary Alt-bypass: use input fields while list is open
 
     // --------------------------------------------------------------
-    // Tandem mode (experimental)
+    // Tandem mode (experimental) 
     // --------------------------------------------------------------
     // When enabled, the MR panel docks to one of N++'s edges (Bottom,
     // Right or Left) and follows it as N++ is moved or resized. The
