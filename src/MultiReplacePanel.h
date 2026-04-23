@@ -993,6 +993,10 @@ private:
     void updateHeaderSelection();
     void updateHeaderSortDirection();
     void showColumnVisibilityMenu(HWND hWnd, POINT pt);
+    // Column that was right-clicked in the header. Stashed by
+    // showColumnVisibilityMenu so the Lock/Unlock command handler
+    // knows which column to toggle.
+    ColumnID _tagetedLockColumn = ColumnID::INVALID;
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void handleUpdateFromFields();
     static std::wstring getCurrentTimestamp();

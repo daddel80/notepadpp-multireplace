@@ -3302,6 +3302,21 @@ void MultiReplace::updateHeaderSortDirection() {
 #pragma region ListView Dialog
 
 void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
+    // Figure out which header column was right-clicked so the menu
+    // can offer a context-sensitive Lock/Unlock entry. _tagetedLockColumn
+    // is stashed for the command handler to pick up.
+    _tagetedLockColumn = ColumnID::INVALID;
+    HWND hHeader = ListView_GetHeader(_replaceListView);
+    if (hHeader) {
+        HDHITTESTINFO hti = {};
+        hti.pt = pt;
+        ScreenToClient(hHeader, &hti.pt);
+        const int itemIdx = static_cast<int>(SendMessage(hHeader, HDM_HITTEST, 0, (LPARAM)&hti));
+        if (itemIdx >= 0) {
+            _tagetedLockColumn = getColumnIDFromIndex(itemIdx);
+        }
+    }
+
     // Create a popup menu
     HMENU hMenu = CreatePopupMenu();
 
@@ -3312,6 +3327,43 @@ void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
     AppendMenu(hMenu, MF_STRING | (isTimestampColumnVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_TIMESTAMP, LM.getLPCW(L"header_timestamp"));
     AppendMenu(hMenu, MF_STRING | (isDeleteButtonVisible ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_DELETE, LM.getLPCW(L"header_delete_button"));
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+
+    // Context-sensitive Lock entry. Only shown when the right-clicked
+    // column is one of the three lockable dynamic columns (Find,
+    // Replace, Comments). Label includes the column name, checkmark
+    // reflects the lock state.
+    bool isLockable = false;
+    bool isLocked = false;
+    std::wstring columnName;
+    switch (_tagetedLockColumn) {
+    case ColumnID::FIND_TEXT:
+        isLockable = true;
+        isLocked = findColumnLockedEnabled;
+        columnName = LM.get(L"header_find");
+        break;
+    case ColumnID::REPLACE_TEXT:
+        isLockable = true;
+        isLocked = replaceColumnLockedEnabled;
+        columnName = LM.get(L"header_replace");
+        break;
+    case ColumnID::COMMENTS:
+        isLockable = true;
+        isLocked = commentsColumnLockedEnabled;
+        columnName = LM.get(L"header_comments");
+        break;
+    default:
+        break;
+    }
+    if (isLockable) {
+        const std::wstring label =
+            LM.get(L"ctxmenu_lock_column_width", { columnName });
+        AppendMenu(hMenu,
+            MF_STRING | (isLocked ? MF_CHECKED : MF_UNCHECKED),
+            IDM_TOGGLE_LOCK_COLUMN,
+            label.c_str());
+        AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+    }
+
     AppendMenu(hMenu, MF_STRING, IDM_RESET_COLUMN_ORDER, LM.getLPCW(L"ctxmenu_reset_column_order"));
 
     // Display the menu at the specified location
@@ -6265,6 +6317,29 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             ListView_SetItemCountEx(_replaceListView,
                 static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
             InvalidateRect(_replaceListView, nullptr, TRUE);
+            return TRUE;
+        }
+
+        case IDM_TOGGLE_LOCK_COLUMN:
+        {
+            // Same toggle path as the divider double-click gesture:
+            // flip the flag and repaint the header so the lock icon
+            // appears or disappears. Column widths adjust on the
+            // next layout pass.
+            switch (_tagetedLockColumn) {
+            case ColumnID::FIND_TEXT:
+                findColumnLockedEnabled = !findColumnLockedEnabled;
+                break;
+            case ColumnID::REPLACE_TEXT:
+                replaceColumnLockedEnabled = !replaceColumnLockedEnabled;
+                break;
+            case ColumnID::COMMENTS:
+                commentsColumnLockedEnabled = !commentsColumnLockedEnabled;
+                break;
+            default:
+                return TRUE;
+            }
+            updateHeaderSortDirection();
             return TRUE;
         }
 
