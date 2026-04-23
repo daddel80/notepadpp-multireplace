@@ -837,21 +837,37 @@ private:
     // --------------------------------------------------------------
     // Tandem mode (experimental)
     // --------------------------------------------------------------
-    // When enabled, the MR panel docks to one of N++'s edges (bottom,
-    // right or left) and follows it as N++ is moved or resized. The
+    // When enabled, the MR panel docks to one of N++'s edges (Bottom,
+    // Right or Left) and follows it as N++ is moved or resized. The
     // user can re-dock by dragging MR near a different edge - the
     // drag "snaps" magnetically while the mouse is held.
     //
+    // State model:
+    //   enabled   : feature is switched on by the user (via the
+    //               Notepad++ plugin menu). Persistent per session,
+    //               persistent across sessions via INI.
+    //   docked    : MR is currently snapped to an N++ edge. Derived
+    //               from user interaction:
+    //                 - set when MR snaps on drag or on menu-on,
+    //                 - cleared when the user drags MR free of N++,
+    //                 - cleared on menu-off.
+    //               Only while docked does the polling timer run
+    //               and MR follow N++'s movements.
+    //
+    // Pre-dock snapshot rule:
+    //   Captured at the moment MR transitions from free -> docked.
+    //   Restored on menu-off (enabled -> !enabled) if currently
+    //   docked. Discarded when the user drags MR free: their free
+    //   position is the new starting point, no auto-restore wanted.
+    //
     // Architecture is deliberately loose:
     //   - A 50ms polling timer drives the layout (no hooks on N++).
-    //   - All layout math is in namespace-local helpers, callable
-    //     without any MR instance state - this way the logic can
-    //     later be lifted into a reusable library.
-    //   - Member state below is only the bookkeeping needed for
-    //     enable/disable and for the single "user just resized"
-    //     latch.
+    //   - All layout math is in the tandem_dock library; this file
+    //     is orchestration only.
 
-    bool            _tandemActive = false;
+    bool            _tandemEnabled = false;
+    bool            _tandemDocked = false;
+    bool            _tandemHasSnapshot = false;
     TandemDockEdge  _tandemDockEdge = TandemDockEdge::Bottom;
     UINT_PTR        _tandemTimerId = 0;
     RECT            _tandemLastNppRect = {};
@@ -859,16 +875,32 @@ private:
     // true between WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE on MR itself.
     bool _tandemUserDragging = false;
 
-    // Pre-dock geometry, restored when tandem is turned off.
+    // Hysteresis state for the sticky magnet. While the user is
+    // dragging MR, this flag tracks whether the magnet is "engaged"
+    // (currently pulling MR to an edge) or "free". Set at drag
+    // start from the docked state; toggled inside tandemHandleMoving
+    // by the library's hysteresis math.
+    bool _tandemMagnetEngaged = false;
+
+    // Cursor offset (cursor position minus window top-left) captured
+    // at the moment the magnet engaged. During a snapped drag the
+    // rect Windows gives us is the SNAPPED rect (held at the edge)
+    // not the position the cursor would imply - so we reconstruct
+    // the "real" free rect by adding the offset change to it. This
+    // lets the magnet decide release based on where the cursor
+    // actually is, independent of drag speed or tick rate.
+    // See tandemHandleMoving() comments for the full model.
+    POINT _tandemMagnetOriginalCursorOffset = {};
+
+    // Pre-dock geometry snapshot. Only meaningful when
+    // _tandemHasSnapshot == true.
     RECT _tandemSavedNppRect = {};
     RECT _tandemSavedMrRect = {};
 
     // MR's user-desired OUTER dimensions along the "free" axis of
     // the current dock. At Bottom dock the free axis is vertical so
     // only _tandemDesiredMrHeight matters; at Right/Left dock only
-    // _tandemDesiredMrWidth matters. Tandem may shrink MR below
-    // these values when space is tight; it never grows MR beyond
-    // them unless the user resizes manually.
+    // _tandemDesiredMrWidth matters.
     int  _tandemDesiredMrHeight = 0;
     int  _tandemDesiredMrWidth = 0;
 
@@ -1335,19 +1367,50 @@ private:
     // Notepad++ main window and follows it on move/resize. Timer-
     // based polling (50ms) keeps the implementation simple and the
     // coupling to N++ loose.
-    void enableTandemMode();
-    void disableTandemMode();
+
+public:
+    // Public toggle - called from the N++ plugin menu.
+    // If currently enabled, turns the feature off (restoring the
+    // pre-dock geometry if docked). If currently disabled, turns
+    // the feature on and docks MR to the last-used edge.
     void toggleTandemMode();
+
+    // Current feature state - used by the plugin menu to render
+    // its checkmark in sync with the internal flag.
+    bool isTandemEnabled() const { return _tandemEnabled; }
+
+private:
+    // Timer tick. Re-applies the layout if the host rect has
+    // changed since the last tick. Runs when MR is docked.
     void onTandemTick();
+
+    // Timer tick when MR is NOT docked. Checks whether N++ just
+    // moved close enough to MR for the magnet to engage, and if
+    // so docks MR to the nearest qualifying edge. This is the
+    // symmetric counterpart of the WM_MOVING magnet (which only
+    // fires when MR itself is being dragged).
+    void onTandemFreeTick();
+
+    // Computes the new MR placement from the current host rect and
+    // applies it via SetWindowPos, including host-shrink if needed.
     void applyTandemLayout(const RECT& nppRect);
 
-    // Interactive snap: called from the dialog proc while the user
-    // is dragging MR. Modifies the rect in place so MR pulls towards
-    // the nearest N++ edge - Winamp-style magnet behaviour.
+    // WM_MOVING handler. While the user drags MR and the feature
+    // is enabled, this pulls MR toward the nearest host edge
+    // (Winamp-style magnet). Transitions docked state on release.
     void tandemHandleMoving(RECT* pTargetRect);
 
-    // Finalize dock edge after a user drag/resize of MR.
+    // WM_EXITSIZEMOVE handler. Decides whether MR is now "docked"
+    // or "free" based on its final position and updates state
+    // accordingly (including Pre-dock snapshot lifecycle).
     void tandemHandleExitSizeMove();
+
+    // Internal helpers for the state machine. Not part of the
+    // public API - callers should use toggleTandemMode() only.
+    void tandemDockToCurrentEdge();      // transition free -> docked
+    void tandemUndockAndRestore();       // transition docked -> free (with restore)
+    void tandemPersistEdgeToIni() const; // write lastDockEdge to INI
+    bool tandemLoadEdgeFromIni();        // read lastDockEdge; returns true if a persisted value was found
 
     // Reorders tabs: moves the tab at fromIdx so it sits at toIdx in
     // the tab vector. Updates _activeTabIndex consistently and

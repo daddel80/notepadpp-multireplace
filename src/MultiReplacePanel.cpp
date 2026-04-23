@@ -456,12 +456,6 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // Swap Button -> Bold1
     ctrlMap[IDC_SWAP_BUTTON] = { swapButtonX, sy(26), sx(22), sy(27), WC_BUTTON, L"⇅", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Bold1 };
 
-    // Tandem toggle (experimental): sits right below the swap button,
-    // forming a small utility column. Plain push button, same style
-    // as the swap button above - active state is indicated by the
-    // glyph ('@' when inactive, '#' when active) and the tooltip.
-    ctrlMap[IDC_TANDEM_BUTTON] = { swapButtonX, sy(54), sx(22), sy(22), WC_BUTTON, L"@", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_tandem_mode"), false, FontRole::Standard };
-
     ctrlMap[IDC_COPY_TO_LIST_BUTTON] = { buttonX, sy(14), sx(128), sy(52), WC_BUTTON, LM.getLPCW(L"panel_add_into_list"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_REPLACE_ALL_BUTTON] = { buttonX, sy(91), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace_all"), BS_SPLITBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_REPLACE_BUTTON] = { buttonX, sy(91), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_replace"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
@@ -4899,7 +4893,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             KillTimer(_hSelf, _tandemTimerId);
             _tandemTimerId = 0;
         }
-        _tandemActive = false;
+        _tandemEnabled = false;
+        _tandemDocked = false;
+        _tandemHasSnapshot = false;
+        _tandemMagnetEngaged = false;
 
         // Commit any pending edits so the user's last change is not
         // lost when the panel closes. Tab rename edit first (so it
@@ -5050,24 +5047,46 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         // Tandem mode ticker: poll the N++ main window and follow its
         // position/size changes. Using a timer (instead of a window
-        // event hook) keeps the coupling to N++ loose - if anything
-        // goes wrong, worst case is MR stops following; N++ itself is
-        // never touched.
-        //
-        // While the user is actively dragging MR, we skip the tick so
-        // the panel can be moved freely without jittering back.
-        if (_tandemActive && !_tandemUserDragging && wParam == _tandemTimerId) {
-            onTandemTick();
+        // Timer ticks for two separate purposes depending on MR's
+        // state:
+        //   docked -> follow N++ as it moves/resizes
+        //   free   -> watch for N++ coming into snap range so MR
+        //             can re-engage the magnet without the user
+        //             having to drag MR itself. This is the
+        //             symmetric counterpart to WM_MOVING on MR.
+        // In both cases we skip while the user is dragging MR.
+        if (_tandemEnabled && !_tandemUserDragging
+            && wParam == _tandemTimerId) {
+            if (_tandemDocked) {
+                onTandemTick();
+            }
+            else {
+                onTandemFreeTick();
+            }
         }
         return 0;
     }
 
     case WM_ENTERSIZEMOVE:
     {
-        // User grabbed the title bar or a resize edge. Let them drag
-        // freely - the snap-back happens in WM_EXITSIZEMOVE.
-        if (_tandemActive) {
+        // User grabbed the title bar or a resize edge. Let them
+        // drag freely; the dock/undock decision happens per tick
+        // inside tandemHandleMoving.
+        if (_tandemEnabled) {
             _tandemUserDragging = true;
+            // If MR is docked right now, the magnet starts engaged
+            // and we capture the reference cursor-to-rect offset
+            // that tandemHandleMoving uses to reconstruct the
+            // hypothetical free rect while snapped.
+            _tandemMagnetEngaged = _tandemDocked;
+            if (_tandemMagnetEngaged) {
+                POINT cursor{};
+                GetCursorPos(&cursor);
+                RECT r{};
+                GetWindowRect(_hSelf, &r);
+                _tandemMagnetOriginalCursorOffset.x = cursor.x - r.left;
+                _tandemMagnetOriginalCursorOffset.y = cursor.y - r.top;
+            }
         }
         return 0;
     }
@@ -5079,7 +5098,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         // to by lParam in place; returning TRUE tells it to use the
         // modified rect. Resizing does not trigger WM_MOVING, so
         // snap only fires on actual moves - exactly what we want.
-        if (_tandemActive) {
+        if (_tandemEnabled) {
             tandemHandleMoving(reinterpret_cast<RECT*>(lParam));
             return TRUE;
         }
@@ -5088,10 +5107,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_EXITSIZEMOVE:
     {
-        // User released the mouse. If tandem is on, finalize the
-        // dock edge (based on proximity) and re-apply the layout
-        // immediately so the user doesn't see a one-tick lag.
-        if (_tandemActive) {
+        // User released the mouse. If the feature is enabled,
+        // decide whether MR is now docked (close to a host edge)
+        // or free, and update state / snapshot accordingly.
+        if (_tandemEnabled) {
             tandemHandleExitSizeMove();
         }
         return 0;
@@ -5816,12 +5835,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // Swap the content of the two text fields
             SetDlgItemTextW(_hSelf, IDC_FIND_EDIT, replaceText.c_str());
             SetDlgItemTextW(_hSelf, IDC_REPLACE_EDIT, findText.c_str());
-            return TRUE;
-        }
-
-        case IDC_TANDEM_BUTTON:
-        {
-            toggleTandemMode();
             return TRUE;
         }
 
@@ -15949,100 +15962,38 @@ void MultiReplace::inheritLayoutFromActiveTab(TabState& dst) const
 // Tandem mode (experimental)
 // ===================================================================
 //
-// Makes the MR panel dock to one of N++'s edges (Bottom / Right /
-// Left) and follow it when N++ is moved or resized. All geometric
-// and snap logic lives in the tandem_dock library; this file is
-// the thin orchestration layer: timer, member state, button UI,
-// and the bridge to N++'s HWND.
+// Docks the MR panel to a chosen edge (Bottom / Right / Left) of the
+// Notepad++ main window and keeps it glued as N++ is moved or
+// resized. The user toggles the feature via a Notepad++ plugin
+// menu entry; the actual dock/undock is done by dragging MR near
+// or away from an N++ edge (Winamp-style magnet).
+//
+// State machine:
+//
+//     +----------------+    toggleTandemMode()    +------------------+
+//     |  !enabled      |------------------------->|  enabled,        |
+//     |  (no timer)    |<-------------------------|  docked,         |
+//     +----------------+    toggleTandemMode()    |  has snapshot    |
+//                           (with restore)        +------------------+
+//                                                    |           ^
+//                           drag MR away from host   |           | drag MR near
+//                           (discard snapshot)       v           | a host edge
+//                                                 +------------------+
+//                                                 |  enabled,        |
+//                                                 |  !docked,        |
+//                                                 |  no snapshot     |
+//                                                 +------------------+
+//
+// Persistent state across sessions:
+//   - _tandemDockEdge (INI key "LastDockEdge" in [Tandem] section).
+//     Written whenever the edge changes during a docked session;
+//     read at plugin load so the next enable reuses the last edge.
+//
+// All geometric and snap logic lives in the tandem_dock library
+// (TandemDock.h / .cpp). This file is orchestration only: timer,
+// member state, menu plumbing and the bridge to N++'s HWND.
 
 #include "TandemDock.h"
-
-void MultiReplace::enableTandemMode()
-{
-    if (_tandemActive) return;
-    if (!IsWindow(nppData._nppHandle)) return;
-
-    if (!GetWindowRect(nppData._nppHandle, &_tandemSavedNppRect)) return;
-    if (!GetWindowRect(_hSelf, &_tandemSavedMrRect))  return;
-
-    _tandemDesiredMrHeight =
-        _tandemSavedMrRect.bottom - _tandemSavedMrRect.top;
-    _tandemDesiredMrWidth =
-        _tandemSavedMrRect.right - _tandemSavedMrRect.left;
-
-    _tandemActive = true;
-    _tandemDockEdge = TandemDockEdge::Bottom;   // always start bottom
-    _tandemUserDragging = false;
-    _tandemPendingShrinkNpp = false;
-    _tandemUserResize = false;
-    _tandemLastNppRect = {};
-
-    _tandemTimerId = SetTimer(_hSelf, 0xFADE, 50, nullptr);
-    SetDlgItemTextW(_hSelf, IDC_TANDEM_BUTTON, L"#");
-
-    RECT r{};
-    if (GetWindowRect(nppData._nppHandle, &r)) {
-        applyTandemLayout(r);
-        _tandemLastNppRect = r;
-    }
-
-    showStatusMessage(L"Tandem mode enabled.", MessageStatus::Info);
-}
-
-void MultiReplace::disableTandemMode()
-{
-    if (!_tandemActive) return;
-
-    if (_tandemTimerId) {
-        KillTimer(_hSelf, _tandemTimerId);
-        _tandemTimerId = 0;
-    }
-    _tandemActive = false;
-    _tandemUserDragging = false;
-    _tandemPendingShrinkNpp = false;
-    _tandemUserResize = false;
-
-    if (IsWindow(nppData._nppHandle)) {
-        const RECT& n = _tandemSavedNppRect;
-        SetWindowPos(nppData._nppHandle, nullptr,
-            n.left, n.top, n.right - n.left, n.bottom - n.top,
-            SWP_NOZORDER | SWP_NOACTIVATE);
-    }
-    const RECT& m = _tandemSavedMrRect;
-    SetWindowPos(_hSelf, nullptr,
-        m.left, m.top, m.right - m.left, m.bottom - m.top,
-        SWP_NOZORDER | SWP_NOACTIVATE);
-
-    SetDlgItemTextW(_hSelf, IDC_TANDEM_BUTTON, L"@");
-    showStatusMessage(L"Tandem mode disabled.", MessageStatus::Info);
-}
-
-void MultiReplace::toggleTandemMode()
-{
-    if (_tandemActive) disableTandemMode();
-    else               enableTandemMode();
-}
-
-void MultiReplace::onTandemTick()
-{
-    if (!IsWindow(nppData._nppHandle)) {
-        disableTandemMode();
-        return;
-    }
-
-    RECT r{};
-    if (!GetWindowRect(nppData._nppHandle, &r)) return;
-
-    const bool rectChanged =
-        r.left != _tandemLastNppRect.left ||
-        r.top != _tandemLastNppRect.top ||
-        r.right != _tandemLastNppRect.right ||
-        r.bottom != _tandemLastNppRect.bottom;
-    if (!rectChanged && !_tandemPendingShrinkNpp) return;
-
-    applyTandemLayout(r);
-    _tandemLastNppRect = r;
-}
 
 namespace {
     // Bridge: MultiReplace::TandemDockEdge <-> tandem_dock::DockEdge.
@@ -16064,10 +16015,223 @@ namespace {
         }
         return MultiReplace::TandemDockEdge::Bottom;
     }
+
+    const wchar_t kTandemIniSection[] = L"Tandem";
+    const wchar_t kTandemIniKey[] = L"LastDockEdge";
+
+    const wchar_t* edgeToIniString(MultiReplace::TandemDockEdge e)
+    {
+        switch (e) {
+        case MultiReplace::TandemDockEdge::Right:  return L"Right";
+        case MultiReplace::TandemDockEdge::Left:   return L"Left";
+        case MultiReplace::TandemDockEdge::Bottom: return L"Bottom";
+        }
+        return L"Bottom";
+    }
+    MultiReplace::TandemDockEdge edgeFromIniString(const std::wstring& s)
+    {
+        if (s == L"Right") return MultiReplace::TandemDockEdge::Right;
+        if (s == L"Left")  return MultiReplace::TandemDockEdge::Left;
+        return MultiReplace::TandemDockEdge::Bottom;
+    }
+
 }
 
-// Main layout entry point. Assembles DockInputs from current window
-// state, calls tandem_dock::solveDock(), and applies the result.
+// -------------------------------------------------------------------
+//  Public menu entry point
+// -------------------------------------------------------------------
+
+void MultiReplace::toggleTandemMode()
+{
+    if (_tandemEnabled) {
+        // Leaving the feature: if we are currently docked, restore
+        // the pre-dock geometry. If the user had already dragged MR
+        // free, there is no snapshot to restore - just clear state.
+        if (_tandemDocked) {
+            tandemUndockAndRestore();
+        }
+        if (_tandemTimerId) {
+            KillTimer(_hSelf, _tandemTimerId);
+            _tandemTimerId = 0;
+        }
+        _tandemEnabled = false;
+        _tandemUserDragging = false;
+        showStatusMessage(L"Tandem mode disabled.", MessageStatus::Info);
+        return;
+    }
+
+    // Entering the feature.
+    if (!IsWindow(nppData._nppHandle)) return;
+
+    // Load persisted dock edge. If none exists yet (first-ever
+    // tandem toggle), pick the host edge nearest to MR's current
+    // position so the user gets an intuitive "dock where you
+    // already are" behaviour instead of a jarring jump to Bottom.
+    if (!tandemLoadEdgeFromIni()) {
+        using namespace tandem_dock;
+        const RECT mrVis = getVisualBounds(_hSelf);
+        const RECT hostVis = getVisualBounds(nppData._nppHandle);
+        _tandemDockEdge = fromLibEdge(pickNearestEdge(mrVis, hostVis));
+    }
+
+    _tandemEnabled = true;
+    _tandemTimerId = SetTimer(_hSelf, 0xFADE, 50, nullptr);
+
+    // Dock immediately to the chosen edge so the toggle has a
+    // visible effect - otherwise the user would have to drag MR to
+    // trigger anything and might think the menu item did nothing.
+    tandemDockToCurrentEdge();
+
+    showStatusMessage(L"Tandem mode enabled.", MessageStatus::Info);
+}
+
+// -------------------------------------------------------------------
+//  State-transition helpers (internal)
+// -------------------------------------------------------------------
+
+void MultiReplace::tandemDockToCurrentEdge()
+{
+    if (!IsWindow(nppData._nppHandle)) return;
+
+    // Capture snapshot of both windows' outer rects at the moment
+    // of transition free -> docked. This is the position we'll
+    // restore to on explicit menu-off. A drag-off discards it.
+    if (!GetWindowRect(nppData._nppHandle, &_tandemSavedNppRect)) return;
+    if (!GetWindowRect(_hSelf, &_tandemSavedMrRect))  return;
+    _tandemHasSnapshot = true;
+
+    _tandemDesiredMrHeight = _tandemSavedMrRect.bottom - _tandemSavedMrRect.top;
+    _tandemDesiredMrWidth = _tandemSavedMrRect.right - _tandemSavedMrRect.left;
+    _tandemDocked = true;
+    _tandemPendingShrinkNpp = false;
+    _tandemUserResize = false;
+    _tandemLastNppRect = {};
+
+    RECT r{};
+    if (GetWindowRect(nppData._nppHandle, &r)) {
+        applyTandemLayout(r);
+        _tandemLastNppRect = r;
+    }
+}
+
+void MultiReplace::tandemUndockAndRestore()
+{
+    if (_tandemHasSnapshot) {
+        if (IsWindow(nppData._nppHandle)) {
+            const RECT& n = _tandemSavedNppRect;
+            SetWindowPos(nppData._nppHandle, nullptr,
+                n.left, n.top, n.right - n.left, n.bottom - n.top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        const RECT& m = _tandemSavedMrRect;
+        SetWindowPos(_hSelf, nullptr,
+            m.left, m.top, m.right - m.left, m.bottom - m.top,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+        _tandemHasSnapshot = false;
+    }
+    _tandemDocked = false;
+    _tandemPendingShrinkNpp = false;
+    _tandemUserResize = false;
+}
+
+// -------------------------------------------------------------------
+//  Persistence
+// -------------------------------------------------------------------
+//
+// The dock edge is persisted to the regular INI cache via CFG
+// (the global ConfigManager alias). Writes go through the cache
+// and reach disk on the next CFG.save() call - which the plugin
+// already performs at panel shutdown, so no extra save is needed
+// here. Reads happen the first time the feature is enabled in a
+// session; subsequent enables reuse the in-memory value.
+
+void MultiReplace::tandemPersistEdgeToIni() const
+{
+    CFG.writeString(kTandemIniSection, kTandemIniKey,
+        edgeToIniString(_tandemDockEdge));
+}
+
+bool MultiReplace::tandemLoadEdgeFromIni()
+{
+    // Empty default: if we read back empty, no value was persisted
+    // yet. Caller then picks a sensible initial edge (the one
+    // nearest to MR's current position) rather than blindly
+    // defaulting to Bottom.
+    const std::wstring value =
+        CFG.readString(kTandemIniSection, kTandemIniKey, L"");
+    if (value.empty()) {
+        return false;
+    }
+    _tandemDockEdge = edgeFromIniString(value);
+    return true;
+}
+
+// -------------------------------------------------------------------
+//  Timer-driven follow
+// -------------------------------------------------------------------
+
+void MultiReplace::onTandemTick()
+{
+    if (!IsWindow(nppData._nppHandle)) {
+        // Host went away. Drop to "enabled but not docked" so the
+        // user can restore the feature once N++ returns (or simply
+        // toggle it off via the menu).
+        _tandemDocked = false;
+        return;
+    }
+
+    RECT r{};
+    if (!GetWindowRect(nppData._nppHandle, &r)) return;
+
+    const bool rectChanged =
+        r.left != _tandemLastNppRect.left ||
+        r.top != _tandemLastNppRect.top ||
+        r.right != _tandemLastNppRect.right ||
+        r.bottom != _tandemLastNppRect.bottom;
+    if (!rectChanged && !_tandemPendingShrinkNpp) return;
+
+    applyTandemLayout(r);
+    _tandemLastNppRect = r;
+}
+
+void MultiReplace::onTandemFreeTick()
+{
+    using namespace tandem_dock;
+    if (!IsWindow(nppData._nppHandle)) return;
+
+    // Skip while the host is minimized - the visible rect is
+    // bogus (off-screen) and would never qualify as "near" anyway.
+    if (IsIconic(nppData._nppHandle)) return;
+
+    // MR is currently free. Ask the lib: would MR's rect, as it
+    // stands now, fall within the magnet threshold of any host
+    // edge? If yes, the library shifts a copy of the rect to the
+    // snap target and we transition into the docked state.
+    RECT mrRect{};
+    if (!GetWindowRect(_hSelf, &mrRect)) return;
+
+    const RECT          hostVis = getVisualBounds(nppData._nppHandle);
+    const ShadowOffsets clientShadow = getShadowOffsets(_hSelf);
+
+    RECT probe = mrRect;
+    const SnapResult snap = snapMovingRectToHost(
+        &probe, hostVis, clientShadow);
+
+    if (!snap.applied) return;
+
+    // N++ just came close enough. Adopt the edge and dock. We do
+    // not apply `probe` directly - tandemDockToCurrentEdge() runs
+    // the full solver so host-rescue and size-clamp stay consistent
+    // with the normal dock path (user-dragged MR case).
+    _tandemDockEdge = fromLibEdge(snap.edge);
+    tandemDockToCurrentEdge();
+    tandemPersistEdgeToIni();
+}
+
+// -------------------------------------------------------------------
+//  Layout application
+// -------------------------------------------------------------------
+
 void MultiReplace::applyTandemLayout(const RECT& nppRect)
 {
     using namespace tandem_dock;
@@ -16075,10 +16239,17 @@ void MultiReplace::applyTandemLayout(const RECT& nppRect)
     // Ignore minimized N++ (off-screen coords).
     if (nppRect.left < -10000 || nppRect.top < -10000) return;
 
-    const RECT workArea = getMonitorWorkArea(nppData._nppHandle);
+    // Work area: union of all monitors that N++ currently touches.
+    // While the user drags N++ across a monitor seam, its rect
+    // straddles two monitors for a moment; using the single-
+    // monitor work area would treat N++ as if its overhanging
+    // part were off-screen, which triggers a host-shrink cascade
+    // that fights the user's drag. The union lets MR live on
+    // either monitor (or overlap the seam) without shrinkage.
+    const RECT workArea = getWorkAreaUnionForRect(nppRect);
 
-    // If N++ is maximized and we might need to shrink it, restore it
-    // first - otherwise SetWindowPos is silently ignored.
+    // If N++ is maximized and we may need to shrink it, restore it
+    // first - SetWindowPos is ignored on maximized windows.
     const bool tooBigForScreen =
         (nppRect.bottom - nppRect.top) > (workArea.bottom - workArea.top) ||
         (nppRect.right - nppRect.left) > (workArea.right - workArea.left);
@@ -16089,7 +16260,6 @@ void MultiReplace::applyTandemLayout(const RECT& nppRect)
     RECT nppFull{};
     if (!GetWindowRect(nppData._nppHandle, &nppFull)) return;
 
-    // Build solver inputs.
     DockInputs in{};
     in.edge = toLibEdge(_tandemDockEdge);
     in.workArea = workArea;
@@ -16098,17 +16268,9 @@ void MultiReplace::applyTandemLayout(const RECT& nppRect)
     in.hostShadow = getShadowOffsets(nppData._nppHandle);
     in.clientShadow = getShadowOffsets(_hSelf);
 
-    // Minimum outer size comes from the OS-enforced minimum (same
-    // number the WM_GETMINMAXINFO handler reports). For the Bottom
-    // dock that's the height floor; for Right/Left we use the same
-    // value as a width floor - which matches what the user can drag
-    // to anyway, so it's consistent.
     const RECT minFrame = calculateMinWindowFrame(_hSelf);
     const int minOuterH = minFrame.bottom;
     const int minOuterW = minFrame.right;
-
-    constexpr int kMinNppVisiblePx = 200;
-    in.minHostPrimary = kMinNppVisiblePx;
 
     switch (_tandemDockEdge) {
     case TandemDockEdge::Bottom:
@@ -16132,18 +16294,23 @@ void MultiReplace::applyTandemLayout(const RECT& nppRect)
         layout.clientOuter.bottom - layout.clientOuter.top,
         SWP_NOZORDER | SWP_NOACTIVATE);
 
-    // Defense in depth: Windows may inflate our request via
-    // WM_GETMINMAXINFO. If MR's VISIBLE rect spills outside the
-    // work area, nudge it back. We compare visible bounds (not
-    // outer) on purpose: Windows' own Aero-Snap lets maximized
-    // windows extend their invisible DWM shadow under the taskbar
-    // while keeping the visible frame inside the work area. Using
-    // outer coords here would trim MR 7-8 px short of N++ whenever
-    // N++ is Aero-snap-maximized.
+    // Defense in depth: if MR's VISIBLE rect spilled outside the
+    // work area union, nudge it back. Using visible bounds matches
+    // Windows' own Aero-Snap behaviour where maximized windows
+    // extend their invisible DWM shadow under the taskbar -
+    // outer-based clamping would trim MR 7-8 px short of an
+    // Aero-snapped N++.
+    //
+    // Skipped while the user is actively dragging N++: during a
+    // monitor-seam crossing the union shifts as N++ moves, and
+    // clamping MR back each tick would cause visible jitter. Per
+    // policy, MR may temporarily overflow during the drag; the
+    // tick after mouse-up re-applies the solver and clamps then.
+    if (!mouseButtonDown())
     {
         RECT actualOuter{};
         GetWindowRect(_hSelf, &actualOuter);
-        const RECT actualVis = tandem_dock::getVisualBounds(_hSelf);
+        const RECT actualVis = getVisualBounds(_hSelf);
         int dx = 0, dy = 0;
         if (actualVis.bottom > workArea.bottom) dy = workArea.bottom - actualVis.bottom;
         if (actualVis.right > workArea.right)  dx = workArea.right - actualVis.right;
@@ -16158,15 +16325,12 @@ void MultiReplace::applyTandemLayout(const RECT& nppRect)
         }
     }
 
-    // Self-calibration: measure where MR's visible anchor edge
-    // actually ended up and nudge by any residual error. This is
-    // what produces pixel-perfect flush joins across DPI scaling,
-    // Windows versions, and window-style variations without any
-    // magic offsets in the solver.
+    // Self-calibrating seam: closes any residual 1-px offset
+    // arising from DPI rounding or DWM frame-bounds quirks.
     nudgeClientToFlush(_hSelf, layout);
 
-    // Shrink-only update of user-desired primary size (unless the
-    // latch says we're responding to an explicit user resize).
+    // Shrink-only update of user-desired primary size unless this
+    // call is the aftermath of a deliberate user resize.
     if (!_tandemUserResize) {
         switch (_tandemDockEdge) {
         case TandemDockEdge::Bottom: {
@@ -16183,26 +16347,20 @@ void MultiReplace::applyTandemLayout(const RECT& nppRect)
         }
     }
 
-    // N++ rescue.
+    // Host rescue: shrink N++ from the dock edge if MR would have
+    // to overlap it. Policy for monitor-seam / multi-monitor drags:
+    // while the user actively drags N++, suppress shrink entirely.
+    // MR may temporarily overflow the work-area union - that is
+    // acceptable (documented behaviour) and avoids the feedback
+    // loop where our shrink fights Windows' live drag rect, which
+    // produces the jitter/flicker seen when crossing monitors.
+    //
+    // _tandemPendingShrinkNpp is still latched so onTandemTick()
+    // will re-apply the solver on the next tick after mouse-up;
+    // the actual shrink happens at that point if still needed.
     if (layout.hostNeedsShrink) {
         const bool mouseDown = mouseButtonDown();
         if (mouseDown) {
-            // Live-drag: apply a "wall" only (host is not moved,
-            // only the dock-side edge is pinned). Final slide-up
-            // happens on mouse release.
-            RECT wall = layout.hostOuterTarget;
-            switch (_tandemDockEdge) {
-            case TandemDockEdge::Bottom: wall.top = nppFull.top;   break;
-            case TandemDockEdge::Right:  wall.left = nppFull.left;  break;
-            case TandemDockEdge::Left:   wall.right = nppFull.right; break;
-            }
-            if (wall.right - wall.left > 50 && wall.bottom - wall.top > 50) {
-                SetWindowPos(nppData._nppHandle, nullptr,
-                    wall.left, wall.top,
-                    wall.right - wall.left,
-                    wall.bottom - wall.top,
-                    SWP_NOZORDER | SWP_NOACTIVATE);
-            }
             _tandemPendingShrinkNpp = true;
         }
         else {
@@ -16220,56 +16378,154 @@ void MultiReplace::applyTandemLayout(const RECT& nppRect)
     }
 }
 
-// WM_MOVING handler. Magnetically snaps MR to the nearest N++ edge
-// during drag and updates the current dock edge accordingly.
+// -------------------------------------------------------------------
+//  Drag-time magnet (WM_MOVING)
+// -------------------------------------------------------------------
+
 void MultiReplace::tandemHandleMoving(RECT* pTargetRect)
 {
     using namespace tandem_dock;
-    if (!_tandemActive || !pTargetRect) return;
-    if (!IsWindow(nppData._nppHandle))  return;
+    if (!_tandemEnabled || !pTargetRect) return;
+    if (!IsWindow(nppData._nppHandle))   return;
 
+    // ---------------------------------------------------------------
+    // Winamp / winsnap model: snap the "real" (hypothetical, free)
+    // rect, not the one Windows is handing us. While snapped, the
+    // rect we return to Windows is NOT where the window would be if
+    // the user had dragged freely - we hold it at the edge. So the
+    // cursor keeps wandering while the window stays put.
+    //
+    // To decide when to release, we reconstruct where the window
+    // WOULD be without the snap, by using the cursor offset as a
+    // reference frame:
+    //
+    //   cursorOffset  = current cursor relative to current rect.
+    //   originalOffset= cursor offset captured at drag start,
+    //                   when the snap had not yet distorted things.
+    //   offsetDiff    = cursorOffset - originalOffset
+    //                 = how far we're off from where we'd be if
+    //                   cursor offset had stayed constant.
+    //   realBounds    = current rect + offsetDiff = hypothetical
+    //                   free rect.
+    //
+    // Then: is realBounds within snap distance of any host edge?
+    //   yes -> snap pTargetRect to that edge.
+    //   no  -> hand realBounds back (release).
+    //
+    // Pulling away feels like a single crisp transition regardless
+    // of drag speed, because we are always comparing the cursor's
+    // actual position to the host - not the frozen snapped rect.
+    // ---------------------------------------------------------------
+
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    const POINT cursorOffset{
+        cursor.x - pTargetRect->left,
+        cursor.y - pTargetRect->top
+    };
+
+    RECT realBounds = *pTargetRect;
+    if (_tandemMagnetEngaged) {
+        const LONG dx = cursorOffset.x - _tandemMagnetOriginalCursorOffset.x;
+        const LONG dy = cursorOffset.y - _tandemMagnetOriginalCursorOffset.y;
+        OffsetRect(&realBounds, dx, dy);
+    }
+
+    // Ask the library: does the hypothetical free rect want to snap?
     const RECT          hostVis = getVisualBounds(nppData._nppHandle);
     const ShadowOffsets clientShadow = getShadowOffsets(_hSelf);
-    const SnapResult    snap = snapMovingRectToHost(pTargetRect, hostVis, clientShadow);
+
+    RECT probe = realBounds;
+    const SnapResult snap = snapMovingRectToHost(
+        &probe, hostVis, clientShadow);
+
     if (snap.applied) {
+        // Snap engaged. Hand the snapped rect back to Windows; the
+        // user now sees MR glued to the edge. Keep the original
+        // cursor offset anchored from the first engage moment so
+        // future releases use a stable reference.
+        if (!_tandemMagnetEngaged) {
+            _tandemMagnetOriginalCursorOffset = cursorOffset;
+            _tandemMagnetEngaged = true;
+        }
         _tandemDockEdge = fromLibEdge(snap.edge);
+        *pTargetRect = probe;
     }
+    else if (_tandemMagnetEngaged) {
+        // Snap just broke. Hand the REAL (free) rect back so the
+        // window visibly jumps to where the cursor actually is -
+        // this is the natural release "pop" without needing an
+        // artificial kick.
+        _tandemMagnetEngaged = false;
+        *pTargetRect = realBounds;
+    }
+    // else: was free, still free - leave pTargetRect alone.
 }
 
-// WM_EXITSIZEMOVE handler. Locks in the dock edge by proximity,
-// captures the new user-desired primary length, and re-applies the
-// layout immediately for instant visual feedback.
+// -------------------------------------------------------------------
+//  Drag-release decision (WM_EXITSIZEMOVE)
+// -------------------------------------------------------------------
+
 void MultiReplace::tandemHandleExitSizeMove()
 {
     using namespace tandem_dock;
-    if (!_tandemActive) return;
     _tandemUserDragging = false;
+    if (!_tandemEnabled) return;
 
-    RECT mrFull{};
-    if (!GetWindowRect(_hSelf, &mrFull)) return;
-    if (!IsWindow(nppData._nppHandle))   return;
-
-    const RECT mrVis = getVisualBounds(_hSelf);
-    const RECT hostVis = getVisualBounds(nppData._nppHandle);
-
-    _tandemDockEdge = fromLibEdge(
-        pickEdgeByProximity(mrVis, hostVis, toLibEdge(_tandemDockEdge)));
-
-    const int outerW = mrFull.right - mrFull.left;
-    const int outerH = mrFull.bottom - mrFull.top;
-    switch (_tandemDockEdge) {
-    case TandemDockEdge::Bottom: _tandemDesiredMrHeight = outerH; break;
-    case TandemDockEdge::Right:
-    case TandemDockEdge::Left:   _tandemDesiredMrWidth = outerW; break;
+    if (!IsWindow(nppData._nppHandle)) {
+        // Host gone - nothing to dock to. Drop out of docked state.
+        _tandemDocked = false;
+        _tandemHasSnapshot = false;
+        return;
     }
-    _tandemUserResize = true;
 
-    RECT r{};
-    if (GetWindowRect(nppData._nppHandle, &r)) {
-        applyTandemLayout(r);
-        _tandemLastNppRect = r;
+    // The hysteresis magnet already told us whether MR is engaged
+    // at release time. Trust that signal rather than re-computing
+    // distances - the two would have to agree anyway, and having a
+    // single decision point avoids subtle off-by-one disagreements
+    // between the drag-time magnet and the release-time snap.
+
+    if (_tandemMagnetEngaged) {
+        // MR ended the drag glued to a host edge -> DOCK.
+        const bool wasDocked = _tandemDocked;
+
+        if (!wasDocked) {
+            // Transition free -> docked. Capture a fresh pre-dock
+            // snapshot (from the position the user last let MR
+            // rest at before re-docking).
+            tandemDockToCurrentEdge();
+        }
+        else {
+            // Already docked, possibly on a different edge now.
+            // Capture the user's chosen primary size and re-apply.
+            RECT mrFull{}; GetWindowRect(_hSelf, &mrFull);
+            const int outerW = mrFull.right - mrFull.left;
+            const int outerH = mrFull.bottom - mrFull.top;
+            if (_tandemDockEdge == TandemDockEdge::Bottom) {
+                _tandemDesiredMrHeight = outerH;
+            }
+            else {
+                _tandemDesiredMrWidth = outerW;
+            }
+            _tandemUserResize = true;
+            RECT r{};
+            if (GetWindowRect(nppData._nppHandle, &r)) {
+                applyTandemLayout(r);
+                _tandemLastNppRect = r;
+            }
+            _tandemUserResize = false;
+        }
+        tandemPersistEdgeToIni();
     }
-    _tandemUserResize = false;
+    else {
+        // Drag ended with magnet disengaged -> UNDOCK.
+        // Do NOT restore the pre-dock snapshot: the user has
+        // chosen the current free position on purpose.
+        if (_tandemDocked) {
+            _tandemDocked = false;
+            _tandemHasSnapshot = false;  // discard, user moved out by hand
+        }
+    }
 }
 
 void MultiReplace::addNewTab()

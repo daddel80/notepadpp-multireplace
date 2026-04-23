@@ -61,7 +61,6 @@
 #define IDC_COPY_MARKED_TEXT_BUTTON     5016
 #define IDC_CLEAR_MARKS_BUTTON          5017
 #define IDC_CANCEL_REPLACE_BUTTON       5018
-#define IDC_TANDEM_BUTTON               5019   // experimental: dock to N++ window
 
 
 
@@ -243,6 +242,7 @@
 #define IDM_TOGGLE_DELETE               5804
 #define IDM_TOGGLE_TIMESTAMP            5805
 #define IDM_RESET_COLUMN_ORDER          5806
+#define IDM_TOGGLE_LOCK_COLUMN          5807
 
 // ===================================================================
 //  5900-5910 - Tab context menu command IDs

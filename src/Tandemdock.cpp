@@ -50,6 +50,51 @@ namespace tandem_dock {
         return r;
     }
 
+    namespace {
+        struct UnionEnumCtx {
+            RECT probe;       // in
+            RECT unionRc;     // out - initialized empty
+            bool any;         // out - at least one hit
+        };
+        BOOL CALLBACK unionMonitorProc(HMONITOR hMon, HDC, LPRECT, LPARAM lp)
+        {
+            auto* ctx = reinterpret_cast<UnionEnumCtx*>(lp);
+            MONITORINFO mi{}; mi.cbSize = sizeof(mi);
+            if (!GetMonitorInfo(hMon, &mi)) return TRUE;
+            // Does this monitor intersect the probe rect?
+            RECT ix{};
+            if (!IntersectRect(&ix, &ctx->probe, &mi.rcMonitor)) return TRUE;
+            // Accumulate its work area into the union.
+            if (!ctx->any) {
+                ctx->unionRc = mi.rcWork;
+                ctx->any = true;
+            }
+            else {
+                UnionRect(&ctx->unionRc, &ctx->unionRc, &mi.rcWork);
+            }
+            return TRUE;
+        }
+    }
+
+    RECT getWorkAreaUnionForRect(const RECT& rect)
+    {
+        UnionEnumCtx ctx{};
+        ctx.probe = rect;
+        EnumDisplayMonitors(nullptr, nullptr, unionMonitorProc,
+            reinterpret_cast<LPARAM>(&ctx));
+        if (ctx.any) return ctx.unionRc;
+
+        // Fallback: rect is off-screen or enumeration failed. Use the
+        // monitor the rect's center is nearest to.
+        const POINT c{ (rect.left + rect.right) / 2,
+                       (rect.top + rect.bottom) / 2 };
+        HMONITOR hMon = MonitorFromPoint(c, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi{}; mi.cbSize = sizeof(mi);
+        if (GetMonitorInfo(hMon, &mi)) return mi.rcWork;
+        RECT r{ 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+        return r;
+    }
+
     ShadowOffsets getShadowOffsets(HWND hwnd)
     {
         RECT full{}; GetWindowRect(hwnd, &full);
@@ -299,64 +344,59 @@ namespace tandem_dock {
         SnapResult res{};
         if (!pClientRect) return res;
 
-        // WM_MOVING's rect is OUTER coords. We want visible edges to
-        // meet host.visible - snap target for each edge:
-        //   Bottom: client.visible.top     == host.visible.bottom
-        //            -> client.outer.top    = host.visible.bottom - clientShadow.top
-        //   Right : client.visible.left    == host.visible.right
-        //            -> client.outer.left   = host.visible.right - clientShadow.left
-        //   Left  : client.visible.right   == host.visible.left
-        //            -> client.outer.right  = host.visible.left + clientShadow.right
+        // Each candidate is scored by the |delta| along its primary
+        // axis. The best (smallest, within threshold, secondary-axis
+        // overlap present) wins.
         //
-        // Overlap checks on the secondary axis compare VISIBLE edges
-        // too, so the magnet only fires when the client is actually
-        // beside the matching host side.
+        // Per edge: OUTER-coord offset that produces a flush VISIBLE
+        // join to the host (the solver uses the same math):
+        //   Bottom : client.outer.top    = host.vis.bottom - client.shadow.top
+        //   Right  : client.outer.left   = host.vis.right - 1 - client.shadow.left
+        //   Left   : client.outer.right  = host.vis.left  + 1 + client.shadow.right
 
         struct Candidate {
-            int      absDelta;
             int      dx;
             int      dy;
+            int      dist;
             DockEdge edge;
-            bool     valid;
+            bool     overlapOk;
         };
-        Candidate cands[3] = {};
+        Candidate cands[3];
 
-        // Bottom: require horizontal VISIBLE overlap. Flush join.
+        // Bottom
         {
             const int targetOuterTop = hostVis.bottom - clientShadow.top;
             const int delta = targetOuterTop - pClientRect->top;
             const int visLeft = pClientRect->left + clientShadow.left;
             const int visRight = pClientRect->right - clientShadow.right;
-            const bool overlap = visRight > hostVis.left && visLeft < hostVis.right;
-            cands[0] = { std::abs(delta), 0, delta, DockEdge::Bottom,
-                         overlap && std::abs(delta) <= thresholdPx };
+            cands[0] = { 0, delta, std::abs(delta), DockEdge::Bottom,
+                         visRight > hostVis.left && visLeft < hostVis.right };
         }
-        // Right: 1 px overlap matching solver (kVerticalEdgeOverlapPx).
+        // Right
         {
             const int targetOuterLeft = hostVis.right - 1 - clientShadow.left;
             const int delta = targetOuterLeft - pClientRect->left;
             const int visTop = pClientRect->top + clientShadow.top;
             const int visBottom = pClientRect->bottom - clientShadow.bottom;
-            const bool overlap = visBottom > hostVis.top && visTop < hostVis.bottom;
-            cands[1] = { std::abs(delta), delta, 0, DockEdge::Right,
-                         overlap && std::abs(delta) <= thresholdPx };
+            cands[1] = { delta, 0, std::abs(delta), DockEdge::Right,
+                         visBottom > hostVis.top && visTop < hostVis.bottom };
         }
-        // Left: 1 px overlap matching solver.
+        // Left
         {
             const int targetOuterRight = hostVis.left + 1 + clientShadow.right;
             const int delta = targetOuterRight - pClientRect->right;
             const int visTop = pClientRect->top + clientShadow.top;
             const int visBottom = pClientRect->bottom - clientShadow.bottom;
-            const bool overlap = visBottom > hostVis.top && visTop < hostVis.bottom;
-            cands[2] = { std::abs(delta), delta, 0, DockEdge::Left,
-                         overlap && std::abs(delta) <= thresholdPx };
+            cands[2] = { delta, 0, std::abs(delta), DockEdge::Left,
+                         visBottom > hostVis.top && visTop < hostVis.bottom };
         }
 
         int bestIdx = -1;
-        int bestAbs = INT_MAX;
+        int bestDist = INT_MAX;
         for (int i = 0; i < 3; ++i) {
-            if (cands[i].valid && cands[i].absDelta < bestAbs) {
-                bestAbs = cands[i].absDelta;
+            if (cands[i].overlapOk && cands[i].dist <= thresholdPx
+                && cands[i].dist < bestDist) {
+                bestDist = cands[i].dist;
                 bestIdx = i;
             }
         }
@@ -387,6 +427,56 @@ namespace tandem_dock {
         if (vOverlap && dRight < bestDist) { bestDist = dRight;  bestEdge = DockEdge::Right; }
         if (vOverlap && dLeft < bestDist) { bestDist = dLeft;   bestEdge = DockEdge::Left; }
         return bestEdge;
+    }
+
+    DockEdge pickNearestEdge(const RECT& clientVis, const RECT& hostVis)
+    {
+        // Squared distance from a point to a host edge SEGMENT (not
+        // infinite line). Used instead of simple perpendicular distance
+        // so a client that's, say, far above N++'s right edge doesn't
+        // get credited for a zero-distance Right pick just because it
+        // happens to be aligned on X.
+
+        auto clampedSqDist = [](int px, int py,
+            int ax, int ay, int bx, int by) -> long long
+            {
+                // Project (px,py) onto segment (ax,ay)-(bx,by), clamp [0,1].
+                const long long ABx = bx - ax;
+                const long long ABy = by - ay;
+                const long long APx = px - ax;
+                const long long APy = py - ay;
+                const long long ab2 = ABx * ABx + ABy * ABy;
+                long long t_num = APx * ABx + APy * ABy;
+                if (t_num < 0) t_num = 0;
+                if (ab2 > 0 && t_num > ab2) t_num = ab2;
+                const double t = (ab2 > 0) ? static_cast<double>(t_num) / ab2 : 0.0;
+                const double cx = ax + t * ABx;
+                const double cy = ay + t * ABy;
+                const double dx = px - cx;
+                const double dy = py - cy;
+                return static_cast<long long>(dx * dx + dy * dy);
+            };
+
+        const int cx = (clientVis.left + clientVis.right) / 2;
+        const int cy = (clientVis.top + clientVis.bottom) / 2;
+
+        const long long dBottom = clampedSqDist(cx, cy,
+            hostVis.left, hostVis.bottom,
+            hostVis.right, hostVis.bottom);
+        const long long dRight = clampedSqDist(cx, cy,
+            hostVis.right, hostVis.top,
+            hostVis.right, hostVis.bottom);
+        const long long dLeft = clampedSqDist(cx, cy,
+            hostVis.left, hostVis.top,
+            hostVis.left, hostVis.bottom);
+
+        // Pick smallest. Ties go to Bottom (traditional default), then
+        // Right, then Left.
+        DockEdge best = DockEdge::Bottom;
+        long long bestD = dBottom;
+        if (dRight < bestD) { bestD = dRight; best = DockEdge::Right; }
+        if (dLeft < bestD) { best = DockEdge::Left; }
+        return best;
     }
 
     // =====================================================================

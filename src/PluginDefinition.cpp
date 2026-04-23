@@ -87,7 +87,13 @@ void commandMenuInit()
     setCommand(6, const_cast<TCHAR*>(LM.getLPCW(L"cmd_next_result")), gotoNextFound, NULL, false);
     setCommand(7, const_cast<TCHAR*>(LM.getLPCW(L"cmd_prev_result")), gotoPrevFound, NULL, false);
     setCommand(8, TEXT("SEPARATOR"), NULL, NULL, false);
-    setCommand(9, const_cast<TCHAR*>(LM.getLPCW(L"menu_about")), about, NULL, false);
+
+    // Tandem Mode: docks MR to a N++ edge (Bottom / Right / Left)
+    // and follows N++ on move/resize. Toggle via the menu; drag MR
+    // near a host edge to re-dock, drag it away to un-dock.
+    setCommand(9, const_cast<TCHAR*>(LM.getLPCW(L"menu_tandem_mode")), toggleTandemMode, NULL,
+        _MultiReplace.isTandemEnabled());
+    setCommand(10, const_cast<TCHAR*>(LM.getLPCW(L"menu_about")), about, NULL, false);
 }
 
 //
@@ -178,6 +184,24 @@ void gotoPrevFound()
 }
 
 //
+// Tandem Mode toggle. Delegates to the panel's state machine and
+// then syncs the menu checkmark so the visual and internal state
+// never drift apart (e.g. when the user drags MR free, which also
+// affects internal docked state - the menu just shows enabled/not).
+//
+void toggleTandemMode()
+{
+    _MultiReplace.toggleTandemMode();
+
+    // Sync checkmark. The command ID is the one Notepad++ assigned
+    // to our entry at setCommand-time, looked up via funcItem.
+    const int tandemCmdId = funcItem[9]._cmdID;
+    ::SendMessage(nppData._nppHandle, NPPM_SETMENUITEMCHECK,
+        static_cast<WPARAM>(tandemCmdId),
+        _MultiReplace.isTandemEnabled() ? TRUE : FALSE);
+}
+
+//
 // Refresh plugin menu text when UI language changes (NPPN_NATIVELANGCHANGED)
 // This updates the menu items without requiring Notepad++ restart
 //
@@ -186,7 +210,7 @@ void refreshPluginMenu()
     LanguageManager& LM = LanguageManager::instance();
 
     // Mapping: funcItem index -> language key
-    // Index 1 is SEPARATOR, we skip it
+    // Indices 1, 4 and 8 are SEPARATORs and are skipped.
     static const struct {
         int index;
         const wchar_t* langKey;
@@ -200,7 +224,8 @@ void refreshPluginMenu()
         { 6, L"cmd_next_result" },
         { 7, L"cmd_prev_result" },
         // Index 8 is SEPARATOR - skip
-        { 9, L"menu_about" },
+        { 9, L"menu_tandem_mode" },
+        { 10, L"menu_about" },
     };
 
     // Get main menu handle from Notepad++

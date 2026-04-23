@@ -92,7 +92,6 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_move_up", L"Move selected lines up (Ctrl+Up)" },
 { L"tooltip_move_down", L"Move selected lines down (Ctrl+Down)" },
 { L"tooltip_find_duplicates", L"Find Duplicates" },
-{ L"tooltip_tandem_mode", L"Tandem mode: dock MR to the bottom of Notepad++" },
 
 // header entries
 { L"header_find_count", L"Find Count" },
@@ -274,6 +273,7 @@ const LangKV kEnglishPairs[] = {
 { L"ctxmenu_transfer_to_input_fields", L"&Transfer to Input Fields\tAlt+Up" },
 { L"ctxmenu_update_from_input_fields", L"&Update from Input Fields\tAlt+Down" },
 { L"ctxmenu_reset_column_order", L"Reset Column Order" },
+{ L"ctxmenu_lock_column_width", L"Lock '$REPLACE_STRING' column width" },
 { L"ctxmenu_search_in_list", L"&Search in List\tCtrl+F" },
 { L"ctxmenu_cut", L"Cu&t\tCtrl+X" },
 { L"ctxmenu_copy", L"&Copy\tCtrl+C" },
@@ -380,6 +380,7 @@ const LangKV kEnglishPairs[] = {
 { L"menu_open", L"&MultiReplace..." },
 { L"menu_settings", L"&Settings..." },
 { L"menu_documentation", L"&Documentation" },
+{ L"menu_tandem_mode", L"&Tandem Mode" },
 { L"menu_about", L"&About" },
 
 // Plugin Commands (assignable via Settings > Shortcut Mapper > Plugin Commands)

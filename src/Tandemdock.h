@@ -57,9 +57,15 @@ namespace tandem_dock {
     //  Constants
     // -------------------------------------------------------------------
 
-    // Default Winamp-style magnet distance. Callers can pass their own
-    // threshold to snapMovingRectToHost() if they want a different feel.
-    constexpr int kDefaultSnapThresholdPx = 24;
+    // Default Winamp/winsnap magnet distance. The client snaps when
+    // its edge is within this many pixels of a host edge. A single
+    // threshold is sufficient because the caller uses the winsnap
+    // "hypothetical free rect" model: while snapped, the caller
+    // measures distance against the reconstructed cursor-driven
+    // position, not the held snapped rect. That reconstruction
+    // makes release speed-independent - small, slow drags build up
+    // the same way as fast flicks.
+    constexpr int kDefaultSnapThresholdPx = 30;
 
     // -------------------------------------------------------------------
     //  Types
@@ -155,6 +161,15 @@ namespace tandem_dock {
     // hosts the largest portion of hwnd. Falls back to primary screen.
     RECT getMonitorWorkArea(HWND hwnd);
 
+    // Union of the work areas of ALL monitors the rect intersects.
+    // Used when a window hovers over a monitor seam - the caller
+    // wants a single logical "desktop area" spanning both monitors
+    // rather than a single monitor's work area that would truncate
+    // the window at the seam. Falls back to the work area of the
+    // rect's primary monitor if no monitors intersect (shouldn't
+    // happen for on-screen rects) or for a single-monitor setup.
+    RECT getWorkAreaUnionForRect(const RECT& rect);
+
     // Shadow offsets of hwnd (outer vs visible).
     ShadowOffsets getShadowOffsets(HWND hwnd);
 
@@ -173,12 +188,17 @@ namespace tandem_dock {
     //  Magnetic snap during user drag
     // -------------------------------------------------------------------
 
-    // WM_MOVING handler helper. If any of the client's edges is within
-    // `thresholdPx` of the matching host edge (and the secondary axis
-    // overlaps), the client rect is shifted so the VISIBLE edges meet
-    // flush (not the outer edges - so Win11's transparent shadow
-    // doesn't leave a visible gap between the docked windows).
-    // Returns whether a snap was applied and to which edge.
+    // WM_MOVING handler helper. Tests whether any of the client's
+    // edges is within `thresholdPx` of a matching host edge (with
+    // secondary-axis overlap) and if so, shifts the client rect so
+    // its VISIBLE edge meets the host VISIBLE edge flush.
+    //
+    // This is the classic Winamp/winsnap-style single-threshold
+    // magnet. The caller is responsible for the "release on cursor
+    // pull" behaviour: while currently snapped, pass a reconstructed
+    // "free" rect (based on cursor offset) instead of the actual
+    // snapped rect, so distance reflects where the user's cursor
+    // really wants the window - not where the magnet is holding it.
     SnapResult snapMovingRectToHost(RECT* pClientRect,
         const RECT& hostVisible,
         const ShadowOffsets& clientShadow,
@@ -192,6 +212,18 @@ namespace tandem_dock {
     DockEdge pickEdgeByProximity(const RECT& clientVisible,
         const RECT& hostVisible,
         DockEdge fallback);
+
+    // Initial-dock helper. Picks the host edge whose closest point is
+    // nearest to the client's center. Unlike pickEdgeByProximity,
+    // does NOT require secondary-axis overlap - works for any client
+    // position, including clients far away from the host. Top edge is
+    // never returned (MR only docks to Bottom/Right/Left).
+    //
+    // Typical use: first-ever tandem toggle, when the user has no
+    // persisted preference yet. Gives a "do the sensible thing" default
+    // based on where MR happens to be on screen.
+    DockEdge pickNearestEdge(const RECT& clientVisible,
+        const RECT& hostVisible);
 
     // After SetWindowPos, nudge the client so its VISIBLE anchor edge
     // matches exactly `layout.flushAnchorVis`. Closes residual 1 px
