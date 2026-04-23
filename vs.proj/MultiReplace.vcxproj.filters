@@ -124,6 +124,7 @@
     <ClCompile Include="..\src\NppStyleKit.cpp" />
     <ClCompile Include="..\src\MultiReplaceConfigDialog.cpp" />
     <ClCompile Include="..\src\image_data.cpp" />
+    <ClCompile Include="..\src\Tandemdock.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -236,6 +237,7 @@
     <ClInclude Include="..\src\NppStyleKit.h" />
     <ClInclude Include="..\src\MultiReplaceConfigDialog.h" />
     <ClInclude Include="SciUndoGuard.h" />
+    <ClInclude Include="..\src\Tandemdock.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

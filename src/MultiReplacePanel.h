@@ -444,6 +444,11 @@ class MultiReplace : public StaticDialog
 {
 public:
 
+    // Which side of N++ the MR panel docks to in tandem mode.
+    // Publicly visible so free helpers outside the class can bridge
+    // to/from tandem_dock::DockEdge without friend declarations.
+    enum class TandemDockEdge { Bottom, Right, Left };
+
     /// RAII guard for Scintilla undo grouping.
     /// Uses shared nesting counter from SciUndoGuard.h to ensure that
     /// nested operations (e.g., ColumnTabs functions called from here)
@@ -829,15 +834,53 @@ private:
     bool useListEnabled; // status for List enabled
     bool _altBypassActive = false; // momentary Alt-bypass: use input fields while list is open
 
-    // Tandem mode (experimental): when enabled, the MR panel docks
-    // itself to the bottom edge of the Notepad++ main window and
-    // follows its movement/resizing. Uses a polling timer (cheap,
-    // isolated) rather than window event hooks so there is zero
-    // chance of interfering with N++'s own message flow.
-    bool _tandemActive = false;
-    bool _tandemUserDragging = false;  // true between WM_ENTERSIZEMOVE/WM_EXITSIZEMOVE
-    UINT_PTR _tandemTimerId = 0;
-    RECT _tandemLastNppRect = {};
+    // --------------------------------------------------------------
+    // Tandem mode (experimental)
+    // --------------------------------------------------------------
+    // When enabled, the MR panel docks to one of N++'s edges (bottom,
+    // right or left) and follows it as N++ is moved or resized. The
+    // user can re-dock by dragging MR near a different edge - the
+    // drag "snaps" magnetically while the mouse is held.
+    //
+    // Architecture is deliberately loose:
+    //   - A 50ms polling timer drives the layout (no hooks on N++).
+    //   - All layout math is in namespace-local helpers, callable
+    //     without any MR instance state - this way the logic can
+    //     later be lifted into a reusable library.
+    //   - Member state below is only the bookkeeping needed for
+    //     enable/disable and for the single "user just resized"
+    //     latch.
+
+    bool            _tandemActive = false;
+    TandemDockEdge  _tandemDockEdge = TandemDockEdge::Bottom;
+    UINT_PTR        _tandemTimerId = 0;
+    RECT            _tandemLastNppRect = {};
+
+    // true between WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE on MR itself.
+    bool _tandemUserDragging = false;
+
+    // Pre-dock geometry, restored when tandem is turned off.
+    RECT _tandemSavedNppRect = {};
+    RECT _tandemSavedMrRect = {};
+
+    // MR's user-desired OUTER dimensions along the "free" axis of
+    // the current dock. At Bottom dock the free axis is vertical so
+    // only _tandemDesiredMrHeight matters; at Right/Left dock only
+    // _tandemDesiredMrWidth matters. Tandem may shrink MR below
+    // these values when space is tight; it never grows MR beyond
+    // them unless the user resizes manually.
+    int  _tandemDesiredMrHeight = 0;
+    int  _tandemDesiredMrWidth = 0;
+
+    // Latch: set for exactly one applyTandemLayout call following a
+    // WM_EXITSIZEMOVE on MR. Suppresses the shrink-only bookkeeping
+    // so the user's just-chosen size is not clobbered.
+    bool _tandemUserResize = false;
+
+    // Latch: set during a tick where MR had to be pulled over N++
+    // while the mouse was still down. Forces the next tick to run
+    // its rescue logic even if N++'s rect has not changed since.
+    bool _tandemPendingShrinkNpp = false;
 
     // During a tab-switch, load, or new-tab refresh, the ListView
     // briefly still shows the OUTGOING tab's columns while we are
@@ -1297,6 +1340,14 @@ private:
     void toggleTandemMode();
     void onTandemTick();
     void applyTandemLayout(const RECT& nppRect);
+
+    // Interactive snap: called from the dialog proc while the user
+    // is dragging MR. Modifies the rect in place so MR pulls towards
+    // the nearest N++ edge - Winamp-style magnet behaviour.
+    void tandemHandleMoving(RECT* pTargetRect);
+
+    // Finalize dock edge after a user drag/resize of MR.
+    void tandemHandleExitSizeMove();
 
     // Reorders tabs: moves the tab at fromIdx so it sits at toIdx in
     // the tab vector. Updates _activeTabIndex consistently and
