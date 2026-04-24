@@ -90,8 +90,15 @@ void commandMenuInit()
 
     // Tandem Mode: docks MR to a N++ edge and follows N++ on move/resize.
     setCommand(9, const_cast<TCHAR*>(LM.getLPCW(L"menu_tandem_mode")), toggleTandemMode, NULL,
-        _MultiReplace.isTandemEnabled());
-    setCommand(10, const_cast<TCHAR*>(LM.getLPCW(L"menu_about")), about, NULL, false);
+        MultiReplace::isTandemPersistedEnabled());
+
+    // Restore-on-Startup: reopens the MR panel on N++ launch if it
+    // was open at the last shutdown. Opt-in via this menu entry.
+    setCommand(10, const_cast<TCHAR*>(LM.getLPCW(L"menu_restore_on_startup")),
+        toggleRestoreOnStartup, NULL,
+        MultiReplace::isRestoreOnStartupEnabled());
+
+    setCommand(11, const_cast<TCHAR*>(LM.getLPCW(L"menu_about")), about, NULL, false);
 }
 
 //
@@ -196,6 +203,18 @@ void toggleTandemMode()
     syncTandemMenuCheckmark();
 }
 
+// Toggles the restore-on-startup preference and syncs the menu
+// checkmark so it reflects the flag immediately.
+void toggleRestoreOnStartup()
+{
+    MultiReplace::toggleRestoreOnStartup();
+
+    const int cmdId = funcItem[10]._cmdID;
+    ::SendMessage(nppData._nppHandle, NPPM_SETMENUITEMCHECK,
+        static_cast<WPARAM>(cmdId),
+        MultiReplace::isRestoreOnStartupEnabled() ? TRUE : FALSE);
+}
+
 //
 // Refresh plugin menu text when UI language changes (NPPN_NATIVELANGCHANGED)
 // This updates the menu items without requiring Notepad++ restart
@@ -220,7 +239,8 @@ void refreshPluginMenu()
         { 7, L"cmd_prev_result" },
         // Index 8 is SEPARATOR - skip
         { 9, L"menu_tandem_mode" },
-        { 10, L"menu_about" },
+        { 10, L"menu_restore_on_startup" },
+        { 11, L"menu_about" },
     };
 
     // Get main menu handle from Notepad++

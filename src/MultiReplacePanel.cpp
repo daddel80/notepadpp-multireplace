@@ -15200,6 +15200,7 @@ void MultiReplace::dropLegacyConfigEntries()
         { L"ReplaceInFiles", L"Directory"        },
         { L"ReplaceInFiles", L"InSubfolders"     },
         { L"ReplaceInFiles", L"InHiddenFolders"  },
+        { L"General",        L"OpenOnStartup"    },  // superseded by RestoreOnStartup
     };
     for (const auto& e : legacyKeys) {
         CFG.eraseKey(e.sec, e.key);
@@ -16153,6 +16154,16 @@ bool MultiReplace::tandemRestoreFromIniIfEnabled()
     _tandemTimerId = SetTimer(_hSelf, 0xFADE, 50, nullptr);
     tandemDockToCurrentEdge();
     return true;
+}
+
+bool MultiReplace::isTandemPersistedEnabled()
+{
+    // Static query used by commandMenuInit() to render the menu
+    // checkmark BEFORE the panel is created. Reading the live
+    // _tandemEnabled flag would return false because the restore
+    // from WM_POST_INIT has not run yet. The cache has been loaded
+    // by setInfo() so CFG.readBool reflects the persisted value.
+    return CFG.readBool(kTandemIniSection, kTandemIniKeyEnabled, false);
 }
 
 // -------------------------------------------------------------------
@@ -17757,6 +17768,16 @@ void MultiReplace::applyConfigSettingsOnly()
 
 #pragma region Event Handling -- triggered in beNotified() in MultiReplace.cpp
 
+// Persistence keys for the "restore panel on startup" feature.
+//   RestoreOnStartup : user preference, toggled via the plugin menu.
+//   PanelWasVisible  : runtime flag written at NPPN_SHUTDOWN.
+// Auto-reopen fires only when both are set. All reads and writes
+// go through the CFG cache, which setInfo() populates before the
+// first menu interaction or NPPN_READY.
+static const wchar_t kGeneralIniSection[] = L"General";
+static const wchar_t kGeneralIniKeyRestoreOnStartup[] = L"RestoreOnStartup";
+static const wchar_t kGeneralIniKeyPanelWasVisible[] = L"PanelWasVisible";
+
 void MultiReplace::processTextChange(SCNotification* notifyCode) {
     if (!isLoggingEnabled) {
         return;
@@ -18069,11 +18090,51 @@ void MultiReplace::onThemeChanged()
 }
 
 void MultiReplace::signalShutdown() {
-    // This static method can be called from the global beNotified function
+    // Called from beNotified on NPPN_SHUTDOWN. Captures whether the
+    // panel was open at the time of shutdown so the next session can
+    // auto-reopen it (guarded by the RestoreOnStartup user preference).
+    //
+    // If the panel is open, WM_DESTROY and saveSettings() will follow
+    // and CFG.save() will persist the cache for us. If the panel is
+    // closed we have to save explicitly - no WM_DESTROY to drive it.
+    const bool panelVisible = instance && IsWindowVisible(instance->_hSelf);
+    CFG.writeBool(kGeneralIniSection, kGeneralIniKeyPanelWasVisible, panelVisible);
+
+    if (!panelVisible) {
+        const auto settingsPath = generateConfigFilePaths().first;
+        CFG.save(settingsPath);
+    }
+
     if (instance) {
         instance->_isShuttingDown = true;
         instance->_isCancelRequested = true; // Also trigger the cancel flag
     }
+}
+
+bool MultiReplace::shouldRestorePanelOnStartup() {
+    // Called from beNotified on NPPN_READY. Auto-reopen only when
+    // both flags are set: the user opted in, and the panel was open
+    // at the last shutdown.
+    if (!CFG.readBool(kGeneralIniSection, kGeneralIniKeyRestoreOnStartup, false))
+        return false;
+    return CFG.readBool(kGeneralIniSection, kGeneralIniKeyPanelWasVisible, false);
+}
+
+bool MultiReplace::isRestoreOnStartupEnabled() {
+    // Menu-checkmark query. Works before and after the panel exists.
+    return CFG.readBool(kGeneralIniSection, kGeneralIniKeyRestoreOnStartup, false);
+}
+
+void MultiReplace::toggleRestoreOnStartup() {
+    // Menu handler. Toggles the preference and persists the cache
+    // immediately so the setting survives even when the user does
+    // not open the panel afterwards (in which case WM_DESTROY would
+    // not fire and saveSettings() would never run).
+    const bool newValue = !isRestoreOnStartupEnabled();
+    CFG.writeBool(kGeneralIniSection, kGeneralIniKeyRestoreOnStartup, newValue);
+
+    const auto settingsPath = generateConfigFilePaths().first;
+    CFG.save(settingsPath);
 }
 
 #pragma endregion

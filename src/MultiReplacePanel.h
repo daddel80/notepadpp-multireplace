@@ -637,6 +637,9 @@ public:
     static void onCaretPositionChanged();
     static void onThemeChanged();
     static void signalShutdown();
+    static bool shouldRestorePanelOnStartup();
+    static bool isRestoreOnStartupEnabled();
+    static void toggleRestoreOnStartup();
     static void loadConfigOnce();
 
     enum class ChangeType { Insert, Delete, Modify };
@@ -669,6 +672,7 @@ public:
     // Toggled from the N++ plugin menu; state is synced via the wrapper.
     void toggleTandemMode();
     bool isTandemEnabled() const { return _tandemEnabled; }
+    static bool isTandemPersistedEnabled();  // for menu-init BEFORE the panel exists
 
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;

@@ -381,6 +381,7 @@ const LangKV kEnglishPairs[] = {
 { L"menu_settings", L"&Settings..." },
 { L"menu_documentation", L"&Documentation" },
 { L"menu_tandem_mode", L"&Tandem Mode" },
+{ L"menu_restore_on_startup", L"&Restore on Startup" },
 { L"menu_about", L"&About" },
 
 // Plugin Commands (assignable via Settings > Shortcut Mapper > Plugin Commands)

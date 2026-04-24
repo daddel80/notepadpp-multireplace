@@ -132,6 +132,22 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
     break;
 
 
+    case NPPN_READY:
+    {
+        // Auto-reopen MR if the user opted in AND the panel was
+        // visible when N++ was last closed. Deferred via PostMessage
+        // because opening the panel synchronously inside NPPN_READY
+        // can race with N++'s own final layout pass and leave MR
+        // created-but-not-shown. Posting gives N++ one message-pump
+        // turn to settle before we call into multiReplace().
+        if (MultiReplace::shouldRestorePanelOnStartup()) {
+            ::PostMessage(nppData._nppHandle, WM_COMMAND,
+                MAKEWPARAM(funcItem[0]._cmdID, 0), 0);
+        }
+    }
+    break;
+
+
     case NPPN_SHUTDOWN:
     {
         MultiReplace::signalShutdown();
