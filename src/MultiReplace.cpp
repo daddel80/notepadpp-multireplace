@@ -140,7 +140,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
         // can race with N++'s own final layout pass and leave MR
         // created-but-not-shown. Posting gives N++ one message-pump
         // turn to settle before we call into multiReplace().
-        if (MultiReplace::shouldRestorePanelOnStartup()) {
+        if (MultiReplace::shouldReopenPanelOnStartup()) {
             ::PostMessage(nppData._nppHandle, WM_COMMAND,
                 MAKEWPARAM(funcItem[0]._cmdID, 0), 0);
         }

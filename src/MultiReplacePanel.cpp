@@ -15200,7 +15200,7 @@ void MultiReplace::dropLegacyConfigEntries()
         { L"ReplaceInFiles", L"Directory"        },
         { L"ReplaceInFiles", L"InSubfolders"     },
         { L"ReplaceInFiles", L"InHiddenFolders"  },
-        { L"General",        L"OpenOnStartup"    },  // superseded by RestoreOnStartup
+        { L"General",        L"OpenOnStartup"    },  // superseded by ReopenOnStartup
     };
     for (const auto& e : legacyKeys) {
         CFG.eraseKey(e.sec, e.key);
@@ -17527,10 +17527,48 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeBool(L"Options", L"DuplicateBookmarks", s.duplicateBookmarksEnabled);
 }
 
+// Persistence keys for the "reopen panel on startup" feature.
+//   ReopenOnStartup  : user preference, toggled via the plugin menu.
+//   PanelWasVisible  : runtime flag written at NPPN_SHUTDOWN.
+// Auto-reopen fires only when both are set. All reads and writes
+// go through the CFG cache, which setInfo() populates before the
+// first menu interaction or NPPN_READY.
+static const wchar_t kGeneralIniSection[] = L"General";
+static const wchar_t kGeneralIniKeyReopenOnStartup[] = L"ReopenOnStartup";
+static const wchar_t kGeneralIniKeyPanelWasVisible[] = L"PanelWasVisible";
+
+void MultiReplace::migrateLegacyStartupKeys()
+{
+    // Rename: [General]/RestoreOnStartup -> [General]/ReopenOnStartup.
+    // Preserves the user's opt-in setting by copying the value to the
+    // new key before dropping the old one from the cache. A guard
+    // avoids clobbering a value that the new key may already hold
+    // (e.g. if both keys happened to exist after a manual edit).
+    const wchar_t kLegacyReopenKey[] = L"RestoreOnStartup";
+
+    const bool hasLegacy = !CFG.readString(
+        kGeneralIniSection, kLegacyReopenKey, L"").empty();
+    const bool hasCurrent = !CFG.readString(
+        kGeneralIniSection, kGeneralIniKeyReopenOnStartup, L"").empty();
+
+    if (hasLegacy && !hasCurrent) {
+        const bool val = CFG.readBool(
+            kGeneralIniSection, kLegacyReopenKey, false);
+        CFG.writeBool(kGeneralIniSection, kGeneralIniKeyReopenOnStartup, val);
+    }
+    CFG.eraseKey(kGeneralIniSection, kLegacyReopenKey);
+}
+
 void MultiReplace::loadConfigOnce()
 {
     const auto settingsPath = generateConfigFilePaths().first;
     CFG.load(settingsPath);
+
+    // One-shot: migrate legacy INI keys that predate the current
+    // schema. Must run here (not in dropLegacyConfigEntries, which
+    // is tied to loadSettings / panel creation) because preferences
+    // have to survive even when the user never opens the panel.
+    migrateLegacyStartupKeys();
 }
 
 void MultiReplace::syncUIToCache()
@@ -17767,16 +17805,6 @@ void MultiReplace::applyConfigSettingsOnly()
 
 
 #pragma region Event Handling -- triggered in beNotified() in MultiReplace.cpp
-
-// Persistence keys for the "restore panel on startup" feature.
-//   RestoreOnStartup : user preference, toggled via the plugin menu.
-//   PanelWasVisible  : runtime flag written at NPPN_SHUTDOWN.
-// Auto-reopen fires only when both are set. All reads and writes
-// go through the CFG cache, which setInfo() populates before the
-// first menu interaction or NPPN_READY.
-static const wchar_t kGeneralIniSection[] = L"General";
-static const wchar_t kGeneralIniKeyRestoreOnStartup[] = L"RestoreOnStartup";
-static const wchar_t kGeneralIniKeyPanelWasVisible[] = L"PanelWasVisible";
 
 void MultiReplace::processTextChange(SCNotification* notifyCode) {
     if (!isLoggingEnabled) {
@@ -18092,7 +18120,7 @@ void MultiReplace::onThemeChanged()
 void MultiReplace::signalShutdown() {
     // Called from beNotified on NPPN_SHUTDOWN. Captures whether the
     // panel was open at the time of shutdown so the next session can
-    // auto-reopen it (guarded by the RestoreOnStartup user preference).
+    // auto-reopen it (guarded by the ReopenOnStartup user preference).
     //
     // If the panel is open, WM_DESTROY and saveSettings() will follow
     // and CFG.save() will persist the cache for us. If the panel is
@@ -18111,27 +18139,27 @@ void MultiReplace::signalShutdown() {
     }
 }
 
-bool MultiReplace::shouldRestorePanelOnStartup() {
+bool MultiReplace::shouldReopenPanelOnStartup() {
     // Called from beNotified on NPPN_READY. Auto-reopen only when
     // both flags are set: the user opted in, and the panel was open
     // at the last shutdown.
-    if (!CFG.readBool(kGeneralIniSection, kGeneralIniKeyRestoreOnStartup, false))
+    if (!CFG.readBool(kGeneralIniSection, kGeneralIniKeyReopenOnStartup, false))
         return false;
     return CFG.readBool(kGeneralIniSection, kGeneralIniKeyPanelWasVisible, false);
 }
 
-bool MultiReplace::isRestoreOnStartupEnabled() {
+bool MultiReplace::isReopenOnStartupEnabled() {
     // Menu-checkmark query. Works before and after the panel exists.
-    return CFG.readBool(kGeneralIniSection, kGeneralIniKeyRestoreOnStartup, false);
+    return CFG.readBool(kGeneralIniSection, kGeneralIniKeyReopenOnStartup, false);
 }
 
-void MultiReplace::toggleRestoreOnStartup() {
+void MultiReplace::toggleReopenOnStartup() {
     // Menu handler. Toggles the preference and persists the cache
     // immediately so the setting survives even when the user does
     // not open the panel afterwards (in which case WM_DESTROY would
     // not fire and saveSettings() would never run).
-    const bool newValue = !isRestoreOnStartupEnabled();
-    CFG.writeBool(kGeneralIniSection, kGeneralIniKeyRestoreOnStartup, newValue);
+    const bool newValue = !isReopenOnStartupEnabled();
+    CFG.writeBool(kGeneralIniSection, kGeneralIniKeyReopenOnStartup, newValue);
 
     const auto settingsPath = generateConfigFilePaths().first;
     CFG.save(settingsPath);

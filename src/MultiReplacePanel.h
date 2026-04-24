@@ -637,10 +637,11 @@ public:
     static void onCaretPositionChanged();
     static void onThemeChanged();
     static void signalShutdown();
-    static bool shouldRestorePanelOnStartup();
-    static bool isRestoreOnStartupEnabled();
-    static void toggleRestoreOnStartup();
+    static bool shouldReopenPanelOnStartup();
+    static bool isReopenOnStartupEnabled();
+    static void toggleReopenOnStartup();
     static void loadConfigOnce();
+    static void migrateLegacyStartupKeys();
 
     enum class ChangeType { Insert, Delete, Modify };
     enum class ReplaceMode { Normal, Extended, Regex };

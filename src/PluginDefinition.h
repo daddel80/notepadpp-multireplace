@@ -79,7 +79,7 @@ void gotoNextFound();
 void gotoPrevFound();
 void toggleTandemMode();
 void syncTandemMenuCheckmark();
-void toggleRestoreOnStartup();
+void toggleReopenOnStartup();
 
 //
 // Plugin menu language refresh (called on NPPN_NATIVELANGCHANGED)

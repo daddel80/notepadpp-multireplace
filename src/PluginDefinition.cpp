@@ -92,11 +92,11 @@ void commandMenuInit()
     setCommand(9, const_cast<TCHAR*>(LM.getLPCW(L"menu_tandem_mode")), toggleTandemMode, NULL,
         MultiReplace::isTandemPersistedEnabled());
 
-    // Restore-on-Startup: reopens the MR panel on N++ launch if it
+    // Reopen-on-Startup: reopens the MR panel on N++ launch if it
     // was open at the last shutdown. Opt-in via this menu entry.
-    setCommand(10, const_cast<TCHAR*>(LM.getLPCW(L"menu_restore_on_startup")),
-        toggleRestoreOnStartup, NULL,
-        MultiReplace::isRestoreOnStartupEnabled());
+    setCommand(10, const_cast<TCHAR*>(LM.getLPCW(L"menu_reopen_on_startup")),
+        toggleReopenOnStartup, NULL,
+        MultiReplace::isReopenOnStartupEnabled());
 
     setCommand(11, const_cast<TCHAR*>(LM.getLPCW(L"menu_about")), about, NULL, false);
 }
@@ -203,16 +203,16 @@ void toggleTandemMode()
     syncTandemMenuCheckmark();
 }
 
-// Toggles the restore-on-startup preference and syncs the menu
+// Toggles the reopen-on-startup preference and syncs the menu
 // checkmark so it reflects the flag immediately.
-void toggleRestoreOnStartup()
+void toggleReopenOnStartup()
 {
-    MultiReplace::toggleRestoreOnStartup();
+    MultiReplace::toggleReopenOnStartup();
 
     const int cmdId = funcItem[10]._cmdID;
     ::SendMessage(nppData._nppHandle, NPPM_SETMENUITEMCHECK,
         static_cast<WPARAM>(cmdId),
-        MultiReplace::isRestoreOnStartupEnabled() ? TRUE : FALSE);
+        MultiReplace::isReopenOnStartupEnabled() ? TRUE : FALSE);
 }
 
 //
@@ -239,7 +239,7 @@ void refreshPluginMenu()
         { 7, L"cmd_prev_result" },
         // Index 8 is SEPARATOR - skip
         { 9, L"menu_tandem_mode" },
-        { 10, L"menu_restore_on_startup" },
+        { 10, L"menu_reopen_on_startup" },
         { 11, L"menu_about" },
     };
 
