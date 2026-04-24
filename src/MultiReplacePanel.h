@@ -442,6 +442,10 @@ class MultiReplace : public StaticDialog
 {
 public:
 
+    // Tandem-mode dock edge. Public so free helpers outside the class
+    // can bridge to tandem_dock::DockEdge without friend declarations.
+    enum class TandemDockEdge { Bottom, Right, Left };
+
     /// RAII guard for Scintilla undo grouping.
     /// Uses shared nesting counter from SciUndoGuard.h to ensure that
     /// nested operations (e.g., ColumnTabs functions called from here)
@@ -661,6 +665,11 @@ public:
     static void loadLanguageGlobal();
     static void refreshUILanguage();
 
+    // Tandem mode (experimental): docks MR to a N++ edge and follows it.
+    // Toggled from the N++ plugin menu; state is synced via the wrapper.
+    void toggleTandemMode();
+    bool isTandemEnabled() const { return _tandemEnabled; }
+
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 
@@ -830,6 +839,39 @@ private:
     // this, createListViewColumns would sample the outgoing tab's
     // widths and leak them into the incoming tab.
     bool _suppressLiveWidthSync = false;
+
+    // Tandem mode (experimental). Layout and snap math live in the
+    // tandem_dock library; this class is orchestration only: a 50 ms
+    // polling timer drives MR to follow N++, WM_MOVING drives the
+    // drag-time magnet. INI persistence is under [Tandem] section.
+    bool            _tandemEnabled = false; // feature switched on by user
+    bool            _tandemDocked = false; // currently snapped to a host edge
+    bool            _tandemHasSnapshot = false; // pre-dock geometry captured below is valid
+    TandemDockEdge  _tandemDockEdge = TandemDockEdge::Bottom;
+    UINT_PTR        _tandemTimerId = 0;
+    RECT            _tandemLastNppRect = {};
+    bool            _tandemUserDragging = false; // true between MR's WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE
+
+    // Sticky-magnet state. While engaged, the on-screen rect is held
+    // at the edge; the original cursor-to-rect offset lets
+    // tandemHandleMoving reconstruct the "real" free rect so release
+    // is speed-independent.
+    bool  _tandemMagnetEngaged = false;
+    POINT _tandemMagnetOriginalCursorOffset = {};
+
+    // Pre-dock geometry snapshot (valid when _tandemHasSnapshot).
+    // Restored on menu-off; discarded when the user drags MR free.
+    RECT _tandemSavedNppRect = {};
+    RECT _tandemSavedMrRect = {};
+
+    // User-desired OUTER size along the free axis of the current
+    // dock (height for Bottom, width for Right/Left).
+    int _tandemDesiredMrHeight = 0;
+    int _tandemDesiredMrWidth = 0;
+
+    bool _tandemUserResize = false; // latch: one layout pass after WM_EXITSIZEMOVE keeps user size
+    bool _tandemPendingShrinkNpp = false; // latch: mouse-down tick asked for host shrink; retry next tick
+
     std::wstring listFilePath = L"";
     const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ, used for hashing
     std::size_t originalListHash = 0;
@@ -1294,6 +1336,19 @@ private:
     void showDPIAndFontInfo();
 
     static void displayLogChangesInMessageBox();
+
+    // Tandem mode internals. Timer-driven follow, drag-time magnet,
+    // and the free <-> docked state-transition helpers.
+    void onTandemTick();                    // docked tick: follow N++
+    void onTandemFreeTick();                // free tick: re-engage when N++ approaches
+    void applyTandemLayout(const RECT& nppRect);
+    void tandemHandleMoving(RECT* pTargetRect);     // WM_MOVING snap
+    void tandemHandleExitSizeMove();                // WM_EXITSIZEMOVE state transition
+    void tandemDockToCurrentEdge();         // free -> docked (captures pre-dock snapshot)
+    void tandemUndockAndRestore();          // docked -> free (restores snapshot)
+    void tandemPersistEdgeToIni() const;    // write last dock edge to INI cache
+    bool tandemLoadEdgeFromIni();           // read last dock edge; false if no persisted value
+    bool tandemRestoreFromIniIfEnabled();   // silent startup restore; returns whether state changed
 };
 
 extern MultiReplace _MultiReplace;

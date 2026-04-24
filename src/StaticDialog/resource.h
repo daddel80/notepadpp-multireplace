@@ -61,7 +61,6 @@
 #define IDC_COPY_MARKED_TEXT_BUTTON     5016
 #define IDC_CLEAR_MARKS_BUTTON          5017
 #define IDC_CANCEL_REPLACE_BUTTON       5018
-#define IDC_TANDEM_BUTTON               5019   // experimental: dock to N++ window
 
 
 
