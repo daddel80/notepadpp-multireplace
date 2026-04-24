@@ -1153,7 +1153,9 @@ private:
 
     //Mark
     void handleMarkMatchesButton();
+    void handleBookmarkMatchesButton();
     int markString(const SearchContext& context, Sci_Position initialStart, const std::wstring& findText = L"");
+    int bookmarkString(const SearchContext& context, Sci_Position initialStart, int markerId, const std::wstring& findText = L"");
     int calcMaxListSlots() const;
     int resolveIndicatorForText(const std::wstring& findText);
     void handleClearTextMarksButton();

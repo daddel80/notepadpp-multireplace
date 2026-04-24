@@ -44,7 +44,7 @@
 
 
 // ===================================================================
-//  5006-5018 - Primary action buttons
+//  5006-5019 - Primary action buttons
 // ===================================================================
 #define IDC_REPLACE_ALL_BUTTON          5006   // split button (Replace ...)
 #define IDC_REPLACE_DROPDOWN_BUTTON     5007   // part of the split button
@@ -61,6 +61,7 @@
 #define IDC_COPY_MARKED_TEXT_BUTTON     5016
 #define IDC_CLEAR_MARKS_BUTTON          5017
 #define IDC_CANCEL_REPLACE_BUTTON       5018
+#define IDC_BOOKMARK_MATCHES_BUTTON     5019
 
 
 

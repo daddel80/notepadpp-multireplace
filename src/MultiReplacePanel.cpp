@@ -480,11 +480,17 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_FIND_NEXT_BUTTON] = ControlInfo{ buttonX + sx(32), sy(119), sx(96), sy(24), WC_BUTTON, findNextButtonText.c_str(), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
     ctrlMap[IDC_FIND_PREV_BUTTON] = { buttonX, sy(119), sx(28), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-
-    // Copy Marked -> Normal4
-    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_marked_text"), false, FontRole::Normal4 };
+    // Mark row:
+    //   1-button mode: [ Mark Matches (128) ]
+    //   2-button mode: [Mark (60)] [⧉ Copy (28)] [▤ Bookmark (28)]
+    // In 2-button mode Mark + Copy are tightly grouped (Copy reads from
+    // Mark's indicator output). Bookmark Matches is set apart with a
+    // slightly larger gap — it is a standalone action producing line
+    // bookmarks navigable via N++'s own F2 / Shift+F2 shortcuts.
+    ctrlMap[IDC_MARK_BUTTON] = { buttonX,           sy(147), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches"),       BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX,           sy(147), sx(60),  sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark"),               BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(64),  sy(147), sx(28),  sy(24), WC_BUTTON, L"⧉",                                    BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_marked_text"),  false, FontRole::Normal4 };
+    ctrlMap[IDC_BOOKMARK_MATCHES_BUTTON] = { buttonX + sx(100), sy(147), sx(28),  sy(24), WC_BUTTON, L"▤",                                    BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_bookmark_matches"),  false, FontRole::Normal4 };
 
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
@@ -877,8 +883,9 @@ void MultiReplace::updateTwoButtonsVisibility() {
     setVisibility({ IDC_FIND_NEXT_BUTTON, IDC_FIND_PREV_BUTTON }, twoButtonsMode);
     setVisibility({ IDC_FIND_ALL_BUTTON }, !twoButtonsMode);
 
-    // Mark-Buttons
-    setVisibility({ IDC_MARK_MATCHES_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON }, twoButtonsMode);
+    // Mark-Buttons: big "Mark Matches" in single-button mode;
+    // compact three-button row (Mark + Copy + Bookmark) in two-button mode.
+    setVisibility({ IDC_MARK_MATCHES_BUTTON, IDC_COPY_MARKED_TEXT_BUTTON, IDC_BOOKMARK_MATCHES_BUTTON }, twoButtonsMode);
     setVisibility({ IDC_MARK_BUTTON }, !twoButtonsMode);
 
     // Legacy buttons: always hidden (Load/Save are now icon buttons in status row)
@@ -6058,6 +6065,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
+        case IDC_BOOKMARK_MATCHES_BUTTON:
+        {
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive);
+
+            resetCountColumns();
+            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            handleBookmarkMatchesButton();
+            drainMessageQueue();
+            return TRUE;
+        }
+
         case IDC_CLEAR_MARKS_BUTTON:
         {
             handleClearTextMarksButton();
@@ -10261,6 +10279,152 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
 
     if (useListEnabled && markCount > 0) ++markedStringsCount;
     return markCount;
+}
+
+// Same search loop as markString, but instead of setting text indicators
+// it places N++ line bookmarks for every line that contains a match.
+// Multiple matches on the same line yield a single bookmark (SCI_MARKERADD
+// is idempotent for the same line/marker-ID, so no explicit dedup needed).
+// The bookmarks are additive — pre-existing bookmarks (manual or from
+// duplicate-detection) are left untouched; users clear them through
+// N++'s own right-click margin menu.
+int MultiReplace::bookmarkString(const SearchContext& context, Sci_Position initialStart, int markerId, const std::wstring& findText)
+{
+    if (context.findText.empty()) return 0;
+
+    int matchCount = 0;
+    LRESULT pos = initialStart;
+    send(SCI_SETSEARCHFLAGS, context.searchFlags);
+
+    for (SearchResult r = performSearchForward(context, pos);
+        r.pos >= 0;
+        r = performSearchForward(context, pos))
+    {
+        if (r.length > 0) {
+            const LRESULT lineIdx = send(SCI_LINEFROMPOSITION, r.pos, 0);
+            send(SCI_MARKERADD, static_cast<uptr_t>(lineIdx), static_cast<sptr_t>(markerId));
+            ++matchCount;
+        }
+        pos = advanceAfterMatch(r);
+
+        if (pos >= context.docLength) break;
+    }
+
+    (void)findText;  // reserved for future per-pattern accounting
+    return matchCount;
+}
+
+// Bookmarks every line that contains a match, using the same search
+// semantics (scope, list mode, wrap-around, Use Variables off) as
+// handleMarkMatchesButton. Leaves text indicators and other marks
+// untouched — this is a standalone action parallel to Mark Matches,
+// not a variant of it.
+void MultiReplace::handleBookmarkMatchesButton() {
+    if (!validateDelimiterData()) return;
+
+    // Safety: Selection mode with no selection and no stored scope → do nothing.
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
+        if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
+            showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
+            return;
+        }
+    }
+
+    updateSelectionScope();
+
+    if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && m_selectionScope.empty()) {
+        showStatusMessage(LM.get(L"status_select_area_first"), MessageStatus::Error, true);
+        return;
+    }
+
+    // Resolve N++'s bookmark marker ID dynamically. Older N++ versions
+    // responded with 0; the guarded fallback matches the pattern used
+    // by the duplicate-detection feature elsewhere in this file.
+    constexpr UINT LOCAL_NPPM_GETBOOKMARKID = (WM_USER + 1000) + 113;
+    const LRESULT nppBookmarkId = ::SendMessage(nppData._nppHandle, LOCAL_NPPM_GETBOOKMARKID, 0, 0);
+    const int markerId = (nppBookmarkId > 0 && nppBookmarkId < 32)
+        ? static_cast<int>(nppBookmarkId) : 20;
+
+    int totalMatchCount = 0;
+    const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+
+    if (useListEnabled) {
+        if (replaceListData.empty()) {
+            showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
+            return;
+        }
+        if (!hasAnySelectedEntry()) {
+            showStatusMessage(LM.get(L"status_no_entries_selected"), MessageStatus::Error);
+            return;
+        }
+
+        std::vector<size_t> workIndices = getIndicesOfUniqueEnabledItems(true);
+
+        for (size_t i : workIndices) {
+            const auto& item = replaceListData[i];
+
+            SearchContext context;
+            context.findText = convertAndExtendW(item.findText, item.extended);
+            context.searchFlags = (item.wholeWord * SCFIND_WHOLEWORD)
+                | (item.matchCase * SCFIND_MATCHCASE)
+                | (item.regex * SCFIND_REGEXP);
+            context.docLength = send(SCI_GETLENGTH, 0, 0);
+            context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+            context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+            context.useStoredSelections = context.isSelectionMode;
+            context.retrieveFoundText = false;
+            context.highlightMatch = false;
+
+            Sci_Position startPos = 0;
+            if (context.isSelectionMode) {
+                startPos = !m_selectionScope.empty()
+                    ? static_cast<Sci_Position>(m_selectionScope.front().start)
+                    : getSelectionInfo(false).startPos;
+            }
+            else if (wrapAroundEnabled) {
+                startPos = 0;
+            }
+            else {
+                const Sci_Position caretPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
+                startPos = allFromCursorEnabled ? caretPos : 0;
+            }
+
+            const int matchCount = bookmarkString(context, startPos, markerId, item.findText);
+            if (matchCount > 0) {
+                totalMatchCount += matchCount;
+                updateCountColumns(i, matchCount);
+            }
+        }
+        refreshUIListView();
+    }
+    else {
+        const std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+        SearchContext context;
+        context.findText = convertAndExtendW(findText, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
+        context.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
+            | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
+            | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+        context.docLength = send(SCI_GETLENGTH, 0, 0);
+        context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+        context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+        context.useStoredSelections = context.isSelectionMode;
+
+        Sci_Position startPos = 0;
+        if (context.isSelectionMode) {
+            startPos = !m_selectionScope.empty()
+                ? static_cast<Sci_Position>(m_selectionScope.front().start)
+                : getSelectionInfo(false).startPos;
+        }
+        else if (!wrapAroundEnabled) startPos = allFromCursorEnabled ? (Sci_Position)send(SCI_GETCURRENTPOS) : 0;
+
+        totalMatchCount = bookmarkString(context, startPos, markerId, findText);
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
+    }
+
+    // Force N++ margin repaint so new bookmarks appear immediately.
+    ::InvalidateRect(_hScintilla, nullptr, FALSE);
+
+    showStatusMessage(LM.get(L"status_occurrences_bookmarked", { std::to_wstring(totalMatchCount) }), MessageStatus::Info);
 }
 
 int MultiReplace::calcMaxListSlots() const
