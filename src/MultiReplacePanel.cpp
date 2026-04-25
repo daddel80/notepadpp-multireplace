@@ -16369,7 +16369,15 @@ namespace {
 
 void MultiReplace::toggleTandemMode()
 {
-    if (_tandemEnabled) {
+    // Decide based on the persisted value rather than the live
+    // member. _tandemEnabled is stale when the panel was never
+    // opened in this session: it remains at its default (false)
+    // even if the user persisted tandem as on. Going by the
+    // persisted value makes "toggle from plugin menu" do the right
+    // thing both with and without an open panel.
+    const bool isCurrentlyOn = isTandemPersistedEnabled();
+
+    if (isCurrentlyOn) {
         // Leaving the feature: if we are currently docked, restore
         // the pre-dock geometry. If the user had already dragged MR
         // free, there is no snapshot to restore - just clear state.
@@ -16383,12 +16391,31 @@ void MultiReplace::toggleTandemMode()
         _tandemEnabled = false;
         _tandemUserDragging = false;
         CFG.writeBool(kTandemIniSection, kTandemIniKeyEnabled, false);
+        // Persist immediately. Without this, signalShutdown's
+        // panel-closed branch would forceReload the INI before saving
+        // and clobber the toggle. Mirrors toggleReopenOnStartup.
+        const auto settingsPath = generateConfigFilePaths().first;
+        CFG.save(settingsPath);
         showStatusMessage(L"Tandem mode disabled.", MessageStatus::Info);
         return;
     }
 
-    // Entering the feature.
-    if (!IsWindow(nppData._nppHandle)) return;
+    // Entering the feature. Persist the preference up front so it
+    // survives an N++ shutdown even if the panel never opens this
+    // session.
+    _tandemEnabled = true;
+    CFG.writeBool(kTandemIniSection, kTandemIniKeyEnabled, true);
+    const auto settingsPath = generateConfigFilePaths().first;
+    CFG.save(settingsPath);
+
+    // Live actions only when the panel and host actually exist.
+    // Without a panel there is nothing to dock; the next panel
+    // open will pick up the persisted preference via
+    // tandemRestoreFromIniIfEnabled().
+    if (!IsWindow(_hSelf) || !IsWindow(nppData._nppHandle)) {
+        showStatusMessage(L"Tandem mode enabled.", MessageStatus::Info);
+        return;
+    }
 
     // Load persisted dock edge. If none exists yet (first-ever
     // tandem toggle), pick the host edge nearest to MR's current
@@ -16401,9 +16428,7 @@ void MultiReplace::toggleTandemMode()
         _tandemDockEdge = fromLibEdge(pickNearestEdge(mrVis, hostVis));
     }
 
-    _tandemEnabled = true;
     _tandemTimerId = SetTimer(_hSelf, 0xFADE, 50, nullptr);
-    CFG.writeBool(kTandemIniSection, kTandemIniKeyEnabled, true);
 
     // Dock immediately to the chosen edge so the toggle has a
     // visible effect - otherwise the user would have to drag MR to
