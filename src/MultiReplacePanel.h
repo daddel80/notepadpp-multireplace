@@ -352,6 +352,12 @@ struct TabState {
     bool         findLocked = true;
     bool         replaceLocked = false;
     bool         commentsLocked = true;
+    // Lazy-relayout flag. Set when the window was resized or column
+    // visibility changed while this tab was inactive. Consumed by the
+    // next switchToTab: if true, the tab is redistributed to fit the
+    // current window; if false, the stored widths are applied as-is.
+    // Not persisted — purely runtime state.
+    bool         needsRelayout = false;
     std::vector<ColumnID>         columnOrder;
     std::map<int, SortDirection>  columnSortOrder;
 };
@@ -392,6 +398,17 @@ struct ResizableColWidths {
     int timestampWidth;
     int deleteWidth;
     int margin;
+};
+
+// Column-width strategy for createListViewColumns().
+//   Redistribute  — even split across unlocked columns to fit the
+//                   current window (resize, visibility, init, …).
+//   UseStored     — apply the stored per-column widths unchanged,
+//                   used on tab switches when the target tab's
+//                   layout still matches the current window size.
+enum class WidthMode {
+    Redistribute,
+    UseStored
 };
 
 struct ViewState {
@@ -1025,7 +1042,11 @@ private:
     //ListView
     HWND CreateHeaderTooltip(HWND hwndParent);
     void AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnIndex, LPCTSTR pszText);
-    void createListViewColumns();
+    void createListViewColumns(WidthMode mode = WidthMode::Redistribute);
+    // Mark every inactive tab as needing a full redistribute the next
+    // time it is activated. Called on WM_SIZE so tabs sized before
+    // the change still fit the panel when the user revisits them.
+    void markAllTabsNeedRelayout();
     void insertSingleColumn(ColumnID id, int& currentIndex, int perColumnWidth, LVCOLUMN& lvc);
     bool isColumnVisible(ColumnID id) const;
     bool validateColumnOrder(const std::vector<ColumnID>& order) const;
@@ -1153,7 +1174,9 @@ private:
 
     //Mark
     void handleMarkMatchesButton();
+    void handleBookmarkMatchesButton();
     int markString(const SearchContext& context, Sci_Position initialStart, const std::wstring& findText = L"");
+    int bookmarkString(const SearchContext& context, Sci_Position initialStart, int markerId, const std::wstring& findText = L"");
     int calcMaxListSlots() const;
     int resolveIndicatorForText(const std::wstring& findText);
     void handleClearTextMarksButton();
@@ -1287,6 +1310,11 @@ private:
 
     // Tab control rendering.
     void rebuildTabControl();
+    // Move the New-List ("+") button so it sits right after the last
+    // tab in the tab bar — Excel/Browser convention. Called from
+    // rebuildTabControl and on WM_SIZE; cheap enough to run whenever
+    // the tab geometry changes.
+    void repositionNewTabButton();
     void updateTabTooltip(int tabIndex);
     static std::wstring truncateTabName(const std::wstring& name, size_t maxChars = 14);
 

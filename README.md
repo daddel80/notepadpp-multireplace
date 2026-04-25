@@ -47,6 +47,7 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
   - [List Toggling](#list-toggling)
   - [Column Locking](#column-locking)
   - [List Saving and Loading](#list-saving-and-loading)
+- [Plugin Menu](#plugin-menu)
 - [Settings and Customization](#settings-and-customization)
   - [1. Search and Replace](#1-search-and-replace)
   - [2. List View and Layout](#2-list-view-and-layout)
@@ -67,6 +68,7 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
 - **Precision Scopes & Selections** — Rectangle and multi-selection support, column scopes, and "replace at specific match" for pinpoint operations.
 - **Multi-Color Highlighting** — Highlight search hits in up to 28 distinct colors for rapid visual confirmation.
 - **Search Results Window** — A dedicated dockable panel displays all search hits with folding, color-coding, and one-click navigation.
+- **Tandem Mode** — Dock the plugin window to the edge of Notepad++ and have it follow moves and resizes automatically, keeping it attached like a built-in tool window.
 
 <br>
 
@@ -669,6 +671,17 @@ You can lock specific column widths to prevent them from resizing automatically 
 - **Drag & Drop** — You can load lists by dragging `.mrl` or `.csv` files onto the plugin window.
 - **Tabs** — Keep multiple lists open side by side. Click **+** to add a tab, double-click to rename, drag to reorder, right-click for options (save as, load, duplicate, close). Dropping a list file on the tab bar opens it in its own tab. Tabs and their contents persist across sessions.
 - **Format** — Plain-text, line-based. Each file starts with a `[MultiReplace-Settings]...[End]` preamble storing per-list options (search mode, scope, CSV column/delimiter/quote settings), followed by a CSV-style body of entries with quoted fields. Special characters are escaped: `\` → `\\`, newline → `\n`, carriage return → `\r`, `"` → `""`. The preamble makes the file non-conformant to raw CSV, which is why the `.mrl` extension was introduced; workspace preferences (column widths, visibility, order) stay local to each user's INI and are not written into the file, so lists remain portable across machines and users.
+
+## Plugin Menu
+
+The plugin registers a few entries under **Plugins → MultiReplace** in the Notepad++ menu bar. Most are one-click actions; the entries marked as toggles show a checkmark when active.
+
+- **MultiReplace...** — Opens or focuses the MultiReplace panel.
+- **Settings...** — Opens the **Settings Panel** (see [Settings and Customization](#settings-and-customization)).
+- **Documentation** — Opens this README in the browser.
+- **Tandem Mode** *(toggle)* — Docks the MultiReplace window to an edge of the Notepad++ main window and keeps it attached on every move or resize. The last used dock edge is remembered, and the enabled state survives Notepad++ restarts.
+- **Reopen on Startup** *(toggle)* — When enabled, MultiReplace automatically reopens on the next Notepad++ launch if it was open at the previous shutdown. Opt-in by design, so the plugin only appears when you want it to.
+- **About** — Shows version and credits.
 
 ## Settings and Customization
 

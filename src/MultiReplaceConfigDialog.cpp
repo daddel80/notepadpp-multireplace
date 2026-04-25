@@ -1192,6 +1192,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.exportToBashEnabled = false;
     def.resultDockPerEntryColorsEnabled = true;
     def.useListColorsForMarking = true;
+    def.listDimIntensity = 50;
 
     MultiReplace::writeStructToConfig(def);
 

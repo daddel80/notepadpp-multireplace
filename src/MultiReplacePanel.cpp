@@ -494,11 +494,16 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), statusRowY + sy(2), statusWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, nullptr, false, FontRole::Normal1 };
 
     // --- Toolbar buttons in status row: [➕][📂][💾▾]  [▲][▼] ---
-    // Layout: 5 buttons exactly 128px wide, right-aligned with action buttons above
-    // Save is BS_SPLITBUTTON (32px), Up/Down are 20px, New/Load are 24px
-    ctrlMap[IDC_NEW_LIST_BUTTON] = { buttonX, statusRowY, sx(24), sy(24), WC_BUTTON, L"➕", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_new_list"), false, FontRole::Standard };
-    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX + sx(26), statusRowY, sx(24), sy(24), WC_BUTTON, L"📂", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"panel_load_list"), false, FontRole::Standard };
-    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX + sx(52), statusRowY, sx(32), sy(24), WC_BUTTON, L"💾", BS_SPLITBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save"), false, FontRole::Normal3 };
+    // Status row layout: file-ops on the left, item-ops on the right,
+    // visual gap in between. The "New List" button (IDC_NEW_LIST_BUTTON)
+    // moved out of this row down to the tab bar, where the Excel/Browser
+    // convention puts it right next to the existing tabs. The button is
+    // re-positioned in the tab-bar block below.
+    // Load/Save are slightly wider than before (32 / 40 px) to fill the
+    // void left by the removed "+" without crowding the right-aligned
+    // Up/Down pair.
+    ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, statusRowY, sx(32), sy(24), WC_BUTTON, L"📂", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"panel_load_list"), false, FontRole::Standard };
+    ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX + sx(36), statusRowY, sx(40), sy(24), WC_BUTTON, L"💾", BS_SPLITBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save"), false, FontRole::Normal3 };
     ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(86), statusRowY, sx(20), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, LM.getLPCW(L"tooltip_move_up"), false, FontRole::Standard };
     ctrlMap[IDC_DOWN_BUTTON] = { buttonX + sx(108), statusRowY, sx(20), sy(24), WC_BUTTON, L"▼", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, LM.getLPCW(L"tooltip_move_down"), false, FontRole::Standard };
 
@@ -521,9 +526,27 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // X is offset by -2 px so the first tab's visible left edge lines
     // up with the list's border. Windows inserts a small internal
     // offset before the first tab lug that we compensate for here.
-    int pathWidth = (useListEnabled || keepListVisible) ? (listWidth - sx(26)) : listWidth;
+    // Width reserves slots on the right edge for both the New-List
+    // button (Excel/Browser-style "+" next to the tabs) and the
+    // existing Use-List toggle. The new "+" sits closest to the tabs
+    // so it reads as "add a tab", consistent with the convention.
+    int pathWidth = (useListEnabled || keepListVisible) ? (listWidth - sx(52)) : listWidth;
     ctrlMap[IDC_LIST_TABS] = { sx(14) - sx(2), tabBarY, pathWidth, tabBarHeight, WC_TABCONTROL, L"",
         TCS_BOTTOM | TCS_SINGLELINE | TCS_FOCUSNEVER | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
+
+    // New-List "+" button — sits in the tab-bar row immediately to the
+    // right of the tab control, vertically centered like the UseList
+    // toggle on the same row. Implemented as a STATIC with
+    // SS_OWNERDRAW + SS_NOTIFY rather than a real button so it renders
+    // flat and borderless against the tab bar, the way Excel and modern
+    // browsers render their "new tab" affordance. Clicks come in as
+    // STN_CLICKED notifications and are routed to addNewTab() in the
+    // WM_COMMAND handler.
+    int newListBtnX = sx(14) + pathWidth + sx(2);
+    int newListBtnY = (useListEnabled || keepListVisible)
+        ? (tabBarY + (bottomZoneHeight - sy(22)) / 2)
+        : statusRowY;  // fallback: irrelevant when the row is hidden
+    ctrlMap[IDC_NEW_LIST_BUTTON] = { newListBtnX, newListBtnY, sx(22), sy(22), WC_STATIC, L"+", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_new_list"), false, FontRole::Standard };
 
     // Use List toggle -> Normal5
     LPCWSTR useListBtnText = keepListVisible
@@ -2374,7 +2397,7 @@ void MultiReplace::insertSingleColumn(ColumnID id, int& currentIndex, int perCol
     ++currentIndex;
 }
 
-void MultiReplace::createListViewColumns() {
+void MultiReplace::createListViewColumns(WidthMode mode) {
     LVCOLUMN lvc;
     ZeroMemory(&lvc, sizeof(lvc));
     lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
@@ -2405,30 +2428,53 @@ void MultiReplace::createListViewColumns() {
 
     const ControlInfo& listCtrlInfo = ctrlMap[IDC_REPLACE_LIST];
 
-    // Calculate dynamic column widths
-    ResizableColWidths widths = {
-        _replaceListView,
-        listCtrlInfo.cx,
-        (isFindCountVisible) ? findCountColumnWidth : 0,
-        (isReplaceCountVisible) ? replaceCountColumnWidth : 0,
-        findColumnWidth,
-        replaceColumnWidth,
-        (isCommentsColumnVisible) ? commentsColumnWidth : 0,
-        (isTimestampColumnVisible) ? timestampWidth_scaled : 0,
-        (isDeleteButtonVisible) ? deleteButtonColumnWidth : 0,
-        GetSystemMetrics(SM_CXVSCROLL)
-    };
-    int perColumnWidth = calcDynamicColWidth(widths);
+    // Resolve the per-column width for the three dynamic columns.
+    // Redistribute: all unlocked columns share an even perColumnWidth.
+    // UseStored:    each dynamic column keeps its globals-restored
+    //               width (which came from the target tab's TabState).
+    //               Only runs when the tab's layout still matches the
+    //               current window size — the lazy-relayout flag
+    //               ensures we never land here with stale widths.
+    int perColumnWidth = 0;
+    if (mode == WidthMode::Redistribute) {
+        ResizableColWidths widths = {
+            _replaceListView,
+            listCtrlInfo.cx,
+            (isFindCountVisible) ? findCountColumnWidth : 0,
+            (isReplaceCountVisible) ? replaceCountColumnWidth : 0,
+            findColumnWidth,
+            replaceColumnWidth,
+            (isCommentsColumnVisible) ? commentsColumnWidth : 0,
+            (isTimestampColumnVisible) ? timestampWidth_scaled : 0,
+            (isDeleteButtonVisible) ? deleteButtonColumnWidth : 0,
+            GetSystemMetrics(SM_CXVSCROLL)
+        };
+        perColumnWidth = calcDynamicColWidth(widths);
+    }
 
     // Create columns in user-defined order
     int currentIndex = 0;
     for (ColumnID id : columnOrder) {
-        if (isColumnVisible(id)) {
-            insertSingleColumn(id, currentIndex, perColumnWidth, lvc);
-        }
-        else {
+        if (!isColumnVisible(id)) {
             columnIndices[id] = -1;  // Mark as not visible
+            continue;
         }
+
+        int width = perColumnWidth;
+        if (mode == WidthMode::UseStored) {
+            // Pick the stored width for this dynamic column.
+            // Locked columns are already handled inside
+            // insertSingleColumn (it substitutes the globals-locked
+            // width regardless of the argument), so passing the
+            // stored value is safe for all three.
+            switch (id) {
+            case ColumnID::FIND_TEXT:    width = findColumnWidth;    break;
+            case ColumnID::REPLACE_TEXT: width = replaceColumnWidth; break;
+            case ColumnID::COMMENTS:     width = commentsColumnWidth; break;
+            default: break;
+            }
+        }
+        insertSingleColumn(id, currentIndex, width, lvc);
     }
 
     updateHeaderSortDirection();
@@ -2573,9 +2619,24 @@ int MultiReplace::calcDynamicColWidth(const ResizableColWidths& widths) {
         + widths.timestampWidth
         + widths.deleteWidth;
 
+    // WS_BORDER on the ListView reserves a few pixels per side that are
+    // not part of the usable client area. widths.listViewWidth is the
+    // frame width from ctrlMap, so the inner content area is narrower
+    // by roughly this amount. Deducting it here prevents the rightmost
+    // column from slipping behind the scrollbar after a redistribute
+    // pass (tab switch, resize, visibility toggle, …).
+    //
+    // Value chosen empirically to cover WS_BORDER plus a small layout
+    // padding. Not passed through sx() — the border is a fixed pixel
+    // count in Windows regardless of DPI scaling, and empirical testing
+    // showed DPI-scaling caused a 1 px header/row offset. Kept on the
+    // resize hot path with no per-frame Win32 calls.
+    const int borderOverhead = 3;
+
     // Calculate the remaining width by subtracting fixed widths and visible static column widths
     int totalRemainingWidth = widths.listViewWidth
         - widths.margin  // Adjust for the vertical scrollbar margin
+        - borderOverhead
         - totalWidthFixedColumns
         - (findColumnLockedEnabled ? widths.findWidth : 0)
         - (replaceColumnLockedEnabled ? widths.replaceWidth : 0)
@@ -3831,9 +3892,10 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         std::vector<ColumnID> previousOrder = pThis->columnOrder;
         pThis->syncColumnOrderFromHeader();
         if (!pThis->validateColumnOrder(pThis->columnOrder)) {
-            // Invalid order — revert and rebuild
+            // Invalid order — revert and rebuild. Widths are stable
+            // across column-order changes, so keep the stored values.
             pThis->columnOrder = previousOrder;
-            pThis->createListViewColumns();
+            pThis->createListViewColumns(WidthMode::UseStored);
             ListView_SetItemCountEx(pThis->_replaceListView,
                 static_cast<int>(pThis->replaceListData.size()), LVSICF_NOINVALIDATEALL);
         }
@@ -5128,10 +5190,21 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // Calculate Position for all Elements
             positionAndResizeControls(newWidth, newHeight);
 
+            // Reposition the New-List "+" so it stays anchored to the
+            // last tab even after the panel was resized. Must run after
+            // positionAndResizeControls, which restores the button to
+            // its (now stale) ctrlMap baseline position.
+            repositionNewTabButton();
+
             // Only update list columns when the list is visible
             if (useListEnabled || keepListVisible) {
                 updateListViewAndColumns();
             }
+
+            // Inactive tabs' stored widths no longer fit the new panel
+            // size. Flag them so the next activation redistributes
+            // instead of applying the stale widths.
+            markAllTabsNeedRelayout();
 
             // Move all Elements
             moveAndResizeControls(false);
@@ -5653,6 +5726,47 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             return TRUE;
         }
+        else if (pdis->CtlID == IDC_NEW_LIST_BUTTON) {
+            // Flat, borderless render against the tab-bar background.
+            // STATIC with SS_OWNERDRAW is transparent by default, so no
+            // background fill is needed in the idle state — the tab bar
+            // shows through naturally.
+            wchar_t buffer[8];
+            GetWindowTextW(pdis->hwndItem, buffer, 8);
+
+            const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+            COLORREF fg = isDark ? RGB(220, 220, 220) : RGB(60, 60, 60);
+            SetTextColor(pdis->hDC, fg);
+            SetBkMode(pdis->hDC, TRANSPARENT);
+
+            // The "+" glyph (U+002B) sits on the x-height in most fonts,
+            // so at the control's default size it appears noticeably
+            // smaller than the surrounding tab text. Build a 1.4x-scaled
+            // copy of the control's font for this draw call so the
+            // glyph reads as a proper "new tab" affordance, the way it
+            // does in Excel and modern browsers. The temporary font is
+            // released straight after DrawText.
+            HFONT hCtrlFont = reinterpret_cast<HFONT>(SendMessage(pdis->hwndItem, WM_GETFONT, 0, 0));
+            HFONT hBigFont = nullptr;
+            HGDIOBJ hOld = nullptr;
+            if (hCtrlFont) {
+                LOGFONT lf{};
+                if (GetObject(hCtrlFont, sizeof(lf), &lf)) {
+                    // lfHeight is negative for character height in most
+                    // Windows fonts; multiplying preserves the sign.
+                    lf.lfHeight = MulDiv(lf.lfHeight, 14, 10);
+                    hBigFont = CreateFontIndirect(&lf);
+                }
+                hOld = SelectObject(pdis->hDC, hBigFont ? hBigFont : hCtrlFont);
+            }
+
+            DrawTextW(pdis->hDC, buffer, -1, &pdis->rcItem,
+                DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+            if (hOld) SelectObject(pdis->hDC, hOld);
+            if (hBigFont) DeleteObject(hBigFont);
+            return TRUE;
+        }
         return FALSE;
     }
 
@@ -5850,7 +5964,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 InvalidateRect(_replaceListView, nullptr, TRUE);
             }
             else {
-                // Classic mode: collapse/expand the list
+                // Classic mode: collapse/expand the list. The New-List
+                // button visually moved to the tab bar, but its show/
+                // hide logic still mirrors the toolbar buttons because
+                // the tab bar appears and disappears together with them.
                 const std::vector<int> listToolbarButtons = {
                     IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
                     IDC_UP_BUTTON, IDC_DOWN_BUTTON
@@ -6137,7 +6254,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_NEW_LIST_BUTTON:
         {
-            addNewTab();
+            // STATIC with SS_NOTIFY emits several STN_* notifications;
+            // only treat single click and double-click as "open a new
+            // tab" — anything else (focus, enable, …) is a no-op.
+            const WORD code = HIWORD(wParam);
+            if (code == STN_CLICKED || code == STN_DBLCLK) {
+                addNewTab();
+            }
             return TRUE;
         }
 
@@ -6389,7 +6512,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDM_RESET_COLUMN_ORDER:
         {
             columnOrder = defaultColumnOrder;
-            createListViewColumns();
+            // Order change only — preserve the user's stored widths.
+            createListViewColumns(WidthMode::UseStored);
             ListView_SetItemCountEx(_replaceListView,
                 static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
             InvalidateRect(_replaceListView, nullptr, TRUE);
@@ -14653,14 +14777,24 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
     rebuildTabControl();
 
     // Full UI refresh to reflect settings merged from the file's block.
+    // Respects the lazy-relayout flag: if the window was resized while
+    // this tab was inactive, the stored widths no longer fit and a
+    // full Redistribute pass is needed; otherwise the stored widths
+    // stand as they were captured.
     if (_replaceListView) {
+        const bool needsRelayout = _tabs[_activeTabIndex]->needsRelayout;
+        const WidthMode mode = needsRelayout
+            ? WidthMode::Redistribute : WidthMode::UseStored;
+
         SendMessage(_replaceListView, WM_SETREDRAW, FALSE, 0);
-        createListViewColumns();
+        createListViewColumns(mode);
         autoShowCommentsColumn();
         ListView_SetItemCountEx(_replaceListView,
             static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
         SendMessage(_replaceListView, WM_SETREDRAW, TRUE, 0);
         InvalidateRect(_replaceListView, nullptr, TRUE);
+
+        _tabs[_activeTabIndex]->needsRelayout = false;
     }
     setUIElementVisibility();
     updateHeaderSelection();
@@ -15438,6 +15572,19 @@ void MultiReplace::restoreStateFromTab(const TabState& tab)
     columnSortOrder = tab.columnSortOrder;
 }
 
+void MultiReplace::markAllTabsNeedRelayout()
+{
+    // Raise the lazy-relayout flag on every inactive tab. The active
+    // tab is handled synchronously by updateListViewAndColumns at the
+    // call site, so its flag stays clear. Next activation of any
+    // marked tab will trigger a full Redistribute instead of applying
+    // the (now stale) stored widths.
+    for (int i = 0; i < static_cast<int>(_tabs.size()); ++i) {
+        if (i == _activeTabIndex) continue;
+        if (_tabs[i]) _tabs[i]->needsRelayout = true;
+    }
+}
+
 void MultiReplace::writeTabsToConfig()
 {
     // Make sure the active tab's metadata reflects the live working
@@ -15836,6 +15983,54 @@ void MultiReplace::rebuildTabControl()
 
     ShowWindow(hTab, SW_SHOW);
     updateTabTooltip(_activeTabIndex);
+    repositionNewTabButton();
+}
+
+void MultiReplace::repositionNewTabButton()
+{
+    HWND hPlus = GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON);
+    if (!hPlus) return;
+    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+    if (!hTab) return;
+
+    // Tab control geometry, in panel-client coordinates.
+    RECT tabScreen;
+    GetWindowRect(hTab, &tabScreen);
+    POINT tabTL = { tabScreen.left, tabScreen.top };
+    ScreenToClient(_hSelf, &tabTL);
+    const int tabCtrlWidth = tabScreen.right - tabScreen.left;
+    const int tabCtrlHeight = tabScreen.bottom - tabScreen.top;
+
+    // Place the "+" right after the last tab. With no tabs the button
+    // sits at the start of the bar so the user always has an entry
+    // point. Tab-item rects are tab-control-relative, so add the
+    // control's own X offset.
+    int xRel = 0;
+    const int tabCount = TabCtrl_GetItemCount(hTab);
+    if (tabCount > 0) {
+        RECT lastRc;
+        if (TabCtrl_GetItemRect(hTab, tabCount - 1, &lastRc)) {
+            xRel = lastRc.right;
+        }
+    }
+    int newX = tabTL.x + xRel + sx(2);
+
+    // Clamp: never let the button extend past the tab control's own
+    // right edge — beyond that the Use-List toggle lives, and the
+    // button must not overlap it. When there are too many tabs to fit,
+    // the "+" parks at the right edge instead of being pushed off.
+    const int btnW = sx(22);
+    const int btnH = sy(22);
+    const int maxX = tabTL.x + tabCtrlWidth - btnW;
+    if (newX > maxX) newX = maxX;
+    if (newX < tabTL.x) newX = tabTL.x;
+
+    // Vertically centre within the tab-bar zone, matching the
+    // Use-List toggle on the same row.
+    const int newY = tabTL.y + (tabCtrlHeight - btnH) / 2;
+
+    SetWindowPos(hPlus, nullptr, newX, newY, btnW, btnH,
+        SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void MultiReplace::markActiveTabDirty()
@@ -15961,16 +16156,27 @@ void MultiReplace::switchToTab(int newIndex)
     restoreStateFromTab(*_tabs[newIndex]);
 
     // Rebuild ListView columns with the new tab's widths, visibility
-    // and order. Suppress ListView redraws to avoid flicker from the
+    // and order. Honour the lazy-relayout flag: if the panel was
+    // resized while this tab was inactive, its stored widths no
+    // longer fit the panel and a Redistribute pass is required;
+    // otherwise the stored widths apply directly and the manual
+    // sizing survives the switch.
+    // Suppress ListView redraws to avoid flicker from the
     // column teardown/rebuild; other controls repaint themselves on
     // normal Win32 messages without visible artifacts.
     if (_replaceListView) {
+        const bool needsRelayout = _tabs[newIndex]->needsRelayout;
+        const WidthMode mode = needsRelayout
+            ? WidthMode::Redistribute : WidthMode::UseStored;
+
         SendMessage(_replaceListView, WM_SETREDRAW, FALSE, 0);
-        createListViewColumns();
+        createListViewColumns(mode);
         autoShowCommentsColumn();
         ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
         SendMessage(_replaceListView, WM_SETREDRAW, TRUE, 0);
         InvalidateRect(_replaceListView, nullptr, TRUE);
+
+        _tabs[newIndex]->needsRelayout = false;
     }
 
     // UI dependent on scope and visibility state.
@@ -16691,12 +16897,18 @@ void MultiReplace::addNewTab()
     // flicker, then re-sync the dependent controls.
     rebuildTabControl();
     if (_replaceListView) {
+        const bool needsRelayout = _tabs[_activeTabIndex]->needsRelayout;
+        const WidthMode mode = needsRelayout
+            ? WidthMode::Redistribute : WidthMode::UseStored;
+
         SendMessage(_replaceListView, WM_SETREDRAW, FALSE, 0);
-        createListViewColumns();
+        createListViewColumns(mode);
         autoShowCommentsColumn();
         ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
         SendMessage(_replaceListView, WM_SETREDRAW, TRUE, 0);
         InvalidateRect(_replaceListView, nullptr, TRUE);
+
+        _tabs[_activeTabIndex]->needsRelayout = false;
     }
     setUIElementVisibility();
     updateHeaderSelection();
@@ -16826,12 +17038,18 @@ void MultiReplace::onTabDuplicate(int tabIndex)
     // Full UI refresh for the duplicate, same pattern as switchToTab.
     rebuildTabControl();
     if (_replaceListView) {
+        const bool needsRelayout = _tabs[_activeTabIndex]->needsRelayout;
+        const WidthMode mode = needsRelayout
+            ? WidthMode::Redistribute : WidthMode::UseStored;
+
         SendMessage(_replaceListView, WM_SETREDRAW, FALSE, 0);
-        createListViewColumns();
+        createListViewColumns(mode);
         autoShowCommentsColumn();
         ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
         SendMessage(_replaceListView, WM_SETREDRAW, TRUE, 0);
         InvalidateRect(_replaceListView, nullptr, TRUE);
+
+        _tabs[_activeTabIndex]->needsRelayout = false;
     }
     setUIElementVisibility();
     updateHeaderSelection();
@@ -16930,12 +17148,18 @@ void MultiReplace::onTabClose(int tabIndex)
         restoreStateFromTab(*_tabs[_activeTabIndex]);
         // Full UI refresh, same pattern as switchToTab.
         if (_replaceListView) {
+            const bool needsRelayout = _tabs[_activeTabIndex]->needsRelayout;
+            const WidthMode mode = needsRelayout
+                ? WidthMode::Redistribute : WidthMode::UseStored;
+
             SendMessage(_replaceListView, WM_SETREDRAW, FALSE, 0);
-            createListViewColumns();
+            createListViewColumns(mode);
             autoShowCommentsColumn();
             ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
             SendMessage(_replaceListView, WM_SETREDRAW, TRUE, 0);
             InvalidateRect(_replaceListView, nullptr, TRUE);
+
+            _tabs[_activeTabIndex]->needsRelayout = false;
         }
         setUIElementVisibility();
         updateHeaderSelection();
@@ -18125,11 +18349,23 @@ void MultiReplace::signalShutdown() {
     // If the panel is open, WM_DESTROY and saveSettings() will follow
     // and CFG.save() will persist the cache for us. If the panel is
     // closed we have to save explicitly - no WM_DESTROY to drive it.
+    //
+    // For the panel-closed branch we forceReload the INI from disk
+    // before the save. The in-memory cache is a snapshot taken at
+    // plugin start (loadConfigOnce) and would clobber any direct INI
+    // edits the user made during this session if we wrote it back as-
+    // is. The reload pulls those edits into the cache so the
+    // subsequent save preserves them while still updating
+    // PanelWasVisible to reflect the current state.
     const bool panelVisible = instance && IsWindowVisible(instance->_hSelf);
-    CFG.writeBool(kGeneralIniSection, kGeneralIniKeyPanelWasVisible, panelVisible);
 
-    if (!panelVisible) {
+    if (panelVisible) {
+        CFG.writeBool(kGeneralIniSection, kGeneralIniKeyPanelWasVisible, true);
+    }
+    else {
         const auto settingsPath = generateConfigFilePaths().first;
+        CFG.forceReload(settingsPath);
+        CFG.writeBool(kGeneralIniSection, kGeneralIniKeyPanelWasVisible, false);
         CFG.save(settingsPath);
     }
 
