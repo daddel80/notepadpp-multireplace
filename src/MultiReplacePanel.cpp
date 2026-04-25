@@ -881,6 +881,16 @@ void MultiReplace::moveAndResizeControls(bool moveStatic) {
 
     if (anyLayoutChanged) {
     }
+
+    // The New-List "+" sits in the tab bar but its real position is
+    // computed dynamically from the last tab's right edge. Running it
+    // at the end of every layout pass keeps the button anchored next
+    // to the last tab regardless of which caller triggered the pass:
+    // resize, visibility toggle, search bar show/hide, scale change.
+    // Without this trailing call, the button would be left at its
+    // ctrlMap baseline (which is just the right edge of the tab
+    // control) after each moveAndResize.
+    repositionNewTabButton();
 }
 
 void MultiReplace::updateTwoButtonsVisibility() {
@@ -1357,8 +1367,13 @@ void MultiReplace::updateUseListState(bool isUpdate)
         SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"\u02C4" : L"\u02C5");
     }
 
-    // Set the status message based on the list state
-    showStatusMessage(useListEnabled ? LM.get(L"status_enable_list") : LM.get(L"status_disable_list"), MessageStatus::Info);
+    // Status messaging is intentionally NOT done here. This function is
+    // a UI-state refresher and gets invoked from many code paths
+    // (init, add-to-list, settings reload, theme change, etc.) where a
+    // "List mode enabled" toast would either be wrong or would step on
+    // a more relevant message that just appeared. Toast announcements
+    // for the user-facing toggle live at the toggle sites themselves,
+    // see IDC_USE_LIST_BUTTON in WM_COMMAND.
 
     // Return early if tooltips are disabled
     if (!tooltipsEnabled) {
@@ -3150,11 +3165,34 @@ void MultiReplace::handleCopyToListButton() {
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
 
-    // Enable the ListView accordingly
-    useListEnabled = true;
-    updateUseListState(true);
-    adjustWindowSize();
-    setBottomRowVisible(true);
+    // Enable the ListView only if it was off. The primary action here
+    // is the insert (and its "value added" toast); flipping the
+    // use-list state is a secondary convenience for the case where
+    // the list was collapsed. The expand sequence below mirrors the
+    // ON branch of IDC_USE_LIST_BUTTON: in Library mode the list is
+    // already visible and only needs the active-state flip + repaint;
+    // in Classic mode the ListView, toolbar icon buttons and tab bar
+    // were all hidden and need an explicit ShowWindow pass.
+    if (!useListEnabled) {
+        useListEnabled = true;
+
+        if (keepListVisible) {
+            updateUseListState(true);
+            InvalidateRect(_replaceListView, nullptr, TRUE);
+        }
+        else {
+            const std::vector<int> listToolbarButtons = {
+                IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+                IDC_UP_BUTTON, IDC_DOWN_BUTTON
+            };
+            updateUseListState(true);
+            adjustWindowSize();
+            ShowWindow(_replaceListView, SW_SHOW);
+            for (int id : listToolbarButtons)
+                ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
+            setBottomRowVisible(true);
+        }
+    }
 }
 
 void MultiReplace::resetCountColumns() {
@@ -5190,12 +5228,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // Calculate Position for all Elements
             positionAndResizeControls(newWidth, newHeight);
 
-            // Reposition the New-List "+" so it stays anchored to the
-            // last tab even after the panel was resized. Must run after
-            // positionAndResizeControls, which restores the button to
-            // its (now stale) ctrlMap baseline position.
-            repositionNewTabButton();
-
             // Only update list columns when the list is visible
             if (useListEnabled || keepListVisible) {
                 updateListViewAndColumns();
@@ -5206,7 +5238,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // instead of applying the stale widths.
             markAllTabsNeedRelayout();
 
-            // Move all Elements
+            // Move all Elements (also reanchors the New-List "+" via
+            // repositionNewTabButton at the end of the move pass).
             moveAndResizeControls(false);
 
             // Per-tab tooltip tools use absolute tab rects that change
@@ -5993,6 +6026,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     setBottomRowVisible(true);
                 }
             }
+
+            // User-initiated toggle: announce the new state. This is
+            // the only place that should emit this message; other
+            // updateUseListState callers refresh the UI silently.
+            showStatusMessage(useListEnabled ? LM.get(L"status_enable_list")
+                : LM.get(L"status_disable_list"),
+                MessageStatus::Info);
             return TRUE;
         }
 
