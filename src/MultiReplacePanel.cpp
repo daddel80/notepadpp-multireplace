@@ -483,6 +483,13 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_MARK_BUTTON] = { buttonX, sy(147), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_MARK_MATCHES_BUTTON] = { buttonX, sy(147), sx(96), sy(24), WC_BUTTON, LM.getLPCW(L"panel_mark_matches_small"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
+    // "+ Bookmarks" checkbox: when ticked, Mark Matches additionally
+    // adds a bookmark on every match line (handled inside markString).
+    // Placed in the same column as the 2-Buttons-Mode checkbox above,
+    // visually aligned with the Mark Matches button row. Persistent
+    // across sessions via INI, like the other UI option toggles.
+    ctrlMap[IDC_BOOKMARK_MATCHES_CHECKBOX] = { checkbox2X, sy(149), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, LM.getLPCW(L"tooltip_bookmark_matches"), false, FontRole::Standard };
+
     // Copy Marked -> Normal4
     ctrlMap[IDC_COPY_MARKED_TEXT_BUTTON] = { buttonX + sx(100), sy(147), sx(28), sy(24), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_marked_text"), false, FontRole::Normal4 };
 
@@ -10309,6 +10316,21 @@ void MultiReplace::handleMarkMatchesButton() {
 
     const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
+    // Bookmark companion mode. When the "+ Bookmarks" checkbox is on,
+    // resolve N++'s bookmark marker id once and forward it to every
+    // markString call so each match line is bookmarked alongside the
+    // visual indicator. Older N++ versions return 0 from
+    // NPPM_GETBOOKMARKID; the guarded fallback to marker 20 mirrors
+    // what the duplicate-detection feature already does. A negative
+    // markerId disables bookmarking inside markString.
+    int bookmarkMarkerId = -1;
+    if (IsDlgButtonChecked(_hSelf, IDC_BOOKMARK_MATCHES_CHECKBOX) == BST_CHECKED) {
+        constexpr UINT LOCAL_NPPM_GETBOOKMARKID = (WM_USER + 1000) + 113;
+        const LRESULT nppBookmarkId = ::SendMessage(nppData._nppHandle, LOCAL_NPPM_GETBOOKMARKID, 0, 0);
+        bookmarkMarkerId = (nppBookmarkId > 0 && nppBookmarkId < 32)
+            ? static_cast<int>(nppBookmarkId) : 20;
+    }
+
     if (useListEnabled) {
         if (replaceListData.empty()) {
             showStatusMessage(LM.get(L"status_add_values_or_uncheck"), MessageStatus::Error);
@@ -10360,7 +10382,7 @@ void MultiReplace::handleMarkMatchesButton() {
                 startPos = allFromCursorEnabled ? caretPos : 0;
             }
 
-            const int matchCount = markString(context, startPos, item.findText);
+            const int matchCount = markString(context, startPos, item.findText, bookmarkMarkerId);
             if (matchCount > 0) {
                 totalMatchCount += matchCount;
                 updateCountColumns(i, matchCount);
@@ -10389,13 +10411,13 @@ void MultiReplace::handleMarkMatchesButton() {
         }
         else if (!wrapAroundEnabled) startPos = allFromCursorEnabled ? (Sci_Position)send(SCI_GETCURRENTPOS) : 0;
 
-        totalMatchCount = markString(context, startPos, findText);
+        totalMatchCount = markString(context, startPos, findText, bookmarkMarkerId);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
     showStatusMessage(LM.get(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), MessageStatus::Info);
 }
 
-int MultiReplace::markString(const SearchContext& context, Sci_Position initialStart, const std::wstring& findText)
+int MultiReplace::markString(const SearchContext& context, Sci_Position initialStart, const std::wstring& findText, int bookmarkMarkerId)
 {
     if (context.findText.empty()) return 0;
 
@@ -10416,6 +10438,17 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
     {
         if (r.length > 0) {
             ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, r.pos, r.length);
+            // Companion bookmark on the match's line. SCI_MARKERADD is
+            // a no-op when the line already carries the marker, so
+            // multiple matches on the same line collapse to one
+            // bookmark naturally and repeated Mark Matches calls on
+            // the same line do not stack markers.
+            if (bookmarkMarkerId >= 0) {
+                const LRESULT lineIdx = send(SCI_LINEFROMPOSITION, r.pos, 0);
+                send(SCI_MARKERADD,
+                    static_cast<uptr_t>(lineIdx),
+                    static_cast<sptr_t>(bookmarkMarkerId));
+            }
             ++markCount;
         }
         pos = advanceAfterMatch(r);
@@ -15164,6 +15197,12 @@ void MultiReplace::loadSettingsToPanelUI() {
     bool replaceButtonsMode = CFG.readBool(L"Options", L"ButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
 
+    // "+ Bookmarks" companion mode for Mark Matches. Off by default —
+    // most users only want the visual indicator. Persisted alongside
+    // the other UI option toggles.
+    bool bookmarkMatches = CFG.readBool(L"Options", L"BookmarkMatches", false);
+    SendMessage(GetDlgItem(_hSelf, IDC_BOOKMARK_MATCHES_CHECKBOX), BM_SETCHECK, bookmarkMatches ? BST_CHECKED : BST_UNCHECKED, 0);
+
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     updateUseListState(false);
 
@@ -17872,6 +17911,7 @@ void MultiReplace::syncUIToCache()
     // [Tabs]/TabN_*. Only settings-dialog options remain global.
 
     CFG.writeBool(L"Options", L"ButtonsMode", IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED);
+    CFG.writeBool(L"Options", L"BookmarkMatches", IsDlgButtonChecked(_hSelf, IDC_BOOKMARK_MATCHES_CHECKBOX) == BST_CHECKED);
     CFG.writeBool(L"Options", L"UseList", useListEnabled);
 
     // Config-managed Options

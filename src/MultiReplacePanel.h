@@ -1174,9 +1174,13 @@ private:
 
     //Mark
     void handleMarkMatchesButton();
-    void handleBookmarkMatchesButton();
-    int markString(const SearchContext& context, Sci_Position initialStart, const std::wstring& findText = L"");
-    int bookmarkString(const SearchContext& context, Sci_Position initialStart, int markerId, const std::wstring& findText = L"");
+    // markString runs the search-and-mark loop. If bookmarkMarkerId is
+    // non-negative, every match line additionally gets a bookmark via
+    // SCI_MARKERADD — driven by the "+ Bookmarks" checkbox next to the
+    // Mark Matches button.
+    int markString(const SearchContext& context, Sci_Position initialStart,
+        const std::wstring& findText = L"",
+        int bookmarkMarkerId = -1);
     int calcMaxListSlots() const;
     int resolveIndicatorForText(const std::wstring& findText);
     void handleClearTextMarksButton();
