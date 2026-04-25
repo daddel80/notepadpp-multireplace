@@ -105,6 +105,7 @@ These options refine the search behavior across all modes.
 - **Use Variables** — Allows the use of variables within the replacement string for dynamic and conditional replacements. See the [chapter 'Use Variables'](#option-use-variables) for details.
 - **Wrap Around** — If active, the search continues from the beginning of the document after reaching the end.
 - **Replace matches** — Applies to all **Replace All** actions (current document, open documents, and in files). Allows you to specify exactly which occurrences of a match to replace. Accepts single numbers, commas, or ranges (e.g., `1,3,5-7`).
+- **Bookmark matched lines** — A small checkbox to the left of the **Mark Matches** button. When ticked, every match line additionally receives a Notepad++ bookmark, so the matches can be navigated with F2 / Shift+F2.
 
 ## Search Scopes and Targets
 This section describes **where** to search (Scopes) and **in which files** (Targets).

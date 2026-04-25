@@ -16693,7 +16693,16 @@ void MultiReplace::applyTandemLayout(const RECT& nppRect)
 
     // Self-calibrating seam: closes any residual 1-px offset
     // arising from DPI rounding or DWM frame-bounds quirks.
-    nudgeClientToFlush(_hSelf, layout);
+    // Suppressed during a drag because the workarea union and
+    // host's DWM frame both shift pixel-by-pixel as N++ crosses
+    // a monitor seam, which makes the nudge produce a slightly
+    // different correction every tick — that's the A->B->A->B
+    // flicker users see while holding N++ over the seam. Pixel
+    // perfection is not perceptible during the drag anyway; the
+    // first post-drag tick re-runs everything and re-flushes.
+    if (!mouseButtonDown()) {
+        nudgeClientToFlush(_hSelf, layout);
+    }
 
     // Shrink-only update of user-desired primary size unless this
     // call is the aftermath of a deliberate user resize.
