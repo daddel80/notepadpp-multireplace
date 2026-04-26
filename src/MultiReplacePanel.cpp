@@ -572,9 +572,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
 
     ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(27), sy(230), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(27), sy(257), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_ALL_DOCS_CHECKBOX] = { comboWidth - sx(27), sy(230), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_all_documents"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(42), sy(230), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(42), sy(257), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_ALL_DOCS_CHECKBOX] = { comboWidth - sx(42), sy(230), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_all_documents"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
 }
 
 HFONT MultiReplace::font(FontRole role) const {
