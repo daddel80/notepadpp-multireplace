@@ -14271,13 +14271,7 @@ namespace {
 
         writeSettingsLineUtf8(out, L"FormatVersion", kSettingsFormatVersion);
 
-        // TabName: only persisted when it diverges from the file stem.
-        // If the user renamed the tab to something other than the
-        // filename (e.g. "Q4 Cleanup" for q4-rules.mrl), we want the
-        // logical name to travel with the file so it survives reopens
-        // on other machines. When the names match, omitting the line
-        // keeps the file lean and lets future renames-via-Save-As
-        // pick up the new stem automatically.
+        // TabName is only written when it diverges from the file stem.
         try {
             std::wstring stem = std::filesystem::path(filePath).stem().wstring();
             if (!tab.name.empty() && tab.name != stem) {
@@ -14344,10 +14338,7 @@ namespace {
         const int version = readMapInt(s, L"FormatVersion", 1);
         (void)version;
 
-        // Optional: logical tab name persisted by an earlier save.
-        // Only adopt when present and non-empty so the caller's
-        // file-stem fallback still applies for files without this
-        // field (older saves, or saves where stem == name).
+        // Optional TabName: stem fallback in the caller covers files without it.
         std::wstring tabName = readMapString(s, L"TabName", L"");
         if (!tabName.empty()) {
             tab.name = tabName;
@@ -14848,9 +14839,7 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
         return;
     }
 
-    // Tab name resolution: the preamble may have already set
-    // tab->name from a persisted "TabName" field. Only fall back to
-    // the file stem when no logical name was carried by the file.
+    // Fall back to the file stem only if the preamble didn't supply a name.
     if (tab->name.empty()) {
         std::wstring tabName;
         try {
@@ -15735,11 +15724,8 @@ void MultiReplace::writeTabsToConfig()
             CFG.writeString(L"Tabs", prefix + L"_BaselineHash", hashBuf);
         }
 
-        // Persisted dirty flag. The hash diff captures data-level
-        // changes, but tab-level metadata (e.g. a rename) does not
-        // alter the list hash. Persist the explicit flag so any
-        // pending non-data change still surfaces as dirty after a
-        // restart.
+        // Persisted dirty flag for metadata-only changes (e.g. a rename)
+        // that don't move the data hash.
         CFG.writeBool(L"Tabs", prefix + L"_IsDirty", t.isDirty);
 
         // Search options
@@ -15970,12 +15956,7 @@ void MultiReplace::loadTabsFromConfig()
                 tab->originalHash = computeListHash(tab->data);
             }
 
-            // Reflect dirty state in the tab right away so the bullet
-            // indicator shows up on startup for tabs with pending edits.
-            // The hash diff catches data-level changes; the persisted
-            // IsDirty flag catches metadata-only changes (such as a
-            // pending rename) that the hash cannot see. Either trigger
-            // is enough.
+            // Either a hash diff or the persisted flag is enough to mark dirty.
             const bool persistedDirty = CFG.readBool(L"Tabs", prefix + L"_IsDirty", false);
             tab->isDirty = persistedDirty
                 || (computeListHash(tab->data) != tab->originalHash);
@@ -16082,7 +16063,8 @@ void MultiReplace::rebuildTabControl()
     // The bullet inherits the tab text color, so light/dark mode is
     // handled automatically - no custom drawing needed.
     for (size_t i = 0; i < _tabs.size(); ++i) {
-        std::wstring label = truncateTabName(_tabs[i]->name);
+        std::wstring label = truncateTabName(_tabs[i]->name,
+            static_cast<size_t>(tabMaxLength));
         if (_tabs[i]->isDirty) {
             label += L" \u25CF";  // U+25CF BLACK CIRCLE
         }
@@ -16102,6 +16084,10 @@ void MultiReplace::rebuildTabControl()
     }
 
     ShowWindow(hTab, SW_SHOW);
+    // Force an immediate repaint so the tabs are visible on first init,
+    // even when the queued WM_PAINT gets coalesced or skipped.
+    InvalidateRect(hTab, nullptr, TRUE);
+    UpdateWindow(hTab);
     updateTabTooltip(_activeTabIndex);
     repositionNewTabButton();
 }
@@ -17498,12 +17484,8 @@ void MultiReplace::commitInlineTabRename()
     if (!newName.empty() && newName != _tabs[idx]->name) {
         _tabs[idx]->name = newName;
 
-        // Renaming changes metadata that travels with the file (the
-        // logical name is persisted in the .mrl preamble's TabName
-        // field). Mark the tab dirty so the user gets the usual save
-        // prompt and the new name actually reaches disk. Untitled
-        // tabs (no filePath yet) need no marking - the name lives in
-        // the workspace INI, which is written on shutdown anyway.
+        // Rename is a save-worthy change: persist via the .mrl preamble.
+        // Untitled tabs live in the workspace INI and need no marking.
         if (!_tabs[idx]->filePath.empty()) {
             _tabs[idx]->isDirty = true;
         }
@@ -17768,6 +17750,7 @@ void MultiReplace::loadUIConfigFromIni()
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
     listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
+    tabMaxLength = std::clamp(CFG.readInt(L"Options", L"TabMaxLength", 14), 4, 60);
     updateUseListState(false);
 
     int savedWidth = CFG.readInt(L"Window", L"Width", sx(INIT_WIDTH));
@@ -17880,6 +17863,7 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
     s.keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
     s.listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
+    s.tabMaxLength = std::clamp(CFG.readInt(L"Options", L"TabMaxLength", 14), 4, 60);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
     s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
@@ -17907,6 +17891,7 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeBool(L"Options", L"AllFromCursor", s.allFromCursorEnabled);
     CFG.writeBool(L"Options", L"KeepListVisible", s.keepListVisible);
     CFG.writeInt(L"Options", L"DimIntensity", s.listDimIntensity);
+    CFG.writeInt(L"Options", L"TabMaxLength", s.tabMaxLength);
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", s.maxFileSizeMB);
     CFG.writeInt(L"Options", L"EditFieldSize", s.editFieldSize);
@@ -18016,6 +18001,7 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(L"Options", L"GroupResults", groupResultsEnabled);
     CFG.writeBool(L"Options", L"KeepListVisible", keepListVisible);
     CFG.writeInt(L"Options", L"DimIntensity", listDimIntensity);
+    CFG.writeInt(L"Options", L"TabMaxLength", tabMaxLength);
     CFG.writeBool(L"Options", L"DockWrap", ResultDock::wrapEnabled());
     CFG.writeBool(L"Options", L"DockPurge", ResultDock::purgeEnabled());
 
