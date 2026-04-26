@@ -572,9 +572,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
 
     ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(42), sy(230), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(42), sy(257), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_ALL_DOCS_CHECKBOX] = { comboWidth - sx(42), sy(230), sx(120), sy(13), WC_BUTTON, LM.getLPCW(L"panel_all_documents"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(42), sy(230), sx(110), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(42), sy(257), sx(110), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_ALL_DOCS_CHECKBOX] = { comboWidth - sx(42), sy(230), sx(110), sy(13), WC_BUTTON, LM.getLPCW(L"panel_all_documents"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
 }
 
 HFONT MultiReplace::font(FontRole role) const {
@@ -14266,10 +14266,25 @@ namespace {
     // preferences like column widths / visibility / locks / order
     // are persisted per-tab in the INI - writing them here would
     // leak one user's layout to another when the CSV is shared.
-    void writeSettingsBlock(std::ofstream& out, const TabState& tab) {
+    void writeSettingsBlock(std::ofstream& out, const TabState& tab, const std::wstring& filePath) {
         out << "[MultiReplace-Settings]\n";
 
         writeSettingsLineUtf8(out, L"FormatVersion", kSettingsFormatVersion);
+
+        // TabName: only persisted when it diverges from the file stem.
+        // If the user renamed the tab to something other than the
+        // filename (e.g. "Q4 Cleanup" for q4-rules.mrl), we want the
+        // logical name to travel with the file so it survives reopens
+        // on other machines. When the names match, omitting the line
+        // keeps the file lean and lets future renames-via-Save-As
+        // pick up the new stem automatically.
+        try {
+            std::wstring stem = std::filesystem::path(filePath).stem().wstring();
+            if (!tab.name.empty() && tab.name != stem) {
+                writeSettingsLineUtf8(out, L"TabName", tab.name);
+            }
+        }
+        catch (...) {}
 
         writeSettingsLineUtf8(out, L"SearchMode", tab.searchMode);
         writeSettingsLineUtf8(out, L"WholeWord", tab.wholeWord);
@@ -14328,6 +14343,15 @@ namespace {
         // Reserved for future schema branching; old files default to 1.
         const int version = readMapInt(s, L"FormatVersion", 1);
         (void)version;
+
+        // Optional: logical tab name persisted by an earlier save.
+        // Only adopt when present and non-empty so the caller's
+        // file-stem fallback still applies for files without this
+        // field (older saves, or saves where stem == name).
+        std::wstring tabName = readMapString(s, L"TabName", L"");
+        if (!tabName.empty()) {
+            tab.name = tabName;
+        }
 
         tab.searchMode = readMapInt(s, L"SearchMode", 0);
         tab.wholeWord = readMapBool(s, L"WholeWord", false);
@@ -14390,7 +14414,7 @@ bool MultiReplace::saveListToCsvWithSettings(const std::wstring& filePath, const
     outFile.write("\xEF\xBB\xBF", 3);
 
     // Per-list settings block precedes the CSV header row.
-    writeSettingsBlock(outFile, tab);
+    writeSettingsBlock(outFile, tab, filePath);
 
     // CSV header
     std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Extended,Regex,Comments,LastModified\n");
@@ -14824,16 +14848,20 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
         return;
     }
 
-    // Derive a tab name from the file stem (without extension).
-    std::wstring tabName;
-    try {
-        tabName = std::filesystem::path(filePath).stem().wstring();
+    // Tab name resolution: the preamble may have already set
+    // tab->name from a persisted "TabName" field. Only fall back to
+    // the file stem when no logical name was carried by the file.
+    if (tab->name.empty()) {
+        std::wstring tabName;
+        try {
+            tabName = std::filesystem::path(filePath).stem().wstring();
+        }
+        catch (...) {}
+        if (tabName.empty()) tabName = LM.get(L"tab_untitled_prefix");
+        tab->name = tabName;
     }
-    catch (...) {}
-    if (tabName.empty()) tabName = LM.get(L"tab_untitled_prefix");
 
     tab->id = _nextTabId++;
-    tab->name = tabName;
     tab->filePath = filePath;
     tab->data = std::move(loaded);
     tab->originalHash = computeListHash(tab->data);
@@ -15707,6 +15735,13 @@ void MultiReplace::writeTabsToConfig()
             CFG.writeString(L"Tabs", prefix + L"_BaselineHash", hashBuf);
         }
 
+        // Persisted dirty flag. The hash diff captures data-level
+        // changes, but tab-level metadata (e.g. a rename) does not
+        // alter the list hash. Persist the explicit flag so any
+        // pending non-data change still surfaces as dirty after a
+        // restart.
+        CFG.writeBool(L"Tabs", prefix + L"_IsDirty", t.isDirty);
+
         // Search options
         CFG.writeInt(L"Tabs", prefix + L"_SearchMode", t.searchMode);
         CFG.writeBool(L"Tabs", prefix + L"_WholeWord", t.wholeWord);
@@ -15937,7 +15972,13 @@ void MultiReplace::loadTabsFromConfig()
 
             // Reflect dirty state in the tab right away so the bullet
             // indicator shows up on startup for tabs with pending edits.
-            tab->isDirty = (computeListHash(tab->data) != tab->originalHash);
+            // The hash diff catches data-level changes; the persisted
+            // IsDirty flag catches metadata-only changes (such as a
+            // pending rename) that the hash cannot see. Either trigger
+            // is enough.
+            const bool persistedDirty = CFG.readBool(L"Tabs", prefix + L"_IsDirty", false);
+            tab->isDirty = persistedDirty
+                || (computeListHash(tab->data) != tab->originalHash);
         }
         catch (const CsvLoadException&) {
             // Missing or corrupt snapshot - keep tab with empty data.
@@ -17456,6 +17497,17 @@ void MultiReplace::commitInlineTabRename()
     // Empty name is rejected silently - keep the old name.
     if (!newName.empty() && newName != _tabs[idx]->name) {
         _tabs[idx]->name = newName;
+
+        // Renaming changes metadata that travels with the file (the
+        // logical name is persisted in the .mrl preamble's TabName
+        // field). Mark the tab dirty so the user gets the usual save
+        // prompt and the new name actually reaches disk. Untitled
+        // tabs (no filePath yet) need no marking - the name lives in
+        // the workspace INI, which is written on shutdown anyway.
+        if (!_tabs[idx]->filePath.empty()) {
+            _tabs[idx]->isDirty = true;
+        }
+
         rebuildTabControl();
         if (idx == _activeTabIndex) updateTabTooltip(idx);
     }
