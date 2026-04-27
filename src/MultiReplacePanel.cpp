@@ -7670,6 +7670,13 @@ bool MultiReplace::initLuaState()
     _lastCompiledLuaCode.clear();
     _luaCompiledReplaceRef = LUA_NOREF;
 
+    // Invalidate bridge optimization caches: the new Lua state has no
+    // globals, so any previous "value last pushed" tracking is stale.
+    _luaLastFPATH.clear();
+    _luaLastFNAME.clear();
+    _luaLastRegex = -1;
+    _luaLastCapCount = 0;
+
     // Create a new Lua state.
     _luaState = luaL_newstate();
     if (!_luaState) {
@@ -7763,16 +7770,30 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
     lua_pushinteger(_luaState, vars.COL);  lua_setglobal(_luaState, "COL");
 
     // 4) String globals
-    setLuaVariable(_luaState, "FPATH", vars.FPATH);
-    setLuaVariable(_luaState, "FNAME", vars.FNAME);
-    setLuaVariable(_luaState, "MATCH", vars.MATCH);
+    // FPATH/FNAME change at most once per replaceAll run (when the file
+    // changes). Skip the push+setglobal pair when the value is unchanged
+    // since the previous match.
+    if (vars.FPATH != _luaLastFPATH) {
+        setLuaVariable(_luaState, "FPATH", vars.FPATH);
+        _luaLastFPATH = vars.FPATH;
+    }
+    if (vars.FNAME != _luaLastFNAME) {
+        setLuaVariable(_luaState, "FNAME", vars.FNAME);
+        _luaLastFNAME = vars.FNAME;
+    }
+    setLuaVariable(_luaState, "MATCH", vars.MATCH);  // MATCH changes per match
 
-    // 5) REGEX flag
-    lua_pushboolean(_luaState, regex);
-    lua_setglobal(_luaState, "REGEX");
+    // 5) REGEX flag - per replace-list item, not per match
+    const int regexFlag = regex ? 1 : 0;
+    if (regexFlag != _luaLastRegex) {
+        lua_pushboolean(_luaState, regex);
+        lua_setglobal(_luaState, "REGEX");
+        _luaLastRegex = regexFlag;
+    }
 
     // 6) CAP# globals (regex only)
-    std::vector<std::string> capNames;
+    // Reuse the per-match name buffer instead of allocating a new vector.
+    _luaCapNames.clear();
     if (regex) {
         // Use passed codepage or fall back to Scintilla query
         const int docCp = (docCodepage >= 0) ? docCodepage : static_cast<int>(send(SCI_GETCODEPAGE));
@@ -7796,7 +7817,7 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
             }
             std::string capName = "CAP" + std::to_string(i);
             setLuaVariable(_luaState, capName, capVal);
-            capNames.push_back(capName);  // Always track for cleanup
+            _luaCapNames.push_back(capName);  // Always track for cleanup
         }
     }
 
@@ -7847,38 +7868,50 @@ bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables
 
     // (resultTable left on stack until the very end, then dropped by restoreStack)
 
-    // 10) CAP variable dump & cleanup
-    std::string capVariablesStr;
-    for (const auto& capName : capNames) {
-        lua_getglobal(_luaState, capName.c_str());         // push CAP value
-
-        if (lua_isnumber(_luaState, -1)) {
-            double n = lua_tonumber(_luaState, -1);
-            std::ostringstream os; os << std::fixed << std::setprecision(8) << n;
-            capVariablesStr += capName + "\tNumber\t" + os.str() + "\n\n";
-        }
-        else if (lua_isboolean(_luaState, -1)) {
-            bool b = lua_toboolean(_luaState, -1);
-            capVariablesStr += capName + "\tBoolean\t" + (b ? "true" : "false") + "\n\n";
-        }
-        else if (lua_isstring(_luaState, -1)) {
-            capVariablesStr += capName + "\tString\t" + SU::escapeControlChars(lua_tostring(_luaState, -1)) + "\n\n";
-        }
-
-        lua_pop(_luaState, 1);                             // pop CAP value
-
-        lua_pushnil(_luaState);                            // clear global
-        lua_setglobal(_luaState, capName.c_str());
-    }
-
-    // 11) DEBUG flag & window
+    // 10) Determine debug-window state up front so we can skip the
+    // expensive per-CAP string building when no debug output is needed.
     lua_getglobal(_luaState, "DEBUG");
     bool luaDebugExists = !lua_isnil(_luaState, -1);
     bool luaDebug = luaDebugExists && lua_toboolean(_luaState, -1);
     lua_pop(_luaState, 1);
-    bool debugOn = luaDebugExists ? luaDebug : _debugModeEnabled;
+    const bool debugOn = luaDebugExists ? luaDebug : _debugModeEnabled;
+    const bool needCapDump = debugOn && showDebugWindow;
 
-    if (debugOn && showDebugWindow) {
+    // 11) CAP variable dump (only when needed) & cleanup
+    std::string capVariablesStr;
+    if (needCapDump) {
+        for (const auto& capName : _luaCapNames) {
+            lua_getglobal(_luaState, capName.c_str());     // push CAP value
+
+            if (lua_isnumber(_luaState, -1)) {
+                double n = lua_tonumber(_luaState, -1);
+                std::ostringstream os; os << std::fixed << std::setprecision(8) << n;
+                capVariablesStr += capName + "\tNumber\t" + os.str() + "\n\n";
+            }
+            else if (lua_isboolean(_luaState, -1)) {
+                bool b = lua_toboolean(_luaState, -1);
+                capVariablesStr += capName + "\tBoolean\t" + (b ? "true" : "false") + "\n\n";
+            }
+            else if (lua_isstring(_luaState, -1)) {
+                capVariablesStr += capName + "\tString\t" + SU::escapeControlChars(lua_tostring(_luaState, -1)) + "\n\n";
+            }
+
+            lua_pop(_luaState, 1);                         // pop CAP value
+        }
+    }
+
+    // CAP cleanup: only nil the CAPs that were set last match but not this
+    // match. Lua globals set this match get overwritten next match, so they
+    // need no cleanup - only CAPs that would otherwise leak as stale values.
+    const int currentCapCount = static_cast<int>(_luaCapNames.size());
+    for (int i = currentCapCount; i < _luaLastCapCount; ++i) {
+        std::string capName = "CAP" + std::to_string(i + 1);
+        lua_pushnil(_luaState);
+        lua_setglobal(_luaState, capName.c_str());
+    }
+    _luaLastCapCount = currentCapCount;
+
+    if (needCapDump) {
         globalLuaVariablesMap.clear();
         captureLuaGlobals(_luaState);
 

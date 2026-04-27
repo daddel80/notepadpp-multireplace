@@ -827,6 +827,16 @@ private:
     int _luaCompiledReplaceRef = LUA_NOREF;       // Reference to compiled Lua code
     std::string _lastCompiledLuaCode;             // Cached Lua code for reuse
 
+    // Bridge optimization: avoid redundant lua_setglobal calls by tracking
+    // what was last pushed into the Lua state. FPATH/FNAME change at most
+    // once per replaceAll run, REGEX changes per replace-list item, and the
+    // CAP cleanup only needs to nil what the previous match actually set.
+    std::string _luaLastFPATH;
+    std::string _luaLastFNAME;
+    int _luaLastRegex = -1;                       // -1 = unset, 0 = false, 1 = true
+    int _luaLastCapCount = 0;                     // Count of CAP# globals set last match
+    std::vector<std::string> _luaCapNames;        // Reused per-match scratch (avoid reallocation)
+
     // Debugging and logging related 
     std::wstring findNextButtonText;        // member variable to ensure persists for button label throughout the object's lifetime.
 
