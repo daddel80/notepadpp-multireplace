@@ -1282,7 +1282,7 @@ private:
     void MultiReplace::forceWrapRecalculation();
 
     //FileOperations
-    std::wstring promptSaveListToCsv();
+    std::wstring promptSaveListToCsv(const TabState* tabHint = nullptr);
     std::wstring openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath);
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     bool saveListToCsvWithSettings(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab);
@@ -1370,13 +1370,22 @@ private:
     void onTabRename(int tabIndex);
     void onTabDuplicate(int tabIndex);
     void onTabClose(int tabIndex);
+    void onTabCloseOthers(int keepTabIndex);
+    void onTabCloseAll();
     void onTabSaveAs(int tabIndex);
     void onTabOpenFileLocation(int tabIndex);
+
+    // Find an open tab by its file path (case-insensitive on Windows).
+    // Returns the tab index, or -1 if no tab has this file open.
+    int findTabByFilePath(const std::wstring& filePath) const;
 
     // Inline rename editing on a tab.
     void beginInlineTabRename(int tabIndex);
     void commitInlineTabRename();
     void cancelInlineTabRename();
+
+    // File-backed tabs rename their .mrl on disk via Save-As + delete.
+    void renameTabFile(int tabIndex);
     static LRESULT CALLBACK tabRenameEditProc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK tabControlSubclassProc(HWND, UINT, WPARAM, LPARAM,
         UINT_PTR, DWORD_PTR);

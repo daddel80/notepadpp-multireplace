@@ -6312,8 +6312,20 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             std::wstring filePath = openFileDialog(false, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST, L"mrl", L"");
 
             if (!filePath.empty()) {
-                // Load opens in a new tab - standard editor behavior.
-                loadListFromCsvIntoNewTab(filePath);
+                // If the file is already open in another tab, switch to
+                // that tab instead of creating a duplicate. This mirrors
+                // Notepad++'s "open file" behavior and avoids loading the
+                // same list multiple times.
+                int existingIdx = findTabByFilePath(filePath);
+                if (existingIdx >= 0) {
+                    if (existingIdx != _activeTabIndex) {
+                        switchToTab(existingIdx);
+                    }
+                    showStatusMessage(LM.get(L"status_list_already_open"), MessageStatus::Info);
+                }
+                else {
+                    loadListFromCsvIntoNewTab(filePath);
+                }
             }
             return TRUE;
         }
@@ -6629,6 +6641,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         case IDM_TAB_CLOSE:
             onTabClose(_tabMenuTargetIndex);
+            return TRUE;
+        case IDM_TAB_CLOSE_OTHERS:
+            onTabCloseOthers(_tabMenuTargetIndex);
+            return TRUE;
+        case IDM_TAB_CLOSE_ALL:
+            onTabCloseAll();
             return TRUE;
 
         default:
@@ -14234,7 +14252,7 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::
     }
 }
 
-std::wstring MultiReplace::promptSaveListToCsv() {
+std::wstring MultiReplace::promptSaveListToCsv(const TabState* tabHint) {
     std::wstring mrlDescription = LM.get(L"filetype_mrl");  // "MultiReplace Lists (*.mrl; *.csv)"
     std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
 
@@ -14248,14 +14266,25 @@ std::wstring MultiReplace::promptSaveListToCsv() {
     std::wstring dialogTitle = LM.get(L"panel_save_list");
     std::wstring defaultFileName;
 
-    if (!listFilePath.empty()) {
-        // If a file path already exists, use its directory and filename
-        defaultFileName = listFilePath;
+    // Resolve which tab's identity drives the default filename.
+    const TabState* tab = tabHint;
+    if (!tab && _activeTabIndex >= 0 &&
+        _activeTabIndex < static_cast<int>(_tabs.size())) {
+        tab = _tabs[_activeTabIndex].get();
+    }
+
+    const std::wstring tabPath = tab ? tab->filePath : listFilePath;
+
+    if (!tabPath.empty()) {
+        defaultFileName = tabPath;
+    }
+    else if (tab && !tab->name.empty()) {
+        // Save filename mirrors the tab label so what the user sees in
+        // the tab is what they get on disk.
+        defaultFileName = tab->name + L".mrl";
     }
     else {
-        // If no file path is set, provide a default file name with a sequential number
-        static int fileCounter = 1;
-        defaultFileName = L"Replace_List_" + std::to_wstring(++fileCounter) + L".mrl";
+        defaultFileName = L"Untitled.mrl";
     }
 
     // Call openFileDialog with the default file path and name
@@ -14339,19 +14368,10 @@ namespace {
     // preferences like column widths / visibility / locks / order
     // are persisted per-tab in the INI - writing them here would
     // leak one user's layout to another when the CSV is shared.
-    void writeSettingsBlock(std::ofstream& out, const TabState& tab, const std::wstring& filePath) {
+    void writeSettingsBlock(std::ofstream& out, const TabState& tab) {
         out << "[MultiReplace-Settings]\n";
 
         writeSettingsLineUtf8(out, L"FormatVersion", kSettingsFormatVersion);
-
-        // TabName is only written when it diverges from the file stem.
-        try {
-            std::wstring stem = std::filesystem::path(filePath).stem().wstring();
-            if (!tab.name.empty() && tab.name != stem) {
-                writeSettingsLineUtf8(out, L"TabName", tab.name);
-            }
-        }
-        catch (...) {}
 
         writeSettingsLineUtf8(out, L"SearchMode", tab.searchMode);
         writeSettingsLineUtf8(out, L"WholeWord", tab.wholeWord);
@@ -14411,11 +14431,8 @@ namespace {
         const int version = readMapInt(s, L"FormatVersion", 1);
         (void)version;
 
-        // Optional TabName: stem fallback in the caller covers files without it.
-        std::wstring tabName = readMapString(s, L"TabName", L"");
-        if (!tabName.empty()) {
-            tab.name = tabName;
-        }
+        // TabName entries from older files are intentionally ignored:
+        // tab labels are always derived from the file name now.
 
         tab.searchMode = readMapInt(s, L"SearchMode", 0);
         tab.wholeWord = readMapBool(s, L"WholeWord", false);
@@ -14478,7 +14495,7 @@ bool MultiReplace::saveListToCsvWithSettings(const std::wstring& filePath, const
     outFile.write("\xEF\xBB\xBF", 3);
 
     // Per-list settings block precedes the CSV header row.
-    writeSettingsBlock(outFile, tab, filePath);
+    writeSettingsBlock(outFile, tab);
 
     // CSV header
     std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Extended,Regex,Comments,LastModified\n");
@@ -14542,22 +14559,15 @@ bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     // capture.
     if (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
         TabState& tab = *_tabs[_activeTabIndex];
-        const bool wasUntitled = tab.filePath.empty();
         tab.filePath = filePath;
         tab.originalHash = originalListHash;
         for (auto& item : tab.data) item.isDirty = false;
 
-        // If this was an untitled tab, adopt the file stem as its name
-        // (same pattern as saveAllTabs and onTabSaveAs). Without this,
-        // the tab would keep showing "Untitled N" after being saved
-        // to a real file.
-        if (wasUntitled) {
-            try {
-                std::wstring stem = std::filesystem::path(filePath).stem().wstring();
-                if (!stem.empty()) tab.name = stem;
-            }
-            catch (...) {}
+        try {
+            std::wstring stem = std::filesystem::path(filePath).stem().wstring();
+            if (!stem.empty()) tab.name = stem;
         }
+        catch (...) {}
 
         updateTabTooltip(_activeTabIndex);
         clearTabDirty(_activeTabIndex);
@@ -14596,7 +14606,7 @@ void MultiReplace::saveAllTabs()
         // Untitled / AutoCache: prompt the user per tab, exactly like
         // Notepad++ does. Cancelling the dialog skips this tab.
         if (targetPath.empty()) {
-            targetPath = promptSaveListToCsv();
+            targetPath = promptSaveListToCsv(&tab);
             if (targetPath.empty()) {
                 ++skippedCount;
                 continue;
@@ -14608,19 +14618,14 @@ void MultiReplace::saveAllTabs()
             continue;
         }
 
-        const bool wasUntitled = tab.filePath.empty();
         tab.filePath = targetPath;
         tab.originalHash = computeListHash(data);
 
-        if (wasUntitled) {
-            // Adopt the file stem as the new tab name, mirroring the
-            // behavior of loading a CSV into a new tab.
-            try {
-                std::wstring stem = std::filesystem::path(targetPath).stem().wstring();
-                if (!stem.empty()) tab.name = stem;
-            }
-            catch (...) {}
+        try {
+            std::wstring stem = std::filesystem::path(targetPath).stem().wstring();
+            if (!stem.empty()) tab.name = stem;
         }
+        catch (...) {}
 
         if (isActive) {
             listFilePath = targetPath;
@@ -14912,16 +14917,14 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
         return;
     }
 
-    // Fall back to the file stem only if the preamble didn't supply a name.
-    if (tab->name.empty()) {
-        std::wstring tabName;
-        try {
-            tabName = std::filesystem::path(filePath).stem().wstring();
-        }
-        catch (...) {}
-        if (tabName.empty()) tabName = LM.get(L"tab_untitled_prefix");
-        tab->name = tabName;
+    // Tab name follows the file stem; the preamble no longer carries one.
+    std::wstring tabName;
+    try {
+        tabName = std::filesystem::path(filePath).stem().wstring();
     }
+    catch (...) {}
+    if (tabName.empty()) tabName = L"Untitled";
+    tab->name = tabName;
 
     tab->id = _nextTabId++;
     tab->filePath = filePath;
@@ -15573,7 +15576,7 @@ void MultiReplace::ensurePrimaryTabExists()
         tab->filePath = listFilePath;
     }
     else {
-        tab->name = LM.get(L"tab_untitled_prefix") + L" 1";
+        tab->name = L"Untitled 1";
         tab->filePath.clear();
     }
 
@@ -15797,8 +15800,8 @@ void MultiReplace::writeTabsToConfig()
             CFG.writeString(L"Tabs", prefix + L"_BaselineHash", hashBuf);
         }
 
-        // Persisted dirty flag for metadata-only changes (e.g. a rename)
-        // that don't move the data hash.
+        // Persisted across restarts so unsaved data edits don't get
+        // silently cleared by recomputing the baseline from snapshot.
         CFG.writeBool(L"Tabs", prefix + L"_IsDirty", t.isDirty);
 
         // Search options
@@ -15928,7 +15931,7 @@ void MultiReplace::loadTabsFromConfig()
         tab->snapshotPath = dir + L"\\" + snapshotName;
 
         if (tab->name.empty()) {
-            tab->name = LM.get(L"tab_untitled_prefix") + L" " + std::to_wstring(i + 1);
+            tab->name = L"Untitled " + std::to_wstring(i + 1);
         }
 
         // Panel settings. Defaults here match TabState's member
@@ -16156,13 +16159,17 @@ void MultiReplace::rebuildTabControl()
         TabCtrl_SetCurSel(hTab, sel);
     }
 
+    // Reposition the "+" button BEFORE forcing the tab control repaint,
+    // otherwise the button still occupies its old slot when the new tab
+    // gets painted, briefly clipping the left half of the new label.
+    repositionNewTabButton();
+
     ShowWindow(hTab, SW_SHOW);
     // Force an immediate repaint so the tabs are visible on first init,
     // even when the queued WM_PAINT gets coalesced or skipped.
     InvalidateRect(hTab, nullptr, TRUE);
     UpdateWindow(hTab);
     updateTabTooltip(_activeTabIndex);
-    repositionNewTabButton();
 }
 
 void MultiReplace::repositionNewTabButton()
@@ -17045,11 +17052,10 @@ void MultiReplace::addNewTab()
         captureStateIntoTab(*_tabs[_activeTabIndex]);
     }
 
-    // Build a unique "Untitled N" label.
-    const std::wstring prefix = LM.get(L"tab_untitled_prefix");
+    // Build a unique "List N" label.
     int n = 1;
     for (;;) {
-        std::wstring candidate = prefix + L" " + std::to_wstring(n);
+        std::wstring candidate = L"Untitled " + std::to_wstring(n);
         bool taken = false;
         for (const auto& t : _tabs) {
             if (t->name == candidate) { taken = true; break; }
@@ -17060,7 +17066,7 @@ void MultiReplace::addNewTab()
 
     auto tab = std::make_unique<TabState>();
     tab->id = _nextTabId++;
-    tab->name = prefix + L" " + std::to_wstring(n);
+    tab->name = L"Untitled " + std::to_wstring(n);
 
     // Inherit panel state from the outgoing tab so the user keeps
     // their current mode/scope (Regex+CSV etc.) rather than being
@@ -17196,6 +17202,21 @@ void MultiReplace::showTabContextMenu(int tabIndex, int screenX, int screenY)
     AppendMenu(hMenu, MF_STRING | (hasFile ? 0 : MF_GRAYED),
         IDM_TAB_OPEN_FILE_LOCATION, LM.get(L"tab_menu_open_file_location").c_str());
     AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
+    // "Close Multiple Tabs" submenu placed before the direct Close action
+    // so that Close occupies the very last slot of the menu - the strongest
+    // recency position for the most-used destructive action.
+    HMENU hCloseMultipleMenu = CreatePopupMenu();
+    if (hCloseMultipleMenu) {
+        AppendMenu(hCloseMultipleMenu, MF_STRING | (canClose ? 0 : MF_GRAYED),
+            IDM_TAB_CLOSE_OTHERS, LM.get(L"tab_menu_close_others").c_str());
+        AppendMenu(hCloseMultipleMenu, MF_STRING,
+            IDM_TAB_CLOSE_ALL, LM.get(L"tab_menu_close_all").c_str());
+
+        AppendMenu(hMenu, MF_POPUP | (canClose ? 0 : MF_GRAYED),
+            reinterpret_cast<UINT_PTR>(hCloseMultipleMenu),
+            LM.get(L"tab_menu_close_multiple").c_str());
+    }
+
     AppendMenu(hMenu, MF_STRING | (canClose ? 0 : MF_GRAYED),
         IDM_TAB_CLOSE, LM.get(L"tab_menu_close").c_str());
 
@@ -17386,6 +17407,89 @@ void MultiReplace::onTabClose(int tabIndex)
     rebuildTabControl();
 }
 
+void MultiReplace::onTabCloseOthers(int keepTabIndex)
+{
+    if (keepTabIndex < 0 || keepTabIndex >= static_cast<int>(_tabs.size())) return;
+    if (_tabs.size() <= 1) return;
+
+    // Remember the kept tab by id, not index, so we can re-resolve the
+    // index after each close (other closes shift indices).
+    const int keepId = _tabs[keepTabIndex]->id;
+
+    // Iterate from back to front. onTabClose handles its own dirty-tab
+    // prompt; if the user picks Cancel we stop early so they aren't
+    // forced through every remaining tab.
+    int i = static_cast<int>(_tabs.size()) - 1;
+    while (i >= 0 && _tabs.size() > 1) {
+        if (_tabs[i]->id == keepId) {
+            --i;
+            continue;
+        }
+
+        const size_t sizeBefore = _tabs.size();
+        onTabClose(i);
+
+        // If the close was cancelled (size unchanged), bail out so the
+        // user doesn't have to keep clicking Cancel.
+        if (_tabs.size() == sizeBefore) {
+            break;
+        }
+        --i;
+    }
+}
+
+void MultiReplace::onTabCloseAll()
+{
+    // Walk from back to front. onTabClose refuses to close the last
+    // remaining tab, so the loop naturally stops with one tab left.
+    int i = static_cast<int>(_tabs.size()) - 1;
+    while (i >= 0 && _tabs.size() > 1) {
+        const size_t sizeBefore = _tabs.size();
+        onTabClose(i);
+        if (_tabs.size() == sizeBefore) {
+            return;  // user cancelled - leave the rest as-is
+        }
+        --i;
+    }
+
+    // Exactly one tab left. Replace it with a fresh empty default by
+    // first creating a new tab (which becomes active) and then closing
+    // the old one. This delegates init/cleanup to the existing
+    // addNewTab + onTabClose pair, avoiding manual TabState resets.
+    if (_tabs.size() != 1) return;
+
+    if (checkForUnsavedChanges(0) == IDCANCEL) return;
+
+    // Mark the surviving tab as "no unsaved changes" so the subsequent
+    // onTabClose below does not re-prompt the user. We just asked.
+    if (_activeTabIndex == 0) {
+        _tabs[0]->originalHash = computeListHash(replaceListData);
+    }
+    else {
+        _tabs[0]->originalHash = computeListHash(_tabs[0]->data);
+    }
+
+    addNewTab();           // creates new tab at index 1, makes it active
+    onTabClose(0);         // closes the old (now non-active) tab at index 0
+}
+
+int MultiReplace::findTabByFilePath(const std::wstring& filePath) const
+{
+    if (filePath.empty()) return -1;
+
+    // Case-insensitive comparison matches Windows filesystem semantics
+    // and protects against the file dialog returning a differently-cased
+    // path than what the tab was originally loaded with.
+    for (size_t i = 0; i < _tabs.size(); ++i) {
+        const std::wstring& tabPath = _tabs[i]->filePath;
+        if (tabPath.empty()) continue;
+        if (_wcsicmp(tabPath.c_str(), filePath.c_str()) == 0) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
 void MultiReplace::onTabSaveAs(int tabIndex)
 {
     if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
@@ -17404,7 +17508,7 @@ void MultiReplace::onTabSaveAs(int tabIndex)
         ? replaceListData
         : _tabs[tabIndex]->data;
 
-    std::wstring chosen = promptSaveListToCsv();
+    std::wstring chosen = promptSaveListToCsv(_tabs[tabIndex].get());
     if (chosen.empty()) return;
 
     if (!saveListToCsvWithSettings(chosen, listToSave, *_tabs[tabIndex])) {
@@ -17413,20 +17517,14 @@ void MultiReplace::onTabSaveAs(int tabIndex)
     }
 
     TabState& tab = *_tabs[tabIndex];
-    const bool wasUntitled = tab.filePath.empty();
     tab.filePath = chosen;
     tab.originalHash = computeListHash(listToSave);
 
-    // Adopt the file stem as the tab name if this was previously an
-    // untitled tab. Mirrors the behavior of saveAllTabs and of
-    // loading a CSV into a fresh tab.
-    if (wasUntitled) {
-        try {
-            std::wstring stem = std::filesystem::path(chosen).stem().wstring();
-            if (!stem.empty()) tab.name = stem;
-        }
-        catch (...) {}
+    try {
+        std::wstring stem = std::filesystem::path(chosen).stem().wstring();
+        if (!stem.empty()) tab.name = stem;
     }
+    catch (...) {}
 
     if (isActive) {
         listFilePath = chosen;
@@ -17470,11 +17568,17 @@ void MultiReplace::beginInlineTabRename(int tabIndex)
 {
     if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
 
-    // If an edit is already open (e.g. user double-clicked another tab
-    // while one was still pending commit), commit the current one first
-    // so the new edit starts cleanly.
+    // Commit any pending inline edit first - covers the case where the
+    // user starts a rename on a different tab while one is still open.
     if (_hTabRenameEdit) {
         commitInlineTabRename();
+    }
+
+    // Saved tabs are renamed on disk via Save-As + delete; only untitled
+    // drafts get the lightweight inline edit.
+    if (!_tabs[tabIndex]->filePath.empty()) {
+        renameTabFile(tabIndex);
+        return;
     }
 
     HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
@@ -17558,16 +17662,11 @@ void MultiReplace::commitInlineTabRename()
 
     if (idx < 0 || idx >= static_cast<int>(_tabs.size())) return;
 
-    // Empty name is rejected silently - keep the old name.
+    // Empty name is rejected silently - keep the old name. File-backed
+    // tabs are routed through renameTabFile and never reach this point,
+    // so this only ever updates an untitled tab's draft label.
     if (!newName.empty() && newName != _tabs[idx]->name) {
         _tabs[idx]->name = newName;
-
-        // Rename is a save-worthy change: persist via the .mrl preamble.
-        // Untitled tabs live in the workspace INI and need no marking.
-        if (!_tabs[idx]->filePath.empty()) {
-            _tabs[idx]->isDirty = true;
-        }
-
         rebuildTabControl();
         if (idx == _activeTabIndex) updateTabTooltip(idx);
     }
@@ -17587,6 +17686,70 @@ void MultiReplace::cancelInlineTabRename()
     _hTabRenameEdit = nullptr;
     _prevTabEditProc = nullptr;
     _tabRenameIndex = -1;
+}
+
+void MultiReplace::renameTabFile(int tabIndex)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+
+    TabState& tab = *_tabs[tabIndex];
+    if (tab.filePath.empty()) return;  // safety - inline path handles untitled
+
+    if (hwndEdit) {
+        closeEditField(true);
+    }
+
+    const bool isActive = (tabIndex == _activeTabIndex);
+    if (isActive) {
+        captureStateIntoTab(tab);
+    }
+
+    const std::wstring oldPath = tab.filePath;
+
+    std::vector<std::pair<std::wstring, std::wstring>> filters = {
+        { LM.get(L"filetype_mrl"),       L"*.mrl;*.csv" },
+        { LM.get(L"filetype_all_files"), L"*.*" }
+    };
+
+    std::wstring chosen = openFileDialog(
+        true, filters, LM.get(L"panel_save_list").c_str(),
+        OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT,
+        L"mrl", oldPath);
+
+    if (chosen.empty()) return;
+    if (_wcsicmp(chosen.c_str(), oldPath.c_str()) == 0) return;  // no change
+
+    const std::vector<ReplaceItemData>& listToSave = isActive ? replaceListData : tab.data;
+
+    if (!saveListToCsvWithSettings(chosen, listToSave, tab)) {
+        showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
+        return;
+    }
+
+    // Save succeeded; only now is it safe to drop the old file.
+    std::error_code ec;
+    std::filesystem::remove(oldPath, ec);
+
+    tab.filePath = chosen;
+    tab.originalHash = computeListHash(listToSave);
+    for (auto& item : tab.data) item.isDirty = false;
+
+    try {
+        std::wstring stem = std::filesystem::path(chosen).stem().wstring();
+        if (!stem.empty()) tab.name = stem;
+    }
+    catch (...) {}
+
+    if (isActive) {
+        listFilePath = chosen;
+        originalListHash = tab.originalHash;
+        for (auto& item : replaceListData) item.isDirty = false;
+        InvalidateRect(_replaceListView, nullptr, TRUE);
+    }
+
+    updateTabTooltip(tabIndex);
+    clearTabDirty(tabIndex);
+    rebuildTabControl();
 }
 
 LRESULT CALLBACK MultiReplace::tabRenameEditProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)

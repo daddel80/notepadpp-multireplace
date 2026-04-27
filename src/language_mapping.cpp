@@ -354,6 +354,7 @@ const LangKV kEnglishPairs[] = {
 { L"ctxmenu_export_data", L"Copy List Data" },
 { L"status_exported_to_clipboard", L"Exported $REPLACE_STRING entries to clipboard" },
 { L"status_no_items_to_export", L"No items to export" },
+{ L"status_list_already_open", L"List already open: switched to existing tab." },
 
 // Appearance Settings
 { L"config_grp_interface", L"Interface" },
@@ -403,7 +404,9 @@ const LangKV kEnglishPairs[] = {
 { L"tab_menu_save_as",             L"Save As..." },
 { L"tab_menu_open_file_location",  L"Open File Location" },
 { L"tab_menu_close",               L"Close" },
-{ L"tab_untitled_prefix",          L"Untitled" },
+{ L"tab_menu_close_multiple",      L"Close Multiple Tabs" },
+{ L"tab_menu_close_others",        L"Other Tabs" },
+{ L"tab_menu_close_all",           L"All Tabs" },
 { L"tab_duplicate_suffix",         L"(copy)" },
 
 };

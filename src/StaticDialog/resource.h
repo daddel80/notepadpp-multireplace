@@ -253,6 +253,8 @@
 #define IDM_TAB_SAVE_AS                 5902
 #define IDM_TAB_OPEN_FILE_LOCATION      5904
 #define IDM_TAB_CLOSE                   5905
+#define IDM_TAB_CLOSE_OTHERS            5906
+#define IDM_TAB_CLOSE_ALL               5907
 
 // ===================================================================
 //  6000-6120 - Miscellaneous & Result Dock
