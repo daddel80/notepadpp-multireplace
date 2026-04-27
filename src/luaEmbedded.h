@@ -23,48 +23,42 @@ static const char* luaSourceCode = R"(
 ------------------------------------------------------------------
 -- 1) cond function
 ------------------------------------------------------------------
-function cond(cond, trueVal, falseVal)
-  local res = {result = '', skip = false}  -- Initialize result table with defaults
-  if cond == nil then
+function cond(condition, trueVal, falseVal)
+  if condition == nil then
     error('cond: condition cannot be nil')
-    return res
   end
-
-  if cond and trueVal == nil then
+  if condition and trueVal == nil then
     error('cond: trueVal cannot be nil')
-    return res
   end
 
-  if not cond and falseVal == nil then
-    res.skip = true  -- Skip ONLY if falseVal is not provided
-  end
-
+  -- Resolve thunks: if trueVal/falseVal is a function, call it for the value.
   if type(trueVal) == 'function' then
     trueVal = trueVal()
   end
-
   if type(falseVal) == 'function' then
     falseVal = falseVal()
   end
 
-  if cond then
-    if type(trueVal) == 'table' then
-      res.result = trueVal.result
-      res.skip = trueVal.skip
-    else
-      res.result = trueVal
-      res.skip = false
-    end
+  -- Pick the active branch. Cannot use "a and b or c" here: it would
+  -- collapse legitimate falsy picks (false, '', 0 are fine values too).
+  local picked
+  if condition then
+    picked = trueVal
   else
-    if not res.skip then
-      if type(falseVal) == 'table' then
-        res.result = falseVal.result
-        res.skip = falseVal.skip
-      else
-        res.result = falseVal
-      end
-    end
+    picked = falseVal
   end
+
+  local res
+  if type(picked) == 'table' then
+    -- Forward { result, skip } from the chosen branch as-is.
+    res = { result = picked.result, skip = picked.skip }
+  elseif picked == nil then
+    -- Falsy condition without a falseVal: skip the replacement entirely.
+    res = { result = '', skip = true }
+  else
+    res = { result = picked, skip = false }
+  end
+
   resultTable = res
   return res
 end
@@ -73,82 +67,74 @@ end
 -- 2) set function
 ------------------------------------------------------------------
 function set(strOrCalc)
-  local res = {result = '', skip = false}
   if strOrCalc == nil then
     error('set: cannot be nil')
-    return
   end
+
+  local res
   if type(strOrCalc) == 'string' then
-    res.result = strOrCalc
+    res = { result = strOrCalc, skip = false }
   elseif type(strOrCalc) == 'number' then
-    res.result = tostring(strOrCalc)
+    res = { result = tostring(strOrCalc), skip = false }
   else
     error('set: Expected string or number')
-    return
   end
+
   resultTable = res
   return res
 end
 
 ------------------------------------------------------------------
--- 3) fmtN function
+-- 3) fmtN function (helper, intended to be wrapped in set()/cond())
+-- Returns a formatted number STRING. Does NOT touch resultTable.
 ------------------------------------------------------------------
 function fmtN(num, maxDecimals, fixedDecimals)
-  if num == nil then
-    error('fmtN: num cannot be nil')
-    return
-  elseif type(num) ~= 'number' then
-    error('fmtN: Invalid type for num. Expected a number')
-    return
+  if type(num) ~= 'number' then
+    error('fmtN: num must be a number')
   end
-  if maxDecimals == nil then
-    error('fmtN: maxDecimals cannot be nil')
-    return
-  elseif type(maxDecimals) ~= 'number' then
-    error('fmtN: Invalid type for maxDecimals. Expected a number')
-    return
+  if type(maxDecimals) ~= 'number' then
+    error('fmtN: maxDecimals must be a number')
   end
-  if fixedDecimals == nil then
-    error('fmtN: fixedDecimals cannot be nil')
-    return
-  elseif type(fixedDecimals) ~= 'boolean' then
-    error('fmtN: Invalid type for fixedDecimals. Expected a boolean')
-    return
+  if type(fixedDecimals) ~= 'boolean' then
+    error('fmtN: fixedDecimals must be a boolean')
   end
 
   local multiplier = 10 ^ maxDecimals
   local rounded = math.floor(num * multiplier + 0.5) / multiplier
-  local output = ''
+
   if fixedDecimals then
-    output = string.format('%.' .. maxDecimals .. 'f', rounded)
-  else
-    local intPart, fracPart = math.modf(rounded)
-    if fracPart == 0 then
-      output = tostring(intPart)
-    else
-      output = tostring(rounded)
-    end
+    return string.format('%.' .. maxDecimals .. 'f', rounded)
   end
-  return output
+
+  -- Variable-decimals mode: drop the fractional part if it rounds away.
+  local intPart, fracPart = math.modf(rounded)
+  if fracPart == 0 then
+    return tostring(intPart)
+  end
+  return tostring(rounded)
 end
 
 ------------------------------------------------------------------
 -- 4) vars function (and init alias)
+-- Sets global variables with first-write-wins semantics: re-running
+-- the same Lua snippet won't clobber values from a previous run.
 ------------------------------------------------------------------
 function vars(args)
   for name, value in pairs(args) do
-    -- Set the global variable only if it does not already exist
+    -- Only set the global if it doesn't already exist; this lets a
+    -- caller re-run the snippet without resetting earlier state.
     if _G[name] == nil then
       if type(name) ~= 'string' then
         error('vars: Variable name must be a string')
       end
       if not string.match(name, '^[A-Za-z_][A-Za-z0-9_]*$') then
-        error('vars: Invalid variable name')
+        error('vars: Invalid variable name \"' .. tostring(name) .. '\"')
       end
       if value == nil then
-        error('vars: Value missing')
+        error('vars: Value missing for variable \"' .. tostring(name) .. '\"')
       end
-      -- If REGEX is true and value is a string, escape backslashes
+      -- In regex replacement mode, escape backslashes so user values
+      -- substituted into the regex stay literal.
       if type(value) == 'string' and REGEX then
         value = value:gsub('\\\\', '\\\\\\\\')
       end
@@ -156,18 +142,11 @@ function vars(args)
     end
   end
 
-  -- Forward or initialize resultTable
-  local res = {result = '', skip = true}
-  if resultTable == nil then
-    resultTable = res
-  else
-    if resultTable.result == nil then
-      resultTable.result = res.result
-    end
-    if resultTable.skip == nil then
-      resultTable.skip = res.skip
-    end
-  end
+  -- Initialize resultTable on first call; preserve any values already
+  -- placed there by an earlier function call in the same snippet.
+  resultTable = resultTable or { result = '', skip = true }
+  if resultTable.result == nil then resultTable.result = '' end
+  if resultTable.skip == nil then resultTable.skip = true end
   return resultTable
 end
 
@@ -195,7 +174,9 @@ function lkp(key, hpath, inner)
     inner = false
   end
 
-  if hashTables[hpath] == nil then
+  -- Lazy-load + cache the file's lookup table on first use.
+  local tbl = hashTables[hpath]
+  if tbl == nil then
     local success, dataEntries = safeLoadFileSandbox(hpath)
     if not success then
       error('lkp: failed to safely load file at ' .. tostring(hpath) .. ': ' .. tostring(dataEntries))
@@ -204,36 +185,32 @@ function lkp(key, hpath, inner)
       error('lkp: invalid format in file at ' .. tostring(hpath))
     end
 
-    local tbl = {}
+    tbl = {}
     for _, entry in ipairs(dataEntries) do
       local keys = entry[1]
       local value = entry[2]
 
-      if value == nil then
-        goto continue
-      end
-
-      if type(keys) == 'table' then
-        for _, k in ipairs(keys) do
-          if type(k) == 'number' then
-            k = tostring(k)
+      if value ~= nil then
+        local kt = type(keys)
+        if kt == 'table' then
+          for _, k in ipairs(keys) do
+            if type(k) == 'number' then
+              k = tostring(k)
+            end
+            tbl[k] = value
           end
-          tbl[k] = value
+        elseif kt == 'string' then
+          tbl[keys] = value
+        elseif kt == 'number' then
+          tbl[tostring(keys)] = value
         end
-      elseif type(keys) == 'string' or type(keys) == 'number' then
-        if type(keys) == 'number' then
-          keys = tostring(keys)
-        end
-        tbl[keys] = value
-      else
-        goto continue
       end
-      ::continue::
     end
     hashTables[hpath] = tbl
   end
 
-  local val = hashTables[hpath][key]
+  -- Hot path: hash lookup.
+  local val = tbl[key]
   if val == nil then
     if inner then
       res.result = nil
@@ -250,13 +227,12 @@ end
 
 ------------------------------------------------------------------
 -- 6) lvars function
+-- File-based variant of vars(): loads a table of name=value pairs
+-- from a .lua file via the sandbox loader.
 ------------------------------------------------------------------
 function lvars(filePath)
-  local res = {result = '', skip = true}
-
   if filePath == nil or filePath == '' then
     error('lvars: file path is invalid or empty')
-    return res
   end
 
   local success, dataTable = safeLoadFileSandbox(filePath)
@@ -283,21 +259,14 @@ function lvars(filePath)
     _G[name] = value
   end
 
-  if resultTable == nil then
-    resultTable = res
-  else
-    if resultTable.result == nil then
-      resultTable.result = res.result
-    end
-    if resultTable.skip == nil then
-      resultTable.skip = res.skip
-    end
-  end
+  resultTable = resultTable or { result = '', skip = true }
+  if resultTable.result == nil then resultTable.result = '' end
+  if resultTable.skip == nil then resultTable.skip = true end
   return resultTable
 end
 
 ------------------------------------------------------------------
--- 6) Helper Functions: trim, padL, padR
+-- 7) Helper Functions: trim, padL, padR, tonum
 ------------------------------------------------------------------
 
 -- Removes leading and trailing whitespace
@@ -354,12 +323,21 @@ function tonum(s)
 end
 
 ------------------------------------------------------------------
--- 7) lcmd function
--- Loads a file that returns a table of helper functions and registers them globally.
--- Example file: return { padLeft=function(s,w,ch) ... end, upper=function(s) ... end }
+-- 8) lcmd function
+-- Loads a file that returns a table of helper functions and registers
+-- them globally. Idempotent: subsequent calls with the same path are
+-- no-ops, so re-running the same Lua snippet won't trip the
+-- "command already exists" guard.
 ------------------------------------------------------------------
+loadedCmdFiles = {}
+
 function lcmd(path)
-  local ok, mod = safeLoadFileSandbox(path) 
+  if loadedCmdFiles[path] then
+    resultTable = resultTable or { result = "", skip = true }
+    return resultTable
+  end
+
+  local ok, mod = safeLoadFileSandbox(path)
   if not ok then
     error("lcmd: " .. tostring(mod))
   end
@@ -372,15 +350,17 @@ function lcmd(path)
   for name, fn in pairs(mod) do
     if type(fn) == "function" then
       if env[name] ~= nil then
-        error("lcmd: command already exists: " .. tostring(name)) -- no overrides
+        error("lcmd: command already exists: " .. tostring(name))
       end
-      env[name] = fn -- helper (returns string/number; used with set()/cond())
+      env[name] = fn
       count = count + 1
     end
   end
   if count == 0 then
     error("lcmd: file exported no functions")
   end
+
+  loadedCmdFiles[path] = true
 
   resultTable = resultTable or { result = "", skip = true }
   return resultTable

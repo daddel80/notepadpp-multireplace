@@ -926,7 +926,7 @@ private:
     inline static bool allFromCursorEnabled = false;      // Controls the starting point for Replace All, Find All and Mark when wrap is OFF.
     inline static bool keepListVisible = false;            // Library mode: list stays visible when toggled off, only dims
     inline static int  listDimIntensity = 50;               // INI setting [Options] DimIntensity (0-100): how strongly the inactive list is dimmed. Persisted, but not surfaced in the config dialog.
-    inline static int  tabMaxLength = 14;                    // INI setting [Options] TabMaxLength (4-60): max number of characters shown in tab labels before truncation with an ellipsis. Persisted, but not surfaced in the config dialog.
+    inline static int  tabMaxLength = 14;                    // INI setting [Options] TabMaxLength (4-60): how many characters of a tab label are shown. Persisted, but not surfaced in the config dialog.
     inline static bool flowTabsIntroDontShowEnabled = false;
     inline static bool flowTabsNumericAlignEnabled = true;
     inline static bool limitFileSizeEnabled = false;
@@ -1119,6 +1119,7 @@ private:
     bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
+    void updateLineDelimiterAfterReplace(Sci_Position pos);
     bool preProcessListForReplace(bool highlight);
     SelectionInfo getSelectionInfo(bool isBackward);
     bool hasAnyNonEmptySelection();

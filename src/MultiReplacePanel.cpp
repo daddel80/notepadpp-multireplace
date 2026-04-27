@@ -7215,6 +7215,8 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                     ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
                     : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
 
+                updateLineDelimiterAfterReplace(searchResult.pos);
+
                 Sci_Position newLen = newPos - searchResult.pos;
                 if (context.isSelectionMode) {
                     adjustSelectionScope(searchResult.pos, searchResult.length, newLen);
@@ -7351,6 +7353,8 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                         : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
                 }
 
+                updateLineDelimiterAfterReplace(searchResult.pos);
+
                 Sci_Position newLen = nextPos - searchResult.pos;
                 if (context.isSelectionMode) {
                     adjustSelectionScope(searchResult.pos, searchResult.length, newLen);
@@ -7394,8 +7398,25 @@ Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf
         reinterpret_cast<sptr_t>(replaceTextUtf8.c_str())
     );
 
-    Sci_Position newPos = pos + static_cast<Sci_Position>(replacedLen);
-    return newPos;
+    return pos + static_cast<Sci_Position>(replacedLen);
+}
+
+// Keep lineDelimiterPositions in sync after a replace so CSV-mode
+// searches don't loop on stale column boundaries.
+void MultiReplace::updateLineDelimiterAfterReplace(Sci_Position pos)
+{
+    if (lineDelimiterPositions.empty()) return;
+    if (!columnDelimiterData.isValid()) return;
+
+    // Line count changed (newline added/removed, or replace spanned a
+    // line boundary) -> full rebuild.
+    const size_t lineCount = static_cast<size_t>(send(SCI_GETLINECOUNT, 0, 0));
+    if (lineCount != lineDelimiterPositions.size()) {
+        findAllDelimitersInDocument();
+        return;
+    }
+
+    findDelimitersInLine(send(SCI_LINEFROMPOSITION, pos, 0));
 }
 
 bool MultiReplace::preProcessListForReplace(bool highlight) {
