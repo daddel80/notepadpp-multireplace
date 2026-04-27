@@ -5708,10 +5708,29 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (!wstr.empty()) {
                 SetWindowTextW(GetDlgItem(_hSelf, IDC_FIND_EDIT), wstr.c_str());
             }
+
+            // Tandem was suspended on hide; re-engage if still enabled.
+            // We bypass tandemDockToCurrentEdge here on purpose - it
+            // would overwrite the original pre-dock snapshot used by
+            // the menu-off restore.
+            if (_tandemEnabled && !_tandemDocked) {
+                _tandemDocked = true;
+                _tandemLastNppRect = {};
+                RECT r{};
+                if (IsWindow(nppData._nppHandle) &&
+                    GetWindowRect(nppData._nppHandle, &r)) {
+                    applyTandemLayout(r);
+                    _tandemLastNppRect = r;
+                }
+            }
         }
         else {
             handleClearTextMarksButton();
             handleClearDelimiterState();
+
+            // Suspend tandem updates while MR is hidden so a
+            // closed-but-still-enabled MR doesn't keep resizing N++.
+            _tandemDocked = false;
         }
         return 0;
     }
@@ -16590,6 +16609,9 @@ bool MultiReplace::tandemLoadEdgeFromIni()
 
 void MultiReplace::onTandemTick()
 {
+    // MR hidden: stop touching N++ until the panel is shown again.
+    if (!IsWindowVisible(_hSelf)) return;
+
     if (!IsWindow(nppData._nppHandle)) {
         // Host went away. Drop to "enabled but not docked" so the
         // user can restore the feature once N++ returns (or simply
@@ -16615,6 +16637,8 @@ void MultiReplace::onTandemTick()
 void MultiReplace::onTandemFreeTick()
 {
     using namespace tandem_dock;
+    // MR hidden: don't snap-back to N++ while invisible.
+    if (!IsWindowVisible(_hSelf)) return;
     if (!IsWindow(nppData._nppHandle)) return;
 
     // Skip while the host is minimized - the visible rect is
