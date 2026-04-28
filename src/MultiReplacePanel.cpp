@@ -28,7 +28,6 @@
 #include "HiddenSciGuard.h"
 #include "LanguageManager.h"
 #include "language_mapping.h"
-#include "luaEmbedded.h"
 #include "menuCmdID.h"
 #include "MultiReplaceConfigDialog.h"
 #include "Notepad_plus_msgs.h"
@@ -6848,13 +6847,9 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         return false;
     }
 
-    if (!initLuaState()) {
-        // Fallback: The _luaInitialized flag remains false, 
-        // so resolveLuaSyntax(...) calls will fail safely inside
-        // and effectively do nothing. We just continue.
-    }
+    // Engine is created lazily by getActiveEngine() on first execute().
 
-    // Read Filename and Path for LUA
+    // Read Filename and Path for the formula engine
     updateFilePathCache(explicitPath);
 
     int totalReplaceCount = 0;
@@ -7026,13 +7021,9 @@ void MultiReplace::handleReplaceButton() {
         return;
     }
 
-    if (!initLuaState()) {
-        // Fallback: The _luaInitialized flag remains false, 
-        // so resolveLuaSyntax(...) calls will fail safely inside
-        // and effectively do nothing. We just continue.
-    }
+    // Engine is created lazily by getActiveEngine() on first execute().
 
-    // Read Filename and Path for LUA
+    // Read Filename and Path for the formula engine
     updateFilePathCache();
 
     bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
@@ -7205,22 +7196,34 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
         {
             std::string finalReplaceText; // Will hold the final text in the document's native encoding.
 
-            // --- Lua Variable Expansion ---
+            // --- Formula engine expansion ---
             if (itemData.useVariables) {
-                std::string luaTemplateUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
-                if (!ensureLuaCodeCompiled(luaTemplateUtf8)) {
+                auto* engine = getActiveEngine();
+                if (!engine) {
                     return false;
                 }
 
-                LuaVariables vars;
-                fillLuaMatchVars(vars, searchResult.pos, searchResult.foundText, 1, 1, context.isColumnMode, documentCodepage);
+                std::string scriptUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
 
-                if (!resolveLuaSyntax(luaTemplateUtf8, vars, skipReplace, itemData.regex, true, documentCodepage)) {
-                    return false;
+                MultiReplaceEngine::FormulaVars vars;
+                fillFormulaVars(vars, searchResult.pos, searchResult.foundText,
+                    1, 1, context.isColumnMode, documentCodepage);
+                if (itemData.regex) {
+                    fillCapturesForEngine(vars, documentCodepage);
                 }
 
-                // Convert the result from Lua (UTF-8) to the final document codepage.
-                finalReplaceText = convertAndExtendW(Encoding::utf8ToWString(luaTemplateUtf8), itemData.extended, documentCodepage);
+                MultiReplaceEngine::FormulaResult res = engine->execute(
+                    scriptUtf8, vars, itemData.regex, documentCodepage);
+
+                if (!res.success) {
+                    return false;
+                }
+                skipReplace = res.skip;
+
+                // Convert the result from the engine (UTF-8) to the final document codepage.
+                finalReplaceText = convertAndExtendW(
+                    Encoding::utf8ToWString(res.output),
+                    itemData.extended, documentCodepage);
             }
             else {
                 // Case without variables: convert once using the safe helper.
@@ -7253,7 +7256,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             }
         }
 
-        // Replacement was skipped by Lua logic.
+        // Replacement was skipped by the engine (skip flag set).
         newPos = ensureForwardProgress(searchResult.pos + searchResult.length, searchResult);
         send(SCI_SETSEL, newPos, newPos);
     }
@@ -7304,11 +7307,16 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         matchSet.insert(matchList.begin(), matchList.end());
     }
 
-    // --- Prepare replacement text template (only if needed for Lua) ---
+    // --- Prepare replacement text template (only if needed for engine) ---
     std::string luaTemplateUtf8;
+    MultiReplaceEngine::IFormulaEngine* engine = nullptr;
     if (itemData.useVariables) {
         luaTemplateUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
-        if (!ensureLuaCodeCompiled(luaTemplateUtf8)) {
+        engine = getActiveEngine();
+        if (!engine) {
+            return false;
+        }
+        if (!engine->compile(luaTemplateUtf8)) {
             return false;
         }
     }
@@ -7336,25 +7344,34 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         {
             std::string finalReplaceText; // Will hold the final text in the document's native encoding.
 
-            // --- Lua Variable Expansion ---
+            // --- Formula engine expansion ---
             if (itemData.useVariables) {
                 // Track line position for LCNT (needed even for skipped hits to maintain correct count)
                 int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
                 if (currentLineIndex != prevLineIdx) { lineFindCount = 0; prevLineIdx = currentLineIndex; }
                 ++lineFindCount;
 
-                // Only run Lua if we actually intend to replace this hit
+                // Only run the engine if we actually intend to replace this hit
                 if (replaceThisHit) {
-                    std::string luaWorkingUtf8 = luaTemplateUtf8;
-                    LuaVariables vars;
-                    fillLuaMatchVars(vars, searchResult.pos, searchResult.foundText, findCount, lineFindCount, context.isColumnMode, documentCodepage);
-
-                    if (!resolveLuaSyntax(luaWorkingUtf8, vars, skipReplace, itemData.regex, true, documentCodepage)) {
-                        return false;
+                    MultiReplaceEngine::FormulaVars vars;
+                    fillFormulaVars(vars, searchResult.pos, searchResult.foundText,
+                        findCount, lineFindCount, context.isColumnMode, documentCodepage);
+                    if (itemData.regex) {
+                        fillCapturesForEngine(vars, documentCodepage);
                     }
 
+                    MultiReplaceEngine::FormulaResult res = engine->execute(
+                        luaTemplateUtf8, vars, itemData.regex, documentCodepage);
+
+                    if (!res.success) {
+                        return false;
+                    }
+                    skipReplace = res.skip;
+
                     if (!skipReplace) {
-                        finalReplaceText = convertAndExtendW(Encoding::utf8ToWString(luaWorkingUtf8), itemData.extended, documentCodepage);
+                        finalReplaceText = convertAndExtendW(
+                            Encoding::utf8ToWString(res.output),
+                            itemData.extended, documentCodepage);
                     }
                 }
             }
@@ -7447,15 +7464,28 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                     }
                     std::string localReplaceTextUtf8 = Encoding::wstringToUtf8(replaceListData[i].replaceText);
 
-                    // Compile the Lua code once and cache it
-                    if (!ensureLuaCodeCompiled(localReplaceTextUtf8)) {
+                    // Pre-compile the script once via the active engine.
+                    auto* engine = getActiveEngine();
+                    if (!engine) {
+                        return false;
+                    }
+                    if (!engine->compile(localReplaceTextUtf8)) {
                         return false;
                     }
 
-                    bool skipReplace = false;
-                    LuaVariables vars;
-                    setLuaFileVars(vars);   // Setting FNAME and FPATH
-                    if (!resolveLuaSyntax(localReplaceTextUtf8, vars, skipReplace, replaceListData[i].regex, false)) {
+                    // No regex captures in this path (empty findText).
+                    // Only file-level vars matter; everything else stays default.
+                    MultiReplaceEngine::FormulaVars vars;
+                    if (!cachedFilePath.empty() &&
+                        (cachedFilePath.find('\\') != std::string::npos ||
+                            cachedFilePath.find('/') != std::string::npos)) {
+                        vars.FPATH = cachedFilePath;
+                    }
+                    vars.FNAME = cachedFileName;
+
+                    MultiReplaceEngine::FormulaResult res = engine->execute(
+                        localReplaceTextUtf8, vars, replaceListData[i].regex, -1);
+                    if (!res.success) {
                         return false;
                     }
                 }
@@ -7550,43 +7580,6 @@ Sci_Position MultiReplace::computeAllStartPos(const SearchContext& context, bool
 
 #pragma region Lua Engine
 
-void MultiReplace::captureLuaGlobals(lua_State* L) {
-    lua_pushglobaltable(L);
-    lua_pushnil(L);
-    while (lua_next(L, -2) != 0) {
-        // Skip non-string keys: lua_tostring on a numeric key would convert it
-        // in-place and break lua_next traversal (Lua 5.4 reference §4.6).
-        if (lua_type(L, -2) != LUA_TSTRING) {
-            lua_pop(L, 1);
-            continue;
-        }
-        const char* key = lua_tostring(L, -2);
-        LuaVariable luaVar;
-        luaVar.name = key;
-        int type = lua_type(L, -1);
-        if (type == LUA_TNUMBER) {
-            luaVar.type = LuaVariableType::Number;
-            luaVar.numberValue = lua_tonumber(L, -1);
-        }
-        else if (type == LUA_TSTRING) {
-            luaVar.type = LuaVariableType::String;
-            luaVar.stringValue = lua_tostring(L, -1);
-        }
-        else if (type == LUA_TBOOLEAN) {
-            luaVar.type = LuaVariableType::Boolean;
-            luaVar.booleanValue = lua_toboolean(L, -1);
-        }
-        else {
-            // Skipping unknown types
-            lua_pop(L, 1);
-            continue;
-        }
-        globalLuaVariablesMap[key] = luaVar;
-        lua_pop(L, 1);
-    }
-    lua_pop(L, 1);
-}
-
 std::string MultiReplace::escapeForRegex(const std::string& input) {
     std::string escaped;
     for (char c : input) {
@@ -7605,9 +7598,160 @@ std::string MultiReplace::escapeForRegex(const std::string& input) {
     return escaped;
 }
 
-void MultiReplace::setLuaVariable(lua_State* L, const std::string& varName, const std::string& value) {
-    lua_pushstring(L, value.c_str());
-    lua_setglobal(L, varName.c_str());
+// ---------------------------------------------------------------------
+// ILuaEngineHost implementation
+// ---------------------------------------------------------------------
+// All overrides forward to existing MR helpers; no business logic
+// duplicated. Engines call these via the IFormulaEngine pointer they
+// were constructed with.
+
+int MultiReplace::showDebugWindow(const std::string& message)
+{
+    return ShowDebugWindow(message);
+}
+
+void MultiReplace::refreshUiListView()
+{
+    refreshUIListView();
+}
+
+void MultiReplace::showErrorMessage(
+    MultiReplaceEngine::ILuaEngineHost::ErrorCategory category,
+    const std::string& details)
+{
+    using EC = MultiReplaceEngine::ILuaEngineHost::ErrorCategory;
+
+    if (category == EC::CompileError) {
+        MessageBox(nppData._nppHandle,
+            Encoding::utf8ToWString(details).c_str(),
+            LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
+            MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+    }
+    else {
+        // ExecutionError: details holds the offending script text
+        std::wstring body = LM.get(L"msgbox_use_variables_execution_error",
+            { Encoding::utf8ToWString(details.c_str()) });
+        MessageBox(nppData._nppHandle, body.c_str(),
+            LM.get(L"msgbox_title_use_variables_execution_error").c_str(),
+            MB_OK);
+    }
+}
+
+bool MultiReplace::isLuaErrorDialogEnabled() const
+{
+    return _isLuaErrorDialogEnabled;
+}
+
+bool MultiReplace::isLuaSafeModeEnabled() const
+{
+    return _luaSafeModeEnabled;
+}
+
+bool MultiReplace::isDebugModeEnabled() const
+{
+    return _debugModeEnabled;
+}
+
+// ---------------------------------------------------------------------
+// Engine pipeline helpers
+// ---------------------------------------------------------------------
+// fillFormulaVars and fillCapturesForEngine collect the per-match
+// variables in the engine-agnostic FormulaVars structure that every
+// IFormulaEngine consumes.
+
+void MultiReplace::fillFormulaVars(MultiReplaceEngine::FormulaVars& vars,
+    Sci_Position matchPos,
+    const std::string& foundText,
+    int cnt, int lcnt,
+    bool isColumnMode,
+    int documentCodepage)
+{
+    int currentLineIndex = static_cast<int>(
+        send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(matchPos), 0));
+    int lineStartPos = (currentLineIndex == 0) ? 0
+        : static_cast<int>(send(SCI_POSITIONFROMLINE,
+            static_cast<uptr_t>(currentLineIndex), 0));
+
+    // File-level vars (FPATH/FNAME) - pulled from MR's cached path
+    // (set by updateFilePathCache).
+    if (!cachedFilePath.empty() &&
+        (cachedFilePath.find('\\') != std::string::npos ||
+            cachedFilePath.find('/') != std::string::npos)) {
+        vars.FPATH = cachedFilePath;
+    }
+    else {
+        vars.FPATH.clear();
+    }
+    vars.FNAME = cachedFileName;
+
+    if (isColumnMode) {
+        ColumnInfo columnInfo = getColumnInfo(matchPos);
+        vars.COL = static_cast<int>(columnInfo.startColumnIndex);
+    }
+
+    vars.CNT = cnt;
+    vars.LCNT = lcnt;
+    vars.APOS = static_cast<int>(matchPos) + 1;
+    vars.LINE = currentLineIndex + 1;
+    vars.LPOS = static_cast<int>(matchPos) - lineStartPos + 1;
+
+    vars.MATCH = foundText;
+    if (documentCodepage != SC_CP_UTF8) {
+        vars.MATCH = Encoding::wstringToUtf8(
+            Encoding::bytesToWString(vars.MATCH, documentCodepage));
+    }
+}
+
+void MultiReplace::fillCapturesForEngine(MultiReplaceEngine::FormulaVars& vars,
+    int documentCodepage)
+{
+    vars.captures.clear();
+    const int docCp = (documentCodepage >= 0)
+        ? documentCodepage
+        : static_cast<int>(send(SCI_GETCODEPAGE));
+
+    for (int i = 1; i <= MAX_CAP_GROUPS; ++i) {
+        sptr_t len = send(SCI_GETTAG, i, 0, true);
+        if (len < 0) { break; }
+
+        std::string capVal;
+        if (len > 0) {
+            if (tagBuffer.size() < static_cast<size_t>(len + 1)) {
+                tagBuffer.resize(len + 1);
+            }
+            tagBuffer[0] = '\0';
+            if (send(SCI_GETTAG, i,
+                reinterpret_cast<sptr_t>(tagBuffer.data()), false) >= 0) {
+                capVal.assign(tagBuffer.data());
+                if (docCp != SC_CP_UTF8) {
+                    capVal = Encoding::wstringToUtf8(
+                        Encoding::bytesToWString(capVal, docCp));
+                }
+            }
+        }
+        vars.captures.push_back(std::move(capVal));
+    }
+}
+
+MultiReplaceEngine::IFormulaEngine* MultiReplace::getActiveEngine()
+{
+    if (_activeTabIndex < 0 ||
+        _activeTabIndex >= static_cast<int>(_tabs.size())) {
+        return nullptr;
+    }
+
+    auto& tab = *_tabs[_activeTabIndex];
+    if (!tab.engineInstance) {
+        tab.engineInstance = MultiReplaceEngine::EngineFactory::create(
+            tab.engine, this);
+        if (tab.engineInstance) {
+            if (!tab.engineInstance->initialize()) {
+                tab.engineInstance.reset();
+                return nullptr;
+            }
+        }
+    }
+    return tab.engineInstance.get();
 }
 
 void MultiReplace::updateFilePathCache(const std::filesystem::path* explicitPath) {
@@ -7630,342 +7774,15 @@ void MultiReplace::updateFilePathCache(const std::filesystem::path* explicitPath
     }
 }
 
-void MultiReplace::setLuaFileVars(LuaVariables& vars) {
-    // Use cached file path if valid
-    if (!cachedFilePath.empty() &&
-        (cachedFilePath.find('\\') != std::string::npos || cachedFilePath.find('/') != std::string::npos)) {
-        vars.FPATH = cachedFilePath;
-    }
-    else {
-        vars.FPATH.clear();
-    }
-
-    // Use cached file name
-    vars.FNAME = cachedFileName;
-}
-
-void MultiReplace::fillLuaMatchVars(
-    LuaVariables& vars,
-    Sci_Position matchPos,
-    const std::string& foundText,
-    int cnt,
-    int lcnt,
-    bool isColumnMode,
-    int documentCodepage)
-{
-    int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(matchPos), 0));
-    int lineStartPos = (currentLineIndex == 0) ? 0
-        : static_cast<int>(send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
-
-    setLuaFileVars(vars);
-
-    if (isColumnMode) {
-        ColumnInfo columnInfo = getColumnInfo(matchPos);
-        vars.COL = static_cast<int>(columnInfo.startColumnIndex);
-    }
-
-    vars.CNT = cnt;
-    vars.LCNT = lcnt;
-    vars.APOS = static_cast<int>(matchPos) + 1;
-    vars.LINE = currentLineIndex + 1;
-    vars.LPOS = static_cast<int>(matchPos) - lineStartPos + 1;
-
-    vars.MATCH = foundText;
-    if (documentCodepage != SC_CP_UTF8) {
-        vars.MATCH = Encoding::wstringToUtf8(Encoding::bytesToWString(vars.MATCH, documentCodepage));
-    }
-}
-
-bool MultiReplace::initLuaState()
-{
-    // Reset the Lua state if it already exists.
-    if (_luaState) {
-        lua_close(_luaState);
-        _luaState = nullptr;
-    }
-
-    // Invalidate Lua code cache
-    _lastCompiledLuaCode.clear();
-    _luaCompiledReplaceRef = LUA_NOREF;
-
-    // Invalidate bridge optimization caches: the new Lua state has no
-    // globals, so any previous "value last pushed" tracking is stale.
-    _luaLastFPATH.clear();
-    _luaLastFNAME.clear();
-    _luaLastRegex = -1;
-    _luaLastCapCount = 0;
-
-    // Create a new Lua state.
-    _luaState = luaL_newstate();
-    if (!_luaState) {
-        MessageBox(nppData._nppHandle, L"Failed to create Lua state", L"Lua Error", MB_OK | MB_ICONERROR);
-        return false;
-    }
-
-    luaL_openlibs(_luaState);
-
-    if (luaSafeModeEnabled) {
-        applyLuaSafeMode(_luaState);
-    }
-
-    // Load Lua source code directly (fallback mode)
-    if (luaL_loadstring(_luaState, luaSourceCode) != LUA_OK) {
-        const char* errMsg = lua_tostring(_luaState, -1);
-        MessageBox(nppData._nppHandle, Encoding::utf8ToWString(errMsg).c_str(), L"Lua Script Load Error", MB_OK | MB_ICONERROR);
-        lua_pop(_luaState, 1);
-        lua_close(_luaState);
-        _luaState = nullptr;
-        return false;
-    }
-
-    // Execute the loaded Lua code.
-    if (lua_pcall(_luaState, 0, LUA_MULTRET, 0) != LUA_OK) {
-        const char* errMsg = lua_tostring(_luaState, -1);
-        MessageBox(nppData._nppHandle, Encoding::utf8ToWString(errMsg).c_str(), L"Lua Execution Error", MB_OK | MB_ICONERROR);
-        lua_pop(_luaState, 1);
-        lua_close(_luaState);
-        _luaState = nullptr;
-        return false;
-    }
-
-    // Any Lua call to safeLoadFileSandbox(...) invokes the C++ code
-    lua_pushcfunction(_luaState, &MultiReplace::safeLoadFileSandbox);
-    lua_setglobal(_luaState, "safeLoadFileSandbox");
-
-    return true;
-}
-
-bool MultiReplace::ensureLuaCodeCompiled(const std::string& luaCode)
-{
-    if (!_luaState) { return false; }
-
-    // Compile only if changed or not compiled yet
-    if (luaCode == _lastCompiledLuaCode && _luaCompiledReplaceRef != LUA_NOREF) {
-        return true; // already compiled, reuse
-    }
-
-    // Remove old reference if exists
-    if (_luaCompiledReplaceRef != LUA_NOREF) {
-        luaL_unref(_luaState, LUA_REGISTRYINDEX, _luaCompiledReplaceRef);
-        _luaCompiledReplaceRef = LUA_NOREF;
-    }
-
-    // Compile Lua code
-    if (luaL_loadstring(_luaState, luaCode.c_str()) != LUA_OK) {
-        const char* errMsg = lua_tostring(_luaState, -1);
-        if (errMsg && isLuaErrorDialogEnabled) {
-            std::wstring error_message = Encoding::utf8ToWString(errMsg);
-            MessageBox(nppData._nppHandle,
-                error_message.c_str(),
-                LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
-                MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
-        }
-        lua_pop(_luaState, 1); // pop error message
-        return false;
-    }
-
-    // Store compiled Lua chunk
-    _luaCompiledReplaceRef = luaL_ref(_luaState, LUA_REGISTRYINDEX);
-    _lastCompiledLuaCode = luaCode; // Cache the compiled Lua code
-    return true;
-}
-
-bool MultiReplace::resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex, bool showDebugWindow, int docCodepage)
-{
-    // 1) Stack-checkpoint
-    const int stackBase = lua_gettop(_luaState);
-    auto restoreStack = [this, stackBase]() { lua_settop(_luaState, stackBase); };
-
-    // 2) Ensure Lua state exists
-    if (!_luaState) { return false; }
-
-    // 3) Numeric globals
-    lua_pushinteger(_luaState, vars.CNT);  lua_setglobal(_luaState, "CNT");
-    lua_pushinteger(_luaState, vars.LCNT); lua_setglobal(_luaState, "LCNT");
-    lua_pushinteger(_luaState, vars.LINE); lua_setglobal(_luaState, "LINE");
-    lua_pushinteger(_luaState, vars.LPOS); lua_setglobal(_luaState, "LPOS");
-    lua_pushinteger(_luaState, vars.APOS); lua_setglobal(_luaState, "APOS");
-    lua_pushinteger(_luaState, vars.COL);  lua_setglobal(_luaState, "COL");
-
-    // 4) String globals
-    // FPATH/FNAME change at most once per replaceAll run (when the file
-    // changes). Skip the push+setglobal pair when the value is unchanged
-    // since the previous match.
-    if (vars.FPATH != _luaLastFPATH) {
-        setLuaVariable(_luaState, "FPATH", vars.FPATH);
-        _luaLastFPATH = vars.FPATH;
-    }
-    if (vars.FNAME != _luaLastFNAME) {
-        setLuaVariable(_luaState, "FNAME", vars.FNAME);
-        _luaLastFNAME = vars.FNAME;
-    }
-    setLuaVariable(_luaState, "MATCH", vars.MATCH);  // MATCH changes per match
-
-    // 5) REGEX flag - per replace-list item, not per match
-    const int regexFlag = regex ? 1 : 0;
-    if (regexFlag != _luaLastRegex) {
-        lua_pushboolean(_luaState, regex);
-        lua_setglobal(_luaState, "REGEX");
-        _luaLastRegex = regexFlag;
-    }
-
-    // 6) CAP# globals (regex only)
-    // Reuse the per-match name buffer instead of allocating a new vector.
-    _luaCapNames.clear();
-    if (regex) {
-        // Use passed codepage or fall back to Scintilla query
-        const int docCp = (docCodepage >= 0) ? docCodepage : static_cast<int>(send(SCI_GETCODEPAGE));
-        for (int i = 1; i <= MAX_CAP_GROUPS; ++i) {
-            sptr_t len = send(SCI_GETTAG, i, 0, true);
-            if (len < 0) { break; }
-            std::string capVal;
-            if (len > 0) {
-                if (tagBuffer.size() < static_cast<size_t>(len + 1)) {
-                    tagBuffer.resize(len + 1);
-                }
-                tagBuffer[0] = '\0';  // Ensure null-termination on short reads
-                if (send(SCI_GETTAG, i,
-                    reinterpret_cast<sptr_t>(tagBuffer.data()), false) >= 0) {
-                    capVal.assign(tagBuffer.data());
-                    if (docCp != SC_CP_UTF8) {
-                        capVal = Encoding::wstringToUtf8(
-                            Encoding::bytesToWString(capVal, docCp));
-                    }
-                }
-            }
-            std::string capName = "CAP" + std::to_string(i);
-            setLuaVariable(_luaState, capName, capVal);
-            _luaCapNames.push_back(capName);  // Always track for cleanup
-        }
-    }
-
-    // 7) Run pre-compiled chunk
-    lua_rawgeti(_luaState, LUA_REGISTRYINDEX, _luaCompiledReplaceRef);
-    if (lua_pcall(_luaState, 0, LUA_MULTRET, 0) != LUA_OK) {
-        const char* err = lua_tostring(_luaState, -1);
-        if (err && isLuaErrorDialogEnabled) {
-            MessageBox(nppData._nppHandle,
-                Encoding::utf8ToWString(err).c_str(),
-                LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
-                MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
-        }
-        restoreStack();
-        return false;
-    }
-
-    // 8) resultTable
-    lua_getglobal(_luaState, "resultTable");
-    if (!lua_istable(_luaState, -1)) {
-        if (isLuaErrorDialogEnabled) {
-            std::wstring msg =
-                LM.get(L"msgbox_use_variables_execution_error",
-                    { Encoding::utf8ToWString(inputString.c_str()) });
-            MessageBox(nppData._nppHandle, msg.c_str(),
-                LM.get(L"msgbox_title_use_variables_execution_error").c_str(),
-                MB_OK);
-        }
-        restoreStack();
-        return false;
-    }
-
-    // 9) result & skip
-    lua_getfield(_luaState, -1, "result");                 // push result
-    if (lua_isnil(_luaState, -1)) {
-        inputString.clear();
-    }
-    else if (lua_isstring(_luaState, -1) || lua_isnumber(_luaState, -1)) {
-        std::string res = lua_tostring(_luaState, -1);
-        if (regex) { res = escapeForRegex(res); }
-        inputString = res;
-    }
-    lua_pop(_luaState, 1);                                 // pop result
-
-    lua_getfield(_luaState, -1, "skip");                   // push skip
-    skip = lua_isboolean(_luaState, -1) && lua_toboolean(_luaState, -1);
-    lua_pop(_luaState, 1);                                 // pop skip
-
-    // (resultTable left on stack until the very end, then dropped by restoreStack)
-
-    // 10) Determine debug-window state up front so we can skip the
-    // expensive per-CAP string building when no debug output is needed.
-    lua_getglobal(_luaState, "DEBUG");
-    bool luaDebugExists = !lua_isnil(_luaState, -1);
-    bool luaDebug = luaDebugExists && lua_toboolean(_luaState, -1);
-    lua_pop(_luaState, 1);
-    const bool debugOn = luaDebugExists ? luaDebug : _debugModeEnabled;
-    const bool needCapDump = debugOn && showDebugWindow;
-
-    // 11) CAP variable dump (only when needed) & cleanup
-    std::string capVariablesStr;
-    if (needCapDump) {
-        for (const auto& capName : _luaCapNames) {
-            lua_getglobal(_luaState, capName.c_str());     // push CAP value
-
-            if (lua_isnumber(_luaState, -1)) {
-                double n = lua_tonumber(_luaState, -1);
-                std::ostringstream os; os << std::fixed << std::setprecision(8) << n;
-                capVariablesStr += capName + "\tNumber\t" + os.str() + "\n\n";
-            }
-            else if (lua_isboolean(_luaState, -1)) {
-                bool b = lua_toboolean(_luaState, -1);
-                capVariablesStr += capName + "\tBoolean\t" + (b ? "true" : "false") + "\n\n";
-            }
-            else if (lua_isstring(_luaState, -1)) {
-                capVariablesStr += capName + "\tString\t" + SU::escapeControlChars(lua_tostring(_luaState, -1)) + "\n\n";
-            }
-
-            lua_pop(_luaState, 1);                         // pop CAP value
-        }
-    }
-
-    // CAP cleanup: only nil the CAPs that were set last match but not this
-    // match. Lua globals set this match get overwritten next match, so they
-    // need no cleanup - only CAPs that would otherwise leak as stale values.
-    const int currentCapCount = static_cast<int>(_luaCapNames.size());
-    for (int i = currentCapCount; i < _luaLastCapCount; ++i) {
-        std::string capName = "CAP" + std::to_string(i + 1);
-        lua_pushnil(_luaState);
-        lua_setglobal(_luaState, capName.c_str());
-    }
-    _luaLastCapCount = currentCapCount;
-
-    if (needCapDump) {
-        globalLuaVariablesMap.clear();
-        captureLuaGlobals(_luaState);
-
-        std::string globalsStr = "Global Lua variables:\n\n";
-        for (const auto& p : globalLuaVariablesMap) {
-            const LuaVariable& v = p.second;
-            if (v.type == LuaVariableType::String) {
-                globalsStr += v.name + "\tString\t" + SU::escapeControlChars(v.stringValue) + "\n\n";
-            }
-            else if (v.type == LuaVariableType::Number) {
-                std::ostringstream os; os << std::fixed << std::setprecision(8) << v.numberValue;
-                globalsStr += v.name + "\tNumber\t" + os.str() + "\n\n";
-            }
-            else if (v.type == LuaVariableType::Boolean) {
-                globalsStr += v.name + "\tBoolean\t" + (v.booleanValue ? "true" : "false") + "\n\n";
-            }
-        }
-
-        refreshUIListView();
-
-        int resp = ShowDebugWindow(capVariablesStr + globalsStr);
-
-        if (resp == 3) { restoreStack(); return false; }   // "Stop"
-        if (resp == -1) { restoreStack(); return false; }  // window closed
-    }
-
-    // 12) Success
-    restoreStack();
-    return true;
-}
-
-int MultiReplace::safeLoadFileSandbox(lua_State* L)
+// External entry point used by LuaEngine. Body is identical to MR's
+// historical implementation; kept as a free function so the engine
+// translation unit can link against it without dragging the panel
+// header in.
+int luaSafeLoadFileSandbox_impl(lua_State* L)
 {
     const char* path = luaL_checkstring(L, 1);
 
-    // Read file (your existing UTF-8/ANSI logic)
+    // Read file (UTF-8/ANSI logic)
     std::wstring wpath = Encoding::utf8ToWString(path);
     std::ifstream in(std::filesystem::path(wpath), std::ios::binary);
     if (!in) {
@@ -8024,29 +7841,6 @@ int MultiReplace::safeLoadFileSandbox(lua_State* L)
     lua_pushboolean(L, true);
     lua_insert(L, -2); // [ true, table ]
     return 2;
-}
-
-void MultiReplace::applyLuaSafeMode(lua_State* L)
-{
-    auto removeGlobal = [&](const char* name) {
-        lua_pushnil(L);
-        lua_setglobal(L, name);
-        };
-
-    // Remove dangerous base functions
-    removeGlobal("dofile");
-    removeGlobal("load");
-    removeGlobal("loadfile");
-    removeGlobal("require");
-    removeGlobal("collectgarbage");
-
-    // Remove whole libraries
-    removeGlobal("os");
-    removeGlobal("io");
-    removeGlobal("package");
-    removeGlobal("debug");
-
-    // Keep string/table/math/utf8/base intact.
 }
 
 #pragma endregion
@@ -15331,7 +15125,7 @@ void MultiReplace::loadSettingsToPanelUI() {
     groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
 
     // Lua runtime options
-    luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
+    _luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
 
     // Loading and setting the scope
     int selection = CFG.readInt(L"Scope", L"Selection", 0);
@@ -15812,6 +15606,8 @@ void MultiReplace::writeTabsToConfig()
         CFG.writeBool(L"Tabs", prefix + L"_WrapAround", t.wrapAround);
         CFG.writeBool(L"Tabs", prefix + L"_ReplaceAtMatches", t.replaceAtMatches);
         CFG.writeString(L"Tabs", prefix + L"_ReplaceAtMatchesEdit", t.replaceAtMatchesEdit);
+        CFG.writeString(L"Tabs", prefix + L"_Engine",
+            MultiReplaceEngine::engineTypeToString(t.engine));
 
         // Scope
         CFG.writeInt(L"Tabs", prefix + L"_Scope", t.scope);
@@ -15944,6 +15740,11 @@ void MultiReplace::loadTabsFromConfig()
         tab->wrapAround = CFG.readBool(L"Tabs", prefix + L"_WrapAround", false);
         tab->replaceAtMatches = CFG.readBool(L"Tabs", prefix + L"_ReplaceAtMatches", false);
         tab->replaceAtMatchesEdit = CFG.readString(L"Tabs", prefix + L"_ReplaceAtMatchesEdit", L"1");
+        {
+            std::wstring engineStr = CFG.readString(L"Tabs", prefix + L"_Engine", L"Lua");
+            tab->engine = MultiReplaceEngine::engineTypeFromString(engineStr);
+            // engineInstance stays null - lazy creation on first use
+        }
 
         tab->scope = CFG.readInt(L"Tabs", prefix + L"_Scope", 0);
         tab->csvCols = CFG.readString(L"Tabs", prefix + L"_CSVCols", L"1-50");
@@ -18247,7 +18048,7 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(L"Options", L"DockPurge", ResultDock::purgeEnabled());
 
     // Lua Options
-    CFG.writeBool(L"Lua", L"SafeMode", luaSafeModeEnabled);
+    CFG.writeBool(L"Lua", L"SafeMode", _luaSafeModeEnabled);
 
     // Scope — only HeaderLines is global (settings-dialog)
     CFG.writeInt(L"Scope", L"HeaderLines", static_cast<int>(CSVheaderLinesCount));
@@ -18310,7 +18111,7 @@ void MultiReplace::applyConfigSettingsOnly()
     flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
     flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
     exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
-    luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
+    _luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
     limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
 

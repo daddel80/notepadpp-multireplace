@@ -124,6 +124,13 @@
     <ClCompile Include="..\src\NppStyleKit.cpp" />
     <ClCompile Include="..\src\MultiReplaceConfigDialog.cpp" />
     <ClCompile Include="..\src\image_data.cpp" />
+    <ClCompile Include="..\src\TandemDock.cpp" />
+    <ClCompile Include="..\src\engine\LuaEngine.cpp">
+      <Filter>engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\EngineFactory.cpp">
+      <Filter>engine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -236,6 +243,22 @@
     <ClInclude Include="..\src\NppStyleKit.h" />
     <ClInclude Include="..\src\MultiReplaceConfigDialog.h" />
     <ClInclude Include="SciUndoGuard.h" />
+    <ClInclude Include="..\src\TandemDock.h" />
+    <ClInclude Include="..\src\engine\IFormulaEngine.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\EngineTypes.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\LuaEngine.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\EngineFactory.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\ILuaEngineHost.h">
+      <Filter>engine</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />
@@ -244,6 +267,9 @@
   <ItemGroup>
     <Filter Include="Lua">
       <UniqueIdentifier>{eea5a33f-b441-48dd-b95a-67ee554383a6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine">
+      <UniqueIdentifier>{2b30f52c-1640-41f5-8db7-88cedfd75bab}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

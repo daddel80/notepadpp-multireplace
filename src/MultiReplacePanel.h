@@ -45,7 +45,11 @@
 #include <vector>
 
 // Third-party
-#include <lua.hpp>
+
+// Formula engine (Lua / ExprTk dispatcher)
+#include "engine/IFormulaEngine.h"
+#include "engine/EngineFactory.h"
+#include "engine/ILuaEngineHost.h"
 
 // Windows
 #include <commctrl.h>
@@ -320,6 +324,14 @@ struct TabState {
     bool         replaceAtMatches = false;
     std::wstring replaceAtMatchesEdit = L"1";
 
+    // Formula engine choice for this tab. Default Lua for backward
+    // compatibility. Persisted as a string ("Lua" / "ExprTk").
+    MultiReplaceEngine::EngineType engine = MultiReplaceEngine::EngineType::Lua;
+
+    // Owned engine instance, created lazily on first execute() call.
+    // Not persisted - recreated from `engine` after a workspace load.
+    MultiReplaceEngine::FormulaEnginePtr engineInstance;
+
     // Scope
     int          scope = 0;     // 0=AllText, 1=Selection, 2=CSV
     std::wstring csvCols = L"1-50";
@@ -360,31 +372,75 @@ struct TabState {
     bool         needsRelayout = false;
     std::vector<ColumnID>         columnOrder;
     std::map<int, SortDirection>  columnSortOrder;
+
+    // Default-constructible (all members have member-initializers).
+    TabState() = default;
+
+    // Custom copy constructor: copies all data members but NOT the
+    // engineInstance. Required because std::unique_ptr<IFormulaEngine>
+    // is non-copyable, but we still want to allow tab duplication.
+    // The duplicated tab keeps the same engine *type* (Lua / ExprTk)
+    // and re-creates its engine lazily on the first execute() call.
+    TabState(const TabState& other)
+        : id(other.id)
+        , name(other.name)
+        , filePath(other.filePath)
+        , snapshotPath(other.snapshotPath)
+        , data(other.data)
+        , originalHash(other.originalHash)
+        , isDirty(other.isDirty)
+        , searchMode(other.searchMode)
+        , wholeWord(other.wholeWord)
+        , matchCase(other.matchCase)
+        , useVariables(other.useVariables)
+        , wrapAround(other.wrapAround)
+        , replaceAtMatches(other.replaceAtMatches)
+        , replaceAtMatchesEdit(other.replaceAtMatchesEdit)
+        , engine(other.engine)
+        // engineInstance intentionally NOT copied; left default (null).
+        , scope(other.scope)
+        , csvCols(other.csvCols)
+        , csvDelim(other.csvDelim)
+        , csvQuote(other.csvQuote)
+        , findText(other.findText)
+        , replaceText(other.replaceText)
+        , filesFilter(other.filesFilter)
+        , docsFilter(other.docsFilter)
+        , directory(other.directory)
+        , inSubfolders(other.inSubfolders)
+        , inHiddenFolders(other.inHiddenFolders)
+        , allDocuments(other.allDocuments)
+        , findCountWidth(other.findCountWidth)
+        , replaceCountWidth(other.replaceCountWidth)
+        , findWidth(other.findWidth)
+        , replaceWidth(other.replaceWidth)
+        , commentsWidth(other.commentsWidth)
+        , findCountVisible(other.findCountVisible)
+        , replaceCountVisible(other.replaceCountVisible)
+        , commentsVisible(other.commentsVisible)
+        , timestampVisible(other.timestampVisible)
+        , deleteButtonVisible(other.deleteButtonVisible)
+        , findLocked(other.findLocked)
+        , replaceLocked(other.replaceLocked)
+        , commentsLocked(other.commentsLocked)
+        , needsRelayout(other.needsRelayout)
+        , columnOrder(other.columnOrder)
+        , columnSortOrder(other.columnSortOrder)
+    {
+    }
+
+    // Copy-assignment, move-construct, move-assign: not currently used,
+    // and explicit definitions would have to mirror the field list. Keep
+    // them deleted/defaulted via the rule of five so a future addition
+    // doesn't silently leak engineInstance copies through assignment.
+    TabState& operator=(const TabState&) = delete;
+    TabState(TabState&&) = default;
+    TabState& operator=(TabState&&) = default;
 };
 
 enum class SearchDirection {
     Forward,
     Backward
-};
-
-// Lua Engine
-struct LuaVariables {
-    int CNT = 0;
-    int LINE = 0;
-    int LPOS = 0;
-    int LCNT = 0;
-    int APOS = 0;
-    int COL = 0;
-    std::string MATCH = "";
-    std::string FPATH = "";
-    std::string FNAME = "";
-};
-
-enum class LuaVariableType {
-    String,
-    Number,
-    Boolean,
-    None
 };
 
 struct ResizableColWidths {
@@ -419,22 +475,10 @@ struct ViewState {
     int wrapMode = 0; // not strictly required for restore
 };
 
-struct LuaVariable {
-    std::string name;
-    LuaVariableType type;
-    std::string stringValue;
-    double numberValue;
-    bool booleanValue;
-
-    LuaVariable() : name(""), type(LuaVariableType::None), numberValue(0.0), booleanValue(false) {}
-};
-
 struct EncodingInfo {
     int sc_codepage = 0;      // The codepage value for Scintilla (e.g., SC_CP_UTF8)
     size_t bom_length = 0;    // The length of the BOM in bytes (0 if no BOM)
 };
-
-using LuaVariablesMap = std::map<std::string, LuaVariable>;
 
 class CsvLoadException : public std::exception {
 public:
@@ -446,16 +490,13 @@ private:
     std::string message_;
 };
 
-class LuaSyntaxException : public std::exception {
-};
-
 struct EditControlContext
 {
     MultiReplace* pThis;
     HWND hwndExpandBtn;
 };
 
-class MultiReplace : public StaticDialog
+class MultiReplace : public StaticDialog, public MultiReplaceEngine::ILuaEngineHost
 {
 public:
 
@@ -630,7 +671,7 @@ public:
     inline static bool _delimiterPositionsStale = false;
     inline static bool isLoggingEnabled = true;
     inline static bool isCaretPositionEnabled = false;
-    inline static bool isLuaErrorDialogEnabled = true;
+    inline static bool _isLuaErrorDialogEnabled = true;
 
     inline static std::vector<size_t> originalLineOrder{}; // Stores the order of lines before sorting
     inline static std::vector<size_t> _markedDuplicateLines{};  // Stores line indices of marked duplicates
@@ -679,8 +720,6 @@ public:
     void initializeDragAndDrop();
 
     inline static HWND       hwndExpandBtn = nullptr;
-    lua_State* _luaState = nullptr;   // Reused Lua state
-
     bool _keepOnTopDuringBatch = false;
     void setBatchUIState(HWND hDlg, bool inProgress);
 
@@ -810,9 +849,8 @@ private:
     std::vector<LineInfo> lineDelimiterPositions;
     std::vector<char> lineBuffer; // reusable Buffer for findDelimitersInLine()
     std::vector<char> styleBuffer; // reusable Buffer for highlightColumnsInLine()
-    std::vector<char> tagBuffer;  // reusable Buffer for SCI_GETTAG in resolveLuaSyntax()
+    std::vector<char> tagBuffer;  // reusable Buffer for SCI_GETTAG in fillCapturesForEngine()
     bool isColumnHighlighted = false;
-    LuaVariablesMap globalLuaVariablesMap; // stores Lua Global Variables
     SIZE_T CSVheaderLinesCount = 1; // Number of header lines not included in CSV sorting
     inline static POINT debugWindowPosition{ CW_USEDEFAULT, CW_USEDEFAULT };
     inline static bool  debugWindowPositionSet = false;
@@ -824,18 +862,6 @@ private:
     int _editingColumnID;
     std::string cachedFilePath;
     std::string cachedFileName;
-    int _luaCompiledReplaceRef = LUA_NOREF;       // Reference to compiled Lua code
-    std::string _lastCompiledLuaCode;             // Cached Lua code for reuse
-
-    // Bridge optimization: avoid redundant lua_setglobal calls by tracking
-    // what was last pushed into the Lua state. FPATH/FNAME change at most
-    // once per replaceAll run, REGEX changes per replace-list item, and the
-    // CAP cleanup only needs to nil what the previous match actually set.
-    std::string _luaLastFPATH;
-    std::string _luaLastFNAME;
-    int _luaLastRegex = -1;                       // -1 = unset, 0 = false, 1 = true
-    int _luaLastCapCount = 0;                     // Count of CAP# globals set last match
-    std::vector<std::string> _luaCapNames;        // Reused per-match scratch (avoid reallocation)
 
     // Debugging and logging related 
     std::wstring findNextButtonText;        // member variable to ensure persists for button label throughout the object's lifetime.
@@ -932,7 +958,7 @@ private:
     inline static bool listStatisticsEnabled = false;     // Status for showing list statistics
     inline static bool stayAfterReplaceEnabled = false;   // Status for keeping panel open after replace
     inline static bool groupResultsEnabled = false;       // Status for flat list view
-    inline static bool luaSafeModeEnabled = false;        // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
+    inline static bool _luaSafeModeEnabled = false;        // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
     inline static bool allFromCursorEnabled = false;      // Controls the starting point for Replace All, Find All and Mark when wrap is OFF.
     inline static bool keepListVisible = false;            // Library mode: list stays visible when toggled off, only dims
     inline static int  listDimIntensity = 50;               // INI setting [Options] DimIntensity (0-100): how strongly the inactive list is dimmed. Persisted, but not surfaced in the config dialog.
@@ -1136,18 +1162,36 @@ private:
     bool hasAnySelectedEntry() const;
     Sci_Position computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled);
 
-    //Lua Engine
-    void captureLuaGlobals(lua_State* L);
-    void fillLuaMatchVars(LuaVariables& vars, Sci_Position matchPos, const std::string& foundText, int cnt, int lcnt, bool isColumnMode, int documentCodepage);
-    bool resolveLuaSyntax(std::string& inputString, const LuaVariables& vars, bool& skip, bool regex, bool showDebugWindow = true, int docCodepage = -1);
-    void setLuaVariable(lua_State* L, const std::string& varName, const std::string& value);
     void updateFilePathCache(const std::filesystem::path* explicitPath = nullptr);
-    void setLuaFileVars(LuaVariables& vars);
-    std::string escapeForRegex(const std::string& input);
-    bool initLuaState();
-    bool ensureLuaCodeCompiled(const std::string& luaCode);
-    static int safeLoadFileSandbox(lua_State* L);
-    static void applyLuaSafeMode(lua_State* L);
+
+    // ----- ILuaEngineHost implementation ------------------------------
+    // Bridge implementations forwarded to existing MR helpers; declared
+    // here so the formula engine can call back without including the
+    // whole panel header. See engine/LuaEngine.h for the contract.
+    std::string escapeForRegex(const std::string& input) override;
+    int          showDebugWindow(const std::string& message) override;
+    void         refreshUiListView() override;
+    void         showErrorMessage(MultiReplaceEngine::ILuaEngineHost::ErrorCategory category,
+        const std::string& details) override;
+    bool         isLuaErrorDialogEnabled() const override;
+    bool         isLuaSafeModeEnabled()    const override;
+    bool         isDebugModeEnabled()      const override;
+
+    // Replace-pipeline helpers that work in terms of the engine-agnostic
+    // FormulaVars structure. Used by the replace pipeline to populate
+    // the per-match data the active engine consumes.
+    void fillFormulaVars(MultiReplaceEngine::FormulaVars& vars,
+        Sci_Position matchPos,
+        const std::string& foundText,
+        int cnt, int lcnt,
+        bool isColumnMode,
+        int documentCodepage);
+    void fillCapturesForEngine(MultiReplaceEngine::FormulaVars& vars,
+        int documentCodepage);
+
+    // Returns the active tab's engine, creating it on first call.
+    // Returns nullptr if engine creation fails.
+    MultiReplaceEngine::IFormulaEngine* getActiveEngine();
 
     //Lua Debug Window
     int ShowDebugWindow(const std::string& message);
