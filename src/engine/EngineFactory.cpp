@@ -12,11 +12,7 @@
 
 #include "EngineFactory.h"
 #include "LuaEngine.h"
-
-// ExprTkEngine.h gets included here once it lands. Until then, the
-// ExprTk branch returns nullptr so calling code can detect the
-// unimplemented case without crashing.
-// #include "ExprTkEngine.h"
+#include "ExprTkEngine.h"
 
 namespace MultiReplaceEngine {
 
@@ -27,12 +23,7 @@ namespace MultiReplaceEngine {
             return std::make_unique<LuaEngine>(host);
 
         case EngineType::ExprTk:
-            // Will be: return std::make_unique<ExprTkEngine>(host);
-            // Returns nullptr until the ExprTk implementation is wired in;
-            // the caller is expected to fall back to Lua or surface an
-            // error. We deliberately don't silently substitute Lua here -
-            // that would mask integration gaps.
-            return nullptr;
+            return std::make_unique<ExprTkEngine>(host);
         }
 
         // Unknown enum value (future-proofing for additional engine types).
