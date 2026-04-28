@@ -61,107 +61,117 @@
 
 namespace MultiReplaceEngine {
 
-class ExprTkEngine final : public IFormulaEngine {
-public:
-    // The host pointer is accepted for symmetry with LuaEngine; the
-    // ExprTk path currently makes no callbacks back into the host. It
-    // is stored for future use (e.g. an "evaluation log" hook) but
-    // never dereferenced by the current implementation.
-    explicit ExprTkEngine(ILuaEngineHost* host);
-    ~ExprTkEngine() override;
-
-    // ----- IFormulaEngine -----------------------------------------------
-
-    bool initialize() override;
-    void shutdown()   override;
-
-    bool compile(const std::string& scriptUtf8) override;
-
-    FormulaResult execute(
-        const std::string& scriptUtf8,
-        const FormulaVars& vars,
-        bool isRegexMatch,
-        int  documentCodepage
-    ) override;
-
-    EngineType   type()        const override { return EngineType::ExprTk; }
-    std::wstring shortName()   const override { return L"ExprTk"; }
-    std::wstring shortLetter() const override { return L"E"; }
-    std::wstring helpUrl()     const override;
-
-private:
-    // Type aliases for ExprTk's templated machinery. Restricting the
-    // engine to double precision keeps the symbol table simple and is
-    // sufficient for the use cases we target.
-    using symbol_table_t = exprtk::symbol_table<double>;
-    using expression_t   = exprtk::expression<double>;
-    using parser_t       = exprtk::parser<double>;
-
-    // ----- internal helpers --------------------------------------------
-
-    // Parse a UTF-8 capture string into a double. Returns 0.0 for
-    // empty / non-numeric input. Locale-independent: only '.' is
-    // recognised as decimal separator.
-    static double parseCaptureToDouble(const std::string& s);
-
-    // Format a double back into a string for insertion into the
-    // replace output. Uses the shortest round-trip representation
-    // available via std::to_chars, falling back to a fixed-precision
-    // format for extreme magnitudes.
-    static std::string formatDouble(double value);
-
-    // ExprTk-callable wrapper: implements reg(N). Reads from the
-    // _captures vector populated at the start of execute().
-    // Out-of-range indices return 0.0 (consistent with the empty-
-    // capture rule in parseCaptureToDouble).
-    class RegFunction : public exprtk::ifunction<double> {
+    class ExprTkEngine final : public IFormulaEngine {
     public:
-        explicit RegFunction(ExprTkEngine* owner)
-            : exprtk::ifunction<double>(1)   // arity = 1
-            , _owner(owner) {}
+        // The host pointer is accepted for symmetry with LuaEngine; the
+        // ExprTk path currently makes no callbacks back into the host. It
+        // is stored for future use (e.g. an "evaluation log" hook) but
+        // never dereferenced by the current implementation.
+        explicit ExprTkEngine(ILuaEngineHost* host);
+        ~ExprTkEngine() override;
 
-        double operator()(const double& index) override;
+        // ----- IFormulaEngine -----------------------------------------------
+
+        bool initialize() override;
+        void shutdown()   override;
+
+        bool compile(const std::string& scriptUtf8) override;
+
+        FormulaResult execute(
+            const std::string& scriptUtf8,
+            const FormulaVars& vars,
+            bool isRegexMatch,
+            int  documentCodepage
+        ) override;
+
+        EngineType   type()        const override { return EngineType::ExprTk; }
+        std::wstring shortName()   const override { return L"ExprTk"; }
+        std::wstring shortLetter() const override { return L"E"; }
+        std::wstring helpUrl()     const override;
 
     private:
-        ExprTkEngine* _owner;
+        // Type aliases for ExprTk's templated machinery. Restricting the
+        // engine to double precision keeps the symbol table simple and is
+        // sufficient for the use cases we target.
+        using symbol_table_t = exprtk::symbol_table<double>;
+        using expression_t = exprtk::expression<double>;
+        using parser_t = exprtk::parser<double>;
+
+        // ----- internal helpers --------------------------------------------
+
+        // Format and surface an error to the host. Mirrors LuaEngine's
+        // pattern: gated by ILuaEngineHost::isLuaErrorDialogEnabled() (the
+        // setting is engine-agnostic in spirit; only the symbol name still
+        // carries the legacy "Lua" prefix). The body is prefixed with
+        // "ExprTk: " so the user can immediately tell which engine raised
+        // the error in mixed-engine workspaces.
+        void reportError(ILuaEngineHost::ErrorCategory category,
+            const std::string& details);
+
+        // Parse a UTF-8 capture string into a double. Returns 0.0 for
+        // empty / non-numeric input. Locale-independent: only '.' is
+        // recognised as decimal separator.
+        static double parseCaptureToDouble(const std::string& s);
+
+        // Format a double back into a string for insertion into the
+        // replace output. Uses the shortest round-trip representation
+        // available via std::to_chars, falling back to a fixed-precision
+        // format for extreme magnitudes.
+        static std::string formatDouble(double value);
+
+        // ExprTk-callable wrapper: implements reg(N). Reads from the
+        // _captures vector populated at the start of execute().
+        // Out-of-range indices return 0.0 (consistent with the empty-
+        // capture rule in parseCaptureToDouble).
+        class RegFunction : public exprtk::ifunction<double> {
+        public:
+            explicit RegFunction(ExprTkEngine* owner)
+                : exprtk::ifunction<double>(1)   // arity = 1
+                , _owner(owner) {
+            }
+
+            double operator()(const double& index) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
+        // ----- state -------------------------------------------------------
+
+        ILuaEngineHost* _host;            // accepted, currently unused
+
+        // Pre-parsed segments of the most recently compiled template.
+        // Kept alongside the expressions so execute() can iterate both in
+        // lockstep without re-parsing.
+        ExprTkPatternParser::ParseResult _parsedTemplate;
+
+        // Compile cache: when compile() is called twice with the same
+        // template, we skip re-parsing and re-compiling.
+        std::string _lastCompiledScript;
+        bool        _haveCompiled = false;
+
+        // ExprTk plumbing
+        symbol_table_t              _symbolTable;
+        parser_t                    _parser;
+        std::vector<expression_t>   _compiledExpressions;
+
+        // Variables registered with the symbol table. Held as members
+        // (not locals) because ExprTk binds them by reference - they must
+        // outlive every expression that uses them.
+        double _varCNT = 0.0;
+        double _varLCNT = 0.0;
+        double _varLINE = 0.0;
+        double _varLPOS = 0.0;
+        double _varAPOS = 0.0;
+        double _varCOL = 0.0;
+
+        // Captures are pre-parsed once per execute() into doubles. The
+        // RegFunction reads from this vector. Index 0 holds the full
+        // match (FormulaVars::MATCH); index 1..N the capture groups.
+        std::vector<double> _captures;
+
+        // The reg() callable, registered with the symbol table.
+        RegFunction _regFunction;
     };
-
-    // ----- state -------------------------------------------------------
-
-    ILuaEngineHost* _host;            // accepted, currently unused
-
-    // Pre-parsed segments of the most recently compiled template.
-    // Kept alongside the expressions so execute() can iterate both in
-    // lockstep without re-parsing.
-    ExprTkPatternParser::ParseResult _parsedTemplate;
-
-    // Compile cache: when compile() is called twice with the same
-    // template, we skip re-parsing and re-compiling.
-    std::string _lastCompiledScript;
-    bool        _haveCompiled = false;
-
-    // ExprTk plumbing
-    symbol_table_t              _symbolTable;
-    parser_t                    _parser;
-    std::vector<expression_t>   _compiledExpressions;
-
-    // Variables registered with the symbol table. Held as members
-    // (not locals) because ExprTk binds them by reference - they must
-    // outlive every expression that uses them.
-    double _varCNT  = 0.0;
-    double _varLCNT = 0.0;
-    double _varLINE = 0.0;
-    double _varLPOS = 0.0;
-    double _varAPOS = 0.0;
-    double _varCOL  = 0.0;
-
-    // Captures are pre-parsed once per execute() into doubles. The
-    // RegFunction reads from this vector. Index 0 holds the full
-    // match (FormulaVars::MATCH); index 1..N the capture groups.
-    std::vector<double> _captures;
-
-    // The reg() callable, registered with the symbol table.
-    RegFunction _regFunction;
-};
 
 } // namespace MultiReplaceEngine

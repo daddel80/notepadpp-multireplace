@@ -101,16 +101,6 @@
     <ClCompile Include="..\src\engine\ExprTkEngine.cpp" />
     <ClCompile Include="..\src\engine\ExprTkPatternParser.cpp" />
     <ClCompile Include="..\src\engine\LuaEngine.cpp" />
-    <ClCompile Include="..\src\engine\tests\test_engine_helpers.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-    </ClCompile>
-    <ClCompile Include="..\src\engine\tests\test_parser.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="..\src\image_data.cpp" />
     <ClCompile Include="..\src\IniFileCache.cpp" />
     <ClCompile Include="..\src\LanguageManager.cpp" />
