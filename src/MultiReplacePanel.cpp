@@ -664,6 +664,10 @@ bool MultiReplace::createAndShowWindows() {
     const bool twoButtonsMode = (IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED);
     const bool initialShow = isFilesPanelNeeded() && !twoButtonsMode;
 
+    // Defensive reset: if createAndShowWindows ever runs more than once
+    // in a process lifetime, drop stale handles before populating again.
+    _ctrlTooltips.clear();
+
     for (auto& pair : ctrlMap)
     {
         const bool isFilesCtrl = isRepInFilesId(pair.first);
@@ -750,6 +754,10 @@ bool MultiReplace::createAndShowWindows() {
                 ti.uId = (UINT_PTR)hwndControl;           // identify by child HWND
                 ti.lpszText = const_cast<LPWSTR>(pair.second.tooltipText);
                 SendMessage(hwndTooltip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
+
+                // Track the handle so applyThemePalette() can re-theme
+                // the tooltip when Notepad++ switches dark/light mode.
+                _ctrlTooltips.push_back(hwndTooltip);
 
                 // Stash the handle for the engine selector so its tip
                 // text can be refreshed when the active engine changes.
@@ -3644,6 +3652,12 @@ void MultiReplace::destroyAllTooltipWindows()
     if (_hHeaderTooltip) { DestroyWindow(_hHeaderTooltip);        _hHeaderTooltip = nullptr; }
     if (_hUseListButtonTooltip) { DestroyWindow(_hUseListButtonTooltip); _hUseListButtonTooltip = nullptr; }
 
+    // The per-control tooltips themselves are destroyed by the
+    // EnumThreadWindows pass below. Drop our tracked handles so we
+    // never re-theme stale pointers in applyThemePalette.
+    _ctrlTooltips.clear();
+    _hEngineSelectorTooltip = nullptr;
+
     const DWORD tid = GetCurrentThreadId();
     EnumThreadWindows(tid,
         [](HWND hwnd, LPARAM lParam)->BOOL
@@ -3735,6 +3749,16 @@ void MultiReplace::rebuildAllTooltips()
 
         SendMessage(hwndTooltip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
         SendMessage(hwndTooltip, TTM_ACTIVATE, TRUE, 0);
+
+        // Track for theme refresh in applyThemePalette.
+        _ctrlTooltips.push_back(hwndTooltip);
+
+        // Stash the engine-selector tooltip so its text can be
+        // refreshed by syncEngineSelectorLabel when the engine
+        // changes (mirrors the path in createAndShowWindows).
+        if (ctrlId == IDC_USE_VARIABLES_ENGINE) {
+            _hEngineSelectorTooltip = hwndTooltip;
+        }
     }
 
     // Update special tooltips
@@ -13885,6 +13909,28 @@ void MultiReplace::applyThemePalette()
     InvalidateRect(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), nullptr, TRUE);
     InvalidateRect(GetDlgItem(_hSelf, IDC_FILTER_HELP), nullptr, TRUE);
     InvalidateRect(GetDlgItem(_hSelf, IDC_USE_VARIABLES_ENGINE), nullptr, TRUE);
+
+    // Re-theme tooltip windows so they switch their dark/light skin
+    // alongside Notepad++. Tooltips originally pick up a theme via
+    // SetWindowTheme at creation time, but the skin doesn't follow
+    // later theme switches unless we reapply it explicitly.
+    //
+    // Light mode: pass nullptr to drop any DarkMode_Explorer override
+    //             and fall back to the default (light) appearance.
+    // Dark mode:  apply DarkMode_Explorer like at creation.
+    auto retheme = [isDark](HWND hTip) {
+        if (!hTip) return;
+        SetWindowTheme(hTip,
+            isDark ? L"DarkMode_Explorer" : nullptr,
+            nullptr);
+        };
+
+    for (HWND hTip : _ctrlTooltips) {
+        retheme(hTip);
+    }
+    retheme(_hHeaderTooltip);
+    retheme(_hUseListButtonTooltip);
+    retheme(_hTabTooltip);
 }
 
 void MultiReplace::refreshColumnStylesIfNeeded()

@@ -806,6 +806,13 @@ private:
     // TTM_UPDATETIPTEXT when the active engine changes.
     HWND _hEngineSelectorTooltip = nullptr;
 
+    // All per-control tooltip windows created in createControls().
+    // The handles are tracked here so applyThemePalette() can refresh
+    // their dark/light theme when Notepad++ switches modes at runtime
+    // - SetWindowTheme is otherwise only applied at tooltip creation
+    // and would leave stale tooltips in the wrong theme until restart.
+    std::vector<HWND> _ctrlTooltips;
+
     POINT _contextMenuClickPoint;
 
     // Style-related variables and constants
