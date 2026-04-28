@@ -417,7 +417,14 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(133), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(108), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    // Formula-engine selector: small clickable static rendered owner-drawn so it can
+    // appear in link-blue. Text reflects the active engine ("(L)" / "(E)") and is
+    // refreshed by syncEngineSelectorLabel() whenever the tab's engine changes.
+    // Tooltip is registered with a non-empty placeholder ("..." would do); the
+    // first call to syncEngineSelectorLabel replaces it with the real engine
+    // name via TTM_UPDATETIPTEXT.
+    ctrlMap[IDC_USE_VARIABLES_ENGINE] = { sx(130), sy(126), sx(18), sy(20), WC_STATIC, L"(L)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, L"...", true, FontRole::Standard };
     ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(110), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
@@ -700,8 +707,14 @@ bool MultiReplace::createAndShowWindows() {
             return false; // Handle creation error
         }
 
-        // Only create tooltips if enabled and tooltip text is available
-        if ((tooltipsEnabled || pair.first == IDC_FILTER_HELP)
+        // Only create tooltips if enabled and tooltip text is available.
+        // IDC_FILTER_HELP and IDC_USE_VARIABLES_ENGINE bypass the
+        // tooltipsEnabled gate because their tooltips are essential
+        // affordances - the (?) help marker and the (L)/(E) engine
+        // marker rely on a tooltip to be self-explanatory.
+        if ((tooltipsEnabled
+            || pair.first == IDC_FILTER_HELP
+            || pair.first == IDC_USE_VARIABLES_ENGINE)
             && pair.second.tooltipText != nullptr
             && pair.second.tooltipText[0] != L'\0')
         {
@@ -737,6 +750,12 @@ bool MultiReplace::createAndShowWindows() {
                 ti.uId = (UINT_PTR)hwndControl;           // identify by child HWND
                 ti.lpszText = const_cast<LPWSTR>(pair.second.tooltipText);
                 SendMessage(hwndTooltip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
+
+                // Stash the handle for the engine selector so its tip
+                // text can be refreshed when the active engine changes.
+                if (pair.first == IDC_USE_VARIABLES_ENGINE) {
+                    _hEngineSelectorTooltip = hwndTooltip;
+                }
             }
         }
     }
@@ -1291,6 +1310,10 @@ void MultiReplace::setUIElementVisibility() {
 
     // Update the FIND_PREV_BUTTON state based on Regex and Selection mode
     // EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !regexChecked);
+
+    // Refresh the (L)/(E) marker: text follows the active tab's engine,
+    // and the marker is greyed out while "Use Variables" is unchecked.
+    syncEngineSelectorLabel();
 }
 
 void MultiReplace::drawGripper() {
@@ -3478,6 +3501,121 @@ void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
 
     // Destroy the menu after use
     DestroyMenu(hMenu);
+}
+
+void MultiReplace::showEngineSelectorMenu()
+{
+    HWND hMarker = GetDlgItem(_hSelf, IDC_USE_VARIABLES_ENGINE);
+    if (!hMarker) {
+        return;
+    }
+
+    // Anchor the menu just below the marker so the popup feels attached
+    // to the (L)/(E) widget, mirroring the behaviour of dropdown buttons.
+    RECT rc{};
+    GetWindowRect(hMarker, &rc);
+    const POINT anchor = { rc.left, rc.bottom };
+
+    // Determine which engine is active for the current tab so the
+    // menu can show a radio bullet against it.
+    MultiReplaceEngine::EngineType active = MultiReplaceEngine::EngineType::Lua;
+    if (_activeTabIndex >= 0 &&
+        _activeTabIndex < static_cast<int>(_tabs.size())) {
+        active = _tabs[_activeTabIndex]->engine;
+    }
+
+    HMENU hMenu = CreatePopupMenu();
+    if (!hMenu) {
+        return;
+    }
+
+    // Two engines as radio-style entries. Engine names are proper
+    // nouns - they live in language_mapping but never get translated.
+    AppendMenuW(hMenu, MF_STRING, IDM_ENGINE_LUA,
+        LM.getLPCW(L"engine_name_lua"));
+    AppendMenuW(hMenu, MF_STRING, IDM_ENGINE_EXPRTK,
+        LM.getLPCW(L"engine_name_exprtk"));
+
+    // Bullet the currently active engine so the user sees the state
+    // before clicking.
+    CheckMenuRadioItem(hMenu, IDM_ENGINE_LUA, IDM_ENGINE_EXPRTK,
+        (active == MultiReplaceEngine::EngineType::Lua)
+        ? IDM_ENGINE_LUA : IDM_ENGINE_EXPRTK,
+        MF_BYCOMMAND);
+
+    TrackPopupMenu(hMenu,
+        TPM_LEFTALIGN | TPM_TOPALIGN,
+        anchor.x, anchor.y, 0, _hSelf, nullptr);
+
+    DestroyMenu(hMenu);
+}
+
+void MultiReplace::applyEngineSelection(MultiReplaceEngine::EngineType type)
+{
+    if (_activeTabIndex < 0 ||
+        _activeTabIndex >= static_cast<int>(_tabs.size())) {
+        return;
+    }
+
+    auto& tab = *_tabs[_activeTabIndex];
+    if (tab.engine == type) {
+        return;  // No-op when the user re-selects the active engine.
+    }
+
+    tab.engine = type;
+    // Drop the cached engine instance: getActiveEngine() will rebuild
+    // it on next use with the new EngineType. This is safe because the
+    // engine isn't running right now (we're handling a user click).
+    tab.engineInstance.reset();
+
+    // Mark the tab dirty so the change persists with the next save -
+    // engine choice is part of TabState and rides along with the
+    // existing INI persistence path.
+    markActiveTabDirty();
+
+    // Refresh the (L)/(E) marker to reflect the new engine.
+    syncEngineSelectorLabel();
+}
+
+void MultiReplace::syncEngineSelectorLabel()
+{
+    HWND hMarker = GetDlgItem(_hSelf, IDC_USE_VARIABLES_ENGINE);
+    if (!hMarker) {
+        return;
+    }
+
+    // Determine current engine from the active tab.
+    MultiReplaceEngine::EngineType active = MultiReplaceEngine::EngineType::Lua;
+    if (_activeTabIndex >= 0 &&
+        _activeTabIndex < static_cast<int>(_tabs.size())) {
+        active = _tabs[_activeTabIndex]->engine;
+    }
+
+    const wchar_t* labelText =
+        (active == MultiReplaceEngine::EngineType::Lua) ? L"(L)" : L"(E)";
+    SetWindowTextW(hMarker, labelText);
+
+    // Refresh the tooltip text to reflect the active engine. The
+    // tooltip body uses $REPLACE_STRING substitution to embed the
+    // engine name without duplicating translation strings.
+    if (_hEngineSelectorTooltip) {
+        const std::wstring engineName = LM.get(
+            (active == MultiReplaceEngine::EngineType::Lua)
+            ? L"engine_name_lua" : L"engine_name_exprtk");
+        const std::wstring tipText = LM.get(
+            L"tooltip_engine_selector", { engineName });
+
+        TOOLINFO ti = {};
+        ti.cbSize = sizeof(ti);
+        ti.hwnd = _hSelf;
+        ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        ti.uId = (UINT_PTR)hMarker;
+        ti.lpszText = const_cast<LPWSTR>(tipText.c_str());
+        SendMessage(_hEngineSelectorTooltip,
+            TTM_UPDATETIPTEXT, 0, reinterpret_cast<LPARAM>(&ti));
+    }
+
+    InvalidateRect(hMarker, nullptr, TRUE);
 }
 
 #pragma endregion
@@ -5784,6 +5922,21 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             return TRUE;
         }
+        else if (pdis->CtlID == IDC_USE_VARIABLES_ENGINE) {
+            // Engine selector renders as a small clickable marker in
+            // link blue. Colour comes from applyThemePalette() so it
+            // stays in sync with theme changes.
+            wchar_t buffer[16];
+            GetWindowTextW(pdis->hwndItem, buffer, 16);
+
+            SetTextColor(pdis->hDC, _engineLinkColor);
+            SetBkMode(pdis->hDC, TRANSPARENT);
+
+            DrawTextW(pdis->hDC, buffer, -1, &pdis->rcItem,
+                DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+            return TRUE;
+        }
         else if (pdis->CtlID == IDC_NEW_LIST_BUTTON) {
             // Flat, borderless render against the tab-bar background.
             // STATIC with SS_OWNERDRAW is transparent by default, so no
@@ -5850,6 +6003,29 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         switch (LOWORD(wParam))
         {
 
+        case IDC_USE_VARIABLES_ENGINE:
+        {
+            // Static control with SS_NOTIFY fires STN_CLICKED on
+            // press. The selector is always active so the user can
+            // pre-set the engine even before turning on "Use Variables".
+            if (HIWORD(wParam) == STN_CLICKED) {
+                showEngineSelectorMenu();
+            }
+            return TRUE;
+        }
+
+        case IDM_ENGINE_LUA:
+        {
+            applyEngineSelection(MultiReplaceEngine::EngineType::Lua);
+            return TRUE;
+        }
+
+        case IDM_ENGINE_EXPRTK:
+        {
+            applyEngineSelection(MultiReplaceEngine::EngineType::ExprTk);
+            return TRUE;
+        }
+
         case IDC_USE_VARIABLES_HELP:
         {
             auto n = SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, 0, 0);
@@ -5857,9 +6033,39 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, n + 1, reinterpret_cast<LPARAM>(path.data()));
             path += L"\\MultiReplace";
             const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-            std::wstring filename = isDark ? L"\\help_use_variables_dark.html" : L"\\help_use_variables_light.html";
-            path += filename;
-            ShellExecute(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+
+            // Prefer engine-specific help; fall back to the legacy
+            // "use variables" help for engines that don't ship a
+            // dedicated file yet. The legacy help covers Lua content
+            // and is a reasonable starting point until per-engine
+            // pages exist.
+            MultiReplaceEngine::EngineType active =
+                MultiReplaceEngine::EngineType::Lua;
+            if (_activeTabIndex >= 0 &&
+                _activeTabIndex < static_cast<int>(_tabs.size())) {
+                active = _tabs[_activeTabIndex]->engine;
+            }
+
+            const wchar_t* engineSlug =
+                (active == MultiReplaceEngine::EngineType::ExprTk)
+                ? L"exprtk" : L"lua";
+            std::wstring engineFile = std::wstring(L"\\help_use_variables_")
+                + engineSlug + (isDark ? L"_dark.html" : L"_light.html");
+            std::wstring engineFull = path + engineFile;
+
+            std::wstring legacyFile = isDark
+                ? L"\\help_use_variables_dark.html"
+                : L"\\help_use_variables_light.html";
+            std::wstring legacyFull = path + legacyFile;
+
+            // GetFileAttributes returns INVALID_FILE_ATTRIBUTES when
+            // the engine-specific file is missing.
+            const DWORD attrs = GetFileAttributesW(engineFull.c_str());
+            const std::wstring& target =
+                (attrs != INVALID_FILE_ATTRIBUTES) ? engineFull : legacyFull;
+
+            ShellExecute(nullptr, L"open", target.c_str(),
+                nullptr, nullptr, SW_SHOWNORMAL);
             return TRUE;
         }
 
@@ -13657,12 +13863,14 @@ void MultiReplace::applyThemePalette()
         COLOR_ERROR = DMODE_ERROR;
         COLOR_INFO = DMODE_INFO;
         _filterHelpColor = DMODE_FILTER_HELP;
+        _engineLinkColor = DMODE_ENGINE_LINK;
     }
     else {
         COLOR_SUCCESS = LMODE_SUCCESS;
         COLOR_ERROR = LMODE_ERROR;
         COLOR_INFO = LMODE_INFO;
         _filterHelpColor = LMODE_FILTER_HELP;
+        _engineLinkColor = LMODE_ENGINE_LINK;
     }
 
     // Update the active colour based on the last message status
@@ -13672,9 +13880,11 @@ void MultiReplace::applyThemePalette()
     default:                     _statusMessageColor = COLOR_INFO;    break;
     }
 
-    // Repaint status control and "(?)" tooltip so they pick up the new palette
+    // Repaint owner-drawn controls so they pick up the new palette:
+    // status message, filter "(?)" marker, and engine selector "(L)/(E)".
     InvalidateRect(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), nullptr, TRUE);
     InvalidateRect(GetDlgItem(_hSelf, IDC_FILTER_HELP), nullptr, TRUE);
+    InvalidateRect(GetDlgItem(_hSelf, IDC_USE_VARIABLES_ENGINE), nullptr, TRUE);
 }
 
 void MultiReplace::refreshColumnStylesIfNeeded()

@@ -657,12 +657,14 @@ public:
     static constexpr COLORREF LMODE_ERROR = RGB(200, 0, 0);
     static constexpr COLORREF LMODE_INFO = RGB(0, 0, 128);
     static constexpr COLORREF LMODE_FILTER_HELP = RGB(0, 0, 255);
+    static constexpr COLORREF LMODE_ENGINE_LINK = RGB(0, 0, 255);
 
     // Dark Mode Colors for Message
     static constexpr COLORREF DMODE_SUCCESS = RGB(120, 220, 120);
     static constexpr COLORREF DMODE_ERROR = RGB(255, 110, 110);
     static constexpr COLORREF DMODE_INFO = RGB(180, 180, 255);
     static constexpr COLORREF DMODE_FILTER_HELP = RGB(255, 235, 59);
+    static constexpr COLORREF DMODE_ENGINE_LINK = RGB(100, 180, 255);
 
     inline static bool isWindowOpen = false;
     inline static bool textModified = true;
@@ -792,9 +794,17 @@ private:
     COLORREF COLOR_INFO;
     COLORREF _statusMessageColor = LMODE_INFO; // Holds the actual color to be drawn. Initialized for light mode.
     COLORREF _filterHelpColor;
+    // Engine selector marker colour (theme-aware). Updated by
+    // applyThemePalette so the (L)/(E) marker renders in link blue
+    // in both light and dark mode.
+    COLORREF _engineLinkColor = LMODE_ENGINE_LINK;
     MessageStatus _lastMessageStatus = MessageStatus::Info; // Holds the TYPE of the last message.
     HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
     HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button
+    // Handle to the tooltip for the (L)/(E) engine selector marker.
+    // Stored so syncEngineSelectorLabel can update the text via
+    // TTM_UPDATETIPTEXT when the active engine changes.
+    HWND _hEngineSelectorTooltip = nullptr;
 
     POINT _contextMenuClickPoint;
 
@@ -1103,6 +1113,23 @@ private:
     // showColumnVisibilityMenu so the Lock/Unlock command handler
     // knows which column to toggle.
     ColumnID _tagetedLockColumn = ColumnID::INVALID;
+
+    // ----- Engine selector UI -----------------------------------------
+    // Pop up the small engine-chooser menu next to the (L)/(E) marker.
+    // The marker itself is IDC_USE_VARIABLES_ENGINE; this opens the menu
+    // that lets the user switch between Lua and ExprTk for the active tab.
+    void showEngineSelectorMenu();
+
+    // Apply a new engine selection to the active tab. Updates the tab's
+    // EngineType, drops the cached engine instance so getActiveEngine()
+    // creates a fresh one on next use, and refreshes the (L)/(E) marker.
+    void applyEngineSelection(MultiReplaceEngine::EngineType type);
+
+    // Refresh the (L)/(E) marker text from the active tab's engine. Also
+    // enables/disables the marker according to the "Use Variables"
+    // checkbox state.
+    void syncEngineSelectorLabel();
+
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void handleUpdateFromFields();
     static std::wstring getCurrentTimestamp();

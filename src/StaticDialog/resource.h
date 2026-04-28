@@ -108,7 +108,7 @@
 
 
 // ===================================================================
-//  5200-5206 - Checkboxes
+//  5200-5207 - Checkboxes
 // ===================================================================
 #define IDC_WHOLE_WORD_CHECKBOX         5200
 #define IDC_MATCH_CASE_CHECKBOX         5201
@@ -117,6 +117,7 @@
 #define IDC_WRAP_AROUND_CHECKBOX        5204
 #define IDC_REPLACE_AT_MATCHES_CHECKBOX 5205
 #define IDC_REPLACE_HIT_EDIT            5206
+#define IDC_USE_VARIABLES_ENGINE        5207
 
 
 
@@ -255,6 +256,13 @@
 #define IDM_TAB_CLOSE                   5905
 #define IDM_TAB_CLOSE_OTHERS            5906
 #define IDM_TAB_CLOSE_ALL               5907
+
+// ===================================================================
+//  5950-5959 - Formula engine selector popup menu IDs
+// ===================================================================
+#define IDM_ENGINE_LUA                  5950
+#define IDM_ENGINE_EXPRTK               5951
+#define IDM_ENGINE_HELP                 5952
 
 // ===================================================================
 //  6000-6120 - Miscellaneous & Result Dock
