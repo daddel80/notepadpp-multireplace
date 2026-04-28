@@ -98,7 +98,11 @@
     <ClCompile Include="..\src\DropTarget.cpp" />
     <ClCompile Include="..\src\Encoding.cpp" />
     <ClCompile Include="..\src\engine\EngineFactory.cpp" />
-    <ClCompile Include="..\src\engine\ExprTkEngine.cpp" />
+    <ClCompile Include="..\src\engine\ExprTkEngine.cpp">
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'"> /bigobj %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'"> /bigobj %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"> /bigobj %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
     <ClCompile Include="..\src\engine\ExprTkPatternParser.cpp" />
     <ClCompile Include="..\src\engine\LuaEngine.cpp" />
     <ClCompile Include="..\src\image_data.cpp" />
