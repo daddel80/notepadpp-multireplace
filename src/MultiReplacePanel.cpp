@@ -14463,6 +14463,13 @@ namespace {
         writeSettingsLineUtf8(out, L"CSVDelim", tab.csvDelim);
         writeSettingsLineUtf8(out, L"CSVQuote", tab.csvQuote);
 
+        // Formula engine choice. Recipients of a shared list need to
+        // run it on the engine the author intended; without this line
+        // an ExprTk-targeted list would silently run on Lua and vice
+        // versa, raising confusing parser errors.
+        writeSettingsLineUtf8(out, L"Engine",
+            std::wstring(MultiReplaceEngine::engineTypeToString(tab.engine)));
+
         out << "[End]\n";
     }
 
@@ -14523,6 +14530,20 @@ namespace {
         tab.csvCols = readMapString(s, L"CSVCols", L"1-50");
         tab.csvDelim = readMapString(s, L"CSVDelim", L",");
         tab.csvQuote = readMapString(s, L"CSVQuote", L"\"");
+
+        // Formula engine. Files written by older builds have no
+        // Engine= line; for those we default to Lua, matching the
+        // pre-ExprTk world where every list was implicitly Lua. Newer
+        // files write the field explicitly so a recipient runs the
+        // list on the same engine the author intended. Drop any
+        // cached engine instance because the type may have changed -
+        // getActiveEngine() will lazily rebuild it.
+        const std::wstring engineStr = readMapString(s, L"Engine", L"Lua");
+        const auto newEngine = MultiReplaceEngine::engineTypeFromString(engineStr);
+        if (tab.engine != newEngine) {
+            tab.engine = newEngine;
+            tab.engineInstance.reset();
+        }
     }
 } // namespace
 

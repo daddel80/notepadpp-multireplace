@@ -310,15 +310,11 @@ namespace MultiReplaceEngine {
         }
 
         // Walk segments in order, accumulating the output. Literals copy
-        // straight through; expressions get evaluated and formatted.
-        //
-        // String-typed expressions (FNAME, FPATH, MATCH used directly,
-        // or rstr-style accessors) cannot be expressed in this numeric
-        // pipeline: ExprTk evaluates a string-where-a-number-is-expected
-        // to NaN. We detect that and surface a useful error instead of
-        // writing "nan" into the document. Full string-return support
-        // will arrive in a follow-up increment that wires ExprTk's
-        // results_context through this loop.
+        // straight through; expressions get evaluated and either formatted
+        // as a number (legacy path) or unpacked from an ExprTk return
+        // statement (new path - lets users emit mixed string/number
+        // output, which is the only way to surface a string variable like
+        // FNAME / FPATH / MATCH).
         std::string out;
         out.reserve(scriptUtf8.size());
 
@@ -331,15 +327,30 @@ namespace MultiReplaceEngine {
                 continue;
             }
 
-            // Expression segment - evaluate and format.
-            const double value = _compiledExpressions[i].value();
+            // Eval. ExprTk's return statement turns into a side-channel
+            // result list - we must check return_invoked() to decide
+            // which output path applies, because value() is 0.0 in that
+            // case and would otherwise look like a normal numeric eval.
+            auto& expr = _compiledExpressions[i];
+            const double value = expr.value();
 
+            if (expr.return_invoked()) {
+                appendExprtkResults(expr, out);
+                continue;
+            }
+
+            // Legacy numeric path. If the user accidentally placed a
+            // string-typed variable (FNAME, FPATH, MATCH) into a numeric
+            // expression - or expected ExprTk to coerce a string to a
+            // number - the eval produces NaN. Surface a useful error
+            // instead of writing "nan" into the document.
             if (std::isnan(value)) {
                 std::string msg =
                     "Expression \"" + seg.text + "\" evaluated to NaN. "
                     "ExprTk cannot use a string variable (MATCH, FPATH, "
-                    "FNAME) where a number is expected. For string output, "
-                    "use the Lua engine.";
+                    "FNAME) where a number is expected. To emit a string, "
+                    "wrap it in a return statement: "
+                    "(?=return ['prefix-', FNAME]).";
                 reportError(ILuaEngineHost::ErrorCategory::ExecutionError,
                     msg);
                 result.success = false;
@@ -368,6 +379,62 @@ namespace MultiReplaceEngine {
         // Points at the user-facing documentation section. Resolved at
         // call time so we don't bake an outdated URL into a binary.
         return L"https://github.com/daddel80/notepadpp-multireplace#exprtk-engine";
+    }
+
+    // ---------------------------------------------------------------------
+    // ExprTk return-statement unpacking
+    // ---------------------------------------------------------------------
+
+    void ExprTkEngine::appendExprtkResults(const expression_t& expr,
+        std::string& out)
+    {
+        // ExprTk's return statement (Section 20 of the docs) turns the
+        // expression into one that produces an ordered, typed result list
+        // instead of a single scalar. results() returns a results_context
+        // describing that list; each element is a type_store carrying its
+        // type tag plus a typed view onto the actual data.
+        const auto& results = expr.results();
+
+        using results_ctx_t = typename std::remove_reference<decltype(results)>::type;
+        using type_store_t = typename results_ctx_t::type_store_t;
+        using string_view_t = typename type_store_t::string_view;
+        using scalar_view_t = typename type_store_t::scalar_view;
+
+        for (std::size_t i = 0; i < results.count(); ++i) {
+            const type_store_t& ts = results[i];
+
+            switch (ts.type) {
+            case type_store_t::e_scalar: {
+                // Numeric element - format like a regular numeric
+                // expression so 1.0 -> "1", 1.5 -> "1.5", etc.
+                const scalar_view_t sv(ts);
+                out.append(formatDouble(sv()));
+                break;
+            }
+
+            case type_store_t::e_string: {
+                // String element - append verbatim. ExprTk strings
+                // are 8-bit char sequences (UTF-8 in our pipeline).
+                const string_view_t sv(ts);
+                out.append(&sv[0], sv.size());
+                break;
+            }
+
+            case type_store_t::e_vector:
+                // Vectors are unusual in a replace template. We could
+                // unpack them element-wise, but the use case is thin
+                // and the cost of guessing wrong is a corrupted
+                // replace. Skip for now; if someone needs it, we add
+                // it once a concrete user pattern shows up.
+                break;
+
+            default:
+                // Forwards-compat: silently ignore unknown element
+                // types so a future ExprTk extension cannot break a
+                // running replace.
+                break;
+            }
+        }
     }
 
     // ---------------------------------------------------------------------

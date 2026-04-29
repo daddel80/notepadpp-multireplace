@@ -119,6 +119,16 @@ namespace MultiReplaceEngine {
         // format for extreme magnitudes.
         static std::string formatDouble(double value);
 
+        // Append the elements of an ExprTk return-value list onto the
+        // output string. Used when the user invokes 'return [...]' inside
+        // an (?= ...) expression - that lets a single expression emit
+        // mixed string and numeric output, which is the only way to get
+        // a string-typed variable (FNAME, MATCH, ...) into the result.
+        // Errors during element traversal are tolerated rather than
+        // aborted; an unknown element type is silently skipped so a
+        // future ExprTk extension cannot break a running replace.
+        void appendExprtkResults(const expression_t& expr, std::string& out);
+
         // ExprTk-callable wrapper: implements reg(N). Reads from the
         // _captures vector populated at the start of execute().
         // Out-of-range indices return 0.0 (consistent with the empty-
