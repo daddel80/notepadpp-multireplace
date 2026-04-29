@@ -165,6 +165,46 @@ namespace MultiReplaceEngine {
             ExprTkEngine* _owner;
         };
 
+        // ExprTk-callable wrapper: implements rstr(N), the string-side
+        // counterpart to reg(N). Returns the captured text at index N
+        // as a string (rstr(0) = full match, rstr(1..N) = capture groups).
+        // Built on igeneric_function rather than plain ifunction because
+        // ifunction can only return doubles - and the whole point of
+        // rstr() is to surface the *string* form of a capture.
+        //
+        // Only meaningful inside an ExprTk return statement, e.g.
+        //   (?=return ['<', rstr(1), '>'])
+        // outside a return ExprTk will refuse to compile because the
+        // surrounding numeric expression cannot consume a string.
+        //
+        // The "T" arity-spec declares one Scalar argument (the index).
+        // The e_rtrn_string flag tells ExprTk this function returns a
+        // string, so it can be used in string contexts within an
+        // expression (Section 15 of the ExprTk docs).
+        class RstrFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using scalar_t = typename generic_t::scalar_view;
+
+            explicit RstrFunction(ExprTkEngine* owner)
+                : igenfunct_t("T", igenfunct_t::e_rtrn_string)
+                , _owner(owner) {
+            }
+
+            // Override picks up the string-return overload because we
+            // declared e_rtrn_string in the constructor. The first
+            // parameter receives the result; the return double is
+            // ignored by ExprTk in this mode but must be present to
+            // match the base-class signature.
+            double operator()(std::string& result,
+                parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
         // ----- state -------------------------------------------------------
 
         ILuaEngineHost* _host;            // accepted, currently unused
@@ -199,6 +239,12 @@ namespace MultiReplaceEngine {
         // match (FormulaVars::MATCH); index 1..N the capture groups.
         std::vector<double> _captures;
 
+        // String form of the capture groups, kept alongside the numeric
+        // _captures so RstrFunction can hand them to ExprTk return-list
+        // entries. Index 0 is *not* used here (rstr(0) reads _strMATCH
+        // directly); slots 0..N-1 hold capture[1..N].
+        std::vector<std::string> _captureStrings;
+
         // Holds the current match's string-side metadata for ExprTk's
         // string-typed symbol table entries. ExprTk binds string vars by
         // reference (Section 13 of the ExprTk docs), so these have to
@@ -217,6 +263,10 @@ namespace MultiReplaceEngine {
 
         // The skip() callable, also registered with the symbol table.
         SkipFunction _skipFunction;
+
+        // The rstr() callable for string-typed capture access (used
+        // inside ExprTk return lists).
+        RstrFunction _rstrFunction;
     };
 
 } // namespace MultiReplaceEngine

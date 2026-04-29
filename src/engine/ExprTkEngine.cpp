@@ -38,6 +38,7 @@ namespace MultiReplaceEngine {
         : _host(host)
         , _regFunction(this)
         , _skipFunction(this)
+        , _rstrFunction(this)
     {
     }
 
@@ -80,6 +81,11 @@ namespace MultiReplaceEngine {
         // returns 0.0 and signals via _wantSkip; execute() picks that
         // up after eval and propagates it through FormulaResult::skip.
         _symbolTable.add_function("skip", _skipFunction);
+
+        // Register rstr(N) for string-typed capture access. Only useful
+        // inside an ExprTk return list, where its string output is
+        // concatenated into the replace text.
+        _symbolTable.add_function("rstr", _rstrFunction);
 
         // ExprTk's standard math constants (pi, epsilon, infinity).
         _symbolTable.add_constants();
@@ -243,6 +249,12 @@ namespace MultiReplaceEngine {
         for (const auto& cap : vars.captures) {
             _captures.push_back(parseCaptureToDouble(cap));
         }
+
+        // Mirror the captures as raw strings for rstr(N). RstrFunction
+        // reads from this vector indexed 0..N-1 for capture groups
+        // 1..N. The full match (rstr(0)) is served from _strMATCH
+        // directly and not duplicated here.
+        _captureStrings = vars.captures;
 
         // ----- Debug-window display ---------------------------------------
         // When debug mode is on, surface a per-match snapshot of the
@@ -534,6 +546,62 @@ namespace MultiReplaceEngine {
         if (_owner) {
             _owner->_wantSkip = true;
         }
+        return 0.0;
+    }
+
+    // ---------------------------------------------------------------------
+    // rstr() function implementation
+    // ---------------------------------------------------------------------
+
+    double ExprTkEngine::RstrFunction::operator()(
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        // Default to empty: an out-of-range or malformed call yields ""
+        // rather than aborting eval, mirroring reg(N)'s defensive style.
+        result.clear();
+
+        if (!_owner || parameters.size() != 1) {
+            return 0.0;
+        }
+
+        // The "T" arity-spec promised one Scalar argument; wrap it in a
+        // scalar_view to read the value. The view is a thin reference
+        // wrapper so this is cheap.
+        const scalar_t s(parameters[0]);
+        const double index = s();
+
+        if (!std::isfinite(index)) {
+            return 0.0;
+        }
+
+        // Truncate toward zero so rstr(1.7) means rstr(1). Negative
+        // indices fall through to the empty-string default.
+        const long long idx = static_cast<long long>(index);
+        if (idx < 0) {
+            return 0.0;
+        }
+
+        const std::size_t uidx = static_cast<std::size_t>(idx);
+
+        // rstr(0) is the full match. _strMATCH is refreshed at the top
+        // of execute() before any expression is evaluated, so it always
+        // holds the current match's text here.
+        if (uidx == 0) {
+            result = _owner->_strMATCH;
+            return 0.0;
+        }
+
+        // rstr(N) for N >= 1 reads capture group N, stored 0-based in
+        // _captureStrings. Beyond the last capture we return the empty
+        // string - same defensive behaviour as reg() for numeric
+        // out-of-range.
+        if (uidx - 1 < _owner->_captureStrings.size()) {
+            result = _owner->_captureStrings[uidx - 1];
+        }
+
+        // Numeric return value is discarded by ExprTk in e_rtrn_string
+        // mode - the meaningful output is the string we just filled.
         return 0.0;
     }
 
