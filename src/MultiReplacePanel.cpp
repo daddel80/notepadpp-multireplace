@@ -16284,44 +16284,79 @@ void MultiReplace::repositionNewTabButton()
     HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
     if (!hTab) return;
 
-    // Tab control geometry, in panel-client coordinates.
-    RECT tabScreen;
-    GetWindowRect(hTab, &tabScreen);
-    POINT tabTL = { tabScreen.left, tabScreen.top };
-    ScreenToClient(_hSelf, &tabTL);
-    const int tabCtrlWidth = tabScreen.right - tabScreen.left;
-    const int tabCtrlHeight = tabScreen.bottom - tabScreen.top;
+    // Bottom row hidden -> nothing to position.
+    if (!useListEnabled && !keepListVisible) return;
 
-    // Place the "+" right after the last tab. With no tabs the button
-    // sits at the start of the bar so the user always has an entry
-    // point. Tab-item rects are tab-control-relative, so add the
-    // control's own X offset.
-    int xRel = 0;
-    const int tabCount = TabCtrl_GetItemCount(hTab);
-    if (tabCount > 0) {
-        RECT lastRc;
-        if (TabCtrl_GetItemRect(hTab, tabCount - 1, &lastRc)) {
-            xRel = lastRc.right;
-        }
-    }
-    int newX = tabTL.x + xRel + sx(2);
+    // Layout: [ TabControl ] [+] ........ [UseList toggle]
+    // The tab control is sized to fit its tabs, capped so the "+" and
+    // the toggle always have their slots. When the cap is hit, common-
+    // controls auto-shows its UpDown spinner inside the tab control.
+    // The "+" sits on its own slice outside the tab control, so tabs
+    // and spinner can never overlap it.
+    RECT panelClient;
+    GetClientRect(_hSelf, &panelClient);
+    const int W = panelClient.right - panelClient.left;
 
-    // Clamp: never let the button extend past the tab control's own
-    // right edge — beyond that the Use-List toggle lives, and the
-    // button must not overlap it. When there are too many tabs to fit,
-    // the "+" parks at the right edge instead of being pushed off.
+    const int tabLeftRel = sx(14) - sx(2);
+    const int useListLeft = W - sx(40);
     const int btnW = sx(22);
     const int btnH = sy(22);
-    const int maxX = tabTL.x + tabCtrlWidth - btnW;
-    if (newX > maxX) newX = maxX;
-    if (newX < tabTL.x) newX = tabTL.x;
+    const int gap = sx(2);
 
-    // Vertically centre within the tab-bar zone, matching the
-    // Use-List toggle on the same row.
-    const int newY = tabTL.y + (tabCtrlHeight - btnH) / 2;
+    const int maxTabCtrlWidth = std::max(
+        useListLeft - tabLeftRel - gap - btnW - gap,
+        sx(60));
 
-    SetWindowPos(hPlus, nullptr, newX, newY, btnW, btnH,
-        SWP_NOZORDER | SWP_NOACTIVATE);
+    RECT cur;
+    GetWindowRect(hTab, &cur);
+    POINT curTL = { cur.left, cur.top };
+    ScreenToClient(_hSelf, &curTL);
+    const int tabHeight = cur.bottom - cur.top;
+    const int curWidth = cur.right - cur.left;
+
+    // Sum of natural tab widths is stable under scrolling; clamp the
+    // first tab's left to 0 so a scrolled-out negative doesn't poison it.
+    const int tabCount = TabCtrl_GetItemCount(hTab);
+    int totalTabsWidth = 0;
+    int leadIn = 0;
+    for (int i = 0; i < tabCount; ++i) {
+        RECT rc;
+        if (!TabCtrl_GetItemRect(hTab, i, &rc)) continue;
+        if (i == 0) leadIn = std::max<int>(rc.left, 0);
+        totalTabsWidth += (rc.right - rc.left);
+    }
+    const int naturalStripWidth = leadIn + totalTabsWidth;
+
+    int newTabCtrlWidth;
+    if (tabCount == 0) {
+        newTabCtrlWidth = sx(60);
+    }
+    else if (naturalStripWidth + sx(2) <= maxTabCtrlWidth) {
+        newTabCtrlWidth = naturalStripWidth + sx(2);
+    }
+    else {
+        newTabCtrlWidth = maxTabCtrlWidth;
+    }
+
+    int plusXRel = tabLeftRel + newTabCtrlWidth + gap;
+    const int plusRightMax = useListLeft - gap;
+    if (plusXRel + btnW > plusRightMax) plusXRel = plusRightMax - btnW;
+    if (plusXRel < tabLeftRel)          plusXRel = tabLeftRel;
+
+    // Resizing the tab control re-evaluates its UpDown child; the
+    // explicit repaint avoids a stuck spinner state when the window
+    // grows back from a narrow size.
+    if (curWidth != newTabCtrlWidth) {
+        SetWindowPos(hTab, nullptr,
+            curTL.x, curTL.y, newTabCtrlWidth, tabHeight,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+        InvalidateRect(hTab, nullptr, TRUE);
+        UpdateWindow(hTab);
+    }
+
+    const int plusY = curTL.y + (tabHeight - btnH) / 2;
+    SetWindowPos(hPlus, HWND_TOP, plusXRel, plusY, btnW, btnH,
+        SWP_NOACTIVATE);
 }
 
 void MultiReplace::markActiveTabDirty()
