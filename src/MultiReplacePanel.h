@@ -1206,6 +1206,7 @@ private:
     int          showDebugWindow(const std::string& message) override;
     void         refreshUiListView() override;
     void         showErrorMessage(MultiReplaceEngine::ILuaEngineHost::ErrorCategory category,
+        const std::string& engineName,
         const std::string& details) override;
     bool         isLuaErrorDialogEnabled() const override;
     bool         isLuaSafeModeEnabled()    const override;

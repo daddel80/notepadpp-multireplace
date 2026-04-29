@@ -87,11 +87,10 @@ namespace MultiReplaceEngine {
         if (!_host || !_host->isLuaErrorDialogEnabled()) {
             return;
         }
-        // Prefix with the engine name so the user can tell at a glance
-        // which engine raised the error. "ExprTk:" is intentionally not
-        // localised - "ExprTk" is a proper noun and the colon delimits
-        // the localisable body that the host's translator will format.
-        _host->showErrorMessage(category, "ExprTk: " + details);
+        // Engine identifier is passed separately so the host can compose
+        // the user-visible "ExprTk: ..." prefix from a translation
+        // template instead of a hardcoded literal here.
+        _host->showErrorMessage(category, "ExprTk", details);
     }
 
     // ---------------------------------------------------------------------
@@ -183,7 +182,9 @@ namespace MultiReplaceEngine {
         if (!_haveCompiled || scriptUtf8 != _lastCompiledScript) {
             if (!compile(scriptUtf8)) {
                 result.success = false;
-                result.errorMessage = "ExprTk: compile failed";
+                // Internal diagnostic only - the user-visible dialog was
+                // already raised by compile() via reportError().
+                result.errorMessage = "compile failed";
                 return result;
             }
         }

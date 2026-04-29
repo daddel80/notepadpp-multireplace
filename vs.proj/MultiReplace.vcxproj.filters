@@ -131,6 +131,12 @@
     <ClCompile Include="..\src\engine\EngineFactory.cpp">
       <Filter>engine</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\engine\ExprTkEngine.cpp">
+      <Filter>engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\engine\ExprTkPatternParser.cpp">
+      <Filter>engine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -257,6 +263,13 @@
       <Filter>engine</Filter>
     </ClInclude>
     <ClInclude Include="..\src\engine\ILuaEngineHost.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\exprtk\exprtk.hpp" />
+    <ClInclude Include="..\src\engine\ExprTkEngine.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\engine\ExprTkPatternParser.h">
       <Filter>engine</Filter>
     </ClInclude>
   </ItemGroup>

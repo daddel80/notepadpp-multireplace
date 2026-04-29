@@ -7847,20 +7847,32 @@ void MultiReplace::refreshUiListView()
 
 void MultiReplace::showErrorMessage(
     MultiReplaceEngine::ILuaEngineHost::ErrorCategory category,
+    const std::string& engineName,
     const std::string& details)
 {
     using EC = MultiReplaceEngine::ILuaEngineHost::ErrorCategory;
 
+    // Compose the body via a translation template so the engine name
+    // prefix never has to live in C++ literals. The default template
+    // ("$REPLACE_STRING1: $REPLACE_STRING2") is fine for every locale;
+    // a translator can still reorder or rephrase if needed.
+    const std::wstring engineW = Encoding::utf8ToWString(engineName);
+    const std::wstring detailsW = Encoding::utf8ToWString(details);
+
     if (category == EC::CompileError) {
+        std::wstring body = LM.get(L"msgbox_engine_error_body",
+            { engineW, detailsW });
         MessageBox(nppData._nppHandle,
-            Encoding::utf8ToWString(details).c_str(),
+            body.c_str(),
             LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
             MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
     }
     else {
-        // ExecutionError: details holds the offending script text
-        std::wstring body = LM.get(L"msgbox_use_variables_execution_error",
-            { Encoding::utf8ToWString(details.c_str()) });
+        // ExecutionError: details holds the offending user script.
+        // The body template embeds the script and the engine name in
+        // the order chosen by the translation file.
+        std::wstring body = LM.get(L"msgbox_use_variables_execution_error_engine",
+            { engineW, detailsW });
         MessageBox(nppData._nppHandle, body.c_str(),
             LM.get(L"msgbox_title_use_variables_execution_error").c_str(),
             MB_OK);

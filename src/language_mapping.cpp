@@ -239,6 +239,14 @@ const LangKV kEnglishPairs[] = {
 { L"msgbox_confirm_delete_columns", L"Are you sure you want to delete $REPLACE_STRING column(s)?" },
 { L"msgbox_error_saving_settings", L"An error occurred while saving the settings:<br/>$REPLACE_STRING" },
 { L"msgbox_use_variables_execution_error", L"Execution halted due to execution failure in:<br/>$REPLACE_STRING" },
+// Engine-aware variants of the formula-engine error dialog bodies.
+// $REPLACE_STRING1 = engine name (Lua / ExprTk),
+// $REPLACE_STRING2 = engine-supplied error text (compile) or user
+// script (execution). The host composes the final body from these
+// so the "Lua: " / "ExprTk: " prefix never has to live in C++
+// literals.
+{ L"msgbox_engine_error_body", L"$REPLACE_STRING1: $REPLACE_STRING2" },
+{ L"msgbox_use_variables_execution_error_engine", L"$REPLACE_STRING1: Execution halted due to execution failure in:<br/>$REPLACE_STRING2" },
 { L"msgbox_confirm_delete_single", L"Are you sure you want to delete this line?" },
 { L"msgbox_confirm_delete_multiple", L"Are you sure you want to delete $REPLACE_STRING lines?" },
 { L"msgbox_unsaved_changes_file", L"You have unsaved changes in the list: '$REPLACE_STRING'.<br/>Would you like to save them?" },

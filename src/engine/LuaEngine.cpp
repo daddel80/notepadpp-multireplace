@@ -69,6 +69,7 @@ namespace MultiReplaceEngine {
             if (_host && _host->isLuaErrorDialogEnabled()) {
                 _host->showErrorMessage(
                     ILuaEngineHost::ErrorCategory::CompileError,
+                    "Lua",
                     errMsg ? errMsg : "Failed to load Lua helper script");
             }
             lua_close(_luaState);
@@ -81,6 +82,7 @@ namespace MultiReplaceEngine {
             if (_host && _host->isLuaErrorDialogEnabled()) {
                 _host->showErrorMessage(
                     ILuaEngineHost::ErrorCategory::ExecutionError,
+                    "Lua",
                     errMsg ? errMsg : "Failed to execute Lua helper script");
             }
             lua_close(_luaState);
@@ -147,6 +149,7 @@ namespace MultiReplaceEngine {
             if (_host && _host->isLuaErrorDialogEnabled()) {
                 _host->showErrorMessage(
                     ILuaEngineHost::ErrorCategory::CompileError,
+                    "Lua",
                     errMsg ? errMsg : "Lua compile error");
             }
             lua_pop(_luaState, 1);
@@ -245,6 +248,7 @@ namespace MultiReplaceEngine {
             if (_host && _host->isLuaErrorDialogEnabled()) {
                 _host->showErrorMessage(
                     ILuaEngineHost::ErrorCategory::CompileError,
+                    "Lua",
                     err ? err : "Lua execution error");
             }
             result.success = false;
@@ -259,6 +263,7 @@ namespace MultiReplaceEngine {
             if (_host && _host->isLuaErrorDialogEnabled()) {
                 _host->showErrorMessage(
                     ILuaEngineHost::ErrorCategory::ExecutionError,
+                    "Lua",
                     scriptUtf8);
             }
             result.success = false;
