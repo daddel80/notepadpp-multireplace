@@ -3566,8 +3566,16 @@ void MultiReplace::applyEngineSelection(MultiReplaceEngine::EngineType type)
     }
 
     auto& tab = *_tabs[_activeTabIndex];
+
+    // Remember the user's preference globally. This update happens on
+    // every deliberate click - including a re-click on the already-active
+    // engine, which counts as a confirmation. Loading a list with a
+    // different engine never reaches this path, so file imports never
+    // change the user's preference.
+    _defaultEngine = type;
+
     if (tab.engine == type) {
-        return;  // No-op when the user re-selects the active engine.
+        return;  // No-op for the tab itself when the user re-selects the active engine.
     }
 
     tab.engine = type;
@@ -15668,6 +15676,11 @@ void MultiReplace::ensurePrimaryTabExists()
     auto tab = std::make_unique<TabState>();
     tab->id = _nextTabId++;
 
+    // Fresh primary tab: pick up the user's preferred engine. This path
+    // is only reached when there is no persisted tab to restore, so the
+    // tab has no inherent engine yet.
+    tab->engine = _defaultEngine;
+
     if (!listFilePath.empty()) {
         std::filesystem::path p(listFilePath);
         tab->name = p.stem().wstring();
@@ -17208,6 +17221,12 @@ void MultiReplace::addNewTab()
     tab->id = _nextTabId++;
     tab->name = L"Untitled " + std::to_wstring(n);
 
+    // Engine for a freshly created tab follows the user's preference
+    // (last deliberate engine selection). It deliberately does NOT
+    // inherit from the active tab below: the engine is treated as a
+    // user-style preference rather than a per-tab context property.
+    tab->engine = _defaultEngine;
+
     // Inherit panel state from the outgoing tab so the user keeps
     // their current mode/scope (Regex+CSV etc.) rather than being
     // dropped back to defaults. Only tab identity, data and dirty
@@ -18132,6 +18151,14 @@ void MultiReplace::loadUIConfigFromIni()
     keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
     listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
     tabMaxLength = std::clamp(CFG.readInt(L"Options", L"TabMaxLength", 14), 4, 60);
+    {
+        // DefaultEngine drives the engine choice for newly created tabs.
+        // It is only updated by deliberate engine-selector clicks; loading
+        // a list with a different engine does not change it. Read here on
+        // startup so the user's last preference survives across sessions.
+        const std::wstring engineStr = CFG.readString(L"Options", L"DefaultEngine", L"Lua");
+        _defaultEngine = MultiReplaceEngine::engineTypeFromString(engineStr);
+    }
     updateUseListState(false);
 
     int savedWidth = CFG.readInt(L"Window", L"Width", sx(INIT_WIDTH));
@@ -18383,6 +18410,8 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(L"Options", L"KeepListVisible", keepListVisible);
     CFG.writeInt(L"Options", L"DimIntensity", listDimIntensity);
     CFG.writeInt(L"Options", L"TabMaxLength", tabMaxLength);
+    CFG.writeString(L"Options", L"DefaultEngine",
+        MultiReplaceEngine::engineTypeToString(_defaultEngine));
     CFG.writeBool(L"Options", L"DockWrap", ResultDock::wrapEnabled());
     CFG.writeBool(L"Options", L"DockPurge", ResultDock::purgeEnabled());
 
