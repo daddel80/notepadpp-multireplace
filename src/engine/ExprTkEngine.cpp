@@ -18,7 +18,15 @@
 #include <charconv>
 #include <cmath>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 #include <system_error>
+
+// SU::escapeControlChars is shared with LuaEngine for debug-window
+// display: capture strings may contain TAB/NL/etc, which would break
+// the tab-separated table format the host's debug dialog renders.
+#include "../StringUtils.h"
+namespace SU = StringUtils;
 
 namespace MultiReplaceEngine {
 
@@ -29,6 +37,7 @@ namespace MultiReplaceEngine {
     ExprTkEngine::ExprTkEngine(ILuaEngineHost* host)
         : _host(host)
         , _regFunction(this)
+        , _skipFunction(this)
     {
     }
 
@@ -54,9 +63,23 @@ namespace MultiReplaceEngine {
         _symbolTable.add_variable("APOS", _varAPOS);
         _symbolTable.add_variable("COL", _varCOL);
 
+        // Register string-typed variables for match/file metadata. Same
+        // reference-binding contract as numeric vars (Section 13 of the
+        // ExprTk docs). The strings are refreshed at the start of every
+        // execute() call so each match sees its own values.
+        _symbolTable.add_stringvar("MATCH", _strMATCH);
+        _symbolTable.add_stringvar("FPATH", _strFPATH);
+        _symbolTable.add_stringvar("FNAME", _strFNAME);
+
         // Register the reg(N) function. The wrapper holds a back-pointer
         // to the engine, so it can read from _captures during eval.
         _symbolTable.add_function("reg", _regFunction);
+
+        // Register skip() so users can express conditional replacement
+        // in a numeric expression (e.g. inside if/else). The function
+        // returns 0.0 and signals via _wantSkip; execute() picks that
+        // up after eval and propagates it through FormulaResult::skip.
+        _symbolTable.add_function("skip", _skipFunction);
 
         // ExprTk's standard math constants (pi, epsilon, infinity).
         _symbolTable.add_constants();
@@ -198,6 +221,19 @@ namespace MultiReplaceEngine {
         _varAPOS = static_cast<double>(vars.APOS);
         _varCOL = static_cast<double>(vars.COL);
 
+        // Update per-match string variables. ExprTk holds these by
+        // reference too, so writing into the members is enough; any
+        // compiled expression that mentions MATCH/FPATH/FNAME will
+        // pick up the new value on the next eval.
+        _strMATCH = vars.MATCH;
+        _strFPATH = vars.FPATH;
+        _strFNAME = vars.FNAME;
+
+        // Reset skip flag so a previous match's skip() call cannot
+        // leak into this one. skip() will set it back to true if the
+        // user calls it during eval below.
+        _wantSkip = false;
+
         // Pre-parse captures into doubles. Index 0 = full match (MATCH),
         // index 1..N = capture groups. Doing this once per match is
         // cheaper than re-parsing inside reg() for every reg(N) call.
@@ -208,8 +244,81 @@ namespace MultiReplaceEngine {
             _captures.push_back(parseCaptureToDouble(cap));
         }
 
+        // ----- Debug-window display ---------------------------------------
+        // When debug mode is on, surface a per-match snapshot of the
+        // numeric variables and capture strings before evaluating the
+        // expressions. The format mirrors the LuaEngine output so the
+        // host's debug dialog renders both engines identically:
+        //   <name>\t<Type>\t<value>\n\n
+        //
+        // ExprTk has no per-script DEBUG override (no user-defined
+        // variables), so the global host toggle is the only switch.
+        if (_host && _host->isDebugModeEnabled()) {
+            std::ostringstream dbg;
+            // Match LuaEngine's format precision so both engines render
+            // numbers identically in the host's debug dialog.
+            dbg << std::fixed << std::setprecision(8);
+
+            // Numeric variables. Always emitted in a fixed order so the
+            // dialog reads consistently across matches.
+            auto emitNumber = [&dbg](const char* name, double value) {
+                dbg << name << "\tNumber\t" << value << "\n\n";
+                };
+            emitNumber("CNT", _varCNT);
+            emitNumber("LCNT", _varLCNT);
+            emitNumber("LINE", _varLINE);
+            emitNumber("LPOS", _varLPOS);
+            emitNumber("APOS", _varAPOS);
+            emitNumber("COL", _varCOL);
+
+            // String variables. Same Tab-separated format as numbers so
+            // both render identically in the debug dialog. FPATH/FNAME
+            // can be empty in some contexts (no file path known) - we
+            // still emit them so the dialog is predictable.
+            auto emitString = [&dbg](const char* name, const std::string& value) {
+                dbg << name << "\tString\t"
+                    << SU::escapeControlChars(value) << "\n\n";
+                };
+            emitString("MATCH", vars.MATCH);
+            emitString("FPATH", vars.FPATH);
+            emitString("FNAME", vars.FNAME);
+
+            // Capture strings. reg(0) is the full match; reg(1..N) are the
+            // capture groups. We emit the original capture string (not the
+            // double the engine sees) so the user can see exactly what the
+            // pattern matched, including non-numeric content.
+            dbg << "reg(0)\tString\t"
+                << SU::escapeControlChars(vars.MATCH) << "\n\n";
+            for (std::size_t i = 0; i < vars.captures.size(); ++i) {
+                dbg << "reg(" << (i + 1) << ")\tString\t"
+                    << SU::escapeControlChars(vars.captures[i]) << "\n\n";
+            }
+
+            // Refresh the panel's list view so any state the debug dialog
+            // shows reflects the current run state, then block on the
+            // dialog. Response codes mirror Lua's contract:
+            //   3  -> user pressed "Stop"
+            //  -1  -> dialog closed (e.g. window-close button)
+            //  any other -> continue
+            _host->refreshUiListView();
+            const int resp = _host->showDebugWindow(dbg.str());
+            if (resp == 3 || resp == -1) {
+                result.success = false;
+                result.errorMessage = "Aborted via debug window";
+                return result;
+            }
+        }
+
         // Walk segments in order, accumulating the output. Literals copy
         // straight through; expressions get evaluated and formatted.
+        //
+        // String-typed expressions (FNAME, FPATH, MATCH used directly,
+        // or rstr-style accessors) cannot be expressed in this numeric
+        // pipeline: ExprTk evaluates a string-where-a-number-is-expected
+        // to NaN. We detect that and surface a useful error instead of
+        // writing "nan" into the document. Full string-return support
+        // will arrive in a follow-up increment that wires ExprTk's
+        // results_context through this loop.
         std::string out;
         out.reserve(scriptUtf8.size());
 
@@ -224,11 +333,29 @@ namespace MultiReplaceEngine {
 
             // Expression segment - evaluate and format.
             const double value = _compiledExpressions[i].value();
+
+            if (std::isnan(value)) {
+                std::string msg =
+                    "Expression \"" + seg.text + "\" evaluated to NaN. "
+                    "ExprTk cannot use a string variable (MATCH, FPATH, "
+                    "FNAME) where a number is expected. For string output, "
+                    "use the Lua engine.";
+                reportError(ILuaEngineHost::ErrorCategory::ExecutionError,
+                    msg);
+                result.success = false;
+                result.errorMessage = "Eval produced NaN";
+                return result;
+            }
             out.append(formatDouble(value));
         }
 
         result.output = std::move(out);
         result.success = true;
+        // If the user invoked skip() anywhere in the eval (even nested
+        // in a conditional), tell the pipeline to leave the current
+        // match untouched. The output we built above is then thrown
+        // away by the caller; this matches LuaEngine's contract.
+        result.skip = _wantSkip;
         return result;
     }
 
@@ -324,6 +451,23 @@ namespace MultiReplaceEngine {
         }
 
         return caps[static_cast<std::size_t>(idx)];
+    }
+
+    // ---------------------------------------------------------------------
+    // skip() function implementation
+    // ---------------------------------------------------------------------
+
+    double ExprTkEngine::SkipFunction::operator()()
+    {
+        // The actual work is a side-effect on the engine: flip the flag
+        // so execute() can transmit it through FormulaResult::skip after
+        // the eval loop completes. We return 0.0 because ExprTk requires
+        // a numeric value; users typically place skip() inside an if/else
+        // branch where the returned value is discarded anyway.
+        if (_owner) {
+            _owner->_wantSkip = true;
+        }
+        return 0.0;
     }
 
 } // namespace MultiReplaceEngine

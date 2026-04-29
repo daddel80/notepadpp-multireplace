@@ -136,6 +136,25 @@ namespace MultiReplaceEngine {
             ExprTkEngine* _owner;
         };
 
+        // ExprTk-callable wrapper: implements skip(). Arity zero, returns
+        // 0.0 so it can sit inside a numeric expression (e.g. an if/else
+        // branch), and signals via the engine's _wantSkip flag that the
+        // current match should not be replaced. Mirrors LuaEngine's skip()
+        // semantics so users get the same conditional-replace pattern in
+        // both engines.
+        class SkipFunction : public exprtk::ifunction<double> {
+        public:
+            explicit SkipFunction(ExprTkEngine* owner)
+                : exprtk::ifunction<double>(0)   // arity = 0
+                , _owner(owner) {
+            }
+
+            double operator()() override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
         // ----- state -------------------------------------------------------
 
         ILuaEngineHost* _host;            // accepted, currently unused
@@ -170,8 +189,24 @@ namespace MultiReplaceEngine {
         // match (FormulaVars::MATCH); index 1..N the capture groups.
         std::vector<double> _captures;
 
+        // Holds the current match's string-side metadata for ExprTk's
+        // string-typed symbol table entries. ExprTk binds string vars by
+        // reference (Section 13 of the ExprTk docs), so these have to
+        // live as long as the registered expressions.
+        std::string _strMATCH;
+        std::string _strFPATH;
+        std::string _strFNAME;
+
+        // Set by skip() during eval; checked at the end of execute()
+        // and propagated as FormulaResult::skip. Reset to false before
+        // each match so a previous skip can't carry over.
+        bool _wantSkip = false;
+
         // The reg() callable, registered with the symbol table.
         RegFunction _regFunction;
+
+        // The skip() callable, also registered with the symbol table.
+        SkipFunction _skipFunction;
     };
 
 } // namespace MultiReplaceEngine

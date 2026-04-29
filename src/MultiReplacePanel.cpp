@@ -3623,7 +3623,22 @@ void MultiReplace::syncEngineSelectorLabel()
             TTM_UPDATETIPTEXT, 0, reinterpret_cast<LPARAM>(&ti));
     }
 
-    InvalidateRect(hMarker, nullptr, TRUE);
+    // Force a synchronous repaint. Owner-drawn statics route their
+    // paint through the parent's WM_DRAWITEM handler. Some Windows
+    // builds coalesce away invalidations on the static itself when
+    // the bounding rect hasn't changed, leaving the previous text
+    // frozen on screen even though SetWindowTextW already updated
+    // the stored string. Invalidating the marker's screen area on
+    // the PARENT dialog (with RDW_ALLCHILDREN) sidesteps that path:
+    // the dialog repaints, the static dispatches WM_DRAWITEM up,
+    // and the new text appears. RDW_UPDATENOW makes it synchronous
+    // so we don't return with stale pixels.
+    RECT rcMarker;
+    GetWindowRect(hMarker, &rcMarker);
+    MapWindowPoints(HWND_DESKTOP, _hSelf,
+        reinterpret_cast<LPPOINT>(&rcMarker), 2);
+    RedrawWindow(_hSelf, &rcMarker, nullptr,
+        RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
 }
 
 #pragma endregion
