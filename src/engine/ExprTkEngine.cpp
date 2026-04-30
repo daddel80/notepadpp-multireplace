@@ -57,59 +57,35 @@ namespace MultiReplaceEngine {
         // so the underlying members must live as long as any compiled
         // expression that uses them - which is fine, they are members of
         // the engine itself.
-        //
-        // Both UPPERCASE (CNT, LINE, ...) and lowercase (cnt, line, ...)
-        // names map to the same underlying member. UPPERCASE matches the
-        // Lua engine's globals so users who switch engines don't have to
-        // rewrite expressions; lowercase reads more naturally inside a
-        // dense regex replacement, which is the typical context here. The
-        // aliases share storage so there is no semantic difference.
         _symbolTable.add_variable("CNT", _varCNT);
-        _symbolTable.add_variable("cnt", _varCNT);
         _symbolTable.add_variable("LCNT", _varLCNT);
-        _symbolTable.add_variable("lcnt", _varLCNT);
         _symbolTable.add_variable("LINE", _varLINE);
-        _symbolTable.add_variable("line", _varLINE);
         _symbolTable.add_variable("LPOS", _varLPOS);
-        _symbolTable.add_variable("lpos", _varLPOS);
         _symbolTable.add_variable("APOS", _varAPOS);
-        _symbolTable.add_variable("apos", _varAPOS);
         _symbolTable.add_variable("COL", _varCOL);
-        _symbolTable.add_variable("col", _varCOL);
 
         // Register string-typed variables for match/file metadata. Same
         // reference-binding contract as numeric vars (Section 13 of the
         // ExprTk docs). The strings are refreshed at the start of every
-        // execute() call so each match sees its own values. Both cases
-        // are registered as for the numeric vars above.
+        // execute() call so each match sees its own values.
         _symbolTable.add_stringvar("MATCH", _strMATCH);
-        _symbolTable.add_stringvar("match", _strMATCH);
         _symbolTable.add_stringvar("FPATH", _strFPATH);
-        _symbolTable.add_stringvar("fpath", _strFPATH);
         _symbolTable.add_stringvar("FNAME", _strFNAME);
-        _symbolTable.add_stringvar("fname", _strFNAME);
 
         // Register the reg(N) function. The wrapper holds a back-pointer
         // to the engine, so it can read from _captures during eval.
-        // Function names are also aliased UPPERCASE/lowercase so a user
-        // can write reg(1) or REG(1) interchangeably and stay consistent
-        // with the variable casing they prefer for the rest of the
-        // expression.
         _symbolTable.add_function("reg", _regFunction);
-        _symbolTable.add_function("REG", _regFunction);
 
         // Register skip() so users can express conditional replacement
         // in a numeric expression (e.g. inside if/else). The function
         // returns 0.0 and signals via _wantSkip; execute() picks that
         // up after eval and propagates it through FormulaResult::skip.
         _symbolTable.add_function("skip", _skipFunction);
-        _symbolTable.add_function("SKIP", _skipFunction);
 
         // Register rstr(N) for string-typed capture access. Only useful
         // inside an ExprTk return list, where its string output is
         // concatenated into the replace text.
         _symbolTable.add_function("rstr", _rstrFunction);
-        _symbolTable.add_function("RSTR", _rstrFunction);
 
         // ExprTk's standard math constants (pi, epsilon, infinity).
         _symbolTable.add_constants();
@@ -223,10 +199,17 @@ namespace MultiReplaceEngine {
     FormulaResult ExprTkEngine::execute(
         const std::string& scriptUtf8,
         const FormulaVars& vars,
-        bool /*isRegexMatch*/,
+        bool /*isRegexMatch*/,    // see note in result-construction below
         int  /*documentCodepage*/)
     {
         FormulaResult result;
+
+        // Note on isRegexMatch:
+        // The host pipeline routes engine output through Scintilla's plain
+        // replace path (SCI_REPLACETARGET) regardless of regex mode, so no
+        // pre-escaping of format-string special characters is needed here.
+        // The parameter is preserved on the IFormulaEngine boundary for
+        // future use (e.g. diagnostics) but currently has no effect.
 
         // Lazy compile: if compile() was never called, or the script has
         // changed since the last compile, run it now. compile() has
@@ -451,19 +434,8 @@ namespace MultiReplaceEngine {
             case type_store_t::e_string: {
                 // String element - append verbatim. ExprTk strings
                 // are 8-bit char sequences (UTF-8 in our pipeline).
-                // Guard against an empty view: ExprTk's type_view
-                // initialises its data pointer from ts.data, which can
-                // be nullptr for a zero-length string (e.g. produced
-                // by `if(cond, 'a', '')`). Indexing &sv[0] in that
-                // case dereferences the null pointer; the standard-
-                // library iterator-debug machinery (MSVC's
-                // _ITERATOR_DEBUG_LEVEL=2 default in Debug builds)
-                // will assert. Skipping the append on empty is the
-                // cheapest correct fix.
                 const string_view_t sv(ts);
-                if (sv.size() > 0) {
-                    out.append(&sv[0], sv.size());
-                }
+                out.append(&sv[0], sv.size());
                 break;
             }
 

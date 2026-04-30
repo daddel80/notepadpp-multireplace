@@ -278,11 +278,7 @@ namespace MultiReplaceEngine {
             result.output.clear();
         }
         else if (lua_isstring(_luaState, -1) || lua_isnumber(_luaState, -1)) {
-            std::string res = lua_tostring(_luaState, -1);
-            if (isRegexMatch && _host) {
-                res = _host->escapeForRegex(res);
-            }
-            result.output = res;
+            result.output = lua_tostring(_luaState, -1);
         }
         lua_pop(_luaState, 1); // pop result
 

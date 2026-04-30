@@ -7659,7 +7659,9 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
             // --- Final Replacement Execution ---
             if (!skipReplace) {
-                newPos = itemData.regex
+                // Engine output is already final; insert verbatim to avoid
+                // Boost format-string interpretation of '\', '$', '(?...)'.
+                newPos = (itemData.regex && !itemData.useVariables)
                     ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
                     : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
 
@@ -7810,9 +7812,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                         : performReplace(fixedReplace, searchResult.pos, searchResult.length);
                 }
                 else {
-                    nextPos = itemData.regex
-                        ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
-                        : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
+                    nextPos = performReplace(finalReplaceText, searchResult.pos, searchResult.length);
                 }
 
                 updateLineDelimiterAfterReplace(searchResult.pos);
