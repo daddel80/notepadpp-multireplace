@@ -86,10 +86,6 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_column_highlight", L"Column highlight: On/Off" },
 { L"tooltip_column_tabs", L"Column Alignment: On/Off" },
 { L"tooltip_copy_marked_text", L"Copy Marked Text" },
-{ L"tooltip_new_list", L"New List" },
-{ L"tooltip_tab_list", L"All Tabs" },
-{ L"tooltip_tab_scroll_left", L"Scroll Tabs Left" },
-{ L"tooltip_tab_scroll_right", L"Scroll Tabs Right" },
 { L"tooltip_save", L"Save List" },
 { L"tooltip_enable_list", L"Enable list (Ctrl+L)" },
 { L"tooltip_disable_list", L"Disable list (Ctrl+L)" },
@@ -499,10 +495,6 @@ const UITooltipMapping kTooltipMappings[] = {
     { IDC_COPY_MARKED_TEXT_BUTTON,     L"tooltip_copy_marked_text" },
     { IDC_REPLACE_ALL_SMALL_BUTTON,    L"tooltip_replace_all" },
     { IDC_2_BUTTONS_MODE,              L"tooltip_2_buttons_mode" },
-    { IDC_NEW_LIST_BUTTON,             L"tooltip_new_list" },
-    { IDC_TAB_LIST_DROPDOWN,           L"tooltip_tab_list" },
-    { IDC_TAB_SCROLL_LEFT,             L"tooltip_tab_scroll_left" },
-    { IDC_TAB_SCROLL_RIGHT,            L"tooltip_tab_scroll_right" },
     { IDC_SAVE_BUTTON,                 L"tooltip_save" },
 };
 

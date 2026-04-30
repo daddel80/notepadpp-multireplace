@@ -559,20 +559,20 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     int newListBtnY = (useListEnabled || keepListVisible)
         ? (tabBarY + (bottomZoneHeight - sy(22)) / 2)
         : statusRowY;  // fallback: irrelevant when the row is hidden
-    ctrlMap[IDC_NEW_LIST_BUTTON] = { newListBtnX, newListBtnY, sx(22), sy(22), WC_STATIC, L"+", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_new_list"), false, FontRole::Standard };
+    ctrlMap[IDC_NEW_LIST_BUTTON] = { newListBtnX, newListBtnY, sx(22), sy(22), WC_STATIC, L"+", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, nullptr, false, FontRole::Standard };
 
     // Overflow dropdown for the tab strip. Sits right of "+" and is
     // shown only when tabs do not fit. Glyph U+25BE is a small "down"
     // triangle; final position and visibility are driven by
     // repositionNewTabButton.
-    ctrlMap[IDC_TAB_LIST_DROPDOWN] = { newListBtnX + sx(24), newListBtnY, sx(22), sy(22), WC_STATIC, L"\u25BE", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_tab_list"), false, FontRole::Standard };
+    ctrlMap[IDC_TAB_LIST_DROPDOWN] = { newListBtnX + sx(24), newListBtnY, sx(22), sy(22), WC_STATIC, L"\u25BE", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, nullptr, false, FontRole::Standard };
 
     // Excel-style horizontal scroll indicators. They sit left/right
     // of the tab strip (inside the tab band) and only appear when
     // tabs are clipped on that side. Final position and visibility
     // are driven by repositionNewTabButton. U+2026 = "..."
-    ctrlMap[IDC_TAB_SCROLL_LEFT] = { newListBtnX, newListBtnY, sx(18), sy(22), WC_STATIC, L"\u2026", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_tab_scroll_left"), false, FontRole::Standard };
-    ctrlMap[IDC_TAB_SCROLL_RIGHT] = { newListBtnX, newListBtnY, sx(18), sy(22), WC_STATIC, L"\u2026", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_tab_scroll_right"), false, FontRole::Standard };
+    ctrlMap[IDC_TAB_SCROLL_LEFT] = { newListBtnX, newListBtnY, sx(18), sy(22), WC_STATIC, L"\u2026", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_TAB_SCROLL_RIGHT] = { newListBtnX, newListBtnY, sx(18), sy(22), WC_STATIC, L"\u2026", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, nullptr, false, FontRole::Standard };
 
     // Use List toggle -> Normal5
     LPCWSTR useListBtnText = keepListVisible
@@ -6001,10 +6001,100 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             return TRUE;
         }
-        else if (pdis->CtlID == IDC_NEW_LIST_BUTTON ||
-            pdis->CtlID == IDC_TAB_LIST_DROPDOWN ||
-            pdis->CtlID == IDC_TAB_SCROLL_LEFT ||
+        else if (pdis->CtlID == IDC_TAB_LIST_DROPDOWN) {
+            // Custom-drawn dropdown affordance: a horizontal bar
+            // sitting above a thick down chevron. The triangle is
+            // built from stacked horizontal scanlines so its edges
+            // line up exactly on pixel boundaries - sharper than a
+            // GDI Polygon, which leaves jaggy diagonals.
+            const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+            const COLORREF fg = isDark ? RGB(220, 220, 220) : RGB(60, 60, 60);
+
+            const int rcW = pdis->rcItem.right - pdis->rcItem.left;
+            const int rcH = pdis->rcItem.bottom - pdis->rcItem.top;
+            const int cx = pdis->rcItem.left + rcW / 2;
+            const int cy = pdis->rcItem.top + rcH / 2;
+
+            // Bar same width as triangle base, 2 px tall.
+            const int triHalfW = sx(4);
+            const int barHalfW = triHalfW;
+            const int barH = sy(2);
+            const int triH = sy(5);             // 5 rows: 9,7,5,3,1
+            const int gapTB = sy(2);
+
+            const int compH = barH + gapTB + triH;
+            const int barTop = cy - compH / 2;
+            const int triTop = barTop + barH + gapTB;
+
+            HBRUSH hFill = CreateSolidBrush(fg);
+
+            // Bar above. Right edge gets +1 because FillRect treats
+            // .right as exclusive - without it the bar would end one
+            // pixel before the triangle's right corner.
+            RECT bar = { cx - barHalfW, barTop,
+                         cx + barHalfW + 1, barTop + barH };
+            FillRect(pdis->hDC, &bar, hFill);
+
+            // Triangle below: 5 stacked horizontal scanlines, each
+            // 1 px shorter per side than the row above. Produces a
+            // perfect symmetric 45-degree taper from a 9 px base
+            // down to a 1 px apex pixel.
+            //   row 0: 9 px (cx-4 .. cx+4)
+            //   row 1: 7 px
+            //   row 2: 5 px
+            //   row 3: 3 px
+            //   row 4: 1 px (apex)
+            for (int r = 0; r < triH; ++r) {
+                const int rowHalfW = triHalfW - r;
+                if (rowHalfW < 0) break;
+                RECT row = { cx - rowHalfW, triTop + r,
+                             cx + rowHalfW + 1, triTop + r + 1 };
+                FillRect(pdis->hDC, &row, hFill);
+            }
+
+            DeleteObject(hFill);
+            return TRUE;
+        }
+        else if (pdis->CtlID == IDC_TAB_SCROLL_LEFT ||
             pdis->CtlID == IDC_TAB_SCROLL_RIGHT) {
+            // Custom-drawn three-dot indicator: three filled squares,
+            // crisp pixels, full foreground contrast - matches the
+            // weight of "+" and the dropdown glyph rather than the
+            // thin grey ellipsis a font draws.
+            const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+
+            // Match an inactive tab body so the indicator reads as
+            // part of the tab strip, not the dialog background.
+            const COLORREF tabBg = isDark ? RGB(45, 45, 45) : RGB(240, 240, 240);
+            HBRUSH hBg = CreateSolidBrush(tabBg);
+            FillRect(pdis->hDC, &pdis->rcItem, hBg);
+            DeleteObject(hBg);
+
+            // Same contrast as "+" so they read with equal weight.
+            const COLORREF fg = isDark ? RGB(220, 220, 220) : RGB(60, 60, 60);
+            HBRUSH hFill = CreateSolidBrush(fg);
+
+            const int rcW = pdis->rcItem.right - pdis->rcItem.left;
+            const int rcH = pdis->rcItem.bottom - pdis->rcItem.top;
+            const int cx = pdis->rcItem.left + rcW / 2;
+            const int cy = pdis->rcItem.top + rcH / 2;
+
+            const int dotSize = sx(2);                   // 2x2 px each
+            const int dotSpacing = dotSize + sx(2);      // gap of dotSize between dot centers
+            const int firstCx = cx - dotSpacing;         // leftmost dot center
+
+            for (int i = 0; i < 3; ++i) {
+                const int dx = firstCx + i * dotSpacing;
+                RECT dot = { dx - dotSize / 2,        cy - dotSize / 2,
+                             dx - dotSize / 2 + dotSize,
+                             cy - dotSize / 2 + dotSize };
+                FillRect(pdis->hDC, &dot, hFill);
+            }
+
+            DeleteObject(hFill);
+            return TRUE;
+        }
+        else if (pdis->CtlID == IDC_NEW_LIST_BUTTON) {
             // Flat, borderless render against the tab-bar background.
             // STATIC with SS_OWNERDRAW is transparent by default, so no
             // background fill is needed in the idle state — the tab bar
@@ -6013,48 +6103,20 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             GetWindowTextW(pdis->hwndItem, buffer, 8);
 
             const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-            const bool isSecondary = (pdis->CtlID == IDC_TAB_SCROLL_LEFT ||
-                pdis->CtlID == IDC_TAB_SCROLL_RIGHT);
-
-            // Secondary indicators sit visually inside the tab strip,
-            // so their background should match an inactive tab body
-            // rather than show through to the dialog. Paint that fill
-            // first, then let the glyph render on top.
-            if (isSecondary) {
-                const COLORREF tabBg = isDark ? RGB(45, 45, 45) : RGB(240, 240, 240);
-                HBRUSH hBg = CreateSolidBrush(tabBg);
-                FillRect(pdis->hDC, &pdis->rcItem, hBg);
-                DeleteObject(hBg);
-            }
-
-            // Primary buttons read at full text contrast; the "..."
-            // scroll indicators are secondary affordances, so we tone
-            // them down to a muted grey - present but not shouting.
-            COLORREF fg;
-            if (isSecondary) {
-                fg = isDark ? RGB(140, 140, 140) : RGB(130, 130, 130);
-            }
-            else {
-                fg = isDark ? RGB(220, 220, 220) : RGB(60, 60, 60);
-            }
+            const COLORREF fg = isDark ? RGB(220, 220, 220) : RGB(60, 60, 60);
             SetTextColor(pdis->hDC, fg);
             SetBkMode(pdis->hDC, TRANSPARENT);
 
-            // Glyphs sit at different optical sizes. The "+" and the
-            // dropdown caret are small at the control's default font
-            // size; the ellipsis sits naturally as a row of three
-            // dots and needs no upscale.
-            int scaleNumerator = 10;
-            if (pdis->CtlID == IDC_NEW_LIST_BUTTON)        scaleNumerator = 14;
-            else if (pdis->CtlID == IDC_TAB_LIST_DROPDOWN) scaleNumerator = 12;
-
+            // The "+" reads small at the control's default font
+            // size, so render it 1.4x to match the visual weight of
+            // a proper "new tab" affordance.
             HFONT hCtrlFont = reinterpret_cast<HFONT>(SendMessage(pdis->hwndItem, WM_GETFONT, 0, 0));
             HFONT hBigFont = nullptr;
             HGDIOBJ hOld = nullptr;
-            if (hCtrlFont && scaleNumerator != 10) {
+            if (hCtrlFont) {
                 LOGFONT lf{};
                 if (GetObject(hCtrlFont, sizeof(lf), &lf)) {
-                    lf.lfHeight = MulDiv(lf.lfHeight, scaleNumerator, 10);
+                    lf.lfHeight = MulDiv(lf.lfHeight, 14, 10);
                     hBigFont = CreateFontIndirect(&lf);
                 }
                 hOld = SelectObject(pdis->hDC, hBigFont ? hBigFont : hCtrlFont);
