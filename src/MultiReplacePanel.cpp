@@ -561,6 +561,19 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
         : statusRowY;  // fallback: irrelevant when the row is hidden
     ctrlMap[IDC_NEW_LIST_BUTTON] = { newListBtnX, newListBtnY, sx(22), sy(22), WC_STATIC, L"+", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_new_list"), false, FontRole::Standard };
 
+    // Overflow dropdown for the tab strip. Sits right of "+" and is
+    // shown only when tabs do not fit. Glyph U+25BE is a small "down"
+    // triangle; final position and visibility are driven by
+    // repositionNewTabButton.
+    ctrlMap[IDC_TAB_LIST_DROPDOWN] = { newListBtnX + sx(24), newListBtnY, sx(22), sy(22), WC_STATIC, L"\u25BE", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_tab_list"), false, FontRole::Standard };
+
+    // Excel-style horizontal scroll indicators. They sit left/right
+    // of the tab strip (inside the tab band) and only appear when
+    // tabs are clipped on that side. Final position and visibility
+    // are driven by repositionNewTabButton. U+2026 = "..."
+    ctrlMap[IDC_TAB_SCROLL_LEFT] = { newListBtnX, newListBtnY, sx(18), sy(22), WC_STATIC, L"\u2026", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_tab_scroll_left"), false, FontRole::Standard };
+    ctrlMap[IDC_TAB_SCROLL_RIGHT] = { newListBtnX, newListBtnY, sx(18), sy(22), WC_STATIC, L"\u2026", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_tab_scroll_right"), false, FontRole::Standard };
+
     // Use List toggle -> Normal5
     LPCWSTR useListBtnText = keepListVisible
         ? (useListEnabled ? L"\u2630" : L"\u2500")
@@ -626,6 +639,9 @@ void MultiReplace::initializeCtrlMap() {
         setBottomRowVisible(false);
         // Hide toolbar icon buttons when list is collapsed
         ShowWindow(GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_TAB_LIST_DROPDOWN), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_TAB_SCROLL_LEFT), SW_HIDE);
+        ShowWindow(GetDlgItem(_hSelf, IDC_TAB_SCROLL_RIGHT), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_UP_BUTTON), SW_HIDE);
@@ -1214,6 +1230,7 @@ void MultiReplace::updateFilesPanel()
             const int idsShiftedUp[] = {
                 IDC_REPLACE_LIST, IDC_STATUS_MESSAGE, IDC_LIST_TABS,
                 IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON,
+                IDC_TAB_LIST_DROPDOWN, IDC_TAB_SCROLL_LEFT, IDC_TAB_SCROLL_RIGHT,
                 IDC_SAVE_TO_CSV_BUTTON,  IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON,
                 IDC_EXPORT_BASH_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON
             };
@@ -5984,7 +6001,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             return TRUE;
         }
-        else if (pdis->CtlID == IDC_NEW_LIST_BUTTON) {
+        else if (pdis->CtlID == IDC_NEW_LIST_BUTTON ||
+            pdis->CtlID == IDC_TAB_LIST_DROPDOWN ||
+            pdis->CtlID == IDC_TAB_SCROLL_LEFT ||
+            pdis->CtlID == IDC_TAB_SCROLL_RIGHT) {
             // Flat, borderless render against the tab-bar background.
             // STATIC with SS_OWNERDRAW is transparent by default, so no
             // background fill is needed in the idle state — the tab bar
@@ -5993,26 +6013,48 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             GetWindowTextW(pdis->hwndItem, buffer, 8);
 
             const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-            COLORREF fg = isDark ? RGB(220, 220, 220) : RGB(60, 60, 60);
+            const bool isSecondary = (pdis->CtlID == IDC_TAB_SCROLL_LEFT ||
+                pdis->CtlID == IDC_TAB_SCROLL_RIGHT);
+
+            // Secondary indicators sit visually inside the tab strip,
+            // so their background should match an inactive tab body
+            // rather than show through to the dialog. Paint that fill
+            // first, then let the glyph render on top.
+            if (isSecondary) {
+                const COLORREF tabBg = isDark ? RGB(45, 45, 45) : RGB(240, 240, 240);
+                HBRUSH hBg = CreateSolidBrush(tabBg);
+                FillRect(pdis->hDC, &pdis->rcItem, hBg);
+                DeleteObject(hBg);
+            }
+
+            // Primary buttons read at full text contrast; the "..."
+            // scroll indicators are secondary affordances, so we tone
+            // them down to a muted grey - present but not shouting.
+            COLORREF fg;
+            if (isSecondary) {
+                fg = isDark ? RGB(140, 140, 140) : RGB(130, 130, 130);
+            }
+            else {
+                fg = isDark ? RGB(220, 220, 220) : RGB(60, 60, 60);
+            }
             SetTextColor(pdis->hDC, fg);
             SetBkMode(pdis->hDC, TRANSPARENT);
 
-            // The "+" glyph (U+002B) sits on the x-height in most fonts,
-            // so at the control's default size it appears noticeably
-            // smaller than the surrounding tab text. Build a 1.4x-scaled
-            // copy of the control's font for this draw call so the
-            // glyph reads as a proper "new tab" affordance, the way it
-            // does in Excel and modern browsers. The temporary font is
-            // released straight after DrawText.
+            // Glyphs sit at different optical sizes. The "+" and the
+            // dropdown caret are small at the control's default font
+            // size; the ellipsis sits naturally as a row of three
+            // dots and needs no upscale.
+            int scaleNumerator = 10;
+            if (pdis->CtlID == IDC_NEW_LIST_BUTTON)        scaleNumerator = 14;
+            else if (pdis->CtlID == IDC_TAB_LIST_DROPDOWN) scaleNumerator = 12;
+
             HFONT hCtrlFont = reinterpret_cast<HFONT>(SendMessage(pdis->hwndItem, WM_GETFONT, 0, 0));
             HFONT hBigFont = nullptr;
             HGDIOBJ hOld = nullptr;
-            if (hCtrlFont) {
+            if (hCtrlFont && scaleNumerator != 10) {
                 LOGFONT lf{};
                 if (GetObject(hCtrlFont, sizeof(lf), &lf)) {
-                    // lfHeight is negative for character height in most
-                    // Windows fonts; multiplying preserves the sign.
-                    lf.lfHeight = MulDiv(lf.lfHeight, 14, 10);
+                    lf.lfHeight = MulDiv(lf.lfHeight, scaleNumerator, 10);
                     hBigFont = CreateFontIndirect(&lf);
                 }
                 hOld = SelectObject(pdis->hDC, hBigFont ? hBigFont : hCtrlFont);
@@ -6590,6 +6632,33 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             const WORD code = HIWORD(wParam);
             if (code == STN_CLICKED || code == STN_DBLCLK) {
                 addNewTab();
+            }
+            return TRUE;
+        }
+
+        case IDC_TAB_LIST_DROPDOWN:
+        {
+            const WORD code = HIWORD(wParam);
+            if (code == STN_CLICKED || code == STN_DBLCLK) {
+                showTabListPopup();
+            }
+            return TRUE;
+        }
+
+        case IDC_TAB_SCROLL_LEFT:
+        {
+            const WORD code = HIWORD(wParam);
+            if (code == STN_CLICKED || code == STN_DBLCLK) {
+                scrollTabStrip(-1);
+            }
+            return TRUE;
+        }
+
+        case IDC_TAB_SCROLL_RIGHT:
+        {
+            const WORD code = HIWORD(wParam);
+            if (code == STN_CLICKED || code == STN_DBLCLK) {
+                scrollTabStrip(+1);
             }
             return TRUE;
         }
@@ -15556,6 +15625,13 @@ void MultiReplace::loadSettingsToPanelUI() {
                 IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
                 ShowWindow(GetDlgItem(instance->_hSelf, id), showCmd);
             }
+            // Tab list dropdown follows the bottom row; final visibility
+            // (overflow only) is decided by repositionNewTabButton.
+            if (showCmd == SW_HIDE) {
+                ShowWindow(GetDlgItem(instance->_hSelf, IDC_TAB_LIST_DROPDOWN), SW_HIDE);
+                ShowWindow(GetDlgItem(instance->_hSelf, IDC_TAB_SCROLL_LEFT), SW_HIDE);
+                ShowWindow(GetDlgItem(instance->_hSelf, IDC_TAB_SCROLL_RIGHT), SW_HIDE);
+            }
         }
 
         // 3. Export Button — deprecated, always hidden
@@ -16282,6 +16358,50 @@ void MultiReplace::rebuildTabControl()
     // gets painted, briefly clipping the left half of the new label.
     repositionNewTabButton();
 
+    // The first reposition pass uses the natural tab widths reported
+    // by the common control immediately after insertion. After the
+    // tab control has been resized the second pass observes the
+    // stable post-layout state, so any width drift caused by the
+    // resize itself (e.g. coming back from a previous overflow with
+    // a wider tab control) is corrected before the user sees it.
+    repositionNewTabButton();
+
+    // After a rebuild the common control places the active tab
+    // somewhere visible - often centered when it is newly inserted
+    // at the end. That looks wrong: a freshly added tab should snap
+    // flush to the right edge so the strip reads continuously from
+    // left to right and "+" sits glued to it. Push the strip until
+    // no further right-scroll is possible: the common control will
+    // refuse to advance once the last tab is fully right-aligned.
+    if (!_tabs.empty()
+        && _activeTabIndex == static_cast<int>(_tabs.size()) - 1)
+    {
+        if (HWND hUpDown = FindWindowExW(hTab, nullptr, UPDOWN_CLASS, nullptr)) {
+            const int count = TabCtrl_GetItemCount(hTab);
+
+            // Stop only when scrolling produces no further movement.
+            // Checking "is the last tab visible" stops too early: the
+            // common control may show it centered, leaving an empty
+            // gap on the right that pushes "+" away from the tabs.
+            const int safetyMax = count + 2;
+            int prevLeft = INT_MIN;
+            for (int step = 0; step < safetyMax; ++step) {
+                RECT rcLast;
+                if (!TabCtrl_GetItemRect(hTab, count - 1, &rcLast)) break;
+                if (rcLast.left == prevLeft) break;
+                prevLeft = rcLast.left;
+                SendMessage(hUpDown, WM_HSCROLL,
+                    MAKEWPARAM(SB_LINERIGHT, 0),
+                    reinterpret_cast<LPARAM>(hUpDown));
+            }
+            SetWindowPos(hUpDown, nullptr, -10000, -10000, 0, 0,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
+        }
+        // The scroll moved the strip; rerun the layout so left/right
+        // indicators reflect the new clipping state.
+        repositionNewTabButton();
+    }
+
     ShowWindow(hTab, SW_SHOW);
     // Force an immediate repaint so the tabs are visible on first init,
     // even when the queued WM_PAINT gets coalesced or skipped.
@@ -16293,32 +16413,35 @@ void MultiReplace::rebuildTabControl()
 void MultiReplace::repositionNewTabButton()
 {
     HWND hPlus = GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON);
-    if (!hPlus) return;
     HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
-    if (!hTab) return;
+    HWND hDrop = GetDlgItem(_hSelf, IDC_TAB_LIST_DROPDOWN);
+    HWND hLeft = GetDlgItem(_hSelf, IDC_TAB_SCROLL_LEFT);
+    HWND hRight = GetDlgItem(_hSelf, IDC_TAB_SCROLL_RIGHT);
+    if (!hPlus || !hTab || !hDrop || !hLeft || !hRight) return;
 
-    // Bottom row hidden -> nothing to position.
     if (!useListEnabled && !keepListVisible) return;
 
-    // Layout: [ TabControl ] [+] ........ [UseList toggle]
-    // The tab control is sized to fit its tabs, capped so the "+" and
-    // the toggle always have their slots. When the cap is hit, common-
-    // controls auto-shows its UpDown spinner inside the tab control.
-    // The "+" sits on its own slice outside the tab control, so tabs
-    // and spinner can never overlap it.
     RECT panelClient;
     GetClientRect(_hSelf, &panelClient);
     const int W = panelClient.right - panelClient.left;
 
-    const int tabLeftRel = sx(14) - sx(2);
+    const int tabLeftBase = sx(14) - sx(2);
     const int useListLeft = W - sx(40);
-    const int btnW = sx(22);
+    const int btnW = sx(22);                  // "+" / dropdown
+    const int dotW = sx(18);                  // ellipsis indicator
     const int btnH = sy(22);
     const int gap = sx(2);
+    const int reservedSlot = dotW + gap;       // slot kept free for "..."
 
-    const int maxTabCtrlWidth = std::max(
-        useListLeft - tabLeftRel - gap - btnW - gap,
-        sx(60));
+    // Anchor positions, derived RIGHT-TO-LEFT from the UseList toggle:
+    //   ... [tab control] [...slot] [+] [drop] | UseList
+    // Used both for the right-anchored layout and as a clamp for the
+    // tabs-hugging layout, so "+" never crosses into the toggle.
+    const int dropLeft = useListLeft - gap - btnW;
+    const int plusLeftAnchor = dropLeft - gap - btnW;
+    const int slotLeftAnchor = plusLeftAnchor - gap - dotW;
+    const int tabRightCap = slotLeftAnchor - gap;
+    const int maxTabCtrlWidth = std::max(tabRightCap - tabLeftBase, sx(60));
 
     RECT cur;
     GetWindowRect(hTab, &cur);
@@ -16327,49 +16450,288 @@ void MultiReplace::repositionNewTabButton()
     const int tabHeight = cur.bottom - cur.top;
     const int curWidth = cur.right - cur.left;
 
-    // Sum of natural tab widths is stable under scrolling; clamp the
-    // first tab's left to 0 so a scrolled-out negative doesn't poison it.
     const int tabCount = TabCtrl_GetItemCount(hTab);
+
+    // Sum of natural tab widths is independent of scroll position.
     int totalTabsWidth = 0;
-    int leadIn = 0;
+    int firstLeft = 0;
     for (int i = 0; i < tabCount; ++i) {
         RECT rc;
         if (!TabCtrl_GetItemRect(hTab, i, &rc)) continue;
-        if (i == 0) leadIn = std::max<int>(rc.left, 0);
+        if (i == 0) firstLeft = std::max<int>(rc.left, 0);
         totalTabsWidth += (rc.right - rc.left);
     }
-    const int naturalStripWidth = leadIn + totalTabsWidth;
+    const int naturalStripWidth = firstLeft + totalTabsWidth;
 
+    const bool overflow = (tabCount > 0) &&
+        (naturalStripWidth + sx(2) > maxTabCtrlWidth);
+
+    // Detect which side the strip is currently scrolled past. Only
+    // meaningful while overflowing - otherwise everything fits.
+    bool clippedLeft = false;
+    bool clippedRight = false;
+    if (overflow) {
+        RECT rc0, rcN;
+        if (TabCtrl_GetItemRect(hTab, 0, &rc0)) {
+            clippedLeft = (rc0.left < 0);
+        }
+        if (TabCtrl_GetItemRect(hTab, tabCount - 1, &rcN)) {
+            RECT clientRc;
+            GetClientRect(hTab, &clientRc);
+            clippedRight = (rcN.right > (clientRc.right - clientRc.left));
+        }
+    }
+
+    // Left "..." sits before the tab control and steals real space
+    // from it, shifting the strip right by (dotW + gap).
+    const int leftDotPad = (overflow && clippedLeft) ? (dotW + gap) : 0;
+    const int tabLeftRel = tabLeftBase + leftDotPad;
+
+    // Tab control geometry: hug the tabs when they fit, otherwise
+    // fill the available width up to the overflow anchor.
     int newTabCtrlWidth;
     if (tabCount == 0) {
         newTabCtrlWidth = sx(60);
     }
-    else if (naturalStripWidth + sx(2) <= maxTabCtrlWidth) {
-        newTabCtrlWidth = naturalStripWidth + sx(2);
+    else if (!overflow) {
+        newTabCtrlWidth = std::min(naturalStripWidth + sx(2),
+            maxTabCtrlWidth - leftDotPad);
     }
     else {
-        newTabCtrlWidth = maxTabCtrlWidth;
+        newTabCtrlWidth = maxTabCtrlWidth - leftDotPad;
     }
 
-    int plusXRel = tabLeftRel + newTabCtrlWidth + gap;
-    const int plusRightMax = useListLeft - gap;
-    if (plusXRel + btnW > plusRightMax) plusXRel = plusRightMax - btnW;
-    if (plusXRel < tabLeftRel)          plusXRel = tabLeftRel;
-
-    // Resizing the tab control re-evaluates its UpDown child; the
-    // explicit repaint avoids a stuck spinner state when the window
-    // grows back from a narrow size.
-    if (curWidth != newTabCtrlWidth) {
+    if (curTL.x != tabLeftRel || curWidth != newTabCtrlWidth) {
         SetWindowPos(hTab, nullptr,
-            curTL.x, curTL.y, newTabCtrlWidth, tabHeight,
+            tabLeftRel, curTL.y, newTabCtrlWidth, tabHeight,
             SWP_NOZORDER | SWP_NOACTIVATE);
         InvalidateRect(hTab, nullptr, TRUE);
         UpdateWindow(hTab);
     }
 
-    const int plusY = curTL.y + (tabHeight - btnH) / 2;
-    SetWindowPos(hPlus, HWND_TOP, plusXRel, plusY, btnW, btnH,
-        SWP_NOACTIVATE);
+    // Hide the tab control's built-in UpDown spinner. It gets
+    // re-created whenever the strip overflows; we replace its
+    // function with our "..." indicators. Move it off-screen rather
+    // than SW_HIDE so it stays addressable for the programmatic
+    // scroll messages used by ensureTabVisible/scrollTabStrip.
+    if (HWND hUpDown = FindWindowExW(hTab, nullptr, UPDOWN_CLASS, nullptr)) {
+        RECT udRc;
+        GetWindowRect(hUpDown, &udRc);
+        if (udRc.left > -1000) {
+            SetWindowPos(hUpDown, nullptr, -10000, -10000, 0, 0,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
+            InvalidateRect(hTab, nullptr, TRUE);
+            UpdateWindow(hTab);
+        }
+    }
+
+    const int yMid = curTL.y + (tabHeight - btnH) / 2;
+
+    // "+" position. The decisive question is "does the last tab end
+    // inside the viewport". When yes (including under technical
+    // overflow with tabs hidden on the left), glue "+" to it. When
+    // no, anchor "+" at the right cap so the "..." slot sits between
+    // the last visible tab and "+".
+    int plusXRel;
+    if (tabCount == 0) {
+        plusXRel = tabLeftRel + gap + reservedSlot;
+    }
+    else if (overflow && clippedRight) {
+        plusXRel = plusLeftAnchor;
+    }
+    else {
+        // Read the post-resize right edge so we layout against the
+        // settled geometry. rebuildTabControl deliberately calls us
+        // twice for the same reason.
+        RECT rcLast;
+        const int lastRight = TabCtrl_GetItemRect(hTab, tabCount - 1, &rcLast)
+            ? rcLast.right
+            : naturalStripWidth;
+        plusXRel = tabLeftRel + lastRight + gap + reservedSlot;
+        if (plusXRel > plusLeftAnchor) plusXRel = plusLeftAnchor;
+    }
+
+    // Side indicators. Both only appear under overflow, on the side
+    // where tabs are clipped.
+    if (overflow && clippedLeft) {
+        SetWindowPos(hLeft, HWND_TOP, tabLeftBase, yMid, dotW, btnH, SWP_NOACTIVATE);
+        ShowWindow(hLeft, SW_SHOWNA);
+    }
+    else {
+        ShowWindow(hLeft, SW_HIDE);
+    }
+
+    if (overflow && clippedRight) {
+        SetWindowPos(hRight, HWND_TOP, plusXRel - gap - dotW, yMid, dotW, btnH, SWP_NOACTIVATE);
+        ShowWindow(hRight, SW_SHOWNA);
+    }
+    else {
+        ShowWindow(hRight, SW_HIDE);
+    }
+
+    SetWindowPos(hPlus, HWND_TOP, plusXRel, yMid, btnW, btnH, SWP_NOACTIVATE);
+
+    // Dropdown is shown whenever there are tabs the user cannot all
+    // see at once - this is the same condition as `overflow`.
+    if (overflow) {
+        SetWindowPos(hDrop, HWND_TOP, dropLeft, yMid, btnW, btnH, SWP_NOACTIVATE);
+        ShowWindow(hDrop, SW_SHOWNA);
+    }
+    else {
+        ShowWindow(hDrop, SW_HIDE);
+    }
+}
+
+void MultiReplace::ensureTabVisible(int tabIndex)
+{
+    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+    if (!hTab) return;
+
+    const int count = TabCtrl_GetItemCount(hTab);
+    if (tabIndex < 0 || tabIndex >= count) return;
+
+    HWND hUpDown = FindWindowExW(hTab, nullptr, UPDOWN_CLASS, nullptr);
+    if (!hUpDown) return;
+
+    RECT clientRc;
+    GetClientRect(hTab, &clientRc);
+    const int viewW = clientRc.right - clientRc.left;
+
+    // Bring the UpDown back into a valid position so it can accept
+    // synthesized clicks. Mirror what scrollTabStrip does.
+    RECT udRect;
+    GetWindowRect(hUpDown, &udRect);
+    const int udW = (udRect.right - udRect.left) > 0 ? (udRect.right - udRect.left) : 38;
+    const int udH = (udRect.bottom - udRect.top) > 0 ? (udRect.bottom - udRect.top) : 18;
+    const int defX = clientRc.right - udW;
+
+    SetWindowPos(hUpDown, nullptr, defX, 0, udW, udH,
+        SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+    RECT udClient;
+    GetClientRect(hUpDown, &udClient);
+    const int halfW = (udClient.right - udClient.left) / 2;
+    const int clickY = (udClient.bottom - udClient.top) / 2;
+
+    const int safetyMax = count + 2;
+    for (int step = 0; step < safetyMax; ++step) {
+        RECT rc;
+        if (!TabCtrl_GetItemRect(hTab, tabIndex, &rc)) break;
+        if (rc.left >= 0 && rc.right <= viewW) break;
+
+        const int clickX = (rc.left < 0) ? halfW / 2 : halfW + halfW / 2;
+        const LPARAM mouseLP = MAKELPARAM(clickX, clickY);
+        SendMessage(hUpDown, WM_LBUTTONDOWN, MK_LBUTTON, mouseLP);
+        SendMessage(hUpDown, WM_LBUTTONUP, 0, mouseLP);
+    }
+
+    SetWindowPos(hUpDown, nullptr, -10000, -10000, udW, udH,
+        SWP_NOZORDER | SWP_NOACTIVATE);
+    InvalidateRect(hTab, nullptr, TRUE);
+    UpdateWindow(hTab);
+
+    repositionNewTabButton();
+}
+
+void MultiReplace::scrollTabStrip(int direction)
+{
+    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+    if (!hTab) return;
+
+    HWND hUpDown = FindWindowExW(hTab, nullptr, UPDOWN_CLASS, nullptr);
+    if (!hUpDown) return;
+
+    // Move the UpDown back to a real position in the tab control
+    // briefly so it can process synthesized clicks. Off-screen or
+    // hidden UpDowns ignore mouse input. We capture and restore its
+    // current rect to leave it as we found it.
+    RECT udRect;
+    GetWindowRect(hUpDown, &udRect);
+    POINT udTL = { udRect.left, udRect.top };
+    ScreenToClient(hTab, &udTL);
+    const int udW = udRect.right - udRect.left;
+    const int udH = udRect.bottom - udRect.top;
+
+    // Place at a sensible default if its current position is invalid
+    // (off-screen). Top-right corner of the tab strip is what the
+    // common control would have used naturally.
+    RECT tabClient;
+    GetClientRect(hTab, &tabClient);
+    const int defW = (udW > 0) ? udW : 38;   // typical width
+    const int defH = (udH > 0) ? udH : 18;
+    const int defX = tabClient.right - defW;
+    const int defY = 0;
+
+    SetWindowPos(hUpDown, nullptr, defX, defY, defW, defH,
+        SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+    // The UpDown spinner is a horizontal pair of arrow buttons.
+    // Left half = scroll left, right half = scroll right. Synthesize
+    // a left-button down/up at the matching half.
+    RECT udClient;
+    GetClientRect(hUpDown, &udClient);
+    const int halfW = (udClient.right - udClient.left) / 2;
+    const int clickY = (udClient.bottom - udClient.top) / 2;
+    const int clickX = (direction < 0) ? halfW / 2 : halfW + halfW / 2;
+
+    const LPARAM mouseLP = MAKELPARAM(clickX, clickY);
+    SendMessage(hUpDown, WM_LBUTTONDOWN, MK_LBUTTON, mouseLP);
+    SendMessage(hUpDown, WM_LBUTTONUP, 0, mouseLP);
+
+    // Move the UpDown back off-screen so it stays invisible to the user.
+    SetWindowPos(hUpDown, nullptr, -10000, -10000, defW, defH,
+        SWP_NOZORDER | SWP_NOACTIVATE);
+
+    InvalidateRect(hTab, nullptr, TRUE);
+    UpdateWindow(hTab);
+
+    repositionNewTabButton();
+}
+
+void MultiReplace::showTabListPopup()
+{
+    if (_tabs.empty()) return;
+
+    HWND hDrop = GetDlgItem(_hSelf, IDC_TAB_LIST_DROPDOWN);
+    if (!hDrop) return;
+
+    HMENU hMenu = CreatePopupMenu();
+    if (!hMenu) return;
+
+    // Reserve a range comfortably above the rest of the command IDs
+    // and high enough to never collide with menu identifiers used
+    // elsewhere. Dynamic per-popup; not declared as a permanent ID.
+    constexpr UINT kBaseId = 0xC000;
+
+    const int activeIdx = _activeTabIndex;
+    const int count = static_cast<int>(_tabs.size());
+    for (int i = 0; i < count; ++i) {
+        std::wstring label = _tabs[i]->name;
+        if (_tabs[i]->isDirty) label += L" \u2022";
+
+        UINT flags = MF_STRING;
+        if (i == activeIdx) flags |= MF_CHECKED;
+
+        AppendMenuW(hMenu, flags, kBaseId + static_cast<UINT>(i),
+            label.c_str());
+    }
+
+    RECT rc{};
+    GetWindowRect(hDrop, &rc);
+    const POINT anchor = { rc.left, rc.bottom };
+
+    const UINT cmd = TrackPopupMenu(hMenu,
+        TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RETURNCMD | TPM_NONOTIFY,
+        anchor.x, anchor.y, 0, _hSelf, nullptr);
+
+    DestroyMenu(hMenu);
+
+    if (cmd >= kBaseId) {
+        const int picked = static_cast<int>(cmd - kBaseId);
+        if (picked >= 0 && picked < count && picked != activeIdx) {
+            switchToTab(picked);
+        }
+    }
 }
 
 void MultiReplace::markActiveTabDirty()
@@ -16486,6 +16848,16 @@ void MultiReplace::switchToTab(int newIndex)
 
     _activeTabIndex = newIndex;
     URM.setActiveTab(_tabs[newIndex]->id);
+
+    // Programmatic switches (e.g. from the overflow dropdown) bypass
+    // the tab control's own click handling, so we mirror what a normal
+    // click would do: update its selection state, then nudge the
+    // strip if the target tab is currently scrolled out of view.
+    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+    if (hTab) {
+        TabCtrl_SetCurSel(hTab, newIndex);
+        ensureTabVisible(newIndex);
+    }
 
     // Restore incoming tab into live working state, then rebuild UI.
     // The guard prevents createListViewColumns from reading the old
@@ -18506,6 +18878,9 @@ void MultiReplace::applyConfigSettingsOnly()
                 IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
                 ShowWindow(GetDlgItem(_hSelf, id), SW_HIDE);
             }
+            ShowWindow(GetDlgItem(_hSelf, IDC_TAB_LIST_DROPDOWN), SW_HIDE);
+            ShowWindow(GetDlgItem(_hSelf, IDC_TAB_SCROLL_LEFT), SW_HIDE);
+            ShowWindow(GetDlgItem(_hSelf, IDC_TAB_SCROLL_RIGHT), SW_HIDE);
             setBottomRowVisible(false);
             adjustWindowSize();
         }
@@ -18576,6 +18951,11 @@ void MultiReplace::applyConfigSettingsOnly()
         for (int id : { IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
             IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
             ShowWindow(GetDlgItem(_hSelf, id), showCmd);
+        }
+        if (showCmd == SW_HIDE) {
+            ShowWindow(GetDlgItem(_hSelf, IDC_TAB_LIST_DROPDOWN), SW_HIDE);
+            ShowWindow(GetDlgItem(_hSelf, IDC_TAB_SCROLL_LEFT), SW_HIDE);
+            ShowWindow(GetDlgItem(_hSelf, IDC_TAB_SCROLL_RIGHT), SW_HIDE);
         }
     }
 

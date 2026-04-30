@@ -1407,11 +1407,24 @@ private:
 
     // Tab control rendering.
     void rebuildTabControl();
-    // Move the New-List ("+") button so it sits right after the last
-    // tab in the tab bar — Excel/Browser convention. Called from
-    // rebuildTabControl and on WM_SIZE; cheap enough to run whenever
-    // the tab geometry changes.
+    // Lay out the tab strip's right-hand controls so they always sit
+    // directly adjacent to the last visible tab. The "+" button sticks
+    // immediately to the tab control; the overflow dropdown ("v") sits
+    // next to "+" but is only shown when tabs are clipped.
     void repositionNewTabButton();
+
+    // Open a popup listing every tab; clicking an entry switches to it.
+    // Used by the overflow dropdown.
+    void showTabListPopup();
+
+    // Scroll the tab strip far enough that the indicated tab is fully
+    // visible. No-op if it is already on screen.
+    void ensureTabVisible(int tabIndex);
+
+    // Scroll the strip by one tab in the given direction (negative
+    // left, positive right). Used by the "..." indicators.
+    void scrollTabStrip(int direction);
+
     void updateTabTooltip(int tabIndex);
     static std::wstring truncateTabName(const std::wstring& name, size_t maxChars = 14);
 

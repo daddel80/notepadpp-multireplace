@@ -79,6 +79,10 @@
 #define IDC_UP_BUTTON                   5027
 #define IDC_DOWN_BUTTON                 5028
 
+#define IDC_TAB_LIST_DROPDOWN           5029
+#define IDC_TAB_SCROLL_LEFT             5037
+#define IDC_TAB_SCROLL_RIGHT            5038
+
 
 
 // ===================================================================
