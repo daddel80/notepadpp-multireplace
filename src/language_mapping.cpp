@@ -222,8 +222,8 @@ const LangKV kEnglishPairs[] = {
 // MessageBox Titles
 { L"msgbox_title_error", L"Error" },
 { L"msgbox_title_confirm", L"Confirm" },
-{ L"msgbox_title_use_variables_syntax_error", L"Use Variables: Syntax Error" },
-{ L"msgbox_title_use_variables_execution_error", L"Use Variables: Execution Error" },
+{ L"msgbox_title_use_variables_syntax_error", L"Use Variables: Compile Error" },
+{ L"msgbox_title_use_variables_execution_error", L"Use Variables: Runtime Error" },
 { L"msgbox_title_save_list", L"Save list" },
 { L"msgbox_title_reload", L"Reload" },
 { L"msgbox_title_warning", L"Warning" },
@@ -238,14 +238,8 @@ const LangKV kEnglishPairs[] = {
 { L"msgbox_confirm_delete_columns", L"Are you sure you want to delete $REPLACE_STRING column(s)?" },
 { L"msgbox_error_saving_settings", L"An error occurred while saving the settings:<br/>$REPLACE_STRING" },
 { L"msgbox_use_variables_execution_error", L"Execution halted due to execution failure in:<br/>$REPLACE_STRING" },
-// Engine-aware variants of the formula-engine error dialog bodies.
-// $REPLACE_STRING1 = engine name (Lua / ExprTk),
-// $REPLACE_STRING2 = engine-supplied error text (compile) or user
-// script (execution). The host composes the final body from these
-// so the "Lua: " / "ExprTk: " prefix never has to live in C++
-// literals.
-{ L"msgbox_engine_error_body", L"$REPLACE_STRING1: $REPLACE_STRING2" },
-{ L"msgbox_use_variables_execution_error_engine", L"$REPLACE_STRING1: Execution halted due to execution failure in:<br/>$REPLACE_STRING2" },
+{ L"msgbox_engine_error_body", L"List entry #$REPLACE_STRING1 ($REPLACE_STRING2) - Compile Error:<br/>$REPLACE_STRING3" },
+{ L"msgbox_use_variables_execution_error_engine", L"List entry #$REPLACE_STRING1 ($REPLACE_STRING2) - Runtime Error at position $REPLACE_STRING3:<br/>$REPLACE_STRING4" },
 { L"msgbox_confirm_delete_single", L"Are you sure you want to delete this line?" },
 { L"msgbox_confirm_delete_multiple", L"Are you sure you want to delete $REPLACE_STRING lines?" },
 { L"msgbox_title_clear_list", L"Clear List" },

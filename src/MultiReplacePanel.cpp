@@ -7639,8 +7639,12 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                     fillCapturesForEngine(vars, documentCodepage);
                 }
 
+                _currentRuleIndex = itemIndex;
+                _currentMatchPos = searchResult.pos;
                 MultiReplaceEngine::FormulaResult res = engine->execute(
                     scriptUtf8, vars, itemData.regex, documentCodepage);
+                _currentRuleIndex = SIZE_MAX;
+                _currentMatchPos = -1;
 
                 if (!res.success) {
                     return false;
@@ -7745,7 +7749,10 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         if (!engine) {
             return false;
         }
-        if (!engine->compile(luaTemplateUtf8)) {
+        _currentRuleIndex = itemIndex;
+        const bool compileOk = engine->compile(luaTemplateUtf8);
+        _currentRuleIndex = SIZE_MAX;
+        if (!compileOk) {
             return false;
         }
     }
@@ -7789,8 +7796,12 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                         fillCapturesForEngine(vars, documentCodepage);
                     }
 
+                    _currentRuleIndex = itemIndex;
+                    _currentMatchPos = searchResult.pos;
                     MultiReplaceEngine::FormulaResult res = engine->execute(
                         luaTemplateUtf8, vars, itemData.regex, documentCodepage);
+                    _currentRuleIndex = SIZE_MAX;
+                    _currentMatchPos = -1;
 
                     if (!res.success) {
                         return false;
@@ -7896,7 +7907,9 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                     if (!engine) {
                         return false;
                     }
+                    _currentRuleIndex = i;
                     if (!engine->compile(localReplaceTextUtf8)) {
+                        _currentRuleIndex = SIZE_MAX;
                         return false;
                     }
 
@@ -7912,6 +7925,7 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
 
                     MultiReplaceEngine::FormulaResult res = engine->execute(
                         localReplaceTextUtf8, vars, replaceListData[i].regex, -1);
+                    _currentRuleIndex = SIZE_MAX;
                     if (!res.success) {
                         return false;
                     }
@@ -8049,30 +8063,29 @@ void MultiReplace::showErrorMessage(
 {
     using EC = MultiReplaceEngine::ILuaEngineHost::ErrorCategory;
 
-    // Compose the body via a translation template so the engine name
-    // prefix never has to live in C++ literals. The default template
-    // ("$REPLACE_STRING1: $REPLACE_STRING2") is fine for every locale;
-    // a translator can still reorder or rephrase if needed.
     const std::wstring engineW = Encoding::utf8ToWString(engineName);
     const std::wstring detailsW = Encoding::utf8ToWString(details);
+    const std::wstring entryW = (_currentRuleIndex != SIZE_MAX)
+        ? std::to_wstring(_currentRuleIndex + 1)
+        : L"?";
 
     if (category == EC::CompileError) {
         std::wstring body = LM.get(L"msgbox_engine_error_body",
-            { engineW, detailsW });
+            { entryW, engineW, detailsW });
         MessageBox(nppData._nppHandle,
             body.c_str(),
             LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
-            MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+            MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
     }
     else {
-        // ExecutionError: details holds the offending user script.
-        // The body template embeds the script and the engine name in
-        // the order chosen by the translation file.
+        const std::wstring posW = (_currentMatchPos >= 0)
+            ? std::to_wstring(_currentMatchPos)
+            : L"?";
         std::wstring body = LM.get(L"msgbox_use_variables_execution_error_engine",
-            { engineW, detailsW });
+            { entryW, engineW, posW, detailsW });
         MessageBox(nppData._nppHandle, body.c_str(),
             LM.get(L"msgbox_title_use_variables_execution_error").c_str(),
-            MB_OK);
+            MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
     }
 }
 

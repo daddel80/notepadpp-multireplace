@@ -247,7 +247,7 @@ namespace MultiReplaceEngine {
             const char* err = lua_tostring(_luaState, -1);
             if (_host && _host->isLuaErrorDialogEnabled()) {
                 _host->showErrorMessage(
-                    ILuaEngineHost::ErrorCategory::CompileError,
+                    ILuaEngineHost::ErrorCategory::ExecutionError,
                     "Lua",
                     err ? err : "Lua execution error");
             }

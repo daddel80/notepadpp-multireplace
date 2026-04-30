@@ -867,6 +867,8 @@ private:
     std::vector<char> lineBuffer; // reusable Buffer for findDelimitersInLine()
     std::vector<char> styleBuffer; // reusable Buffer for highlightColumnsInLine()
     std::vector<char> tagBuffer;  // reusable Buffer for SCI_GETTAG in fillCapturesForEngine()
+    size_t _currentRuleIndex = SIZE_MAX; // List index for showErrorMessage; SIZE_MAX = no engine call active
+    Sci_Position _currentMatchPos = -1;  // Document position for showErrorMessage; -1 = unknown
     bool isColumnHighlighted = false;
     SIZE_T CSVheaderLinesCount = 1; // Number of header lines not included in CSV sorting
     inline static POINT debugWindowPosition{ CW_USEDEFAULT, CW_USEDEFAULT };
