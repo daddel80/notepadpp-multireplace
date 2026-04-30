@@ -202,7 +202,7 @@
 
 
 // ===================================================================
-//  5700-5728 - Context-menu command IDs & List Search
+//  5700-5729 - Context-menu command IDs & List Search
 // ===================================================================
 #define IDM_UNDO                        5701
 #define IDM_REDO                        5702
@@ -237,6 +237,9 @@
 #define IDC_LIST_SEARCH_BUTTON          5727
 #define IDC_LIST_SEARCH_CLOSE           5728
 
+// Clear entire list
+#define IDM_CLEAR_LIST                  5729
+
 
 
 // ===================================================================
@@ -256,6 +259,7 @@
 #define IDM_TAB_RENAME                  5900
 #define IDM_TAB_DUPLICATE               5901
 #define IDM_TAB_SAVE_AS                 5902
+#define IDM_TAB_SAVE                    5903
 #define IDM_TAB_OPEN_FILE_LOCATION      5904
 #define IDM_TAB_CLOSE                   5905
 #define IDM_TAB_CLOSE_OTHERS            5906

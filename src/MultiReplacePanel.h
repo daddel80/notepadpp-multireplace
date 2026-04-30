@@ -1465,6 +1465,7 @@ private:
     void onTabClose(int tabIndex);
     void onTabCloseOthers(int keepTabIndex);
     void onTabCloseAll();
+    void onTabSave(int tabIndex);
     void onTabSaveAs(int tabIndex);
     void onTabOpenFileLocation(int tabIndex);
 

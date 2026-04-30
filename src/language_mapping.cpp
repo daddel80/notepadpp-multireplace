@@ -248,6 +248,8 @@ const LangKV kEnglishPairs[] = {
 { L"msgbox_use_variables_execution_error_engine", L"$REPLACE_STRING1: Execution halted due to execution failure in:<br/>$REPLACE_STRING2" },
 { L"msgbox_confirm_delete_single", L"Are you sure you want to delete this line?" },
 { L"msgbox_confirm_delete_multiple", L"Are you sure you want to delete $REPLACE_STRING lines?" },
+{ L"msgbox_title_clear_list", L"Clear List" },
+{ L"msgbox_confirm_clear_list", L"Remove all $REPLACE_STRING entries from the list?<br/><br/>This can be undone with Ctrl+Z." },
 { L"msgbox_unsaved_changes_file", L"You have unsaved changes in the list: '$REPLACE_STRING'.<br/>Would you like to save them?" },
 { L"msgbox_unsaved_changes_tab",  L"You have unsaved changes in tab '$REPLACE_STRING'.<br/>Would you like to save them?" },
 { L"msgbox_unsaved_changes", L"You have unsaved changes.<br/>Would you like to save them?" },
@@ -280,6 +282,7 @@ const LangKV kEnglishPairs[] = {
 { L"ctxmenu_reset_column_order", L"Reset Column Order" },
 { L"ctxmenu_lock_column_width", L"Lock '$REPLACE_STRING' column width" },
 { L"ctxmenu_search_in_list", L"&Search in List\tCtrl+F" },
+{ L"ctxmenu_clear_list", L"&Clear List" },
 { L"ctxmenu_cut", L"Cu&t\tCtrl+X" },
 { L"ctxmenu_copy", L"&Copy\tCtrl+C" },
 { L"ctxmenu_paste", L"&Paste\tCtrl+V" },
@@ -411,12 +414,13 @@ const LangKV kEnglishPairs[] = {
 // Tab bar (multi-tab lists)
 { L"tab_menu_rename",              L"Rename" },
 { L"tab_menu_duplicate",           L"Duplicate" },
+{ L"tab_menu_save",                L"Save" },
 { L"tab_menu_save_as",             L"Save As..." },
 { L"tab_menu_open_file_location",  L"Open File Location" },
 { L"tab_menu_close",               L"Close" },
 { L"tab_menu_close_multiple",      L"Close Multiple Tabs" },
-{ L"tab_menu_close_others",        L"Other Tabs" },
-{ L"tab_menu_close_all",           L"All Tabs" },
+{ L"tab_menu_close_others",        L"Close All BUT This" },
+{ L"tab_menu_close_all",           L"Close All" },
 { L"tab_duplicate_suffix",         L"(copy)" },
 
 };

@@ -4417,6 +4417,15 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
                 reinterpret_cast<UINT_PTR>(hClearMenu), LM.get(L"ctxmenu_clear_options").c_str());
         }
 
+        // Clear List as the very last entry: ultimate destructive
+        // list-wide action, isolated by its own separator from the
+        // "Clear Options >" submenu directly above. The submenu arrow
+        // on Clear Options visually distinguishes it from the flat
+        // Clear List entry, breaking the "Clear..." cluster despite
+        // adjacency.
+        AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+        AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_CLEAR_LIST, LM.get(L"ctxmenu_clear_list").c_str());
+
         TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, ptScreen.x, ptScreen.y, 0, hwnd, NULL);
         DestroyMenu(hMenu); // Cleans up submenus too
     }
@@ -6819,6 +6828,37 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
+        case IDM_CLEAR_LIST:
+        {
+            // Defensive: menu entry is grayed when list is empty, but
+            // a stray accelerator or programmatic invocation could still
+            // land here. Bail silently rather than show a confirm for
+            // nothing.
+            if (replaceListData.empty()) return TRUE;
+
+            // Confirm with item count so the user sees how much they're
+            // about to drop. The action is undoable, but a one-tap
+            // "Yes" with no idea of scope is still bad UX.
+            std::wstring confirmMsg = LM.get(L"msgbox_confirm_clear_list",
+                { std::to_wstring(replaceListData.size()) });
+            if (MessageBox(_hSelf, confirmMsg.c_str(),
+                LM.getW(L"msgbox_title_clear_list"),
+                MB_OKCANCEL | MB_ICONQUESTION | MB_SETFOREGROUND) != IDOK)
+            {
+                return TRUE;
+            }
+
+            // Reuse removeItemsFromReplaceList: it already handles
+            // ListView refresh, tab-dirty marking, and full undo/redo
+            // via the shared UndoRedoManager. Build [0, 1, ..., N-1]
+            // and let the existing path do the work - one source of
+            // truth for "items removed from the list".
+            std::vector<size_t> allIndices(replaceListData.size());
+            std::iota(allIndices.begin(), allIndices.end(), 0);
+            removeItemsFromReplaceList(allIndices);
+            return TRUE;
+        }
+
         case IDM_UNDO: {
             performItemAction(_contextMenuClickPoint, ItemAction::Undo);
             return TRUE;
@@ -7015,6 +7055,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         case IDM_TAB_DUPLICATE:
             onTabDuplicate(_tabMenuTargetIndex);
+            return TRUE;
+        case IDM_TAB_SAVE:
+            onTabSave(_tabMenuTargetIndex);
             return TRUE;
         case IDM_TAB_SAVE_AS:
             onTabSaveAs(_tabMenuTargetIndex);
@@ -17786,18 +17829,17 @@ void MultiReplace::showTabContextMenu(int tabIndex, int screenX, int screenY)
     const TabState& tab = *_tabs[tabIndex];
     const bool canClose = (_tabs.size() > 1);
     const bool hasFile = !tab.filePath.empty();
+    // Save is meaningful only when there's a known target file AND
+    // pending changes. Without a path, Save As... is the right action;
+    // with a clean tab, there's literally nothing to write.
+    const bool canSave = hasFile && tab.isDirty;
 
-    AppendMenu(hMenu, MF_STRING, IDM_TAB_RENAME, LM.get(L"tab_menu_rename").c_str());
-    AppendMenu(hMenu, MF_STRING, IDM_TAB_DUPLICATE, LM.get(L"tab_menu_duplicate").c_str());
-    AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenu(hMenu, MF_STRING, IDM_TAB_SAVE_AS, LM.get(L"tab_menu_save_as").c_str());
-    AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenu(hMenu, MF_STRING | (hasFile ? 0 : MF_GRAYED),
-        IDM_TAB_OPEN_FILE_LOCATION, LM.get(L"tab_menu_open_file_location").c_str());
-    AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
-    // "Close Multiple Tabs" submenu placed before the direct Close action
-    // so that Close occupies the very last slot of the menu - the strongest
-    // recency position for the most-used destructive action.
+    // Close as the very first entry mirrors N++'s tab context menu and
+    // matches what people reach for most often. Submenu groups the
+    // less-frequent destructive variants together.
+    AppendMenu(hMenu, MF_STRING | (canClose ? 0 : MF_GRAYED),
+        IDM_TAB_CLOSE, LM.get(L"tab_menu_close").c_str());
+
     HMENU hCloseMultipleMenu = CreatePopupMenu();
     if (hCloseMultipleMenu) {
         AppendMenu(hCloseMultipleMenu, MF_STRING | (canClose ? 0 : MF_GRAYED),
@@ -17810,8 +17852,18 @@ void MultiReplace::showTabContextMenu(int tabIndex, int screenX, int screenY)
             LM.get(L"tab_menu_close_multiple").c_str());
     }
 
-    AppendMenu(hMenu, MF_STRING | (canClose ? 0 : MF_GRAYED),
-        IDM_TAB_CLOSE, LM.get(L"tab_menu_close").c_str());
+    AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
+
+    AppendMenu(hMenu, MF_STRING, IDM_TAB_RENAME, LM.get(L"tab_menu_rename").c_str());
+    AppendMenu(hMenu, MF_STRING, IDM_TAB_DUPLICATE, LM.get(L"tab_menu_duplicate").c_str());
+    AppendMenu(hMenu, MF_STRING | (canSave ? 0 : MF_GRAYED),
+        IDM_TAB_SAVE, LM.get(L"tab_menu_save").c_str());
+    AppendMenu(hMenu, MF_STRING, IDM_TAB_SAVE_AS, LM.get(L"tab_menu_save_as").c_str());
+
+    AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
+
+    AppendMenu(hMenu, MF_STRING | (hasFile ? 0 : MF_GRAYED),
+        IDM_TAB_OPEN_FILE_LOCATION, LM.get(L"tab_menu_open_file_location").c_str());
 
     // Remember which tab the click targeted. Menu commands below use
     // _tabMenuTargetIndex so the context is preserved across the
@@ -18081,6 +18133,59 @@ int MultiReplace::findTabByFilePath(const std::wstring& filePath) const
         }
     }
     return -1;
+}
+
+void MultiReplace::onTabSave(int tabIndex)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+
+    TabState& tab = *_tabs[tabIndex];
+
+    // No path on disk yet → fall through to Save As..., consistent with
+    // N++'s Save behavior on an untitled tab. The menu entry's grayed
+    // state already prevents this in normal use, but be defensive in
+    // case Save was invoked some other way (e.g. accelerator).
+    if (tab.filePath.empty()) {
+        onTabSaveAs(tabIndex);
+        return;
+    }
+
+    const bool isActive = (tabIndex == _activeTabIndex);
+
+    // Active tab: live UI state is authoritative. Capture it before
+    // serializing so the settings block matches what the user sees.
+    if (isActive) {
+        captureStateIntoTab(tab);
+    }
+
+    const std::vector<ReplaceItemData>& listToSave = isActive
+        ? replaceListData
+        : tab.data;
+
+    if (!saveListToCsvWithSettings(tab.filePath, listToSave, tab)) {
+        showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
+        return;
+    }
+
+    tab.originalHash = computeListHash(listToSave);
+
+    if (isActive) {
+        originalListHash = tab.originalHash;
+        // Per-item dirty markers cleared on the live list and mirrored
+        // onto stored data, same pattern as onTabSaveAs.
+        for (auto& item : replaceListData) item.isDirty = false;
+        for (auto& item : tab.data)        item.isDirty = false;
+        InvalidateRect(_replaceListView, nullptr, TRUE);
+    }
+    else {
+        for (auto& item : tab.data) item.isDirty = false;
+    }
+
+    // Clear tab-level dirty flag and force tab label refresh to drop
+    // the bullet indicator. clearTabDirty + rebuild matches the same
+    // sequence used in onTabSaveAs.
+    clearTabDirty(tabIndex);
+    rebuildTabControl();
 }
 
 void MultiReplace::onTabSaveAs(int tabIndex)
