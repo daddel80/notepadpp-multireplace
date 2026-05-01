@@ -5,20 +5,17 @@
     <title>MultiReplace Use Variables Option</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-    /* Dark Mode Base Styles */
+    
     body.dark-mode                { background: #121212; color: #ccc; }
 
-    /* Header and Footer Styles */
-    body.dark-mode header, 
+body.dark-mode header, 
     body.dark-mode footer         { background: #1e1e1e; color: #ddd; border-color: #333; }
 
-    /* Link Styles */
-    body.dark-mode a              { color: #4ea8de; }
+body.dark-mode a              { color: #4ea8de; }
     body.dark-mode a:link         { color: #89b4ff; }
     body.dark-mode a:visited      { color: #89b4ff; }
 
-    /* Navigation Link Styles in Dark Mode */
-    body.dark-mode nav.pagenav {
+body.dark-mode nav.pagenav {
         background-color: #333;
         padding: 10px;
         border-radius: 8px;
@@ -29,43 +26,35 @@
     body.dark-mode nav.pagenav a:visited { color: #89b4ff; }
     body.dark-mode nav.pagenav a:hover   { text-decoration: underline; }
 
-    /* Main Content and Article Styling */
-    body.dark-mode main, 
+body.dark-mode main, 
     body.dark-mode article               { background: #242424; }
 
-    /* Footer Links */
-    body.dark-mode footer a[rel=license], 
+body.dark-mode footer a[rel=license], 
     body.dark-mode footer a[rel=license] img { color: #888; }
 
-    /* Text Elements */
-    body.dark-mode h1, 
+body.dark-mode h1, 
     body.dark-mode h2, 
     body.dark-mode h3, 
     body.dark-mode p                     { color: #e0e0e0; }
 
-    /* Interactive Elements */
-    body.dark-mode #fontdown, 
+body.dark-mode #fontdown, 
     body.dark-mode #fontup               { background: #333; color: #fff; }
     body.dark-mode #fontdown:hover, 
     body.dark-mode #fontup:hover         { background: #444; color: #eee; }
 
-    /* Additional UI Components */
-    body.dark-mode main article section  { background: #333; border-color: #444; }
+body.dark-mode main article section  { background: #333; border-color: #444; }
     body.dark-mode main article section.note { background: #2b2b2b; color: #ddd; }
 
-    /* Table Styling */
-    body.dark-mode table.optionsTable    { background: #333; color: #ddd; }
+body.dark-mode table.optionsTable    { background: #333; color: #ddd; }
     body.dark-mode table.optionsTable th, 
     body.dark-mode table.optionsTable td { background: #2b2b2b; color: #ccc; }
     body.dark-mode table.optionsTable th { background: #333; }
     body.dark-mode table.optionsTable tr:hover { background: #3a3a3a; }
 
-    /* Miscellaneous Adjustments */
-    body.dark-mode span.mnemonic         { background: #4ea8de; color: #121212; }
+body.dark-mode span.mnemonic         { background: #4ea8de; color: #121212; }
     body.dark-mode ul, body.dark-mode li { color: #ddd; }
 
-    /* Dark Mode Footer Text Styles */
-    body.dark-mode #foottext             { flex: 1; margin: 0 1em; text-align: center; color: #ddd; }
+body.dark-mode #foottext             { flex: 1; margin: 0 1em; text-align: center; color: #ddd; }
     body.dark-mode #foottext a           { white-space: nowrap; text-decoration: none; color: #4ea8de; }
     body.dark-mode #foottext a:hover     { text-decoration: underline; color: #62d1c3; }
     body.dark-mode #foottext.linklist a:link    { color: #89b4ff; }
@@ -87,8 +76,7 @@
         line-height: 1.4;
     }
 
-    /* Base Styles */
-    html, body                   {margin: 0; padding: 0; width: 100%; height: 100%;}
+html, body                   {margin: 0; padding: 0; width: 100%; height: 100%;}
     body                         {display: flex; flex-direction: column; font: 1em Calibri, Tahoma, sans-serif;}
 
     header                       {padding: 0; width: 100%; display: flex; flex-direction: row; justify-content: space-around;}
@@ -151,15 +139,17 @@
     body .pagenav a      {margin: 0 .5em; white-space: nowrap;} 
 
     @media (min-width: 640px) {
-       body main         {display: flex; flex-direction: row; padding: 0;}
-       body .pagenav     {padding: .5em 0 0 0; margin: 1.25em 1em .4em;}
+       body main         {display: flex; flex-direction: row; padding: 0 1.6em 0 1.6em;}
+       body .pagenav     {padding: .5em .5em .5em .5em; margin: 1.25em 0 .4em 0;}
        body .pagenav     {white-space: pre;}
-       body article      {flex: 1; overflow: auto; padding: 0 1em 0 0;}
+       body .pagenav     {overflow-y: auto; max-height: calc(100vh - 5em);}
+       body .pagenav     {flex: 0 0 14em; box-sizing: border-box;}
+       body article      {flex: 1; overflow: auto; padding: 0 0 0 1em; min-width: 0;}
        body h1           {margin-top: .5em;}
     }
 
-    body #centershortlines ~ article h1        {max-width: calc(32em + 12px);}
-    body #centershortlines ~ article section   {max-width: 58em;}
+    body article h1        {max-width: 58em;}
+    body article section   {max-width: 58em;}
 
     p.subsub              {margin-left: 1.5em;}
 
@@ -174,7 +164,6 @@
 
     body                {color: #000; background: #d0d0d0; line-height: 1.4;}
     *                   {border-color: #999;}
-    #centershortlines   {width: calc((100vw - (13.5em + 48em + 2em + 24px)) / 2);}
 
     code {
         font-family: 'Fira Code', 'Consolas', monospace;
@@ -276,6 +265,104 @@
     body.dark-mode nav.pagenav .sub-item {
          color: #89b4ff;
     }
+
+.engine-block {
+        margin: 1.5em 0;
+        max-width: 60em;
+    }
+
+.engine-toggle {
+        display: flex;
+        align-items: center;
+        background: #d6e4f0;
+        border: 2px solid #6688aa;
+        border-radius: 8px;
+        padding: .6em 1em;
+        cursor: pointer;
+        user-select: none;
+        font-size: 1.25rem;
+        font-weight: bold;
+        color: #234;
+        transition: background-color .15s ease;
+        box-sizing: border-box;
+    }
+    .engine-toggle:hover {
+        background: #c6d8ec;
+    }
+
+.engine-toggle .arrow {
+        display: inline-block;
+        margin-right: .6em;
+        transition: transform .2s ease;
+        font-size: 1rem;
+    }
+    .engine-block.open > .engine-toggle .arrow {
+        transform: rotate(90deg);
+    }
+
+.engine-toggle .hint {
+        margin-left: auto;
+        font-size: .85rem;
+        font-weight: normal;
+        opacity: .7;
+    }
+
+.engine-body {
+        display: none;
+        padding: 0;
+    }
+    .engine-block.open > .engine-body {
+        display: block;
+    }
+
+body.dark-mode .engine-toggle {
+        background: #2a3a4a;
+        border-color: #4a6a8a;
+        color: #ddeaf5;
+    }
+    body.dark-mode .engine-toggle:hover {
+        background: #364658;
+    }
+
+nav.pagenav .nav-group {
+        font-weight: bold;
+        margin-top: .4em;
+        padding-top: .4em;
+        border-top: 1px solid #ccc;
+    }
+    body.dark-mode nav.pagenav .nav-group {
+        border-top-color: #555;
+    }
+    nav.pagenav .nav-group:first-child {
+        border-top: none;
+        margin-top: 0;
+        padding-top: 0;
+    }
+
+nav.pagenav .nav-group.collapsible {
+        cursor: pointer;
+        user-select: none;
+    }
+    nav.pagenav .nav-group.collapsible::before {
+        content: "\25B8";  
+        display: inline-block;
+        margin-right: .3em;
+        transition: transform .15s ease;
+        font-size: .8em;
+    }
+    nav.pagenav .nav-group.collapsible.open::before {
+        transform: rotate(90deg);
+    }
+    nav.pagenav .nav-group.collapsible:hover {
+        color: #248;
+    }
+    body.dark-mode nav.pagenav .nav-group.collapsible:hover {
+        color: #b8d4ff;
+    }
+    
+    nav.pagenav a[hidden] {
+        display: none;
+    }
     </style>
     <script>
     var isDarkModeEnabled = false;  // Set this variable to true or false to activate or deactivate DarkMode
@@ -291,6 +378,7 @@
                 }
             }
         }
+        restoreEngineBlockStates();
     }
 
     function setFontDown() {
@@ -316,6 +404,72 @@
         }
     }
 
+    function engineStorageKey(name) {
+        return "MultiReplaceHelp.engineState." + name;
+    }
+
+    function setEngineState(name, open) {
+        if (!name) return;
+
+        var block = document.querySelector('.engine-block[data-engine="' + name + '"]');
+        if (block) {
+            if (open) block.classList.add("open");
+            else block.classList.remove("open");
+        }
+
+        var group = document.querySelector('.nav-group.collapsible[data-engine="' + name + '"]');
+        if (group) {
+            if (open) group.classList.add("open");
+            else group.classList.remove("open");
+            var sibling = group.nextElementSibling;
+            while (sibling && !sibling.classList.contains("nav-group")) {
+                if (sibling.tagName === "A") {
+                    if (open) sibling.removeAttribute("hidden");
+                    else sibling.setAttribute("hidden", "");
+                }
+                sibling = sibling.nextElementSibling;
+            }
+        }
+
+        if (window.localStorage) {
+            localStorage.setItem(engineStorageKey(name), open ? "open" : "closed");
+        }
+    }
+
+    function toggleEngineByElement(el) {
+        var name = el.getAttribute("data-engine");
+        if (!name) return;
+        var isOpen = el.classList.contains("open");
+        setEngineState(name, !isOpen);
+    }
+
+    function toggleEngineBlock(blockEl) { toggleEngineByElement(blockEl); }
+    function toggleEngineNav(groupEl)   { toggleEngineByElement(groupEl); }
+
+    function restoreEngineBlockStates() {
+        var blocks = document.querySelectorAll(".engine-block");
+        for (var i = 0; i < blocks.length; ++i) {
+            var b = blocks[i];
+            var name = b.getAttribute("data-engine");
+            if (!name) continue;
+            var saved = null;
+            if (window.localStorage) {
+                saved = localStorage.getItem(engineStorageKey(name));
+            }
+            setEngineState(name, saved === "open");
+        }
+    }
+
+    function navClicked(ev, anchorId) {
+        var target = document.getElementById(anchorId);
+        if (!target) return;
+        var ancestor = target.closest(".engine-block");
+        if (ancestor && !ancestor.classList.contains("open")) {
+            var name = ancestor.getAttribute("data-engine");
+            if (name) setEngineState(name, true);
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         console.log("Document loaded");
         checkDarkMode();
@@ -327,28 +481,43 @@
 <header>MultiReplace: "Use Variables" Feature Guide</header>
 
 <main>
-<div id="centershortlines"></div>
 
 <nav class="pagenav">
+    <div class="nav-group">Overview</div>
     <a href="#Introduction">Introduction</a>
-    <a href="#QuickStart">Quick Start</a>
-    <a href="#Variables">Variables</a>
-    <a href="#AvailableFunctions">Available Functions</a>
-    <a href="#Commands">Command Reference</a>
-    <a href="#setstrorcalc" class="sub-item">set()</a>
-    <a href="#condcondition-trueval-falseval" class="sub-item">cond()</a>
-    <a href="#varsvariable1value1-variable2value2-" class="sub-item">vars()</a>
-    <a href="#lvarsfilepath" class="sub-item">lvars()</a>
-    <a href="#lkpkey-hpath-inner" class="sub-item">lkp()</a>
-    <a href="#fmtnnum-maxdecimals-fixeddecimals" class="sub-item">fmtN()</a>
-    <a href="#lcmdpath" class="sub-item">lcmd()</a>
-    <a href="#StringHelpers">String Formatting Helpers</a>
-    <a href="#preload-variables--helpers">Preload Variables &amp; Helpers</a>
-    <a href="#Operators">Operators</a>
-    <a href="#IfThenLogic">If-Then Logic</a>
-    <a href="#DebugMode">Debug Mode</a>
-    <a href="#FurtherFunctions">Math &amp; String Functions</a>
-    <a href="#Examples">Examples</a>
+    <a href="#EngineOverview">Engine Overview</a>
+
+    <div class="nav-group collapsible" data-engine="lua" onclick="toggleEngineNav(this)">Lua</div>
+    <a href="#lua-quickstart" hidden onclick="navClicked(event, 'lua-quickstart')">Quick Start</a>
+    <a href="#Variables" hidden onclick="navClicked(event, 'Variables')">Variables Overview</a>
+    <a href="#AvailableFunctions" hidden onclick="navClicked(event, 'AvailableFunctions')">Available Functions</a>
+    <a href="#Commands" hidden onclick="navClicked(event, 'Commands')">Command Reference</a>
+    <a href="#setstrorcalc" class="sub-item" hidden onclick="navClicked(event, 'setstrorcalc')">set()</a>
+    <a href="#condcondition-trueval-falseval" class="sub-item" hidden onclick="navClicked(event, 'condcondition-trueval-falseval')">cond()</a>
+    <a href="#varsvariable1value1-variable2value2-" class="sub-item" hidden onclick="navClicked(event, 'varsvariable1value1-variable2value2-')">vars()</a>
+    <a href="#lvarsfilepath" class="sub-item" hidden onclick="navClicked(event, 'lvarsfilepath')">lvars()</a>
+    <a href="#lkpkey-hpath-inner" class="sub-item" hidden onclick="navClicked(event, 'lkpkey-hpath-inner')">lkp()</a>
+    <a href="#fmtnnum-maxdecimals-fixeddecimals" class="sub-item" hidden onclick="navClicked(event, 'fmtnnum-maxdecimals-fixeddecimals')">fmtN()</a>
+    <a href="#lcmdpath" class="sub-item" hidden onclick="navClicked(event, 'lcmdpath')">lcmd()</a>
+    <a href="#StringHelpers" hidden onclick="navClicked(event, 'StringHelpers')">String Formatting Helpers</a>
+    <a href="#tonum-behaviour" hidden onclick="navClicked(event, 'tonum-behaviour')">tonum Parsing Behaviour</a>
+    <a href="#preload-variables--helpers" hidden onclick="navClicked(event, 'preload-variables--helpers')">Preload Variables &amp; Helpers</a>
+    <a href="#lua-operators" hidden onclick="navClicked(event, 'lua-operators')">Operators</a>
+    <a href="#IfThenLogic" hidden onclick="navClicked(event, 'IfThenLogic')">If-Then Logic</a>
+    <a href="#DebugMode" hidden onclick="navClicked(event, 'DebugMode')">Debug Mode</a>
+    <a href="#lua-examples" hidden onclick="navClicked(event, 'lua-examples')">Examples</a>
+
+    <div class="nav-group collapsible" data-engine="exprtk" onclick="toggleEngineNav(this)">ExprTk</div>
+    <a href="#exprtk-quickstart" hidden onclick="navClicked(event, 'exprtk-quickstart')">Quick Start</a>
+    <a href="#exprtk-pattern-syntax" hidden onclick="navClicked(event, 'exprtk-pattern-syntax')">Pattern Syntax</a>
+    <a href="#exprtk-variables" hidden onclick="navClicked(event, 'exprtk-variables')">Variables and Captures</a>
+    <a href="#exprtk-math" hidden onclick="navClicked(event, 'exprtk-math')">Math Functions</a>
+    <a href="#exprtk-control-flow" hidden onclick="navClicked(event, 'exprtk-control-flow')">Control Flow</a>
+    <a href="#exprtk-string-output" hidden onclick="navClicked(event, 'exprtk-string-output')">String Output</a>
+    <a href="#exprtk-operators" hidden onclick="navClicked(event, 'exprtk-operators')">Operators</a>
+    <a href="#exprtk-skip" hidden onclick="navClicked(event, 'exprtk-skip')">Skipping Matches</a>
+    <a href="#exprtk-examples" hidden onclick="navClicked(event, 'exprtk-examples')">Examples</a>
+    <a href="#exprtk-limitations" hidden onclick="navClicked(event, 'exprtk-limitations')">Limitations</a>
 </nav>
 
 <article>
@@ -356,14 +525,75 @@
   <section id="Introduction">
     <h2>Introduction</h2>
     <p>
-      Enable the <strong>Use Variables</strong> option to enhance replacements with calculations and logic based on the matched text. This feature lets you create dynamic replacement patterns, handle conditions, and produce flexible outputs—all configured directly in the Replace field. This functionality relies on the <a href="https://www.lua.org/">Lua engine</a>.
+      The <strong>Use Variables</strong> option enables dynamic replacements that go beyond plain text substitution. Instead of a fixed replacement string, you write a small expression that is evaluated for each match. Two engines are available: <strong>Lua</strong> and <strong>ExprTk</strong>. Switch via the <code>(L)</code> / <code>(E)</code> indicator next to the option.
     </p>
+  </section>
+
+  <section id="EngineOverview">
+    <h2>Engine Overview</h2>
+    <p>When <strong>Use Variables</strong> is enabled, replacements run through a formula engine. MultiReplace ships with two: <strong>Lua</strong> and <strong>ExprTk</strong>. Switch via the <code>(L)</code> / <code>(E)</code> indicator next to the <strong>Use Variables</strong> checkbox. The choice is per tab and persists across sessions.</p>
+    <p><strong>Quick guidance:</strong> pick <strong>Lua</strong> for anything involving text manipulation, conditional logic, lookup tables, or external scripts. Pick <strong>ExprTk</strong> when the task is mostly arithmetic on captured numbers and you want concise inline expressions.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>&nbsp;</th>
+        <th>Lua</th>
+        <th>ExprTk</th>
+      </tr>
+      <tr>
+        <td><strong>Best for</strong></td>
+        <td>Text and string work, conditional logic, lookups, external file loading</td>
+        <td>High-speed numeric work, running totals, concise inline math</td>
+      </tr>
+      <tr>
+        <td><strong>Captures</strong></td>
+        <td><code>CAP1</code>, <code>CAP2</code>, ... (always strings, use <code>tonum()</code> for math)</td>
+        <td><code>reg(N)</code> numeric, <code>rstr(N)</code> string</td>
+      </tr>
+      <tr>
+        <td><strong>Strings</strong></td>
+        <td>Full string library (substitute, slice, format, upper/lower, etc.)</td>
+        <td>Passthrough only &mdash; no string manipulation functions; output composed from literals and captures</td>
+      </tr>
+      <tr>
+        <td><strong>Math</strong></td>
+        <td><code>math</code> library covers the basics (<code>sin</code>, <code>cos</code>, <code>log</code>, <code>sqrt</code>, <code>abs</code>, <code>floor</code>, <code>ceil</code>, ...); richer math built up in Lua code</td>
+        <td>Rich built-in math: full trigonometry, hyperbolic, log/exp variants, <code>clamp</code>, <code>sgn</code>, <code>roundn</code>, <code>erf</code>, <code>ncdf</code>, variadic <code>avg</code>/<code>sum</code>/<code>min</code>/<code>max</code></td>
+      </tr>
+      <tr>
+        <td><strong>Loops &amp; flow</strong></td>
+        <td>Full control structures (<code>if/elseif/else</code>, <code>while</code>, <code>for</code>, <code>repeat</code>)</td>
+        <td>Conditionals within expressions (no general loops)</td>
+      </tr>
+      <tr>
+        <td><strong>UTF-8</strong></td>
+        <td>Full UTF-8 in the script</td>
+        <td>UTF-8 only in document text and captures, NOT in string literals inside the expression</td>
+      </tr>
+      <tr>
+        <td><strong>Performance</strong></td>
+        <td>Bytecode VM with per-match globals and string allocations</td>
+        <td>Pre-compiled expression tree, direct double arithmetic; tends to be faster for pure numeric work</td>
+      </tr>
+      <tr>
+        <td><strong>External I/O</strong></td>
+        <td><code>lvars</code>, <code>lkp</code>, <code>lcmd</code> (file access, external scripts)</td>
+        <td>None &mdash; numeric work only</td>
+      </tr>
+    </table>
   </section>
 
   <hr>
 
-  <section id="QuickStart">
-    <h2>Quick Start: Use Variables</h2>
+<div class="engine-block" data-engine="lua">
+    <div class="engine-toggle" onclick="toggleEngineBlock(this.parentNode)">
+      <span class="arrow">&#9654;</span>
+      Lua Reference
+      <span class="hint">click to collapse / expand</span>
+    </div>
+    <div class="engine-body">
+
+      <section id="lua-quickstart">
+    <h2>Quick Start: Lua</h2>
     <ol>
       <li>
         <strong>Enable "Use Variables"</strong><br>
@@ -405,53 +635,54 @@
     </ol>
   </section>
 
-  <hr>
+      <br>
 
-  <section id="Variables">
+      <section id="Variables">
     <h2>Variables Overview</h2>
+    <p>All variables below are registered under both upper- and lowercase. Pick whichever style reads better &mdash; <code>CNT</code> and <code>cnt</code> refer to the same value, as do <code>match</code> and <code>MATCH</code>, <code>cap1</code> and <code>CAP1</code>, and so on.</p>
     <table class="optionsTable">
       <tr>
         <th>Variable</th>
         <th>Description</th>
       </tr>
       <tr>
-        <td><strong>CNT</strong></td>
+        <td><strong>CNT</strong> / <strong>cnt</strong></td>
         <td>Count of the detected string.</td>
       </tr>
       <tr>
-        <td><strong>LCNT</strong></td>
+        <td><strong>LCNT</strong> / <strong>lcnt</strong></td>
         <td>Count of the detected string within the line.</td>
       </tr>
       <tr>
-        <td><strong>LINE</strong></td>
+        <td><strong>LINE</strong> / <strong>line</strong></td>
         <td>Line number where the string is found.</td>
       </tr>
       <tr>
-        <td><strong>LPOS</strong></td>
+        <td><strong>LPOS</strong> / <strong>lpos</strong></td>
         <td>Relative character position within the line.</td>
       </tr>
       <tr>
-        <td><strong>APOS</strong></td>
+        <td><strong>APOS</strong> / <strong>apos</strong></td>
         <td>Absolute character position in the document.</td>
       </tr>
       <tr>
-        <td><strong>COL</strong></td>
+        <td><strong>COL</strong> / <strong>col</strong></td>
         <td>Column number where the string was found (CSV-Scope option selected).</td>
       </tr>
       <tr>
-        <td><strong>MATCH</strong></td>
+        <td><strong>MATCH</strong> / <strong>match</strong></td>
         <td>Contains the text of the detected string, in contrast to <code>CAP</code> variables which correspond to capture groups in regex patterns.</td>
       </tr>
       <tr>
-        <td><strong>FNAME</strong></td>
+        <td><strong>FNAME</strong> / <strong>fname</strong></td>
         <td>Filename or window title for new, unsaved files.</td>
       </tr>
       <tr>
-        <td><strong>FPATH</strong></td>
+        <td><strong>FPATH</strong> / <strong>fpath</strong></td>
         <td>Full path including the filename, or empty for new, unsaved files.</td>
       </tr>
       <tr>
-        <td><strong>CAP1</strong>, <strong>CAP2</strong>, ...</td>
+        <td><strong>CAP1</strong> / <strong>cap1</strong>, <strong>CAP2</strong> / <strong>cap2</strong>, &hellip;</td>
         <td>Equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Always strings; use <code>tonum(CAP1)</code> for calculations. Note: Standard counterparts (<code>$1</code>, <code>$2</code>, ...) cannot be used in this environment.</td>
       </tr>
     </table>
@@ -459,7 +690,7 @@
     <p><strong>Notes:</strong></p>
     <ul>
       <li><code>FNAME</code> and <code>FPATH</code> are updated for each file processed by <code>Replace All in All Open Docs</code> and <code>Replace All in Files</code>. This ensures that variables always refer to the file currently being modified.</li>
-      <li><strong>String Variables:</strong> <code>MATCH</code> and <code>CAP</code> variables are always strings. For calculations, use <code>tonum(CAP1)</code>. Both dot (.) and comma (,) are recognized as decimal separators. Thousands separators are not supported.</li>
+      <li><code>MATCH</code> and <code>CAP</code> variables are always strings. For calculations use <code>tonum(CAP1)</code>; see the <a href="#tonum-behaviour">tonum parsing behaviour</a> table for what it accepts.</li>
     </ul>
   </section>
 
@@ -496,7 +727,7 @@
       </tr>
       <tr>
         <td><code>tonum(s)</code></td>
-        <td>Converts string <code>s</code> to number. Accepts both dot (.) and comma (,) as decimal separator.</td>
+        <td>Converts string <code>s</code> to number. Accepts both dot (.) and comma (,) as decimal separator. See the <a href="#tonum-behaviour">tonum parsing behaviour</a> table for the full input/output map.</td>
         <td><code>tonum(CAP1) * 2</code></td>
       </tr>
       <tr>
@@ -984,6 +1215,63 @@ return {
 
   <br>
 
+  <section id="tonum-behaviour">
+    <h2>tonum Parsing Behaviour</h2>
+    <p>The <code>tonum()</code> helper normalises commas to periods and delegates to Lua's built-in <code>tonumber()</code>. The strict return semantics (e.g. <code>nil</code> on trailing junk) follow Lua convention &mdash; combine with <code>or</code> for a default: <code>tonum(CAP1) or 0</code>.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Input</th>
+        <th>Result</th>
+        <th>Note</th>
+      </tr>
+      <tr>
+        <td><code>"42"</code></td>
+        <td><code>42</code></td>
+        <td>&nbsp;</td>
+      </tr>
+      <tr>
+        <td><code>"3.14"</code></td>
+        <td><code>3.14</code></td>
+        <td>&nbsp;</td>
+      </tr>
+      <tr>
+        <td><code>"3,14"</code></td>
+        <td><code>3.14</code></td>
+        <td>comma accepted as decimal</td>
+      </tr>
+      <tr>
+        <td><code>"-7,5"</code></td>
+        <td><code>-7.5</code></td>
+        <td>&nbsp;</td>
+      </tr>
+      <tr>
+        <td><code>""</code>, <code>nil</code>, <code>"abc"</code></td>
+        <td><code>nil</code></td>
+        <td>not a number</td>
+      </tr>
+      <tr>
+        <td><code>"$100"</code></td>
+        <td><code>nil</code></td>
+        <td>leading non-digit fails</td>
+      </tr>
+      <tr>
+        <td><code>"3,14abc"</code></td>
+        <td><code>nil</code></td>
+        <td>trailing characters cause failure</td>
+      </tr>
+      <tr>
+        <td><code>"  42  "</code></td>
+        <td><code>42</code></td>
+        <td>surrounding whitespace tolerated</td>
+      </tr>
+      <tr>
+        <td><code>"0x1F"</code>, <code>"1e3"</code></td>
+        <td><code>31</code>, <code>1000</code></td>
+        <td>hex and scientific notation supported</td>
+      </tr>
+    </table>
+  </section>
+
   <section id="preload-variables--helpers">
     <h2>Preload Variables &amp; Helpers</h2>
     <p>Use init entries (empty Find) to preload variables or helper functions before any replacements run. Init entries run once per Replace-All (or per list pass) and do not change text directly.</p>
@@ -1038,7 +1326,7 @@ return {
 
   <br>
 
-  <section id="Operators">
+  <section id="lua-operators">
      <h2>Operators</h2>
      <table class="optionsTable">
          <tr>
@@ -1122,18 +1410,7 @@ return {
 
   <br>
 
-  <section id="FurtherFunctions">
-    <h2>Math &amp; String Functions</h2>
-    <p>
-      MultiReplace uses the <a href="https://www.lua.org/" target="_blank">Lua engine</a>, allowing for Lua math operations and string methods. Refer to 
-      <a href="https://www.lua.org/manual/5.4/manual.html#6.4" target="_blank">Lua String Manipulation</a> and 
-      <a href="https://www.lua.org/manual/5.4/manual.html#6.6" target="_blank">Lua Mathematical Functions</a> for more information.
-    </p>
-  </section>
-
-  <br>
-
-  <section id="Examples">
+  <section id="lua-examples">
     <h2>Examples</h2>
     <table class="optionsTable">
       <tr>
@@ -1209,13 +1486,514 @@ return {
     </table>
   </section>
 
+    </div>
+  </div>
+
+<div class="engine-block" data-engine="exprtk">
+    <div class="engine-toggle" onclick="toggleEngineBlock(this.parentNode)">
+      <span class="arrow">&#9654;</span>
+      ExprTk Reference
+      <span class="hint">click to collapse / expand</span>
+    </div>
+    <div class="engine-body">
+
+      <section id="exprtk-quickstart">
+    <h2>Quick Start: ExprTk</h2>
+    <ol>
+      <li>
+        <strong>Switch to ExprTk</strong><br>
+        Click the <code>(L)</code> indicator next to <strong>Use Variables</strong> so it shows <code>(E)</code>.
+      </li>
+      <li>
+        <strong>Enable Use Variables</strong><br>
+        Check the <strong>Use Variables</strong> option in the Replace interface.
+      </li>
+      <li>
+        <strong>Try a simple expression:</strong>
+        <ul>
+          <li><strong>Find</strong>: <code>(\d+)</code></li>
+          <li><strong>Replace</strong>: <code>(?=reg(1) * 2)</code></li>
+        </ul>
+        Every captured number is doubled. The <code>(?=...)</code> block is the expression; everything outside it is literal text in the output.
+      </li>
+      <li>
+        <strong>Mix expressions and literal text:</strong>
+        <ul>
+          <li><strong>Find</strong>: <code>(\d+)</code></li>
+          <li><strong>Replace</strong>: <code>value=(?=reg(1)) doubled=(?=reg(1)*2)</code></li>
+        </ul>
+        A single replace string can contain <strong>any number</strong> of <code>(?=...)</code> blocks interleaved with literal text. This is the core idiom &mdash; small, focused expressions instead of one big script.
+      </li>
+    </ol>
+  </section>
+
+  <br>
+
+  <section id="exprtk-pattern-syntax">
+    <h2>Pattern Syntax: <code>(?= ... )</code></h2>
+    <p>Every ExprTk expression in a replace string is wrapped in <code>(?=</code> and <code>)</code>. The marker is intentionally three characters so it cannot be confused with regex syntax.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Syntax</th>
+        <th>Meaning</th>
+      </tr>
+      <tr>
+        <td><code>(?=expr)</code></td>
+        <td>Evaluate the expression and insert its result at this position.</td>
+      </tr>
+      <tr>
+        <td><code>\(?=</code></td>
+        <td>Literal <code>(?=</code> &mdash; backslash escapes the marker.</td>
+      </tr>
+      <tr>
+        <td><code>\\</code></td>
+        <td>Literal backslash.</td>
+      </tr>
+      <tr>
+        <td><em>any other text</em></td>
+        <td>Literal output, including UTF-8 byte sequences.</td>
+      </tr>
+    </table>
+    <p>The closing <code>)</code> is matched by depth-counting, so balanced parentheses inside the expression &mdash; like <code>min(reg(1), reg(2))</code> &mdash; work naturally without extra escaping.</p>
+  </section>
+
+  <br>
+
+  <section id="exprtk-variables">
+    <h2>Variables and Captures</h2>
+    <p>ExprTk receives the same per-match context as Lua, but exposed differently because ExprTk is numeric-first. All variables below are registered under both upper- and lowercase &mdash; pick the style you prefer.</p>
+
+    <h3>Numeric variables (read-only)</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><strong>CNT</strong> / <strong>cnt</strong></td>
+        <td>Replacement count across the whole run (1-based).</td>
+      </tr>
+      <tr>
+        <td><strong>LCNT</strong> / <strong>lcnt</strong></td>
+        <td>Replacement count within the current line (1-based).</td>
+      </tr>
+      <tr>
+        <td><strong>LINE</strong> / <strong>line</strong></td>
+        <td>1-based line number of the current match.</td>
+      </tr>
+      <tr>
+        <td><strong>LPOS</strong> / <strong>lpos</strong></td>
+        <td>Column position within the line (UTF-8 bytes).</td>
+      </tr>
+      <tr>
+        <td><strong>APOS</strong> / <strong>apos</strong></td>
+        <td>Absolute byte position in the document.</td>
+      </tr>
+      <tr>
+        <td><strong>COL</strong> / <strong>col</strong></td>
+        <td>CSV column index (CSV mode), 0 otherwise.</td>
+      </tr>
+    </table>
+
+    <h3>String variables (read-only, usable only in <code>return [...]</code> lists)</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Name</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><strong>MATCH</strong> / <strong>match</strong></td>
+        <td>The matched text.</td>
+      </tr>
+      <tr>
+        <td><strong>FPATH</strong> / <strong>fpath</strong></td>
+        <td>Full path of the document being processed.</td>
+      </tr>
+      <tr>
+        <td><strong>FNAME</strong> / <strong>fname</strong></td>
+        <td>Filename without path.</td>
+      </tr>
+    </table>
+
+    <h3>Capture access</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Function</th>
+        <th>Returns</th>
+        <th>Use case</th>
+      </tr>
+      <tr>
+        <td><code>reg(N)</code></td>
+        <td>number</td>
+        <td>Capture group N as <code>double</code>. <code>reg(0)</code> is the full match. Non-numeric captures yield <code>0.0</code>.</td>
+      </tr>
+      <tr>
+        <td><code>rstr(N)</code></td>
+        <td>string</td>
+        <td>Capture group N as text. <code>rstr(0)</code> is the full match. Only valid inside a <code>return [...]</code> list.</td>
+      </tr>
+    </table>
+
+    <p><strong>Number parsing notes:</strong></p>
+    <table class="optionsTable">
+      <tr>
+        <th>Capture text</th>
+        <th><code>reg(N)</code></th>
+        <th>Note</th>
+      </tr>
+      <tr>
+        <td><code>"42"</code></td>
+        <td><code>42</code></td>
+        <td>&nbsp;</td>
+      </tr>
+      <tr>
+        <td><code>"3.14"</code></td>
+        <td><code>3.14</code></td>
+        <td>&nbsp;</td>
+      </tr>
+      <tr>
+        <td><code>"3,14"</code></td>
+        <td><code>3.14</code></td>
+        <td>comma accepted as decimal</td>
+      </tr>
+      <tr>
+        <td><code>"-7,5"</code></td>
+        <td><code>-7.5</code></td>
+        <td>&nbsp;</td>
+      </tr>
+      <tr>
+        <td><code>""</code>, <code>"abc"</code></td>
+        <td><code>0</code></td>
+        <td>unparseable falls back to zero</td>
+      </tr>
+      <tr>
+        <td><code>"$100"</code></td>
+        <td><code>0</code></td>
+        <td>leading non-digit fails</td>
+      </tr>
+      <tr>
+        <td><code>"3,14abc"</code></td>
+        <td><code>3.14</code></td>
+        <td>trailing characters tolerated</td>
+      </tr>
+      <tr>
+        <td><code>"1,234,567"</code> (US thousands)</td>
+        <td><code>1.234</code></td>
+        <td>thousands separators not recognised &mdash; strip them in the regex first</td>
+      </tr>
+      <tr>
+        <td><code>"1.234,56"</code> or <code>"1,234.56"</code></td>
+        <td><code>1.234</code> or <code>1</code></td>
+        <td>mixed separators are unreliable &mdash; avoid relying on them</td>
+      </tr>
+    </table>
+    <p>Expressions must produce a finite number. Operations that yield <code>NaN</code> or <code>&plusmn;Infinity</code> (e.g. <code>0/0</code>, <code>log(-1)</code>, <code>sqrt(-1)</code>) raise a runtime error and stop the replacement &mdash; guard the input first when such values are possible.</p>
+  </section>
+
+  <br>
+
+  <section id="exprtk-math">
+    <h2>Math Functions</h2>
+    <p>ExprTk ships with a substantially richer numeric library than Lua's <code>math.*</code>. The most useful built-ins for replacement work:</p>
+
+    <h3>Basic</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Function</th>
+        <th>Description</th>
+      </tr>
+      <tr><td><code>abs(x)</code></td><td>Absolute value.</td></tr>
+      <tr><td><code>sgn(x)</code></td><td>Sign: -1, 0, or 1.</td></tr>
+      <tr><td><code>floor(x)</code>, <code>ceil(x)</code></td><td>Round down / up.</td></tr>
+      <tr><td><code>round(x)</code></td><td>Round to nearest integer.</td></tr>
+      <tr><td><code>roundn(x, n)</code></td><td>Round to <code>n</code> decimal places.</td></tr>
+      <tr><td><code>trunc(x)</code></td><td>Truncate toward zero.</td></tr>
+      <tr><td><code>frac(x)</code></td><td>Fractional part.</td></tr>
+      <tr><td><code>sqrt(x)</code>, <code>root(x, n)</code></td><td>Square root, n-th root.</td></tr>
+      <tr><td><code>exp(x)</code>, <code>expm1(x)</code></td><td><code>e^x</code>, <code>e^x - 1</code>.</td></tr>
+      <tr><td><code>log(x)</code>, <code>log2(x)</code>, <code>log10(x)</code>, <code>log1p(x)</code>, <code>logn(x, n)</code></td><td>Natural log and variants.</td></tr>
+      <tr><td><code>pow(x, n)</code> or <code>x^n</code></td><td>Exponentiation.</td></tr>
+      <tr><td><code>mod(a, b)</code> or <code>a % b</code></td><td>Modulo.</td></tr>
+      <tr><td><code>clamp(lo, x, hi)</code></td><td>Constrain <code>x</code> to the range <code>[lo, hi]</code>.</td></tr>
+      <tr><td><code>inrange(lo, x, hi)</code></td><td>1 if <code>lo &le; x &le; hi</code>, else 0.</td></tr>
+    </table>
+
+    <h3>Aggregates (variadic)</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Function</th>
+        <th>Description</th>
+      </tr>
+      <tr><td><code>min(a, b, ...)</code></td><td>Smallest argument. Any number of operands.</td></tr>
+      <tr><td><code>max(a, b, ...)</code></td><td>Largest argument.</td></tr>
+      <tr><td><code>avg(a, b, ...)</code></td><td>Arithmetic mean.</td></tr>
+      <tr><td><code>sum(a, b, ...)</code></td><td>Sum.</td></tr>
+      <tr><td><code>mul(a, b, ...)</code></td><td>Product.</td></tr>
+    </table>
+
+    <h3>Trigonometry</h3>
+    <p><code>sin</code>, <code>cos</code>, <code>tan</code>, <code>asin</code>, <code>acos</code>, <code>atan</code>, <code>atan2(y, x)</code>, <code>sinh</code>, <code>cosh</code>, <code>tanh</code>, <code>asinh</code>, <code>acosh</code>, <code>atanh</code>, <code>cot</code>, <code>csc</code>, <code>sec</code>, <code>hypot(x, y)</code>, <code>deg2rad(x)</code>, <code>rad2deg(x)</code>.</p>
+
+    <h3>Statistics</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Function</th>
+        <th>Description</th>
+      </tr>
+      <tr><td><code>erf(x)</code></td><td>Error function.</td></tr>
+      <tr><td><code>erfc(x)</code></td><td>Complementary error function.</td></tr>
+      <tr><td><code>ncdf(x)</code></td><td>Standard normal cumulative distribution (Z to percentile).</td></tr>
+    </table>
+
+    <h3>Constants</h3>
+    <p><code>pi</code>, <code>epsilon</code>, <code>inf</code>.</p>
+  </section>
+
+  <br>
+
+  <section id="exprtk-control-flow">
+    <h2>Control Flow</h2>
+    <p>ExprTk has expression-level control flow. Everything returns a value &mdash; there are no statements in the Lua sense.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Form</th>
+        <th>Meaning</th>
+      </tr>
+      <tr>
+        <td><code>if (cond) a else b</code></td>
+        <td>If/else expression. Last expression is the value.</td>
+      </tr>
+      <tr>
+        <td><code>cond ? a : b</code></td>
+        <td>Ternary operator. Same as the if-else above.</td>
+      </tr>
+      <tr>
+        <td><code>if (cond) { a; b; c }</code></td>
+        <td>Block form, value is the last statement.</td>
+      </tr>
+      <tr>
+        <td><code>switch { case c1: v1; case c2: v2; default: v3 }</code></td>
+        <td>Multi-way branch.</td>
+      </tr>
+    </table>
+    <p>Example &mdash; clamp a captured value but show "OVER" if it exceeded:</p>
+    <p><code>(?=reg(1) &gt; 100 ? 100 : reg(1))</code></p>
+  </section>
+
+  <br>
+
+  <section id="exprtk-string-output">
+    <h2>String Output via <code>return [...]</code></h2>
+    <p>ExprTk expressions normally produce a number. To emit a <strong>string</strong> &mdash; e.g. to combine literal text with <code>MATCH</code> or <code>rstr(N)</code> &mdash; wrap the output in a <code>return</code> list:</p>
+    <p><code>(?=return ['prefix-', rstr(1), '-suffix'])</code></p>
+    <p>The list elements can be string literals, the string variables (<code>MATCH</code>, <code>FPATH</code>, <code>FNAME</code>), <code>rstr(N)</code> capture text, and numeric expressions (which are converted to text). This is the only path for any non-numeric output.</p>
+    <section class="note">
+      <p><strong>String literals are ASCII-only.</strong> UTF-8 bytes in <code>'...'</code> will fail to compile. Non-ASCII text must come from the document via captures or string variables, or be placed in the literal portion of the replace string outside <code>(?=...)</code>. See <a href="#exprtk-limitations">Limitations</a> below.</p>
+    </section>
+  </section>
+
+  <br>
+
+  <section id="exprtk-operators">
+    <h2>Operators</h2>
+    <table class="optionsTable">
+      <tr>
+        <th>Operator</th>
+        <th>Meaning</th>
+      </tr>
+      <tr><td><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code>, <code>^</code></td><td>Arithmetic and exponentiation.</td></tr>
+      <tr><td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code></td><td>Comparison.</td></tr>
+      <tr><td><code>and</code>, <code>or</code>, <code>not</code>, <code>xor</code>, <code>nand</code>, <code>nor</code></td><td>Logical operators (also <code>&amp;&amp;</code>, <code>||</code>, <code>!</code>).</td></tr>
+      <tr><td><code>:=</code></td><td>Assignment to a local variable.</td></tr>
+      <tr><td><code>+=</code>, <code>-=</code>, <code>*=</code>, <code>/=</code>, <code>%=</code></td><td>Compound assignment.</td></tr>
+      <tr><td><code>?:</code></td><td>Ternary.</td></tr>
+    </table>
+  </section>
+
+  <br>
+
+  <section id="exprtk-skip">
+    <h2>Skipping Matches</h2>
+    <p>Calling <code>skip()</code> from within an expression tells the engine to leave this match unchanged. The expression's own value is ignored when skip is signalled. Useful as a numeric filter:</p>
+    <p><code>(?=reg(1) &lt; 100 ? skip() : reg(1) * 2)</code></p>
+    <p>This doubles captured numbers &ge; 100 and leaves everything else untouched.</p>
+  </section>
+
+  <br>
+
+  <section id="exprtk-examples">
+    <h2>More Examples</h2>
+    <p>The examples below are drawn from typical text-processing tasks. Each row in the table is a <strong>single rule</strong> &mdash; copy the Find and Replace columns straight into MultiReplace, set the engine to ExprTk, enable Use Variables and Regex.</p>
+
+    <h3>Numeric transformation</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><code>(\d+\.?\d*)</code></td>
+        <td><code>(?=roundn(reg(1), 2))</code></td>
+        <td>Round all numbers to 2 decimal places.</td>
+      </tr>
+      <tr>
+        <td><code>(-?\d+\.?\d*)</code></td>
+        <td><code>(?=clamp(0, reg(1), 100))</code></td>
+        <td>Clamp every value to the range <code>[0..100]</code>.</td>
+      </tr>
+      <tr>
+        <td><code>(-?\d+\.?\d*)</code></td>
+        <td><code>(?=abs(reg(1)))</code></td>
+        <td>Take the absolute value of every number.</td>
+      </tr>
+      <tr>
+        <td><code>(\d+\.?\d*)</code></td>
+        <td><code>(?=reg(1) * 2.54)</code></td>
+        <td>Convert inches to centimetres (&times;2.54).</td>
+      </tr>
+      <tr>
+        <td><code>(\d+\.?\d*)</code></td>
+        <td><code>(?=(reg(1) - 32) * 5/9)</code></td>
+        <td>Convert &deg;F to &deg;C.</td>
+      </tr>
+    </table>
+
+    <h3>Conditional / filtering</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>(?=reg(1) &lt; 100 ? skip() : reg(1))</code></td>
+        <td>Keep only numbers &ge; 100; smaller ones stay untouched (skipped, not zeroed).</td>
+      </tr>
+      <tr>
+        <td><code>(\d+\.?\d*)</code></td>
+        <td><code>(?=inrange(0, reg(1), 1) ? reg(1) : skip())</code></td>
+        <td>Keep only values in <code>[0..1]</code>, skip the rest.</td>
+      </tr>
+      <tr>
+        <td><code>(\d+\.?\d*)</code></td>
+        <td><code>(?=reg(1) &gt; avg(0, 100, 200) ? reg(1) : skip())</code></td>
+        <td>Skip below-average values (here against a fixed reference average).</td>
+      </tr>
+    </table>
+
+    <h3>Mixed expressions in one rule</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><code>(\d+),(\d+)</code></td>
+        <td><code>total=(?=reg(1)+reg(2)) avg=(?=avg(reg(1),reg(2)))</code></td>
+        <td>Two independent expressions in one replace, each in its own <code>(?=)</code>.</td>
+      </tr>
+      <tr>
+        <td><code>(\d+\.?\d*)</code></td>
+        <td><code>(?=reg(1)) cm = (?=reg(1)/2.54) inches</code></td>
+        <td>Output original and converted value side-by-side.</td>
+      </tr>
+      <tr>
+        <td><code>(\d+\.?\d*),(\d+\.?\d*)</code></td>
+        <td><code>distance=(?=hypot(reg(1), reg(2)))</code></td>
+        <td>Euclidean distance from two coordinate values.</td>
+      </tr>
+    </table>
+
+    <h3>Statistics</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><code>(-?\d+\.?\d*)</code></td>
+        <td><code>(?=ncdf(reg(1)))</code></td>
+        <td>Z-score to percentile via the standard normal CDF (e.g. <code>1.96</code> &rarr; <code>0.975</code>).</td>
+      </tr>
+      <tr>
+        <td><code>(-?\d+\.?\d*)</code></td>
+        <td><code>(?=erf(reg(1)))</code></td>
+        <td>Error function &mdash; handy for diffusion / probability calculations.</td>
+      </tr>
+    </table>
+
+    <h3>String composition</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><code>(\w+)</code></td>
+        <td><code>(?=return ['&lt;', rstr(1), '&gt;'])</code></td>
+        <td>Wrap every match in angle brackets.</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>(?=return ['#', CNT, ': ', rstr(1)])</code></td>
+        <td>Prefix each match with a running global counter.</td>
+      </tr>
+      <tr>
+        <td><code>(\w+)</code></td>
+        <td><code>(?=return [FNAME, ': ', rstr(1)])</code></td>
+        <td>Tag each match with the source filename.</td>
+      </tr>
+    </table>
+
+    <h3>Counters</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><code>^</code></td>
+        <td><code>(?=CNT). </code></td>
+        <td>Number every line (insert at the start of each line).</td>
+      </tr>
+      <tr>
+        <td><code>;</code></td>
+        <td><code>(?=LCNT == 1 ? skip() : 0);</code></td>
+        <td>Replace only the second and later semicolons on each line.</td>
+      </tr>
+    </table>
+  </section>
+
+  <br>
+
+  <section id="exprtk-limitations">
+    <h2>Limitations</h2>
+    <p>ExprTk is deliberately scoped. Things it does <strong>not</strong> do:</p>
+    <ul>
+      <li><strong>No string manipulation</strong> &mdash; there is no <code>substring</code>, <code>replace</code>, <code>find</code>, <code>format</code>, etc. Strings can only be passed through (via captures, <code>MATCH</code>, <code>FNAME</code>, <code>FPATH</code>) and assembled in <code>return [...]</code> lists.</li>
+      <li><strong>UTF-8 inside string literals fails to compile.</strong> A literal like <code>'Gr&ouml;&szlig;e'</code> between <code>'...'</code> will produce an <code>Invalid string token</code> error. Use captures or place non-ASCII text outside the <code>(?=...)</code> block.</li>
+      <li><strong>No state across matches.</strong> Each <code>(?=...)</code> evaluation starts fresh. The numeric counters (<code>CNT</code>, <code>LCNT</code>) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use <code>vars({...})</code>.</li>
+      <li><strong>No file I/O, no external scripts.</strong> ExprTk has no equivalent to Lua's <code>lvars</code>, <code>lkp</code>, or <code>lcmd</code>.</li>
+      <li><strong>Numeric-only by design.</strong> Operations on text that go beyond passing it through belong in Lua.</li>
+    </ul>
+  </section>
+
+    </div>
+  </div>
+
 </article>
 
 </main>
 
 <footer id="footer">
     <div id="foottext" class="linklist">
-        <a href="https://notepad-plus-plus.org/">Notepad++</a>  • 
+        <a href="https://notepad-plus-plus.org/">Notepad++</a>  &bull; 
         <a href="https://github.com/daddel80/notepadpp-multireplace">MultiReplace on GitHub</a>
     </div>
     <button type="button" id="fontdown" onclick="setFontDown();">Txt-</button>
