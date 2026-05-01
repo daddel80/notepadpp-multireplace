@@ -21,25 +21,11 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
   - [CSV Scope and Column Operations](#csv-scope-and-column-operations)
   - [Execution Targets](#execution-targets)
 - [Search Results Window](#search-results-window)
+- [Engine Overview](#engine-overview)
+  - [Lua](#lua)
+  - [ExprTk](#exprtk)
 - [Option 'Use Variables'](#option-use-variables)
-  - [Quick Start: Use Variables](#quick-start-use-variables)
-  - [Variables Overview](#variables-overview)
-  - [Available Functions](#available-functions)
-  - [Command Reference](#command-reference)
-    - [set](#setstrorcalc)
-    - [cond](#condcondition-trueval-falseval)
-    - [vars](#varsvariable1value1-variable2value2-)
-    - [lvars](#lvarsfilepath)
-    - [lkp](#lkpkey-hpath-inner)
-    - [fmtN](#fmtnnum-maxdecimals-fixeddecimals)
-    - [lcmd](#lcmdpath)
-  - [String Formatting Helpers](#string-formatting-helpers)
-  - [Preload Variables and Helpers](#preload-variables-and-helpers)
-  - [Operators](#operators)
-  - [If-Then Logic](#if-then-logic)
-  - [DEBUG Mode](#debug-mode)
-  - [More Examples](#more-examples)
-  - [Engine Overview](#engine-overview)
+  - [Full Syntax Reference (Lua, ExprTk) →](USE-VARIABLES.md)
 - [User Interaction and List Management](#user-interaction-and-list-management)
   - [Entry Interaction and Limits](#entry-interaction-and-limits)
   - [Context Menu and Keyboard Shortcuts](#context-menu-and-keyboard-shortcuts)
@@ -62,7 +48,7 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
 - **Batch Replacement Lists** — Run any number of search-and-replace pairs in a single pass, either in the current document, across filtered open documents, or in entire directory trees.
 - **CSV Column Toolkit** — Search, replace, sort, or delete specific columns; numeric-aware sorting and header exclusion included.
 - **Reusable Replacement Lists** — Save, load, and drag-and-drop lists with all options intact—perfect for recurring workflows.
-- **Rule-Driven & Variable Replacements** — Lua-powered variables, conditions, and calculations enable dynamic, context-aware substitutions.
+- **Rule-Driven & Variable Replacements** — Variables, conditions, and calculations enable dynamic, context-aware substitutions.
 - **External Lookup Tables** — Swap matches with values from external hash/lookup files—ideal for large or frequently updated mapping tables.
 - **Open Scripting API** — Add your own Lua functions to handle advanced formatting, data logging, and fully custom replacement logic.
 - **Precision Scopes & Selections** — Rectangle and multi-selection support, column scopes, and "replace at specific match" for pinpoint operations.
@@ -152,7 +138,7 @@ Execution targets define **which files** an operation is applied to. They are ac
   - **Filters:** Semicolon-separated list of patterns to include or exclude files and folders (e.g., `*.cpp; *.h; !*.bak`).
   - **In Subfolders:** Recursively include all subdirectories.
   - **In Hidden Files:** Include hidden files and folders.
-- **Debug Mode** — Runs a simulation of the replacement to inspect variables without modifying the document. See [Debug Mode](#debug-mode) for details.
+- **Debug Mode** — Runs a simulation of the replacement to inspect variables without modifying the document. See [Debug Mode](USE-VARIABLES.md#debug-mode) for details.
 
 **Filter Syntax**
 
@@ -210,389 +196,52 @@ The color-coding of search results can be configured in [Settings > Appearance](
 
 <br>
 
+## Engine Overview
+
+When **Use Variables** is enabled, replacements run through a formula engine. MultiReplace ships with two: **Lua** and **ExprTk**. Switch via the `(L)` / `(E)` indicator next to the **Use Variables** checkbox. The choice is per tab and persists across sessions.
+
+**Quick guidance:** pick **Lua** for anything involving text manipulation, conditional logic, lookup tables, or external scripts. Pick **ExprTk** when the task is mostly arithmetic on captured numbers and you want concise inline expressions.
+
+|              | Lua                                                                       | ExprTk                                                                                            |
+|--------------|---------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
+| Best for     | Text and string work, conditional logic, lookups, external file loading   | High-speed numeric work, running totals, concise inline math                                      |
+| Captures     | `CAP1`, `CAP2`, ... (always strings, use `tonum()` for math)              | `reg(N)` numeric, `rstr(N)` string                                                                |
+| Strings      | Full string library (substitute, slice, format, upper/lower, etc.)        | Passthrough only — no string manipulation functions; output composed from literals and captures   |
+| Math         | `math` library covers the basics (`sin`, `cos`, `log`, `sqrt`, `abs`, `floor`, `ceil`, ...); richer math built up in Lua code | Rich built-in math: full trigonometry, hyperbolic, log/exp variants, `clamp`, `sgn`, `roundn`, `erf`, `ncdf`, variadic `avg`/`sum`/`min`/`max` |
+| Loops & flow | Full control structures (`if/elseif/else`, `while`, `for`, `repeat`)      | Conditionals within expressions (no general loops)                                                |
+| UTF-8        | Full UTF-8 in the script                                                  | UTF-8 only in document text and captures, NOT in string literals inside the expression            |
+| Performance  | Bytecode VM with per-match globals and string allocations                 | Pre-compiled expression tree, direct double arithmetic; tends to be faster for pure numeric work  |
+| External I/O | `lvars`, `lkp`, `lcmd` (file access, external scripts)                    | None — numeric work only                                                                          |
+
+### Lua
+
+Powered by the [Lua programming language](https://www.lua.org/). See [Lua String Manipulation](https://www.lua.org/manual/5.4/manual.html#6.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.4/manual.html#6.6) for the standard library reference. The MultiReplace-specific commands (`set`, `cond`, `vars`, `lkp`, ...) are documented in the [Lua Reference](USE-VARIABLES.md#lua-reference).
+
+### ExprTk
+
+Powered by [ExprTk](https://www.partow.net/programming/exprtk/index.html) by Arash Partow ([source on GitHub](https://github.com/ArashPartow/exprtk)) — a header-only C++ mathematical expression library. The MultiReplace integration syntax is documented in the [ExprTk Reference](USE-VARIABLES.md#exprtk-reference).
+
+<br>
+
 ## Option 'Use Variables'
 
-Enable the '**Use Variables**' option to enhance replacements with calculations and logic based on the matched text. This feature lets you create dynamic replacement patterns, handle conditions, and produce flexible outputs—all configured directly in the Replace field. This functionality relies on the [Lua engine](https://www.lua.org/).
+The **Use Variables** option enables dynamic replacements that go beyond plain text substitution. Instead of a fixed replacement string, you write a small expression that is evaluated for each match — accessing the matched text, capture groups, counters, line and file information, and producing a computed result.
 
----
+For example, doubling every captured number:
 
-### Quick Start: Use Variables
+| Find    | Replace                  | Engine  |
+|---------|--------------------------|---------|
+| `(\d+)` | `set(tonum(CAP1) * 2)`   | Lua     |
+| `(\d+)` | `(?=reg(1) * 2)`         | ExprTk  |
 
-1. **Enable "Use Variables"** — Check the "**Use Variables**" option in the Replace interface.
+Switch the engine via the `(L)` / `(E)` indicator next to the option — see [Engine Overview](#engine-overview) above for the differences between the two.
 
-2. **Use a Command:**
+### Full Syntax Reference
 
-   **Option 1:** [`set(...)`](#setstrorcalc) → Directly replaces with a value or calculation.
-   - **Find**: `(\d+)`
-   - **Replace**: `set(tonum(CAP1) * 2)`
-   - **Result**: Doubles numbers (e.g., `50` → `100`).
+The complete reference for both engines lives in **[USE-VARIABLES.md](USE-VARIABLES.md)**:
 
-   *(Enable 'Regular Expression' in 'Search Mode' to use `(\d+)` as a capture group.)*
-
-   **Option 2:** [`cond(...)`](#condcondition-trueval-falseval) → Conditional replacement.
-   - **Find**: `word`
-   - **Replace**: `cond(CNT==1, "FirstWord")`
-   - **Result**: Changes only the **first** occurrence of "word" to "FirstWord".
-
-3. **Use Basic Variables:**
-   - **`CNT`**: Inserts the current match number (e.g., "1" for the first match, "2" for the second).
-   - **`CAP1`**, **`CAP2`**, etc.: Holds captured groups when Regex is enabled.
-     > **Capture Groups:** With a regex in parentheses `(...)`, matched text is stored in `CAP` variables (e.g., `(\d+)` in `Item 123` stores `123` in `CAP1`). For more details, refer to regex documentation.
-
-   See the [Variables Overview](#variables-overview) for a complete list.
-
----
-
-### Variables Overview
-
-| Variable | Description |
-|----------|-------------|
-| **CNT**  | Count of the detected string. |
-| **LCNT** | Count of the detected string within the line. |
-| **LINE** | Line number where the string is found. |
-| **LPOS** | Relative character position within the line. |
-| **APOS** | Absolute character position in the document. |
-| **COL**  | Column number where the string was found (CSV-Scope option selected). |
-| **MATCH**| Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
-| **FNAME**| Filename or window title for new, unsaved files. |
-| **FPATH**| Full path including the filename, or empty for new, unsaved files. |
-| **CAP1**, **CAP2**, ... | Equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Always strings; use `tonum(CAP1)` for calculations. Note: Standard counterparts (`$1`, `$2`, ...) cannot be used in this environment. |
-
-**Notes:**
-- `FNAME` and `FPATH` are updated for each file processed by `Replace All in Open Documents` and `Replace All in Files`. This ensures that variables always refer to the file currently being modified.
-- **String Variables:** `MATCH` and `CAP` variables are always strings. For calculations, use `tonum(CAP1)`. Both dot (.) and comma (,) are recognized as decimal separators. Thousands separators are not supported.
-
-<br>
-
-### Available Functions
-
-| Function | Description | Example |
-|----------|-------------|---------|
-| `set(v)` | Returns `v` as the replacement string. If `v` is `nil`, the replacement is skipped (original text remains). | `set("Value: " .. CNT)` |
-| `cond(c, t, f)` | If `c` is true, returns `t`. If `c` is false, returns `f`. If `f` is omitted, skips replacement on false. | `cond(CNT > 5, "Over 5")` |
-| `fmtN(n, d, f)` | Formats number `n` with `d` decimal places and optional fixed flag `f`. | `fmtN(math.pi, 2)` → `"3.14"` |
-| `trim(s)` | Removes leading and trailing whitespace from string `s`. | `trim("  abc  ")` → `"abc"` |
-| `tonum(s)` | Converts string `s` to number. Accepts both dot (.) and comma (,) as decimal separator. | `tonum(CAP1) * 2` |
-| `padL(s, w, c)` | Pads string `s` on the **left** to width `w` with char `c`. Ideal for zero-padding IDs. | `padL(CNT, 3, "0")` → `"001"` |
-| `padR(s, w, c)` | Pads string `s` on the **right** to width `w` with char `c`. Ideal for text alignment. | `padR(MATCH, 10, ".")` → `"Val......."` |
-| `vars(t)` | Declares custom variables for use across replacements. Essential for carrying state between matches. | `vars({sum=0})` |
-| `lkp(k, p, c)` | Looks up key `k` in file `p` and returns the value (or specific column `c`). | `set(lkp(MATCH, "C:\\list.lkp"))` |
-| `lvars(p)` | Loads all key-value pairs from file `p` as global variables. | `lvars("C:\\config.vars")` |
-| `lcmd(p)` | Loads external Lua functions from file `p` to extend functionality. | `lcmd("C:\\helpers.lcmd")` |
-
-<br>
-
-### Command Reference
-
-#### String Composition
-`..` is employed for concatenation.
-E.g., `"Detected "..CNT.." times."`
-
-<br>
-
-#### set(strOrCalc)
-Directly outputs strings or numbers, replacing the matched text with a specified or calculated value.
-
-| Find      | Replace with                                 | Regex | Description/Expected Output                                                 |
-|-----------|----------------------------------------------|-------|-----------------------------------------------------------------------------|
-| `apple`   | `set("banana")`                              | No    | Replaces every occurrence of `apple` with the string `"banana"`.           |
-| `(\d+)`   | `set(tonum(CAP1) * 2)`                    | Yes   | Doubles any found number; e.g., `10` becomes `20`.                         |
-| `found`   | `set("Found #"..CNT.." at position "..APOS)` | No    | Shows how many times `found` was detected and its absolute position.       |
-
-<br>
-
-#### cond(condition, trueVal, [falseVal])
-Evaluates the condition and outputs `trueVal` if the condition is true, otherwise `falseVal`. If `falseVal` is omitted, the original text remains unchanged when the condition is false.
-
-| Find        | Replace with                                                                     | Regex | Description/Expected Output                                                                                             |
-|-------------|----------------------------------------------------------------------------------|-------|-------------------------------------------------------------------------------------------------------------------------|
-| `word`      | `cond(CNT==1, "First 'word'", "Another 'word'")`                                 | No    | For the first occurrence of `word` → `"First 'word'"`; for subsequent matches → `"Another 'word'"`.                    |
-| `(\d+)`     | `cond(tonum(CAP1)>100, "Large", cond(tonum(CAP1)>50, "Medium", "Small"))`  | Yes   | If > 100 → `"Large"`, if > 50 → `"Medium"`, otherwise → `"Small"`.                                                      |
-| `anymatch`  | `cond(APOS<50, "Early in document", "Later in document")`                        | No    | If the absolute position `APOS` is under 50 → `"Early in document"`, otherwise → `"Later in document"`.                |
-
-<br>
-
-#### vars({Variable1=Value1, Variable2=Value2, ...})
-**Note:** This command was previously named `init()` and has been renamed to `vars()`. For compatibility, `init()` still works.
-
-Initializes custom variables for use in various commands, extending beyond standard variables like `CNT`, `MATCH`, `CAP1`. These variables can carry the status of previous find-and-replace operations to subsequent ones.
-
-Custom variables persist from match to match within a single **'Replace All'** operation and can transfer values between list entries. Each new operation (**button click**) starts with a fresh state. In multi-document or multi-file replacements, variables **persist across documents**. Use `FPATH` or `FNAME` to detect document changes and reset variables conditionally if needed.
-
-**Init usage:** Can be used as an init entry (empty Find) to preload before replacements; not mandatory. See [Preload Variables and Helpers](#preload-variables-and-helpers) for workflow and examples.
-
-| **Find**         | **Replace**                                                                                                                            | **Before**                                           | **After**                                                    | **Regex** | **Scope CSV** | **Description**                                                                                                              |
-|------------------|----------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------|--------------------------------------------------------------|-----------|---------------|------------------------------------------------------------------------------------------------------------------------------|
-| `(\d+)`          | `vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);`<br>`if COL==2 then COL2=tonum(CAP1) end;`<br>`if COL==4 then COL4=tonum(CAP1) end;`               | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` | Yes       | Yes           | Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line.                |
-| `\d{2}-[A-Z]{3}` | `vars({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                                                          | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`            | Yes       | No            | Uses `MATCH_PREV` to track the first match in the line and shift it to the 2nd (`LCNT`) match during replacements.           |
-
-<br>
-
-#### lvars(filePath)
-
-Loads custom variables from an external file. The file specifies variable names and their corresponding values. The loaded variables can then be used throughout the Replace process, similar to how variables defined with [`vars`](#varsvariable1value1-variable2value2-) work.
-
-The parameter **filePath** must specify a valid path to a file. Supported path formats include:
-- Escaped Backslashes: `"C:\\path\\to\\file.vars"`
-- Forward Slashes: `"C:/path/to/file.vars"`
-- Long Bracket String: `[[C:\path\to\file.vars]]`
-
-**File:**
-```lua
--- Local variables remain private
-local PATH = [[C:\Data\Projects\]]
-
--- Only the returned variables are accessible in Replace operations
-return {
-    userName = "Alice",
-    threshold = 10,
-    enableFeature = true,
-    fullPath = PATH .. "dataFile.lkp"
-}
-```
-
-**Init usage:** Can be used as an init entry (empty Find) to preload before replacements; not mandatory. See [Preload Variables and Helpers](#preload-variables-and-helpers) for workflow and examples.
-
-| Find          | Replace                                          | Regex | Scope CSV | Description                                                                     |
-|---------------|--------------------------------------------------|-------|-----------|---------------------------------------------------------------------------------|
-| *(empty)*     | `lvars([[C:\tmp\myVars.vars]])`                  | No    | No        | Loads variables such as `userName = "Alice"` and `threshold = 10`.             |
-| `Hello`       | `set(userName)`                                  | No    | No        | Replaces `Hello` with the value of the variable `userName`, e.g., `"Alice"`.   |
-| `(\d+)`       | `cond(threshold > 5, "Above", "Below")`          | Yes   | No        | Replaces the match based on the condition evaluated using the variable `threshold`. |
-
-**Key Points:**
-- **Conditional Loading**: Variables can be loaded conditionally by placing `lvars()` alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.
-- **Local vs. Returned Variables**: Only variables explicitly included in the return table of the .vars file are available for use. Any local variables remain private to the file.
-
-<br>
-
-#### lkp(key, hpath, inner)
-Performs an external lookup of **key** against an indexed data file located at **hpath** and returns the corresponding value. By default, if the **key** is not found, `lkp()` simply reverts to the key itself. Setting **inner** to `true` instead yields a `nil` result when the key is missing, allowing for conditional checks or deeper nested logic.
-
-**Key and File Path:**
-- **Key** — The **key** can be either a string or a number. Numbers are automatically converted to strings to ensure compatibility in the lookup process.
-- **File Path (hpath)** — The **hpath** must point to a valid `.lkp` file that returns a table of data. Supported path formats: Escaped Backslashes, Forward Slashes, or Long Bracket String.
-
-**Data File Format:**
-
-Each lkp file must be defined as a table of entries in the form `{ [keys], value }`, where `[keys]` can be:
-- A single key (e.g., `"001"`).
-- An array of keys (e.g., `{ "001", "1", 1 }`) mapping to the same value.
-
-**Example:**
-```lua
-return {
-    { {"001", "1", 1}, "One" },
-    { 2, "Two" },
-    { "003", "Three" }
-}
-```
-
-In this example:
-- `'001'`, `'1'`, and `1` all correspond to `"One"`.
-- `2` corresponds to `"Two"`.
-- `'003'` directly maps to `"Three"`.
-
-**Caching Mechanism:**
-Once `lkp()` loads the data file for **hpath**, the parsed table is cached in memory for the duration of the Replace-All operation.
-
-**inner Flag:**
-- **`false` (default, can be omitted)**: If the key is not found, `lkp()` returns the **search term itself** (e.g., `MATCH`, `CAP1`), instead of a mapped value.
-- **`true`**: If the key is not found, `lkp()` returns `nil`, allowing conditional handling.
-
-**Examples:**
-
-| **Find**   | **Replace**                                                    | **Regex** | **Scope CSV** | **Description**                                                                                      |
-|------------|----------------------------------------------------------------|-----------|---------------|------------------------------------------------------------------------------------------------------|
-| `\b\w+\b`  | `lkp(MATCH, [[C:\tmp\hash.lkp]], true)`                        | Yes       | No            | Uses **inner = true**: If found, replaces with mapped value. If not found, original word is removed. |
-| `(\d+)`    | `lkp(CAP1, "C:/path/to/myLookupFile.lkp")`                     | Yes       | No            | Uses **inner = false** (default): If found, replaces with mapped value. If not, returns `CAP1`.      |
-| `\b\w+\b`  | `output = lkp(MATCH, [[C:\tmp\hash.lkp]], true); set(output or "NoKey")` | Yes | No         | Uses **inner = true**: If lookup result is non-`nil`, replaces with mapped value; otherwise `"NoKey"`. |
-| `\b\w+\b`  | `cond(COL==3, lkp(MATCH, [[C:/tmp/col3_hash.lkp]]))`           | No        | Yes           | Looks up values in the third column (`COL==3`) using a separate lookup file.                         |
-
-<br>
-
-#### fmtN(num, maxDecimals, fixedDecimals)
-Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).
-
-**Note**: The `fmtN()` command can exclusively be used within the `set()` and `cond()` commands.
-
-| Example                             | Result  |
-|-------------------------------------|---------|
-| `set(fmtN(5.73652, 2, true))`       | 5.74    |
-| `set(fmtN(5.0, 2, true))`           | 5.00    |
-| `set(fmtN(5.73652, 4, false))`      | 5.7365  |
-| `set(fmtN(5.0, 4, false))`          | 5       |
-
-<br>
-
-#### lcmd(path)
-
-Load user-defined helper functions from a Lua file. The file must `return` a table of functions. `lcmd` registers those functions as globals for the current run.
-
-**Purpose:** Add reusable helper functions (formatters, slugifiers, padding, small logic). Helpers **must return a string or number** and are intended to be called from **action** commands (e.g. `set(...)`, `cond(...)`).
-
-**Init usage:** Can be used as an init entry (empty Find) to preload before replacements; not mandatory. See [Preload Variables and Helpers](#preload-variables-and-helpers) for workflow and examples.
-
-| Find      | Replace                                                        | Regex | Description |
-|-----------|----------------------------------------------------------------|-------|-------------|
-| *(empty)* | `lcmd([[C:\tmp\mycmds.lcmd]])`                                 | No    | Load helpers from file (init row — no replacement). |
-| `(\d+)`   | `set(padLeft(CAP1, 6, '0'))`                                   | Yes   | Zero-pad captured number to width 6 using `padLeft`. |
-| `(.+)`    | `set(slug(CAP1))`                                              | Yes   | Create a URL-safe slug from the whole line using `slug`. |
-| `\{\{(.*?)\}\}` | `set(file_log_simple(MATCH, [[C:\tmp\out.txt]]))`        | Yes   | Logs the entire search hit to a custom file, leaving the original text unchanged. |
-
-**File format:**
-```lua
--- C:\tmp\helpers.lcmd
-return {
-  -- slug: create a URL-friendly slug
-  -- Usage: set(slug("Hello World!"))  → "hello-world"
-  slug = function(s)
-    s = tostring(s or ""):lower()
-    s = s:gsub("%s+", "-"):gsub("[^%w%-]", "")
-    return s
-  end,
-
-  -- titleCase: convert snake_case or space-separated to Title Case
-  -- Usage: set(titleCase("hello_world"))  → "Hello World"
-  titleCase = function(s)
-    s = tostring(s or "")
-    s = s:gsub("_", " ")
-    s = s:gsub("(%a)([%w]*)", function(first, rest)
-      return first:upper() .. rest:lower()
-    end)
-    return s
-  end,
-
-  -- wrap: wrap text at specified width
-  -- Usage: set(wrap("long text here", 40))  → wrapped text
-  wrap = function(s, width)
-    s = tostring(s or "")
-    width = tonum(width) or 80
-    local result = {}
-    for line in s:gmatch("[^\n]+") do
-      while #line > width do
-        local pos = line:sub(1, width):match(".*()%s") or width
-        table.insert(result, line:sub(1, pos - 1))
-        line = line:sub(pos + 1)
-      end
-      table.insert(result, line)
-    end
-    return table.concat(result, "\n")
-  end,
-
-  -- file_log: append match to file, return original match
-  -- Usage: set(file_log(MATCH, [[C:\tmp\out.txt]]))
-  file_log = function(match, path)
-    if match == nil then return "" end
-    path = path or [[C:\tmp\matches.txt]]
-    local f = io.open(path, "a")
-    if not f then return match end
-    f:write(tostring(match) .. "\n")
-    f:close()
-    return match
-  end,
-}
-```
-
-<br>
-
-### String Formatting Helpers
-
-The following built-in helper functions are available for string manipulation:
-
-| Function | Description | Example |
-|----------|-------------|---------|
-| `trim(s)` | Removes leading and trailing whitespace from string `s`. Useful for cleaning up database dumps or messy CSVs. | `trim("  abc  ")` → `"abc"` |
-| `tonum(s)` | Converts string `s` to number. Accepts both dot (.) and comma (,) as decimal separator. Returns `nil` if conversion fails. | `tonum("3,14")` → `3.14` |
-| `padL(s, w, c)` | Pads string `s` on the **left** to width `w` with character `c` (default: space). Use `padL(CNT, 3, "0")` to generate sorted file names like `file_001.txt`. | `padL("42", 5, "0")` → `"00042"` |
-| `padR(s, w, c)` | Pads string `s` on the **right** to width `w` with character `c` (default: space). Useful to align text into fixed-width columns. | `padR("Val", 10, ".")` → `"Val......."` |
-
-<br>
-
-### Preload Variables and Helpers
-Use init entries (empty Find) to preload variables or helper functions before any replacements run. Init entries run once per Replace-All (or per list pass) and do not change text directly.
-
-**How it works:**
-- **Place `vars()`, `lvars()` or `lcmd()` next to an empty Find field.**
-- This entry does **not** search for matches but runs before replacements begin.
-- It ensures that **variables and helpers are loaded once**, regardless of their position in the list.
-- Use **Use Variables = ON** for init rows so loaded variables/helpers are available to later rows.
-
-**Examples:**
-
-| **Find**    | **Replace**                                 | **Description** |
-|-------------|---------------------------------------------|-----------------|
-| *(empty)*   | `vars({prefix = "ID_"})`                    | Set `prefix` before replacements. |
-| *(empty)*   | `lvars([[C:\path\to\myVars.vars]])`         | Load variables from file (file must `return { ... }`). |
-| *(empty)*   | `lcmd([[C:\tmp\mycmds.lcmd]])`              | Load helpers from file (e.g. `padLeft`, `slug`). |
-| `(\d+)`     | `set(prefix .. CAP1)`                       | Uses `prefix` from init (`123` → `ID_123`). |
-| `(\d+)`     | `set(padLeft(CAP1, 6, '0'))`                | Use helper loaded by `lcmd` to zero-pad (`123` → `000123`). |
-| `(.+)`      | `set(slug(CAP1))`                           | Use helper loaded by `lcmd` to create a slug (`Hello World!` → `hello-world`). |
-
-<br>
-
-### Operators
-
-| Type           | Operators                                | Example                                                |
-|----------------|------------------------------------------|--------------------------------------------------------|
-| Concatenation  | `..`                                     | `set("Found "..CNT)`                                   |
-| Arithmetic     | `+`, `-`, `*`, `/`, `^`, `%`             | `set(CNT * 2)`                                         |
-| Relational     | `==`, `~=`, `<`, `>`, `<=`, `>=`         | `cond(LINE == 1, "First", "Not first")`               |
-| Logical        | `and`, `or`, `not`                       | `cond(LINE > 5 and CNT < 10, "Midrange", "Other")`    |
-
-<br>
-
-### If-Then Logic
-If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.
-
-**Note**: Do not embed `cond()`, `set()`, or `vars()` within if statements; `if statements` are exclusively for adjusting custom variables.
-
-**Syntax Combinations:**
-- `if condition then ... end`
-- `if condition then ... else ... end`
-- `if condition then ... elseif another_condition then ... end`
-- `if condition then ... elseif another_condition then ... else ... end`
-
-**Example:**
-
-This example shows how to use `if` statements with `cond()` to manage variables based on conditions:
-
-`vars({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end`
-
-<br>
-
-### Debug Mode
-
-The **Debug Mode** provides a safe environment to test complex logic involving conditions or math. Instead of modifying the text immediately, it allows you to step through matches one by one and inspect the real-time values of all variables.
-
-**How to enable:**
-* **Via Menu:** Click the arrow on the **Replace All** button and select **Debug Mode**. This is the standard way to debug.
-* **Via Script:** Initialize the `DEBUG` variable in your replacement string. This overrides the menu setting and allows for conditional debugging.
-
-| Find | Replace | Description |
-| :--- | :--- | :--- |
-| *(empty)* | `vars({DEBUG=true})` | **Globally** enables Debug Mode for the run (acts as an [Init entry](#preload-variables-and-helpers)). |
-| `(\d+)` | `if CNT==50 then DEBUG=true end; set(CAP1)` | Activates Debug Mode **starting from** the 50th match. |
-
-<br>
-
-### More Examples
-
-| Find              | Replace                                                                                                     | Regex | Scope CSV | Description                                                                                     |
-|-------------------|-------------------------------------------------------------------------------------------------------------|-------|-----------|-------------------------------------------------------------------------------------------------|
-| `;`               | `cond(LCNT==5,";Column5;")`                                                                                 | No    | No        | Adds a 5th Column for each line into a `;` delimited file.                                      |
-| `key`             | `set("key"..CNT)`                                                                                           | No    | No        | Enumerates key values by appending the count of detected strings. E.g., key1, key2, key3, etc.  |
-| `(\d+)`           | `local n=tonum(CAP1); set(CAP1.."€ The VAT is: "..(n*0.15).."€ Total: "..(n*1.15).."€")`  | Yes   | No        | Finds a number and calculates VAT at 15%, displaying original, VAT, and total.                  |
-| `---`             | `cond(COL==1 and LINE<3, "0-2", cond(COL==2 and LINE>2 and LINE<5, "3-4", cond(COL==3 and LINE>=5, "5-9")))` | No    | Yes       | Replaces `---` with a specific range based on `COL` and `LINE` values.                          |
-| `(\d+)\.(\d+)\.(\d+)` | `local c1,c2,c3=tonum(CAP1),tonum(CAP2),tonum(CAP3); cond(c1>0 and c2==0 and c3==0, MATCH, cond(c2>0 and c3==0, " "..MATCH, "  "..MATCH))` | Yes   | No        | Alters spacing based on version number hierarchy, aligning lower hierarchies with spaces.        |
-| `(\d+)`           | `set(tonum(CAP1) * 2)`                                                                                   | Yes   | No        | Doubles the matched number. E.g., `100` becomes `200`.                                          |
-| `;`               | `cond(LCNT == 1, string.rep(" ", 20-(LPOS))..";")`                                                          | No    | No        | Inserts spaces before the semicolon to align it to the 20th character position.                 |
-| `-`               | `cond(LINE == math.floor(10.5 + 6.25*math.sin((2*math.pi*LPOS)/50)), "*", " ")`                              | No    | No        | Draws a sine wave across a canvas of '-' characters.                                            |
-| `^(.*)$`          | `vars({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;`                                    | Yes   | No        | Removes duplicate lines, keeping the first occurrence of each line.                             |
-
-<br>
-
-### Engine Overview
-MultiReplace uses the [Lua engine](https://www.lua.org/), allowing for Lua math operations and string methods. Refer to [Lua String Manipulation](https://www.lua.org/manual/5.4/manual.html#6.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.4/manual.html#6.6) for more information.
+- **[Lua Reference](USE-VARIABLES.md#lua-reference)** — Quick Start, all commands (`set`, `cond`, `vars`, `lkp`, `lcmd` ...), operators, if-then logic, examples
+- **[ExprTk Reference](USE-VARIABLES.md#exprtk-reference)** — Quick Start, pattern syntax, math built-ins, control flow, string output, examples
 
 <br>
 

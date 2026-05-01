@@ -198,12 +198,20 @@ namespace MultiReplaceEngine {
             };
 
         // ----- Numeric globals --------------------------------------------
+        // Each variable is exposed under both upper- and lowercase
+        // so users may write whichever style they prefer.
         lua_pushinteger(_luaState, vars.CNT);  lua_setglobal(_luaState, "CNT");
+        lua_pushinteger(_luaState, vars.CNT);  lua_setglobal(_luaState, "cnt");
         lua_pushinteger(_luaState, vars.LCNT); lua_setglobal(_luaState, "LCNT");
+        lua_pushinteger(_luaState, vars.LCNT); lua_setglobal(_luaState, "lcnt");
         lua_pushinteger(_luaState, vars.LINE); lua_setglobal(_luaState, "LINE");
+        lua_pushinteger(_luaState, vars.LINE); lua_setglobal(_luaState, "line");
         lua_pushinteger(_luaState, vars.LPOS); lua_setglobal(_luaState, "LPOS");
+        lua_pushinteger(_luaState, vars.LPOS); lua_setglobal(_luaState, "lpos");
         lua_pushinteger(_luaState, vars.APOS); lua_setglobal(_luaState, "APOS");
+        lua_pushinteger(_luaState, vars.APOS); lua_setglobal(_luaState, "apos");
         lua_pushinteger(_luaState, vars.COL);  lua_setglobal(_luaState, "COL");
+        lua_pushinteger(_luaState, vars.COL);  lua_setglobal(_luaState, "col");
 
         // ----- String globals ---------------------------------------------
         // FPATH/FNAME change at most once per replaceAll run; skip the
@@ -211,19 +219,24 @@ namespace MultiReplaceEngine {
         // previous match.
         if (vars.FPATH != _lastFPATH) {
             setLuaVariable(_luaState, "FPATH", vars.FPATH);
+            setLuaVariable(_luaState, "fpath", vars.FPATH);
             _lastFPATH = vars.FPATH;
         }
         if (vars.FNAME != _lastFNAME) {
             setLuaVariable(_luaState, "FNAME", vars.FNAME);
+            setLuaVariable(_luaState, "fname", vars.FNAME);
             _lastFNAME = vars.FNAME;
         }
         setLuaVariable(_luaState, "MATCH", vars.MATCH);
+        setLuaVariable(_luaState, "match", vars.MATCH);
 
         // ----- REGEX flag -------------------------------------------------
         const int regexFlag = isRegexMatch ? 1 : 0;
         if (regexFlag != _lastRegexFlag) {
             lua_pushboolean(_luaState, isRegexMatch);
             lua_setglobal(_luaState, "REGEX");
+            lua_pushboolean(_luaState, isRegexMatch);
+            lua_setglobal(_luaState, "regex");
             _lastRegexFlag = regexFlag;
         }
 
@@ -232,11 +245,14 @@ namespace MultiReplaceEngine {
         // pushes them as Lua globals. Encoding conversion already happened
         // in the pipeline (the host knows the document codepage; the engine
         // shouldn't need to).
+        // Each capture is exposed under both CAP# and cap# names.
         _currentCapNames.clear();
         if (isRegexMatch) {
             for (size_t i = 0; i < vars.captures.size(); ++i) {
                 std::string capName = "CAP" + std::to_string(i + 1);
+                std::string capNameLower = "cap" + std::to_string(i + 1);
                 setLuaVariable(_luaState, capName, vars.captures[i]);
+                setLuaVariable(_luaState, capNameLower, vars.captures[i]);
                 _currentCapNames.push_back(capName);
             }
         }
@@ -327,11 +343,15 @@ namespace MultiReplaceEngine {
         // Only nil the CAPs that were set last match but not this match.
         // CAPs set this match get overwritten next time, so they need no
         // cleanup; only stale CAPs from a longer previous match would leak.
+        // Both upper- and lowercase aliases are cleared.
         const int currentCapCount = static_cast<int>(_currentCapNames.size());
         for (int i = currentCapCount; i < _lastCapCount; ++i) {
             std::string capName = "CAP" + std::to_string(i + 1);
+            std::string capNameLower = "cap" + std::to_string(i + 1);
             lua_pushnil(_luaState);
             lua_setglobal(_luaState, capName.c_str());
+            lua_pushnil(_luaState);
+            lua_setglobal(_luaState, capNameLower.c_str());
         }
         _lastCapCount = currentCapCount;
 

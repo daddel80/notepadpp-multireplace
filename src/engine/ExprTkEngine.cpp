@@ -57,20 +57,31 @@ namespace MultiReplaceEngine {
         // so the underlying members must live as long as any compiled
         // expression that uses them - which is fine, they are members of
         // the engine itself.
+        // Each variable is registered under both upper- and lowercase
+        // so users may write whichever style they prefer.
         _symbolTable.add_variable("CNT", _varCNT);
+        _symbolTable.add_variable("cnt", _varCNT);
         _symbolTable.add_variable("LCNT", _varLCNT);
+        _symbolTable.add_variable("lcnt", _varLCNT);
         _symbolTable.add_variable("LINE", _varLINE);
+        _symbolTable.add_variable("line", _varLINE);
         _symbolTable.add_variable("LPOS", _varLPOS);
+        _symbolTable.add_variable("lpos", _varLPOS);
         _symbolTable.add_variable("APOS", _varAPOS);
+        _symbolTable.add_variable("apos", _varAPOS);
         _symbolTable.add_variable("COL", _varCOL);
+        _symbolTable.add_variable("col", _varCOL);
 
         // Register string-typed variables for match/file metadata. Same
         // reference-binding contract as numeric vars (Section 13 of the
         // ExprTk docs). The strings are refreshed at the start of every
         // execute() call so each match sees its own values.
         _symbolTable.add_stringvar("MATCH", _strMATCH);
+        _symbolTable.add_stringvar("match", _strMATCH);
         _symbolTable.add_stringvar("FPATH", _strFPATH);
+        _symbolTable.add_stringvar("fpath", _strFPATH);
         _symbolTable.add_stringvar("FNAME", _strFNAME);
+        _symbolTable.add_stringvar("fname", _strFNAME);
 
         // Register the reg(N) function. The wrapper holds a back-pointer
         // to the engine, so it can read from _captures during eval.
@@ -466,13 +477,25 @@ namespace MultiReplaceEngine {
             return 0.0;
         }
 
-        // std::from_chars is locale-independent: it always treats '.' as
-        // the decimal separator and never reads thousand-separators. That
-        // is exactly what we want for a programming-language style number.
-        double value = 0.0;
+        // Accept both '.' and ',' as decimal separator. Mirrors the
+        // behaviour of the Lua tonum() helper. If the string contains
+        // a '.', commas are left alone so from_chars stops at the first
+        // comma (preserving the trailing-junk semantics for inputs like
+        // "1.5,extra"). If there is no '.', any ',' is normalised to '.'
+        // so comma-decimal locales parse correctly.
+        std::string buf;
         const char* first = s.data();
         const char* last = s.data() + s.size();
 
+        if (s.find('.') == std::string::npos &&
+            s.find(',') != std::string::npos) {
+            buf.assign(s);
+            std::replace(buf.begin(), buf.end(), ',', '.');
+            first = buf.data();
+            last = buf.data() + buf.size();
+        }
+
+        double value = 0.0;
         auto res = std::from_chars(first, last, value);
         if (res.ec != std::errc{}) {
             // Non-numeric input. Could be intentional ("price=$5.00")
@@ -481,9 +504,9 @@ namespace MultiReplaceEngine {
             return 0.0;
         }
 
-        // We do not require all of `s` to have been consumed; trailing
-        // junk like "1.5abc" yields 1.5. This is consistent with how
-        // most programming languages read numeric prefixes.
+        // We do not require all of the input to have been consumed;
+        // trailing junk like "1.5abc" yields 1.5. This is consistent
+        // with how most programming languages read numeric prefixes.
         return value;
     }
 

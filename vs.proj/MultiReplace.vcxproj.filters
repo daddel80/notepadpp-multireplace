@@ -284,11 +284,19 @@
     <Filter Include="engine">
       <UniqueIdentifier>{2b30f52c-1640-41f5-8db7-88cedfd75bab}</UniqueIdentifier>
     </Filter>
+    <Filter Include="docs">
+      <UniqueIdentifier>{cda245c8-12e3-4134-8a53-2dcff1b4face}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\help_use_variables_light.html" />
     <None Include="..\languages.ini" />
     <None Include="..\help_use_variables_dark.html" />
-    <None Include="..\README.md" />
+    <None Include="..\README.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="..\USE-VARIABLES.md">
+      <Filter>docs</Filter>
+    </None>
   </ItemGroup>
 </Project>
