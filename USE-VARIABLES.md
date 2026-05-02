@@ -443,6 +443,8 @@ ExprTk is a numeric expression engine. Its design goal is concise inline math: w
 
    - **Find:** `(\d+)`
    - **Replace:** `(?=reg(1) * 2)`
+   - **Input:** `42`
+   - **Output:** `84`
 
    Every captured number is doubled. The `(?=...)` block is the expression; everything outside it is literal text in the output.
 
@@ -450,6 +452,8 @@ ExprTk is a numeric expression engine. Its design goal is concise inline math: w
 
    - **Find:** `(\d+)`
    - **Replace:** `value=(?=reg(1)) doubled=(?=reg(1)*2)`
+   - **Input:** `42`
+   - **Output:** `value=42 doubled=84`
 
    A single replace string can contain **any number** of `(?=...)` blocks interleaved with literal text. This is the core idiom — small, focused expressions instead of one big script.
 
