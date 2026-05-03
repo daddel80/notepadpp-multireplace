@@ -637,11 +637,6 @@ void MultiReplace::initializeCtrlMap() {
     // Hide list-related controls if list is not enabled (unless Library Mode keeps them visible)
     if (!useListEnabled && !keepListVisible) {
         setBottomRowVisible(false);
-        // Hide toolbar icon buttons when list is collapsed
-        ShowWindow(GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_TAB_LIST_DROPDOWN), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_TAB_SCROLL_LEFT), SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_TAB_SCROLL_RIGHT), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_SAVE_TO_CSV_BUTTON), SW_HIDE);
         ShowWindow(GetDlgItem(_hSelf, IDC_UP_BUTTON), SW_HIDE);
@@ -3236,7 +3231,7 @@ void MultiReplace::handleCopyToListButton() {
         }
         else {
             const std::vector<int> listToolbarButtons = {
-                IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+                IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
                 IDC_UP_BUTTON, IDC_DOWN_BUTTON
             };
             updateUseListState(true);
@@ -6393,7 +6388,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 // hide logic still mirrors the toolbar buttons because
                 // the tab bar appears and disappears together with them.
                 const std::vector<int> listToolbarButtons = {
-                    IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+                    IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
                     IDC_UP_BUTTON, IDC_DOWN_BUTTON
                 };
 
@@ -16984,8 +16979,30 @@ void MultiReplace::clearTabDirty(int tabIndex)
 
 void MultiReplace::setBottomRowVisible(bool visible)
 {
-    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
-    if (hTab) ShowWindow(hTab, visible ? SW_SHOW : SW_HIDE);
+    // The tab strip and its associated indicator widgets share visibility:
+    // when the list collapses, the dropdown / side dots / "+" must
+    // disappear with the strip, otherwise the dropdown ("v"/"...") sits
+    // on top of the wrapper toggle in the empty space.
+    const int ids[] = {
+        IDC_LIST_TABS,
+        IDC_NEW_LIST_BUTTON,
+        IDC_TAB_LIST_DROPDOWN,
+        IDC_TAB_SCROLL_LEFT,
+        IDC_TAB_SCROLL_RIGHT,
+    };
+    const int cmd = visible ? SW_SHOW : SW_HIDE;
+    for (int id : ids) {
+        if (HWND h = GetDlgItem(_hSelf, id)) {
+            ShowWindow(h, cmd);
+        }
+    }
+    // When showing again, the layout / overflow state may have changed
+    // while we were hidden (window resized, tabs added, etc.). Re-run
+    // the positioning so the indicator widgets only re-appear where
+    // they are actually needed.
+    if (visible) {
+        repositionNewTabButton();
+    }
 }
 
 void MultiReplace::updateTabTooltip(int /*tabIndex*/)
@@ -19139,7 +19156,7 @@ void MultiReplace::applyConfigSettingsOnly()
             // Switching to Library Mode while list is collapsed → open it as inactive (dimmed)
             adjustWindowSize();
             ShowWindow(_replaceListView, SW_SHOW);
-            for (int id : { IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+            for (int id : { IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
                 IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
                 ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
             }
@@ -19150,13 +19167,10 @@ void MultiReplace::applyConfigSettingsOnly()
             // Switching from Library Mode while list is inactive → collapse it
             if (_listSearchBarVisible) hideListSearchBar();
             ShowWindow(_replaceListView, SW_HIDE);
-            for (int id : { IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+            for (int id : { IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
                 IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
                 ShowWindow(GetDlgItem(_hSelf, id), SW_HIDE);
             }
-            ShowWindow(GetDlgItem(_hSelf, IDC_TAB_LIST_DROPDOWN), SW_HIDE);
-            ShowWindow(GetDlgItem(_hSelf, IDC_TAB_SCROLL_LEFT), SW_HIDE);
-            ShowWindow(GetDlgItem(_hSelf, IDC_TAB_SCROLL_RIGHT), SW_HIDE);
             setBottomRowVisible(false);
             adjustWindowSize();
         }
