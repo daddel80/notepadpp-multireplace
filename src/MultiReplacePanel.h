@@ -918,6 +918,13 @@ private:
     // widths and leak them into the incoming tab.
     bool _suppressLiveWidthSync = false;
 
+    // Suppresses the EN_CHANGE handler on the CSV edit fields from
+    // auto-selecting the Column scope radio. Used while restoreStateFromTab
+    // pushes values into those edits programmatically; without it the
+    // scope radio briefly flickers to CSV before settling on the
+    // restored scope.
+    bool _suppressScopeAutoSelect = false;
+
     // Tandem mode (experimental). Layout and snap math live in the
     // tandem_dock library; this class is orchestration only: a 50 ms
     // polling timer drives MR to follow N++, WM_MOVING drives the

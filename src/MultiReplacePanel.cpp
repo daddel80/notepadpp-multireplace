@@ -6285,6 +6285,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_QUOTECHAR_EDIT:
         case IDC_COLUMN_MODE_RADIO:
         {
+            // Programmatic restore (e.g. tab switch) sets these edits
+            // without expecting the side effect. Skip the auto-select
+            // so the restored scope radio stays untouched.
+            if (_suppressScopeAutoSelect && LOWORD(wParam) != IDC_COLUMN_MODE_RADIO) {
+                return TRUE;
+            }
             m_selectionScope.clear();
             CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_COLUMN_MODE_RADIO);
             setUIElementVisibility();
@@ -16094,19 +16100,25 @@ void MultiReplace::restoreStateFromTab(const TabState& tab)
         : IDC_NORMAL_RADIO;
     CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, searchRadio);
 
-    // Scope
-    // Note: setting the CSV edit fields below triggers EN_CHANGE, which
-    // the dialog handler uses to auto-select IDC_COLUMN_MODE_RADIO. We
-    // therefore set those edits FIRST and the scope radio LAST so the
-    // intended scope wins regardless of the edit handler side effects.
-    setTextInDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT, tab.csvCols);
-    setTextInDialogItem(_hSelf, IDC_DELIMITER_EDIT, tab.csvDelim);
-    setTextInDialogItem(_hSelf, IDC_QUOTECHAR_EDIT, tab.csvQuote);
+    // Scope. Order matters here for two reasons:
+    // 1) The scope radio is set FIRST, so even a brief paint pass during
+    //    the CSV edit assignment shows the correct radio.
+    // 2) The CSV edits trigger EN_CHANGE which would normally auto-flip
+    //    the scope to Column. We suppress that side effect with the
+    //    flag below; the user-driven auto-flip still works as before
+    //    when the flag isn't set.
+    {
+        const int scopeRadio = (tab.scope == 2) ? IDC_COLUMN_MODE_RADIO
+            : (tab.scope == 1) ? IDC_SELECTION_RADIO
+            : IDC_ALL_TEXT_RADIO;
+        CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, scopeRadio);
 
-    const int scopeRadio = (tab.scope == 2) ? IDC_COLUMN_MODE_RADIO
-        : (tab.scope == 1) ? IDC_SELECTION_RADIO
-        : IDC_ALL_TEXT_RADIO;
-    CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, scopeRadio);
+        _suppressScopeAutoSelect = true;
+        setTextInDialogItem(_hSelf, IDC_COLUMN_NUM_EDIT, tab.csvCols);
+        setTextInDialogItem(_hSelf, IDC_DELIMITER_EDIT, tab.csvDelim);
+        setTextInDialogItem(_hSelf, IDC_QUOTECHAR_EDIT, tab.csvQuote);
+        _suppressScopeAutoSelect = false;
+    }
 
     // Input fields
     setTextInDialogItem(_hSelf, IDC_FIND_EDIT, tab.findText);
