@@ -83,9 +83,10 @@ namespace MultiReplaceEngine {
         bool initialize() override;
         void shutdown()   override;
 
-        void beginRun() override;
-        std::wstring endRunSummary() override;
-        std::wstring endRunSkipAllNoticeText() override;
+        // beginRun / endRunSummary / endRunSkipAllNoticeText use the
+        // base implementations: they read the shared _errorSkipCount /
+        // _skipAllErrors state which handleNaN() maintains via the
+        // base's handleRecoverableSkip() helper.
 
         bool compile(const std::string& scriptUtf8) override;
 
@@ -124,9 +125,9 @@ namespace MultiReplaceEngine {
         // Bumps the skip counter and may show the recoverable dialog.
         void handleNaN(const std::string& exprText);
 
-        // Parse a UTF-8 capture string into a double. Returns 0.0 for
-        // empty / non-numeric input. Locale-independent: only '.' is
-        // recognised as decimal separator.
+        // Parse a UTF-8 capture string into a double. Returns NaN for
+        // empty / non-numeric input. Accepts both '.' and ',' as decimal
+        // separator.
         static double parseCaptureToDouble(const std::string& s);
 
         // Format a double back into a string for insertion into the
@@ -278,13 +279,11 @@ namespace MultiReplaceEngine {
         std::string _strFNAME;
 
         // Per-match flags, reset at the start of each execute().
+        // _wantStop, _skipAllErrors and _errorSkipCount live in
+        // IFormulaEngine and are reset by the base beginRun() / per-match
+        // by execute() (for _wantStop).
         bool _wantSkip = false;       // set by skip() in the formula
-        bool _wantStop = false;       // set when user picks "Stop" in NaN dialog
         bool _outputHadNaN = false;   // set when a NaN reaches the output
-
-        // Run-scoped state, reset by beginRun().
-        bool        _skipAllNaN = false;
-        std::size_t _nanSkipCount = 0;
 
         // The reg() callable, registered with the symbol table.
         RegFunction _regFunction;

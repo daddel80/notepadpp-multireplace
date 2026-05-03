@@ -21,6 +21,7 @@
 #pragma once
 
 #include "EngineTypes.h"
+#include "ILuaEngineHost.h"
 
 #include <memory>
 #include <string>
@@ -52,11 +53,35 @@ namespace MultiReplaceEngine {
 
         // ----- Per-run lifecycle ------------------------------------------
         //
-        // Per-run hooks. beginRun() is called before the first match of a
-        // Replace-All pass, the others after the last. Default no-ops.
-        virtual void beginRun() {}
-        virtual std::wstring endRunSummary() { return {}; }
-        virtual std::wstring endRunSkipAllNoticeText() { return {}; }
+        // beginRun() runs before the first match, the end-of-run hooks
+        // after the last. The defaults here implement a generic skip-
+        // counter pattern; subclasses just need to populate the
+        // protected counters via noteRecoverableSkip() etc. Engines that
+        // don't need any of this leave the counter alone and the hooks
+        // return empty automatically.
+        virtual void beginRun() {
+            _skipAllErrors = false;
+            _errorSkipCount = 0;
+        }
+
+        virtual std::wstring endRunSummary() {
+            if (_errorSkipCount == 0) {
+                return std::wstring{};
+            }
+            return localiseCount(L"status_recoverable_errors_skipped_summary",
+                _errorSkipCount);
+        }
+
+        virtual std::wstring endRunSkipAllNoticeText() {
+            // Only surface the final notice when the user picked "Skip
+            // all errors". In the per-match skip path the user
+            // confirmed each one already.
+            if (!_skipAllErrors || _errorSkipCount == 0) {
+                return std::wstring{};
+            }
+            return localiseCount(L"msgbox_recoverable_errors_skipped_notice",
+                _errorSkipCount);
+        }
 
         // ----- Per-script compile -----------------------------------------
 
@@ -108,6 +133,55 @@ namespace MultiReplaceEngine {
         // May be a local file:// path or a remote https:// URL; the
         // panel doesn't care.
         virtual std::wstring helpUrl() const = 0;
+    protected:
+        // ----- Shared recoverable-error skip state ------------------------
+        //
+        // Engines that emit per-match warnings the user can choose to skip
+        // (ExprTk on NaN, later Lua on pcall errors) share this state and
+        // the helpers below. Three pieces of state cover the lifecycle:
+        //
+        //   _wantStop       per-match flag, set when the user picks "Stop"
+        //                   in the recoverable-error dialog. The engine's
+        //                   execute() must check it and bail out with
+        //                   FormulaResult::success = false.
+        //
+        //   _skipAllErrors  run-scoped flag, set when the user picks
+        //                   "Skip all errors". Once set, the engine
+        //                   suppresses further dialogs for the rest of
+        //                   the run; the count keeps incrementing.
+        //
+        //   _errorSkipCount run-scoped counter, incremented for every
+        //                   skipped match (whether or not a dialog was
+        //                   shown). Surfaced via endRunSummary() and
+        //                   endRunSkipAllNoticeText().
+        //
+        // beginRun() resets the run-scoped fields. _wantStop is per-match
+        // and gets reset by the engine at the top of each execute().
+        bool        _wantStop = false;
+        bool        _skipAllErrors = false;
+        std::size_t _errorSkipCount = 0;
+
+        // Bumps the skip counter and routes the user through the
+        // recoverable-error dialog. Engines call this on every recoverable
+        // error and then check _wantStop / FormulaResult::skip to decide
+        // how to return. exprText is shown in the dialog to identify the
+        // failing expression. The detailKey points to a translation
+        // template that takes the exprText as $REPLACE_STRING and produces
+        // the engine-specific hint shown in the dialog body.
+        //
+        // Returns the user's choice (also reflected in _wantStop /
+        // _skipAllErrors so callers can ignore the return value if they
+        // only care about side effects).
+        ILuaEngineHost::RecoverableErrorChoice handleRecoverableSkip(
+            ILuaEngineHost* host,
+            const std::wstring& engineName,
+            const std::wstring& detailKey,
+            const std::string& exprText);
+
+        // Helper for the default endRun* hooks: pulls a translation key
+        // and substitutes the count as $REPLACE_STRING.
+        static std::wstring localiseCount(const std::wstring& key,
+            std::size_t count);
     };
 
     // Convenience alias used throughout the rest of the codebase to keep

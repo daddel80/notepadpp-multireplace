@@ -104,6 +104,7 @@
       <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"> /bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <ClCompile Include="..\src\engine\ExprTkPatternParser.cpp" />
+    <ClCompile Include="..\src\engine\Iformulaengine.cpp" />
     <ClCompile Include="..\src\engine\LuaEngine.cpp" />
     <ClCompile Include="..\src\image_data.cpp" />
     <ClCompile Include="..\src\IniFileCache.cpp" />

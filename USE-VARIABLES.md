@@ -488,25 +488,27 @@ ExprTk receives the same per-match context as Lua, but exposed differently becau
 | `LPOS` / `lpos` | Column position within the line (UTF-8 bytes).                  |
 | `APOS` / `apos` | Absolute byte position in the document.                         |
 | `COL` / `col`   | CSV column index (CSV mode), 0 otherwise.                       |
+| `HIT` / `hit`   | Numeric value of the full match (same as `reg(0)`).             |
 
 #### String variables (read-only, usable only in `return [...]` lists)
 
 | Name              | Description                                  |
 |-------------------|----------------------------------------------|
-| `MATCH` / `match` | The matched text.                            |
 | `FPATH` / `fpath` | Full path of the document being processed.   |
 | `FNAME` / `fname` | Filename without path.                       |
+
+To access the matched text as a string, use `rstr(0)` inside a `return [...]` list, or `\0` / `$0` directly in the replace pattern (regular regex back-reference).
 
 #### Capture access
 
 | Function  | Returns | Use case                                                              |
 |-----------|---------|-----------------------------------------------------------------------|
-| `reg(N)`  | number  | Capture group N as `double`. `reg(0)` is the full match. Non-numeric captures yield `0.0`. |
+| `reg(N)`  | number  | Capture group N as `double`. `reg(0)` is the full match. Non-numeric captures yield `NaN`. |
 | `rstr(N)` | string  | Capture group N as text. `rstr(0)` is the full match. Only valid inside a `return [...]` list. |
 
 **Number parsing notes:**
 
-`reg(N)` parses captures with both `.` and `,` accepted as decimal separator, tolerates trailing non-numeric characters, and falls back to `0.0` when the input has no leading digits. Expressions must produce a finite number — `NaN` or `±Infinity` (from `0/0`, `log(-1)`, `sqrt(-1)`, etc.) raise a runtime error and stop the replacement. Thousands separators are not interpreted; pre-process them in the regex if your data uses them.
+`reg(N)` parses captures with both `.` and `,` accepted as decimal separator, tolerates trailing non-numeric characters, and yields `NaN` when the input has no leading digits. When an expression evaluates to `NaN` (or to `±Infinity` from things like `0/0`, `log(-1)`, `sqrt(-1)`), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. Skipped matches are left untouched, so no original data is lost.
 
 | Capture text                         | `reg(N)`            | Note                                            |
 |--------------------------------------|---------------------|-------------------------------------------------|
@@ -514,8 +516,8 @@ ExprTk receives the same per-match context as Lua, but exposed differently becau
 | `"3.14"`                             | `3.14`              |                                                 |
 | `"3,14"`                             | `3.14`              | comma accepted as decimal                       |
 | `"-7,5"`                             | `-7.5`              |                                                 |
-| `""`, `"abc"`                        | `0`                 | unparseable falls back to zero                  |
-| `"$100"`                             | `0`                 | leading non-digit fails                         |
+| `""`, `"abc"`                        | `NaN`               | unparseable                                     |
+| `"$100"`                             | `NaN`               | leading non-digit                               |
 | `"3,14abc"`                          | `3.14`              | trailing characters tolerated                   |
 | `"1,234,567"` (US thousands)         | `1.234`             | thousands separators not recognised — strip them in the regex first |
 | `"1.234,56"` or `"1,234.56"`         | `1.234` or `1`      | mixed separators are unreliable — avoid relying on them |
@@ -594,13 +596,13 @@ Example — clamp a captured value but show "OVER" if it exceeded:
 
 ### String Output via `return [...]`
 
-ExprTk expressions normally produce a number. To emit a **string** — e.g. to combine literal text with `MATCH` or `rstr(N)` — wrap the output in a `return` list:
+ExprTk expressions normally produce a number. To emit a **string** — e.g. to combine literal text with `rstr(N)` capture text — wrap the output in a `return` list:
 
 ```
 (?=return ['prefix-', rstr(1), '-suffix'])
 ```
 
-The list elements can be string literals, the string variables (`MATCH`, `FPATH`, `FNAME`), `rstr(N)` capture text, and numeric expressions (which are converted to text). This is the only path for any non-numeric output.
+The list elements can be string literals, the string variables (`FPATH`, `FNAME`), `rstr(N)` capture text (use `rstr(0)` for the full match), and numeric expressions (which are converted to text). This is the only path for any non-numeric output.
 
 > **String literals are ASCII-only.** UTF-8 bytes in `'...'` will fail to compile. Non-ASCII text must come from the document via captures or string variables, or be placed in the literal portion of the replace string outside `(?=...)`. See [Limitations](#limitations) below.
 
@@ -689,7 +691,7 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 
 ExprTk is deliberately scoped. Things it does **not** do:
 
-- **No string manipulation** — there is no `substring`, `replace`, `find`, `format`, etc. Strings can only be passed through (via captures, `MATCH`, `FNAME`, `FPATH`) and assembled in `return [...]` lists.
+- **No string manipulation** — there is no `substring`, `replace`, `find`, `format`, etc. Strings can only be passed through (via captures, `rstr(N)`, `FNAME`, `FPATH`) and assembled in `return [...]` lists.
 - **UTF-8 inside string literals fails to compile.** A literal like `'Größe'` between `'...'` will produce an `Invalid string token` error. Use captures or place non-ASCII text outside the `(?=...)` block.
 - **No state across matches.** Each `(?=...)` evaluation starts fresh. The numeric counters (`CNT`, `LCNT`) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use `vars({...})`.
 - **No file I/O, no external scripts.** ExprTk has no equivalent to Lua's `lvars`, `lkp`, or `lcmd`.

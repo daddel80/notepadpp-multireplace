@@ -24,8 +24,6 @@
 #include <system_error>
 
 #include "../StringUtils.h"
-#include "../LanguageManager.h"
-#include "../Encoding.h"
 namespace SU = StringUtils;
 
 namespace MultiReplaceEngine {
@@ -117,33 +115,10 @@ namespace MultiReplaceEngine {
     // Per-run lifecycle
     // ---------------------------------------------------------------------
 
-    void ExprTkEngine::beginRun()
-    {
-        _skipAllNaN = false;
-        _nanSkipCount = 0;
-    }
-
-    std::wstring ExprTkEngine::endRunSummary()
-    {
-        if (_nanSkipCount == 0) {
-            return std::wstring{};
-        }
-        return LanguageManager::instance().get(
-            L"status_exprtk_nan_skipped_summary",
-            { std::to_wstring(_nanSkipCount) });
-    }
-
-    std::wstring ExprTkEngine::endRunSkipAllNoticeText()
-    {
-        // Only surface the final notice when the user picked "Skip all NaN".
-        // In the per-match skip path they confirmed each one already.
-        if (!_skipAllNaN || _nanSkipCount == 0) {
-            return std::wstring{};
-        }
-        return LanguageManager::instance().get(
-            L"msgbox_exprtk_nan_skipped_notice",
-            { std::to_wstring(_nanSkipCount) });
-    }
+    // beginRun / endRunSummary / endRunSkipAllNoticeText are inherited
+    // from IFormulaEngine - the base implementation uses the shared
+    // _skipAllErrors / _errorSkipCount state which we drive via
+    // handleRecoverableSkip() below.
 
     // ---------------------------------------------------------------------
     // Error reporting
@@ -160,30 +135,11 @@ namespace MultiReplaceEngine {
 
     void ExprTkEngine::handleNaN(const std::string& exprText)
     {
-        // Count every NaN, even when the dialog is suppressed, so the
-        // end-of-run summary is accurate.
-        ++_nanSkipCount;
-
-        if (_skipAllNaN) {
-            return;
-        }
-        if (!_host || !_host->isLuaErrorDialogEnabled()) {
-            return;
-        }
-
-        std::wstring detailW = LanguageManager::instance().get(
-            L"msgbox_recoverable_runtime_error_details",
-            { Encoding::utf8ToWString(exprText) });
-        const std::string details = Encoding::wstringToUtf8(detailW);
-
-        const auto choice = _host->showRecoverableErrorDialog(
-            "ExprTk", details);
-        if (choice == ILuaEngineHost::RecoverableErrorChoice::SkipAll) {
-            _skipAllNaN = true;
-        }
-        else if (choice == ILuaEngineHost::RecoverableErrorChoice::Stop) {
-            _wantStop = true;
-        }
+        // Delegate the entire skip-state and dialog plumbing to the base
+        // class. The engine-specific bit is the translation key for the
+        // detail-text shown in the dialog body.
+        handleRecoverableSkip(_host, L"ExprTk",
+            L"msgbox_recoverable_error_details_exprtk", exprText);
     }
 
     // ---------------------------------------------------------------------
@@ -383,6 +339,22 @@ namespace MultiReplaceEngine {
         std::string out;
         out.reserve(scriptUtf8.size());
 
+        // Helper: build the FormulaResult for a NaN-skipped match. Used by
+        // both the numeric path and the return-list path. Sets success=false
+        // when the user picked "Stop" in the dialog, otherwise marks the
+        // match as skipped so the rest of the run can continue.
+        const auto onNaN = [&](FormulaResult& r, const std::string& exprText) {
+            handleNaN(exprText);
+            if (_wantStop) {
+                r.success = false;
+                r.errorMessage = "Aborted via NaN dialog";
+                return;
+            }
+            r.skip = true;
+            r.success = true;
+            r.outputIsRegexSafe = isRegexMatch;
+            };
+
         const auto& segs = _parsedTemplate.segments;
         for (std::size_t i = 0; i < segs.size(); ++i) {
             const auto& seg = segs[i];
@@ -402,30 +374,14 @@ namespace MultiReplaceEngine {
             if (expr.return_invoked()) {
                 appendExprtkResults(expr, out, escapeOutput);
                 if (_outputHadNaN) {
-                    handleNaN(seg.text);
-                    if (_wantStop) {
-                        result.success = false;
-                        result.errorMessage = "Aborted via NaN dialog";
-                        return result;
-                    }
-                    result.skip = true;
-                    result.success = true;
-                    result.outputIsRegexSafe = isRegexMatch;
+                    onNaN(result, seg.text);
                     return result;
                 }
                 continue;
             }
 
             if (std::isnan(value)) {
-                handleNaN(seg.text);
-                if (_wantStop) {
-                    result.success = false;
-                    result.errorMessage = "Aborted via NaN dialog";
-                    return result;
-                }
-                result.skip = true;
-                result.success = true;
-                result.outputIsRegexSafe = isRegexMatch;
+                onNaN(result, seg.text);
                 return result;
             }
             out.append(formatDouble(value));

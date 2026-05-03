@@ -614,7 +614,7 @@ nav.pagenav .nav-group.collapsible {
       <tr>
         <td>Insert match counter</td>
         <td><code>set(CNT .. ". " .. MATCH)</code></td>
-        <td><code>(?=CNT). (?=return [MATCH])</code></td>
+        <td><code>(?=CNT). (?=return [rstr(0)])</code></td>
       </tr>
       <tr>
         <td>Convert &deg;F to &deg;C</td>
@@ -624,7 +624,7 @@ nav.pagenav .nav-group.collapsible {
       <tr>
         <td>Wrap match in brackets</td>
         <td><code>set("&lt;" .. MATCH .. "&gt;")</code></td>
-        <td><code>(?=return ['&lt;', MATCH, '&gt;'])</code></td>
+        <td><code>(?=return ['&lt;', rstr(0), '&gt;'])</code></td>
       </tr>
     </table>
   </section>
@@ -1644,6 +1644,10 @@ return {
         <td><strong>COL</strong> / <strong>col</strong></td>
         <td>CSV column index (CSV mode), 0 otherwise.</td>
       </tr>
+      <tr>
+        <td><strong>HIT</strong> / <strong>hit</strong></td>
+        <td>Numeric value of the full match (same as <code>reg(0)</code>).</td>
+      </tr>
     </table>
 
     <h3>String variables (read-only, usable only in <code>return [...]</code> lists)</h3>
@@ -1651,10 +1655,6 @@ return {
       <tr>
         <th>Name</th>
         <th>Description</th>
-      </tr>
-      <tr>
-        <td><strong>MATCH</strong> / <strong>match</strong></td>
-        <td>The matched text.</td>
       </tr>
       <tr>
         <td><strong>FPATH</strong> / <strong>fpath</strong></td>
@@ -1665,6 +1665,7 @@ return {
         <td>Filename without path.</td>
       </tr>
     </table>
+    <p>To access the matched text as a string, use <code>rstr(0)</code> inside a <code>return [...]</code> list, or <code>\0</code> / <code>$0</code> directly in the replace pattern (regular regex back-reference).</p>
 
     <h3>Capture access</h3>
     <table class="optionsTable">
@@ -1676,7 +1677,7 @@ return {
       <tr>
         <td><code>reg(N)</code></td>
         <td>number</td>
-        <td>Capture group N as <code>double</code>. <code>reg(0)</code> is the full match. Non-numeric captures yield <code>0.0</code>.</td>
+        <td>Capture group N as <code>double</code>. <code>reg(0)</code> is the full match. Non-numeric captures yield <code>NaN</code>.</td>
       </tr>
       <tr>
         <td><code>rstr(N)</code></td>
@@ -1714,13 +1715,13 @@ return {
       </tr>
       <tr>
         <td><code>""</code>, <code>"abc"</code></td>
-        <td><code>0</code></td>
-        <td>unparseable falls back to zero</td>
+        <td><code>NaN</code></td>
+        <td>unparseable</td>
       </tr>
       <tr>
         <td><code>"$100"</code></td>
-        <td><code>0</code></td>
-        <td>leading non-digit fails</td>
+        <td><code>NaN</code></td>
+        <td>leading non-digit</td>
       </tr>
       <tr>
         <td><code>"3,14abc"</code></td>
@@ -1738,7 +1739,7 @@ return {
         <td>mixed separators are unreliable &mdash; avoid relying on them</td>
       </tr>
     </table>
-    <p>Expressions must produce a finite number. Operations that yield <code>NaN</code> or <code>&plusmn;Infinity</code> (e.g. <code>0/0</code>, <code>log(-1)</code>, <code>sqrt(-1)</code>) raise a runtime error and stop the replacement &mdash; guard the input first when such values are possible.</p>
+    <p>When an expression evaluates to <code>NaN</code> (or to <code>&plusmn;Infinity</code> from things like <code>0/0</code>, <code>log(-1)</code>, <code>sqrt(-1)</code>), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. Skipped matches are left untouched, so no original data is lost.</p>
   </section>
 
   <br>
@@ -1835,9 +1836,9 @@ return {
 
   <section id="exprtk-string-output">
     <h2>String Output via <code>return [...]</code></h2>
-    <p>ExprTk expressions normally produce a number. To emit a <strong>string</strong> &mdash; e.g. to combine literal text with <code>MATCH</code> or <code>rstr(N)</code> &mdash; wrap the output in a <code>return</code> list:</p>
+    <p>ExprTk expressions normally produce a number. To emit a <strong>string</strong> &mdash; e.g. to combine literal text with <code>rstr(N)</code> capture text &mdash; wrap the output in a <code>return</code> list:</p>
     <p><code>(?=return ['prefix-', rstr(1), '-suffix'])</code></p>
-    <p>The list elements can be string literals, the string variables (<code>MATCH</code>, <code>FPATH</code>, <code>FNAME</code>), <code>rstr(N)</code> capture text, and numeric expressions (which are converted to text). This is the only path for any non-numeric output.</p>
+    <p>The list elements can be string literals, the string variables (<code>FPATH</code>, <code>FNAME</code>), <code>rstr(N)</code> capture text (use <code>rstr(0)</code> for the full match), and numeric expressions (which are converted to text). This is the only path for any non-numeric output.</p>
     <section class="note">
       <p><strong>String literals are ASCII-only.</strong> UTF-8 bytes in <code>'...'</code> will fail to compile. Non-ASCII text must come from the document via captures or string variables, or be placed in the literal portion of the replace string outside <code>(?=...)</code>. See <a href="#exprtk-limitations">Limitations</a> below.</p>
     </section>
@@ -2027,7 +2028,7 @@ return {
     <h2>Limitations</h2>
     <p>ExprTk is deliberately scoped. Things it does <strong>not</strong> do:</p>
     <ul>
-      <li><strong>No string manipulation</strong> &mdash; there is no <code>substring</code>, <code>replace</code>, <code>find</code>, <code>format</code>, etc. Strings can only be passed through (via captures, <code>MATCH</code>, <code>FNAME</code>, <code>FPATH</code>) and assembled in <code>return [...]</code> lists.</li>
+      <li><strong>No string manipulation</strong> &mdash; there is no <code>substring</code>, <code>replace</code>, <code>find</code>, <code>format</code>, etc. Strings can only be passed through (via captures, <code>rstr(N)</code>, <code>FNAME</code>, <code>FPATH</code>) and assembled in <code>return [...]</code> lists.</li>
       <li><strong>UTF-8 inside string literals fails to compile.</strong> A literal like <code>'Gr&ouml;&szlig;e'</code> between <code>'...'</code> will produce an <code>Invalid string token</code> error. Use captures or place non-ASCII text outside the <code>(?=...)</code> block.</li>
       <li><strong>No state across matches.</strong> Each <code>(?=...)</code> evaluation starts fresh. The numeric counters (<code>CNT</code>, <code>LCNT</code>) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use <code>vars({...})</code>.</li>
       <li><strong>No file I/O, no external scripts.</strong> ExprTk has no equivalent to Lua's <code>lvars</code>, <code>lkp</code>, or <code>lcmd</code>.</li>
