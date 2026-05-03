@@ -19,13 +19,13 @@
 #include <cmath>
 #include <cstring>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <system_error>
 
-// SU::escapeControlChars is shared with LuaEngine for debug-window
-// display: capture strings may contain TAB/NL/etc, which would break
-// the tab-separated table format the host's debug dialog renders.
 #include "../StringUtils.h"
+#include "../LanguageManager.h"
+#include "../Encoding.h"
 namespace SU = StringUtils;
 
 namespace MultiReplaceEngine {
@@ -71,13 +71,9 @@ namespace MultiReplaceEngine {
         _symbolTable.add_variable("apos", _varAPOS);
         _symbolTable.add_variable("COL", _varCOL);
         _symbolTable.add_variable("col", _varCOL);
+        _symbolTable.add_variable("HIT", _varHIT);
+        _symbolTable.add_variable("hit", _varHIT);
 
-        // Register string-typed variables for match/file metadata. Same
-        // reference-binding contract as numeric vars (Section 13 of the
-        // ExprTk docs). The strings are refreshed at the start of every
-        // execute() call so each match sees its own values.
-        _symbolTable.add_stringvar("MATCH", _strMATCH);
-        _symbolTable.add_stringvar("match", _strMATCH);
         _symbolTable.add_stringvar("FPATH", _strFPATH);
         _symbolTable.add_stringvar("fpath", _strFPATH);
         _symbolTable.add_stringvar("FNAME", _strFNAME);
@@ -118,6 +114,38 @@ namespace MultiReplaceEngine {
     }
 
     // ---------------------------------------------------------------------
+    // Per-run lifecycle
+    // ---------------------------------------------------------------------
+
+    void ExprTkEngine::beginRun()
+    {
+        _skipAllNaN = false;
+        _nanSkipCount = 0;
+    }
+
+    std::wstring ExprTkEngine::endRunSummary()
+    {
+        if (_nanSkipCount == 0) {
+            return std::wstring{};
+        }
+        return LanguageManager::instance().get(
+            L"status_exprtk_nan_skipped_summary",
+            { std::to_wstring(_nanSkipCount) });
+    }
+
+    std::wstring ExprTkEngine::endRunSkipAllNoticeText()
+    {
+        // Only surface the final notice when the user picked "Skip all NaN".
+        // In the per-match skip path they confirmed each one already.
+        if (!_skipAllNaN || _nanSkipCount == 0) {
+            return std::wstring{};
+        }
+        return LanguageManager::instance().get(
+            L"msgbox_exprtk_nan_skipped_notice",
+            { std::to_wstring(_nanSkipCount) });
+    }
+
+    // ---------------------------------------------------------------------
     // Error reporting
     // ---------------------------------------------------------------------
 
@@ -127,10 +155,35 @@ namespace MultiReplaceEngine {
         if (!_host || !_host->isLuaErrorDialogEnabled()) {
             return;
         }
-        // Engine identifier is passed separately so the host can compose
-        // the user-visible "ExprTk: ..." prefix from a translation
-        // template instead of a hardcoded literal here.
         _host->showErrorMessage(category, "ExprTk", details);
+    }
+
+    void ExprTkEngine::handleNaN(const std::string& exprText)
+    {
+        // Count every NaN, even when the dialog is suppressed, so the
+        // end-of-run summary is accurate.
+        ++_nanSkipCount;
+
+        if (_skipAllNaN) {
+            return;
+        }
+        if (!_host || !_host->isLuaErrorDialogEnabled()) {
+            return;
+        }
+
+        std::wstring detailW = LanguageManager::instance().get(
+            L"msgbox_recoverable_runtime_error_details",
+            { Encoding::utf8ToWString(exprText) });
+        const std::string details = Encoding::wstringToUtf8(detailW);
+
+        const auto choice = _host->showRecoverableErrorDialog(
+            "ExprTk", details);
+        if (choice == ILuaEngineHost::RecoverableErrorChoice::SkipAll) {
+            _skipAllNaN = true;
+        }
+        else if (choice == ILuaEngineHost::RecoverableErrorChoice::Stop) {
+            _wantStop = true;
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -210,17 +263,19 @@ namespace MultiReplaceEngine {
     FormulaResult ExprTkEngine::execute(
         const std::string& scriptUtf8,
         const FormulaVars& vars,
-        bool /*isRegexMatch*/,    // see note in result-construction below
+        bool isRegexMatch,
         int  /*documentCodepage*/)
     {
         FormulaResult result;
 
-        // Note on isRegexMatch:
-        // The host pipeline routes engine output through Scintilla's plain
-        // replace path (SCI_REPLACETARGET) regardless of regex mode, so no
-        // pre-escaping of format-string special characters is needed here.
-        // The parameter is preserved on the IFormulaEngine boundary for
-        // future use (e.g. diagnostics) but currently has no effect.
+        // When the caller is in regex mode the rendered output will be
+        // routed through a regex replacement engine. Expression results
+        // (formula output) need to be escaped so any literal \ or $ from
+        // the formula stays literal and is not misread as a backreference.
+        // Literal segments outside (?=...) blocks are left unescaped on
+        // purpose - that is what lets the user write \1 / $1 verbatim in
+        // the replace template and have them expand normally.
+        const bool escapeOutput = isRegexMatch;
 
         // Lazy compile: if compile() was never called, or the script has
         // changed since the last compile, run it now. compile() has
@@ -245,33 +300,22 @@ namespace MultiReplaceEngine {
         _varAPOS = static_cast<double>(vars.APOS);
         _varCOL = static_cast<double>(vars.COL);
 
-        // Update per-match string variables. ExprTk holds these by
-        // reference too, so writing into the members is enough; any
-        // compiled expression that mentions MATCH/FPATH/FNAME will
-        // pick up the new value on the next eval.
         _strMATCH = vars.MATCH;
         _strFPATH = vars.FPATH;
         _strFNAME = vars.FNAME;
 
-        // Reset skip flag so a previous match's skip() call cannot
-        // leak into this one. skip() will set it back to true if the
-        // user calls it during eval below.
         _wantSkip = false;
+        _wantStop = false;
+        _outputHadNaN = false;
 
-        // Pre-parse captures into doubles. Index 0 = full match (MATCH),
-        // index 1..N = capture groups. Doing this once per match is
-        // cheaper than re-parsing inside reg() for every reg(N) call.
         _captures.clear();
         _captures.reserve(vars.captures.size() + 1);
         _captures.push_back(parseCaptureToDouble(vars.MATCH));
         for (const auto& cap : vars.captures) {
             _captures.push_back(parseCaptureToDouble(cap));
         }
+        _varHIT = _captures[0];
 
-        // Mirror the captures as raw strings for rstr(N). RstrFunction
-        // reads from this vector indexed 0..N-1 for capture groups
-        // 1..N. The full match (rstr(0)) is served from _strMATCH
-        // directly and not duplicated here.
         _captureStrings = vars.captures;
 
         // ----- Debug-window display ---------------------------------------
@@ -300,23 +344,15 @@ namespace MultiReplaceEngine {
             emitNumber("LPOS", _varLPOS);
             emitNumber("APOS", _varAPOS);
             emitNumber("COL", _varCOL);
+            emitNumber("HIT", _varHIT);
 
-            // String variables. Same Tab-separated format as numbers so
-            // both render identically in the debug dialog. FPATH/FNAME
-            // can be empty in some contexts (no file path known) - we
-            // still emit them so the dialog is predictable.
             auto emitString = [&dbg](const char* name, const std::string& value) {
                 dbg << name << "\tString\t"
                     << SU::escapeControlChars(value) << "\n\n";
                 };
-            emitString("MATCH", vars.MATCH);
             emitString("FPATH", vars.FPATH);
             emitString("FNAME", vars.FNAME);
 
-            // Capture strings. reg(0) is the full match; reg(1..N) are the
-            // capture groups. We emit the original capture string (not the
-            // double the engine sees) so the user can see exactly what the
-            // pattern matched, including non-numeric content.
             dbg << "reg(0)\tString\t"
                 << SU::escapeControlChars(vars.MATCH) << "\n\n";
             for (std::size_t i = 0; i < vars.captures.size(); ++i) {
@@ -341,10 +377,9 @@ namespace MultiReplaceEngine {
 
         // Walk segments in order, accumulating the output. Literals copy
         // straight through; expressions get evaluated and either formatted
-        // as a number (legacy path) or unpacked from an ExprTk return
-        // statement (new path - lets users emit mixed string/number
-        // output, which is the only way to surface a string variable like
-        // FNAME / FPATH / MATCH).
+        // as a number or unpacked from an ExprTk return statement, which
+        // lets users emit mixed string/number output (the only way to
+        // surface a string variable like FNAME / FPATH).
         std::string out;
         out.reserve(scriptUtf8.size());
 
@@ -365,26 +400,32 @@ namespace MultiReplaceEngine {
             const double value = expr.value();
 
             if (expr.return_invoked()) {
-                appendExprtkResults(expr, out);
+                appendExprtkResults(expr, out, escapeOutput);
+                if (_outputHadNaN) {
+                    handleNaN(seg.text);
+                    if (_wantStop) {
+                        result.success = false;
+                        result.errorMessage = "Aborted via NaN dialog";
+                        return result;
+                    }
+                    result.skip = true;
+                    result.success = true;
+                    result.outputIsRegexSafe = isRegexMatch;
+                    return result;
+                }
                 continue;
             }
 
-            // Legacy numeric path. If the user accidentally placed a
-            // string-typed variable (FNAME, FPATH, MATCH) into a numeric
-            // expression - or expected ExprTk to coerce a string to a
-            // number - the eval produces NaN. Surface a useful error
-            // instead of writing "nan" into the document.
             if (std::isnan(value)) {
-                std::string msg =
-                    "Expression \"" + seg.text + "\" evaluated to NaN. "
-                    "ExprTk cannot use a string variable (MATCH, FPATH, "
-                    "FNAME) where a number is expected. To emit a string, "
-                    "wrap it in a return statement: "
-                    "(?=return ['prefix-', FNAME]).";
-                reportError(ILuaEngineHost::ErrorCategory::ExecutionError,
-                    msg);
-                result.success = false;
-                result.errorMessage = "Eval produced NaN";
+                handleNaN(seg.text);
+                if (_wantStop) {
+                    result.success = false;
+                    result.errorMessage = "Aborted via NaN dialog";
+                    return result;
+                }
+                result.skip = true;
+                result.success = true;
+                result.outputIsRegexSafe = isRegexMatch;
                 return result;
             }
             out.append(formatDouble(value));
@@ -392,11 +433,8 @@ namespace MultiReplaceEngine {
 
         result.output = std::move(out);
         result.success = true;
-        // If the user invoked skip() anywhere in the eval (even nested
-        // in a conditional), tell the pipeline to leave the current
-        // match untouched. The output we built above is then thrown
-        // away by the caller; this matches LuaEngine's contract.
         result.skip = _wantSkip;
+        result.outputIsRegexSafe = isRegexMatch;
         return result;
     }
 
@@ -416,7 +454,8 @@ namespace MultiReplaceEngine {
     // ---------------------------------------------------------------------
 
     void ExprTkEngine::appendExprtkResults(const expression_t& expr,
-        std::string& out)
+        std::string& out,
+        bool escapeForRegex)
     {
         // ExprTk's return statement (Section 20 of the docs) turns the
         // expression into one that produces an ordered, typed result list
@@ -435,18 +474,31 @@ namespace MultiReplaceEngine {
 
             switch (ts.type) {
             case type_store_t::e_scalar: {
-                // Numeric element - format like a regular numeric
-                // expression so 1.0 -> "1", 1.5 -> "1.5", etc.
                 const scalar_view_t sv(ts);
-                out.append(formatDouble(sv()));
+                const double v = sv();
+                if (std::isnan(v)) {
+                    _outputHadNaN = true;
+                    return;
+                }
+                out.append(formatDouble(v));
                 break;
             }
 
             case type_store_t::e_string: {
                 // String element - append verbatim. ExprTk strings
                 // are 8-bit char sequences (UTF-8 in our pipeline).
+                // When the host will route this through a regex
+                // replace, escape \ and $ so any literal backslash or
+                // dollar from the formula stays literal and is not
+                // misread as a backreference (\1, $1, $&, ...).
                 const string_view_t sv(ts);
-                out.append(&sv[0], sv.size());
+                if (escapeForRegex && _host) {
+                    std::string raw(&sv[0], sv.size());
+                    out.append(_host->escapeForRegex(raw));
+                }
+                else {
+                    out.append(&sv[0], sv.size());
+                }
                 break;
             }
 
@@ -474,15 +526,14 @@ namespace MultiReplaceEngine {
     double ExprTkEngine::parseCaptureToDouble(const std::string& s)
     {
         if (s.empty()) {
-            return 0.0;
+            return std::numeric_limits<double>::quiet_NaN();
         }
 
-        // Accept both '.' and ',' as decimal separator. Mirrors the
-        // behaviour of the Lua tonum() helper. If the string contains
-        // a '.', commas are left alone so from_chars stops at the first
-        // comma (preserving the trailing-junk semantics for inputs like
-        // "1.5,extra"). If there is no '.', any ',' is normalised to '.'
-        // so comma-decimal locales parse correctly.
+        // Accept both '.' and ',' as decimal separator. If the string
+        // contains a '.', commas are left alone so from_chars stops at
+        // the first comma (preserving trailing-junk semantics for inputs
+        // like "1.5,extra"). If there is no '.', any ',' is normalised
+        // to '.' so comma-decimal locales parse correctly.
         std::string buf;
         const char* first = s.data();
         const char* last = s.data() + s.size();
@@ -498,38 +549,28 @@ namespace MultiReplaceEngine {
         double value = 0.0;
         auto res = std::from_chars(first, last, value);
         if (res.ec != std::errc{}) {
-            // Non-numeric input. Could be intentional ("price=$5.00")
-            // or a user mistake; in either case, returning 0.0 keeps
-            // expressions evaluable rather than aborting the whole match.
-            return 0.0;
+            // Non-numeric input - return NaN so the formula author can
+            // either propagate it (NaN-as-error) or guard explicitly
+            // with a NaN check (x != x). Silent 0.0 fallback would
+            // corrupt data when matches contain unexpected text.
+            return std::numeric_limits<double>::quiet_NaN();
         }
 
-        // We do not require all of the input to have been consumed;
-        // trailing junk like "1.5abc" yields 1.5. This is consistent
-        // with how most programming languages read numeric prefixes.
+        // Trailing junk like "1.5abc" yields 1.5. Consistent with how
+        // most programming languages read numeric prefixes.
         return value;
     }
 
     std::string ExprTkEngine::formatDouble(double value)
     {
-        // Special floats that std::to_chars handles but we want to spell
-        // out explicitly so the output is recognisable in a replace
-        // context (rather than implementation-defined "nan" capitalisation).
-        if (std::isnan(value)) {
-            return "nan";
-        }
         if (std::isinf(value)) {
             return value < 0.0 ? "-inf" : "inf";
         }
 
-        // Use std::to_chars in its "shortest round-trip" mode (no format
-        // argument) so 1.0 -> "1", 1.5 -> "1.5", 1e20 -> "1e+20", etc.
-        // 64 bytes is more than enough for any double.
         std::array<char, 64> buf{};
         auto res = std::to_chars(buf.data(), buf.data() + buf.size(), value);
         if (res.ec != std::errc{}) {
-            // Fallback (should not happen with the buffer size above).
-            return "nan";
+            return std::string{};
         }
         return std::string(buf.data(), res.ptr);
     }

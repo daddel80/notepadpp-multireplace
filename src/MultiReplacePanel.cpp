@@ -7241,6 +7241,10 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         return false;
     }
 
+    if (auto* engine = getActiveEngine()) {
+        engine->beginRun();
+    }
+
     // Selection mode with no selection: different behavior for single-doc vs. multi-doc.
     // Use hasAnyNonEmptySelection() so rectangular selections (where some
     // sub-selections can legitimately be zero-length) are handled correctly.
@@ -7414,9 +7418,31 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
     // Store count for callers that need accumulated totals (e.g. replaceAllInOpenedDocs)
     m_lastTotalReplaceCount = totalReplaceCount;
 
-    // Display status message
+    // Status message: replacement count plus optional engine summary.
+    // ExprTk also emits a notice dialog when the user picked "Skip all NaN".
     if (replaceSuccess && showCompletionMessage) {
-        showStatusMessage(LM.get(L"status_occurrences_replaced", { std::to_wstring(totalReplaceCount) }), MessageStatus::Success);
+        std::wstring msg = LM.get(L"status_occurrences_replaced",
+            { std::to_wstring(totalReplaceCount) });
+        std::wstring noticeBody;
+
+        if (auto* engine = getActiveEngine()) {
+            std::wstring summary = engine->endRunSummary();
+            if (!summary.empty()) {
+                msg += L" ";
+                msg += summary;
+            }
+            noticeBody = engine->endRunSkipAllNoticeText();
+        }
+        showStatusMessage(msg, MessageStatus::Success);
+
+        if (!noticeBody.empty()) {
+            const std::wstring noticeTitle = LM.get(
+                L"msgbox_title_exprtk_nan_skipped_notice");
+            MessageBox(nppData._nppHandle,
+                noticeBody.c_str(),
+                noticeTitle.c_str(),
+                MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+        }
     }
 
     return replaceSuccess;
@@ -7427,6 +7453,10 @@ void MultiReplace::handleReplaceButton() {
 
     if (!validateDelimiterData()) {
         return;
+    }
+
+    if (auto* engine = getActiveEngine()) {
+        engine->beginRun();
     }
 
     // Safety: Selection mode with no selection and no stored scope → do nothing.
@@ -7623,6 +7653,8 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
         {
             std::string finalReplaceText; // Will hold the final text in the document's native encoding.
 
+            bool engineOutputIsRegexSafe = false;
+
             // --- Formula engine expansion ---
             if (itemData.useVariables) {
                 auto* engine = getActiveEngine();
@@ -7650,6 +7682,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                     return false;
                 }
                 skipReplace = res.skip;
+                engineOutputIsRegexSafe = res.outputIsRegexSafe;
 
                 // Convert the result from the engine (UTF-8) to the final document codepage.
                 finalReplaceText = convertAndExtendW(
@@ -7663,9 +7696,10 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
             // --- Final Replacement Execution ---
             if (!skipReplace) {
-                // Engine output is already final; insert verbatim to avoid
-                // Boost format-string interpretation of '\', '$', '(?...)'.
-                newPos = (itemData.regex && !itemData.useVariables)
+                bool useRegexReplace = itemData.useVariables
+                    ? engineOutputIsRegexSafe
+                    : itemData.regex;
+                newPos = useRegexReplace
                     ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
                     : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
 
@@ -7779,6 +7813,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
         {
             std::string finalReplaceText; // Will hold the final text in the document's native encoding.
+            bool engineOutputIsRegexSafe = false;
 
             // --- Formula engine expansion ---
             if (itemData.useVariables) {
@@ -7807,6 +7842,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                         return false;
                     }
                     skipReplace = res.skip;
+                    engineOutputIsRegexSafe = res.outputIsRegexSafe;
 
                     if (!skipReplace) {
                         finalReplaceText = convertAndExtendW(
@@ -7823,7 +7859,9 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                         : performReplace(fixedReplace, searchResult.pos, searchResult.length);
                 }
                 else {
-                    nextPos = performReplace(finalReplaceText, searchResult.pos, searchResult.length);
+                    nextPos = engineOutputIsRegexSafe
+                        ? performRegexReplace(finalReplaceText, searchResult.pos, searchResult.length)
+                        : performReplace(finalReplaceText, searchResult.pos, searchResult.length);
                 }
 
                 updateLineDelimiterAfterReplace(searchResult.pos);
@@ -8023,13 +8061,11 @@ Sci_Position MultiReplace::computeAllStartPos(const SearchContext& context, bool
 
 std::string MultiReplace::escapeForRegex(const std::string& input) {
     std::string escaped;
+    escaped.reserve(input.size());
     for (char c : input) {
         switch (c) {
-        case '\\':
-        case '^': case '$': case '.': case '|':
-        case '?': case '*': case '+': case '(': case ')':
-        case '[': case ']': case '{': case '}':
-            escaped.push_back('\\'); // Prepend a backslash to escape regex special chars
+        case '\\': case '$': case '(': case ')': case '?': case ':':
+            escaped.push_back('\\');
             escaped.push_back(c);
             break;
         default:
@@ -8087,6 +8123,66 @@ void MultiReplace::showErrorMessage(
             LM.get(L"msgbox_title_use_variables_execution_error").c_str(),
             MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
     }
+}
+
+MultiReplaceEngine::ILuaEngineHost::RecoverableErrorChoice
+MultiReplace::showRecoverableErrorDialog(
+    const std::string& engineName,
+    const std::string& details)
+{
+    using Choice = MultiReplaceEngine::ILuaEngineHost::RecoverableErrorChoice;
+
+    const std::wstring engineW = Encoding::utf8ToWString(engineName);
+    const std::wstring detailsW = Encoding::utf8ToWString(details);
+    const std::wstring entryW = (_currentRuleIndex != SIZE_MAX)
+        ? std::to_wstring(_currentRuleIndex + 1)
+        : L"?";
+    const std::wstring posW = (_currentMatchPos >= 0)
+        ? std::to_wstring(_currentMatchPos)
+        : L"?";
+
+    const std::wstring title = LM.get(
+        L"msgbox_title_use_variables_execution_error");
+    const std::wstring body = LM.get(
+        L"msgbox_recoverable_error_body_taskdialog",
+        { entryW, engineW, posW, detailsW });
+
+    const std::wstring btnSkipOne = LM.get(L"msgbox_btn_skip_this_match");
+    const std::wstring btnSkipAll = LM.get(L"msgbox_btn_skip_all_nan");
+    const std::wstring btnStop = LM.get(L"msgbox_btn_stop");
+
+    constexpr int ID_SKIP_ONE = 200;
+    constexpr int ID_SKIP_ALL = 201;
+    constexpr int ID_STOP = 202;
+
+    TASKDIALOG_BUTTON buttons[] = {
+        { ID_SKIP_ONE, btnSkipOne.c_str() },
+        { ID_SKIP_ALL, btnSkipAll.c_str() },
+        { ID_STOP,     btnStop.c_str()    }
+    };
+
+    TASKDIALOGCONFIG tdc = { sizeof(TASKDIALOGCONFIG) };
+    tdc.hwndParent = nppData._nppHandle;
+    tdc.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION
+        | TDF_POSITION_RELATIVE_TO_WINDOW
+        | TDF_SIZE_TO_CONTENT;
+    tdc.pszWindowTitle = title.c_str();
+    tdc.pszContent = body.c_str();
+    tdc.pszMainIcon = TD_WARNING_ICON;
+    tdc.pButtons = buttons;
+    tdc.cButtons = ARRAYSIZE(buttons);
+    // ESC and the dialog close button fall through to SkipOne so the user
+    // can't accidentally abort a long run by hitting Escape.
+    tdc.nDefaultButton = ID_SKIP_ONE;
+
+    int nButtonPressed = 0;
+    HRESULT hr = TaskDialogIndirect(&tdc, &nButtonPressed, nullptr, nullptr);
+
+    if (SUCCEEDED(hr)) {
+        if (nButtonPressed == ID_SKIP_ALL) return Choice::SkipAll;
+        if (nButtonPressed == ID_STOP)     return Choice::Stop;
+    }
+    return Choice::SkipOne;
 }
 
 bool MultiReplace::isLuaErrorDialogEnabled() const

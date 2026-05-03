@@ -14,21 +14,29 @@
 // Surface visible to user scripts:
 //
 //   Variables (numeric, read-only):
-//     CNT  LCNT  LINE  LPOS  APOS  COL
-//     (mirrors the FormulaVars counter set)
+//     CNT  LCNT  LINE  LPOS  APOS  COL  HIT
+//     (CNT/LCNT/LINE/LPOS/APOS/COL mirror the FormulaVars counter set;
+//      HIT is the full match parsed as a number, equivalent to reg(0).)
+//
+//   Variables (string, read-only - usable inside return [...] only):
+//     FPATH  FNAME
 //
 //   Functions:
 //     reg(N)  -> capture group N as double
-//               * reg(0) = the full match
-//               * reg(1) = first capture group
-//               * reg(N) = N-th capture group
-//               String-to-double uses std::from_chars (locale-
-//               independent: only "." is a decimal separator). A
-//               capture that does not parse as a number yields 0.0.
+//                * reg(0) = the full match (same as HIT)
+//                * reg(1) = first capture group
+//                * reg(N) = N-th capture group
+//                String-to-double uses std::from_chars (locale-
+//                independent: only "." is a decimal separator).
+//                A capture that does not parse as a number yields NaN;
+//                NaN propagates through arithmetic and is surfaced as
+//                an explicit error rather than silently coerced to 0.
+//     rstr(N) -> capture group N as raw string (for return [...])
+//     skip()  -> mark the current match to be left untouched
 //
-// Strings (MATCH / FPATH / FNAME) are intentionally NOT exposed - the
-// engine is numeric-only. Users who need string manipulation should
-// switch the tab to the Lua engine.
+// The match text is intentionally not exposed as a string variable.
+// Use rstr(0) for the raw match string, HIT or reg(0) for the numeric
+// form, or a Boost backref \0 in the literal part of the template.
 //
 // Lifecycle:
 //   1. Construct via EngineFactory::create(EngineType::ExprTk, host).
@@ -75,6 +83,10 @@ namespace MultiReplaceEngine {
         bool initialize() override;
         void shutdown()   override;
 
+        void beginRun() override;
+        std::wstring endRunSummary() override;
+        std::wstring endRunSkipAllNoticeText() override;
+
         bool compile(const std::string& scriptUtf8) override;
 
         FormulaResult execute(
@@ -108,6 +120,10 @@ namespace MultiReplaceEngine {
         void reportError(ILuaEngineHost::ErrorCategory category,
             const std::string& details);
 
+        // NaN handling for both the numeric and return-list paths.
+        // Bumps the skip counter and may show the recoverable dialog.
+        void handleNaN(const std::string& exprText);
+
         // Parse a UTF-8 capture string into a double. Returns 0.0 for
         // empty / non-numeric input. Locale-independent: only '.' is
         // recognised as decimal separator.
@@ -123,11 +139,18 @@ namespace MultiReplaceEngine {
         // output string. Used when the user invokes 'return [...]' inside
         // an (?= ...) expression - that lets a single expression emit
         // mixed string and numeric output, which is the only way to get
-        // a string-typed variable (FNAME, MATCH, ...) into the result.
+        // a string-typed variable (FNAME, FPATH) into the result.
         // Errors during element traversal are tolerated rather than
         // aborted; an unknown element type is silently skipped so a
         // future ExprTk extension cannot break a running replace.
-        void appendExprtkResults(const expression_t& expr, std::string& out);
+        // A NaN scalar element sets _outputHadNaN so the caller can
+        // skip the match (consistent with the numeric-path NaN handling).
+        // When escapeForRegex is true, any \ or $ produced by the
+        // expression is escaped so the output is safe to feed to a
+        // regex replacement engine; literal text segments outside of
+        // (?=...) blocks are not affected.
+        void appendExprtkResults(const expression_t& expr, std::string& out,
+            bool escapeForRegex);
 
         // ExprTk-callable wrapper: implements reg(N). Reads from the
         // _captures vector populated at the start of execute().
@@ -233,6 +256,7 @@ namespace MultiReplaceEngine {
         double _varLPOS = 0.0;
         double _varAPOS = 0.0;
         double _varCOL = 0.0;
+        double _varHIT = 0.0;
 
         // Captures are pre-parsed once per execute() into doubles. The
         // RegFunction reads from this vector. Index 0 holds the full
@@ -253,10 +277,14 @@ namespace MultiReplaceEngine {
         std::string _strFPATH;
         std::string _strFNAME;
 
-        // Set by skip() during eval; checked at the end of execute()
-        // and propagated as FormulaResult::skip. Reset to false before
-        // each match so a previous skip can't carry over.
-        bool _wantSkip = false;
+        // Per-match flags, reset at the start of each execute().
+        bool _wantSkip = false;       // set by skip() in the formula
+        bool _wantStop = false;       // set when user picks "Stop" in NaN dialog
+        bool _outputHadNaN = false;   // set when a NaN reaches the output
+
+        // Run-scoped state, reset by beginRun().
+        bool        _skipAllNaN = false;
+        std::size_t _nanSkipCount = 0;
 
         // The reg() callable, registered with the symbol table.
         RegFunction _regFunction;

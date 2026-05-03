@@ -56,12 +56,11 @@ namespace MultiReplaceEngine {
     // Engines never throw across this boundary; failures are reported
     // via success=false plus errorMessage.
     struct FormulaResult {
-        std::string output;        // Resolved replacement text (UTF-8)
-        bool        skip = false;  // True if the engine asked to skip
-        // this match (Lua: skip(); ExprTk:
-        // pattern signals no replacement)
+        std::string output;
+        bool        skip = false;
         bool        success = true;
-        std::string errorMessage;  // Populated when success == false
+        std::string errorMessage;
+        bool        outputIsRegexSafe = false;
     };
 
     // String round-trip for INI persistence. Keeping these inline makes

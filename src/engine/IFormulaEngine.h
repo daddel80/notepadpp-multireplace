@@ -50,6 +50,14 @@ namespace MultiReplaceEngine {
         // Always called by the destructor.
         virtual void shutdown() = 0;
 
+        // ----- Per-run lifecycle ------------------------------------------
+        //
+        // Per-run hooks. beginRun() is called before the first match of a
+        // Replace-All pass, the others after the last. Default no-ops.
+        virtual void beginRun() {}
+        virtual std::wstring endRunSummary() { return {}; }
+        virtual std::wstring endRunSkipAllNoticeText() { return {}; }
+
         // ----- Per-script compile -----------------------------------------
 
         // Prepare a script for repeated execution. Engines are expected to

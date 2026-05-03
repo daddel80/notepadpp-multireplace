@@ -59,6 +59,14 @@ namespace MultiReplaceEngine {
             const std::string& engineName,
             const std::string& details) = 0;
 
+        // Three-button dialog for recoverable runtime errors (used by
+        // ExprTk on NaN). The host wraps the engine-supplied details
+        // with rule index and match position from its own state.
+        enum class RecoverableErrorChoice { SkipOne = 0, SkipAll = 1, Stop = 2 };
+        virtual RecoverableErrorChoice showRecoverableErrorDialog(
+            const std::string& engineName,
+            const std::string& details) = 0;
+
         // User-toggleable mode flags. Read every match (rather than copied
         // at init) so changes apply immediately to the next evaluation.
         virtual bool isLuaErrorDialogEnabled() const = 0;

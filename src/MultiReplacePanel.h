@@ -1211,6 +1211,9 @@ private:
     void         showErrorMessage(MultiReplaceEngine::ILuaEngineHost::ErrorCategory category,
         const std::string& engineName,
         const std::string& details) override;
+    MultiReplaceEngine::ILuaEngineHost::RecoverableErrorChoice
+        showRecoverableErrorDialog(const std::string& engineName,
+            const std::string& details) override;
     bool         isLuaErrorDialogEnabled() const override;
     bool         isLuaSafeModeEnabled()    const override;
     bool         isDebugModeEnabled()      const override;

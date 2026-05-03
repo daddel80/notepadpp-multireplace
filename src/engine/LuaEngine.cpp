@@ -178,6 +178,7 @@ namespace MultiReplaceEngine {
     {
         FormulaResult result;
         result.output = scriptUtf8;  // default: pass-through if anything fails
+        result.outputIsRegexSafe = false;
 
         if (!_luaState) {
             result.success = false;
