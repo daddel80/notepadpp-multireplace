@@ -925,6 +925,9 @@ private:
     // restored scope.
     bool _suppressScopeAutoSelect = false;
 
+    // Last width seen by WM_SIZE; -1 means baseline not yet captured.
+    int _lastSizedWidth = -1;
+
     // Tandem mode (experimental). Layout and snap math live in the
     // tandem_dock library; this class is orchestration only: a 50 ms
     // polling timer drives MR to follow N++, WM_MOVING drives the

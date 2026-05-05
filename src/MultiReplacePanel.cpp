@@ -5437,18 +5437,22 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             int newWidth = LOWORD(lParam);
             int newHeight = HIWORD(lParam);
 
+            // Skip column work on height-only resizes so manual column
+            // widths survive Library Mode / Use-List / sidebar toggles.
+            const bool widthChanged = (_lastSizedWidth != -1)
+                && (newWidth != _lastSizedWidth);
+            _lastSizedWidth = newWidth;
+
             // Calculate Position for all Elements
             positionAndResizeControls(newWidth, newHeight);
 
-            // Only update list columns when the list is visible
-            if (useListEnabled || keepListVisible) {
+            if ((useListEnabled || keepListVisible) && widthChanged) {
                 updateListViewAndColumns();
             }
 
-            // Inactive tabs' stored widths no longer fit the new panel
-            // size. Flag them so the next activation redistributes
-            // instead of applying the stale widths.
-            markAllTabsNeedRelayout();
+            if (widthChanged) {
+                markAllTabsNeedRelayout();
+            }
 
             // Move all Elements (also reanchors the New-List "+" via
             // repositionNewTabButton at the end of the move pass).
@@ -18915,7 +18919,9 @@ void MultiReplace::loadUIConfigFromIni()
 
     if (_replaceListView)
     {
-        createListViewColumns();
+        // Settings reload — visibility is per-tab and gets restored via
+        // restoreStateFromTab, so keep stored widths here.
+        createListViewColumns(WidthMode::UseStored);
         ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, nullptr, TRUE);
 
@@ -19262,7 +19268,8 @@ void MultiReplace::applyConfigSettingsOnly()
     }
 
     if (_replaceListView) {
-        createListViewColumns();
+        // Settings-only reload doesn't change column count, so keep stored widths.
+        createListViewColumns(WidthMode::UseStored);
         ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
         InvalidateRect(_replaceListView, nullptr, TRUE);
         updateHeaderSelection();
