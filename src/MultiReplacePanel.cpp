@@ -1602,13 +1602,15 @@ void MultiReplace::refreshUILanguage()
     if (hDebugWnd && IsWindow(hDebugWnd)) {
         SetWindowTextW(hDebugWnd, LM.getLPCW(L"debug_title"));
 
-        // Update buttons (IDs: 2=Next, 3=Stop, 4=Copy)
+        // Update buttons (IDs: 2=Next, 3=Stop, 4=Copy, 5=Run to End)
         HWND hBtn = GetDlgItem(hDebugWnd, 2);
         if (hBtn) SetWindowTextW(hBtn, LM.getLPCW(L"debug_btn_next"));
         hBtn = GetDlgItem(hDebugWnd, 3);
         if (hBtn) SetWindowTextW(hBtn, LM.getLPCW(L"debug_btn_stop"));
         hBtn = GetDlgItem(hDebugWnd, 4);
         if (hBtn) SetWindowTextW(hBtn, LM.getLPCW(L"debug_btn_copy"));
+        hBtn = GetDlgItem(hDebugWnd, 5);
+        if (hBtn) SetWindowTextW(hBtn, LM.getLPCW(L"debug_btn_run_to_end"));
 
         // Update ListView columns
         if (hDebugListView && IsWindow(hDebugListView)) {
@@ -7252,6 +7254,9 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
     if (auto* engine = getActiveEngine()) {
         engine->beginRun();
     }
+    // "Run to End" only suppresses the dialog for the current run; clear
+    // the flag so the next run honours the persistent debug toggle again.
+    _debugSkipForRun = false;
 
     // Selection mode with no selection: different behavior for single-doc vs. multi-doc.
     // Use hasAnyNonEmptySelection() so rectangular selections (where some
@@ -7466,6 +7471,9 @@ void MultiReplace::handleReplaceButton() {
     if (auto* engine = getActiveEngine()) {
         engine->beginRun();
     }
+    // "Run to End" only suppresses the dialog for the current run; clear
+    // the flag so the next run honours the persistent debug toggle again.
+    _debugSkipForRun = false;
 
     // Safety: Selection mode with no selection and no stored scope → do nothing.
     // hasAnyNonEmptySelection() covers rectangular selections whose first
@@ -8205,7 +8213,10 @@ bool MultiReplace::isLuaSafeModeEnabled() const
 
 bool MultiReplace::isDebugModeEnabled() const
 {
-    return _debugModeEnabled;
+    // The user-facing toggle stays active across runs; _debugSkipForRun
+    // is the one-shot override set by "Run to End" in the debug window
+    // and cleared at the start of the next run.
+    return _debugModeEnabled && !_debugSkipForRun;
 }
 
 // ---------------------------------------------------------------------
@@ -8532,6 +8543,30 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
             if (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
             {
                 if (msg.message == WM_QUIT) break;
+
+                // Keyboard shortcuts when the debug window itself is the
+                // foreground - intercepted before IsDialogMessage so they
+                // fire regardless of which child control has focus. Plain
+                // Enter is left to IsDialogMessage so the default-button
+                // (Next) activation keeps working.
+                if (msg.message == WM_KEYDOWN
+                    && msg.hwnd != nullptr
+                    && GetForegroundWindow() == hDebugWnd) {
+                    const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+                    if (msg.wParam == VK_ESCAPE) {
+                        SendMessage(hDebugWnd, WM_COMMAND, MAKEWPARAM(3, 0), 0); // Stop
+                        continue;
+                    }
+                    if (ctrl && msg.wParam == 'C') {
+                        SendMessage(hDebugWnd, WM_COMMAND, MAKEWPARAM(4, 0), 0); // Copy
+                        continue;
+                    }
+                    if (ctrl && msg.wParam == VK_RETURN) {
+                        SendMessage(hDebugWnd, WM_COMMAND, MAKEWPARAM(5, 0), 0); // Run to End
+                        continue;
+                    }
+                }
+
                 if (!IsDialogMessage(hDebugWnd, &msg)) {
                     TranslateMessage(&msg);
                     DispatchMessage(&msg);
@@ -8551,9 +8586,42 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         return debugWindowResponse;
     }
 
-    // Window doesn't exist - create it
-    int width = debugWindowSizeSet ? debugWindowSize.cx : sx(334);
-    int height = debugWindowSizeSet ? debugWindowSize.cy : sy(400);
+    // Window doesn't exist - create it. Compute the default size
+    // exactly from the same layout constants the button cluster uses,
+    // then convert client-area to outer-window size via the same
+    // mechanism WM_GETMINMAXINFO uses, so the default opens with the
+    // toolbar fitting tightly and no wasted space to the right of
+    // Stop. The user's saved size (held in memory for the current
+    // plugin session only - not persisted to the INI) takes precedence.
+    int width;
+    int height;
+    if (debugWindowSizeSet) {
+        width = debugWindowSize.cx;
+        height = debugWindowSize.cy;
+    }
+    else {
+        // Mirror the WM_GETMINMAXINFO computation: client = 4 buttons
+        // + 2 inner gaps + 1 group gap + 2 side margins.
+        int clientW = 4 * 120 + 2 * 10 + 25 + 2 * 10;   // = 545
+        int clientH = 400;                              // generous default
+        if (dpiMgr) {
+            clientW = dpiMgr->scaleX(clientW);
+            clientH = dpiMgr->scaleY(clientH);
+        }
+        RECT r = { 0, 0, clientW, clientH };
+        const DWORD style = WS_OVERLAPPEDWINDOW;
+        const DWORD exStyle = WS_EX_TOPMOST;
+        if (AdjustWindowRectEx(&r, style, FALSE, exStyle)) {
+            width = r.right - r.left;
+            height = r.bottom - r.top;
+        }
+        else {
+            // Conservative fallback if the call fails - generous
+            // enough to fit any reasonable Windows frame.
+            width = clientW + 20;
+            height = clientH + 50;
+        }
+    }
     int x = debugWindowPositionSet ? debugWindowPosition.x : (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
     int y = debugWindowPositionSet ? debugWindowPosition.y : (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
 
@@ -8597,6 +8665,29 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         {
             if (msg.message == WM_QUIT) {
                 break;
+            }
+
+            // Keyboard shortcuts when the debug window itself is the
+            // foreground - intercepted before IsDialogMessage so they
+            // fire regardless of which child control has focus. Plain
+            // Enter is left to IsDialogMessage so the default-button
+            // (Next) activation keeps working.
+            if (msg.message == WM_KEYDOWN
+                && msg.hwnd != nullptr
+                && GetForegroundWindow() == hwnd) {
+                const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+                if (msg.wParam == VK_ESCAPE) {
+                    SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(3, 0), 0); // Stop
+                    continue;
+                }
+                if (ctrl && msg.wParam == 'C') {
+                    SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(4, 0), 0); // Copy
+                    continue;
+                }
+                if (ctrl && msg.wParam == VK_RETURN) {
+                    SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(5, 0), 0); // Run to End
+                    continue;
+                }
             }
 
             if (!IsDialogMessage(hwnd, &msg)) {
@@ -8653,6 +8744,7 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
     static HWND hNextButton;
     static HWND hStopButton;
     static HWND hCopyButton;
+    static HWND hRunToEndButton;
 
     switch (msg) {
     case WM_CREATE: {
@@ -8675,27 +8767,65 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         lvCol.cx = 180;
         ListView_InsertColumn(hListView, 2, &lvCol);
 
-        // Button dimensions
-        const int btnWidth = 120;
-        const int btnHeight = 30;
-        const int btnGap = 10;
-        const int btnStartX = 10;
-        const int btnY = 160;
+        // Button layout: a single fixed-spacing group anchored to the
+        // left edge. Order is Next, Copy, Run to End, Stop - Next sits
+        // closest to the variable list (left side of the window) so the
+        // mouse stays near the data the user is reading, and Stop sits
+        // at the far right of the cluster (out of the primary click
+        // path). A wider gap between Copy and Run to End separates the
+        // inspection actions (Next/Copy) from the run-control actions
+        // (Run to End/Stop) without breaking them into two clusters.
+        // The group does not stretch with the window: WM_SIZE keeps the
+        // inter-button gaps constant. Real positions are set in WM_SIZE;
+        // values here are provisional for the first paint.
+        // Layout constants in unscaled pixels - all values are scaled
+        // through sx()/sy() before use so the cluster grows with the
+        // user's DPI setting (consistent with the rest of the plugin).
+        // Without scaling, WM_GETMINMAXINFO would compute a DPI-aware
+        // minimum window width while the buttons themselves stayed at
+        // 96-DPI sizes, leaving wasted space to the right of Stop on
+        // high-DPI displays.
+        auto sxv = [](int v) {
+            return (instance && instance->dpiMgr) ? instance->sx(v) : v;
+            };
+        auto syv = [](int v) {
+            return (instance && instance->dpiMgr) ? instance->sy(v) : v;
+            };
+
+        const int btnWidth = sxv(120);
+        const int btnHeight = syv(30);
+        const int btnGap = sxv(10);
+        const int groupGap = sxv(25);
+        const int btnY = syv(160);
+        const int margin = sxv(10);
+
+        // x positions: Next at margin; Copy directly after; Run to End
+        // shifted by groupGap to widen the visual gap; Stop after Run
+        // to End at the standard btnGap.
+        const int xNext = margin;
+        const int xCopy = xNext + (btnWidth + btnGap);
+        const int xRun = xCopy + (btnWidth + groupGap);
+        const int xStop = xRun + (btnWidth + btnGap);
 
         hNextButton = CreateWindowW(L"BUTTON", LM.getW(L"debug_btn_next"),
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-            btnStartX, btnY, btnWidth, btnHeight,
+            xNext, btnY, btnWidth, btnHeight,
             hwnd, reinterpret_cast<HMENU>(2), nullptr, nullptr);
-
-        hStopButton = CreateWindowW(L"BUTTON", LM.getW(L"debug_btn_stop"),
-            WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-            btnStartX + btnWidth + btnGap, btnY, btnWidth, btnHeight,
-            hwnd, reinterpret_cast<HMENU>(3), nullptr, nullptr);
 
         hCopyButton = CreateWindowW(L"BUTTON", LM.getW(L"debug_btn_copy"),
             WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-            btnStartX + 2 * (btnWidth + btnGap), btnY, btnWidth, btnHeight,
+            xCopy, btnY, btnWidth, btnHeight,
             hwnd, reinterpret_cast<HMENU>(4), nullptr, nullptr);
+
+        hRunToEndButton = CreateWindowW(L"BUTTON", LM.getW(L"debug_btn_run_to_end"),
+            WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+            xRun, btnY, btnWidth, btnHeight,
+            hwnd, reinterpret_cast<HMENU>(5), nullptr, nullptr);
+
+        hStopButton = CreateWindowW(L"BUTTON", LM.getW(L"debug_btn_stop"),
+            WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+            xStop, btnY, btnWidth, btnHeight,
+            hwnd, reinterpret_cast<HMENU>(3), nullptr, nullptr);
 
         // Extract the debug message from lParam
         LPCWSTR debugMessage = reinterpret_cast<LPCWSTR>(reinterpret_cast<CREATESTRUCT*>(lParam)->lpCreateParams);
@@ -8725,6 +8855,10 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
             ++itemIndex;
         }
 
+        // Initial focus on Next so Enter/Space activates it immediately
+        // and the user does not have to Tab through the buttons first.
+        SetFocus(hNextButton);
+
         break;
     }
 
@@ -8732,23 +8866,113 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         RECT rect;
         GetClientRect(hwnd, &rect);
 
-        // Button dimensions (fixed left position)
-        const int btnWidth = 120;
-        const int btnHeight = 30;
-        const int btnGap = 10;
-        const int btnStartX = 10;
-        const int btnY = rect.bottom - btnHeight - 10;
-        const int listHeight = rect.bottom - btnHeight - 40;
+        // Layout constants in unscaled pixels - all values are scaled
+        // through sx()/sy() before use so the cluster stays consistent
+        // with the rest of the plugin's DPI handling.
+        auto sxv = [](int v) {
+            return (instance && instance->dpiMgr) ? instance->sx(v) : v;
+            };
+        auto syv = [](int v) {
+            return (instance && instance->dpiMgr) ? instance->sy(v) : v;
+            };
 
-        SetWindowPos(hListView, nullptr, 10, 10, rect.right - 20, listHeight, SWP_NOZORDER);
-        SetWindowPos(hNextButton, nullptr, btnStartX, btnY, btnWidth, btnHeight, SWP_NOZORDER);
-        SetWindowPos(hStopButton, nullptr, btnStartX + btnWidth + btnGap, btnY, btnWidth, btnHeight, SWP_NOZORDER);
-        SetWindowPos(hCopyButton, nullptr, btnStartX + 2 * (btnWidth + btnGap), btnY, btnWidth, btnHeight, SWP_NOZORDER);
+        const int btnWidth = sxv(120);
+        const int btnHeight = syv(30);
+        const int btnGap = sxv(10);
+        const int groupGap = sxv(25);
+        const int margin = sxv(10);
+        const int btnY = rect.bottom - btnHeight - margin;
+        const int listHeight = rect.bottom - btnHeight - syv(40);
 
-        ListView_SetColumnWidth(hListView, 0, LVSCW_AUTOSIZE_USEHEADER);
-        ListView_SetColumnWidth(hListView, 1, LVSCW_AUTOSIZE_USEHEADER);
-        ListView_SetColumnWidth(hListView, 2, LVSCW_AUTOSIZE_USEHEADER);
+        SetWindowPos(hListView, nullptr, margin, margin,
+            rect.right - 2 * margin, listHeight, SWP_NOZORDER);
+
+        // Single fixed-spacing button cluster, left-anchored. Order:
+        // Next, Copy, [groupGap], Run to End, Stop. The wider gap
+        // between Copy and Run to End separates the inspection actions
+        // from the run-control actions while keeping the cluster
+        // visually unified. The cluster keeps its layout when the
+        // window grows - it does not stretch.
+        const int xNext = margin;
+        const int xCopy = xNext + (btnWidth + btnGap);
+        const int xRun = xCopy + (btnWidth + groupGap);
+        const int xStop = xRun + (btnWidth + btnGap);
+
+        SetWindowPos(hNextButton, nullptr,
+            xNext, btnY, btnWidth, btnHeight, SWP_NOZORDER);
+        SetWindowPos(hCopyButton, nullptr,
+            xCopy, btnY, btnWidth, btnHeight, SWP_NOZORDER);
+        SetWindowPos(hRunToEndButton, nullptr,
+            xRun, btnY, btnWidth, btnHeight, SWP_NOZORDER);
+        SetWindowPos(hStopButton, nullptr,
+            xStop, btnY, btnWidth, btnHeight, SWP_NOZORDER);
+
+        // ListView columns: Variable and Type get fixed widths sized
+        // for their typical content (no need to grow them when the
+        // window is resized), while Value takes whatever horizontal
+        // space remains. This keeps long values (file paths, regex
+        // matches) readable instead of clipping at the column header.
+        const int colVariable = sxv(120);
+        const int colType = sxv(80);
+        // ListView width = client width minus the two side margins;
+        // GetClientRect already reflects scrollbar presence so the
+        // remaining-pixels math stays valid even if a vertical
+        // scrollbar appears.
+        const int listInnerWidth = (rect.right - 2 * margin);
+        const int colValue = std::max(listInnerWidth - colVariable - colType,
+            colVariable);  // fall back to a sensible minimum
+        ListView_SetColumnWidth(hListView, 0, colVariable);
+        ListView_SetColumnWidth(hListView, 1, colType);
+        ListView_SetColumnWidth(hListView, 2, colValue);
         break;
+    }
+
+    case WM_GETMINMAXINFO: {
+        // Enforce a minimum window size so the four-button cluster
+        // (Next, Copy, [groupGap], Run to End, Stop at 120px each plus
+        // 10px / 25px gaps and 10px side margins) just fits with no
+        // wasted space to the right of Stop, and the ListView keeps
+        // enough vertical room to be readable.
+        //
+        // The cluster's required client-area width is computed from
+        // the same constants that WM_CREATE / WM_SIZE use. Window
+        // size includes the non-client frame, so AdjustWindowRectEx
+        // is used to compute the exact frame contribution from the
+        // window's own style flags (works even before WM_CREATE has
+        // run and is independent of theme / Windows version quirks).
+        MINMAXINFO* mmi = reinterpret_cast<MINMAXINFO*>(lParam);
+        if (mmi) {
+            const int btnWidth = 120;
+            const int btnGap = 10;
+            const int groupGap = 25;
+            const int margin = 10;
+
+            // Required client-area dimensions.
+            int minClientW = 4 * btnWidth + 2 * btnGap + groupGap + 2 * margin;
+            int minClientH = 160;
+
+            if (instance && instance->dpiMgr) {
+                minClientW = instance->dpiMgr->scaleX(minClientW);
+                minClientH = instance->dpiMgr->scaleY(minClientH);
+            }
+
+            // Translate the client-area minimum into a window-area
+            // minimum by adding the non-client frame thickness.
+            const DWORD style = static_cast<DWORD>(GetWindowLong(hwnd, GWL_STYLE));
+            const DWORD exStyle = static_cast<DWORD>(GetWindowLong(hwnd, GWL_EXSTYLE));
+            RECT r = { 0, 0, minClientW, minClientH };
+            if (AdjustWindowRectEx(&r, style, FALSE, exStyle)) {
+                mmi->ptMinTrackSize.x = r.right - r.left;
+                mmi->ptMinTrackSize.y = r.bottom - r.top;
+            }
+            else {
+                // Conservative fallback if the call fails - generous
+                // enough to fit any reasonable Windows frame.
+                mmi->ptMinTrackSize.x = minClientW + 20;
+                mmi->ptMinTrackSize.y = minClientH + 50;
+            }
+        }
+        return 0;
     }
 
     case WM_DPICHANGED: {
@@ -8788,6 +9012,30 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
         }
         else if (LOWORD(wParam) == 4) {  // Copy button was pressed
             CopyListViewToClipboard(hListView);
+        }
+        else if (LOWORD(wParam) == 5) {  // Run to End: silence dialog for the rest of this run
+            // Flip the per-run skip flag on the panel and tear the window
+            // down. The next debug-write call will see isDebugModeEnabled()
+            // return false and proceed without showing the dialog. The
+            // flag is cleared at the start of the next run, so the
+            // persistent Debug-Mode toggle is unaffected.
+            if (instance) {
+                instance->_debugSkipForRun = true;
+            }
+            debugWindowResponse = 2;  // continue (same semantics as Next)
+
+            RECT rect;
+            if (GetWindowRect(hwnd, &rect)) {
+                debugWindowPosition.x = rect.left;
+                debugWindowPosition.y = rect.top;
+                debugWindowPositionSet = true;
+                debugWindowSize.cx = rect.right - rect.left;
+                debugWindowSize.cy = rect.bottom - rect.top;
+                debugWindowSizeSet = true;
+            }
+
+            DestroyWindow(hwnd);
+            hDebugListView = nullptr;
         }
         break;
 
@@ -8916,6 +9164,19 @@ void MultiReplace::SetDebugComplete()
     HWND hNextButton = GetDlgItem(hDebugWnd, 2);
     if (hNextButton) {
         EnableWindow(hNextButton, FALSE);
+    }
+
+    // Disable Run-to-End - the run is already over, nothing to skip to.
+    HWND hRunToEnd = GetDlgItem(hDebugWnd, 5);
+    if (hRunToEnd) {
+        EnableWindow(hRunToEnd, FALSE);
+    }
+
+    // The default-focus target (Next) is now disabled. Hand focus to
+    // the Close button so Enter / Space close the window without the
+    // user having to Tab past the disabled controls.
+    if (hStopButton) {
+        SetFocus(hStopButton);
     }
 }
 

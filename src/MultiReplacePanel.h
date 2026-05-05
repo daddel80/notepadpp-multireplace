@@ -746,6 +746,11 @@ private:
     bool isReplaceAllInDocs = false; // True if replacing in all open documents, false for current document only.
     bool isReplaceInFiles = false;   // True if replacing in files, false for current document only.
     bool _debugModeEnabled = false;  // Debug Mode checkbox state
+    // Set when the user clicks "Run to End" in the debug window: silences
+    // the per-match dialog for the remainder of the current run without
+    // touching the persistent _debugModeEnabled toggle. Reset to false at
+    // the start of each run.
+    bool _debugSkipForRun = false;
     bool isFindAllInDocs = false;
     bool isFindAllInFiles = false;
     bool _listSearchBarVisible = false;

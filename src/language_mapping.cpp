@@ -409,6 +409,7 @@ const LangKV kEnglishPairs[] = {
 { L"debug_btn_stop", L"Stop" },
 { L"debug_btn_close", L"Close" },
 { L"debug_btn_copy", L"Copy" },
+{ L"debug_btn_run_to_end", L"Run to End" },
 { L"debug_col_variable", L"Variable" },
 { L"debug_col_type", L"Type" },
 { L"debug_col_value", L"Value" },
