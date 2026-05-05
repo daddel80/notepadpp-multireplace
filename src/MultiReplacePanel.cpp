@@ -7070,6 +7070,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDM_TAB_OPEN_FILE_LOCATION:
             onTabOpenFileLocation(_tabMenuTargetIndex);
             return TRUE;
+        case IDM_TAB_APPLY_LAYOUT_TO_ALL:
+            onTabApplyLayoutToAll(_tabMenuTargetIndex);
+            return TRUE;
         case IDM_TAB_CLOSE:
             onTabClose(_tabMenuTargetIndex);
             return TRUE;
@@ -15769,41 +15772,12 @@ void MultiReplace::loadSettingsToPanelUI() {
     const bool docsActive = (isReplaceAllInDocs || isFindAllInDocs);
     setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, docsActive ? _docsFilter : _filesFilter);
 
-    // --- Load Column Settings (Widths & Visibility) ---
-    // Column widths and visibility are read here, then applied in the 'instance' block below.
-    findCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
-    replaceCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceCountWidth", DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
-    findColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindWidth", DEFAULT_COLUMN_WIDTH_FIND_scaled), MIN_GENERAL_WIDTH_scaled);
-    replaceColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceWidth", DEFAULT_COLUMN_WIDTH_REPLACE_scaled), MIN_GENERAL_WIDTH_scaled);
-    commentsColumnWidth = std::max(CFG.readInt(L"ListColumns", L"CommentsWidth", DEFAULT_COLUMN_WIDTH_COMMENTS_scaled), MIN_GENERAL_WIDTH_scaled);
-
-    isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
-    isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
-    isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
-    isTimestampColumnVisible = CFG.readBool(L"ListColumns", L"TimestampVisible", false);
-    isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
-
-    findColumnLockedEnabled = CFG.readBool(L"ListColumns", L"FindColumnLocked", true);
-    replaceColumnLockedEnabled = CFG.readBool(L"ListColumns", L"ReplaceColumnLocked", false);
-    commentsColumnLockedEnabled = CFG.readBool(L"ListColumns", L"CommentsColumnLocked", true);
-
-    // Column order — load from comma-separated ColumnID int values
-    {
-        std::wstring orderStr = CFG.readString(L"ListColumns", L"ColumnOrder", L"");
-        columnOrder.clear();
-        if (!orderStr.empty()) {
-            std::wstringstream ss(orderStr);
-            std::wstring token;
-            while (std::getline(ss, token, L',')) {
-                try {
-                    int val = std::stoi(token);
-                    columnOrder.push_back(static_cast<ColumnID>(val));
-                }
-                catch (...) { /* skip invalid tokens */ }
-            }
-        }
-        initColumnOrder();  // Validates and falls back to default if needed
-    }
+    // Per-tab column state (widths, visibility, locks, order) is no
+    // longer read from the legacy [ListColumns] section. It lives in
+    // each tab's TabState and gets pushed into globals via
+    // restoreStateFromTab when a tab is activated. Bootstrap paths
+    // (ensurePrimaryTabExists) call applyDefaultColumnState themselves
+    // for the very first tab.
 
     // Load file path and original hash
     listFilePath = CFG.readString(L"File", L"ListFilePath", L"");
@@ -15968,6 +15942,11 @@ void MultiReplace::ensurePrimaryTabExists()
 {
     if (!_tabs.empty()) return;
 
+    // Bootstrap path: no persisted tab to restore, so column-state
+    // globals are still uninitialised. Seed them with plugin defaults
+    // before captureStateIntoTab below copies them into the new tab.
+    applyDefaultColumnState();
+
     auto tab = std::make_unique<TabState>();
     tab->id = _nextTabId++;
 
@@ -15997,10 +15976,9 @@ void MultiReplace::ensurePrimaryTabExists()
     _activeTabIndex = 0;
     URM.setActiveTab(_tabs[_activeTabIndex]->id);
 
-    // After legacy upgrade the UI has already been populated with the
-    // user's previous global panel settings (via loadSettingsToPanelUI).
-    // Capture them into the new tab so they survive the next tab-switch
-    // restore, instead of being silently replaced by plugin defaults.
+    // Capture the freshly seeded globals (and any UI state populated
+    // earlier in loadSettingsToPanelUI) into the new tab so they
+    // survive the next tab-switch restore.
     captureStateIntoTab(*_tabs[_activeTabIndex]);
 }
 
@@ -17144,13 +17122,30 @@ void MultiReplace::switchToTab(int newIndex)
     updateTabTooltip(_activeTabIndex);
 }
 
-void MultiReplace::inheritLayoutFromActiveTab(TabState& dst) const
+void MultiReplace::applyDefaultColumnState()
 {
-    if (_activeTabIndex < 0 || _activeTabIndex >= static_cast<int>(_tabs.size())) {
-        return;
-    }
-    const TabState& src = *_tabs[_activeTabIndex];
+    findColumnWidth = DEFAULT_COLUMN_WIDTH_FIND_scaled;
+    replaceColumnWidth = DEFAULT_COLUMN_WIDTH_REPLACE_scaled;
+    commentsColumnWidth = DEFAULT_COLUMN_WIDTH_COMMENTS_scaled;
+    findCountColumnWidth = DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled;
+    replaceCountColumnWidth = DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled;
 
+    isFindCountVisible = false;
+    isReplaceCountVisible = false;
+    isCommentsColumnVisible = false;
+    isTimestampColumnVisible = false;
+    isDeleteButtonVisible = true;
+
+    findColumnLockedEnabled = true;
+    replaceColumnLockedEnabled = false;
+    commentsColumnLockedEnabled = true;
+
+    columnOrder.clear();
+    initColumnOrder();
+}
+
+void MultiReplace::copyLayoutFields(const TabState& src, TabState& dst) const
+{
     // Column widths
     dst.findCountWidth = src.findCountWidth;
     dst.replaceCountWidth = src.replaceCountWidth;
@@ -17170,9 +17165,17 @@ void MultiReplace::inheritLayoutFromActiveTab(TabState& dst) const
     dst.replaceLocked = src.replaceLocked;
     dst.commentsLocked = src.commentsLocked;
 
-    // Column order. Sort order is intentionally NOT inherited:
-    // it is content-dependent and should start fresh for a new tab.
+    // Column order. Sort order is intentionally NOT copied:
+    // it is content-dependent and should remain per tab.
     dst.columnOrder = src.columnOrder;
+}
+
+void MultiReplace::inheritLayoutFromActiveTab(TabState& dst) const
+{
+    if (_activeTabIndex < 0 || _activeTabIndex >= static_cast<int>(_tabs.size())) {
+        return;
+    }
+    copyLayoutFields(*_tabs[_activeTabIndex], dst);
 }
 
 // ===================================================================
@@ -18007,6 +18010,12 @@ void MultiReplace::showTabContextMenu(int tabIndex, int screenX, int screenY)
     AppendMenu(hMenu, MF_STRING | (hasFile ? 0 : MF_GRAYED),
         IDM_TAB_OPEN_FILE_LOCATION, LM.get(L"tab_menu_open_file_location").c_str());
 
+    AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
+
+    const bool canApplyToAll = (_tabs.size() > 1);
+    AppendMenu(hMenu, MF_STRING | (canApplyToAll ? 0 : MF_GRAYED),
+        IDM_TAB_APPLY_LAYOUT_TO_ALL, LM.get(L"tab_menu_apply_layout_to_all").c_str());
+
     // Remember which tab the click targeted. Menu commands below use
     // _tabMenuTargetIndex so the context is preserved across the
     // modal popup lifecycle.
@@ -18402,6 +18411,68 @@ void MultiReplace::onTabOpenFileLocation(int tabIndex)
 
     std::wstring cmdParam = L"/select,\"" + path + L"\"";
     ShellExecute(nullptr, L"open", L"explorer.exe", cmdParam.c_str(), nullptr, SW_SHOWNORMAL);
+}
+
+void MultiReplace::onTabApplyLayoutToAll(int sourceTabIndex)
+{
+    if (sourceTabIndex < 0 || sourceTabIndex >= static_cast<int>(_tabs.size())) return;
+    if (_tabs.size() < 2) return;
+
+    // If the source is the active tab, sync live ListView state into
+    // its TabState first so the captured widths reflect what the user
+    // actually sees on screen, not the last-saved state.
+    if (sourceTabIndex == _activeTabIndex) {
+        captureStateIntoTab(*_tabs[sourceTabIndex]);
+    }
+
+    const TabState& src = *_tabs[sourceTabIndex];
+    int targetCount = 0;
+
+    for (size_t i = 0; i < _tabs.size(); ++i) {
+        if (static_cast<int>(i) == sourceTabIndex) continue;
+        copyLayoutFields(src, *_tabs[i]);
+        // Stored widths now match the source layout for the current
+        // panel size, so no relayout is needed on next activation.
+        _tabs[i]->needsRelayout = false;
+        ++targetCount;
+    }
+
+    // If the source was an inactive tab, the active tab is among the
+    // targets and its globals need to be updated and the ListView
+    // rebuilt so the user sees the new layout immediately.
+    if (sourceTabIndex != _activeTabIndex && _replaceListView) {
+        const TabState& activeTab = *_tabs[_activeTabIndex];
+        findCountColumnWidth = activeTab.findCountWidth;
+        replaceCountColumnWidth = activeTab.replaceCountWidth;
+        findColumnWidth = activeTab.findWidth;
+        replaceColumnWidth = activeTab.replaceWidth;
+        commentsColumnWidth = activeTab.commentsWidth;
+        isFindCountVisible = activeTab.findCountVisible;
+        isReplaceCountVisible = activeTab.replaceCountVisible;
+        isCommentsColumnVisible = activeTab.commentsVisible;
+        isTimestampColumnVisible = activeTab.timestampVisible;
+        isDeleteButtonVisible = activeTab.deleteButtonVisible;
+        findColumnLockedEnabled = activeTab.findLocked;
+        replaceColumnLockedEnabled = activeTab.replaceLocked;
+        commentsColumnLockedEnabled = activeTab.commentsLocked;
+        columnOrder = activeTab.columnOrder;
+
+        // Suppress live-width sync; the globals now hold the source
+        // layout but the live ListView still shows the old one until
+        // the rebuild below.
+        SuppressWidthSyncGuard widthGuard(_suppressLiveWidthSync);
+        SendMessage(_replaceListView, WM_SETREDRAW, FALSE, 0);
+        createListViewColumns(WidthMode::UseStored);
+        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+        SendMessage(_replaceListView, WM_SETREDRAW, TRUE, 0);
+        InvalidateRect(_replaceListView, nullptr, TRUE);
+        updateHeaderSelection();
+    }
+
+    showStatusMessage(
+        LM.get(L"status_layout_applied_to_tabs",
+            { std::to_wstring(targetCount) }),
+        MessageStatus::Success);
 }
 
 void MultiReplace::beginInlineTabRename(int tabIndex)
@@ -18880,28 +18951,11 @@ void MultiReplace::loadUIConfigFromIni()
     windowRect.right = windowRect.left + width;
     windowRect.bottom = windowRect.top + height;
 
-    findColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindWidth", DEFAULT_COLUMN_WIDTH_FIND_scaled), MIN_GENERAL_WIDTH_scaled);
-    replaceColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceWidth", DEFAULT_COLUMN_WIDTH_REPLACE_scaled), MIN_GENERAL_WIDTH_scaled);
-    commentsColumnWidth = std::max(CFG.readInt(L"ListColumns", L"CommentsWidth", DEFAULT_COLUMN_WIDTH_COMMENTS_scaled), MIN_GENERAL_WIDTH_scaled);
-    findCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"FindCountWidth", DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
-    replaceCountColumnWidth = std::max(CFG.readInt(L"ListColumns", L"ReplaceCountWidth", DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled), MIN_GENERAL_WIDTH_scaled);
-    if (ratio != 1.0f) {
-        findColumnWidth = std::max(static_cast<int>(findColumnWidth * ratio), MIN_GENERAL_WIDTH_scaled);
-        replaceColumnWidth = std::max(static_cast<int>(replaceColumnWidth * ratio), MIN_GENERAL_WIDTH_scaled);
-        commentsColumnWidth = std::max(static_cast<int>(commentsColumnWidth * ratio), MIN_GENERAL_WIDTH_scaled);
-        findCountColumnWidth = std::max(static_cast<int>(findCountColumnWidth * ratio), MIN_GENERAL_WIDTH_scaled);
-        replaceCountColumnWidth = std::max(static_cast<int>(replaceCountColumnWidth * ratio), MIN_GENERAL_WIDTH_scaled);
-    }
-
-    isFindCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
-    isReplaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
-    isCommentsColumnVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
-    isTimestampColumnVisible = CFG.readBool(L"ListColumns", L"TimestampVisible", false);
-    isDeleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
-
-    findColumnLockedEnabled = CFG.readBool(L"ListColumns", L"FindColumnLocked", true);
-    replaceColumnLockedEnabled = CFG.readBool(L"ListColumns", L"ReplaceColumnLocked", false);
-    commentsColumnLockedEnabled = CFG.readBool(L"ListColumns", L"CommentsColumnLocked", true);
+    // Per-tab column state (widths, visibility, locks, order) is no
+    // longer read from the legacy [ListColumns] section. It lives in
+    // each tab's TabState and gets pushed into globals via
+    // restoreStateFromTab when a tab is activated. Reading these here
+    // would clobber the active tab's state on every Settings Apply.
 
     int fg = static_cast<int>(CFG.readByte(L"Window", L"ForegroundTransparency", 255));
     int bg = static_cast<int>(CFG.readByte(L"Window", L"BackgroundTransparency", 190));

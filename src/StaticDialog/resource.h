@@ -264,6 +264,7 @@
 #define IDM_TAB_CLOSE                   5905
 #define IDM_TAB_CLOSE_OTHERS            5906
 #define IDM_TAB_CLOSE_ALL               5907
+#define IDM_TAB_APPLY_LAYOUT_TO_ALL     5908
 
 // ===================================================================
 //  5950-5959 - Formula engine selector popup menu IDs

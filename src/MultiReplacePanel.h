@@ -1462,6 +1462,16 @@ private:
     // Creates a new empty untitled tab and makes it active.
     void addNewTab();
 
+    // Resets per-tab column state globals (widths, visibility, locks,
+    // order) to plugin defaults. DPI-scaled. Called from bootstrap
+    // paths that create the initial primary tab when no persisted
+    // tab state is available.
+    void applyDefaultColumnState();
+
+    // Copies column layout (widths, visibility, locks, order) between
+    // two tabs. Sort order and list data are intentionally not copied.
+    void copyLayoutFields(const TabState& src, TabState& dst) const;
+
     // Copies column layout (widths, visibility, locks, order) from
     // the active tab into the destination tab so new tabs inherit
     // the user's workspace preferences. Sort order and list data
@@ -1483,6 +1493,7 @@ private:
     void onTabSave(int tabIndex);
     void onTabSaveAs(int tabIndex);
     void onTabOpenFileLocation(int tabIndex);
+    void onTabApplyLayoutToAll(int sourceTabIndex);
 
     // Find an open tab by its file path (case-insensitive on Windows).
     // Returns the tab index, or -1 if no tab has this file open.

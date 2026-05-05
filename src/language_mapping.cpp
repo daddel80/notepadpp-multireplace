@@ -204,6 +204,7 @@ const LangKV kEnglishPairs[] = {
 // Dynamic Status Messages
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },
 { L"status_lines_deleted", L"$REPLACE_STRING lines deleted." },
+{ L"status_layout_applied_to_tabs", L"Column layout applied to $REPLACE_STRING other tab(s)." },
 { L"status_occurrences_replaced", L"$REPLACE_STRING occurrences were replaced." },
 { L"status_no_matches_found_for", L"No matches found for '$REPLACE_STRING'." },
 { L"status_actual_position", L"Actual Position $REPLACE_STRING" },
@@ -422,6 +423,7 @@ const LangKV kEnglishPairs[] = {
 { L"tab_menu_close_multiple",      L"Close Multiple Tabs" },
 { L"tab_menu_close_others",        L"Close All BUT This" },
 { L"tab_menu_close_all",           L"Close All" },
+{ L"tab_menu_apply_layout_to_all", L"Apply Column Layout to All Tabs" },
 { L"tab_duplicate_suffix",         L"(copy)" },
 
 };
