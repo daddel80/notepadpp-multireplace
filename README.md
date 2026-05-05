@@ -205,7 +205,7 @@ When **Use Variables** is enabled, replacements run through a formula engine. Mu
 |              | Lua                                                                       | ExprTk                                                                                            |
 |--------------|---------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
 | Best for     | Text and string work, conditional logic, lookups, external file loading   | High-speed numeric work, running totals, concise inline math                                      |
-| Captures     | `CAP1`, `CAP2`, ... (always strings, use `tonum()` for math)              | `reg(N)` numeric, `rstr(N)` string                                                                |
+| Captures     | `CAP1`, `CAP2`, ... (always strings, use `tonum()` for math)              | `num(N)` numeric, `txt(N)` string                                                                |
 | Strings      | Full string library (substitute, slice, format, upper/lower, etc.)        | Passthrough only — no string manipulation functions; output composed from literals and captures   |
 | Math         | `math` library covers the basics (`sin`, `cos`, `log`, `sqrt`, `abs`, `floor`, `ceil`, ...); richer math built up in Lua code | Rich built-in math: full trigonometry, hyperbolic, log/exp variants, `clamp`, `sgn`, `roundn`, `erf`, `ncdf`, variadic `avg`/`sum`/`min`/`max` |
 | Loops & flow | Full control structures (`if/elseif/else`, `while`, `for`, `repeat`)      | Conditionals within expressions (no general loops)                                                |
@@ -232,7 +232,7 @@ For example, doubling every captured number:
 | Find    | Replace                  | Engine  |
 |---------|--------------------------|---------|
 | `(\d+)` | `set(tonum(CAP1) * 2)`   | Lua     |
-| `(\d+)` | `(?=reg(1) * 2)`         | ExprTk  |
+| `(\d+)` | `(?=num(1) * 2)`         | ExprTk  |
 
 Switch the engine via the `(L)` / `(E)` indicator next to the option — see [Engine Overview](#engine-overview) above for the differences between the two.
 

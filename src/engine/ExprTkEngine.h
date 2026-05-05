@@ -16,26 +16,26 @@
 //   Variables (numeric, read-only):
 //     CNT  LCNT  LINE  LPOS  APOS  COL  HIT
 //     (CNT/LCNT/LINE/LPOS/APOS/COL mirror the FormulaVars counter set;
-//      HIT is the full match parsed as a number, equivalent to reg(0).)
+//      HIT is the full match parsed as a number, equivalent to num(0).)
 //
 //   Variables (string, read-only - usable inside return [...] only):
 //     FPATH  FNAME
 //
 //   Functions:
-//     reg(N)  -> capture group N as double
-//                * reg(0) = the full match (same as HIT)
-//                * reg(1) = first capture group
-//                * reg(N) = N-th capture group
+//     num(N)  -> capture group N as double
+//                * num(0) = the full match (same as HIT)
+//                * num(1) = first capture group
+//                * num(N) = N-th capture group
 //                String-to-double uses std::from_chars (locale-
 //                independent: only "." is a decimal separator).
 //                A capture that does not parse as a number yields NaN;
 //                NaN propagates through arithmetic and is surfaced as
 //                an explicit error rather than silently coerced to 0.
-//     rstr(N) -> capture group N as raw string (for return [...])
+//     txt(N)  -> capture group N as raw string (for return [...])
 //     skip()  -> mark the current match to be left untouched
 //
 // The match text is intentionally not exposed as a string variable.
-// Use rstr(0) for the raw match string, HIT or reg(0) for the numeric
+// Use txt(0) for the raw match string, HIT or num(0) for the numeric
 // form, or a Boost backref \0 in the literal part of the template.
 //
 // Lifecycle:
@@ -153,13 +153,13 @@ namespace MultiReplaceEngine {
         void appendExprtkResults(const expression_t& expr, std::string& out,
             bool escapeForRegex);
 
-        // ExprTk-callable wrapper: implements reg(N). Reads from the
+        // ExprTk-callable wrapper: implements num(N). Reads from the
         // _captures vector populated at the start of execute().
         // Out-of-range indices return 0.0 (consistent with the empty-
         // capture rule in parseCaptureToDouble).
-        class RegFunction : public exprtk::ifunction<double> {
+        class NumFunction : public exprtk::ifunction<double> {
         public:
-            explicit RegFunction(ExprTkEngine* owner)
+            explicit NumFunction(ExprTkEngine* owner)
                 : exprtk::ifunction<double>(1)   // arity = 1
                 , _owner(owner) {
             }
@@ -189,15 +189,15 @@ namespace MultiReplaceEngine {
             ExprTkEngine* _owner;
         };
 
-        // ExprTk-callable wrapper: implements rstr(N), the string-side
-        // counterpart to reg(N). Returns the captured text at index N
-        // as a string (rstr(0) = full match, rstr(1..N) = capture groups).
+        // ExprTk-callable wrapper: implements txt(N), the string-side
+        // counterpart to num(N). Returns the captured text at index N
+        // as a string (txt(0) = full match, txt(1..N) = capture groups).
         // Built on igeneric_function rather than plain ifunction because
         // ifunction can only return doubles - and the whole point of
-        // rstr() is to surface the *string* form of a capture.
+        // txt() is to surface the *string* form of a capture.
         //
         // Only meaningful inside an ExprTk return statement, e.g.
-        //   (?=return ['<', rstr(1), '>'])
+        //   (?=return ['<', txt(1), '>'])
         // outside a return ExprTk will refuse to compile because the
         // surrounding numeric expression cannot consume a string.
         //
@@ -205,14 +205,14 @@ namespace MultiReplaceEngine {
         // The e_rtrn_string flag tells ExprTk this function returns a
         // string, so it can be used in string contexts within an
         // expression (Section 15 of the ExprTk docs).
-        class RstrFunction : public exprtk::igeneric_function<double> {
+        class TxtFunction : public exprtk::igeneric_function<double> {
         public:
             using igenfunct_t = exprtk::igeneric_function<double>;
             using generic_t = typename igenfunct_t::generic_type;
             using parameter_list_t = typename igenfunct_t::parameter_list_t;
             using scalar_t = typename generic_t::scalar_view;
 
-            explicit RstrFunction(ExprTkEngine* owner)
+            explicit TxtFunction(ExprTkEngine* owner)
                 : igenfunct_t("T", igenfunct_t::e_rtrn_string)
                 , _owner(owner) {
             }
@@ -260,13 +260,13 @@ namespace MultiReplaceEngine {
         double _varHIT = 0.0;
 
         // Captures are pre-parsed once per execute() into doubles. The
-        // RegFunction reads from this vector. Index 0 holds the full
+        // NumFunction reads from this vector. Index 0 holds the full
         // match (FormulaVars::MATCH); index 1..N the capture groups.
         std::vector<double> _captures;
 
         // String form of the capture groups, kept alongside the numeric
-        // _captures so RstrFunction can hand them to ExprTk return-list
-        // entries. Index 0 is *not* used here (rstr(0) reads _strMATCH
+        // _captures so TxtFunction can hand them to ExprTk return-list
+        // entries. Index 0 is *not* used here (txt(0) reads _strMATCH
         // directly); slots 0..N-1 hold capture[1..N].
         std::vector<std::string> _captureStrings;
 
@@ -285,15 +285,15 @@ namespace MultiReplaceEngine {
         bool _wantSkip = false;       // set by skip() in the formula
         bool _outputHadNaN = false;   // set when a NaN reaches the output
 
-        // The reg() callable, registered with the symbol table.
-        RegFunction _regFunction;
+        // The num() callable, registered with the symbol table.
+        NumFunction _numFunction;
 
         // The skip() callable, also registered with the symbol table.
         SkipFunction _skipFunction;
 
-        // The rstr() callable for string-typed capture access (used
+        // The txt() callable for string-typed capture access (used
         // inside ExprTk return lists).
-        RstrFunction _rstrFunction;
+        TxtFunction _txtFunction;
     };
 
 } // namespace MultiReplaceEngine

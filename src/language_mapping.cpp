@@ -241,7 +241,7 @@ const LangKV kEnglishPairs[] = {
 { L"msgbox_engine_error_body", L"List entry #$REPLACE_STRING1 ($REPLACE_STRING2) - Compile Error:<br/>$REPLACE_STRING3" },
 { L"msgbox_use_variables_execution_error_engine", L"List entry #$REPLACE_STRING1 ($REPLACE_STRING2) - Runtime Error at position $REPLACE_STRING3:<br/>$REPLACE_STRING4" },
 { L"msgbox_recoverable_error_body_taskdialog", L"List entry #$REPLACE_STRING1 ($REPLACE_STRING2) - Runtime Warning at position $REPLACE_STRING3.\n\n$REPLACE_STRING4" },
-{ L"msgbox_recoverable_error_details_exprtk", L"Expression \"$REPLACE_STRING\" produced NaN.\n\nEither a string variable (FPATH, FNAME) was used where a number is expected, or a capture (hit, reg(N)) could not be parsed as a number.\n\nUse rstr(N) for the raw text, or guard with a NaN check (x != x)." },
+{ L"msgbox_recoverable_error_details_exprtk", L"Expression \"$REPLACE_STRING\" produced NaN.\n\nEither a string variable (FPATH, FNAME) was used where a number is expected, or a capture (hit, num(N)) could not be parsed as a number.\n\nUse txt(N) for the raw text, or guard with a NaN check (x != x)." },
 { L"msgbox_btn_skip_this_match", L"Skip this match" },
 { L"msgbox_btn_skip_all_errors", L"Skip all errors" },
 { L"msgbox_btn_stop", L"Stop" },

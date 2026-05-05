@@ -549,7 +549,7 @@ nav.pagenav .nav-group.collapsible {
       <tr>
         <td><strong>Captures</strong></td>
         <td><code>CAP1</code>, <code>CAP2</code>, ... (always strings, use <code>tonum()</code> for math)</td>
-        <td><code>reg(N)</code> numeric, <code>rstr(N)</code> string</td>
+        <td><code>num(N)</code> numeric, <code>txt(N)</code> string</td>
       </tr>
       <tr>
         <td><strong>Strings</strong></td>
@@ -594,37 +594,37 @@ nav.pagenav .nav-group.collapsible {
       <tr>
         <td>Double a captured number</td>
         <td><code>set(tonum(CAP1) * 2)</code></td>
-        <td><code>(?=reg(1) * 2)</code></td>
+        <td><code>(?=num(1) * 2)</code></td>
       </tr>
       <tr>
         <td>Round to 2 decimals</td>
         <td><code>fmtN(tonum(CAP1), 2)</code></td>
-        <td><code>(?=roundn(reg(1), 2))</code></td>
+        <td><code>(?=roundn(num(1), 2))</code></td>
       </tr>
       <tr>
         <td>Clamp to <code>[0, 100]</code></td>
         <td><code>set(math.max(0, math.min(100, tonum(CAP1))))</code></td>
-        <td><code>(?=clamp(0, reg(1), 100))</code></td>
+        <td><code>(?=clamp(0, num(1), 100))</code></td>
       </tr>
       <tr>
         <td>Skip values below 100</td>
         <td><code>cond(tonum(CAP1) &gt;= 100, MATCH)</code></td>
-        <td><code>(?=reg(1) &lt; 100 ? skip() : reg(1))</code></td>
+        <td><code>(?=num(1) &lt; 100 ? skip() : num(1))</code></td>
       </tr>
       <tr>
         <td>Insert match counter</td>
         <td><code>set(CNT .. ". " .. MATCH)</code></td>
-        <td><code>(?=CNT). (?=return [rstr(0)])</code></td>
+        <td><code>(?=CNT). (?=return [txt(0)])</code></td>
       </tr>
       <tr>
         <td>Convert &deg;F to &deg;C</td>
         <td><code>fmtN((tonum(CAP1) - 32) * 5/9, 2)</code></td>
-        <td><code>(?=(reg(1) - 32) * 5/9)</code></td>
+        <td><code>(?=(num(1) - 32) * 5/9)</code></td>
       </tr>
       <tr>
         <td>Wrap match in brackets</td>
         <td><code>set("&lt;" .. MATCH .. "&gt;")</code></td>
-        <td><code>(?=return ['&lt;', rstr(0), '&gt;'])</code></td>
+        <td><code>(?=return ['&lt;', txt(0), '&gt;'])</code></td>
       </tr>
     </table>
   </section>
@@ -1559,7 +1559,7 @@ return {
         <strong>Try a simple expression:</strong>
         <ul>
           <li><strong>Find</strong>: <code>(\d+)</code></li>
-          <li><strong>Replace</strong>: <code>(?=reg(1) * 2)</code></li>
+          <li><strong>Replace</strong>: <code>(?=num(1) * 2)</code></li>
           <li><strong>Input</strong>: <code>42</code></li>
           <li><strong>Output</strong>: <code>84</code></li>
         </ul>
@@ -1569,7 +1569,7 @@ return {
         <strong>Mix expressions and literal text:</strong>
         <ul>
           <li><strong>Find</strong>: <code>(\d+)</code></li>
-          <li><strong>Replace</strong>: <code>value=(?=reg(1)) doubled=(?=reg(1)*2)</code></li>
+          <li><strong>Replace</strong>: <code>value=(?=num(1)) doubled=(?=num(1)*2)</code></li>
           <li><strong>Input</strong>: <code>42</code></li>
           <li><strong>Output</strong>: <code>value=42 doubled=84</code></li>
         </ul>
@@ -1605,7 +1605,7 @@ return {
         <td>Literal output, including UTF-8 byte sequences.</td>
       </tr>
     </table>
-    <p>The closing <code>)</code> is matched by depth-counting, so balanced parentheses inside the expression &mdash; like <code>min(reg(1), reg(2))</code> &mdash; work naturally without extra escaping.</p>
+    <p>The closing <code>)</code> is matched by depth-counting, so balanced parentheses inside the expression &mdash; like <code>min(num(1), num(2))</code> &mdash; work naturally without extra escaping.</p>
   </section>
 
   <br>
@@ -1646,7 +1646,7 @@ return {
       </tr>
       <tr>
         <td><strong>HIT</strong> / <strong>hit</strong></td>
-        <td>Numeric value of the full match (same as <code>reg(0)</code>).</td>
+        <td>Numeric value of the full match (same as <code>num(0)</code>).</td>
       </tr>
     </table>
 
@@ -1665,7 +1665,7 @@ return {
         <td>Filename without path.</td>
       </tr>
     </table>
-    <p>To access the matched text as a string, use <code>rstr(0)</code> inside a <code>return [...]</code> list, or <code>\0</code> / <code>$0</code> directly in the replace pattern (regular regex back-reference).</p>
+    <p>To access the matched text as a string, use <code>txt(0)</code> inside a <code>return [...]</code> list, or <code>\0</code> / <code>$0</code> directly in the replace pattern (regular regex back-reference).</p>
 
     <h3>Capture access</h3>
     <table class="optionsTable">
@@ -1675,14 +1675,14 @@ return {
         <th>Use case</th>
       </tr>
       <tr>
-        <td><code>reg(N)</code></td>
+        <td><code>num(N)</code></td>
         <td>number</td>
-        <td>Capture group N as <code>double</code>. <code>reg(0)</code> is the full match. Non-numeric captures yield <code>NaN</code>.</td>
+        <td>Capture group N as <code>double</code>. <code>num(0)</code> is the full match. Non-numeric captures yield <code>NaN</code>.</td>
       </tr>
       <tr>
-        <td><code>rstr(N)</code></td>
+        <td><code>txt(N)</code></td>
         <td>string</td>
-        <td>Capture group N as text. <code>rstr(0)</code> is the full match. Only valid inside a <code>return [...]</code> list.</td>
+        <td>Capture group N as text. <code>txt(0)</code> is the full match. Only valid inside a <code>return [...]</code> list.</td>
       </tr>
     </table>
 
@@ -1690,7 +1690,7 @@ return {
     <table class="optionsTable">
       <tr>
         <th>Capture text</th>
-        <th><code>reg(N)</code></th>
+        <th><code>num(N)</code></th>
         <th>Note</th>
       </tr>
       <tr>
@@ -1829,16 +1829,16 @@ return {
       </tr>
     </table>
     <p>Example &mdash; clamp a captured value but show "OVER" if it exceeded:</p>
-    <p><code>(?=reg(1) &gt; 100 ? 100 : reg(1))</code></p>
+    <p><code>(?=num(1) &gt; 100 ? 100 : num(1))</code></p>
   </section>
 
   <br>
 
   <section id="exprtk-string-output">
     <h2>String Output via <code>return [...]</code></h2>
-    <p>ExprTk expressions normally produce a number. To emit a <strong>string</strong> &mdash; e.g. to combine literal text with <code>rstr(N)</code> capture text &mdash; wrap the output in a <code>return</code> list:</p>
-    <p><code>(?=return ['prefix-', rstr(1), '-suffix'])</code></p>
-    <p>The list elements can be string literals, the string variables (<code>FPATH</code>, <code>FNAME</code>), <code>rstr(N)</code> capture text (use <code>rstr(0)</code> for the full match), and numeric expressions (which are converted to text). This is the only path for any non-numeric output.</p>
+    <p>ExprTk expressions normally produce a number. To emit a <strong>string</strong> &mdash; e.g. to combine literal text with <code>txt(N)</code> capture text &mdash; wrap the output in a <code>return</code> list:</p>
+    <p><code>(?=return ['prefix-', txt(1), '-suffix'])</code></p>
+    <p>The list elements can be string literals, the string variables (<code>FPATH</code>, <code>FNAME</code>), <code>txt(N)</code> capture text (use <code>txt(0)</code> for the full match), and numeric expressions (which are converted to text). This is the only path for any non-numeric output.</p>
     <section class="note">
       <p><strong>String literals are ASCII-only.</strong> UTF-8 bytes in <code>'...'</code> will fail to compile. Non-ASCII text must come from the document via captures or string variables, or be placed in the literal portion of the replace string outside <code>(?=...)</code>. See <a href="#exprtk-limitations">Limitations</a> below.</p>
     </section>
@@ -1867,7 +1867,7 @@ return {
   <section id="exprtk-skip">
     <h2>Skipping Matches</h2>
     <p>Calling <code>skip()</code> from within an expression tells the engine to leave this match unchanged. The expression's own value is ignored when skip is signalled. Useful as a numeric filter:</p>
-    <p><code>(?=reg(1) &lt; 100 ? skip() : reg(1) * 2)</code></p>
+    <p><code>(?=num(1) &lt; 100 ? skip() : num(1) * 2)</code></p>
     <p>This doubles captured numbers &ge; 100 and leaves everything else untouched.</p>
   </section>
 
@@ -1886,27 +1886,27 @@ return {
       </tr>
       <tr>
         <td><code>(\d+\.?\d*)</code></td>
-        <td><code>(?=roundn(reg(1), 2))</code></td>
+        <td><code>(?=roundn(num(1), 2))</code></td>
         <td>Round all numbers to 2 decimal places.</td>
       </tr>
       <tr>
         <td><code>(-?\d+\.?\d*)</code></td>
-        <td><code>(?=clamp(0, reg(1), 100))</code></td>
+        <td><code>(?=clamp(0, num(1), 100))</code></td>
         <td>Clamp every value to the range <code>[0..100]</code>.</td>
       </tr>
       <tr>
         <td><code>(-?\d+\.?\d*)</code></td>
-        <td><code>(?=abs(reg(1)))</code></td>
+        <td><code>(?=abs(num(1)))</code></td>
         <td>Take the absolute value of every number.</td>
       </tr>
       <tr>
         <td><code>(\d+\.?\d*)</code></td>
-        <td><code>(?=reg(1) * 2.54)</code></td>
+        <td><code>(?=num(1) * 2.54)</code></td>
         <td>Convert inches to centimetres (&times;2.54).</td>
       </tr>
       <tr>
         <td><code>(\d+\.?\d*)</code></td>
-        <td><code>(?=(reg(1) - 32) * 5/9)</code></td>
+        <td><code>(?=(num(1) - 32) * 5/9)</code></td>
         <td>Convert &deg;F to &deg;C.</td>
       </tr>
     </table>
@@ -1920,17 +1920,17 @@ return {
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>(?=reg(1) &lt; 100 ? skip() : reg(1))</code></td>
+        <td><code>(?=num(1) &lt; 100 ? skip() : num(1))</code></td>
         <td>Keep only numbers &ge; 100; smaller ones stay untouched (skipped, not zeroed).</td>
       </tr>
       <tr>
         <td><code>(\d+\.?\d*)</code></td>
-        <td><code>(?=inrange(0, reg(1), 1) ? reg(1) : skip())</code></td>
+        <td><code>(?=inrange(0, num(1), 1) ? num(1) : skip())</code></td>
         <td>Keep only values in <code>[0..1]</code>, skip the rest.</td>
       </tr>
       <tr>
         <td><code>(\d+\.?\d*)</code></td>
-        <td><code>(?=reg(1) &gt; avg(0, 100, 200) ? reg(1) : skip())</code></td>
+        <td><code>(?=num(1) &gt; avg(0, 100, 200) ? num(1) : skip())</code></td>
         <td>Skip below-average values (here against a fixed reference average).</td>
       </tr>
     </table>
@@ -1944,17 +1944,17 @@ return {
       </tr>
       <tr>
         <td><code>(\d+),(\d+)</code></td>
-        <td><code>total=(?=reg(1)+reg(2)) avg=(?=avg(reg(1),reg(2)))</code></td>
+        <td><code>total=(?=num(1)+num(2)) avg=(?=avg(num(1),num(2)))</code></td>
         <td>Two independent expressions in one replace, each in its own <code>(?=)</code>.</td>
       </tr>
       <tr>
         <td><code>(\d+\.?\d*)</code></td>
-        <td><code>(?=reg(1)) cm = (?=reg(1)/2.54) inches</code></td>
+        <td><code>(?=num(1)) cm = (?=num(1)/2.54) inches</code></td>
         <td>Output original and converted value side-by-side.</td>
       </tr>
       <tr>
         <td><code>(\d+\.?\d*),(\d+\.?\d*)</code></td>
-        <td><code>distance=(?=hypot(reg(1), reg(2)))</code></td>
+        <td><code>distance=(?=hypot(num(1), num(2)))</code></td>
         <td>Euclidean distance from two coordinate values.</td>
       </tr>
     </table>
@@ -1968,12 +1968,12 @@ return {
       </tr>
       <tr>
         <td><code>(-?\d+\.?\d*)</code></td>
-        <td><code>(?=ncdf(reg(1)))</code></td>
+        <td><code>(?=ncdf(num(1)))</code></td>
         <td>Z-score to percentile via the standard normal CDF (e.g. <code>1.96</code> &rarr; <code>0.975</code>).</td>
       </tr>
       <tr>
         <td><code>(-?\d+\.?\d*)</code></td>
-        <td><code>(?=erf(reg(1)))</code></td>
+        <td><code>(?=erf(num(1)))</code></td>
         <td>Error function &mdash; handy for diffusion / probability calculations.</td>
       </tr>
     </table>
@@ -1987,17 +1987,17 @@ return {
       </tr>
       <tr>
         <td><code>(\w+)</code></td>
-        <td><code>(?=return ['&lt;', rstr(1), '&gt;'])</code></td>
+        <td><code>(?=return ['&lt;', txt(1), '&gt;'])</code></td>
         <td>Wrap every match in angle brackets.</td>
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>(?=return ['#', CNT, ': ', rstr(1)])</code></td>
+        <td><code>(?=return ['#', CNT, ': ', txt(1)])</code></td>
         <td>Prefix each match with a running global counter.</td>
       </tr>
       <tr>
         <td><code>(\w+)</code></td>
-        <td><code>(?=return [FNAME, ': ', rstr(1)])</code></td>
+        <td><code>(?=return [FNAME, ': ', txt(1)])</code></td>
         <td>Tag each match with the source filename.</td>
       </tr>
     </table>
@@ -2028,7 +2028,7 @@ return {
     <h2>Limitations</h2>
     <p>ExprTk is deliberately scoped. Things it does <strong>not</strong> do:</p>
     <ul>
-      <li><strong>No string manipulation</strong> &mdash; there is no <code>substring</code>, <code>replace</code>, <code>find</code>, <code>format</code>, etc. Strings can only be passed through (via captures, <code>rstr(N)</code>, <code>FNAME</code>, <code>FPATH</code>) and assembled in <code>return [...]</code> lists.</li>
+      <li><strong>No string manipulation</strong> &mdash; there is no <code>substring</code>, <code>replace</code>, <code>find</code>, <code>format</code>, etc. Strings can only be passed through (via captures, <code>txt(N)</code>, <code>FNAME</code>, <code>FPATH</code>) and assembled in <code>return [...]</code> lists.</li>
       <li><strong>UTF-8 inside string literals fails to compile.</strong> A literal like <code>'Gr&ouml;&szlig;e'</code> between <code>'...'</code> will produce an <code>Invalid string token</code> error. Use captures or place non-ASCII text outside the <code>(?=...)</code> block.</li>
       <li><strong>No state across matches.</strong> Each <code>(?=...)</code> evaluation starts fresh. The numeric counters (<code>CNT</code>, <code>LCNT</code>) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use <code>vars({...})</code>.</li>
       <li><strong>No file I/O, no external scripts.</strong> ExprTk has no equivalent to Lua's <code>lvars</code>, <code>lkp</code>, or <code>lcmd</code>.</li>

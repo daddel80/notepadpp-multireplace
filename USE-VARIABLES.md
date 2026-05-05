@@ -442,7 +442,7 @@ ExprTk is a numeric expression engine. Its design goal is concise inline math: w
 3. **Try a simple expression:**
 
    - **Find:** `(\d+)`
-   - **Replace:** `(?=reg(1) * 2)`
+   - **Replace:** `(?=num(1) * 2)`
    - **Input:** `42`
    - **Output:** `84`
 
@@ -451,7 +451,7 @@ ExprTk is a numeric expression engine. Its design goal is concise inline math: w
 4. **Mix expressions and literal text:**
 
    - **Find:** `(\d+)`
-   - **Replace:** `value=(?=reg(1)) doubled=(?=reg(1)*2)`
+   - **Replace:** `value=(?=num(1)) doubled=(?=num(1)*2)`
    - **Input:** `42`
    - **Output:** `value=42 doubled=84`
 
@@ -470,7 +470,7 @@ Every ExprTk expression in a replace string is wrapped in `(?=` and `)`. The mar
 | `\\`             | Literal backslash.                                                    |
 | any other text   | Literal output, including UTF-8 byte sequences.                       |
 
-The closing `)` is matched by depth-counting, so balanced parentheses inside the expression — like `min(reg(1), reg(2))` — work naturally without extra escaping.
+The closing `)` is matched by depth-counting, so balanced parentheses inside the expression — like `min(num(1), num(2))` — work naturally without extra escaping.
 
 <br>
 
@@ -488,7 +488,7 @@ ExprTk receives the same per-match context as Lua, but exposed differently becau
 | `LPOS` / `lpos` | Column position within the line (UTF-8 bytes).                  |
 | `APOS` / `apos` | Absolute byte position in the document.                         |
 | `COL` / `col`   | CSV column index (CSV mode), 0 otherwise.                       |
-| `HIT` / `hit`   | Numeric value of the full match (same as `reg(0)`).             |
+| `HIT` / `hit`   | Numeric value of the full match (same as `num(0)`).             |
 
 #### String variables (read-only, usable only in `return [...]` lists)
 
@@ -497,20 +497,20 @@ ExprTk receives the same per-match context as Lua, but exposed differently becau
 | `FPATH` / `fpath` | Full path of the document being processed.   |
 | `FNAME` / `fname` | Filename without path.                       |
 
-To access the matched text as a string, use `rstr(0)` inside a `return [...]` list, or `\0` / `$0` directly in the replace pattern (regular regex back-reference).
+To access the matched text as a string, use `txt(0)` inside a `return [...]` list, or `\0` / `$0` directly in the replace pattern (regular regex back-reference).
 
 #### Capture access
 
 | Function  | Returns | Use case                                                              |
 |-----------|---------|-----------------------------------------------------------------------|
-| `reg(N)`  | number  | Capture group N as `double`. `reg(0)` is the full match. Non-numeric captures yield `NaN`. |
-| `rstr(N)` | string  | Capture group N as text. `rstr(0)` is the full match. Only valid inside a `return [...]` list. |
+| `num(N)`  | number  | Capture group N as `double`. `num(0)` is the full match. Non-numeric captures yield `NaN`. |
+| `txt(N)` | string  | Capture group N as text. `txt(0)` is the full match. Only valid inside a `return [...]` list. |
 
 **Number parsing notes:**
 
-`reg(N)` parses captures with both `.` and `,` accepted as decimal separator, tolerates trailing non-numeric characters, and yields `NaN` when the input has no leading digits. When an expression evaluates to `NaN` (or to `±Infinity` from things like `0/0`, `log(-1)`, `sqrt(-1)`), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. Skipped matches are left untouched, so no original data is lost.
+`num(N)` parses captures with both `.` and `,` accepted as decimal separator, tolerates trailing non-numeric characters, and yields `NaN` when the input has no leading digits. When an expression evaluates to `NaN` (or to `±Infinity` from things like `0/0`, `log(-1)`, `sqrt(-1)`), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. Skipped matches are left untouched, so no original data is lost.
 
-| Capture text                         | `reg(N)`            | Note                                            |
+| Capture text                         | `num(N)`            | Note                                            |
 |--------------------------------------|---------------------|-------------------------------------------------|
 | `"42"`                               | `42`                |                                                 |
 | `"3.14"`                             | `3.14`              |                                                 |
@@ -589,20 +589,20 @@ ExprTk has expression-level control flow. Everything returns a value — there a
 Example — clamp a captured value but show "OVER" if it exceeded:
 
 ```
-(?=reg(1) > 100 ? 100 : reg(1))
+(?=num(1) > 100 ? 100 : num(1))
 ```
 
 <br>
 
 ### String Output via `return [...]`
 
-ExprTk expressions normally produce a number. To emit a **string** — e.g. to combine literal text with `rstr(N)` capture text — wrap the output in a `return` list:
+ExprTk expressions normally produce a number. To emit a **string** — e.g. to combine literal text with `txt(N)` capture text — wrap the output in a `return` list:
 
 ```
-(?=return ['prefix-', rstr(1), '-suffix'])
+(?=return ['prefix-', txt(1), '-suffix'])
 ```
 
-The list elements can be string literals, the string variables (`FPATH`, `FNAME`), `rstr(N)` capture text (use `rstr(0)` for the full match), and numeric expressions (which are converted to text). This is the only path for any non-numeric output.
+The list elements can be string literals, the string variables (`FPATH`, `FNAME`), `txt(N)` capture text (use `txt(0)` for the full match), and numeric expressions (which are converted to text). This is the only path for any non-numeric output.
 
 > **String literals are ASCII-only.** UTF-8 bytes in `'...'` will fail to compile. Non-ASCII text must come from the document via captures or string variables, or be placed in the literal portion of the replace string outside `(?=...)`. See [Limitations](#limitations) below.
 
@@ -626,7 +626,7 @@ The list elements can be string literals, the string variables (`FPATH`, `FNAME`
 Calling `skip()` from within an expression tells the engine to leave this match unchanged. The expression's own value is ignored when skip is signalled. Useful as a numeric filter:
 
 ```
-(?=reg(1) < 100 ? skip() : reg(1) * 2)
+(?=num(1) < 100 ? skip() : num(1) * 2)
 ```
 
 This doubles captured numbers ≥ 100 and leaves everything else untouched.
@@ -641,42 +641,42 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 
 | Find          | Replace                                  | Description                                        |
 |---------------|------------------------------------------|----------------------------------------------------|
-| `(\d+\.?\d*)` | `(?=roundn(reg(1), 2))`                  | Round all numbers to 2 decimal places.             |
-| `(-?\d+\.?\d*)` | `(?=clamp(0, reg(1), 100))`            | Clamp every value to the range `[0..100]`.         |
-| `(-?\d+\.?\d*)` | `(?=abs(reg(1)))`                      | Take the absolute value of every number.           |
-| `(\d+\.?\d*)` | `(?=reg(1) * 2.54)`                      | Convert inches to centimetres (×2.54).             |
-| `(\d+\.?\d*)` | `(?=(reg(1) - 32) * 5/9)`                | Convert °F to °C.                                  |
+| `(\d+\.?\d*)` | `(?=roundn(num(1), 2))`                  | Round all numbers to 2 decimal places.             |
+| `(-?\d+\.?\d*)` | `(?=clamp(0, num(1), 100))`            | Clamp every value to the range `[0..100]`.         |
+| `(-?\d+\.?\d*)` | `(?=abs(num(1)))`                      | Take the absolute value of every number.           |
+| `(\d+\.?\d*)` | `(?=num(1) * 2.54)`                      | Convert inches to centimetres (×2.54).             |
+| `(\d+\.?\d*)` | `(?=(num(1) - 32) * 5/9)`                | Convert °F to °C.                                  |
 
 #### Conditional / filtering
 
 | Find          | Replace                                                       | Description                                                                |
 |---------------|---------------------------------------------------------------|----------------------------------------------------------------------------|
-| `(\d+)`       | `(?=reg(1) < 100 ? skip() : reg(1))`                          | Keep only numbers ≥ 100; smaller ones stay untouched (skipped, not zeroed).|
-| `(\d+\.?\d*)` | `(?=inrange(0, reg(1), 1) ? reg(1) : skip())`                 | Keep only values in `[0..1]`, skip the rest.                               |
-| `(\d+\.?\d*)` | `(?=reg(1) > avg(0, 100, 200) ? reg(1) : skip())`             | Skip below-average values (here against a fixed reference average).        |
+| `(\d+)`       | `(?=num(1) < 100 ? skip() : num(1))`                          | Keep only numbers ≥ 100; smaller ones stay untouched (skipped, not zeroed).|
+| `(\d+\.?\d*)` | `(?=inrange(0, num(1), 1) ? num(1) : skip())`                 | Keep only values in `[0..1]`, skip the rest.                               |
+| `(\d+\.?\d*)` | `(?=num(1) > avg(0, 100, 200) ? num(1) : skip())`             | Skip below-average values (here against a fixed reference average).        |
 
 #### Mixed expressions in one rule
 
 | Find                  | Replace                                                         | Description                                                          |
 |-----------------------|-----------------------------------------------------------------|----------------------------------------------------------------------|
-| `(\d+),(\d+)`         | `total=(?=reg(1)+reg(2)) avg=(?=avg(reg(1),reg(2)))`            | Two independent expressions in one replace, each in its own `(?=)`.  |
-| `(\d+\.?\d*)`         | `(?=reg(1)) cm = (?=reg(1)/2.54) inches`                        | Output original and converted value side-by-side.                    |
-| `(\d+\.?\d*),(\d+\.?\d*)` | `distance=(?=hypot(reg(1), reg(2)))`                        | Euclidean distance from two coordinate values.                       |
+| `(\d+),(\d+)`         | `total=(?=num(1)+num(2)) avg=(?=avg(num(1),num(2)))`            | Two independent expressions in one replace, each in its own `(?=)`.  |
+| `(\d+\.?\d*)`         | `(?=num(1)) cm = (?=num(1)/2.54) inches`                        | Output original and converted value side-by-side.                    |
+| `(\d+\.?\d*),(\d+\.?\d*)` | `distance=(?=hypot(num(1), num(2)))`                        | Euclidean distance from two coordinate values.                       |
 
 #### Statistics
 
 | Find          | Replace                                       | Description                                                              |
 |---------------|-----------------------------------------------|--------------------------------------------------------------------------|
-| `(-?\d+\.?\d*)` | `(?=ncdf(reg(1)))`                          | Z-score to percentile via the standard normal CDF (e.g. `1.96` → `0.975`).|
-| `(-?\d+\.?\d*)` | `(?=erf(reg(1)))`                           | Error function — handy for diffusion / probability calculations.         |
+| `(-?\d+\.?\d*)` | `(?=ncdf(num(1)))`                          | Z-score to percentile via the standard normal CDF (e.g. `1.96` → `0.975`).|
+| `(-?\d+\.?\d*)` | `(?=erf(num(1)))`                           | Error function — handy for diffusion / probability calculations.         |
 
 #### String composition
 
 | Find          | Replace                                                 | Description                                                              |
 |---------------|---------------------------------------------------------|--------------------------------------------------------------------------|
-| `(\w+)`       | `(?=return ['<', rstr(1), '>'])`                        | Wrap every match in angle brackets.                                      |
-| `(\d+)`       | `(?=return ['#', CNT, ': ', rstr(1)])`                  | Prefix each match with a running global counter.                         |
-| `(\w+)`       | `(?=return [FNAME, ': ', rstr(1)])`                     | Tag each match with the source filename.                                 |
+| `(\w+)`       | `(?=return ['<', txt(1), '>'])`                        | Wrap every match in angle brackets.                                      |
+| `(\d+)`       | `(?=return ['#', CNT, ': ', txt(1)])`                  | Prefix each match with a running global counter.                         |
+| `(\w+)`       | `(?=return [FNAME, ': ', txt(1)])`                     | Tag each match with the source filename.                                 |
 
 #### Counters
 
@@ -691,7 +691,7 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 
 ExprTk is deliberately scoped. Things it does **not** do:
 
-- **No string manipulation** — there is no `substring`, `replace`, `find`, `format`, etc. Strings can only be passed through (via captures, `rstr(N)`, `FNAME`, `FPATH`) and assembled in `return [...]` lists.
+- **No string manipulation** — there is no `substring`, `replace`, `find`, `format`, etc. Strings can only be passed through (via captures, `txt(N)`, `FNAME`, `FPATH`) and assembled in `return [...]` lists.
 - **UTF-8 inside string literals fails to compile.** A literal like `'Größe'` between `'...'` will produce an `Invalid string token` error. Use captures or place non-ASCII text outside the `(?=...)` block.
 - **No state across matches.** Each `(?=...)` evaluation starts fresh. The numeric counters (`CNT`, `LCNT`) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use `vars({...})`.
 - **No file I/O, no external scripts.** ExprTk has no equivalent to Lua's `lvars`, `lkp`, or `lcmd`.

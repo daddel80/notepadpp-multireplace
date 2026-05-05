@@ -8156,7 +8156,7 @@ MultiReplace::showRecoverableErrorDialog(
         { entryW, engineW, posW, detailsW });
 
     const std::wstring btnSkipOne = LM.get(L"msgbox_btn_skip_this_match");
-    const std::wstring btnSkipAll = LM.get(L"msgbox_btn_skip_all_nan");
+    const std::wstring btnSkipAll = LM.get(L"msgbox_btn_skip_all_errors");
     const std::wstring btnStop = LM.get(L"msgbox_btn_stop");
 
     constexpr int ID_SKIP_ONE = 200;

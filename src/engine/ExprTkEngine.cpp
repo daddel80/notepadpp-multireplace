@@ -34,9 +34,9 @@ namespace MultiReplaceEngine {
 
     ExprTkEngine::ExprTkEngine(ILuaEngineHost* host)
         : _host(host)
-        , _regFunction(this)
+        , _numFunction(this)
         , _skipFunction(this)
-        , _rstrFunction(this)
+        , _txtFunction(this)
     {
     }
 
@@ -77,9 +77,9 @@ namespace MultiReplaceEngine {
         _symbolTable.add_stringvar("FNAME", _strFNAME);
         _symbolTable.add_stringvar("fname", _strFNAME);
 
-        // Register the reg(N) function. The wrapper holds a back-pointer
+        // Register the num(N) function. The wrapper holds a back-pointer
         // to the engine, so it can read from _captures during eval.
-        _symbolTable.add_function("reg", _regFunction);
+        _symbolTable.add_function("num", _numFunction);
 
         // Register skip() so users can express conditional replacement
         // in a numeric expression (e.g. inside if/else). The function
@@ -87,10 +87,10 @@ namespace MultiReplaceEngine {
         // up after eval and propagates it through FormulaResult::skip.
         _symbolTable.add_function("skip", _skipFunction);
 
-        // Register rstr(N) for string-typed capture access. Only useful
+        // Register txt(N) for string-typed capture access. Only useful
         // inside an ExprTk return list, where its string output is
         // concatenated into the replace text.
-        _symbolTable.add_function("rstr", _rstrFunction);
+        _symbolTable.add_function("txt", _txtFunction);
 
         // ExprTk's standard math constants (pi, epsilon, infinity).
         _symbolTable.add_constants();
@@ -309,10 +309,10 @@ namespace MultiReplaceEngine {
             emitString("FPATH", vars.FPATH);
             emitString("FNAME", vars.FNAME);
 
-            dbg << "reg(0)\tString\t"
+            dbg << "num(0)\tString\t"
                 << SU::escapeControlChars(vars.MATCH) << "\n\n";
             for (std::size_t i = 0; i < vars.captures.size(); ++i) {
-                dbg << "reg(" << (i + 1) << ")\tString\t"
+                dbg << "num(" << (i + 1) << ")\tString\t"
                     << SU::escapeControlChars(vars.captures[i]) << "\n\n";
             }
 
@@ -532,20 +532,20 @@ namespace MultiReplaceEngine {
     }
 
     // ---------------------------------------------------------------------
-    // reg() function implementation
+    // num() function implementation
     // ---------------------------------------------------------------------
 
-    double ExprTkEngine::RegFunction::operator()(const double& index)
+    double ExprTkEngine::NumFunction::operator()(const double& index)
     {
         // Index is passed as double; floor to integer. Negative or non-
         // integer indices are treated as out-of-range (return 0.0) rather
-        // than thrown, so a malformed expression like reg(-1) doesn't
+        // than thrown, so a malformed expression like num(-1) doesn't
         // abort the whole match.
         if (!std::isfinite(index)) {
             return 0.0;
         }
 
-        // Truncate toward zero. reg(1.5) becomes reg(1); reg(-0.5) -> 0.
+        // Truncate toward zero. num(1.5) becomes num(1); num(-0.5) -> 0.
         const long long idx = static_cast<long long>(index);
         if (idx < 0) {
             return 0.0;
@@ -577,15 +577,15 @@ namespace MultiReplaceEngine {
     }
 
     // ---------------------------------------------------------------------
-    // rstr() function implementation
+    // txt() function implementation
     // ---------------------------------------------------------------------
 
-    double ExprTkEngine::RstrFunction::operator()(
+    double ExprTkEngine::TxtFunction::operator()(
         std::string& result,
         parameter_list_t parameters)
     {
         // Default to empty: an out-of-range or malformed call yields ""
-        // rather than aborting eval, mirroring reg(N)'s defensive style.
+        // rather than aborting eval, mirroring num(N)'s defensive style.
         result.clear();
 
         if (!_owner || parameters.size() != 1) {
@@ -602,7 +602,7 @@ namespace MultiReplaceEngine {
             return 0.0;
         }
 
-        // Truncate toward zero so rstr(1.7) means rstr(1). Negative
+        // Truncate toward zero so txt(1.7) means txt(1). Negative
         // indices fall through to the empty-string default.
         const long long idx = static_cast<long long>(index);
         if (idx < 0) {
@@ -611,7 +611,7 @@ namespace MultiReplaceEngine {
 
         const std::size_t uidx = static_cast<std::size_t>(idx);
 
-        // rstr(0) is the full match. _strMATCH is refreshed at the top
+        // txt(0) is the full match. _strMATCH is refreshed at the top
         // of execute() before any expression is evaluated, so it always
         // holds the current match's text here.
         if (uidx == 0) {
@@ -619,9 +619,9 @@ namespace MultiReplaceEngine {
             return 0.0;
         }
 
-        // rstr(N) for N >= 1 reads capture group N, stored 0-based in
+        // txt(N) for N >= 1 reads capture group N, stored 0-based in
         // _captureStrings. Beyond the last capture we return the empty
-        // string - same defensive behaviour as reg() for numeric
+        // string - same defensive behaviour as num() for numeric
         // out-of-range.
         if (uidx - 1 < _owner->_captureStrings.size()) {
             result = _owner->_captureStrings[uidx - 1];
