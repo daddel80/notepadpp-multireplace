@@ -41,7 +41,7 @@ namespace MultiReplaceEngine {
         if (_skipAllErrors) {
             return ILuaEngineHost::RecoverableErrorChoice::SkipOne;
         }
-        if (!host || !host->isLuaErrorDialogEnabled()) {
+        if (!host || !host->isFormulaErrorDialogEnabled()) {
             return ILuaEngineHost::RecoverableErrorChoice::SkipOne;
         }
 

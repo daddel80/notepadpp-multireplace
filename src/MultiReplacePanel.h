@@ -673,7 +673,7 @@ public:
     inline static bool _delimiterPositionsStale = false;
     inline static bool isLoggingEnabled = true;
     inline static bool isCaretPositionEnabled = false;
-    inline static bool _isLuaErrorDialogEnabled = true;
+    inline static bool _formulaErrorDialogEnabled = true;
 
     inline static std::vector<size_t> originalLineOrder{}; // Stores the order of lines before sorting
     inline static std::vector<size_t> _markedDuplicateLines{};  // Stores line indices of marked duplicates
@@ -1229,7 +1229,7 @@ private:
     MultiReplaceEngine::ILuaEngineHost::RecoverableErrorChoice
         showRecoverableErrorDialog(const std::string& engineName,
             const std::string& details) override;
-    bool         isLuaErrorDialogEnabled() const override;
+    bool         isFormulaErrorDialogEnabled() const override;
     bool         isLuaSafeModeEnabled()    const override;
     bool         isDebugModeEnabled()      const override;
 

@@ -69,7 +69,7 @@ namespace MultiReplaceEngine {
 
         // User-toggleable mode flags. Read every match (rather than copied
         // at init) so changes apply immediately to the next evaluation.
-        virtual bool isLuaErrorDialogEnabled() const = 0;
+        virtual bool isFormulaErrorDialogEnabled() const = 0;
         virtual bool isLuaSafeModeEnabled()    const = 0;
         virtual bool isDebugModeEnabled()      const = 0;
     };

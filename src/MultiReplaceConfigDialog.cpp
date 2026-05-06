@@ -191,6 +191,7 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_STAY_AFTER_REPLACE,      L"config_chk_stay_after_replace",  386, 18 },
         { IDC_CFG_ALL_FROM_CURSOR,         L"config_chk_all_from_cursor",     386, 18 },
         { IDC_CFG_MUTE_SOUNDS,             L"config_chk_mute_sounds",         386, 18 },
+        { IDC_CFG_SHOW_FORMULA_ERRORS,     L"config_chk_show_formula_errors", 386, 18 },
         { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize",      260, 18 },
 
         // List View Panel - Results: groupW=460, innerWidth=460-44=416
@@ -742,7 +743,7 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
     const int left = 70;
     int y = 20;
 
-    createGroupBox(_hSearchReplacePanel, left, y, groupW, 160, IDC_CFG_GRP_SEARCH_BEHAVIOUR, LM.getLPCW(L"config_grp_search_behaviour"));
+    createGroupBox(_hSearchReplacePanel, left, y, groupW, 186, IDC_CFG_GRP_SEARCH_BEHAVIOUR, LM.getLPCW(L"config_grp_search_behaviour"));
 
     int innerLeft = left + 22;
     int innerTop = y + 35;
@@ -752,6 +753,7 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
     lb.AddCheckbox(IDC_CFG_STAY_AFTER_REPLACE, LM.getLPCW(L"config_chk_stay_after_replace"));
     lb.AddCheckbox(IDC_CFG_ALL_FROM_CURSOR, LM.getLPCW(L"config_chk_all_from_cursor"));
     lb.AddCheckbox(IDC_CFG_MUTE_SOUNDS, LM.getLPCW(L"config_chk_mute_sounds"));
+    lb.AddCheckbox(IDC_CFG_SHOW_FORMULA_ERRORS, LM.getLPCW(L"config_chk_show_formula_errors"));
 
     // File size limit: Checkbox + Edit + "MB" label
     HWND hChkLimit = createCheckBox(_hSearchReplacePanel, innerLeft, lb.y, 260, IDC_CFG_LIMIT_FILESIZE, LM.getLPCW(L"config_chk_limit_filesize"));
@@ -1038,6 +1040,12 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     if (_hSearchReplacePanel) {
         BOOL checked = (::IsDlgButtonChecked(_hSearchReplacePanel, IDC_CFG_LIMIT_FILESIZE) == BST_CHECKED);
         ::EnableWindow(::GetDlgItem(_hSearchReplacePanel, IDC_CFG_MAX_FILESIZE_EDIT), checked);
+
+        // Engine-level toggles live outside the Settings struct (analog to
+        // _luaSafeModeEnabled), so they're read directly from the cache.
+        bool showFormulaErrors = CFG.readBool(L"Engines", L"ShowErrorDialogs", true);
+        CheckDlgButton(_hSearchReplacePanel, IDC_CFG_SHOW_FORMULA_ERRORS,
+            showFormulaErrors ? BST_CHECKED : BST_UNCHECKED);
     }
 
     // Export Data settings
@@ -1103,6 +1111,12 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         ConfigManager::instance().writeString(L"Options", L"ExportTemplate", templateBuf);
         ConfigManager::instance().writeBool(L"Options", L"ExportEscape", exportEscape);
         ConfigManager::instance().writeBool(L"Options", L"ExportHeader", exportHeader);
+    }
+
+    // Engine-level toggles (outside the Settings struct, written directly).
+    if (_hSearchReplacePanel) {
+        bool showFormulaErrors = (IsDlgButtonChecked(_hSearchReplacePanel, IDC_CFG_SHOW_FORMULA_ERRORS) == BST_CHECKED);
+        ConfigManager::instance().writeBool(L"Engines", L"ShowErrorDialogs", showFormulaErrors);
     }
 
     MultiReplace::writeStructToConfig(s);
@@ -1205,6 +1219,9 @@ void MultiReplaceConfigDialog::resetToDefaults()
     cm.writeBool(L"Options", L"ExportEscape", false);
     cm.writeBool(L"Options", L"ExportHeader", false);
 
+    // Engine-level defaults
+    cm.writeBool(L"Engines", L"ShowErrorDialogs", true);
+
     cm.save(L"");
 
     double oldScale = _userScaleFactor;
@@ -1288,6 +1305,11 @@ void MultiReplaceConfigDialog::onThemeChanged() {
         savedExportHeader = (IsDlgButtonChecked(_hExportPanel, IDC_CFG_EXPORT_HEADER_CHECK) == BST_CHECKED);
     }
 
+    bool savedShowFormulaErrors = true;
+    if (_hSearchReplacePanel) {
+        savedShowFormulaErrors = (IsDlgButtonChecked(_hSearchReplacePanel, IDC_CFG_SHOW_FORMULA_ERRORS) == BST_CHECKED);
+    }
+
     // Rebuild all controls
     auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
     safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
@@ -1329,6 +1351,9 @@ void MultiReplaceConfigDialog::onThemeChanged() {
     if (_hSearchReplacePanel) {
         BOOL checked = (::IsDlgButtonChecked(_hSearchReplacePanel, IDC_CFG_LIMIT_FILESIZE) == BST_CHECKED);
         ::EnableWindow(::GetDlgItem(_hSearchReplacePanel, IDC_CFG_MAX_FILESIZE_EDIT), checked);
+
+        CheckDlgButton(_hSearchReplacePanel, IDC_CFG_SHOW_FORMULA_ERRORS,
+            savedShowFormulaErrors ? BST_CHECKED : BST_UNCHECKED);
     }
 
     applyFonts();

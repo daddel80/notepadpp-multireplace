@@ -326,6 +326,7 @@
 #define IDC_CFG_LIMIT_FILESIZE            7904
 #define IDC_CFG_MAX_FILESIZE_EDIT         7905
 #define IDC_CFG_FILESIZE_MB_LABEL         7906
+#define IDC_CFG_SHOW_FORMULA_ERRORS       7907
 
 // -------------------------------------------------------------------
 //  List View Panel - Results Group (7920-7929)

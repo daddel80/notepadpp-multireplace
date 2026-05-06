@@ -66,7 +66,7 @@ namespace MultiReplaceEngine {
         // Load and execute the bundled helper script (set/skip/cond/lkp).
         if (luaL_loadstring(_luaState, luaSourceCode) != LUA_OK) {
             const char* errMsg = lua_tostring(_luaState, -1);
-            if (_host && _host->isLuaErrorDialogEnabled()) {
+            if (_host && _host->isFormulaErrorDialogEnabled()) {
                 _host->showErrorMessage(
                     ILuaEngineHost::ErrorCategory::CompileError,
                     "Lua",
@@ -79,7 +79,7 @@ namespace MultiReplaceEngine {
 
         if (lua_pcall(_luaState, 0, LUA_MULTRET, 0) != LUA_OK) {
             const char* errMsg = lua_tostring(_luaState, -1);
-            if (_host && _host->isLuaErrorDialogEnabled()) {
+            if (_host && _host->isFormulaErrorDialogEnabled()) {
                 _host->showErrorMessage(
                     ILuaEngineHost::ErrorCategory::ExecutionError,
                     "Lua",
@@ -146,7 +146,7 @@ namespace MultiReplaceEngine {
 
         if (luaL_loadstring(_luaState, scriptUtf8.c_str()) != LUA_OK) {
             const char* errMsg = lua_tostring(_luaState, -1);
-            if (_host && _host->isLuaErrorDialogEnabled()) {
+            if (_host && _host->isFormulaErrorDialogEnabled()) {
                 _host->showErrorMessage(
                     ILuaEngineHost::ErrorCategory::CompileError,
                     "Lua",
@@ -262,7 +262,7 @@ namespace MultiReplaceEngine {
         lua_rawgeti(_luaState, LUA_REGISTRYINDEX, _compiledReplaceRef);
         if (lua_pcall(_luaState, 0, LUA_MULTRET, 0) != LUA_OK) {
             const char* err = lua_tostring(_luaState, -1);
-            if (_host && _host->isLuaErrorDialogEnabled()) {
+            if (_host && _host->isFormulaErrorDialogEnabled()) {
                 _host->showErrorMessage(
                     ILuaEngineHost::ErrorCategory::ExecutionError,
                     "Lua",
@@ -277,7 +277,7 @@ namespace MultiReplaceEngine {
         // ----- resultTable ------------------------------------------------
         lua_getglobal(_luaState, "resultTable");
         if (!lua_istable(_luaState, -1)) {
-            if (_host && _host->isLuaErrorDialogEnabled()) {
+            if (_host && _host->isFormulaErrorDialogEnabled()) {
                 _host->showErrorMessage(
                     ILuaEngineHost::ErrorCategory::ExecutionError,
                     "Lua",

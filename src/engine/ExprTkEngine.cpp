@@ -127,7 +127,7 @@ namespace MultiReplaceEngine {
     void ExprTkEngine::reportError(ILuaEngineHost::ErrorCategory category,
         const std::string& details)
     {
-        if (!_host || !_host->isLuaErrorDialogEnabled()) {
+        if (!_host || !_host->isFormulaErrorDialogEnabled()) {
             return;
         }
         _host->showErrorMessage(category, "ExprTk", details);

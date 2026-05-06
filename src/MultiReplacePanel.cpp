@@ -8201,9 +8201,9 @@ MultiReplace::showRecoverableErrorDialog(
     return Choice::SkipOne;
 }
 
-bool MultiReplace::isLuaErrorDialogEnabled() const
+bool MultiReplace::isFormulaErrorDialogEnabled() const
 {
-    return _isLuaErrorDialogEnabled;
+    return _formulaErrorDialogEnabled;
 }
 
 bool MultiReplace::isLuaSafeModeEnabled() const
@@ -15991,6 +15991,9 @@ void MultiReplace::loadSettingsToPanelUI() {
     // Lua runtime options
     _luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
 
+    // Formula engine options (shared by all engines)
+    _formulaErrorDialogEnabled = CFG.readBool(L"Engines", L"ShowErrorDialogs", true);
+
     // Loading and setting the scope
     int selection = CFG.readInt(L"Scope", L"Selection", 0);
     int columnMode = CFG.readInt(L"Scope", L"ColumnMode", 0);
@@ -19236,13 +19239,20 @@ void MultiReplace::loadUIConfigFromIni()
     {
         // Settings reload — visibility is per-tab and gets restored via
         // restoreStateFromTab, so keep stored widths here.
-        createListViewColumns(WidthMode::UseStored);
-        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, nullptr, TRUE);
+        // A column rebuild is only required when the scale factor
+        // actually changed; otherwise the existing columns are still
+        // valid and the rebuild would only cause visible flicker.
+        if (ratio != 1.0f) {
+            SendMessage(_replaceListView, WM_SETREDRAW, FALSE, 0);
+            createListViewColumns(WidthMode::UseStored);
+            ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
+            SendMessage(_replaceListView, WM_SETREDRAW, TRUE, 0);
+            InvalidateRect(_replaceListView, nullptr, TRUE);
+        }
 
-        DWORD ex = ListView_GetExtendedListViewStyle(_replaceListView);
-        if (isHoverTextEnabled) ex |= LVS_EX_INFOTIP; else ex &= ~LVS_EX_INFOTIP;
-        ListView_SetExtendedListViewStyle(_replaceListView, ex);
+        // The LVS_EX_INFOTIP toggle is handled in applyConfigSettingsOnly
+        // with a diff-check; replicating it unconditionally here would
+        // touch the ListView style on every Settings-Close.
 
         updateHeaderSelection();
     }
@@ -19416,6 +19426,12 @@ void MultiReplace::syncUIToCache()
     // Lua Options
     CFG.writeBool(L"Lua", L"SafeMode", _luaSafeModeEnabled);
 
+    // Formula engine options (shared by all engines). The toggle is set
+    // through the settings dialog rather than from the panel, but we mirror
+    // it back to the cache here for symmetry with the other persisted
+    // engine flags above.
+    CFG.writeBool(L"Engines", L"ShowErrorDialogs", _formulaErrorDialogEnabled);
+
     // Scope — only HeaderLines is global (settings-dialog)
     CFG.writeInt(L"Scope", L"HeaderLines", static_cast<int>(CSVheaderLinesCount));
 
@@ -19478,6 +19494,7 @@ void MultiReplace::applyConfigSettingsOnly()
     flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
     exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
     _luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
+    _formulaErrorDialogEnabled = CFG.readBool(L"Engines", L"ShowErrorDialogs", true);
     limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
 
@@ -19582,11 +19599,11 @@ void MultiReplace::applyConfigSettingsOnly()
         }
     }
 
+    // ListView-affecting settings (Hover/InfoTip, KeepListVisible,
+    // DimIntensity) are already handled above with diff-checks; a
+    // blanket createListViewColumns + InvalidateRect here would only
+    // cause flicker without changing anything visible.
     if (_replaceListView) {
-        // Settings-only reload doesn't change column count, so keep stored widths.
-        createListViewColumns(WidthMode::UseStored);
-        ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, nullptr, TRUE);
         updateHeaderSelection();
     }
 }

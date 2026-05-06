@@ -338,6 +338,7 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_stay_after_replace", L"Replace: Don't move to the following occurrence" },
 { L"config_chk_all_from_cursor", L"Find: Search from cursor position" },
 { L"config_chk_mute_sounds", L"Mute all sounds" },
+{ L"config_chk_show_formula_errors", L"Show formula error dialogs" },
 
 // File size limit
 { L"config_chk_limit_filesize", L"File Search: Skip files larger than" },

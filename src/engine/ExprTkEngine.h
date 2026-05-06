@@ -113,11 +113,9 @@ namespace MultiReplaceEngine {
         // ----- internal helpers --------------------------------------------
 
         // Format and surface an error to the host. Mirrors LuaEngine's
-        // pattern: gated by ILuaEngineHost::isLuaErrorDialogEnabled() (the
-        // setting is engine-agnostic in spirit; only the symbol name still
-        // carries the legacy "Lua" prefix). The body is prefixed with
-        // "ExprTk: " so the user can immediately tell which engine raised
-        // the error in mixed-engine workspaces.
+        // pattern: gated by ILuaEngineHost::isFormulaErrorDialogEnabled().
+        // The body is prefixed with "ExprTk: " so the user can immediately
+        // tell which engine raised the error in mixed-engine workspaces.
         void reportError(ILuaEngineHost::ErrorCategory category,
             const std::string& details);
 

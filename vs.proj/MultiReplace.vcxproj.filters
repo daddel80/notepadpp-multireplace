@@ -137,7 +137,9 @@
     <ClCompile Include="..\src\engine\ExprTkPatternParser.cpp">
       <Filter>engine</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\engine\Iformulaengine.cpp" />
+    <ClCompile Include="..\src\engine\Iformulaengine.cpp">
+      <Filter>engine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
