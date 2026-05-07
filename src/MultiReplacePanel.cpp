@@ -17025,11 +17025,14 @@ void MultiReplace::rebuildTabControl()
         repositionNewTabButton();
     }
 
-    ShowWindow(hTab, SW_SHOW);
-    // Force an immediate repaint so the tabs are visible on first init,
-    // even when the queued WM_PAINT gets coalesced or skipped.
-    InvalidateRect(hTab, nullptr, TRUE);
-    UpdateWindow(hTab);
+    // Honor collapsed-list state; otherwise SW_SHOW leaves a tab-strip
+    // remnant on first open.
+    const bool listShown = useListEnabled || keepListVisible;
+    ShowWindow(hTab, listShown ? SW_SHOW : SW_HIDE);
+    if (listShown) {
+        InvalidateRect(hTab, nullptr, TRUE);
+        UpdateWindow(hTab);
+    }
     updateTabTooltip(_activeTabIndex);
 }
 
