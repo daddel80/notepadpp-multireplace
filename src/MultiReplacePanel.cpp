@@ -108,23 +108,32 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
     if (nCode >= 0 && instance && instance->_hSelf) {
         MSG* pMsg = reinterpret_cast<MSG*>(lParam);
 
-        // Track Ctrl+Shift for momentary bypass (use input fields while list is open)
+        // Track Ctrl+Shift for momentary bypass: while held, the list-vs-input
+        // mode is flipped (active list becomes input fields, dimmed/inactive
+        // list becomes momentarily active). Only fires when the list is
+        // visible; on a collapsed list it would be confusing to announce or
+        // act on a state the user cannot see.
+        const bool listVisible = instance->useListEnabled || instance->keepListVisible;
         if (pMsg->wParam == VK_SHIFT) {
             if (pMsg->message == WM_KEYDOWN && (GetKeyState(VK_CONTROL) & 0x8000)) {
-                if (!instance->_altBypassActive) {
+                if (!instance->_altBypassActive && listVisible) {
                     instance->_altBypassActive = true;
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
-                    if (instance->useListEnabled) {
-                        instance->showStatusMessage(LM.get(L"status_disable_list"), MessageStatus::Info);
-                    }
+                    instance->showStatusMessage(
+                        instance->useListEnabled ? LM.get(L"status_disable_list")
+                        : LM.get(L"status_enable_list"),
+                        MessageStatus::Info);
                 }
             }
             else if (pMsg->message == WM_KEYUP) {
                 if (instance->_altBypassActive) {
                     instance->_altBypassActive = false;
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
-                    if (instance->useListEnabled) {
-                        instance->showStatusMessage(LM.get(L"status_enable_list"), MessageStatus::Info);
+                    if (listVisible) {
+                        instance->showStatusMessage(
+                            instance->useListEnabled ? LM.get(L"status_enable_list")
+                            : LM.get(L"status_disable_list"),
+                            MessageStatus::Info);
                     }
                 }
             }
@@ -134,8 +143,11 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
                 if (instance->_altBypassActive) {
                     instance->_altBypassActive = false;
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
-                    if (instance->useListEnabled) {
-                        instance->showStatusMessage(LM.get(L"status_enable_list"), MessageStatus::Info);
+                    if (listVisible) {
+                        instance->showStatusMessage(
+                            instance->useListEnabled ? LM.get(L"status_enable_list")
+                            : LM.get(L"status_disable_list"),
+                            MessageStatus::Info);
                     }
                 }
             }
@@ -5570,8 +5582,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             {
                 int idx = static_cast<int>(lvcd->nmcd.dwItemSpec);
 
-                // Visual dimming: Ctrl+Shift momentary bypass or Library Mode inactive
-                bool dimList = _altBypassActive || (!useListEnabled && keepListVisible);
+                // Visual dimming: Library Mode inactive permanently dims;
+                // Ctrl+Shift bypass flips the dim state (active list dims,
+                // inactive list un-dims).
+                bool dimList = !useListEnabled && keepListVisible;
+                if (_altBypassActive && (useListEnabled || keepListVisible)) {
+                    dimList = !dimList;
+                }
                 if (dimList) {
                     COLORREF textClr = ListView_GetTextColor(_replaceListView);
                     COLORREF bgClr = ListView_GetBkColor(_replaceListView);
@@ -6156,12 +6173,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_COMMAND:
     {
-        // RAII guard: temporarily uses input fields instead of list when Ctrl+Shift is held
+        // RAII guard: temporarily flips list-vs-input mode while Ctrl+Shift is held.
+        // Only takes effect when the list is visible; otherwise the toggle would
+        // silently activate hidden rules.
         struct InputFieldsBypass {
             bool& listFlag; bool saved;
-            InputFieldsBypass(bool& flag, bool bypass)
+            InputFieldsBypass(bool& flag, bool bypass, bool listVisible)
                 : listFlag(flag), saved(flag) {
-                if (saved && bypass) listFlag = false;
+                if (bypass && listVisible) listFlag = !saved;
             }
             ~InputFieldsBypass() { listFlag = saved; }
         };
@@ -6459,7 +6478,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_FIND_ALL_BUTTON:
         {
             InputFieldsBypass bypass(useListEnabled,
-                _altBypassActive && !isFindAllInFiles && !isFindAllInDocs);
+                _altBypassActive && !isFindAllInFiles && !isFindAllInDocs,
+                useListEnabled || keepListVisible);
 
             CloseDebugWindow();
             resetCountColumns();
@@ -6517,7 +6537,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_FIND_NEXT_BUTTON:
         {
-            InputFieldsBypass bypass(useListEnabled, _altBypassActive);
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible);
 
             CloseDebugWindow();
             resetCountColumns();
@@ -6528,7 +6548,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_FIND_PREV_BUTTON:
         {
-            InputFieldsBypass bypass(useListEnabled, _altBypassActive);
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible);
 
             CloseDebugWindow();
             resetCountColumns();
@@ -6539,7 +6559,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_BUTTON:
         {
-            InputFieldsBypass bypass(useListEnabled, _altBypassActive);
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible);
 
             CloseDebugWindow();
             resetCountColumns();
@@ -6550,7 +6570,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_SMALL_BUTTON:
         {
-            InputFieldsBypass bypass(useListEnabled, _altBypassActive);
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible);
 
             CloseDebugWindow();
             resetCountColumns();
@@ -6570,7 +6590,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_REPLACE_ALL_BUTTON:
         {
             InputFieldsBypass bypass(useListEnabled,
-                _altBypassActive && !isReplaceAllInDocs && !isReplaceInFiles);
+                _altBypassActive && !isReplaceAllInDocs && !isReplaceInFiles,
+                useListEnabled || keepListVisible);
 
             CloseDebugWindow();
 
@@ -6608,7 +6629,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
         {
-            InputFieldsBypass bypass(useListEnabled, _altBypassActive);
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible);
 
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);

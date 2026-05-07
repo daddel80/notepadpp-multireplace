@@ -279,7 +279,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 - **Double-Click** — Allows direct in-place editing (configurable in Settings).
 - **Ctrl+Up / Ctrl+Down** — Moves selected rows up or down in the list. Hold the keys for auto-repeat.
 - **Ctrl+L** — Toggles the list visibility (collapse/expand).
-- **Ctrl+Shift + Button Click** — Temporarily bypasses the list and uses the input fields for the clicked action. The list dims visually while the keys are held.
+- **Ctrl+Shift + Button Click** — Momentarily flips the list-vs-input mode for the clicked action. With an active list, the action uses the input fields (list dims); with a dimmed list (when **Keep list always visible** is enabled), the action uses the list. Release the keys to return.
 
 ### List Columns
 - **Find** — The text or pattern to search for.
@@ -306,7 +306,7 @@ The **"Use List"** button toggles between processing the entire list or just the
 
 - **Classic behavior (default)** — Toggling the list off collapses it to save screen space.
 - **Keep list always visible** — When this option is enabled in the Settings (List View and Layout), the list stays visible even while it is inactive. Instead of collapsing, inactive entries are visually dimmed so the list remains usable as a reference while you work with the single input fields.
-- **Ctrl+Shift bypass** — Hold **Ctrl+Shift** at any time while clicking an action button (Find Next, Replace, Replace All, etc.) to temporarily bypass the list and run the action against the single input fields instead. Release the keys to return to normal list-based operation. Useful for quick one-off operations without toggling the list off and on again.
+- **Ctrl+Shift bypass** — Hold **Ctrl+Shift** while clicking an action button (Find Next, Replace, Replace All, etc.) to momentarily flip the current list-vs-input mode: an active list is bypassed in favor of the input fields (and dims visually); a dimmed list (only possible with **Keep list always visible** enabled) is temporarily activated. Release the keys to return. Useful for quick one-off operations without toggling permanently.
 
 ### Column Locking
 
