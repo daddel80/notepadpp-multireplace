@@ -7946,14 +7946,25 @@ void MultiReplace::updateLineDelimiterAfterReplace(Sci_Position pos)
     if (!columnDelimiterData.isValid()) return;
 
     // Line count changed (newline added/removed, or replace spanned a
-    // line boundary) -> full rebuild.
+    // line boundary) -> full rebuild. findAllDelimitersInDocument now
+    // also invalidates the numcol/txtcol caches.
     const size_t lineCount = static_cast<size_t>(send(SCI_GETLINECOUNT, 0, 0));
     if (lineCount != lineDelimiterPositions.size()) {
         findAllDelimitersInDocument();
         return;
     }
 
-    findDelimitersInLine(send(SCI_LINEFROMPOSITION, pos, 0));
+    const Sci_Position modifiedLine = send(SCI_LINEFROMPOSITION, pos, 0);
+    findDelimitersInLine(modifiedLine);
+    // The just-modified line could be the one we cached; drop it so
+    // the next numcol/txtcol call re-extracts from the updated bytes.
+    _csvRowCacheLine = -1;
+    // If the header line itself was modified, the name->index map is
+    // stale too; force a rebuild on the next by-name lookup.
+    if (modifiedLine == 0) {
+        _csvHeaderMap.clear();
+        _csvHeaderMapBuilt = false;
+    }
 }
 
 bool MultiReplace::preProcessListForReplace(bool highlight) {
@@ -8227,6 +8238,48 @@ bool MultiReplace::isDebugModeEnabled() const
     // is the one-shot override set by "Run to End" in the debug window
     // and cleared at the start of the next run.
     return _debugModeEnabled && !_debugSkipForRun;
+}
+
+bool MultiReplace::readCurrentRowColumnByIndex(int colIndex1Based,
+    std::string& out) const
+{
+    if (colIndex1Based < 1) return false;
+    if (!columnDelimiterData.isValid()) return false;
+    if (lineDelimiterPositions.empty()) return false;
+    if (_currentMatchPos < 0) return false;
+
+    const LRESULT line = send(SCI_LINEFROMPOSITION,
+        static_cast<uptr_t>(_currentMatchPos), 0);
+
+    if (line != _csvRowCacheLine) {
+        if (!extractColumnsForLine(line, _csvRowCacheColumns)) {
+            _csvRowCacheLine = -1;
+            return false;
+        }
+        _csvRowCacheLine = line;
+    }
+
+    const size_t idx = static_cast<size_t>(colIndex1Based - 1);
+    if (idx >= _csvRowCacheColumns.size()) return false;
+
+    out = _csvRowCacheColumns[idx];
+    return true;
+}
+
+bool MultiReplace::readCurrentRowColumnByName(const std::string& headerName,
+    std::string& out) const
+{
+    if (headerName.empty()) return false;
+    if (!columnDelimiterData.isValid()) return false;
+    if (lineDelimiterPositions.empty()) return false;
+    if (_currentMatchPos < 0) return false;
+
+    if (!ensureCsvHeaderMap()) return false;
+
+    auto it = _csvHeaderMap.find(headerName);
+    if (it == _csvHeaderMap.end()) return false;
+
+    return readCurrentRowColumnByIndex(it->second, out);
 }
 
 // ---------------------------------------------------------------------
@@ -13460,6 +13513,7 @@ bool MultiReplace::validateDelimiterData() {
 void MultiReplace::findAllDelimitersInDocument() {
 
     lineDelimiterPositions.clear();
+    invalidateCsvRowCache();
 
     textModified = false;
     _delimiterPositionsStale = false;
@@ -13604,6 +13658,81 @@ ColumnInfo MultiReplace::getColumnInfo(LRESULT startPosition) {
     }
 
     return { totalLines, startLine, startColumnIndex };
+}
+
+bool MultiReplace::extractColumnsForLine(LRESULT line,
+    std::vector<std::string>& out) const
+{
+    out.clear();
+
+    if (line < 0 || line >= static_cast<LRESULT>(lineDelimiterPositions.size()))
+        return false;
+
+    const auto& lineInfo = lineDelimiterPositions[line];
+    const LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, line, 0);
+    const LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
+    const size_t lineLen = static_cast<size_t>(lineInfo.lineLength);
+    const size_t delimLen = columnDelimiterData.delimiterLength;
+
+    // Reuse a single line-bytes buffer across calls. Capacity grows
+    // monotonically with the largest line seen; subsequent calls on
+    // shorter lines reuse the existing allocation.
+    if (_csvLineBuffer.size() < lineLen + 1)
+        _csvLineBuffer.resize(lineLen + 1);
+    char* const buf = _csvLineBuffer.data();
+    {
+        Sci_TextRangeFull tr;
+        tr.chrg.cpMin = lineStartPos;
+        tr.chrg.cpMax = lineEndPos;
+        tr.lpstrText = buf;
+        send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&tr));
+    }
+
+    const size_t numCols = lineInfo.positions.size() + 1;
+    out.reserve(numCols);
+
+    size_t fieldStart = 0;
+    for (size_t i = 0; i < lineInfo.positions.size(); ++i) {
+        const size_t fieldEnd = static_cast<size_t>(lineInfo.positions[i].offsetInLine);
+        out.emplace_back(buf + fieldStart, fieldEnd - fieldStart);
+        fieldStart = fieldEnd + delimLen;
+    }
+    // Last field: from past the last delimiter to end of line, with any
+    // trailing CR/LF stripped (matches extractColumnData semantics).
+    size_t fieldEnd = lineLen;
+    while (fieldEnd > fieldStart
+        && (buf[fieldEnd - 1] == '\n' || buf[fieldEnd - 1] == '\r'))
+    {
+        --fieldEnd;
+    }
+    out.emplace_back(buf + fieldStart,
+        fieldEnd > fieldStart ? fieldEnd - fieldStart : 0);
+
+    return true;
+}
+
+void MultiReplace::invalidateCsvRowCache() const
+{
+    _csvRowCacheLine = -1;
+    _csvRowCacheColumns.clear();
+    _csvHeaderMap.clear();
+    _csvHeaderMapBuilt = false;
+}
+
+bool MultiReplace::ensureCsvHeaderMap() const
+{
+    if (_csvHeaderMapBuilt) return !_csvHeaderMap.empty();
+
+    std::vector<std::string> headerCells;
+    const bool ok = extractColumnsForLine(0, headerCells);
+    _csvHeaderMapBuilt = true;  // cache outcome either way
+    if (!ok) return false;
+
+    for (size_t i = 0; i < headerCells.size(); ++i) {
+        // First-wins on duplicate header names (Pandas-style).
+        _csvHeaderMap.emplace(headerCells[i], static_cast<int>(i + 1));
+    }
+    return !_csvHeaderMap.empty();
 }
 
 LRESULT MultiReplace::adjustForegroundForDarkMode(LRESULT textColor, LRESULT backgroundColor) {
@@ -14097,6 +14226,7 @@ void MultiReplace::handleClearDelimiterState() {
     pointerToScintilla();
     if (!_hScintilla) return;
     lineDelimiterPositions.clear();
+    invalidateCsvRowCache();
     isLoggingEnabled = false;
     textModified = false;
     _delimiterPositionsStale = false;

@@ -519,6 +519,7 @@ nav.pagenav .nav-group.collapsible {
     <a href="#exprtk-operators" hidden onclick="navClicked(event, 'exprtk-operators')">Operators</a>
     <a href="#exprtk-skip" hidden onclick="navClicked(event, 'exprtk-skip')">Skipping Matches</a>
     <a href="#exprtk-seq" hidden onclick="navClicked(event, 'exprtk-seq')">Sequence Generator</a>
+    <a href="#exprtk-csvcol" hidden onclick="navClicked(event, 'exprtk-csvcol')">CSV Column Access</a>
     <a href="#exprtk-examples" hidden onclick="navClicked(event, 'exprtk-examples')">Examples</a>
     <a href="#exprtk-limitations" hidden onclick="navClicked(event, 'exprtk-limitations')">Limitations</a>
 </nav>
@@ -1666,7 +1667,7 @@ return {
         <td>Filename without path.</td>
       </tr>
     </table>
-    <p>To access the matched text as a string, use <code>txt(0)</code> inside a <code>return [...]</code> list, or <code>\0</code> / <code>$0</code> directly in the replace pattern (regular regex back-reference).</p>
+    <p>To access the matched text as a string, use <code>txt(0)</code> inside a <code>return [...]</code> list. To reference the match in the replace template directly, use an explicit capture group <code>(...)</code> and reference it with <code>\1</code>.</p>
 
     <h3>Capture access</h3>
     <table class="optionsTable">
@@ -1890,6 +1891,56 @@ Replace:  (?=seq(100, 10)). \1
 Output:   100. apple
           110. banana
           120. cherry</code></pre>
+  </section>
+
+  <br>
+
+  <section id="exprtk-csvcol">
+    <h2>CSV Column Access</h2>
+    <p>When CSV mode is active, <code>numcol(N)</code> and <code>txtcol(N)</code> return the value of column N from the <strong>physical line</strong> containing the current match. Index is 1-based; <code>numcol(1)</code> is the first column. Both also accept a header name as a string (<code>numcol('price')</code>); on first use the document's first line is parsed as a header row and cached for the rest of the run.</p>
+
+    <table class="optionsTable">
+      <tr>
+        <th>Function</th>
+        <th>Returns</th>
+        <th>Notes</th>
+      </tr>
+      <tr>
+        <td><code>numcol(N)</code> / <code>numcol('name')</code></td>
+        <td>number</td>
+        <td>Same parsing as <code>num()</code> &mdash; <code>.</code>/<code>,</code> decimal separator, NaN on non-numeric content.</td>
+      </tr>
+      <tr>
+        <td><code>txtcol(N)</code> / <code>txtcol('name')</code></td>
+        <td>string</td>
+        <td>Raw cell text. Only meaningful inside <code>return [...]</code>.</td>
+      </tr>
+    </table>
+
+    <p><strong>Requirements:</strong></p>
+    <ul>
+      <li>CSV mode must be active (the <strong>CSV</strong> scope radio button) and a delimiter configured.</li>
+      <li>Indexing reads the raw row regardless of any column-selection filter the user set.</li>
+      <li>The cell is returned verbatim &mdash; no quote stripping, matching the existing CSV column convention used by sort and column highlighting.</li>
+    </ul>
+
+    <p><strong>Behaviour at the edges:</strong></p>
+    <ul>
+      <li>Missing column (e.g. <code>numcol(99)</code> on a row with 5 columns): <code>NaN</code> for <code>numcol</code>, empty string for <code>txtcol</code>.</li>
+      <li>Unknown header name: same.</li>
+      <li>CSV mode off, no delimiter set, or no current match in progress: same.</li>
+    </ul>
+
+    <p><strong>Example &mdash; lookup by name with arithmetic:</strong></p>
+    <pre><code>Header:  product;price;qty
+Row:     apple;1.50;10
+Row:     banana;0.30;25</code></pre>
+    <pre><code>Find:    ^(?!product).+$
+Replace: (?=return [txt(0), ' total=', numcol('price') * numcol('qty')])</code></pre>
+    <pre><code>product;price;qty
+apple;1.50;10 total=15
+banana;0.30;25 total=7.5</code></pre>
+    <p>The negative lookahead in the Find pattern excludes the header row so the formula only runs on data rows. Inside the formula, <code>numcol('price')</code> reads the <code>price</code> column of whichever line the current match landed on.</p>
   </section>
 
   <br>

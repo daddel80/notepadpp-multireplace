@@ -38,6 +38,15 @@
 //                Both arguments default to 1 so seq() yields 1,2,3,...
 //                Useful for numbering matches without writing the
 //                start+(CNT-1)*inc formula by hand.
+//     numcol(N) / numcol('name')
+//             -> CSV column on the current row, parsed as double.
+//                Index is 1-based; "name" looks up the document's
+//                first line as a header. NaN on missing column or
+//                non-numeric content. Requires CSV mode to be active.
+//     txtcol(N) / txtcol('name')
+//             -> CSV column on the current row, as raw string. Same
+//                addressing rules as numcol; only useful inside a
+//                return [...] list.
 //
 // The match text is intentionally not exposed as a string variable.
 // Use txt(0) for the raw match string, HIT or num(0) for the numeric
@@ -45,8 +54,8 @@
 //
 // Lifecycle:
 //   1. Construct via EngineFactory::create(EngineType::ExprTk, host).
-//      The host pointer is accepted for symmetry with LuaEngine but
-//      currently unused; ExprTk needs no UI callbacks.
+//      The host is used for CSV column access (numcol/txtcol), the
+//      recoverable-error dialog, and error reporting.
 //   2. initialize() registers variables and functions in the symbol
 //      table.
 //   3. compile(template) splits the template into segments and pre-
@@ -76,10 +85,6 @@ namespace MultiReplaceEngine {
 
     class ExprTkEngine final : public IFormulaEngine {
     public:
-        // The host pointer is accepted for symmetry with LuaEngine; the
-        // ExprTk path currently makes no callbacks back into the host. It
-        // is stored for future use (e.g. an "evaluation log" hook) but
-        // never dereferenced by the current implementation.
         explicit ExprTkEngine(ILuaEngineHost* host);
         ~ExprTkEngine() override;
 
@@ -260,9 +265,56 @@ namespace MultiReplaceEngine {
             ExprTkEngine* _owner;
         };
 
+        // numcol(N) / numcol('name') - column value as double.
+        // arity-spec "T|S": one argument, scalar (index) or string (header).
+        // Dispatches to the host's CSV column accessors; returns NaN on
+        // any failure (no CSV mode, missing column, non-numeric content).
+        //
+        // Multi-prototype functions ("T|S") route through the psi
+        // variant of operator(); psi tells us which alternative the
+        // parser matched (0=T, 1=S) but resolveCsvCell branches on the
+        // actual parameter type anyway, so psi is unused here.
+        class NumColFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+
+            explicit NumColFunction(ExprTkEngine* owner)
+                : igenfunct_t("T|S")
+                , _owner(owner) {
+            }
+
+            double operator()(const std::size_t& /*psi*/,
+                parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
+        // txtcol(N) / txtcol('name') - column value as string. Same
+        // dispatch as NumColFunction but returns the raw cell text;
+        // only meaningful inside a return [...] list, mirroring txt().
+        class TxtColFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+
+            explicit TxtColFunction(ExprTkEngine* owner)
+                : igenfunct_t("T|S", igenfunct_t::e_rtrn_string)
+                , _owner(owner) {
+            }
+
+            double operator()(const std::size_t& /*psi*/,
+                std::string& result,
+                parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
         // ----- state -------------------------------------------------------
 
-        ILuaEngineHost* _host;            // accepted, currently unused
+        ILuaEngineHost* _host;
 
         // Pre-parsed segments of the most recently compiled template.
         // Kept alongside the expressions so execute() can iterate both in
@@ -328,6 +380,10 @@ namespace MultiReplaceEngine {
 
         // The seq() callable for sequence generation across matches.
         SeqFunction _seqFunction;
+
+        // CSV column access via the host (numcol/txtcol).
+        NumColFunction _numColFunction;
+        TxtColFunction _txtColFunction;
     };
 
 } // namespace MultiReplaceEngine

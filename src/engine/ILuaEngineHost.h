@@ -72,6 +72,19 @@ namespace MultiReplaceEngine {
         virtual bool isFormulaErrorDialogEnabled() const = 0;
         virtual bool isLuaSafeModeEnabled()    const = 0;
         virtual bool isDebugModeEnabled()      const = 0;
+
+        // CSV column access for the line containing the current match.
+        // Index is 1-based; addressing by name uses the document's first
+        // line as a header row, parsed lazily on first use. Returns false
+        // if CSV mode is not active, no current match is set, the column
+        // does not exist on this row, or (for the by-name variant) the
+        // header has no matching field. On false, out is left untouched.
+        // Cells are returned verbatim - no quote stripping - matching the
+        // existing extractColumnData convention.
+        virtual bool readCurrentRowColumnByIndex(int colIndex1Based,
+            std::string& out) const = 0;
+        virtual bool readCurrentRowColumnByName(const std::string& headerName,
+            std::string& out) const = 0;
     };
 
 } // namespace MultiReplaceEngine

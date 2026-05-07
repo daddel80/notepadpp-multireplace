@@ -38,6 +38,8 @@ namespace MultiReplaceEngine {
         , _skipFunction(this)
         , _txtFunction(this)
         , _seqFunction(this)
+        , _numColFunction(this)
+        , _txtColFunction(this)
     {
     }
 
@@ -100,6 +102,12 @@ namespace MultiReplaceEngine {
         // inc) is fully parametrised. Built on ivararg_function so the
         // optional-argument count is checked at call time.
         _symbolTable.add_function("seq", _seqFunction);
+
+        // CSV column accessors. Both delegate to the host, which knows
+        // about the active CSV settings, the line of the current match,
+        // and caches the row's column array for repeated lookups.
+        _symbolTable.add_function("numcol", _numColFunction);
+        _symbolTable.add_function("txtcol", _txtColFunction);
 
         // ExprTk's standard math constants (pi, epsilon, infinity).
         _symbolTable.add_constants();
@@ -658,6 +666,68 @@ namespace MultiReplaceEngine {
         const double start = !args.empty() ? args[0] : 1.0;
         const double inc = args.size() > 1 ? args[1] : 1.0;
         return start + (_owner->_varCNT - 1.0) * inc;
+    }
+
+    // ---------------------------------------------------------------------
+    // numcol() / txtcol() implementations
+    // ---------------------------------------------------------------------
+
+    namespace {
+
+        // Resolves an ExprTk T|S parameter into the host's raw cell text.
+        // Returns false on any failure (non-finite scalar, index < 1,
+        // unknown header name, no CSV mode, ...). On false, cell is
+        // guaranteed empty.
+        bool resolveCsvCell(ILuaEngineHost* host,
+            exprtk::igeneric_function<double>::parameter_list_t parameters,
+            std::string& cell)
+        {
+            using gen_t = exprtk::igeneric_function<double>::generic_type;
+            using scalar_t = gen_t::scalar_view;
+            using string_t = gen_t::string_view;
+
+            cell.clear();
+            if (!host || parameters.size() != 1) return false;
+
+            const auto& p = parameters[0];
+            if (p.type == gen_t::e_scalar) {
+                const scalar_t s(p);
+                const double v = s();
+                if (!std::isfinite(v)) return false;
+                const long long idx = static_cast<long long>(v);
+                if (idx < 1) return false;
+                return host->readCurrentRowColumnByIndex(static_cast<int>(idx), cell);
+            }
+            if (p.type == gen_t::e_string) {
+                const string_t sv(p);
+                return host->readCurrentRowColumnByName(exprtk::to_str(sv), cell);
+            }
+            return false;
+        }
+
+    } // anonymous namespace
+
+    double ExprTkEngine::NumColFunction::operator()(
+        const std::size_t& /*psi*/,
+        parameter_list_t parameters)
+    {
+        std::string cell;
+        if (!_owner || !resolveCsvCell(_owner->_host, parameters, cell)) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        return parseCaptureToDouble(cell);
+    }
+
+    double ExprTkEngine::TxtColFunction::operator()(
+        const std::size_t& /*psi*/,
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        // resolveCsvCell clears 'result' before doing anything else,
+        // so a failed call still leaves the empty-string default.
+        if (!_owner) { result.clear(); return 0.0; }
+        resolveCsvCell(_owner->_host, parameters, result);
+        return 0.0;
     }
 
 } // namespace MultiReplaceEngine

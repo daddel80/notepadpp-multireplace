@@ -25,6 +25,8 @@ Two engines are available, selected via the `(L)` / `(E)` indicator next to the 
   - [String Output via `return [...]`](#string-output-via-return-)
   - [Operators](#operators-1)
   - [Skipping Matches](#skipping-matches)
+  - [Sequence Generator](#sequence-generator)
+  - [CSV Column Access](#csv-column-access)
   - [More Examples](#more-examples-1)
   - [Limitations](#limitations)
 
@@ -497,7 +499,7 @@ ExprTk receives the same per-match context as Lua, but exposed differently becau
 | `FPATH` / `fpath` | Full path of the document being processed.   |
 | `FNAME` / `fname` | Filename without path.                       |
 
-To access the matched text as a string, use `txt(0)` inside a `return [...]` list, or `\0` / `$0` directly in the replace pattern (regular regex back-reference).
+To access the matched text as a string, use `txt(0)` inside a `return [...]` list. To reference the match in the replace template directly, use an explicit capture group `(...)` and reference it with `\1`.
 
 #### Capture access
 
@@ -508,10 +510,12 @@ To access the matched text as a string, use `txt(0)` inside a `return [...]` lis
 
 #### Match-aware functions
 
-| Function     | Returns | Use case                                                                                            |
-|--------------|---------|-----------------------------------------------------------------------------------------------------|
+| Function       | Returns | Use case                                                                                            |
+|----------------|---------|-----------------------------------------------------------------------------------------------------|
 | `seq([s,[i]])` | number  | Sequence value `s + (CNT-1)*i`. Both arguments default to `1` so `seq()` yields 1, 2, 3, ... See [Sequence Generator](#sequence-generator). |
 | `skip()`       | -       | Mark the current match as untouched. See [Skipping Matches](#skipping-matches).                   |
+| `numcol(N)` / `numcol('name')` | number | CSV column on the current row, parsed as `double`. NaN if missing or non-numeric. See [CSV Column Access](#csv-column-access). |
+| `txtcol(N)` / `txtcol('name')` | string | CSV column as text. Only valid inside `return [...]`. See [CSV Column Access](#csv-column-access). |
 
 **Number parsing notes:**
 
@@ -663,6 +667,48 @@ Output:   100. apple
           110. banana
           120. cherry
 ```
+
+<br>
+
+### CSV Column Access
+
+When CSV mode is active, `numcol(N)` and `txtcol(N)` return the value of column N from the **physical line** containing the current match. Index is 1-based; `numcol(1)` is the first column. Both also accept a header name as a string (`numcol('price')`); on first use the document's first line is parsed as a header row and cached for the rest of the run.
+
+| Function                       | Returns | Notes                                                                            |
+|--------------------------------|---------|----------------------------------------------------------------------------------|
+| `numcol(N)` / `numcol('name')` | number  | Same parsing as `num()` - `.`/`,` decimal separator, NaN on non-numeric content. |
+| `txtcol(N)` / `txtcol('name')` | string  | Raw cell text. Only meaningful inside `return [...]`.                            |
+
+**Requirements:**
+- CSV mode must be active (the **CSV** scope radio button) and a delimiter configured.
+- Indexing reads the raw row regardless of any column-selection filter the user set.
+- The cell is returned verbatim - no quote stripping, matching the existing CSV column convention used by sort and column highlighting.
+
+**Behaviour at the edges:**
+- Missing column (e.g. `numcol(99)` on a row with 5 columns): `NaN` for `numcol`, empty string for `txtcol`.
+- Unknown header name: same.
+- CSV mode off, no delimiter set, or no current match in progress: same.
+
+**Example - lookup by name with arithmetic:**
+
+```
+Header:  product;price;qty
+Row:     apple;1.50;10
+Row:     banana;0.30;25
+```
+
+```
+Find:    ^(?!product).+$
+Replace: (?=return [txt(0), ' total=', numcol('price') * numcol('qty')])
+```
+
+```
+product;price;qty
+apple;1.50;10 total=15
+banana;0.30;25 total=7.5
+```
+
+The negative lookahead in the Find pattern excludes the header row so the formula only runs on data rows. Inside the formula, `numcol('price')` reads the `price` column of whichever line the current match landed on.
 
 <br>
 

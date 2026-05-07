@@ -920,6 +920,19 @@ private:
     std::vector<ReplaceItemData> replaceListData;
     std::vector<LineInfo> lineDelimiterPositions;
     std::vector<char> lineBuffer; // reusable Buffer for findDelimitersInLine()
+    // Per-match cache for numcol/txtcol. Lazily filled on the first
+    // call within a match; refilled when the next call resolves to a
+    // different line. Cleared by handleClearDelimiterState() on
+    // document switch and by findAllDelimitersInDocument() on full
+    // delimiter rebuild; the per-line update path drops just
+    // _csvRowCacheLine to force re-extraction of the touched line.
+    mutable LRESULT _csvRowCacheLine = -1;
+    mutable std::vector<std::string> _csvRowCacheColumns;
+    mutable std::vector<char> _csvLineBuffer; // reusable line-bytes buffer for extractColumnsForLine()
+    // Header-name to 1-based column index, built lazily from line 0.
+    // Same lifetime as lineDelimiterPositions.
+    mutable std::unordered_map<std::string, int> _csvHeaderMap;
+    mutable bool _csvHeaderMapBuilt = false;
     std::vector<char> styleBuffer; // reusable Buffer for highlightColumnsInLine()
     std::vector<char> tagBuffer;  // reusable Buffer for SCI_GETTAG in fillCapturesForEngine()
     size_t _currentRuleIndex = SIZE_MAX; // List index for showErrorMessage; SIZE_MAX = no engine call active
@@ -1282,6 +1295,10 @@ private:
     bool         isFormulaErrorDialogEnabled() const override;
     bool         isLuaSafeModeEnabled()    const override;
     bool         isDebugModeEnabled()      const override;
+    bool         readCurrentRowColumnByIndex(int colIndex1Based,
+        std::string& out) const override;
+    bool         readCurrentRowColumnByName(const std::string& headerName,
+        std::string& out) const override;
 
     // Replace-pipeline helpers that work in terms of the engine-agnostic
     // FormulaVars structure. Used by the replace pipeline to populate
@@ -1391,6 +1408,14 @@ private:
     void findAllDelimitersInDocument();
     void findDelimitersInLine(LRESULT line);
     ColumnInfo getColumnInfo(LRESULT startPosition);
+    // Per-line column extraction shared by readCurrentRowColumnByIndex/Name.
+    // Reads from lineDelimiterPositions (kept current by the existing
+    // delimiter-cache machinery) and returns the raw byte ranges between
+    // delimiters - same convention as extractColumnData, no quote handling.
+    bool extractColumnsForLine(LRESULT line,
+        std::vector<std::string>& out) const;
+    void invalidateCsvRowCache() const;
+    bool ensureCsvHeaderMap() const;
     LRESULT adjustForegroundForDarkMode(LRESULT textColor, LRESULT backgroundColor);
     void initializeColumnStyles();
     void handleHighlightColumnsInDocument();
