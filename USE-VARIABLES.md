@@ -499,7 +499,7 @@ ExprTk receives the same per-match context as Lua, but exposed differently becau
 | `FPATH` / `fpath` | Full path of the document being processed.   |
 | `FNAME` / `fname` | Filename without path.                       |
 
-To access the matched text as a string, use `txt(0)` inside a `return [...]` list. To reference the match in the replace template directly, use an explicit capture group `(...)` and reference it with `\1`.
+To access the matched text as a string, use `txt(0)` inside a `return [...]` list. To reference the match in the replace template directly, use `$0` (whole match) or an explicit capture group `(...)` referenced with `\1`.
 
 #### Capture access
 

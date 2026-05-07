@@ -1667,7 +1667,7 @@ return {
         <td>Filename without path.</td>
       </tr>
     </table>
-    <p>To access the matched text as a string, use <code>txt(0)</code> inside a <code>return [...]</code> list. To reference the match in the replace template directly, use an explicit capture group <code>(...)</code> and reference it with <code>\1</code>.</p>
+    <p>To access the matched text as a string, use <code>txt(0)</code> inside a <code>return [...]</code> list. To reference the match in the replace template directly, use <code>$0</code> (whole match) or an explicit capture group <code>(...)</code> referenced with <code>\1</code>.</p>
 
     <h3>Capture access</h3>
     <table class="optionsTable">
