@@ -48,7 +48,6 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
 
     // List View
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_EDITFIELD_SIZE_COMBO, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, editFieldSize), 2, 20 });
-    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_LISTSTATISTICS_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, listStatisticsEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_GROUPRESULTS_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, groupResultsEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_HIGHLIGHT_MATCH, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, highlightMatchEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_DOUBLECLICK_EDITS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, doubleClickEditsEnabled), 0, 0 });
@@ -194,16 +193,15 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_SHOW_FORMULA_ERRORS,     L"config_chk_show_formula_errors", 386, 18 },
         { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize",      260, 18 },
 
-        // List View Panel - Results: groupW=460, innerWidth=460-44=416
-        { IDC_CFG_GRP_LIST_STATS,          L"config_grp_list_results",        0, 0 },
-        { IDC_CFG_LISTSTATISTICS_ENABLED,  L"config_chk_list_stats",          416, 18 },
+        // List View Panel - Display: groupW=460, innerWidth=460-44=416
+        { IDC_CFG_GRP_LIST_DISPLAY,        L"config_grp_list_display",        0, 0 },
+        { IDC_CFG_HIGHLIGHT_MATCH,         L"config_chk_highlight_match",     416, 18 },
         { IDC_CFG_GROUPRESULTS_ENABLED,    L"config_chk_group_results",       416, 18 },
+        { IDC_CFG_HOVER_TEXT_ENABLED,      L"config_chk_hover_text",          416, 18 },
 
         // List View Panel - Interaction: groupW=460, innerWidth=460-44=416
         { IDC_CFG_GRP_LIST_INTERACTION,    L"config_grp_list_interaction",    0, 0 },
-        { IDC_CFG_HIGHLIGHT_MATCH,         L"config_chk_highlight_match",     416, 18 },
         { IDC_CFG_DOUBLECLICK_EDITS,       L"config_chk_doubleclick",         416, 18 },
-        { IDC_CFG_HOVER_TEXT_ENABLED,      L"config_chk_hover_text",          416, 18 },
         { IDC_CFG_KEEP_LIST_VISIBLE,       L"config_chk_keep_list_visible",   416, 18 },
         { IDC_CFG_EDITFIELD_LABEL,         L"config_lbl_edit_height",         190, 18 },
 
@@ -818,20 +816,21 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     const int left = 70;
     const int groupW = 460;
     const int topY = 20;
-    const int topGroupH = 85;
+    const int topGroupH = 110;
     const int gapBetween = 14;
-    const int bottomGroupH = 170;
+    const int bottomGroupH = 130;
 
     createGroupBox(_hListViewLayoutPanel, left, topY, groupW, topGroupH,
-        IDC_CFG_GRP_LIST_STATS, LM.getLPCW(L"config_grp_list_results"));
+        IDC_CFG_GRP_LIST_DISPLAY, LM.getLPCW(L"config_grp_list_display"));
     {
         const int innerLeft = left + 22;
         const int innerTop = topY + 30;
         const int innerWidth = groupW - 44;
 
         LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, innerTop, innerWidth, 24);
-        lb.AddCheckbox(IDC_CFG_LISTSTATISTICS_ENABLED, LM.getLPCW(L"config_chk_list_stats"));
+        lb.AddCheckbox(IDC_CFG_HIGHLIGHT_MATCH, LM.getLPCW(L"config_chk_highlight_match"));
         lb.AddCheckbox(IDC_CFG_GROUPRESULTS_ENABLED, LM.getLPCW(L"config_chk_group_results"));
+        lb.AddCheckbox(IDC_CFG_HOVER_TEXT_ENABLED, LM.getLPCW(L"config_chk_hover_text"));
     }
 
     const int bottomY = topY + topGroupH + gapBetween;
@@ -844,9 +843,7 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
         const int innerWidth = groupW - 44;
 
         LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, innerTop, innerWidth, 24);
-        lb.AddCheckbox(IDC_CFG_HIGHLIGHT_MATCH, LM.getLPCW(L"config_chk_highlight_match"));
         lb.AddCheckbox(IDC_CFG_DOUBLECLICK_EDITS, LM.getLPCW(L"config_chk_doubleclick"));
-        lb.AddCheckbox(IDC_CFG_HOVER_TEXT_ENABLED, LM.getLPCW(L"config_chk_hover_text"));
         lb.AddCheckbox(IDC_CFG_KEEP_LIST_VISIBLE, LM.getLPCW(L"config_chk_keep_list_visible"));
         lb.AddSpace(6);
         lb.AddLabel(IDC_CFG_EDITFIELD_LABEL, LM.getLPCW(L"config_lbl_edit_height"), 190, 18);
@@ -988,7 +985,6 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     s.flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
     s.flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
     s.isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
-    s.listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
     s.stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
     s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
@@ -1189,7 +1185,6 @@ void MultiReplaceConfigDialog::resetToDefaults()
     MultiReplace::Settings def{};
     def.tooltipsEnabled = true;
     def.editFieldSize = 5;
-    def.listStatisticsEnabled = false;
     def.groupResultsEnabled = false;
     def.stayAfterReplaceEnabled = false;
     def.allFromCursorEnabled = false;

@@ -667,7 +667,6 @@ public:
         bool flowTabsIntroDontShowEnabled;
         bool flowTabsNumericAlignEnabled;
         bool isHoverTextEnabled;
-        bool listStatisticsEnabled;
         bool stayAfterReplaceEnabled;
         bool groupResultsEnabled;
         bool allFromCursorEnabled;
@@ -1052,7 +1051,6 @@ private:
     inline static bool exportToBashEnabled = false;       // shows/hides the "Export to Bash" button
     inline static bool isHoverTextEnabled = true;         // Important to set on false as TIMER will be triggered at startup.
     inline static int  editFieldSize = 5;                 // Size of the edit field for find/replace input
-    inline static bool listStatisticsEnabled = false;     // Status for showing list statistics
     inline static bool stayAfterReplaceEnabled = false;   // Status for keeping panel open after replace
     inline static bool groupResultsEnabled = false;       // Status for flat list view
     inline static bool _luaSafeModeEnabled = false;        // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
@@ -1438,6 +1436,7 @@ private:
     void setSelections(bool select, bool onlySelected = false);
     void setOptionForSelection(SearchOption option, bool value);
     void showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound = false, bool isTransient = false);
+    std::wstring buildListEnableStatus() const;
     void drainMessageQueue();
     void applyThemePalette();
     void refreshColumnStylesIfNeeded();

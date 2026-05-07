@@ -171,6 +171,8 @@ const LangKV kEnglishPairs[] = {
 { L"status_found_in_list", L"Entry found in the list." },
 { L"status_not_found_in_list", L"No entry found in the list based on input fields." },
 { L"status_enable_list", L"List mode enabled. Actions will use list entries." },
+{ L"status_enable_list_count", L"List mode: $REPLACE_STRING1 of $REPLACE_STRING2 entries enabled." },
+{ L"status_enable_list_empty", L"List mode: list is empty." },
 { L"status_disable_list", L"List mode disabled. Actions will use 'Find what' and 'Replace with' fields." },
 { L"status_no_rows_selected_to_delete", L"No rows selected to delete." },
 { L"status_invalid_indices", L"Invalid row indices." },
@@ -345,10 +347,9 @@ const LangKV kEnglishPairs[] = {
 { L"config_lbl_max_filesize_mb", L"MB" },
 
 // List View Settings
-{ L"config_grp_list_results", L"List Results" },
-{ L"config_chk_list_stats", L"Show list statistics next to file path" },
+{ L"config_grp_list_display", L"List Display" },
 { L"config_chk_group_results", L"Find All: Group hits by list entry" },
-{ L"config_grp_list_interaction", L"List Interaction && View" },
+{ L"config_grp_list_interaction", L"List Interaction" },
 { L"config_chk_highlight_match", L"Select list entry on Find Next/Prev" },
 { L"config_chk_doubleclick", L"Edit in-place on double-click" },
 { L"config_chk_hover_text", L"Show full text on hover" },

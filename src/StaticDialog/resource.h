@@ -329,10 +329,9 @@
 #define IDC_CFG_SHOW_FORMULA_ERRORS       7907
 
 // -------------------------------------------------------------------
-//  List View Panel - Results Group (7920-7929)
+//  List View Panel - Display Group (7920-7929)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_LIST_STATS            7920
-#define IDC_CFG_LISTSTATISTICS_ENABLED    7921
+#define IDC_CFG_GRP_LIST_DISPLAY          7920
 #define IDC_CFG_GROUPRESULTS_ENABLED      7922
 
 // -------------------------------------------------------------------

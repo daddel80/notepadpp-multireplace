@@ -121,7 +121,7 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
                     instance->showStatusMessage(
                         instance->useListEnabled ? LM.get(L"status_disable_list")
-                        : LM.get(L"status_enable_list"),
+                        : instance->buildListEnableStatus(),
                         MessageStatus::Info);
                 }
             }
@@ -131,7 +131,7 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
                     if (listVisible) {
                         instance->showStatusMessage(
-                            instance->useListEnabled ? LM.get(L"status_enable_list")
+                            instance->useListEnabled ? instance->buildListEnableStatus()
                             : LM.get(L"status_disable_list"),
                             MessageStatus::Info);
                     }
@@ -145,7 +145,7 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
                     InvalidateRect(instance->_replaceListView, nullptr, TRUE);
                     if (listVisible) {
                         instance->showStatusMessage(
-                            instance->useListEnabled ? LM.get(L"status_enable_list")
+                            instance->useListEnabled ? instance->buildListEnableStatus()
                             : LM.get(L"status_disable_list"),
                             MessageStatus::Info);
                     }
@@ -6452,7 +6452,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // User-initiated toggle: announce the new state. This is
             // the only place that should emit this message; other
             // updateUseListState callers refresh the UI silently.
-            showStatusMessage(useListEnabled ? LM.get(L"status_enable_list")
+            showStatusMessage(useListEnabled ? buildListEnableStatus()
                 : LM.get(L"status_disable_list"),
                 MessageStatus::Info);
             return TRUE;
@@ -14575,6 +14575,19 @@ void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
     URM.push(action.undoAction, action.redoAction, (value ? L"Set " : L"Clear ") + optionName);
 }
 
+std::wstring MultiReplace::buildListEnableStatus() const
+{
+    if (replaceListData.empty()) {
+        return LM.get(L"status_enable_list_empty");
+    }
+    size_t enabled = 0;
+    for (const auto& e : replaceListData) {
+        if (e.isEnabled) ++enabled;
+    }
+    return LM.get(L"status_enable_list_count",
+        { std::to_wstring(enabled), std::to_wstring(replaceListData.size()) });
+}
+
 void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound, bool isTransient)
 {
     const size_t MAX_DISPLAY_LENGTH = 150;
@@ -16160,7 +16173,6 @@ void MultiReplace::loadSettingsToPanelUI() {
     editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
     editFieldSize = std::clamp(editFieldSize, MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
 
-    listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
     stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
     allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
     groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
@@ -19453,7 +19465,6 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
     s.flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
     s.isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
-    s.listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
     s.stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
     s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
@@ -19481,7 +19492,6 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeBool(L"Options", L"FlowTabsIntroDontShow", s.flowTabsIntroDontShowEnabled);
     CFG.writeBool(L"Options", L"FlowTabsNumericAlign", s.flowTabsNumericAlignEnabled);
     CFG.writeBool(L"Options", L"HoverText", s.isHoverTextEnabled);
-    CFG.writeBool(L"Options", L"ListStatistics", s.listStatisticsEnabled);
     CFG.writeBool(L"Options", L"StayAfterReplace", s.stayAfterReplaceEnabled);
     CFG.writeBool(L"Options", L"GroupResults", s.groupResultsEnabled);
     CFG.writeBool(L"Options", L"AllFromCursor", s.allFromCursorEnabled);
@@ -19591,7 +19601,6 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(L"Options", L"DoubleClickEdits", doubleClickEditsEnabled);
     CFG.writeBool(L"Options", L"HoverText", isHoverTextEnabled);
     CFG.writeInt(L"Options", L"EditFieldSize", editFieldSize);
-    CFG.writeBool(L"Options", L"ListStatistics", listStatisticsEnabled);
     CFG.writeBool(L"Options", L"StayAfterReplace", stayAfterReplaceEnabled);
     CFG.writeBool(L"Options", L"AllFromCursor", allFromCursorEnabled);
     CFG.writeBool(L"Options", L"GroupResults", groupResultsEnabled);
@@ -19666,7 +19675,6 @@ void MultiReplace::applyConfigSettingsOnly()
     muteSounds = CFG.readBool(L"Options", L"MuteSounds", false);
     doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);
     highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);
-    listStatisticsEnabled = CFG.readBool(L"Options", L"ListStatistics", false);
     stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
     allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
     groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
