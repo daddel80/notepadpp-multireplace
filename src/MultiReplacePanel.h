@@ -594,6 +594,56 @@ public:
         return s_hDlg;
     }
 
+    // Boost-Regex-specific search flags from Notepad++'s embedded Scintilla.
+    // These are not in the public Scintilla.h that MR ships with - they live
+    // in BoostRegexSearch.h in N++'s source. Defined here as fallback so MR
+    // can request the same regex semantics that N++'s own Find/Replace uses,
+    // without having to track every header from N++/Scintilla.
+#ifndef SCFIND_REGEXP_DOTMATCHESNL
+#define SCFIND_REGEXP_DOTMATCHESNL              0x10000000
+#endif
+#ifndef SCFIND_REGEXP_EMPTYMATCH_MASK
+#define SCFIND_REGEXP_EMPTYMATCH_MASK           0xE0000000
+#endif
+#ifndef SCFIND_REGEXP_EMPTYMATCH_NONE
+#define SCFIND_REGEXP_EMPTYMATCH_NONE           0x00000000
+#endif
+#ifndef SCFIND_REGEXP_EMPTYMATCH_NOTAFTERMATCH
+#define SCFIND_REGEXP_EMPTYMATCH_NOTAFTERMATCH  0x20000000
+#endif
+#ifndef SCFIND_REGEXP_EMPTYMATCH_ALL
+#define SCFIND_REGEXP_EMPTYMATCH_ALL            0x40000000
+#endif
+#ifndef SCFIND_REGEXP_SKIPCRLFASONE
+#define SCFIND_REGEXP_SKIPCRLFASONE             0x08000000
+#endif
+
+// Build Scintilla search flags using the same flag combinations as
+// Notepad++'s own Find/Replace, so MR's regex behaviour stays consistent
+// with the host. This includes the empty-match handling that makes `^`
+// replace on empty lines, CRLF-as-one, and POSIX mode.
+//
+// Use this everywhere search flags are built, both for SCI_SETSEARCHFLAGS
+// and for storing in SearchContext::searchFlags / Hit::searchFlags. The
+// flags are deterministic for a given (wholeWord, matchCase, regex,
+// dotMatchesNL, isReplaceAll) tuple, so storing them and re-building them
+// for comparison stays consistent.
+    static inline int buildSearchFlags(bool wholeWord, bool matchCase, bool regex,
+        bool dotMatchesNL = false,
+        bool isReplaceAll = true)
+    {
+        int flags = (wholeWord ? SCFIND_WHOLEWORD : 0)
+            | (matchCase ? SCFIND_MATCHCASE : 0);
+        if (regex) {
+            flags |= SCFIND_REGEXP | SCFIND_POSIX;
+            flags |= SCFIND_REGEXP_SKIPCRLFASONE;
+            if (dotMatchesNL) flags |= SCFIND_REGEXP_DOTMATCHESNL;
+            if (isReplaceAll) flags |= SCFIND_REGEXP_EMPTYMATCH_NOTAFTERMATCH;
+            else              flags |= SCFIND_REGEXP_EMPTYMATCH_ALL;
+        }
+        return flags;
+    }
+
     struct DMDARKMODECOLORS {
         COLORREF bkgColor;
         COLORREF foreColor;

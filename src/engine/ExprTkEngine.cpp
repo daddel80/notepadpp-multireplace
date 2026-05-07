@@ -37,6 +37,7 @@ namespace MultiReplaceEngine {
         , _numFunction(this)
         , _skipFunction(this)
         , _txtFunction(this)
+        , _seqFunction(this)
     {
     }
 
@@ -91,6 +92,14 @@ namespace MultiReplaceEngine {
         // inside an ExprTk return list, where its string output is
         // concatenated into the replace text.
         _symbolTable.add_function("txt", _txtFunction);
+
+        // Register seq([start, [inc]]) as a sequence generator. Reads
+        // _varCNT directly so the value tracks the current match index;
+        // both arguments are optional and default to 1, so seq() yields
+        // 1,2,3,... seq(start) yields start, start+1, ... and seq(start,
+        // inc) is fully parametrised. Built on ivararg_function so the
+        // optional-argument count is checked at call time.
+        _symbolTable.add_function("seq", _seqFunction);
 
         // ExprTk's standard math constants (pi, epsilon, infinity).
         _symbolTable.add_constants();
@@ -630,6 +639,25 @@ namespace MultiReplaceEngine {
         // Numeric return value is discarded by ExprTk in e_rtrn_string
         // mode - the meaningful output is the string we just filled.
         return 0.0;
+    }
+
+    // ---------------------------------------------------------------------
+    // seq() function implementation
+    // ---------------------------------------------------------------------
+
+    double ExprTkEngine::SeqFunction::operator()(const std::vector<double>& args)
+    {
+        // Both arguments are optional. seq() yields 1, 2, 3, ... seq(s)
+        // starts from s with step 1, seq(s, i) is fully parametrised.
+        // We read CNT from the engine directly; it has already been
+        // updated for the current match by execute() before any
+        // expression is evaluated, so seq() returns start on the first
+        // match (CNT=1), start+inc on the second (CNT=2), etc.
+        if (!_owner) return 0.0;
+
+        const double start = !args.empty() ? args[0] : 1.0;
+        const double inc = args.size() > 1 ? args[1] : 1.0;
+        return start + (_owner->_varCNT - 1.0) * inc;
     }
 
 } // namespace MultiReplaceEngine

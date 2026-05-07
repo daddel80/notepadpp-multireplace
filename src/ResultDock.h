@@ -48,7 +48,14 @@ public:
 
         // For robust line-based navigation (FlowTabs-proof)
         int          docLine{ -1 };      // 0-based line number
-        int          searchFlags{ 0 };   // SCFIND_MATCHCASE | SCFIND_WHOLEWORD | SCFIND_REGEXP
+        int          searchFlags{ 0 };   // Full Scintilla search flags as set
+        // by MultiReplace::buildSearchFlags():
+        // user options (WHOLEWORD, MATCHCASE,
+        // REGEXP) plus regex execution flags
+        // (POSIX, SKIPCRLFASONE, EMPTYMATCH_*).
+        // Stored verbatim so re-search on
+        // click reproduces the original
+        // match semantics.
 
         std::wstring findTextW;
 
@@ -224,7 +231,8 @@ private:
         const std::wstring& header,
         const SciSendFn& sciSend,
         std::wstring& outText,
-        std::vector<Hit>& outHits) const;
+        std::vector<Hit>& outHits,
+        size_t& outUtf8Len) const;
 
     void formatHitsLines(const SciSendFn& sciSend,
         std::vector<Hit>& hitsInOut,

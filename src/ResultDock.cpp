@@ -55,7 +55,10 @@ namespace {
 
         // Minimal fields needed for NavigateToHit-style re-search
         int docLine = -1;               // 0-based line number in target document
-        int searchFlags = 0;            // SCFIND_MATCHCASE | SCFIND_WHOLEWORD | SCFIND_REGEXP
+        int searchFlags = 0;            // Full Scintilla search flags as set
+        // by MultiReplace::buildSearchFlags();
+        // includes POSIX/EMPTYMATCH/SKIPCRLF
+        // bits in addition to the user options.
         std::wstring findTextW;         // Search text for re-search on line
 
         // Fallback position if re-search fails
@@ -443,15 +446,16 @@ void ResultDock::appendFileBlock(const FileMap& fm, const SciSendFn& sciSend)
 
     std::wstring  partText;
     std::vector<Hit> partHits;
+    size_t        partUtf8Len = 0;
 
     // build WITHOUT another search header
     buildListText(fm, _groupViewPending, L"", sciSend,
-        partText, partHits);
+        partText, partHits, partUtf8Len);
 
     shiftHits(partHits, _utf8LenPending);          // adjust offsets
 
     _pendingText += partText;
-    _utf8LenPending += Encoding::wstringToUtf8(partText).size();
+    _utf8LenPending += partUtf8Len;  // tracked incrementally during build, no re-conversion
 
     _pendingHits.insert(_pendingHits.end(),
         std::make_move_iterator(partHits.begin()),
@@ -512,18 +516,27 @@ void ResultDock::closeSearchBlock(int totalHits, int totalFiles)
         }
     }
 
-    // Replace files count first (higher position), then hits count
+    // Replace files count first (higher position), then hits count.
+    // Both old and new strings are ASCII digits, so each wchar_t corresponds
+    // to exactly one UTF-8 byte; the delta is the same in either encoding.
+    ptrdiff_t deltaBytes = 0;
     if (p2Start != std::wstring::npos) {
+        const ptrdiff_t oldLen = static_cast<ptrdiff_t>(p2End - p2Start);
+        const ptrdiff_t newLen = static_cast<ptrdiff_t>(filesStr.size());
         _pendingText.replace(p2Start, p2End - p2Start, filesStr);
+        deltaBytes += (newLen - oldLen);
     }
     if (p1Start != std::wstring::npos) {
+        const ptrdiff_t oldLen = static_cast<ptrdiff_t>(p1End - p1Start);
+        const ptrdiff_t newLen = static_cast<ptrdiff_t>(hitsStr.size());
         _pendingText.replace(p1Start, p1End - p1Start, hitsStr);
+        deltaBytes += (newLen - oldLen);
     }
 
-    // Adjust byte offsets due to the replaced numbers
-    const size_t newU8 = Encoding::wstringToUtf8(_pendingText).size();
-    const ptrdiff_t deltaBytes = static_cast<ptrdiff_t>(newU8) - static_cast<ptrdiff_t>(_utf8LenPending);
+    // Adjust hit offsets and the cached UTF-8 length without re-converting
+    // the full pending text (which can be very large for big result sets).
     if (deltaBytes != 0) {
+        _utf8LenPending = static_cast<size_t>(static_cast<ptrdiff_t>(_utf8LenPending) + deltaBytes);
         for (auto& h : _pendingHits)
             h.displayLineStart += static_cast<int>(deltaBytes);
     }
@@ -551,7 +564,8 @@ void ResultDock::insertFileBlockNow(const FileMap& fm, const SciSendFn& sciSend)
     // Build per-file text & hits (no SearchHdr)
     std::wstring  partText;
     std::vector<Hit> partHits;
-    buildListText(fm, _groupViewPending, L"", sciSend, partText, partHits);
+    size_t        partUtf8Len = 0;  // not used here; required by signature
+    buildListText(fm, _groupViewPending, L"", sciSend, partText, partHits, partUtf8Len);
     if (partText.empty()) return;
 
     // Count lines of the new block; check whether there was old content
@@ -1129,17 +1143,23 @@ void ResultDock::buildListText(
     const std::wstring& header,
     const SciSendFn& sciSend,
     std::wstring& outText,
-    std::vector<Hit>& outHits) const
+    std::vector<Hit>& outHits,
+    size_t& outUtf8Len) const
 {
     std::wstring body;
     size_t utf8Len = 0;
 
     auto appendIndented = [&](LineLevel lvl, const std::wstring& txt)
         {
-            std::wstring line = getIndentString(lvl) + txt + L"\r\n";
-            body += line;
+            // Append directly into body to avoid intermediate wstring allocations.
+            body.append(getIndentString(lvl));
+            body.append(txt);
+            body.append(L"\r\n");
+            // UTF-8 length: indent is ASCII, "\r\n" is 2 bytes, txt may contain
+            // non-ASCII characters and needs an explicit conversion for sizing.
             utf8Len += getIndentUtf8Length(lvl)
-                + Encoding::wstringToUtf8(txt + L"\r\n").size();
+                + Encoding::wstringToUtf8(txt).size()
+                + 2;  // "\r\n" in UTF-8
         };
 
     if (header.empty())
@@ -1209,7 +1229,7 @@ void ResultDock::buildListText(
     }
 
     outText = body;
-
+    outUtf8Len = utf8Len;
 }
 
 void ResultDock::formatHitsLines(const SciSendFn& sciSend,
@@ -1651,7 +1671,9 @@ std::wstring ResultDock::getIndentString(LineLevel lvl) {
 }
 
 size_t ResultDock::getIndentUtf8Length(ResultDock::LineLevel lvl) {
-    return Encoding::wstringToUtf8(getIndentString(lvl)).size();
+    // Indent is ASCII spaces only, so the UTF-8 byte count equals the
+    // wide-character count - no conversion needed.
+    return static_cast<size_t>(INDENT_SPACES[static_cast<int>(lvl)]);
 }
 
 void ResultDock::shiftHits(std::vector<ResultDock::Hit>& v, size_t delta)
@@ -2003,7 +2025,12 @@ void ResultDock::NavigateToHit(const Hit& hit)
         }
 
         searchFrom = foundEnd;
-        if (searchFrom <= found) break;
+        // For empty matches (length 0), advance one position to avoid an
+        // infinite loop, but keep scanning the line so a later non-empty
+        // match doesn't get hidden by an earlier empty one. With the new
+        // EMPTYMATCH_ALL flag from buildSearchFlags() empty matches are
+        // returned for `^`, `\b` etc. and we must not stop on the first one.
+        if (searchFrom <= found) searchFrom = found + 1;
     }
 
     if (bestPos >= 0) {
@@ -2880,7 +2907,11 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
                                 }
 
                                 searchFrom = foundEnd;
-                                if (searchFrom <= found) break;
+                                // Same empty-match handling as NavigateToHit:
+                                // advance past empty matches instead of bailing,
+                                // so non-empty matches further along the line
+                                // can still be found.
+                                if (searchFrom <= found) searchFrom = found + 1;
                             }
 
                             if (bestPos >= 0)

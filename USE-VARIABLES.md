@@ -506,6 +506,13 @@ To access the matched text as a string, use `txt(0)` inside a `return [...]` lis
 | `num(N)`  | number  | Capture group N as `double`. `num(0)` is the full match. Non-numeric captures yield `NaN`. |
 | `txt(N)` | string  | Capture group N as text. `txt(0)` is the full match. Only valid inside a `return [...]` list. |
 
+#### Match-aware functions
+
+| Function     | Returns | Use case                                                                                            |
+|--------------|---------|-----------------------------------------------------------------------------------------------------|
+| `seq([s,[i]])` | number  | Sequence value `s + (CNT-1)*i`. Both arguments default to `1` so `seq()` yields 1, 2, 3, ... See [Sequence Generator](#sequence-generator). |
+| `skip()`       | -       | Mark the current match as untouched. See [Skipping Matches](#skipping-matches).                   |
+
 **Number parsing notes:**
 
 `num(N)` parses captures with both `.` and `,` accepted as decimal separator, tolerates trailing non-numeric characters, and yields `NaN` when the input has no leading digits. When an expression evaluates to `NaN` (or to `±Infinity` from things like `0/0`, `log(-1)`, `sqrt(-1)`), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. Skipped matches are left untouched, so no original data is lost.
@@ -633,6 +640,32 @@ This doubles captured numbers ≥ 100 and leaves everything else untouched.
 
 <br>
 
+### Sequence Generator
+
+`seq([start[, increment]])` returns the next value in an arithmetic sequence keyed off the match counter `CNT`. Both arguments are optional and default to `1`, so:
+
+```
+(?=seq())            -> 1, 2, 3, 4, ...        (default start=1, inc=1)
+(?=seq(10))          -> 10, 11, 12, 13, ...    (start=10, inc defaults to 1)
+(?=seq(0, 10))       -> 0, 10, 20, 30, ...     (custom start and step)
+(?=seq(100, -10))    -> 100, 90, 80, 70, ...   (negative step counts down)
+```
+
+It is exactly equivalent to `start + (CNT - 1) * inc`, just shorter and clearer at the use site. Useful for numbering matches, generating IDs or any other arithmetic series across replacements.
+
+```
+Input:    apple
+          banana
+          cherry
+Pattern:  ^(.+)$
+Replace:  (?=seq(100, 10)). \1
+Output:   100. apple
+          110. banana
+          120. cherry
+```
+
+<br>
+
 ### More Examples
 
 The examples below are drawn from typical text-processing tasks. Each row in the table is a **single rule** — copy the Find and Replace columns straight into MultiReplace, set the engine to ExprTk, enable Use Variables and Regex.
@@ -683,6 +716,8 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 | Find          | Replace                       | Description                                                              |
 |---------------|-------------------------------|--------------------------------------------------------------------------|
 | `^`           | `(?=CNT). `                   | Number every line (insert at the start of each line).                    |
+| `^`           | `(?=seq(100, 10)). `          | Number every line, starting at 100, step 10 (100, 110, 120, ...).        |
+| `^`           | `(?=seq(0, -1)). `            | Number every line, counting **down** from 0 (0, -1, -2, ...).            |
 | `;`           | `(?=LCNT == 1 ? skip() : 0);` | Replace only the second and later semicolons on each line.               |
 
 <br>

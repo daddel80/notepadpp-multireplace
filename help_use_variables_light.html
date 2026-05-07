@@ -518,6 +518,7 @@ nav.pagenav .nav-group.collapsible {
     <a href="#exprtk-string-output" hidden onclick="navClicked(event, 'exprtk-string-output')">String Output</a>
     <a href="#exprtk-operators" hidden onclick="navClicked(event, 'exprtk-operators')">Operators</a>
     <a href="#exprtk-skip" hidden onclick="navClicked(event, 'exprtk-skip')">Skipping Matches</a>
+    <a href="#exprtk-seq" hidden onclick="navClicked(event, 'exprtk-seq')">Sequence Generator</a>
     <a href="#exprtk-examples" hidden onclick="navClicked(event, 'exprtk-examples')">Examples</a>
     <a href="#exprtk-limitations" hidden onclick="navClicked(event, 'exprtk-limitations')">Limitations</a>
 </nav>
@@ -1873,6 +1874,26 @@ return {
 
   <br>
 
+  <section id="exprtk-seq">
+    <h2>Sequence Generator</h2>
+    <p><code>seq([start[, increment]])</code> returns the next value in an arithmetic sequence keyed off the match counter <code>CNT</code>. Both arguments are optional and default to <code>1</code>, so:</p>
+    <pre><code>(?=seq())            -&gt; 1, 2, 3, 4, ...        (default start=1, inc=1)
+(?=seq(10))          -&gt; 10, 11, 12, 13, ...    (start=10, inc defaults to 1)
+(?=seq(0, 10))       -&gt; 0, 10, 20, 30, ...     (custom start and step)
+(?=seq(100, -10))    -&gt; 100, 90, 80, 70, ...   (negative step counts down)</code></pre>
+    <p>It is exactly equivalent to <code>start + (CNT - 1) * inc</code>, just shorter and clearer at the use site. Useful for numbering matches, generating IDs or any other arithmetic series across replacements.</p>
+    <pre><code>Input:    apple
+          banana
+          cherry
+Pattern:  ^(.+)$
+Replace:  (?=seq(100, 10)). \1
+Output:   100. apple
+          110. banana
+          120. cherry</code></pre>
+  </section>
+
+  <br>
+
   <section id="exprtk-examples">
     <h2>More Examples</h2>
     <p>The examples below are drawn from typical text-processing tasks. Each row in the table is a <strong>single rule</strong> &mdash; copy the Find and Replace columns straight into MultiReplace, set the engine to ExprTk, enable Use Variables and Regex.</p>
@@ -2013,6 +2034,16 @@ return {
         <td><code>^</code></td>
         <td><code>(?=CNT). </code></td>
         <td>Number every line (insert at the start of each line).</td>
+      </tr>
+      <tr>
+        <td><code>^</code></td>
+        <td><code>(?=seq(100, 10)). </code></td>
+        <td>Number every line, starting at 100, step 10 (100, 110, 120, ...).</td>
+      </tr>
+      <tr>
+        <td><code>^</code></td>
+        <td><code>(?=seq(0, -1)). </code></td>
+        <td>Number every line, counting <strong>down</strong> from 0 (0, -1, -2, ...).</td>
       </tr>
       <tr>
         <td><code>;</code></td>

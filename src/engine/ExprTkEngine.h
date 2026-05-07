@@ -33,6 +33,11 @@
 //                an explicit error rather than silently coerced to 0.
 //     txt(N)  -> capture group N as raw string (for return [...])
 //     skip()  -> mark the current match to be left untouched
+//     seq([start, [inc]])
+//             -> sequence value start + (CNT-1)*inc.
+//                Both arguments default to 1 so seq() yields 1,2,3,...
+//                Useful for numbering matches without writing the
+//                start+(CNT-1)*inc formula by hand.
 //
 // The match text is intentionally not exposed as a string variable.
 // Use txt(0) for the raw match string, HIT or num(0) for the numeric
@@ -187,6 +192,34 @@ namespace MultiReplaceEngine {
             ExprTkEngine* _owner;
         };
 
+        // ExprTk-callable wrapper: implements seq(start, increment), a
+        // sequence generator that returns start, start+inc, start+2*inc,
+        // ... over consecutive matches.
+        //
+        // Both arguments are optional and default to 1, so:
+        //   seq()         -> 1, 2, 3, ...
+        //   seq(10)       -> 10, 11, 12, ...
+        //   seq(0, 10)    -> 0, 10, 20, ...
+        //   seq(100, -10) -> 100, 90, 80, ...
+        //
+        // Built on ivararg_function so the variadic argument count can be
+        // checked at call time rather than fixed at registration. The
+        // result is start + (CNT - 1) * inc; CNT is read directly from
+        // the engine's _varCNT member which is updated at the start of
+        // each execute().
+        class SeqFunction : public exprtk::ivararg_function<double> {
+        public:
+            explicit SeqFunction(ExprTkEngine* owner)
+                : _owner(owner) {
+                exprtk::enable_zero_parameters(*this);  // allow seq() with no args
+            }
+
+            double operator()(const std::vector<double>& args) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
         // ExprTk-callable wrapper: implements txt(N), the string-side
         // counterpart to num(N). Returns the captured text at index N
         // as a string (txt(0) = full match, txt(1..N) = capture groups).
@@ -292,6 +325,9 @@ namespace MultiReplaceEngine {
         // The txt() callable for string-typed capture access (used
         // inside ExprTk return lists).
         TxtFunction _txtFunction;
+
+        // The seq() callable for sequence generation across matches.
+        SeqFunction _seqFunction;
     };
 
 } // namespace MultiReplaceEngine

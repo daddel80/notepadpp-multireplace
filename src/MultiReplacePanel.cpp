@@ -4940,10 +4940,15 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
     ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(curPath));
     std::string curPathUtf8 = Encoding::wstringToUtf8(curPath);
 
-    // Expected searchFlags for this list entry
-    const int itemFlags = (item.wholeWord ? SCFIND_WHOLEWORD : 0)
-        | (item.matchCase ? SCFIND_MATCHCASE : 0)
-        | (item.regex ? SCFIND_REGEXP : 0);
+    // Expected item-identity flags for this list entry. We only compare the
+    // user-facing option bits (wholeWord, matchCase, regex). The execution
+    // flags Notepad++ adds (POSIX, EMPTYMATCH_*, SKIPCRLFASONE) depend on
+    // the operation type (Find All vs Replace All) and are not part of the
+    // hit's identity, so we mask them out for the comparison.
+    constexpr int identityMask = SCFIND_WHOLEWORD | SCFIND_MATCHCASE | SCFIND_REGEXP;
+    const int itemFlags = buildSearchFlags(item.wholeWord, item.matchCase, item.regex,
+        /*dotMatchesNL=*/false, /*isReplaceAll=*/false)
+        & identityMask;
 
     // Determine block scope from dock cursor (independent of which file it points to)
     size_t blockFirst = 0;
@@ -4969,7 +4974,7 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
             if (hit.allFindTexts[j] != item.findText)
                 continue;
             int subFlags = (j < hit.allSearchFlags.size()) ? hit.allSearchFlags[j] : hit.searchFlags;
-            if (subFlags != itemFlags)
+            if ((subFlags & identityMask) != itemFlags)
                 continue;
             if (j < hit.allPositions.size()) {
                 Sci_Position mPos = hit.allPositions[j];
@@ -7538,9 +7543,11 @@ void MultiReplace::handleReplaceButton() {
         for (size_t i = 0; i < replaceListData.size(); ++i) {
             if (replaceListData[i].isEnabled) {
                 context.findText = convertAndExtendW(replaceListData[i].findText, replaceListData[i].extended);
-                context.searchFlags = (replaceListData[i].wholeWord * SCFIND_WHOLEWORD) |
-                    (replaceListData[i].matchCase * SCFIND_MATCHCASE) |
-                    (replaceListData[i].regex * SCFIND_REGEXP);
+                context.searchFlags = buildSearchFlags(replaceListData[i].wholeWord,
+                    replaceListData[i].matchCase,
+                    replaceListData[i].regex,
+                    /*dotMatchesNL=*/false,
+                    /*isReplaceAll=*/true);
 
                 // Set search flags before calling replaceOne
                 send(SCI_SETSEARCHFLAGS, context.searchFlags);
@@ -7604,9 +7611,11 @@ void MultiReplace::handleReplaceButton() {
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), replaceItem.replaceText);
 
         context.findText = convertAndExtendW(replaceItem.findText, replaceItem.extended);
-        context.searchFlags = (replaceItem.wholeWord * SCFIND_WHOLEWORD) |
-            (replaceItem.matchCase * SCFIND_MATCHCASE) |
-            (replaceItem.regex * SCFIND_REGEXP);
+        context.searchFlags = buildSearchFlags(replaceItem.wholeWord,
+            replaceItem.matchCase,
+            replaceItem.regex,
+            /*dotMatchesNL=*/false,
+            /*isReplaceAll=*/true);
 
         // Set search flags before calling `performSearchForward` and 'replaceOne' which contains 'performSearchForward'
         send(SCI_SETSEARCHFLAGS, context.searchFlags);
@@ -7759,7 +7768,8 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     // --- Search bytes MUST match document codepage---
     SearchContext context;
     context.findText = convertAndExtendW(itemData.findText, itemData.extended);
-    context.searchFlags = (itemData.wholeWord * SCFIND_WHOLEWORD) | (itemData.matchCase * SCFIND_MATCHCASE) | (itemData.regex * SCFIND_REGEXP);
+    context.searchFlags = buildSearchFlags(itemData.wholeWord, itemData.matchCase, itemData.regex,
+        /*dotMatchesNL=*/false, /*isReplaceAll=*/true);
     context.docLength = send(SCI_GETLENGTH, 0, 0);
     context.cachedCodepage = documentCodepage;
     context.isColumnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED;
@@ -9599,7 +9609,7 @@ void MultiReplace::handleFindAllButton()
     dock.ensureCreated(nppData);
 
     auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0) -> LRESULT {
-        return ::SendMessage(_hScintilla, m, w, l);
+        return send(m, w, l);  // Uses Direct-Function (default useDirect=true)
         };
 
     wchar_t buf[MAX_PATH] = {};
@@ -9652,7 +9662,8 @@ void MultiReplace::handleFindAllButton()
 
             std::wstring sanitizedPattern = this->sanitizeSearchPattern(item.findText);
             context.findText = convertAndExtendW(item.findText, item.extended);
-            context.searchFlags = (item.wholeWord ? SCFIND_WHOLEWORD : 0) | (item.matchCase ? SCFIND_MATCHCASE : 0) | (item.regex ? SCFIND_REGEXP : 0);
+            context.searchFlags = buildSearchFlags(item.wholeWord, item.matchCase, item.regex,
+                /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
             sciSend(SCI_SETSEARCHFLAGS, context.searchFlags);
 
             std::vector<ResultDock::Hit> rawHits;
@@ -9700,7 +9711,11 @@ void MultiReplace::handleFindAllButton()
         dock.defineSlotColor(0, c);
 
         context.findText = convertAndExtendW(findW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-        context.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+        context.searchFlags = buildSearchFlags(
+            IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED,
+            IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED,
+            IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED,
+            /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
         sciSend(SCI_SETSEARCHFLAGS, context.searchFlags);
 
         std::vector<ResultDock::Hit> rawHits;
@@ -9828,7 +9843,7 @@ void MultiReplace::handleFindAllInDocsButton()
 
     auto processCurrentBuffer = [&](int view) {
         bindToView(view);
-        auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT { return ::SendMessage(_hScintilla, m, w, l); };
+        auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT { return send(m, w, l); };  // Direct-Function
 
         wchar_t wBuf[MAX_PATH] = {};
         ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(wBuf));
@@ -9890,7 +9905,8 @@ void MultiReplace::handleFindAllInDocsButton()
                 ctx.docLength = sciSend(SCI_GETLENGTH);
                 ctx.isColumnMode = columnMode; ctx.isSelectionMode = selMode;
                 ctx.findText = convertAndExtendW(it.findText, it.extended);
-                ctx.searchFlags = (it.wholeWord ? SCFIND_WHOLEWORD : 0) | (it.matchCase ? SCFIND_MATCHCASE : 0) | (it.regex ? SCFIND_REGEXP : 0);
+                ctx.searchFlags = buildSearchFlags(it.wholeWord, it.matchCase, it.regex,
+                    /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
                 sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
                 collect(idx, it.findText, ctx);
             }
@@ -9903,7 +9919,11 @@ void MultiReplace::handleFindAllInDocsButton()
                 ctx.docLength = sciSend(SCI_GETLENGTH);
                 ctx.isColumnMode = columnMode; ctx.isSelectionMode = selMode;
                 ctx.findText = convertAndExtendW(findW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+                ctx.searchFlags = buildSearchFlags(
+                    IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED,
+                    IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED,
+                    IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED,
+                    /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
                 sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
                 collect(0, sanitizeSearchPattern(findW), ctx);
             }
@@ -10214,7 +10234,8 @@ void MultiReplace::handleFindInFiles() {
                 SearchContext ctx{};
                 ctx.docLength = send(SCI_GETLENGTH); ctx.isColumnMode = columnMode; ctx.isSelectionMode = false;
                 ctx.findText = convertAndExtendW(it.findText, it.extended);
-                ctx.searchFlags = (it.wholeWord ? SCFIND_WHOLEWORD : 0) | (it.matchCase ? SCFIND_MATCHCASE : 0) | (it.regex ? SCFIND_REGEXP : 0);
+                ctx.searchFlags = buildSearchFlags(it.wholeWord, it.matchCase, it.regex,
+                    /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
                 send(SCI_SETSEARCHFLAGS, ctx.searchFlags, 0);
                 collect(entryIdx, it.findText, ctx);
             }
@@ -10226,7 +10247,11 @@ void MultiReplace::handleFindInFiles() {
                 SearchContext ctx{};
                 ctx.docLength = send(SCI_GETLENGTH); ctx.isColumnMode = columnMode; ctx.isSelectionMode = false;
                 ctx.findText = convertAndExtendW(findW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                ctx.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+                ctx.searchFlags = buildSearchFlags(
+                    IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED,
+                    IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED,
+                    IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED,
+                    /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
                 send(SCI_SETSEARCHFLAGS, ctx.searchFlags, 0);
                 collect(0, findW, ctx);
             }
@@ -10361,10 +10386,11 @@ void MultiReplace::handleFindNextButton() {
         context.findText = convertAndExtendW(findText, isExtended);
 
         // Set search flags
-        context.searchFlags =
-            (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) |
-            (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) |
-            (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+        context.searchFlags = buildSearchFlags(
+            IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED,
+            IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED,
+            IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED,
+            /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
 
         // Set search flags before calling `performSearchForward`
         send(SCI_SETSEARCHFLAGS, context.searchFlags);
@@ -10474,10 +10500,11 @@ void MultiReplace::handleFindPrevButton() {
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
 
         context.findText = convertAndExtendW(findText, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-        context.searchFlags =
-            (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0) |
-            (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0) |
-            (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+        context.searchFlags = buildSearchFlags(
+            IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED,
+            IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED,
+            IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED,
+            /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
 
         // Set search flags before calling 'performSearchBackward'
         send(SCI_SETSEARCHFLAGS, context.searchFlags);
@@ -10754,9 +10781,8 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
 
         SearchContext localContext = context;
         localContext.findText = convertAndExtendW(list[i].findText, list[i].extended);
-        localContext.searchFlags = (list[i].wholeWord ? SCFIND_WHOLEWORD : 0) |
-            (list[i].matchCase ? SCFIND_MATCHCASE : 0) |
-            (list[i].regex ? SCFIND_REGEXP : 0);
+        localContext.searchFlags = buildSearchFlags(list[i].wholeWord, list[i].matchCase, list[i].regex,
+            /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
         localContext.retrieveFoundText = false;
         localContext.highlightMatch = false;
 
@@ -10811,9 +10837,8 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
 
         SearchContext localContext = context;
         localContext.findText = convertAndExtendW(list[i].findText, list[i].extended);
-        localContext.searchFlags = (list[i].wholeWord ? SCFIND_WHOLEWORD : 0) |
-            (list[i].matchCase ? SCFIND_MATCHCASE : 0) |
-            (list[i].regex ? SCFIND_REGEXP : 0);
+        localContext.searchFlags = buildSearchFlags(list[i].wholeWord, list[i].matchCase, list[i].regex,
+            /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
 
         // Disable text retrieval during search - we'll get it only for the final result
         localContext.retrieveFoundText = false;
@@ -11060,9 +11085,8 @@ void MultiReplace::handleMarkMatchesButton() {
 
             SearchContext context;
             context.findText = convertAndExtendW(item.findText, item.extended);
-            context.searchFlags = (item.wholeWord * SCFIND_WHOLEWORD)
-                | (item.matchCase * SCFIND_MATCHCASE)
-                | (item.regex * SCFIND_REGEXP);
+            context.searchFlags = buildSearchFlags(item.wholeWord, item.matchCase, item.regex,
+                /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
             context.docLength = send(SCI_GETLENGTH, 0, 0);
             context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
             context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
@@ -11097,9 +11121,11 @@ void MultiReplace::handleMarkMatchesButton() {
         const std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         SearchContext context;
         context.findText = convertAndExtendW(findText, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-        context.searchFlags = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED ? SCFIND_WHOLEWORD : 0)
-            | (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED ? SCFIND_MATCHCASE : 0)
-            | (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED ? SCFIND_REGEXP : 0);
+        context.searchFlags = buildSearchFlags(
+            IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED,
+            IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED,
+            IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED,
+            /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
         context.docLength = send(SCI_GETLENGTH, 0, 0);
         context.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
         context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
