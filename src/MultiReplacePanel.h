@@ -671,6 +671,7 @@ public:
         bool groupResultsEnabled;
         bool allFromCursorEnabled;
         bool keepListVisible;
+        bool addNewEntryAtTop;
         int  listDimIntensity;
         int  tabMaxLength;
         bool limitFileSizeEnabled;
@@ -1056,6 +1057,7 @@ private:
     inline static bool _luaSafeModeEnabled = false;        // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
     inline static bool allFromCursorEnabled = false;      // Controls the starting point for Replace All, Find All and Mark when wrap is OFF.
     inline static bool keepListVisible = false;            // Library mode: list stays visible when toggled off, only dims
+    inline static bool addNewEntryAtTop = true;            // INI setting [Options] AddNewEntryAtTop: insert new entries at top (true) or bottom (false). Persisted, but not surfaced in the config dialog.
     inline static int  listDimIntensity = 50;               // INI setting [Options] DimIntensity (0-100): how strongly the inactive list is dimmed. Persisted, but not surfaced in the config dialog.
     inline static int  tabMaxLength = 14;                    // INI setting [Options] TabMaxLength (4-60): how many characters of a tab label are shown. Persisted, but not surfaced in the config dialog.
     inline static MultiReplaceEngine::EngineType _defaultEngine = MultiReplaceEngine::EngineType::Lua;  // INI setting [Options] DefaultEngine (Lua/ExprTk): the engine new tabs start with. Updated only on a deliberate engine selection click; loading a list with a different engine does not change it. Persisted, but not surfaced in the config dialog.
