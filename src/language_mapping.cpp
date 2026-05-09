@@ -347,14 +347,15 @@ const LangKV kEnglishPairs[] = {
 { L"config_lbl_max_filesize_mb", L"MB" },
 
 // List View Settings
-{ L"config_grp_list_display", L"List Display" },
-{ L"config_chk_group_results", L"Find All: Group hits by list entry" },
-{ L"config_grp_list_interaction", L"List Interaction" },
-{ L"config_chk_highlight_match", L"Select list entry on Find Next/Prev" },
+{ L"config_grp_list_behavior", L"List Behavior" },
 { L"config_chk_doubleclick", L"Edit in-place on double-click" },
 { L"config_chk_hover_text", L"Show full text on hover" },
+{ L"config_chk_highlight_match", L"Select list entry on Find Next/Prev" },
 { L"config_chk_keep_list_visible", L"Keep list always visible" },
 { L"config_lbl_edit_height", L"Expanded edit height (lines):" },
+{ L"config_grp_result_dock", L"Result Dock" },
+{ L"config_chk_group_results", L"Find All: Group hits by list entry" },
+{ L"config_chk_result_dock_entry_colors", L"Color matches by list entry" },
 
 // CSV Settings
 { L"config_grp_csv_settings", L"CSV Settings" },
@@ -378,10 +379,9 @@ const LangKV kEnglishPairs[] = {
 { L"config_lbl_foreground", L"Foreground transparency" },
 { L"config_lbl_background", L"Background transparency" },
 { L"config_lbl_scale_factor", L"Scale factor" },
-{ L"config_grp_display_options", L"Display Options" },
 { L"config_chk_enable_tooltips", L"Enable tooltips" },
-{ L"config_chk_result_dock_entry_colors", L"Color matches by list entry in Result Dock" },
-{ L"config_chk_use_list_colors_marking", L"Use different colors for each list entry when marking" },
+{ L"config_grp_editor_marking", L"Editor Marking" },
+{ L"config_chk_use_list_colors_marking", L"Color marks by list entry" },
 
 // Plugin Menu
 { L"menu_open", L"&MultiReplace..." },

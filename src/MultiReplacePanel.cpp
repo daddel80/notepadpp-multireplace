@@ -2583,8 +2583,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     std::vector<ReplaceItemData> itemsToAdd = { itemData };
     itemsToAdd[0].isDirty = true;
     itemsToAdd[0].lastModified = getCurrentTimestamp();
-    const size_t insertPos = addNewEntryAtTop ? 0 : replaceListData.size();
-    addItemsToReplaceList(itemsToAdd, insertPos);
+    addItemsToReplaceList(itemsToAdd, 0);
 
     // Show a status message indicating the value added to the list
     std::wstring message;
@@ -2600,10 +2599,9 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
     // Select newly added line
-    size_t newItemIndex = addNewEntryAtTop ? 0 : replaceListData.size() - 1;
     ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED); // Delete previous selection
-    ListView_SetItemState(_replaceListView, static_cast<int>(newItemIndex), LVIS_SELECTED, LVIS_SELECTED);
-    ListView_EnsureVisible(_replaceListView, static_cast<int>(newItemIndex), FALSE);
+    ListView_SetItemState(_replaceListView, 0, LVIS_SELECTED, LVIS_SELECTED);
+    ListView_EnsureVisible(_replaceListView, 0, FALSE);
 
     // Update Header if there might be any changes
     updateHeaderSelection();
@@ -5466,11 +5464,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // Calculate Position for all Elements
             positionAndResizeControls(newWidth, newHeight);
 
-            if ((useListEnabled || keepListVisible) && widthChanged) {
-                updateListViewAndColumns();
-            }
-
             if (widthChanged) {
+                updateListViewAndColumns();
                 markAllTabsNeedRelayout();
             }
 
@@ -19358,7 +19353,6 @@ void MultiReplace::loadUIConfigFromIni()
 
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
-    addNewEntryAtTop = CFG.readBool(L"Options", L"AddNewEntryAtTop", true);
     listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
     tabMaxLength = std::clamp(CFG.readInt(L"Options", L"TabMaxLength", 14), 4, 60);
     {
@@ -19471,7 +19465,6 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
     s.keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
-    s.addNewEntryAtTop = CFG.readBool(L"Options", L"AddNewEntryAtTop", true);
     s.listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
     s.tabMaxLength = std::clamp(CFG.readInt(L"Options", L"TabMaxLength", 14), 4, 60);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
@@ -19499,7 +19492,6 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeBool(L"Options", L"GroupResults", s.groupResultsEnabled);
     CFG.writeBool(L"Options", L"AllFromCursor", s.allFromCursorEnabled);
     CFG.writeBool(L"Options", L"KeepListVisible", s.keepListVisible);
-    CFG.writeBool(L"Options", L"AddNewEntryAtTop", s.addNewEntryAtTop);
     CFG.writeInt(L"Options", L"DimIntensity", s.listDimIntensity);
     CFG.writeInt(L"Options", L"TabMaxLength", s.tabMaxLength);
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled);
@@ -19609,7 +19601,6 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(L"Options", L"AllFromCursor", allFromCursorEnabled);
     CFG.writeBool(L"Options", L"GroupResults", groupResultsEnabled);
     CFG.writeBool(L"Options", L"KeepListVisible", keepListVisible);
-    CFG.writeBool(L"Options", L"AddNewEntryAtTop", addNewEntryAtTop);
     CFG.writeInt(L"Options", L"DimIntensity", listDimIntensity);
     CFG.writeInt(L"Options", L"TabMaxLength", tabMaxLength);
     CFG.writeString(L"Options", L"DefaultEngine",

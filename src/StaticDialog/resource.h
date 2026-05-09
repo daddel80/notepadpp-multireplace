@@ -329,15 +329,15 @@
 #define IDC_CFG_SHOW_FORMULA_ERRORS       7907
 
 // -------------------------------------------------------------------
-//  List View Panel - Display Group (7920-7929)
+//  List View Panel - Result Dock Group (7920-7929)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_LIST_DISPLAY          7920
+#define IDC_CFG_GRP_RESULT_DOCK           7920
 #define IDC_CFG_GROUPRESULTS_ENABLED      7922
 
 // -------------------------------------------------------------------
-//  List View Panel - Interaction Group (7930-7939)
+//  List View Panel - List Behavior Group (7930-7939)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_LIST_INTERACTION      7930
+#define IDC_CFG_GRP_LIST_BEHAVIOR         7930
 #define IDC_CFG_HIGHLIGHT_MATCH           7931
 #define IDC_CFG_DOUBLECLICK_EDITS         7932
 #define IDC_CFG_HOVER_TEXT_ENABLED        7933
@@ -381,7 +381,7 @@
 // -------------------------------------------------------------------
 //  Appearance Panel - Display Options Group (7970-7979)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_DISPLAY_OPTIONS       7970
+#define IDC_CFG_GRP_EDITOR_MARKING        7970
 #define IDC_CFG_TOOLTIPS_ENABLED          7971
 #define IDC_CFG_RESULT_DOCK_ENTRY_COLORS  7972
 #define IDC_CFG_USE_LIST_COLORS_MARKING   7973

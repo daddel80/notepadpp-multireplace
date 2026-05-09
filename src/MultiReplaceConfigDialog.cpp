@@ -48,11 +48,12 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
 
     // List View
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_EDITFIELD_SIZE_COMBO, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, editFieldSize), 2, 20 });
-    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_GROUPRESULTS_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, groupResultsEnabled), 0, 0 });
-    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_HIGHLIGHT_MATCH, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, highlightMatchEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_DOUBLECLICK_EDITS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, doubleClickEditsEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_HOVER_TEXT_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isHoverTextEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_KEEP_LIST_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, keepListVisible), 0, 0 });
+    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_HIGHLIGHT_MATCH, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, highlightMatchEnabled), 0, 0 });
+    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_GROUPRESULTS_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, groupResultsEnabled), 0, 0 });
+    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_RESULT_DOCK_ENTRY_COLORS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, resultDockPerEntryColorsEnabled), 0, 0 });
 
     // CSV
     _bindings.push_back(Binding{ &_hCsvFlowTabsPanel, IDC_CFG_HEADERLINES_EDIT, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, csvHeaderLinesCount), 0, 999 });
@@ -62,7 +63,6 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
 
     // Appearance
     _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_TOOLTIPS_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, tooltipsEnabled), 0, 0 });
-    _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_RESULT_DOCK_ENTRY_COLORS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, resultDockPerEntryColorsEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hAppearancePanel, IDC_CFG_USE_LIST_COLORS_MARKING, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, useListColorsForMarking), 0, 0 });
 
     // Search
@@ -193,17 +193,18 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_SHOW_FORMULA_ERRORS,     L"config_chk_show_formula_errors", 386, 18 },
         { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize",      260, 18 },
 
-        // List View Panel - Display: groupW=460, innerWidth=460-44=416
-        { IDC_CFG_GRP_LIST_DISPLAY,        L"config_grp_list_display",        0, 0 },
-        { IDC_CFG_HIGHLIGHT_MATCH,         L"config_chk_highlight_match",     416, 18 },
-        { IDC_CFG_GROUPRESULTS_ENABLED,    L"config_chk_group_results",       416, 18 },
-        { IDC_CFG_HOVER_TEXT_ENABLED,      L"config_chk_hover_text",          416, 18 },
-
-        // List View Panel - Interaction: groupW=460, innerWidth=460-44=416
-        { IDC_CFG_GRP_LIST_INTERACTION,    L"config_grp_list_interaction",    0, 0 },
+        // List View Panel - List Behavior: groupW=460, innerWidth=460-44=416
+        { IDC_CFG_GRP_LIST_BEHAVIOR,       L"config_grp_list_behavior",       0, 0 },
         { IDC_CFG_DOUBLECLICK_EDITS,       L"config_chk_doubleclick",         416, 18 },
+        { IDC_CFG_HOVER_TEXT_ENABLED,      L"config_chk_hover_text",          416, 18 },
+        { IDC_CFG_HIGHLIGHT_MATCH,         L"config_chk_highlight_match",     416, 18 },
         { IDC_CFG_KEEP_LIST_VISIBLE,       L"config_chk_keep_list_visible",   416, 18 },
         { IDC_CFG_EDITFIELD_LABEL,         L"config_lbl_edit_height",         190, 18 },
+
+        // List View Panel - Result Dock: groupW=460, innerWidth=460-44=416
+        { IDC_CFG_GRP_RESULT_DOCK,         L"config_grp_result_dock",         0, 0 },
+        { IDC_CFG_GROUPRESULTS_ENABLED,    L"config_chk_group_results",       416, 18 },
+        { IDC_CFG_RESULT_DOCK_ENTRY_COLORS, L"config_chk_result_dock_entry_colors", 416, 18 },
 
         // CSV Panel: groupW=570, innerWidth=570-24=546
         { IDC_CFG_GRP_CSV_SETTINGS,        L"config_grp_csv_settings",        0, 0 },
@@ -221,11 +222,10 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_FOREGROUND_LABEL,        L"config_lbl_foreground",          170, 18 },
         { IDC_CFG_BACKGROUND_LABEL,        L"config_lbl_background",          170, 18 },
         { IDC_CFG_SCALE_LABEL,             L"config_lbl_scale_factor",        170, 18 },
-
-        // Appearance Panel - Display Options: groupW=460, padX=22, innerWidth=460-44=416
-        { IDC_CFG_GRP_DISPLAY_OPTIONS,     L"config_grp_display_options",     0, 0 },
         { IDC_CFG_TOOLTIPS_ENABLED,        L"config_chk_enable_tooltips",     416, 18 },
-        { IDC_CFG_RESULT_DOCK_ENTRY_COLORS, L"config_chk_result_dock_entry_colors", 416, 18 },
+
+        // Appearance Panel - Editor Marking: groupW=460, padX=22, innerWidth=460-44=416
+        { IDC_CFG_GRP_EDITOR_MARKING,      L"config_grp_editor_marking",      0, 0 },
         { IDC_CFG_USE_LIST_COLORS_MARKING, L"config_chk_use_list_colors_marking", 416, 18 },
     };
 
@@ -810,44 +810,42 @@ HWND MultiReplaceConfigDialog::createSlider(HWND parent, int left, int top, int 
 void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     if (!_hListViewLayoutPanel) return;
 
-    // Layout aligned with the other panels (Search/Replace, CSV, Appearance):
-    // left=70, groupW=460. Column visibility is per-tab now and lives in
-    // the ListView header's context menu rather than in this dialog.
     const int left = 70;
     const int groupW = 460;
     const int topY = 20;
-    const int topGroupH = 110;
+    const int topGroupH = 175;
     const int gapBetween = 14;
-    const int bottomGroupH = 130;
+    const int bottomGroupH = 90;
 
     createGroupBox(_hListViewLayoutPanel, left, topY, groupW, topGroupH,
-        IDC_CFG_GRP_LIST_DISPLAY, LM.getLPCW(L"config_grp_list_display"));
+        IDC_CFG_GRP_LIST_BEHAVIOR, LM.getLPCW(L"config_grp_list_behavior"));
     {
         const int innerLeft = left + 22;
         const int innerTop = topY + 30;
         const int innerWidth = groupW - 44;
 
         LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, innerTop, innerWidth, 24);
-        lb.AddCheckbox(IDC_CFG_HIGHLIGHT_MATCH, LM.getLPCW(L"config_chk_highlight_match"));
-        lb.AddCheckbox(IDC_CFG_GROUPRESULTS_ENABLED, LM.getLPCW(L"config_chk_group_results"));
+        lb.AddCheckbox(IDC_CFG_DOUBLECLICK_EDITS, LM.getLPCW(L"config_chk_doubleclick"));
         lb.AddCheckbox(IDC_CFG_HOVER_TEXT_ENABLED, LM.getLPCW(L"config_chk_hover_text"));
+        lb.AddCheckbox(IDC_CFG_HIGHLIGHT_MATCH, LM.getLPCW(L"config_chk_highlight_match"));
+        lb.AddCheckbox(IDC_CFG_KEEP_LIST_VISIBLE, LM.getLPCW(L"config_chk_keep_list_visible"));
+        lb.AddSpace(6);
+        lb.AddLabel(IDC_CFG_EDITFIELD_LABEL, LM.getLPCW(L"config_lbl_edit_height"), 190, 18);
+        lb.AddNumberEdit(IDC_CFG_EDITFIELD_SIZE_COMBO, 198, -2, 45, 22);
     }
 
     const int bottomY = topY + topGroupH + gapBetween;
 
     createGroupBox(_hListViewLayoutPanel, left, bottomY, groupW, bottomGroupH,
-        IDC_CFG_GRP_LIST_INTERACTION, LM.getLPCW(L"config_grp_list_interaction"));
+        IDC_CFG_GRP_RESULT_DOCK, LM.getLPCW(L"config_grp_result_dock"));
     {
         const int innerLeft = left + 22;
         const int innerTop = bottomY + 30;
         const int innerWidth = groupW - 44;
 
         LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, innerTop, innerWidth, 24);
-        lb.AddCheckbox(IDC_CFG_DOUBLECLICK_EDITS, LM.getLPCW(L"config_chk_doubleclick"));
-        lb.AddCheckbox(IDC_CFG_KEEP_LIST_VISIBLE, LM.getLPCW(L"config_chk_keep_list_visible"));
-        lb.AddSpace(6);
-        lb.AddLabel(IDC_CFG_EDITFIELD_LABEL, LM.getLPCW(L"config_lbl_edit_height"), 190, 18);
-        lb.AddNumberEdit(IDC_CFG_EDITFIELD_SIZE_COMBO, 198, -2, 45, 22);
+        lb.AddCheckbox(IDC_CFG_GROUPRESULTS_ENABLED, LM.getLPCW(L"config_chk_group_results"));
+        lb.AddCheckbox(IDC_CFG_RESULT_DOCK_ENTRY_COLORS, LM.getLPCW(L"config_chk_result_dock_entry_colors"));
     }
 }
 
@@ -858,8 +856,8 @@ void MultiReplaceConfigDialog::createAppearancePanelControls() {
     const int top = 15;
     const int groupW = 460;
 
-    const int groupH_Interface = 135;
-    const int groupH_Display = 130;
+    const int groupH_Interface = 175;
+    const int groupH_Marking = 75;
     const int gap = 25;
 
     LayoutBuilder root(this, _hAppearancePanel, left, top, groupW, 28);
@@ -869,14 +867,13 @@ void MultiReplaceConfigDialog::createAppearancePanelControls() {
     iface.AddLabeledSlider(IDC_CFG_FOREGROUND_LABEL, LM.getLPCW(L"config_lbl_foreground"), IDC_CFG_FOREGROUND_SLIDER, 190, 160, 0, 255, 34, 170, 18, -4);
     iface.AddLabeledSlider(IDC_CFG_BACKGROUND_LABEL, LM.getLPCW(L"config_lbl_background"), IDC_CFG_BACKGROUND_SLIDER, 190, 160, 0, 255, 34, 170, 18, -4);
     iface.AddLabeledSlider(IDC_CFG_SCALE_LABEL, LM.getLPCW(L"config_lbl_scale_factor"), IDC_CFG_SCALE_SLIDER, 190, 160, 50, 200, 34, 170, 18, -4, 100);
+    iface.AddCheckbox(IDC_CFG_TOOLTIPS_ENABLED, LM.getLPCW(L"config_chk_enable_tooltips"));
 
     int nextTop = top + groupH_Interface + gap;
 
-    auto display = root.BeginGroup(left, nextTop, groupW, groupH_Display, 22, 30, IDC_CFG_GRP_DISPLAY_OPTIONS, LM.getLPCW(L"config_grp_display_options"));
+    auto marking = root.BeginGroup(left, nextTop, groupW, groupH_Marking, 22, 30, IDC_CFG_GRP_EDITOR_MARKING, LM.getLPCW(L"config_grp_editor_marking"));
 
-    display.AddCheckbox(IDC_CFG_TOOLTIPS_ENABLED, LM.getLPCW(L"config_chk_enable_tooltips"));
-    display.AddCheckbox(IDC_CFG_RESULT_DOCK_ENTRY_COLORS, LM.getLPCW(L"config_chk_result_dock_entry_colors"));
-    display.AddCheckbox(IDC_CFG_USE_LIST_COLORS_MARKING, LM.getLPCW(L"config_chk_use_list_colors_marking"));
+    marking.AddCheckbox(IDC_CFG_USE_LIST_COLORS_MARKING, LM.getLPCW(L"config_chk_use_list_colors_marking"));
 }
 
 void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
