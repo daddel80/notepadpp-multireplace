@@ -129,11 +129,11 @@ public:
 
     // ------------------- Search Block API ---------------------
     void startSearchBlock(const std::wstring& header, bool  groupView, bool purge);
-    void appendFileBlock(const FileMap& fm, const SciSendFn& sciSend);
+    void appendFileBlock(FileMap& fm, const SciSendFn& sciSend);
     void closeSearchBlock(int totalHits, int totalFiles);
 
     // Incremental insertion helpers (commit per-file immediately)
-    void insertFileBlockNow(const FileMap& fm, const SciSendFn& sciSend);
+    void insertFileBlockNow(FileMap& fm, const SciSendFn& sciSend);
     void insertSearchHeader(const std::wstring& header);
 
     void onNppNotification(const SCNotification* notify);
@@ -219,25 +219,23 @@ private:
 
     // -------- Range styling / folding (partial updates) -------
     void applyStylingRange(Sci_Position pos0, Sci_Position len, const std::vector<Hit>& newHits) const;
-    void rebuildFoldingRange(int firstLine, int lastLine) const;
+    void rebuildFoldingRange(int firstLine, int lastLine, const std::string& dockTextU8) const;
 
     // ---------------- Block building / insertion --------------
-    void prependBlock(const std::wstring& dockText, std::vector<Hit>& newHits);
+    void prependBlock(const std::string& dockTextU8, std::vector<Hit>& newHits);
     void collapseOldSearches();
 
     // ---------------------- Formatting ------------------------
-    void buildListText(const FileMap& files,
+    void buildListText(FileMap& files,
         bool groupView,
         const std::wstring& header,
         const SciSendFn& sciSend,
-        std::wstring& outText,
-        std::vector<Hit>& outHits,
-        size_t& outUtf8Len) const;
+        std::string& outTextU8,
+        std::vector<Hit>& outHits) const;
 
     void formatHitsLines(const SciSendFn& sciSend,
         std::vector<Hit>& hitsInOut,
-        std::wstring& outBlock,
-        size_t& ioUtf8Len) const;
+        std::string& outBlockU8) const;
 
     // --------------------- Line helpers -----------------------
     enum class LineLevel : int { SearchHdr = 0, FileHdr = 1, CritHdr = 2, HitLine = 3 };
@@ -247,6 +245,7 @@ private:
     static LineKind classify(const std::string& raw);
 
     static std::wstring getIndentString(LineLevel lvl);
+    static std::string  getIndentStringU8(LineLevel lvl);  // ASCII spaces, UTF-8
     static size_t getIndentUtf8Length(LineLevel lvl);
     static void shiftHits(std::vector<Hit>& v, size_t delta);
     static std::wstring stripHitPrefix(const std::wstring& w);
@@ -366,10 +365,9 @@ private:
     std::vector<Hit> _hits;
     tTbData _dockData{};
 
-    // Pending block build state
-    std::wstring     _pendingText;
+    // Pending block build state (UTF-8)
+    std::string      _pendingText;
     std::vector<Hit> _pendingHits;
-    size_t           _utf8LenPending = 0;
     bool             _groupViewPending = false;
     bool             _blockOpen = false;
 

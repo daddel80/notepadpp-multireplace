@@ -428,34 +428,31 @@ void ResultDock::startSearchBlock(const std::wstring& header, bool groupView, bo
 
     _pendingText.clear();
     _pendingHits.clear();
-    _utf8LenPending = 0;
     _groupViewPending = groupView;
     _blockOpen = true;
 
     // Intro line for the search header; hit/file numbers are patched in closeSearchBlock().
-    _pendingText = getIndentString(LineLevel::SearchHdr) + header + L"\r\n";
-    _utf8LenPending = Encoding::wstringToUtf8(_pendingText).size();
+    _pendingText = getIndentStringU8(LineLevel::SearchHdr);
+    _pendingText += Encoding::wstringToUtf8(header);
+    _pendingText += "\r\n";
 }
 
 // -----------------------------------------------------------
 //  2. append results for ONE file (can be called many times)
 // -----------------------------------------------------------
-void ResultDock::appendFileBlock(const FileMap& fm, const SciSendFn& sciSend)
+void ResultDock::appendFileBlock(FileMap& fm, const SciSendFn& sciSend)
 {
     if (!_blockOpen) return;
 
-    std::wstring  partText;
+    std::string  partText;
     std::vector<Hit> partHits;
-    size_t        partUtf8Len = 0;
 
     // build WITHOUT another search header
-    buildListText(fm, _groupViewPending, L"", sciSend,
-        partText, partHits, partUtf8Len);
+    buildListText(fm, _groupViewPending, L"", sciSend, partText, partHits);
 
-    shiftHits(partHits, _utf8LenPending);          // adjust offsets
+    shiftHits(partHits, _pendingText.size());      // adjust offsets
 
     _pendingText += partText;
-    _utf8LenPending += partUtf8Len;  // tracked incrementally during build, no re-conversion
 
     _pendingHits.insert(_pendingHits.end(),
         std::make_move_iterator(partHits.begin()),
@@ -470,29 +467,35 @@ void ResultDock::closeSearchBlock(int totalHits, int totalFiles)
     if (!_blockOpen) return;
 
     // Replace placeholders in the pending header line ONLY (first line)
-    const std::wstring hitsStr = std::to_wstring(totalHits);
-    const std::wstring filesStr = std::to_wstring(totalFiles);
+    const std::string hitsStr = std::to_string(totalHits);
+    const std::string filesStr = std::to_string(totalFiles);
 
     // Limit search to the first header line to avoid matching digits in
     // user search patterns or file content that follows
-    const size_t headerEnd = _pendingText.find(L"\r\n");
-    const size_t searchLimit = (headerEnd != std::wstring::npos) ? headerEnd : _pendingText.size();
+    const size_t headerEnd = _pendingText.find("\r\n");
+    const size_t searchLimit = (headerEnd != std::string::npos) ? headerEnd : _pendingText.size();
 
     // Search backwards from the end of the header to find the placeholder numbers
     // which are always the last two number sequences before the closing parenthesis.
     // Pattern: "... (0 hits in 0 files)\r\n"
     //                ^hits       ^files
-    size_t p2End = std::wstring::npos;
-    size_t p2Start = std::wstring::npos;
+    // Note: digits '0'..'9' are ASCII (single-byte in UTF-8), and UTF-8 continuation
+    // bytes never fall into that range, so byte-wise scanning is safe even when the
+    // header contains non-ASCII translations.
+    size_t p2End = std::string::npos;
+    size_t p2Start = std::string::npos;
     {
-        // Find last digit sequence before searchLimit
         size_t pos = searchLimit;
         while (pos > 0) {
             --pos;
-            if (_pendingText[pos] >= L'0' && _pendingText[pos] <= L'9') {
+            const unsigned char c = static_cast<unsigned char>(_pendingText[pos]);
+            if (c >= '0' && c <= '9') {
                 p2End = pos + 1;
-                while (pos > 0 && _pendingText[pos - 1] >= L'0' && _pendingText[pos - 1] <= L'9')
+                while (pos > 0) {
+                    const unsigned char p = static_cast<unsigned char>(_pendingText[pos - 1]);
+                    if (p < '0' || p > '9') break;
                     --pos;
+                }
                 p2Start = pos;
                 break;
             }
@@ -500,16 +503,20 @@ void ResultDock::closeSearchBlock(int totalHits, int totalFiles)
     }
 
     // Find second-to-last digit sequence (hits count)
-    size_t p1Start = std::wstring::npos;
-    size_t p1End = std::wstring::npos;
-    if (p2Start != std::wstring::npos && p2Start > 0) {
+    size_t p1Start = std::string::npos;
+    size_t p1End = std::string::npos;
+    if (p2Start != std::string::npos && p2Start > 0) {
         size_t pos = p2Start;
         while (pos > 0) {
             --pos;
-            if (_pendingText[pos] >= L'0' && _pendingText[pos] <= L'9') {
+            const unsigned char c = static_cast<unsigned char>(_pendingText[pos]);
+            if (c >= '0' && c <= '9') {
                 p1End = pos + 1;
-                while (pos > 0 && _pendingText[pos - 1] >= L'0' && _pendingText[pos - 1] <= L'9')
+                while (pos > 0) {
+                    const unsigned char p = static_cast<unsigned char>(_pendingText[pos - 1]);
+                    if (p < '0' || p > '9') break;
                     --pos;
+                }
                 p1Start = pos;
                 break;
             }
@@ -517,26 +524,23 @@ void ResultDock::closeSearchBlock(int totalHits, int totalFiles)
     }
 
     // Replace files count first (higher position), then hits count.
-    // Both old and new strings are ASCII digits, so each wchar_t corresponds
-    // to exactly one UTF-8 byte; the delta is the same in either encoding.
+    // delta tracked from replace lengths - no re-conversion of the buffer.
     ptrdiff_t deltaBytes = 0;
-    if (p2Start != std::wstring::npos) {
+    if (p2Start != std::string::npos) {
         const ptrdiff_t oldLen = static_cast<ptrdiff_t>(p2End - p2Start);
         const ptrdiff_t newLen = static_cast<ptrdiff_t>(filesStr.size());
         _pendingText.replace(p2Start, p2End - p2Start, filesStr);
         deltaBytes += (newLen - oldLen);
     }
-    if (p1Start != std::wstring::npos) {
+    if (p1Start != std::string::npos) {
         const ptrdiff_t oldLen = static_cast<ptrdiff_t>(p1End - p1Start);
         const ptrdiff_t newLen = static_cast<ptrdiff_t>(hitsStr.size());
         _pendingText.replace(p1Start, p1End - p1Start, hitsStr);
         deltaBytes += (newLen - oldLen);
     }
 
-    // Adjust hit offsets and the cached UTF-8 length without re-converting
-    // the full pending text (which can be very large for big result sets).
+    // Adjust hit offsets if the patched header changed length.
     if (deltaBytes != 0) {
-        _utf8LenPending = static_cast<size_t>(static_cast<ptrdiff_t>(_utf8LenPending) + deltaBytes);
         for (auto& h : _pendingHits)
             h.displayLineStart += static_cast<int>(deltaBytes);
     }
@@ -557,21 +561,20 @@ void ResultDock::closeSearchBlock(int totalHits, int totalFiles)
 // After insertion we re-expand the previously-top block to neutralize the
 // "collapse previous block" behaviour inside prependBlock().
 // -----------------------------------------------------------------------------
-void ResultDock::insertFileBlockNow(const FileMap& fm, const SciSendFn& sciSend)
+void ResultDock::insertFileBlockNow(FileMap& fm, const SciSendFn& sciSend)
 {
     if (!_hSci) return;
 
     // Build per-file text & hits (no SearchHdr)
-    std::wstring  partText;
+    std::string  partText;
     std::vector<Hit> partHits;
-    size_t        partUtf8Len = 0;  // not used here; required by signature
-    buildListText(fm, _groupViewPending, L"", sciSend, partText, partHits, partUtf8Len);
+    buildListText(fm, _groupViewPending, L"", sciSend, partText, partHits);
     if (partText.empty()) return;
 
     // Count lines of the new block; check whether there was old content
     const bool hadOld = S(SCI_GETLENGTH) > 0;
     int newBlockLines = 0;
-    for (wchar_t c : partText) if (c == L'\n') ++newBlockLines;
+    for (char c : partText) if (c == '\n') ++newBlockLines;
 
     // Prepend the block (will also style/fold this fragment and collapse previous block)
     prependBlock(partText, partHits);
@@ -598,11 +601,13 @@ void ResultDock::insertSearchHeader(const std::wstring& header)
     if (!_hSci) return;
 
     // Build single header line (as in startSearchBlock)
-    std::wstring hdr = getIndentString(LineLevel::SearchHdr) + header + L"\r\n";
+    std::string hdr = getIndentStringU8(LineLevel::SearchHdr);
+    hdr += Encoding::wstringToUtf8(header);
+    hdr += "\r\n";
 
     // Count header lines (always 1) and whether there was content before
     const bool hadOld = S(SCI_GETLENGTH) > 0;
-    int hdrLines = 0; for (wchar_t c : hdr) if (c == L'\n') ++hdrLines;
+    int hdrLines = 0; for (char c : hdr) if (c == '\n') ++hdrLines;
 
     std::vector<Hit> none;
     prependBlock(hdr, none);
@@ -1003,9 +1008,11 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
     }
 }
 
-void ResultDock::rebuildFoldingRange(int firstLine, int lastLine) const
+void ResultDock::rebuildFoldingRange(int firstLine, int lastLine, const std::string& dockTextU8) const
 {
-    if (!_hSci || lastLine < firstLine) return;
+    // Note: dockTextU8 is expected to start at the document position of `firstLine`,
+    // i.e. its byte 0 corresponds to the first character of `firstLine`.
+    if (!_hSci || lastLine < firstLine || dockTextU8.empty()) return;
 
     const int BASE = SC_FOLDLEVELBASE;
     const int IND_SRCH = INDENT_SPACES[(int)LineLevel::SearchHdr];
@@ -1026,19 +1033,36 @@ void ResultDock::rebuildFoldingRange(int firstLine, int lastLine) const
 
     ::SendMessage(_hSci, WM_SETREDRAW, FALSE, 0);
 
-    for (int l = firstLine; l <= lastLine; ++l) {
-        // Treat whitespace-only like blank
-        const int lineLen = static_cast<int>(S(SCI_LINELENGTH, l));
+    // Walk dockTextU8 ourselves: indent = leading ASCII spaces, line ends at '\n' (or buffer end).
+    // hasContent = anything non-space, non-CR, non-LF after indent before the line break.
+    // This avoids per-line SCI_LINELENGTH / SCI_GETLINEINDENTPOSITION / SCI_GETLINEENDPOSITION /
+    // SCI_GETLINEINDENTATION / SCI_GETFOLDLEVEL round-trips.
+    const size_t N = dockTextU8.size();
+    size_t pos = 0;
+    int line = firstLine;
+
+    while (pos < N && line <= lastLine) {
+        // Count leading ASCII spaces
+        size_t indent = 0;
+        while (pos < N && dockTextU8[pos] == ' ') { ++indent; ++pos; }
+
+        // Determine whether anything beyond indent exists before line end
+        bool hasBeyond = (pos < N) && (dockTextU8[pos] != '\r') && (dockTextU8[pos] != '\n');
+
+        // Skip to end of line
+        while (pos < N && dockTextU8[pos] != '\n') ++pos;
+        if (pos < N) ++pos;  // skip the '\n'
+
         int target = BASE;
-        if (lineLen > 0 && hasContentBeyondIndent(_hSci, l)) {
-            const int indent = static_cast<int>(S(SCI_GETLINEINDENTATION, l));
+        if (hasBeyond) {
             bool isHdr = false;
-            const int lvl = calcLevel(indent, isHdr);
+            const int lvl = calcLevel((int)indent, isHdr);
             target = isHdr ? (lvl | SC_FOLDLEVELHEADERFLAG) : lvl;
         }
 
-        const int cur = static_cast<int>(S(SCI_GETFOLDLEVEL, l));
-        if (cur != target) S(SCI_SETFOLDLEVEL, l, target);
+        S(SCI_SETFOLDLEVEL, line, target);
+
+        ++line;
     }
 
     ::SendMessage(_hSci, WM_SETREDRAW, TRUE, 0);
@@ -1046,16 +1070,15 @@ void ResultDock::rebuildFoldingRange(int firstLine, int lastLine) const
 
 // ---------------- Block building / insertion --------------
 
-void ResultDock::prependBlock(const std::wstring& dockText, std::vector<Hit>& newHits)
+void ResultDock::prependBlock(const std::string& dockTextU8, std::vector<Hit>& newHits)
 {
-    if (!_hSci || dockText.empty())
+    if (!_hSci || dockTextU8.empty())
         return;
 
-    const std::string u8 = Encoding::wstringToUtf8(dockText);
     const Sci_Position oldLen = (Sci_Position)S(SCI_GETLENGTH);
 
     const int sepBytes = (oldLen > 0 ? 2 : 0);
-    const int deltaBytes = (int)u8.size() + sepBytes;
+    const int deltaBytes = (int)dockTextU8.size() + sepBytes;
 
     // Shift existing hits
     for (auto& h : _hits)
@@ -1069,17 +1092,18 @@ void ResultDock::prependBlock(const std::wstring& dockText, std::vector<Hit>& ne
     S(SCI_SETEMPTYSELECTION, 0, 0);
 
     // Insert new block at start
-    S(SCI_INSERTTEXT, 0, (sptr_t)u8.c_str());
+    S(SCI_INSERTTEXT, 0, (sptr_t)dockTextU8.c_str());
 
     // Defensive: recompute length before inserting separator
     if (sepBytes) {
         const Sci_Position lenAfterBlock = (Sci_Position)S(SCI_GETLENGTH);
-        const Sci_Position sepPos = (Sci_Position)u8.size();
+        const Sci_Position sepPos = (Sci_Position)dockTextU8.size();
         if (sepPos <= lenAfterBlock) {
             S(SCI_INSERTTEXT, (uptr_t)sepPos, (sptr_t)"\r\n");
         }
         // If that doesn't fit, no insert -> avoids invalid position.
     }
+
 
     S(SCI_SETREADONLY, TRUE);
 
@@ -1088,16 +1112,20 @@ void ResultDock::prependBlock(const std::wstring& dockText, std::vector<Hit>& ne
 
     ::SendMessage(_hSci, WM_SETREDRAW, TRUE, 0);
 
+
     const Sci_Position pos0 = 0;
-    const Sci_Position len = (Sci_Position)u8.size();
+    const Sci_Position len = (Sci_Position)dockTextU8.size();
 
     int newBlockLines = 0;
-    for (char c : u8) if (c == '\n') ++newBlockLines;
+    for (char c : dockTextU8) if (c == '\n') ++newBlockLines;
     const int firstLine = 0;
     const int lastLine = (newBlockLines > 0 ? newBlockLines - 1 : 0);
 
-    rebuildFoldingRange(firstLine, lastLine);
+    rebuildFoldingRange(firstLine, lastLine, dockTextU8);
+
+
     applyStylingRange(pos0, len, newHits);
+
 
     if (oldLen > 0) {
         const int firstLineOfOldBlock = newBlockLines + 1;
@@ -1115,6 +1143,7 @@ void ResultDock::prependBlock(const std::wstring& dockText, std::vector<Hit>& ne
     // Ensure view starts at top-left after new block is inserted
     S(SCI_SETFIRSTVISIBLELINE, 0, 0);
     S(SCI_SETXOFFSET, 0, 0);
+
 }
 
 void ResultDock::collapseOldSearches()
@@ -1138,28 +1167,22 @@ void ResultDock::collapseOldSearches()
 // ---------------------- Formatting ------------------------
 
 void ResultDock::buildListText(
-    const FileMap& files,
+    FileMap& files,
     bool groupView,
     const std::wstring& header,
     const SciSendFn& sciSend,
-    std::wstring& outText,
-    std::vector<Hit>& outHits,
-    size_t& outUtf8Len) const
+    std::string& outTextU8,
+    std::vector<Hit>& outHits) const
 {
-    std::wstring body;
-    size_t utf8Len = 0;
+    std::string body;
 
     auto appendIndented = [&](LineLevel lvl, const std::wstring& txt)
         {
-            // Append directly into body to avoid intermediate wstring allocations.
-            body.append(getIndentString(lvl));
-            body.append(txt);
-            body.append(L"\r\n");
-            // UTF-8 length: indent is ASCII, "\r\n" is 2 bytes, txt may contain
-            // non-ASCII characters and needs an explicit conversion for sizing.
-            utf8Len += getIndentUtf8Length(lvl)
-                + Encoding::wstringToUtf8(txt).size()
-                + 2;  // "\r\n" in UTF-8
+            // Header text comes from translations and is converted once per call.
+            const std::string txtU8 = Encoding::wstringToUtf8(txt);
+            body.append(getIndentUtf8Length(lvl), ' ');
+            body.append(txtU8);
+            body.append("\r\n", 2);
         };
 
     if (header.empty())
@@ -1183,11 +1206,13 @@ void ResultDock::buildListText(
             {
                 appendIndented(LineLevel::CritHdr, LM.get(L"dock_crit_header", { c.text, std::to_wstring(c.hits.size()) }));
 
-                // make a mutable copy of c.hits (colorIndex already set per-hit)
-                auto hitsCopy = c.hits;
+                // Move c.hits into hitsCopy: each crit is processed once,
+                // and c.hits is not used afterwards.
+                std::vector<Hit> hitsCopy = std::move(c.hits);
 
                 // pass the copy to formatHitsLines instead of const c.hits
-                formatHitsLines(sciSend, hitsCopy, body, utf8Len);
+                formatHitsLines(sciSend, hitsCopy, body);
+
                 // move results from hitsCopy into outHits
                 outHits.insert(outHits.end(),
                     std::make_move_iterator(hitsCopy.begin()),
@@ -1196,55 +1221,62 @@ void ResultDock::buildListText(
         }
         else
         {
-            // flat: collect all hits per file and sort by position
+            // Fast path: a single criterion means hits are already in pos-order
+            // (sequential forward search) with no possible duplicates. Move the
+            // hits vector to avoid the copy of 200k+ elements.
+            // The FileMap is a local in the caller and is not used after this call.
             std::vector<Hit> merged;
-            for (const auto& c : f.crits) {
-                // Make a copy and assign colorIndex from CritAgg
-                for (const auto& hit : c.hits) {
-                    Hit hitCopy = hit;
-                    // colorIndex is already set per-hit based on matched text
-                    merged.push_back(std::move(hitCopy));
-                }
+            if (f.crits.size() == 1) {
+                merged = std::move(f.crits.front().hits);
             }
-            // Sort by position
-            std::sort(merged.begin(), merged.end(),
-                [](auto const& a, auto const& b) {
-                    if (a.pos != b.pos) return a.pos < b.pos;
-                    if (a.length != b.length) return a.length < b.length;
+            else {
+                // Multi-criterion: collect, sort by position, dedup overlaps
+                size_t total = 0;
+                for (const auto& c : f.crits) total += c.hits.size();
+                merged.reserve(total);
+                for (auto& c : f.crits) {
+                    // Move from each crit (still safe: iterating once, c.hits not used again)
+                    for (auto& hit : c.hits) {
+                        merged.push_back(std::move(hit));
+                    }
+                }
+                std::sort(merged.begin(), merged.end(),
+                    [](auto const& a, auto const& b) {
+                        if (a.pos != b.pos) return a.pos < b.pos;
+                        if (a.length != b.length) return a.length < b.length;
 
-                    return a.findTextW < b.findTextW;
-                });
+                        return a.findTextW < b.findTextW;
+                    });
+                merged.erase(
+                    std::unique(merged.begin(), merged.end(),
+                        [](const Hit& a, const Hit& b) { return a.pos == b.pos && a.length == b.length; }),
+                    merged.end());
+            }
 
-            // Remove duplicate hits at same position (keep first occurrence)
-            merged.erase(
-                std::unique(merged.begin(), merged.end(),
-                    [](const Hit& a, const Hit& b) { return a.pos == b.pos && a.length == b.length; }),
-                merged.end());
+            formatHitsLines(sciSend, merged, body);
 
-            formatHitsLines(sciSend, merged, body, utf8Len);
             outHits.insert(outHits.end(),
                 std::make_move_iterator(merged.begin()),
                 std::make_move_iterator(merged.end()));
         }
     }
 
-    outText = body;
-    outUtf8Len = utf8Len;
+    outTextU8 = std::move(body);
 }
 
 void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     std::vector<Hit>& hits,
-    std::wstring& out,
-    size_t& utf8Pos) const
+    std::string& out) const
 {
     const UINT docCp = (UINT)sciSend(SCI_GETCODEPAGE, 0, 0);
     const bool isUtf8Doc = (docCp == SC_CP_UTF8);
 
-    const std::wstring indentHitW = getIndentString(LineLevel::HitLine);
-    const size_t       indentHitU8 = getIndentUtf8Length(LineLevel::HitLine);
+    const std::string  indentHitU8_str = getIndentStringU8(LineLevel::HitLine);
+    const size_t       indentHitU8 = indentHitU8_str.size();
 
     const std::wstring kLineW = LM.get(L"dock_line") + L" ";
-    const size_t kLineU8 = Encoding::wstringToUtf8(kLineW).size();  // No static: supports runtime language change
+    const std::string  kLineU8_str = Encoding::wstringToUtf8(kLineW);  // converted once per call
+    const size_t       kLineU8 = kLineU8_str.size();
     constexpr size_t    kColonSpaceU8 = 2; // ": "
 
     constexpr size_t kMaxHitTextUtf8 = 2048; // cap display text to limit memory/rendering cost on very long lines
@@ -1270,7 +1302,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         if (digits > maxDigits) maxDigits = digits;
     }
 
-    // Helper to count digits in a number (avoids std::to_wstring allocation)
+    // Helper to count digits in a number (avoids std::to_string allocation)
     auto countDigits = [](int n) -> size_t {
         if (n <= 0) return 1;
         size_t count = 0;
@@ -1278,22 +1310,30 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         return count;
         };
 
-    auto padNumber = [](int number, size_t width) -> std::wstring {
-        std::wstring numStr = std::to_wstring(number);
-        size_t pad = (width > numStr.size() ? width - numStr.size() : 0);
-        return std::wstring(pad, L' ') + numStr;
+    auto appendIntU8 = [](std::string& dst, int n) {
+        if (n == 0) { dst.push_back('0'); return; }
+        char buf[16];
+        int len = 0;
+        bool neg = (n < 0);
+        unsigned int v = neg ? static_cast<unsigned int>(-(n + 1)) + 1u : static_cast<unsigned int>(n);
+        while (v > 0) {
+            buf[len++] = static_cast<char>('0' + (v % 10u));
+            v /= 10u;
+        }
+        if (neg) buf[len++] = '-';
+        for (int i = 0, j = len - 1; i < j; ++i, --j) std::swap(buf[i], buf[j]);
+        dst.append(buf, len);
         };
 
     int   prevDocLine = -1;
     Hit* firstHitOnRow = nullptr;
     size_t hitIdx = 0;
-    size_t currentRowLenU8 = 0;
 
     std::string  cachedRaw;
     std::string  cachedRawFiltered;  // Only populated when FlowTabs padding exists
-    std::string  origU8;
+    std::string  origU8Owned;          // populated only for non-UTF-8 docs
+    const std::string* origU8Ptr = nullptr; // points at effectiveRaw (UTF-8) or origU8Owned
     std::string  displayU8;
-    std::wstring displayW;
     Sci_Position cachedAbsLineStart = 0;
 
     // Pointer to the effective raw bytes (either cachedRaw or cachedRawFiltered)
@@ -1330,7 +1370,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 
             // raw line
             const int rawLen = static_cast<int>(sciSend(SCI_LINELENGTH, line0, 0));
-            cachedRaw.assign(rawLen + 1, '\0');
+            cachedRaw.resize(rawLen + 1);
             sciSend(SCI_GETLINE, line0, reinterpret_cast<LPARAM>(cachedRaw.data()));
             cachedRaw.resize(rawLen);
             while (!cachedRaw.empty() && (cachedRaw.back() == '\r' || cachedRaw.back() == '\n'))
@@ -1401,22 +1441,17 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                 effectiveRaw = &cachedRaw;
             }
 
-            // Build origU8 — for UTF-8 docs the raw bytes are already UTF-8
-            if (isUtf8Doc)
-                origU8 = *effectiveRaw;
-            else
-                origU8 = Encoding::bytesToUtf8(effectiveRaw->data(), effectiveRaw->size(), docCp);
+            // Point origU8Ptr at effectiveRaw (UTF-8 doc) or own a converted copy.
+            if (isUtf8Doc) {
+                origU8Ptr = effectiveRaw;
+            }
+            else {
+                origU8Owned = Encoding::bytesToUtf8(effectiveRaw->data(), effectiveRaw->size(), docCp);
+                origU8Ptr = &origU8Owned;
+            }
+            const std::string& origU8 = *origU8Ptr;
 
-            // classify helpers
-            auto isCtlWide = [](wchar_t ch)->bool {
-                const unsigned u = (unsigned)ch;
-                if (u == 0x0000) return true;                            // NUL
-                if ((u <= 0x1Fu) && ch != L'\t' && ch != L'\n' && ch != L'\r') return true; // C0
-                if (u == 0x007Fu) return true;                            // DEL
-                if (u >= 0x0080u && u <= 0x009Fu) return true;            // C1 (incl. NEL)
-                if (u == 0x2028 || u == 0x2029) return true;              // LS/PS
-                return false;
-                };
+            // classify helpers (codepoint-based; both old paths used the same rules)
             auto isCtlCp = [](uint32_t cp)->bool {
                 if (cp == 0x0000) return true;
                 if ((cp <= 0x1Fu) && cp != 0x09 && cp != 0x0A && cp != 0x0D) return true;
@@ -1425,49 +1460,13 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                 if (cp == 0x2028 || cp == 0x2029) return true;
                 return false;
                 };
-            auto isNbspWide = [](wchar_t ch)->bool { return (unsigned)ch == 0x00A0; };
             auto isNbspCp = [](uint32_t cp)->bool { return cp == 0x00A0; };
 
-            // build display (safe replacement on Wide)
-            std::wstring wide;
-            {
-                const UINT cp = (UINT)docCp;
-                const UINT wcp = (cp == 0 ? CP_ACP : cp);
-                if (cp == SC_CP_UTF8) {
-                    wide = Encoding::utf8ToWString(*effectiveRaw);
-                }
-                else {
-                    int wlen = ::MultiByteToWideChar(wcp, MB_ERR_INVALID_CHARS,
-                        effectiveRaw->data(), (int)effectiveRaw->size(), nullptr, 0);
-                    if (wlen <= 0)
-                        wlen = ::MultiByteToWideChar(wcp, 0,
-                            effectiveRaw->data(), (int)effectiveRaw->size(), nullptr, 0);
-                    wide.resize((size_t)wlen);
-                    if (wlen > 0)
-                        ::MultiByteToWideChar(wcp, 0,
-                            effectiveRaw->data(), (int)effectiveRaw->size(),
-                            &wide[0], wlen);
-                }
-            }
-
-            std::wstring wideClean;
-            wideClean.reserve(wide.size());
-            for (wchar_t ch : wide) {
-                const unsigned u = (unsigned)ch;
-                if (u == 0x00AD) {
-                    // SHY → drop
-                    continue;
-                }
-                if (isNbspWide(ch) || isCtlWide(ch)) {
-                    wideClean.push_back(L' ');   // one ASCII space per codepoint
-                }
-                else {
-                    wideClean.push_back(ch);
-                }
-            }
-            displayU8 = Encoding::wstringToUtf8(wideClean);
-
-            // mapping origU8 → displayU8 (exact same rule)
+            // Single-pass transform on UTF-8: build displayU8 and mapOrigToDisp
+            // in one walk over origU8. Same cleanup rules as before
+            // (SHY drop / NBSP+Ctl -> ASCII space / else verbatim).
+            displayU8.clear();
+            displayU8.reserve(origU8.size());
             mapOrigToDisp.assign(origU8.size() + 1, 0);
 
             size_t o = 0, d = 0;
@@ -1496,16 +1495,18 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                     // SHY drop
                     for (size_t k = 0; k < clen && (o + k) < origU8.size(); ++k)
                         mapOrigToDisp[o + k] = d;
-                    // no d++
+                    // no d++, no append
                 }
                 else if (isNbspCp(cp) || isCtlCp(cp)) {
                     for (size_t k = 0; k < clen && (o + k) < origU8.size(); ++k)
                         mapOrigToDisp[o + k] = d;
+                    displayU8.push_back(' ');
                     ++d; // one visible ASCII space per replaced codepoint
                 }
                 else {
                     for (size_t k = 0; k < clen && (o + k) < origU8.size(); ++k)
                         mapOrigToDisp[o + k] = d + k;
+                    displayU8.append(origU8, o, clen);
                     d += clen;
                 }
 
@@ -1515,7 +1516,6 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 
             // finalize
             capUtf8WithEllipsis(displayU8, kMaxHitTextUtf8);
-            displayW = Encoding::utf8ToWString(displayU8);
 
             u8PrefixLenByByte.clear();
             // prevDocLine is set by the caller when the row is actually written
@@ -1547,6 +1547,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 
         loadLineIfNeeded(line0);
 
+
         size_t relBytes = (size_t)(h.pos - cachedAbsLineStart);
         size_t hitStartU8_orig = u8PrefixFromRawBytes(relBytes);
 
@@ -1558,6 +1559,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             ? filteredLen
             : Encoding::bytesToUtf8(effectiveRaw->data() + filteredStart, filteredLen, docCp).size();
 
+
         auto mapToDisp = [&](size_t offU8) -> size_t {
             if (offU8 >= mapOrigToDisp.size()) return mapOrigToDisp.empty() ? 0 : mapOrigToDisp.back();
             return mapOrigToDisp[offU8];
@@ -1566,32 +1568,55 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         size_t dispEnd = mapToDisp(hitStartU8_orig + hitLenU8_orig);
         size_t dispLen = (dispEnd > dispStart ? dispEnd - dispStart : 0);
 
-
         if (line0 != prevDocLine) {
-            std::wstring paddedNumW = padNumber(line1, maxDigits);
-            std::wstring prefixW = indentHitW + kLineW + paddedNumW + L": ";
-            const size_t prefixU8Len = indentHitU8 + kLineU8 + paddedNumW.size() + kColonSpaceU8;
-
-            currentRowLenU8 = displayU8.size();
-            out += prefixW + displayW + L"\r\n";
-
             const size_t line1Digits = countDigits(line1);
-            h.displayLineStart = (int)utf8Pos;
-            h.numberStart = (int)(indentHitU8 + kLineU8 + paddedNumW.size() - line1Digits);
+            const size_t padCount = (maxDigits > line1Digits) ? (maxDigits - line1Digits) : 0;
+            const size_t prefixU8Len = indentHitU8 + kLineU8 + maxDigits + kColonSpaceU8;
+
+            // out.size() before appending is the UTF-8 byte position where this row starts.
+            const size_t rowStartPos = out.size();
+
+            // Build the prefix + body directly into out, no temp strings.
+            // Layout: indent + "Line " + (pad spaces) + (digits of line1) + ": " + display + "\r\n"
+            out.append(indentHitU8_str);
+            out.append(kLineU8_str);
+            out.append(padCount, ' ');
+            appendIntU8(out, line1);
+            out.append(": ", 2);
+            out.append(displayU8);
+            out.append("\r\n", 2);
+
+            // Look ahead: how many subsequent hits share this line1?
+            // We know lineNumbers[] is in pos-order, and pos-order matches
+            // by-line aggregation. Reserve exact capacity to avoid reallocations
+            // in the per-hit push_back chain below.
+            size_t lineHitCount = 1;
+            for (size_t j = hitIdx; j < lineNumbers.size() && lineNumbers[j] == line1; ++j)
+                ++lineHitCount;
+
+            h.displayLineStart = (int)rowStartPos;
+            h.numberStart = (int)(indentHitU8 + kLineU8 + maxDigits - line1Digits);
             h.numberLen = (int)line1Digits;
 
             h.matchStarts.clear();
             h.matchLens.clear();
             h.matchColors.clear();
+            h.matchStarts.reserve(lineHitCount);
+            h.matchLens.reserve(lineHitCount);
+            h.matchColors.reserve(lineHitCount);
 
             firstHitOnRow = &h;
             firstHitOnRow->allFindTexts.clear();
-            firstHitOnRow->allFindTexts.push_back(h.findTextW);
             firstHitOnRow->allPositions.clear();
-            firstHitOnRow->allPositions.push_back(h.pos);
             firstHitOnRow->allLengths.clear();
-            firstHitOnRow->allLengths.push_back(h.length);
             firstHitOnRow->allSearchFlags.clear();
+            firstHitOnRow->allFindTexts.reserve(lineHitCount);
+            firstHitOnRow->allPositions.reserve(lineHitCount);
+            firstHitOnRow->allLengths.reserve(lineHitCount);
+            firstHitOnRow->allSearchFlags.reserve(lineHitCount);
+            firstHitOnRow->allFindTexts.push_back(h.findTextW);
+            firstHitOnRow->allPositions.push_back(h.pos);
+            firstHitOnRow->allLengths.push_back(h.length);
             firstHitOnRow->allSearchFlags.push_back(h.searchFlags);
 
             if (dispStart < displayU8.size()) {
@@ -1605,7 +1630,6 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                 }
             }
 
-            utf8Pos += prefixU8Len + currentRowLenU8 + 2;
             prevDocLine = line0;
         }
         else {
@@ -1626,6 +1650,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
                         firstHitOnRow->matchColors.push_back(h.colorIndex);
                     }
                 }
+
                 firstHitOnRow->allFindTexts.push_back(h.findTextW);
                 firstHitOnRow->allPositions.push_back(h.pos);
                 firstHitOnRow->allLengths.push_back(h.length);
@@ -1640,8 +1665,6 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         hits.end());
 
 }
-
-
 
 // --------------------- Line helpers -----------------------
 
@@ -1668,6 +1691,10 @@ ResultDock::LineKind ResultDock::classify(const std::string& raw) {
 
 std::wstring ResultDock::getIndentString(LineLevel lvl) {
     return std::wstring(INDENT_SPACES[static_cast<int>(lvl)], L' ');
+}
+
+std::string ResultDock::getIndentStringU8(LineLevel lvl) {
+    return std::string(INDENT_SPACES[static_cast<int>(lvl)], ' ');
 }
 
 size_t ResultDock::getIndentUtf8Length(ResultDock::LineLevel lvl) {
