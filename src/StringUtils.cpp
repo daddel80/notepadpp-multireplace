@@ -42,9 +42,10 @@ namespace StringUtils {
     }
 
     // ----------------------------------------------------------------------------
-    // CSV helpers
+    // Quoted-string escape helpers (generic; used by INI cache,
+    // CSV cell bodies, and MR settings-block string values).
     // ----------------------------------------------------------------------------
-    std::wstring escapeCsvValue(const std::wstring& value) {
+    std::wstring escapeQuoted(const std::wstring& value) {
         std::wstring out = L"\"";
         for (wchar_t ch : value) {
             switch (ch) {
@@ -59,7 +60,7 @@ namespace StringUtils {
         return out;
     }
 
-    std::wstring unescapeCsvValue(const std::wstring& value) {
+    std::wstring unescapeQuoted(const std::wstring& value) {
         std::wstring out;
         if (value.empty()) return out;
 
@@ -87,38 +88,16 @@ namespace StringUtils {
         return out;
     }
 
-    std::vector<std::wstring> parseCsvLine(const std::wstring& line) {
-        // Remove trailing line ending characters (handles CRLF from Windows)
-        std::wstring cleanLine = line;
-        while (!cleanLine.empty() && (cleanLine.back() == L'\r' || cleanLine.back() == L'\n')) {
-            cleanLine.pop_back();
+    std::wstring quoteField(const std::wstring& value) {
+        std::wstring out;
+        out.reserve(value.size() + 4);
+        out += L'"';
+        for (wchar_t ch : value) {
+            if (ch == L'"') out += L"\"\"";
+            else            out += ch;
         }
-
-        std::vector<std::wstring> columns;
-        std::wstring current;
-        bool insideQuotes = false;
-
-        for (size_t i = 0; i < cleanLine.size(); ++i) {
-            wchar_t ch = cleanLine[i];
-            if (ch == L'"') {
-                if (insideQuotes && i + 1 < cleanLine.size() && cleanLine[i + 1] == L'"') {
-                    current += L'"';
-                    ++i;
-                }
-                else {
-                    insideQuotes = !insideQuotes;
-                }
-            }
-            else if (ch == L',' && !insideQuotes) {
-                columns.push_back(unescapeCsvValue(current));
-                current.clear();
-            }
-            else {
-                current += ch;
-            }
-        }
-        columns.push_back(unescapeCsvValue(current));
-        return columns;
+        out += L'"';
+        return out;
     }
 
     // ----------------------------------------------------------------------------
@@ -404,27 +383,6 @@ namespace StringUtils {
             }
         }
         return result;
-    }
-
-    // ----------------------------------------------------------------------------
-    // Wrap field in quotes and escape inner quotes (" -> "")
-    // ----------------------------------------------------------------------------
-    std::wstring quoteField(const std::wstring& value) {
-        std::wstring out;
-        out.reserve(value.size() + 4);
-        out += L'"';
-
-        for (wchar_t ch : value) {
-            if (ch == L'"') {
-                out += L"\"\"";
-            }
-            else {
-                out += ch;
-            }
-        }
-
-        out += L'"';
-        return out;
     }
 
     // ----------------------------------------------------------------------------

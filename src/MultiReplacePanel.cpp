@@ -23,6 +23,7 @@
 #include "BatchUIGuard.h"
 #include "ColumnTabs.h"
 #include "ConfigManager.h"
+#include "CsvListFormat.h"
 #include "DPIManager.h"
 #include "Encoding.h"
 #include "HiddenSciGuard.h"
@@ -2194,9 +2195,9 @@ void MultiReplace::exportDataToClipboard() {
         // Escape if checkbox is enabled
         // This converts real newlines to \n (two chars), tabs to \t, etc.
         if (escapeChars) {
-            findText = StringUtils::escapeCsvValue(item.findText);
-            replaceText = StringUtils::escapeCsvValue(item.replaceText);
-            comment = StringUtils::escapeCsvValue(item.comments);
+            findText = StringUtils::escapeQuoted(item.findText);
+            replaceText = StringUtils::escapeQuoted(item.replaceText);
+            comment = StringUtils::escapeQuoted(item.comments);
         }
         else {
             findText = StringUtils::quoteField(item.findText);
@@ -4628,14 +4629,14 @@ void MultiReplace::copySelectedItemsToClipboard() {
         if (ListView_GetItemState(_replaceListView, i, LVIS_SELECTED) & LVIS_SELECTED) {
             const ReplaceItemData& item = replaceListData[i];
             csvData += std::to_wstring(item.isEnabled) + L",";
-            csvData += StringUtils::escapeCsvValue(item.findText) + L",";
-            csvData += StringUtils::escapeCsvValue(item.replaceText) + L",";
+            csvData += StringUtils::escapeQuoted(item.findText) + L",";
+            csvData += StringUtils::escapeQuoted(item.replaceText) + L",";
             csvData += std::to_wstring(item.wholeWord) + L",";
             csvData += std::to_wstring(item.matchCase) + L",";
             csvData += std::to_wstring(item.formulaSupport) + L",";
             csvData += std::to_wstring(item.extended) + L",";
             csvData += std::to_wstring(item.regex) + L",";
-            csvData += StringUtils::escapeCsvValue(item.comments);
+            csvData += StringUtils::escapeQuoted(item.comments);
             csvData += L'\n';
         }
     }
@@ -4685,7 +4686,7 @@ bool MultiReplace::canPasteFromClipboard() {
         if (line.empty()) {
             continue;
         }
-        auto columns = StringUtils::parseCsvLine(line);
+        auto columns = CsvListFormat::parseLine(line);
         if (columns.size() == 8 || columns.size() == 9 || columns.size() == 10) {
             return true;
         }
@@ -4700,51 +4701,73 @@ void MultiReplace::pasteItemsIntoList() {
 
     HANDLE hData = GetClipboardData(CF_UNICODETEXT);
     if (!hData) return;
-
     auto pData = static_cast<const wchar_t*>(GlobalLock(hData));
     if (!pData) return;
-
     std::wstring content(pData);
     GlobalUnlock(hData);
 
     std::wstringstream contentStream(content);
-    std::wstring line;
-    std::vector<ReplaceItemData> itemsToInsert; // Collect items to insert
+    std::vector<ReplaceItemData> itemsToInsert;
 
-    // Determine insert position based on focused item or default to end if none is focused
     int insertPosition = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
-    if (insertPosition != -1) {
-        // Increase by one to insert after the focused item
-        ++insertPosition;
-    }
-    else {
-        // If no item is focused, consider the paste position as the end of the list
-        insertPosition = ListView_GetItemCount(_replaceListView);
+    if (insertPosition != -1) ++insertPosition;
+    else insertPosition = ListView_GetItemCount(_replaceListView);
+
+    // Peek first line: if it looks like a header, parse name-based;
+    // otherwise rewind and use the legacy positional path.
+    CsvListFormat::HeaderIndex hdr;
+    bool nameBased = false;
+    const auto pos = contentStream.tellg();
+    std::wstring firstLine;
+    if (std::getline(contentStream, firstLine)) {
+        if (!firstLine.empty() && firstLine.back() == L'\r') firstLine.pop_back();
+        auto cells = CsvListFormat::parseLine(firstLine);
+        CsvListFormat::HeaderIndex maybeHdr = CsvListFormat::buildIndex(cells);
+        if (maybeHdr.looksLikeNames && maybeHdr.hasFind) {
+            hdr = maybeHdr;
+            nameBased = true;
+        }
+        else {
+            contentStream.clear();
+            contentStream.seekg(pos);
+        }
     }
 
+    std::wstring line;
     while (std::getline(contentStream, line)) {
-        if (line.empty()) continue; // Skip empty lines
+        if (!line.empty() && line.back() == L'\r') line.pop_back();
+        if (line.empty()) continue;
 
-        std::vector<std::wstring> columns = StringUtils::parseCsvLine(line);
-
-        // Check for proper column count before adding to the list
-        if (columns.size() < 8 || columns.size() > 10) continue;
+        std::vector<std::wstring> columns = CsvListFormat::parseLine(line);
 
         ReplaceItemData item;
         try {
-            item.isEnabled = std::stoi(columns[0]) != 0;
-            item.findText = columns[1];
-            item.replaceText = columns[2];
-            item.wholeWord = std::stoi(columns[3]) != 0;
-            item.matchCase = std::stoi(columns[4]) != 0;
-            item.formulaSupport = std::stoi(columns[5]) != 0;
-            item.extended = std::stoi(columns[6]) != 0;
-            item.regex = std::stoi(columns[7]) != 0;
-            item.comments = (columns.size() >= 9 ? columns[8] : L"");
-            item.lastModified = (columns.size() >= 10 ? columns[9] : L"");
+            if (nameBased) {
+                item.isEnabled = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Selected, false);
+                item.findText = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Find, L"");
+                item.replaceText = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Replace, L"");
+                item.wholeWord = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::WholeWord, false);
+                item.matchCase = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::MatchCase, false);
+                item.formulaSupport = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::FormulaSupport, false);
+                item.extended = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Extended, false);
+                item.regex = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Regex, false);
+                item.comments = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Comments, L"");
+            }
+            else {
+                if (columns.size() < 8 || columns.size() > 10) continue;
+                item.isEnabled = std::stoi(columns[0]) != 0;
+                item.findText = columns[1];
+                item.replaceText = columns[2];
+                item.wholeWord = std::stoi(columns[3]) != 0;
+                item.matchCase = std::stoi(columns[4]) != 0;
+                item.formulaSupport = std::stoi(columns[5]) != 0;
+                item.extended = std::stoi(columns[6]) != 0;
+                item.regex = std::stoi(columns[7]) != 0;
+                item.comments = (columns.size() >= 9 ? columns[8] : L"");
+            }
         }
         catch (const std::exception&) {
-            continue; // Silently ignore lines with conversion errors
+            continue;
         }
 
         itemsToInsert.push_back(item);
@@ -15155,7 +15178,7 @@ namespace {
     // the preamble parser even if they contain '=', '\n', '"' or '\\'.
     // Matches the string-handling convention used in the INI.
     void writeSettingsLineUtf8(std::ofstream& out, const wchar_t* key, const std::wstring& value) {
-        writeRawSettingsLine(out, key, StringUtils::escapeCsvValue(value));
+        writeRawSettingsLine(out, key, StringUtils::escapeQuoted(value));
     }
 
     // Numeric values are written raw (no quotes). Same convention as the INI.
@@ -15187,7 +15210,8 @@ namespace {
         return it->second;
     }
 
-    // Bumped when the settings-block schema changes.
+    // Bumped when the settings/CSV schema changes incompatibly.
+    // Adding optional columns does NOT require a bump.
     constexpr int kSettingsFormatVersion = 1;
 
     // Write the per-list settings block into an open CSV stream.
@@ -15249,7 +15273,7 @@ namespace {
 
             const size_t eq = line.find(L'=');
             if (eq == std::wstring::npos) continue; // skip malformed
-            out[line.substr(0, eq)] = StringUtils::unescapeCsvValue(line.substr(eq + 1));
+            out[line.substr(0, eq)] = StringUtils::unescapeQuoted(line.substr(eq + 1));
         }
 
         // Missing [End] - treat as malformed: keep what we parsed so
@@ -15271,7 +15295,6 @@ namespace {
         tab.searchMode = readMapInt(s, L"SearchMode", 0);
         tab.wholeWord = readMapBool(s, L"WholeWord", false);
         tab.matchCase = readMapBool(s, L"MatchCase", false);
-        // Read new key; fall back to legacy "UseVariables" for backward compatibility.
         tab.formulaSupport = readMapBool(s, L"FormulaSupport",
             readMapBool(s, L"UseVariables", false));
         tab.wrapAround = readMapBool(s, L"WrapAround", false);
@@ -15316,15 +15339,15 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
     // Write list items to CSV file
     for (const ReplaceItemData& item : list) {
         std::wstring line = std::to_wstring(item.isEnabled) + L"," +
-            StringUtils::escapeCsvValue(item.findText) + L"," +
-            StringUtils::escapeCsvValue(item.replaceText) + L"," +
+            StringUtils::escapeQuoted(item.findText) + L"," +
+            StringUtils::escapeQuoted(item.replaceText) + L"," +
             std::to_wstring(item.wholeWord) + L"," +
             std::to_wstring(item.matchCase) + L"," +
             std::to_wstring(item.formulaSupport) + L"," +
             std::to_wstring(item.extended) + L"," +
             std::to_wstring(item.regex) + L"," +
-            StringUtils::escapeCsvValue(item.comments) + L"," +
-            StringUtils::escapeCsvValue(item.lastModified) + L"\n";
+            StringUtils::escapeQuoted(item.comments) + L"," +
+            StringUtils::escapeQuoted(item.lastModified) + L"\n";
         std::string utf8Line = Encoding::wstringToUtf8(line);
         outFile << utf8Line;
     }
@@ -15353,15 +15376,15 @@ bool MultiReplace::saveListToCsvWithSettings(const std::wstring& filePath, const
 
     for (const ReplaceItemData& item : list) {
         std::wstring line = std::to_wstring(item.isEnabled) + L"," +
-            StringUtils::escapeCsvValue(item.findText) + L"," +
-            StringUtils::escapeCsvValue(item.replaceText) + L"," +
+            StringUtils::escapeQuoted(item.findText) + L"," +
+            StringUtils::escapeQuoted(item.replaceText) + L"," +
             std::to_wstring(item.wholeWord) + L"," +
             std::to_wstring(item.matchCase) + L"," +
             std::to_wstring(item.formulaSupport) + L"," +
             std::to_wstring(item.extended) + L"," +
             std::to_wstring(item.regex) + L"," +
-            StringUtils::escapeCsvValue(item.comments) + L"," +
-            StringUtils::escapeCsvValue(item.lastModified) + L"\n";
+            StringUtils::escapeQuoted(item.comments) + L"," +
+            StringUtils::escapeQuoted(item.lastModified) + L"\n";
         std::string utf8Line = Encoding::wstringToUtf8(line);
         outFile << utf8Line;
     }
@@ -15699,32 +15722,57 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
         throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_invalid_column_count")));
     }
 
+    const std::vector<std::wstring> headerCells = CsvListFormat::parseLine(headerLine);
+    const CsvListFormat::HeaderIndex hdr = CsvListFormat::buildIndex(headerCells);
+    const bool nameBased = hdr.looksLikeNames;
+
+    // Find is required; everything else has a default.
+    if (nameBased && !hdr.hasFind) {
+        throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_invalid_column_count")));
+    }
+
     // Temporary list to hold parsed items
     std::vector<ReplaceItemData> tempList;
     std::wstring line;
 
     // Read and process each line in the file
     while (std::getline(contentStream, line)) {
-        std::vector<std::wstring> columns = StringUtils::parseCsvLine(line);
-
-        // Check if column count is valid (8=legacy, 9=with comments, 10=with timestamp)
-        if (columns.size() < 8 || columns.size() > 10) {
-            throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_invalid_column_count")));
-        }
+        std::vector<std::wstring> columns = CsvListFormat::parseLine(line);
 
         try {
             ReplaceItemData item;
-            item.isEnabled = std::stoi(columns[0]) != 0;
-            item.findText = columns[1];
-            item.replaceText = columns[2];
-            item.wholeWord = std::stoi(columns[3]) != 0;
-            item.matchCase = std::stoi(columns[4]) != 0;
-            item.formulaSupport = std::stoi(columns[5]) != 0;
-            item.extended = std::stoi(columns[6]) != 0;
-            item.regex = std::stoi(columns[7]) != 0;
-            item.comments = (columns.size() >= 9) ? columns[8] : L"";
-            item.lastModified = (columns.size() >= 10) ? columns[9] : L"";
+            if (nameBased) {
+                item.isEnabled = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Selected, false);
+                item.findText = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Find, L"");
+                item.replaceText = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Replace, L"");
+                item.wholeWord = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::WholeWord, false);
+                item.matchCase = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::MatchCase, false);
+                item.formulaSupport = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::FormulaSupport, false);
+                item.extended = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Extended, false);
+                item.regex = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Regex, false);
+                item.comments = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Comments, L"");
+                item.lastModified = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::LastModified, L"");
+            }
+            else {
+                // Legacy positional: 8=pre-comment, 9=+Comments, 10=+LastModified
+                if (columns.size() < 8 || columns.size() > 10) {
+                    throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_invalid_column_count")));
+                }
+                item.isEnabled = std::stoi(columns[0]) != 0;
+                item.findText = columns[1];
+                item.replaceText = columns[2];
+                item.wholeWord = std::stoi(columns[3]) != 0;
+                item.matchCase = std::stoi(columns[4]) != 0;
+                item.formulaSupport = std::stoi(columns[5]) != 0;
+                item.extended = std::stoi(columns[6]) != 0;
+                item.regex = std::stoi(columns[7]) != 0;
+                item.comments = (columns.size() >= 9) ? columns[8] : L"";
+                item.lastModified = (columns.size() >= 10) ? columns[9] : L"";
+            }
             tempList.push_back(item);
+        }
+        catch (const CsvLoadException&) {
+            throw;
         }
         catch (const std::exception&) {
             throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_invalid_data_in_columns")));
@@ -16111,7 +16159,6 @@ void MultiReplace::loadSettingsToPanelUI() {
     bool matchCase = CFG.readBool(L"Options", L"MatchCase", false);
     SendMessage(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), BM_SETCHECK, matchCase ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    // Read new key first, fall back to legacy "UseVariables" for backward compatibility.
     bool formulaSupport = CFG.readBool(L"Options", L"FormulaSupport",
         CFG.readBool(L"Options", L"UseVariables", false));
     SendMessage(GetDlgItem(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX), BM_SETCHECK, formulaSupport ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -16789,7 +16836,6 @@ void MultiReplace::loadTabsFromConfig()
         tab->searchMode = CFG.readInt(L"Tabs", prefix + L"_SearchMode", 0);
         tab->wholeWord = CFG.readBool(L"Tabs", prefix + L"_WholeWord", false);
         tab->matchCase = CFG.readBool(L"Tabs", prefix + L"_MatchCase", false);
-        // Read new key; fall back to legacy "_UseVariables" for backward compatibility.
         tab->formulaSupport = CFG.readBool(L"Tabs", prefix + L"_FormulaSupport",
             CFG.readBool(L"Tabs", prefix + L"_UseVariables", false));
         tab->wrapAround = CFG.readBool(L"Tabs", prefix + L"_WrapAround", false);
@@ -19364,7 +19410,7 @@ void MultiReplace::loadUIConfigFromIni()
     useListEnabled = CFG.readBool(L"Options", L"UseList", true);
     keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
     listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
-    tabMaxLength = std::clamp(CFG.readInt(L"Options", L"TabMaxLength", 14), 4, 60);
+    tabMaxLength = std::clamp(CFG.readInt(L"Options", L"TabMaxLength", 15), 4, 60);
     {
         // DefaultEngine drives the engine choice for newly created tabs.
         // It is only updated by deliberate engine-selector clicks; loading
@@ -19476,7 +19522,7 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
     s.keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
     s.listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
-    s.tabMaxLength = std::clamp(CFG.readInt(L"Options", L"TabMaxLength", 14), 4, 60);
+    s.tabMaxLength = std::clamp(CFG.readInt(L"Options", L"TabMaxLength", 15), 4, 60);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
     s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);

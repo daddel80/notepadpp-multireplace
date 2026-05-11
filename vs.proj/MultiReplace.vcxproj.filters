@@ -140,6 +140,7 @@
     <ClCompile Include="..\src\engine\Iformulaengine.cpp">
       <Filter>engine</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\CsvListFormat.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -275,6 +276,7 @@
     <ClInclude Include="..\src\engine\ExprTkPatternParser.h">
       <Filter>engine</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\CsvListFormat.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

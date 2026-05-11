@@ -27,9 +27,18 @@ namespace StringUtils {
     // ---- String helpers extracted from MultiReplacePanel ----
     std::wstring sanitizeSearchPattern(const std::wstring& raw);
 
-    std::wstring                 escapeCsvValue(const std::wstring& value);
-    std::wstring                 unescapeCsvValue(const std::wstring& value);
-    std::vector<std::wstring>    parseCsvLine(const std::wstring& line);
+    // Wrap value in double quotes; escape ", \r, \n, \\ so the result
+    // round-trips through unescapeQuoted. Used by the INI cache, the
+    // settings block of MR list files, and the body of CSV cells.
+    std::wstring escapeQuoted(const std::wstring& value);
+
+    // Inverse of escapeQuoted. Tolerates unquoted input (returns as-is).
+    std::wstring unescapeQuoted(const std::wstring& value);
+
+    // Lighter variant: wraps in quotes and doubles up embedded quotes,
+    // but does NOT escape \r, \n, \\. Used for editor exports where
+    // newlines must remain real newlines.
+    std::wstring quoteField(const std::wstring& value);
 
     bool        normalizeAndValidateNumber(std::string& str);
 
@@ -49,8 +58,6 @@ namespace StringUtils {
 
     // Escape control characters for debug display (makes \n, \r, \t visible)
     std::string escapeControlChars(const std::string& input);
-
-    std::wstring quoteField(const std::wstring& value);
 
     // ---- Unicode-aware string operations ----
     // Convert UTF-8 string to lowercase using Windows locale-aware API

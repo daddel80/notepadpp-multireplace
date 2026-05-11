@@ -321,6 +321,7 @@ You can lock specific column widths to prevent them from resizing automatically 
 - **Drag & Drop** — You can load lists by dragging `.mrl` or `.csv` files onto the plugin window.
 - **Tabs** — Keep multiple lists open side by side. Click **+** to add a tab, double-click to rename, drag to reorder, right-click for options (save as, load, duplicate, close). Dropping a list file on the tab bar opens it in its own tab. Tabs and their contents persist across sessions.
 - **Format** — Plain-text, line-based. Each file starts with a `[MultiReplace-Settings]...[End]` preamble storing per-list options (search mode, scope, CSV column/delimiter/quote settings), followed by a CSV-style body of entries with quoted fields. Special characters are escaped: `\` → `\\`, newline → `\n`, carriage return → `\r`, `"` → `""`. The preamble makes the file non-conformant to raw CSV, which is why the `.mrl` extension was introduced; workspace preferences (column widths, visibility, order) stay local to each user's INI and are not written into the file, so lists remain portable across machines and users.
+- **Flexible imports** — When loading `.csv` files or pasting from the clipboard, MultiReplace also accepts inputs whose first row is a column-name header. Known names: `Find`, `Replace`, `Selected`, `WholeWord`, `MatchCase`, `FormulaSupport`, `Extended`, `Regex`, `Comments` (case-insensitive; spaces, underscores, hyphens ignored). Columns can be in any order, unknown columns are ignored, and only `Find` is required — missing optional columns default to off / empty. A minimal valid file is just two lines: `Find` followed by a search pattern.
 
 ## Plugin Menu
 
@@ -409,7 +410,7 @@ Some advanced options are not exposed in the UI and can only be configured by ed
 |---------|-----|---------|-------------|
 | `[Lua]` | `SafeMode` | `0` | When set to `1`, disables Lua libraries that access the file system (`os`, `io`, `package`, `dofile`, etc.) for security. When `0`, full Lua functionality is enabled (required for `lvars`, `lkp`, and `lcmd`). |
 | `[Options]` | `DimIntensity` | `50` | Controls how strongly the list is dimmed when inactive (with **Keep list always visible** enabled or during a Ctrl+Shift bypass). Range: `0` (no dimming, list looks identical whether active or not) to `100` (text fully blended into background). Changes take effect after restarting Notepad++. |
-| `[Options]` | `TabMaxLength` | `14` | Maximum number of characters shown in tab labels before truncation with an ellipsis (…). Increase for longer logical names, decrease for a more compact tab bar. The full name remains visible in the tab tooltip regardless of this setting. Range: `4` to `60`. Changes take effect after restarting Notepad++. |
+| `[Options]` | `TabMaxLength` | `15` | Maximum number of characters shown in tab labels before truncation with an ellipsis (…). Increase for longer logical names, decrease for a more compact tab bar. The full name remains visible in the tab tooltip regardless of this setting. Range: `4` to `60`. Changes take effect after restarting Notepad++. |
 
 ## Multilingual UI Support
 

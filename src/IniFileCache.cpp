@@ -107,7 +107,7 @@ bool IniFileCache::parse(const std::wstring& iniFilePath, std::set<std::wstring>
             stringKeys->insert(section + L"|" + key);
         }
 
-        _data[section][key] = StringUtils::unescapeCsvValue(value);
+        _data[section][key] = StringUtils::unescapeQuoted(value);
     }
     return true;
 }

@@ -70,7 +70,7 @@ void ConfigManager::forceReload(const std::wstring& iniFile)
 
 //
 //  Save current cache to disk (UTF‑8 with BOM)
-//  - String values (user input) are escaped with escapeCsvValue()
+//  - String values (user input) are escaped with escapeQuoted()
 //  - Numeric values (int, bool, float, size_t) are written as-is
 //
 bool ConfigManager::save(const std::wstring& file) const
@@ -96,7 +96,7 @@ bool ConfigManager::save(const std::wstring& file) const
             // Check if this key was written as a string (needs escaping)
             if (_stringKeys.find(fullKey) != _stringKeys.end()) {
                 // String value: escape for proper roundtrip
-                line = kv.first + L"=" + StringUtils::escapeCsvValue(kv.second) + L"\n";
+                line = kv.first + L"=" + StringUtils::escapeQuoted(kv.second) + L"\n";
             }
             else {
                 // Numeric value: write as-is
