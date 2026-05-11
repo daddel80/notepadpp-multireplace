@@ -296,13 +296,13 @@
     <None Include="..\README.md">
       <Filter>docs</Filter>
     </None>
-    <None Include="..\USE-VARIABLES.md">
+    <None Include="..\FORMULA-SUPPORT.md">
       <Filter>docs</Filter>
     </None>
-    <None Include="..\help_use_variables_dark.html">
+    <None Include="..\help_formula_support_dark.html">
       <Filter>docs</Filter>
     </None>
-    <None Include="..\help_use_variables_light.html">
+    <None Include="..\help_formula_support_light.html">
       <Filter>docs</Filter>
     </None>
   </ItemGroup>

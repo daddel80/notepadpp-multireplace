@@ -24,8 +24,8 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
 - [Engine Overview](#engine-overview)
   - [Lua](#lua)
   - [ExprTk](#exprtk)
-- [Option 'Use Variables'](#option-use-variables)
-  - [Full Syntax Reference (Lua, ExprTk) →](USE-VARIABLES.md)
+- [Option 'Formula Support'](#option-formula-support)
+  - [Full Syntax Reference (Lua, ExprTk) →](FORMULA-SUPPORT.md)
 - [User Interaction and List Management](#user-interaction-and-list-management)
   - [Entry Interaction and Limits](#entry-interaction-and-limits)
   - [Context Menu and Keyboard Shortcuts](#context-menu-and-keyboard-shortcuts)
@@ -88,7 +88,7 @@ These options refine the search behavior across all modes.
 
 - **Match Whole Word Only** — The search term is matched only if it is a whole word, surrounded by non-word characters.
 - **Match Case** — Makes the search case-sensitive, treating `Hello` and `hello` as distinct terms.
-- **Use Variables** — Allows the use of variables within the replacement string for dynamic and conditional replacements. See the [chapter 'Use Variables'](#option-use-variables) for details.
+- **Formula Support** — Allows the use of variables within the replacement string for dynamic and conditional replacements. See the [chapter 'Formula Support'](#option-formula-support) for details.
 - **Wrap Around** — If active, the search continues from the beginning of the document after reaching the end.
 - **Replace matches** — Applies to all **Replace All** actions (current document, open documents, and in files). Allows you to specify exactly which occurrences of a match to replace. Accepts single numbers, commas, or ranges (e.g., `1,3,5-7`).
 - **Bookmark matched lines** — A small checkbox to the left of the **Mark Matches** button. When ticked, every match line additionally receives a Notepad++ bookmark, so the matches can be navigated with F2 / Shift+F2.
@@ -138,7 +138,7 @@ Execution targets define **which files** an operation is applied to. They are ac
   - **Filters:** Semicolon-separated list of patterns to include or exclude files and folders (e.g., `*.cpp; *.h; !*.bak`).
   - **In Subfolders:** Recursively include all subdirectories.
   - **In Hidden Files:** Include hidden files and folders.
-- **Debug Mode** — Runs a simulation of the replacement to inspect variables without modifying the document. See [Debug Mode](USE-VARIABLES.md#debug-mode) for details.
+- **Debug Mode** — Runs a simulation of the replacement to inspect variables without modifying the document. See [Debug Mode](FORMULA-SUPPORT.md#debug-mode) for details.
 
 **Filter Syntax**
 
@@ -198,7 +198,7 @@ The color-coding of search results can be configured in [Settings > Appearance](
 
 ## Engine Overview
 
-When **Use Variables** is enabled, replacements run through a formula engine. MultiReplace ships with two: **Lua** and **ExprTk**. Switch via the `(L)` / `(E)` indicator next to the **Use Variables** checkbox. The choice is per tab and persists across sessions.
+When **Formula Support** is enabled, replacements run through a formula engine. MultiReplace ships with two: **Lua** and **ExprTk**. Switch via the `(L)` / `(E)` indicator next to the **Formula Support** checkbox. The choice is per tab and persists across sessions.
 
 **Quick guidance:** pick **Lua** for anything involving text manipulation, conditional logic, lookup tables, or external scripts. Pick **ExprTk** when the task is mostly arithmetic on captured numbers and you want concise inline expressions.
 
@@ -215,17 +215,17 @@ When **Use Variables** is enabled, replacements run through a formula engine. Mu
 
 ### Lua
 
-Powered by the [Lua programming language](https://www.lua.org/). See [Lua String Manipulation](https://www.lua.org/manual/5.4/manual.html#6.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.4/manual.html#6.6) for the standard library reference. The MultiReplace-specific commands (`set`, `cond`, `vars`, `lkp`, ...) are documented in the [Lua Reference](USE-VARIABLES.md#lua-reference).
+Powered by the [Lua programming language](https://www.lua.org/). See [Lua String Manipulation](https://www.lua.org/manual/5.4/manual.html#6.4) and [Lua Mathematical Functions](https://www.lua.org/manual/5.4/manual.html#6.6) for the standard library reference. The MultiReplace-specific commands (`set`, `cond`, `vars`, `lkp`, ...) are documented in the [Lua Reference](FORMULA-SUPPORT.md#lua-reference).
 
 ### ExprTk
 
-Powered by [ExprTk](https://www.partow.net/programming/exprtk/index.html) by Arash Partow ([source on GitHub](https://github.com/ArashPartow/exprtk)) — a header-only C++ mathematical expression library. The MultiReplace integration syntax is documented in the [ExprTk Reference](USE-VARIABLES.md#exprtk-reference).
+Powered by [ExprTk](https://www.partow.net/programming/exprtk/index.html) by Arash Partow ([source on GitHub](https://github.com/ArashPartow/exprtk)) — a header-only C++ mathematical expression library. The MultiReplace integration syntax is documented in the [ExprTk Reference](FORMULA-SUPPORT.md#exprtk-reference).
 
 <br>
 
-## Option 'Use Variables'
+## Option 'Formula Support'
 
-The **Use Variables** option enables dynamic replacements that go beyond plain text substitution. Instead of a fixed replacement string, you write a small expression that is evaluated for each match — accessing the matched text, capture groups, counters, line and file information, and producing a computed result.
+The **Formula Support** option enables dynamic replacements that go beyond plain text substitution. Instead of a fixed replacement string, you write a small expression that is evaluated for each match — accessing the matched text, capture groups, counters, line and file information, and producing a computed result.
 
 For example, doubling every captured number:
 
@@ -238,10 +238,10 @@ Switch the engine via the `(L)` / `(E)` indicator next to the option — see [En
 
 ### Full Syntax Reference
 
-The complete reference for both engines lives in **[USE-VARIABLES.md](USE-VARIABLES.md)**:
+The complete reference for both engines lives in **[FORMULA-SUPPORT.md](FORMULA-SUPPORT.md)**:
 
-- **[Lua Reference](USE-VARIABLES.md#lua-reference)** — Quick Start, all commands (`set`, `cond`, `vars`, `lkp`, `lcmd` ...), operators, if-then logic, examples
-- **[ExprTk Reference](USE-VARIABLES.md#exprtk-reference)** — Quick Start, pattern syntax, math built-ins, control flow, string output, examples
+- **[Lua Reference](FORMULA-SUPPORT.md#lua-reference)** — Quick Start, all commands (`set`, `cond`, `vars`, `lkp`, `lcmd` ...), operators, if-then logic, examples
+- **[ExprTk Reference](FORMULA-SUPPORT.md#exprtk-reference)** — Quick Start, pattern syntax, math built-ins, control flow, string output, examples
 
 <br>
 
@@ -272,7 +272,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | Enable                   | Alt+E         | Enables the selected entries, making them active for operations. |
 | Disable                  | Alt+D         | Disables the selected entries to prevent them from being included in operations. |
 
-**Note on 'Edit Field':** The edit field supports multiple lines, simplifying the management of complex 'Use Variables' statements.
+**Note on 'Edit Field':** The edit field supports multiple lines, simplifying the management of complex 'Formula Support' statements.
 
 **Additional Interactions:**
 - **Space Key** — Toggles the activation state of selected entries.
@@ -287,7 +287,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 - **Options Columns:**
   - **W** — Match whole word only.
   - **C** — Match case.
-  - **V** — Use Variables.
+  - **F** — Formula Support.
   - **E** — Extended search mode.
   - **R** — Regular expression mode.
 - **Additional Columns:**

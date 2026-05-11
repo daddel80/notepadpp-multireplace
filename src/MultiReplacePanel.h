@@ -69,7 +69,7 @@ struct ReplaceItemData
     std::wstring replaceText;
     bool wholeWord = false;
     bool matchCase = false;
-    bool useVariables = false;
+    bool formulaSupport = false;
     bool extended = false;
     bool regex = false;
     std::wstring comments = L"";
@@ -100,7 +100,7 @@ struct ReplaceItemDataHasher {
         hash ^= std::hash<std::wstring>{}(item.replaceText) << 1;
         hash ^= std::hash<bool>{}(item.wholeWord) << 1;
         hash ^= std::hash<bool>{}(item.matchCase) << 1;
-        hash ^= std::hash<bool>{}(item.useVariables) << 1;
+        hash ^= std::hash<bool>{}(item.formulaSupport) << 1;
         hash ^= std::hash<bool>{}(item.extended) << 1;
         hash ^= std::hash<bool>{}(item.regex) << 1;
         hash ^= std::hash<std::wstring>{}(item.comments) << 1;
@@ -267,7 +267,7 @@ enum class ItemAction {
 enum class SearchOption {
     WholeWord,
     MatchCase,
-    Variables,
+    FormulaSupport,
     Extended,
     Regex
 };
@@ -287,7 +287,7 @@ enum ColumnID {
     REPLACE_TEXT,       // 4
     WHOLE_WORD,         // 5
     MATCH_CASE,         // 6
-    USE_VARIABLES,      // 7
+    FORMULA_SUPPORT,      // 7
     EXTENDED,           // 8
     REGEX,              // 9
     COMMENTS,           // 10
@@ -319,7 +319,7 @@ struct TabState {
     int          searchMode = 0;     // 0=Normal, 1=Extended, 2=Regex
     bool         wholeWord = false;
     bool         matchCase = false;
-    bool         useVariables = false;
+    bool         formulaSupport = false;
     bool         wrapAround = false;
     bool         replaceAtMatches = false;
     std::wstring replaceAtMatchesEdit = L"1";
@@ -392,7 +392,7 @@ struct TabState {
         , searchMode(other.searchMode)
         , wholeWord(other.wholeWord)
         , matchCase(other.matchCase)
-        , useVariables(other.useVariables)
+        , formulaSupport(other.formulaSupport)
         , wrapAround(other.wrapAround)
         , replaceAtMatches(other.replaceAtMatches)
         , replaceAtMatchesEdit(other.replaceAtMatchesEdit)
@@ -1202,7 +1202,7 @@ private:
 
     // ----- Engine selector UI -----------------------------------------
     // Pop up the small engine-chooser menu next to the (L)/(E) marker.
-    // The marker itself is IDC_USE_VARIABLES_ENGINE; this opens the menu
+    // The marker itself is IDC_FORMULA_SUPPORT_ENGINE; this opens the menu
     // that lets the user switch between Lua and ExprTk for the active tab.
     void showEngineSelectorMenu();
 
@@ -1212,7 +1212,7 @@ private:
     void applyEngineSelection(MultiReplaceEngine::EngineType type);
 
     // Refresh the (L)/(E) marker text from the active tab's engine. Also
-    // enables/disables the marker according to the "Use Variables"
+    // enables/disables the marker according to the "Formula Support"
     // checkbox state.
     void syncEngineSelectorLabel();
 

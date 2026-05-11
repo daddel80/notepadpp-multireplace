@@ -1,12 +1,12 @@
-# Use Variables — Engine Reference
+# Formula Support — Engine Reference
 
-The **Use Variables** option enables dynamic replacements that go beyond plain text substitution. Instead of a fixed replacement string, you write a small expression that is evaluated for each match — accessing the matched text, capture groups, counters, line and file information, and producing a computed result.
+The **Formula Support** option enables dynamic replacements that go beyond plain text substitution. Instead of a fixed replacement string, you write a small expression that is evaluated for each match — accessing the matched text, capture groups, counters, line and file information, and producing a computed result.
 
 Two engines are available, selected via the `(L)` / `(E)` indicator next to the option in the panel. See the [Engine Overview](README.md#engine-overview) in the main README for a side-by-side comparison and decision guidance. This document is the syntax reference for both engines.
 
 ## Table of Contents
 - [Lua Reference](#lua-reference)
-  - [Quick Start: Use Variables](#quick-start-use-variables)
+  - [Quick Start: Formula Support](#quick-start-formula-support)
   - [Variables Overview](#variables-overview)
   - [Available Functions](#available-functions)
   - [Command Reference](#command-reference)
@@ -36,9 +36,9 @@ Two engines are available, selected via the `(L)` / `(E)` indicator next to the 
 
 ---
 
-### Quick Start: Use Variables
+### Quick Start: Formula Support
 
-1. **Enable "Use Variables"** — Check the "**Use Variables**" option in the Replace interface.
+1. **Enable "Formula Support"** — Check the "**Formula Support**" option in the Replace interface.
 
 2. **Use a Command:**
 
@@ -78,7 +78,7 @@ All variables below are registered under both upper- and lowercase. Pick whichev
 | `MATCH` / `match` | Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
 | `FNAME` / `fname` | Filename or window title for new, unsaved files. |
 | `FPATH` / `fpath` | Full path including the filename, or empty for new, unsaved files. |
-| `CAP1` / `cap1`, `CAP2` / `cap2`, ... | Equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Always strings; use `tonum(CAP1)` for calculations. Note: Standard counterparts (`$1`, `$2`, ...) cannot be used in this environment. |
+| `CAP1` / `cap1`, `CAP2` / `cap2`, ... | Equivalents to regex capture groups, designed for use in the 'Formula Support' environment. Always strings; use `tonum(CAP1)` for calculations. Note: Standard counterparts (`$1`, `$2`, ...) cannot be used in this environment. |
 
 **Notes:**
 - `FNAME` and `FPATH` are updated for each file processed by `Replace All in Open Documents` and `Replace All in Files`. This ensures that variables always refer to the file currently being modified.
@@ -353,7 +353,7 @@ Use init entries (empty Find) to preload variables or helper functions before an
 - **Place `vars()`, `lvars()` or `lcmd()` next to an empty Find field.**
 - This entry does **not** search for matches but runs before replacements begin.
 - It ensures that **variables and helpers are loaded once**, regardless of their position in the list.
-- Use **Use Variables = ON** for init rows so loaded variables/helpers are available to later rows.
+- Use **Formula Support = ON** for init rows so loaded variables/helpers are available to later rows.
 
 **Examples:**
 
@@ -437,9 +437,9 @@ ExprTk is a numeric expression engine. Its design goal is concise inline math: w
 
 ### Quick Start: ExprTk
 
-1. **Switch to ExprTk** — Click the `(L)` indicator next to **Use Variables** so it shows `(E)`.
+1. **Switch to ExprTk** — Click the `(L)` indicator next to **Formula Support** so it shows `(E)`.
 
-2. **Enable Use Variables** — Check the **Use Variables** option in the Replace interface.
+2. **Enable Formula Support** — Check the **Formula Support** option in the Replace interface.
 
 3. **Try a simple expression:**
 
@@ -714,7 +714,7 @@ The negative lookahead in the Find pattern excludes the header row so the formul
 
 ### More Examples
 
-The examples below are drawn from typical text-processing tasks. Each row in the table is a **single rule** — copy the Find and Replace columns straight into MultiReplace, set the engine to ExprTk, enable Use Variables and Regex.
+The examples below are drawn from typical text-processing tasks. Each row in the table is a **single rule** — copy the Find and Replace columns straight into MultiReplace, set the engine to ExprTk, enable Formula Support and Regex.
 
 #### Numeric transformation
 

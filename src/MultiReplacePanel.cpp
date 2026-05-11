@@ -429,15 +429,15 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
-    ctrlMap[IDC_USE_VARIABLES_CHECKBOX] = { sx(16), sy(126), sx(108), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_use_variables"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_FORMULA_SUPPORT_CHECKBOX] = { sx(16), sy(126), sx(108), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_formula_support"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
     // Formula-engine selector: small clickable static rendered owner-drawn so it can
     // appear in link-blue. Text reflects the active engine ("(L)" / "(E)") and is
     // refreshed by syncEngineSelectorLabel() whenever the tab's engine changes.
     // Tooltip is registered with a non-empty placeholder ("..." would do); the
     // first call to syncEngineSelectorLabel replaces it with the real engine
     // name via TTM_UPDATETIPTEXT.
-    ctrlMap[IDC_USE_VARIABLES_ENGINE] = { sx(130), sy(126), sx(18), sy(20), WC_STATIC, L"(L)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, L"...", true, FontRole::Standard };
-    ctrlMap[IDC_USE_VARIABLES_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_FORMULA_SUPPORT_ENGINE] = { sx(130), sy(126), sx(18), sy(20), WC_STATIC, L"(L)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, L"...", true, FontRole::Standard };
+    ctrlMap[IDC_FORMULA_SUPPORT_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(110), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
 
@@ -735,13 +735,13 @@ bool MultiReplace::createAndShowWindows() {
         }
 
         // Only create tooltips if enabled and tooltip text is available.
-        // IDC_FILTER_HELP and IDC_USE_VARIABLES_ENGINE bypass the
+        // IDC_FILTER_HELP and IDC_FORMULA_SUPPORT_ENGINE bypass the
         // tooltipsEnabled gate because their tooltips are essential
         // affordances - the (?) help marker and the (L)/(E) engine
         // marker rely on a tooltip to be self-explanatory.
         if ((tooltipsEnabled
             || pair.first == IDC_FILTER_HELP
-            || pair.first == IDC_USE_VARIABLES_ENGINE)
+            || pair.first == IDC_FORMULA_SUPPORT_ENGINE)
             && pair.second.tooltipText != nullptr
             && pair.second.tooltipText[0] != L'\0')
         {
@@ -784,7 +784,7 @@ bool MultiReplace::createAndShowWindows() {
 
                 // Stash the handle for the engine selector so its tip
                 // text can be refreshed when the active engine changes.
-                if (pair.first == IDC_USE_VARIABLES_ENGINE) {
+                if (pair.first == IDC_FORMULA_SUPPORT_ENGINE) {
                     _hEngineSelectorTooltip = hwndTooltip;
                 }
             }
@@ -1344,7 +1344,7 @@ void MultiReplace::setUIElementVisibility() {
     // EnableWindow(GetDlgItem(_hSelf, IDC_FIND_PREV_BUTTON), !regexChecked);
 
     // Refresh the (L)/(E) marker: text follows the active tab's engine,
-    // and the marker is greyed out while "Use Variables" is unchecked.
+    // and the marker is greyed out while "Formula Support" is unchecked.
     syncEngineSelectorLabel();
 }
 
@@ -1815,7 +1815,7 @@ void MultiReplace::modifyItemInReplaceList(size_t index, const ReplaceItemData& 
         originalData.replaceText != newData.replaceText ||
         originalData.wholeWord != newData.wholeWord ||
         originalData.matchCase != newData.matchCase ||
-        originalData.useVariables != newData.useVariables ||
+        originalData.formulaSupport != newData.formulaSupport ||
         originalData.extended != newData.extended ||
         originalData.regex != newData.regex ||
         originalData.comments != newData.comments;
@@ -2218,7 +2218,7 @@ void MultiReplace::exportDataToClipboard() {
         line = StringUtils::replaceTemplateVar(line, L"%CASE%", item.matchCase ? L"1" : L"0");
         line = StringUtils::replaceTemplateVar(line, L"%WORD%", item.wholeWord ? L"1" : L"0");
         line = StringUtils::replaceTemplateVar(line, L"%EXT%", item.extended ? L"1" : L"0");
-        line = StringUtils::replaceTemplateVar(line, L"%VAR%", item.useVariables ? L"1" : L"0");
+        line = StringUtils::replaceTemplateVar(line, L"%VAR%", item.formulaSupport ? L"1" : L"0");
         line = StringUtils::replaceTemplateVar(line, L"%MODIFIED%", item.lastModified);
 
         output += line;
@@ -2309,7 +2309,7 @@ const std::vector<ColumnID> MultiReplace::defaultColumnOrder = {
     ColumnID::REPLACE_TEXT,
     ColumnID::WHOLE_WORD,
     ColumnID::MATCH_CASE,
-    ColumnID::USE_VARIABLES,
+    ColumnID::FORMULA_SUPPORT,
     ColumnID::EXTENDED,
     ColumnID::REGEX,
     ColumnID::COMMENTS,
@@ -2330,7 +2330,7 @@ bool MultiReplace::isColumnVisible(ColumnID id) const {
     case ColumnID::REPLACE_TEXT:
     case ColumnID::WHOLE_WORD:
     case ColumnID::MATCH_CASE:
-    case ColumnID::USE_VARIABLES:
+    case ColumnID::FORMULA_SUPPORT:
     case ColumnID::EXTENDED:
     case ColumnID::REGEX:
         return true;
@@ -2436,8 +2436,8 @@ void MultiReplace::insertSingleColumn(ColumnID id, int& currentIndex, int perCol
         lvc.cx = checkMarkWidth_scaled;
         lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
         break;
-    case ColumnID::USE_VARIABLES:
-        lvc.pszText = LM.getW(L"header_use_variables");
+    case ColumnID::FORMULA_SUPPORT:
+        lvc.pszText = LM.getW(L"header_formula_support");
         lvc.cx = checkMarkWidth_scaled;
         lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
         break;
@@ -2561,10 +2561,10 @@ void MultiReplace::createListViewColumns(WidthMode mode) {
 }
 
 void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
-    int useVariables = IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED ? 1 : 0;
+    int formulaSupport = IsDlgButtonChecked(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX) == BST_CHECKED ? 1 : 0;
 
-    // Return early if findText is empty and "Use Variables" is not enabled
-    if (itemData.findText.empty() && useVariables == 0) {
+    // Return early if findText is empty and "Formula Support" is not enabled
+    if (itemData.findText.empty() && formulaSupport == 0) {
         showStatusMessage(LM.get(L"status_no_find_string"), MessageStatus::Error);
         return;
     }
@@ -2583,7 +2583,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     std::vector<ReplaceItemData> itemsToAdd = { itemData };
     itemsToAdd[0].isDirty = true;
     itemsToAdd[0].lastModified = getCurrentTimestamp();
-    addItemsToReplaceList(itemsToAdd, 0);
+    addItemsToReplaceList(itemsToAdd);
 
     // Show a status message indicating the value added to the list
     std::wstring message;
@@ -2599,9 +2599,10 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
     // Select newly added line
+    size_t newItemIndex = replaceListData.size() - 1;
     ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED); // Delete previous selection
-    ListView_SetItemState(_replaceListView, 0, LVIS_SELECTED, LVIS_SELECTED);
-    ListView_EnsureVisible(_replaceListView, 0, FALSE);
+    ListView_SetItemState(_replaceListView, static_cast<int>(newItemIndex), LVIS_SELECTED, LVIS_SELECTED);
+    ListView_EnsureVisible(_replaceListView, static_cast<int>(newItemIndex), FALSE);
 
     // Update Header if there might be any changes
     updateHeaderSelection();
@@ -2617,7 +2618,7 @@ std::wstring getColumnIDText(ColumnID columnID) {
     case ColumnID::REPLACE_TEXT:     return L"REPLACE_TEXT";
     case ColumnID::WHOLE_WORD:       return L"WHOLE_WORD";
     case ColumnID::MATCH_CASE:       return L"MATCH_CASE";
-    case ColumnID::USE_VARIABLES:    return L"USE_VARIABLES";
+    case ColumnID::FORMULA_SUPPORT:    return L"FORMULA_SUPPORT";
     case ColumnID::EXTENDED:         return L"EXTENDED";
     case ColumnID::REGEX:            return L"REGEX";
     case ColumnID::COMMENTS:         return L"COMMENTS";
@@ -2639,7 +2640,7 @@ int MultiReplace::getColumnWidth(ColumnID columnID) {
         break;
     case ColumnID::WHOLE_WORD:
     case ColumnID::MATCH_CASE:
-    case ColumnID::USE_VARIABLES:
+    case ColumnID::FORMULA_SUPPORT:
     case ColumnID::EXTENDED:
     case ColumnID::REGEX:
         width = checkMarkWidth_scaled;
@@ -2809,7 +2810,7 @@ void MultiReplace::updateListViewItem(size_t index) {
 
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::WHOLE_WORD], item.wholeWord ? L"\u2714" : L"");
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::MATCH_CASE], item.matchCase ? L"\u2714" : L"");
-    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::USE_VARIABLES], item.useVariables ? L"\u2714" : L"");
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::FORMULA_SUPPORT], item.formulaSupport ? L"\u2714" : L"");
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::EXTENDED], item.extended ? L"\u2714" : L"");
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::REGEX], item.regex ? L"\u2714" : L"");
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::SELECTION], item.isEnabled ? L"\u25A0" : L"\u2610");
@@ -2843,7 +2844,7 @@ void MultiReplace::updateListViewTooltips() {
 
     AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::WHOLE_WORD], LM.getW(L"tooltip_header_whole_word"));
     AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::MATCH_CASE], LM.getW(L"tooltip_header_match_case"));
-    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::USE_VARIABLES], LM.getW(L"tooltip_header_use_variables"));
+    AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::FORMULA_SUPPORT], LM.getW(L"tooltip_header_formula_support"));
     AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::EXTENDED], LM.getW(L"tooltip_header_extended"));
     AddHeaderTooltip(_hHeaderTooltip, hwndHeader, columnIndices[ColumnID::REGEX], LM.getW(L"tooltip_header_regex"));
 }
@@ -2862,7 +2863,7 @@ void MultiReplace::handleCopyBack(NMITEMACTIVATE* pnmia) {
     SetWindowTextW(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText.c_str());
     SendMessageW(GetDlgItem(_hSelf, IDC_WHOLE_WORD_CHECKBOX), BM_SETCHECK, itemData.wholeWord ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), BM_SETCHECK, itemData.matchCase ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessageW(GetDlgItem(_hSelf, IDC_USE_VARIABLES_CHECKBOX), BM_SETCHECK, itemData.useVariables ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(GetDlgItem(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX), BM_SETCHECK, itemData.formulaSupport ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_NORMAL_RADIO), BM_SETCHECK, (!itemData.regex && !itemData.extended) ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_EXTENDED_RADIO), BM_SETCHECK, itemData.extended ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(_hSelf, IDC_REGEX_RADIO), BM_SETCHECK, itemData.regex ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -2895,7 +2896,7 @@ void MultiReplace::handleUpdateFromFields() {
     newData.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
     newData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
     newData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-    newData.useVariables = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
+    newData.formulaSupport = (IsDlgButtonChecked(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX) == BST_CHECKED);
     newData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
     newData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
 
@@ -2912,7 +2913,7 @@ void MultiReplace::handleUpdateFromFields() {
         item.replaceText = newData.replaceText;
         item.wholeWord = newData.wholeWord;
         item.matchCase = newData.matchCase;
-        item.useVariables = newData.useVariables;
+        item.formulaSupport = newData.formulaSupport;
         item.extended = newData.extended;
         item.regex = newData.regex;
         item.findCount = -1;
@@ -2950,7 +2951,7 @@ void MultiReplace::handleUpdateFromFields() {
             item.replaceText = newData.replaceText;
             item.wholeWord = newData.wholeWord;
             item.matchCase = newData.matchCase;
-            item.useVariables = newData.useVariables;
+            item.formulaSupport = newData.formulaSupport;
             item.extended = newData.extended;
             item.regex = newData.regex;
             item.findCount = -1;
@@ -3217,7 +3218,7 @@ void MultiReplace::handleCopyToListButton() {
 
     itemData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
     itemData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-    itemData.useVariables = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
+    itemData.formulaSupport = (IsDlgButtonChecked(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX) == BST_CHECKED);
     itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
     itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
 
@@ -3538,7 +3539,7 @@ void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
 
 void MultiReplace::showEngineSelectorMenu()
 {
-    HWND hMarker = GetDlgItem(_hSelf, IDC_USE_VARIABLES_ENGINE);
+    HWND hMarker = GetDlgItem(_hSelf, IDC_FORMULA_SUPPORT_ENGINE);
     if (!hMarker) {
         return;
     }
@@ -3620,7 +3621,7 @@ void MultiReplace::applyEngineSelection(MultiReplaceEngine::EngineType type)
 
 void MultiReplace::syncEngineSelectorLabel()
 {
-    HWND hMarker = GetDlgItem(_hSelf, IDC_USE_VARIABLES_ENGINE);
+    HWND hMarker = GetDlgItem(_hSelf, IDC_FORMULA_SUPPORT_ENGINE);
     if (!hMarker) {
         return;
     }
@@ -3804,7 +3805,7 @@ void MultiReplace::rebuildAllTooltips()
         // Stash the engine-selector tooltip so its text can be
         // refreshed by syncEngineSelectorLabel when the engine
         // changes (mirrors the path in createAndShowWindows).
-        if (ctrlId == IDC_USE_VARIABLES_ENGINE) {
+        if (ctrlId == IDC_FORMULA_SUPPORT_ENGINE) {
             _hEngineSelectorTooltip = hwndTooltip;
         }
     }
@@ -3854,8 +3855,8 @@ void MultiReplace::toggleBooleanAt(int itemIndex, ColumnID columnID) {
         newData.matchCase = !newData.matchCase;
         break;
 
-    case ColumnID::USE_VARIABLES:
-        newData.useVariables = !newData.useVariables;
+    case ColumnID::FORMULA_SUPPORT:
+        newData.formulaSupport = !newData.formulaSupport;
         break;
 
     case ColumnID::EXTENDED:
@@ -4196,7 +4197,7 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
                 case ColumnID::SELECTION:
                 case ColumnID::WHOLE_WORD:
                 case ColumnID::MATCH_CASE:
-                case ColumnID::USE_VARIABLES:
+                case ColumnID::FORMULA_SUPPORT:
                 case ColumnID::EXTENDED:
                 case ColumnID::REGEX:
                 case ColumnID::LAST_MODIFIED:
@@ -4406,7 +4407,7 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
         if (hSetMenu) {
             AppendMenu(hSetMenu, MF_STRING, IDM_SET_WHOLEWORD, LM.get(L"ctxmenu_opt_wholeword").c_str());
             AppendMenu(hSetMenu, MF_STRING, IDM_SET_MATCHCASE, LM.get(L"ctxmenu_opt_matchcase").c_str());
-            AppendMenu(hSetMenu, MF_STRING, IDM_SET_VARIABLES, LM.get(L"ctxmenu_opt_variables").c_str());
+            AppendMenu(hSetMenu, MF_STRING, IDM_SET_FORMULA_SUPPORT, LM.get(L"ctxmenu_opt_formula_support").c_str());
             AppendMenu(hSetMenu, MF_STRING, IDM_SET_EXTENDED, LM.get(L"ctxmenu_opt_extended").c_str());
             AppendMenu(hSetMenu, MF_STRING, IDM_SET_REGEX, LM.get(L"ctxmenu_opt_regex").c_str());
             AppendMenu(hMenu, MF_POPUP | (state.hasSelection ? MF_ENABLED : MF_GRAYED),
@@ -4418,7 +4419,7 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
         if (hClearMenu) {
             AppendMenu(hClearMenu, MF_STRING, IDM_CLEAR_WHOLEWORD, LM.get(L"ctxmenu_opt_wholeword").c_str());
             AppendMenu(hClearMenu, MF_STRING, IDM_CLEAR_MATCHCASE, LM.get(L"ctxmenu_opt_matchcase").c_str());
-            AppendMenu(hClearMenu, MF_STRING, IDM_CLEAR_VARIABLES, LM.get(L"ctxmenu_opt_variables").c_str());
+            AppendMenu(hClearMenu, MF_STRING, IDM_CLEAR_FORMULA_SUPPORT, LM.get(L"ctxmenu_opt_formula_support").c_str());
             AppendMenu(hClearMenu, MF_STRING, IDM_CLEAR_EXTENDED, LM.get(L"ctxmenu_opt_extended").c_str());
             AppendMenu(hClearMenu, MF_STRING, IDM_CLEAR_REGEX, LM.get(L"ctxmenu_opt_regex").c_str());
             AppendMenu(hMenu, MF_POPUP | (state.hasSelection ? MF_ENABLED : MF_GRAYED),
@@ -4475,7 +4476,7 @@ MenuState MultiReplace::checkMenuConditions(POINT ptScreen) {
         columnID == ColumnID::SELECTION ||
         columnID == ColumnID::WHOLE_WORD ||
         columnID == ColumnID::MATCH_CASE ||
-        columnID == ColumnID::USE_VARIABLES ||
+        columnID == ColumnID::FORMULA_SUPPORT ||
         columnID == ColumnID::EXTENDED ||
         columnID == ColumnID::REGEX ||
         columnID == ColumnID::FIND_TEXT ||
@@ -4572,7 +4573,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         else if (columnID == ColumnID::SELECTION ||
             columnID == ColumnID::WHOLE_WORD ||
             columnID == ColumnID::MATCH_CASE ||
-            columnID == ColumnID::USE_VARIABLES ||
+            columnID == ColumnID::FORMULA_SUPPORT ||
             columnID == ColumnID::EXTENDED ||
             columnID == ColumnID::REGEX) {
             toggleBooleanAt(hitTestResult, columnID);
@@ -4631,7 +4632,7 @@ void MultiReplace::copySelectedItemsToClipboard() {
             csvData += StringUtils::escapeCsvValue(item.replaceText) + L",";
             csvData += std::to_wstring(item.wholeWord) + L",";
             csvData += std::to_wstring(item.matchCase) + L",";
-            csvData += std::to_wstring(item.useVariables) + L",";
+            csvData += std::to_wstring(item.formulaSupport) + L",";
             csvData += std::to_wstring(item.extended) + L",";
             csvData += std::to_wstring(item.regex) + L",";
             csvData += StringUtils::escapeCsvValue(item.comments);
@@ -4736,7 +4737,7 @@ void MultiReplace::pasteItemsIntoList() {
             item.replaceText = columns[2];
             item.wholeWord = std::stoi(columns[3]) != 0;
             item.matchCase = std::stoi(columns[4]) != 0;
-            item.useVariables = std::stoi(columns[5]) != 0;
+            item.formulaSupport = std::stoi(columns[5]) != 0;
             item.extended = std::stoi(columns[6]) != 0;
             item.regex = std::stoi(columns[7]) != 0;
             item.comments = (columns.size() >= 9 ? columns[8] : L"");
@@ -5134,7 +5135,7 @@ void MultiReplace::handleEditOnDoubleClick(int itemIndex, ColumnID columnID) {
     else if (columnID == ColumnID::SELECTION ||
         columnID == ColumnID::WHOLE_WORD ||
         columnID == ColumnID::MATCH_CASE ||
-        columnID == ColumnID::USE_VARIABLES ||
+        columnID == ColumnID::FORMULA_SUPPORT ||
         columnID == ColumnID::EXTENDED ||
         columnID == ColumnID::REGEX) {
         toggleBooleanAt(itemIndex, columnID);
@@ -5464,8 +5465,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // Calculate Position for all Elements
             positionAndResizeControls(newWidth, newHeight);
 
-            if (widthChanged) {
+            if ((useListEnabled || keepListVisible) && widthChanged) {
                 updateListViewAndColumns();
+            }
+
+            if (widthChanged) {
                 markAllTabsNeedRelayout();
             }
 
@@ -5776,8 +5780,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 else if (columnIndices[ColumnID::MATCH_CASE] != -1 && subItem == columnIndices[ColumnID::MATCH_CASE]) {
                     (void)lstrcpynW(plvdi->item.pszText, d.matchCase ? L"\u2714" : L"", plvdi->item.cchTextMax);
                 }
-                else if (columnIndices[ColumnID::USE_VARIABLES] != -1 && subItem == columnIndices[ColumnID::USE_VARIABLES]) {
-                    (void)lstrcpynW(plvdi->item.pszText, d.useVariables ? L"\u2714" : L"", plvdi->item.cchTextMax);
+                else if (columnIndices[ColumnID::FORMULA_SUPPORT] != -1 && subItem == columnIndices[ColumnID::FORMULA_SUPPORT]) {
+                    (void)lstrcpynW(plvdi->item.pszText, d.formulaSupport ? L"\u2714" : L"", plvdi->item.cchTextMax);
                 }
                 else if (columnIndices[ColumnID::EXTENDED] != -1 && subItem == columnIndices[ColumnID::EXTENDED]) {
                     (void)lstrcpynW(plvdi->item.pszText, d.extended ? L"\u2714" : L"", plvdi->item.cchTextMax);
@@ -6014,7 +6018,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             return TRUE;
         }
-        else if (pdis->CtlID == IDC_USE_VARIABLES_ENGINE) {
+        else if (pdis->CtlID == IDC_FORMULA_SUPPORT_ENGINE) {
             // Engine selector renders as a small clickable marker in
             // link blue. Colour comes from applyThemePalette() so it
             // stays in sync with theme changes.
@@ -6184,11 +6188,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         switch (LOWORD(wParam))
         {
 
-        case IDC_USE_VARIABLES_ENGINE:
+        case IDC_FORMULA_SUPPORT_ENGINE:
         {
             // Static control with SS_NOTIFY fires STN_CLICKED on
             // press. The selector is always active so the user can
-            // pre-set the engine even before turning on "Use Variables".
+            // pre-set the engine even before turning on "Formula Support".
             if (HIWORD(wParam) == STN_CLICKED) {
                 showEngineSelectorMenu();
             }
@@ -6207,7 +6211,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDC_USE_VARIABLES_HELP:
+        case IDC_FORMULA_SUPPORT_HELP:
         {
             auto n = SendMessage(nppData._nppHandle, NPPM_GETPLUGINHOMEPATH, 0, 0);
             std::wstring path(n, 0);
@@ -6230,13 +6234,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             const wchar_t* engineSlug =
                 (active == MultiReplaceEngine::EngineType::ExprTk)
                 ? L"exprtk" : L"lua";
-            std::wstring engineFile = std::wstring(L"\\help_use_variables_")
+            std::wstring engineFile = std::wstring(L"\\help_formula_support_")
                 + engineSlug + (isDark ? L"_dark.html" : L"_light.html");
             std::wstring engineFull = path + engineFile;
 
             std::wstring legacyFile = isDark
-                ? L"\\help_use_variables_dark.html"
-                : L"\\help_use_variables_light.html";
+                ? L"\\help_formula_support_dark.html"
+                : L"\\help_formula_support_light.html";
             std::wstring legacyFull = path + legacyFile;
 
             // GetFileAttributes returns INVALID_FILE_ATTRIBUTES when
@@ -6977,9 +6981,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             setOptionForSelection(SearchOption::MatchCase, true);
             return TRUE;
         }
-        case IDM_SET_VARIABLES:
+        case IDM_SET_FORMULA_SUPPORT:
         {
-            setOptionForSelection(SearchOption::Variables, true);
+            setOptionForSelection(SearchOption::FormulaSupport, true);
             return TRUE;
         }
         case IDM_SET_EXTENDED:
@@ -7004,9 +7008,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             setOptionForSelection(SearchOption::MatchCase, false);
             return TRUE;
         }
-        case IDM_CLEAR_VARIABLES:
+        case IDM_CLEAR_FORMULA_SUPPORT:
         {
-            setOptionForSelection(SearchOption::Variables, false);
+            setOptionForSelection(SearchOption::FormulaSupport, false);
             return TRUE;
         }
         case IDM_CLEAR_EXTENDED:
@@ -7413,7 +7417,7 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         itemData.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
         itemData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
         itemData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-        itemData.useVariables = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
+        itemData.formulaSupport = (IsDlgButtonChecked(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX) == BST_CHECKED);
         itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
         itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
@@ -7620,7 +7624,7 @@ void MultiReplace::handleReplaceButton() {
         replaceItem.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
         replaceItem.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
         replaceItem.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
-        replaceItem.useVariables = (IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED);
+        replaceItem.formulaSupport = (IsDlgButtonChecked(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX) == BST_CHECKED);
         replaceItem.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
         replaceItem.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
@@ -7698,7 +7702,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             bool engineOutputIsRegexSafe = false;
 
             // --- Formula engine expansion ---
-            if (itemData.useVariables) {
+            if (itemData.formulaSupport) {
                 auto* engine = getActiveEngine();
                 if (!engine) {
                     return false;
@@ -7738,7 +7742,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
             // --- Final Replacement Execution ---
             if (!skipReplace) {
-                bool useRegexReplace = itemData.useVariables
+                bool useRegexReplace = itemData.formulaSupport
                     ? engineOutputIsRegexSafe
                     : itemData.regex;
                 newPos = useRegexReplace
@@ -7774,7 +7778,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
 bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, size_t itemIndex)
 {
-    if (itemData.findText.empty() && !itemData.useVariables) {
+    if (itemData.findText.empty() && !itemData.formulaSupport) {
         findCount = replaceCount = 0;
         return true;
     }
@@ -7792,7 +7796,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     context.isColumnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED;
     context.isSelectionMode = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED;
     context.useStoredSelections = context.isSelectionMode;
-    context.retrieveFoundText = itemData.useVariables;
+    context.retrieveFoundText = itemData.formulaSupport;
     context.highlightMatch = false;
 
     send(SCI_SETSEARCHFLAGS, context.searchFlags);
@@ -7820,7 +7824,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     // --- Prepare replacement text template (only if needed for engine) ---
     std::string luaTemplateUtf8;
     MultiReplaceEngine::IFormulaEngine* engine = nullptr;
-    if (itemData.useVariables) {
+    if (itemData.formulaSupport) {
         luaTemplateUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
         engine = getActiveEngine();
         if (!engine) {
@@ -7835,7 +7839,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     }
 
     std::string fixedReplace;
-    if (!itemData.useVariables) {
+    if (!itemData.formulaSupport) {
         fixedReplace = convertAndExtendW(itemData.replaceText, itemData.extended, documentCodepage);
     }
 
@@ -7859,7 +7863,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             bool engineOutputIsRegexSafe = false;
 
             // --- Formula engine expansion ---
-            if (itemData.useVariables) {
+            if (itemData.formulaSupport) {
                 // Track line position for LCNT (needed even for skipped hits to maintain correct count)
                 int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
                 if (currentLineIndex != prevLineIdx) { lineFindCount = 0; prevLineIdx = currentLineIndex; }
@@ -7896,7 +7900,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             }
 
             if (replaceThisHit && !skipReplace) {
-                if (!itemData.useVariables) {
+                if (!itemData.formulaSupport) {
                     nextPos = itemData.regex
                         ? performRegexReplace(fixedReplace, searchResult.pos, searchResult.length)
                         : performReplace(fixedReplace, searchResult.pos, searchResult.length);
@@ -7987,7 +7991,7 @@ void MultiReplace::updateLineDelimiterAfterReplace(Sci_Position pos)
 bool MultiReplace::preProcessListForReplace(bool highlight) {
     if (!replaceListData.empty()) {
         for (size_t i = 0; i < replaceListData.size(); ++i) {
-            if (replaceListData[i].isEnabled && replaceListData[i].useVariables) {
+            if (replaceListData[i].isEnabled && replaceListData[i].formulaSupport) {
                 if (replaceListData[i].findText.empty()) {
                     if (highlight) {
                         selectListItem(i);  // Highlight the list entry
@@ -8164,17 +8168,17 @@ void MultiReplace::showErrorMessage(
             { entryW, engineW, detailsW });
         MessageBox(nppData._nppHandle,
             body.c_str(),
-            LM.get(L"msgbox_title_use_variables_syntax_error").c_str(),
+            LM.get(L"msgbox_title_formula_support_syntax_error").c_str(),
             MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
     }
     else {
         const std::wstring posW = (_currentMatchPos >= 0)
             ? std::to_wstring(_currentMatchPos)
             : L"?";
-        std::wstring body = LM.get(L"msgbox_use_variables_execution_error_engine",
+        std::wstring body = LM.get(L"msgbox_formula_support_execution_error_engine",
             { entryW, engineW, posW, detailsW });
         MessageBox(nppData._nppHandle, body.c_str(),
-            LM.get(L"msgbox_title_use_variables_execution_error").c_str(),
+            LM.get(L"msgbox_title_formula_support_execution_error").c_str(),
             MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
     }
 }
@@ -8196,7 +8200,7 @@ MultiReplace::showRecoverableErrorDialog(
         : L"?";
 
     const std::wstring title = LM.get(
-        L"msgbox_title_use_variables_execution_error");
+        L"msgbox_title_formula_support_execution_error");
     const std::wstring body = LM.get(
         L"msgbox_recoverable_error_body_taskdialog",
         { entryW, engineW, posW, detailsW });
@@ -14516,7 +14520,7 @@ void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
             switch (option) {
             case SearchOption::WholeWord:  replaceListData[i].wholeWord = value; break;
             case SearchOption::MatchCase:  replaceListData[i].matchCase = value; break;
-            case SearchOption::Variables:  replaceListData[i].useVariables = value; break;
+            case SearchOption::FormulaSupport:  replaceListData[i].formulaSupport = value; break;
             case SearchOption::Extended:
                 replaceListData[i].extended = value;
                 if (value) replaceListData[i].regex = false;
@@ -14538,7 +14542,7 @@ void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
     switch (option) {
     case SearchOption::WholeWord: optionName = L"Whole Word"; break;
     case SearchOption::MatchCase: optionName = L"Match Case"; break;
-    case SearchOption::Variables: optionName = L"Variables"; break;
+    case SearchOption::FormulaSupport: optionName = L"Formula Support"; break;
     case SearchOption::Extended:  optionName = L"Extended"; break;
     case SearchOption::Regex:     optionName = L"Regex"; break;
     }
@@ -14555,7 +14559,7 @@ void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
             switch (option) {
             case SearchOption::WholeWord:  replaceListData[index].wholeWord = value; break;
             case SearchOption::MatchCase:  replaceListData[index].matchCase = value; break;
-            case SearchOption::Variables:  replaceListData[index].useVariables = value; break;
+            case SearchOption::FormulaSupport:  replaceListData[index].formulaSupport = value; break;
             case SearchOption::Extended:
                 replaceListData[index].extended = value;
                 if (value) replaceListData[index].regex = false;
@@ -14681,7 +14685,7 @@ void MultiReplace::applyThemePalette()
     // status message, filter "(?)" marker, and engine selector "(L)/(E)".
     InvalidateRect(GetDlgItem(_hSelf, IDC_STATUS_MESSAGE), nullptr, TRUE);
     InvalidateRect(GetDlgItem(_hSelf, IDC_FILTER_HELP), nullptr, TRUE);
-    InvalidateRect(GetDlgItem(_hSelf, IDC_USE_VARIABLES_ENGINE), nullptr, TRUE);
+    InvalidateRect(GetDlgItem(_hSelf, IDC_FORMULA_SUPPORT_ENGINE), nullptr, TRUE);
 
     // Re-theme tooltip windows so they switch their dark/light skin
     // alongside Notepad++. Tooltips originally pick up a theme via
@@ -15199,7 +15203,7 @@ namespace {
         writeSettingsLineUtf8(out, L"SearchMode", tab.searchMode);
         writeSettingsLineUtf8(out, L"WholeWord", tab.wholeWord);
         writeSettingsLineUtf8(out, L"MatchCase", tab.matchCase);
-        writeSettingsLineUtf8(out, L"UseVariables", tab.useVariables);
+        writeSettingsLineUtf8(out, L"FormulaSupport", tab.formulaSupport);
         writeSettingsLineUtf8(out, L"WrapAround", tab.wrapAround);
         writeSettingsLineUtf8(out, L"ReplaceAtMatches", tab.replaceAtMatches);
         writeSettingsLineUtf8(out, L"ReplaceAtMatchesEdit", tab.replaceAtMatchesEdit);
@@ -15267,7 +15271,9 @@ namespace {
         tab.searchMode = readMapInt(s, L"SearchMode", 0);
         tab.wholeWord = readMapBool(s, L"WholeWord", false);
         tab.matchCase = readMapBool(s, L"MatchCase", false);
-        tab.useVariables = readMapBool(s, L"UseVariables", false);
+        // Read new key; fall back to legacy "UseVariables" for backward compatibility.
+        tab.formulaSupport = readMapBool(s, L"FormulaSupport",
+            readMapBool(s, L"UseVariables", false));
         tab.wrapAround = readMapBool(s, L"WrapAround", false);
         tab.replaceAtMatches = readMapBool(s, L"ReplaceAtMatches", false);
         tab.replaceAtMatchesEdit = readMapString(s, L"ReplaceAtMatchesEdit", L"1");
@@ -15304,7 +15310,7 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
     outFile.write("\xEF\xBB\xBF", 3);
 
     // Convert and Write CSV header
-    std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Extended,Regex,Comments,LastModified\n");
+    std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,FormulaSupport,Extended,Regex,Comments,LastModified\n");
     outFile << utf8Header;
 
     // Write list items to CSV file
@@ -15314,7 +15320,7 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
             StringUtils::escapeCsvValue(item.replaceText) + L"," +
             std::to_wstring(item.wholeWord) + L"," +
             std::to_wstring(item.matchCase) + L"," +
-            std::to_wstring(item.useVariables) + L"," +
+            std::to_wstring(item.formulaSupport) + L"," +
             std::to_wstring(item.extended) + L"," +
             std::to_wstring(item.regex) + L"," +
             StringUtils::escapeCsvValue(item.comments) + L"," +
@@ -15342,7 +15348,7 @@ bool MultiReplace::saveListToCsvWithSettings(const std::wstring& filePath, const
     writeSettingsBlock(outFile, tab);
 
     // CSV header
-    std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,UseVariables,Extended,Regex,Comments,LastModified\n");
+    std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,FormulaSupport,Extended,Regex,Comments,LastModified\n");
     outFile << utf8Header;
 
     for (const ReplaceItemData& item : list) {
@@ -15351,7 +15357,7 @@ bool MultiReplace::saveListToCsvWithSettings(const std::wstring& filePath, const
             StringUtils::escapeCsvValue(item.replaceText) + L"," +
             std::to_wstring(item.wholeWord) + L"," +
             std::to_wstring(item.matchCase) + L"," +
-            std::to_wstring(item.useVariables) + L"," +
+            std::to_wstring(item.formulaSupport) + L"," +
             std::to_wstring(item.extended) + L"," +
             std::to_wstring(item.regex) + L"," +
             StringUtils::escapeCsvValue(item.comments) + L"," +
@@ -15713,7 +15719,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
             item.replaceText = columns[2];
             item.wholeWord = std::stoi(columns[3]) != 0;
             item.matchCase = std::stoi(columns[4]) != 0;
-            item.useVariables = std::stoi(columns[5]) != 0;
+            item.formulaSupport = std::stoi(columns[5]) != 0;
             item.extended = std::stoi(columns[6]) != 0;
             item.regex = std::stoi(columns[7]) != 0;
             item.comments = (columns.size() >= 9) ? columns[8] : L"";
@@ -15921,7 +15927,7 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     bool hasExcludedItems = false;
     for (const auto& itemData : replaceListData) {
         if (!itemData.isEnabled) continue; // Skip if this item is not selected
-        if (itemData.useVariables) {
+        if (itemData.formulaSupport) {
             hasExcludedItems = true; // Mark as excluded
             continue;
         }
@@ -15962,7 +15968,7 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
     // Show message box if excluded items were found
     if (hasExcludedItems) {
         MessageBox(_hSelf,
-            LM.get(L"msgbox_use_variables_not_exported").c_str(),
+            LM.get(L"msgbox_formula_support_not_exported").c_str(),
             LM.get(L"msgbox_title_warning").c_str(),
             MB_OK | MB_ICONWARNING);
     }
@@ -16105,8 +16111,10 @@ void MultiReplace::loadSettingsToPanelUI() {
     bool matchCase = CFG.readBool(L"Options", L"MatchCase", false);
     SendMessage(GetDlgItem(_hSelf, IDC_MATCH_CASE_CHECKBOX), BM_SETCHECK, matchCase ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    bool useVariables = CFG.readBool(L"Options", L"UseVariables", false);
-    SendMessage(GetDlgItem(_hSelf, IDC_USE_VARIABLES_CHECKBOX), BM_SETCHECK, useVariables ? BST_CHECKED : BST_UNCHECKED, 0);
+    // Read new key first, fall back to legacy "UseVariables" for backward compatibility.
+    bool formulaSupport = CFG.readBool(L"Options", L"FormulaSupport",
+        CFG.readBool(L"Options", L"UseVariables", false));
+    SendMessage(GetDlgItem(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX), BM_SETCHECK, formulaSupport ? BST_CHECKED : BST_UNCHECKED, 0);
 
     // Selecting the appropriate search mode radio button based on the settings
     bool extended = CFG.readBool(L"Options", L"Extended", false);
@@ -16456,7 +16464,7 @@ void MultiReplace::captureStateIntoTab(TabState& tab)
     // Search options — read from UI controls
     tab.wholeWord = IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED;
     tab.matchCase = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED;
-    tab.useVariables = IsDlgButtonChecked(_hSelf, IDC_USE_VARIABLES_CHECKBOX) == BST_CHECKED;
+    tab.formulaSupport = IsDlgButtonChecked(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX) == BST_CHECKED;
     tab.wrapAround = IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED;
     tab.replaceAtMatches = IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED;
     tab.replaceAtMatchesEdit = getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT);
@@ -16521,7 +16529,7 @@ void MultiReplace::restoreStateFromTab(const TabState& tab)
     // Search options — push into UI
     CheckDlgButton(_hSelf, IDC_WHOLE_WORD_CHECKBOX, tab.wholeWord ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(_hSelf, IDC_MATCH_CASE_CHECKBOX, tab.matchCase ? BST_CHECKED : BST_UNCHECKED);
-    CheckDlgButton(_hSelf, IDC_USE_VARIABLES_CHECKBOX, tab.useVariables ? BST_CHECKED : BST_UNCHECKED);
+    CheckDlgButton(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX, tab.formulaSupport ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(_hSelf, IDC_WRAP_AROUND_CHECKBOX, tab.wrapAround ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX, tab.replaceAtMatches ? BST_CHECKED : BST_UNCHECKED);
     setTextInDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT, tab.replaceAtMatchesEdit);
@@ -16647,7 +16655,7 @@ void MultiReplace::writeTabsToConfig()
         CFG.writeInt(L"Tabs", prefix + L"_SearchMode", t.searchMode);
         CFG.writeBool(L"Tabs", prefix + L"_WholeWord", t.wholeWord);
         CFG.writeBool(L"Tabs", prefix + L"_MatchCase", t.matchCase);
-        CFG.writeBool(L"Tabs", prefix + L"_UseVariables", t.useVariables);
+        CFG.writeBool(L"Tabs", prefix + L"_FormulaSupport", t.formulaSupport);
         CFG.writeBool(L"Tabs", prefix + L"_WrapAround", t.wrapAround);
         CFG.writeBool(L"Tabs", prefix + L"_ReplaceAtMatches", t.replaceAtMatches);
         CFG.writeString(L"Tabs", prefix + L"_ReplaceAtMatchesEdit", t.replaceAtMatchesEdit);
@@ -16781,7 +16789,9 @@ void MultiReplace::loadTabsFromConfig()
         tab->searchMode = CFG.readInt(L"Tabs", prefix + L"_SearchMode", 0);
         tab->wholeWord = CFG.readBool(L"Tabs", prefix + L"_WholeWord", false);
         tab->matchCase = CFG.readBool(L"Tabs", prefix + L"_MatchCase", false);
-        tab->useVariables = CFG.readBool(L"Tabs", prefix + L"_UseVariables", false);
+        // Read new key; fall back to legacy "_UseVariables" for backward compatibility.
+        tab->formulaSupport = CFG.readBool(L"Tabs", prefix + L"_FormulaSupport",
+            CFG.readBool(L"Tabs", prefix + L"_UseVariables", false));
         tab->wrapAround = CFG.readBool(L"Tabs", prefix + L"_WrapAround", false);
         tab->replaceAtMatches = CFG.readBool(L"Tabs", prefix + L"_ReplaceAtMatches", false);
         tab->replaceAtMatchesEdit = CFG.readString(L"Tabs", prefix + L"_ReplaceAtMatchesEdit", L"1");
@@ -18311,7 +18321,7 @@ void MultiReplace::addNewTab()
         tab->searchMode = src.searchMode;
         tab->wholeWord = src.wholeWord;
         tab->matchCase = src.matchCase;
-        tab->useVariables = src.useVariables;
+        tab->formulaSupport = src.formulaSupport;
         tab->wrapAround = src.wrapAround;
         tab->replaceAtMatches = src.replaceAtMatches;
         tab->replaceAtMatchesEdit = src.replaceAtMatchesEdit;

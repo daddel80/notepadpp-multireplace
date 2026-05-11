@@ -197,11 +197,11 @@
     <ResourceCompile Include="..\src\StaticDialog\resource.rc" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\help_use_variables_dark.html" />
-    <None Include="..\help_use_variables_light.html" />
+    <None Include="..\FORMULA-SUPPORT.md" />
+    <None Include="..\help_formula_support_dark.html" />
+    <None Include="..\help_formula_support_light.html" />
     <None Include="..\languages.ini" />
     <None Include="..\README.md" />
-    <None Include="..\USE-VARIABLES.md" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{9D04DBD5-E12E-44E0-A683-6F43F21D533B}</ProjectGuid>

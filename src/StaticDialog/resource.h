@@ -116,12 +116,12 @@
 // ===================================================================
 #define IDC_WHOLE_WORD_CHECKBOX         5200
 #define IDC_MATCH_CASE_CHECKBOX         5201
-#define IDC_USE_VARIABLES_CHECKBOX      5202
-#define IDC_USE_VARIABLES_HELP          5203
+#define IDC_FORMULA_SUPPORT_CHECKBOX      5202
+#define IDC_FORMULA_SUPPORT_HELP          5203
 #define IDC_WRAP_AROUND_CHECKBOX        5204
 #define IDC_REPLACE_AT_MATCHES_CHECKBOX 5205
 #define IDC_REPLACE_HIT_EDIT            5206
-#define IDC_USE_VARIABLES_ENGINE        5207
+#define IDC_FORMULA_SUPPORT_ENGINE        5207
 
 
 
@@ -222,12 +222,12 @@
 // Set/Clear Options Submenus
 #define IDM_SET_WHOLEWORD               5715
 #define IDM_SET_MATCHCASE               5716
-#define IDM_SET_VARIABLES               5717
+#define IDM_SET_FORMULA_SUPPORT               5717
 #define IDM_SET_EXTENDED                5718
 #define IDM_SET_REGEX                   5719
 #define IDM_CLEAR_WHOLEWORD             5720
 #define IDM_CLEAR_MATCHCASE             5721
-#define IDM_CLEAR_VARIABLES             5722
+#define IDM_CLEAR_FORMULA_SUPPORT             5722
 #define IDM_CLEAR_EXTENDED              5723
 #define IDM_CLEAR_REGEX                 5724
 #define IDM_UPDATE_FROM_FIELDS          5725

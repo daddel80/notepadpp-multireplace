@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>MultiReplace Use Variables Option</title>
+    <title>MultiReplace Formula Support Option</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
     
@@ -480,7 +480,7 @@ nav.pagenav .nav-group.collapsible {
 </head>
 <body onload="doPageLoad()">
 
-<header>MultiReplace: "Use Variables" Feature Guide</header>
+<header>MultiReplace: "Formula Support" Feature Guide</header>
 
 <main>
 
@@ -518,8 +518,6 @@ nav.pagenav .nav-group.collapsible {
     <a href="#exprtk-string-output" hidden onclick="navClicked(event, 'exprtk-string-output')">String Output</a>
     <a href="#exprtk-operators" hidden onclick="navClicked(event, 'exprtk-operators')">Operators</a>
     <a href="#exprtk-skip" hidden onclick="navClicked(event, 'exprtk-skip')">Skipping Matches</a>
-    <a href="#exprtk-seq" hidden onclick="navClicked(event, 'exprtk-seq')">Sequence Generator</a>
-    <a href="#exprtk-csvcol" hidden onclick="navClicked(event, 'exprtk-csvcol')">CSV Column Access</a>
     <a href="#exprtk-examples" hidden onclick="navClicked(event, 'exprtk-examples')">Examples</a>
     <a href="#exprtk-limitations" hidden onclick="navClicked(event, 'exprtk-limitations')">Limitations</a>
 </nav>
@@ -529,13 +527,13 @@ nav.pagenav .nav-group.collapsible {
   <section id="Introduction">
     <h2>Introduction</h2>
     <p>
-      The <strong>Use Variables</strong> option enables dynamic replacements that go beyond plain text substitution. Instead of a fixed replacement string, you write a small expression that is evaluated for each match. Two engines are available: <strong>Lua</strong> and <strong>ExprTk</strong>. Switch via the <code>(L)</code> / <code>(E)</code> indicator next to the option.
+      The <strong>Formula Support</strong> option enables dynamic replacements that go beyond plain text substitution. Instead of a fixed replacement string, you write a small expression that is evaluated for each match. Two engines are available: <strong>Lua</strong> and <strong>ExprTk</strong>. Switch via the <code>(L)</code> / <code>(E)</code> indicator next to the option.
     </p>
   </section>
 
   <section id="EngineOverview">
     <h2>Engine Overview</h2>
-    <p>When <strong>Use Variables</strong> is enabled, replacements run through a formula engine. MultiReplace ships with two: <strong>Lua</strong> and <strong>ExprTk</strong>. Switch via the <code>(L)</code> / <code>(E)</code> indicator next to the <strong>Use Variables</strong> checkbox. The choice is per tab and persists across sessions.</p>
+    <p>When <strong>Formula Support</strong> is enabled, replacements run through a formula engine. MultiReplace ships with two: <strong>Lua</strong> and <strong>ExprTk</strong>. Switch via the <code>(L)</code> / <code>(E)</code> indicator next to the <strong>Formula Support</strong> checkbox. The choice is per tab and persists across sessions.</p>
     <p><strong>Quick guidance:</strong> pick <strong>Lua</strong> for anything involving text manipulation, conditional logic, lookup tables, or external scripts. Pick <strong>ExprTk</strong> when the task is mostly arithmetic on captured numbers and you want concise inline expressions.</p>
     <table class="optionsTable">
       <tr>
@@ -645,8 +643,8 @@ nav.pagenav .nav-group.collapsible {
     <h2>Quick Start: Lua</h2>
     <ol>
       <li>
-        <strong>Enable "Use Variables"</strong><br>
-        Check the "<strong>Use Variables</strong>" option in the Replace interface.
+        <strong>Enable "Formula Support"</strong><br>
+        Check the "<strong>Formula Support</strong>" option in the Replace interface.
       </li>
 
       <li>
@@ -732,7 +730,7 @@ nav.pagenav .nav-group.collapsible {
       </tr>
       <tr>
         <td><strong>CAP1</strong> / <strong>cap1</strong>, <strong>CAP2</strong> / <strong>cap2</strong>, &hellip;</td>
-        <td>Equivalents to regex capture groups, designed for use in the 'Use Variables' environment. Always strings; use <code>tonum(CAP1)</code> for calculations. Note: Standard counterparts (<code>$1</code>, <code>$2</code>, ...) cannot be used in this environment.</td>
+        <td>Equivalents to regex capture groups, designed for use in the 'Formula Support' environment. Always strings; use <code>tonum(CAP1)</code> for calculations. Note: Standard counterparts (<code>$1</code>, <code>$2</code>, ...) cannot be used in this environment.</td>
       </tr>
     </table>
 
@@ -1330,7 +1328,7 @@ return {
       <li><strong>Place <code>vars()</code>, <code>lvars()</code> or <code>lcmd()</code> next to an empty Find field.</strong></li>
       <li>This entry does <strong>not</strong> search for matches but runs before replacements begin.</li>
       <li>It ensures that <strong>variables and helpers are loaded once</strong>, regardless of their position in the list.</li>
-      <li>Use <strong>Use Variables = ON</strong> for init rows so loaded variables/helpers are available to later rows.</li>
+      <li>Use <strong>Formula Support = ON</strong> for init rows so loaded variables/helpers are available to later rows.</li>
     </ul>
 
     <h3>Examples</h3>
@@ -1551,11 +1549,11 @@ return {
     <ol>
       <li>
         <strong>Switch to ExprTk</strong><br>
-        Click the <code>(L)</code> indicator next to <strong>Use Variables</strong> so it shows <code>(E)</code>.
+        Click the <code>(L)</code> indicator next to <strong>Formula Support</strong> so it shows <code>(E)</code>.
       </li>
       <li>
-        <strong>Enable Use Variables</strong><br>
-        Check the <strong>Use Variables</strong> option in the Replace interface.
+        <strong>Enable Formula Support</strong><br>
+        Check the <strong>Formula Support</strong> option in the Replace interface.
       </li>
       <li>
         <strong>Try a simple expression:</strong>
@@ -1667,7 +1665,7 @@ return {
         <td>Filename without path.</td>
       </tr>
     </table>
-    <p>To access the matched text as a string, use <code>txt(0)</code> inside a <code>return [...]</code> list. To reference the match in the replace template directly, use <code>$0</code> (whole match) or an explicit capture group <code>(...)</code> referenced with <code>\1</code>.</p>
+    <p>To access the matched text as a string, use <code>txt(0)</code> inside a <code>return [...]</code> list, or <code>\0</code> / <code>$0</code> directly in the replace pattern (regular regex back-reference).</p>
 
     <h3>Capture access</h3>
     <table class="optionsTable">
@@ -1875,79 +1873,9 @@ return {
 
   <br>
 
-  <section id="exprtk-seq">
-    <h2>Sequence Generator</h2>
-    <p><code>seq([start[, increment]])</code> returns the next value in an arithmetic sequence keyed off the match counter <code>CNT</code>. Both arguments are optional and default to <code>1</code>, so:</p>
-    <pre><code>(?=seq())            -&gt; 1, 2, 3, 4, ...        (default start=1, inc=1)
-(?=seq(10))          -&gt; 10, 11, 12, 13, ...    (start=10, inc defaults to 1)
-(?=seq(0, 10))       -&gt; 0, 10, 20, 30, ...     (custom start and step)
-(?=seq(100, -10))    -&gt; 100, 90, 80, 70, ...   (negative step counts down)</code></pre>
-    <p>It is exactly equivalent to <code>start + (CNT - 1) * inc</code>, just shorter and clearer at the use site. Useful for numbering matches, generating IDs or any other arithmetic series across replacements.</p>
-    <pre><code>Input:    apple
-          banana
-          cherry
-Pattern:  ^(.+)$
-Replace:  (?=seq(100, 10)). \1
-Output:   100. apple
-          110. banana
-          120. cherry</code></pre>
-  </section>
-
-  <br>
-
-  <section id="exprtk-csvcol">
-    <h2>CSV Column Access</h2>
-    <p>When CSV mode is active, <code>numcol(N)</code> and <code>txtcol(N)</code> return the value of column N from the <strong>physical line</strong> containing the current match. Index is 1-based; <code>numcol(1)</code> is the first column. Both also accept a header name as a string (<code>numcol('price')</code>); on first use the document's first line is parsed as a header row and cached for the rest of the run.</p>
-
-    <table class="optionsTable">
-      <tr>
-        <th>Function</th>
-        <th>Returns</th>
-        <th>Notes</th>
-      </tr>
-      <tr>
-        <td><code>numcol(N)</code> / <code>numcol('name')</code></td>
-        <td>number</td>
-        <td>Same parsing as <code>num()</code> &mdash; <code>.</code>/<code>,</code> decimal separator, NaN on non-numeric content.</td>
-      </tr>
-      <tr>
-        <td><code>txtcol(N)</code> / <code>txtcol('name')</code></td>
-        <td>string</td>
-        <td>Raw cell text. Only meaningful inside <code>return [...]</code>.</td>
-      </tr>
-    </table>
-
-    <p><strong>Requirements:</strong></p>
-    <ul>
-      <li>CSV mode must be active (the <strong>CSV</strong> scope radio button) and a delimiter configured.</li>
-      <li>Indexing reads the raw row regardless of any column-selection filter the user set.</li>
-      <li>The cell is returned verbatim &mdash; no quote stripping, matching the existing CSV column convention used by sort and column highlighting.</li>
-    </ul>
-
-    <p><strong>Behaviour at the edges:</strong></p>
-    <ul>
-      <li>Missing column (e.g. <code>numcol(99)</code> on a row with 5 columns): <code>NaN</code> for <code>numcol</code>, empty string for <code>txtcol</code>.</li>
-      <li>Unknown header name: same.</li>
-      <li>CSV mode off, no delimiter set, or no current match in progress: same.</li>
-    </ul>
-
-    <p><strong>Example &mdash; lookup by name with arithmetic:</strong></p>
-    <pre><code>Header:  product;price;qty
-Row:     apple;1.50;10
-Row:     banana;0.30;25</code></pre>
-    <pre><code>Find:    ^(?!product).+$
-Replace: (?=return [txt(0), ' total=', numcol('price') * numcol('qty')])</code></pre>
-    <pre><code>product;price;qty
-apple;1.50;10 total=15
-banana;0.30;25 total=7.5</code></pre>
-    <p>The negative lookahead in the Find pattern excludes the header row so the formula only runs on data rows. Inside the formula, <code>numcol('price')</code> reads the <code>price</code> column of whichever line the current match landed on.</p>
-  </section>
-
-  <br>
-
   <section id="exprtk-examples">
     <h2>More Examples</h2>
-    <p>The examples below are drawn from typical text-processing tasks. Each row in the table is a <strong>single rule</strong> &mdash; copy the Find and Replace columns straight into MultiReplace, set the engine to ExprTk, enable Use Variables and Regex.</p>
+    <p>The examples below are drawn from typical text-processing tasks. Each row in the table is a <strong>single rule</strong> &mdash; copy the Find and Replace columns straight into MultiReplace, set the engine to ExprTk, enable Formula Support and Regex.</p>
 
     <h3>Numeric transformation</h3>
     <table class="optionsTable">
@@ -2085,16 +2013,6 @@ banana;0.30;25 total=7.5</code></pre>
         <td><code>^</code></td>
         <td><code>(?=CNT). </code></td>
         <td>Number every line (insert at the start of each line).</td>
-      </tr>
-      <tr>
-        <td><code>^</code></td>
-        <td><code>(?=seq(100, 10)). </code></td>
-        <td>Number every line, starting at 100, step 10 (100, 110, 120, ...).</td>
-      </tr>
-      <tr>
-        <td><code>^</code></td>
-        <td><code>(?=seq(0, -1)). </code></td>
-        <td>Number every line, counting <strong>down</strong> from 0 (0, -1, -2, ...).</td>
       </tr>
       <tr>
         <td><code>;</code></td>
