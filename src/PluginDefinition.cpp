@@ -77,16 +77,16 @@ void commandMenuInit()
     //            bool check0nInit                // optional. Make this menu item be checked visually
     //            );
     setCommand(0, const_cast<TCHAR*>(LM.getLPCW(L"menu_open")), multiReplace, NULL, false);
-    setCommand(1, TEXT("SEPARATOR"), NULL, NULL, false);
+    setCommand(1, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
     setCommand(2, const_cast<TCHAR*>(LM.getLPCW(L"menu_settings")), multiReplaceConfig, NULL, false);
     setCommand(3, const_cast<TCHAR*>(LM.getLPCW(L"menu_documentation")), openHelpLink, NULL, false);
-    setCommand(4, TEXT("SEPARATOR"), NULL, NULL, false);
+    setCommand(4, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
 
     // ResultDock navigation commands (assignable via Settings > Shortcut Mapper > Plugin Commands)
     setCommand(5, const_cast<TCHAR*>(LM.getLPCW(L"cmd_focus_results")), focusResultDock, NULL, false);
     setCommand(6, const_cast<TCHAR*>(LM.getLPCW(L"cmd_next_result")), gotoNextFound, NULL, false);
     setCommand(7, const_cast<TCHAR*>(LM.getLPCW(L"cmd_prev_result")), gotoPrevFound, NULL, false);
-    setCommand(8, TEXT("SEPARATOR"), NULL, NULL, false);
+    setCommand(8, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
 
     // Tandem Mode: docks MR to a N++ edge and follows N++ on move/resize.
     setCommand(9, const_cast<TCHAR*>(LM.getLPCW(L"menu_tandem_mode")), toggleTandemMode, NULL,

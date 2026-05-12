@@ -2413,7 +2413,7 @@ void MultiReplace::insertSingleColumn(ColumnID id, int& currentIndex, int perCol
         lvc.fmt = LVCFMT_LEFT;
         break;
     case ColumnID::SELECTION:
-        lvc.pszText = L"\u2610";
+        lvc.pszText = const_cast<LPWSTR>(L"\u2610");
         lvc.cx = getColumnWidth(ColumnID::SELECTION);
         lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
         break;
@@ -2463,7 +2463,7 @@ void MultiReplace::insertSingleColumn(ColumnID id, int& currentIndex, int perCol
         lvc.fmt = LVCFMT_LEFT | LVCFMT_FIXED_WIDTH;
         break;
     case ColumnID::DELETE_BUTTON:
-        lvc.pszText = L"";
+        lvc.pszText = const_cast<LPWSTR>(L"");
         lvc.cx = crossWidth_scaled;
         lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
         break;
@@ -2809,12 +2809,12 @@ void MultiReplace::updateListViewItem(size_t index) {
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::COMMENTS], const_cast<LPWSTR>(item.comments.c_str()));
     ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::LAST_MODIFIED], const_cast<LPWSTR>(item.lastModified.c_str()));
 
-    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::WHOLE_WORD], item.wholeWord ? L"\u2714" : L"");
-    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::MATCH_CASE], item.matchCase ? L"\u2714" : L"");
-    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::FORMULA_SUPPORT], item.formulaSupport ? L"\u2714" : L"");
-    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::EXTENDED], item.extended ? L"\u2714" : L"");
-    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::REGEX], item.regex ? L"\u2714" : L"");
-    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::SELECTION], item.isEnabled ? L"\u25A0" : L"\u2610");
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::WHOLE_WORD], item.wholeWord ? const_cast<LPWSTR>(L"\u2714") : const_cast<LPWSTR>(L""));
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::MATCH_CASE], item.matchCase ? const_cast<LPWSTR>(L"\u2714") : const_cast<LPWSTR>(L""));
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::FORMULA_SUPPORT], item.formulaSupport ? const_cast<LPWSTR>(L"\u2714") : const_cast<LPWSTR>(L""));
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::EXTENDED], item.extended ? const_cast<LPWSTR>(L"\u2714") : const_cast<LPWSTR>(L""));
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::REGEX], item.regex ? const_cast<LPWSTR>(L"\u2714") : const_cast<LPWSTR>(L""));
+    ListView_SetItemText(_replaceListView, static_cast<int>(index), columnIndices[ColumnID::SELECTION], item.isEnabled ? const_cast<LPWSTR>(L"\u25A0") : const_cast<LPWSTR>(L"\u2610"));
 
     ListView_RedrawItems(_replaceListView, static_cast<int>(index), static_cast<int>(index));
 }
@@ -3364,13 +3364,13 @@ void MultiReplace::updateHeaderSelection() {
 
     // Determine the symbol to show in the header
     if (allSelected) {
-        lvc.pszText = L"\u25A0"; // Ballot box with check
+        lvc.pszText = const_cast<LPWSTR>(L"\u25A0"); // Ballot box with check
     }
     else if (anySelected) {
-        lvc.pszText = L"\u25A3"; // Black square containing small white square
+        lvc.pszText = const_cast<LPWSTR>(L"\u25A3"); // Black square containing small white square
     }
     else {
-        lvc.pszText = L"\u2610"; // Ballot box without check
+        lvc.pszText = const_cast<LPWSTR>(L"\u2610"); // Ballot box without check
     }
 
     // Update the Selection column header dynamically, if it's enabled
