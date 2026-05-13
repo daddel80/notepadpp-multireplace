@@ -14845,7 +14845,8 @@ std::wstring MultiReplace::escapeForRegexMode(const std::wstring& s)
 {
     std::wstring out;
     out.reserve(s.size() + 32);
-    for (wchar_t c : s) {
+    for (size_t i = 0; i < s.size(); ++i) {
+        wchar_t c = s[i];
         switch (c) {
         case L'\\': case L'.': case L'+': case L'*': case L'?':
         case L'(':  case L')': case L'[': case L']': case L'{': case L'}':
@@ -14853,10 +14854,19 @@ std::wstring MultiReplace::escapeForRegexMode(const std::wstring& s)
             out += L'\\';
             out += c;
             break;
-        case L'\n': out += L"\\n"; break;
-        case L'\r': out += L"\\r"; break;
-        case L'\t': out += L"\\t"; break;
-        default:    out += c;      break;
+        case L'\r':
+            out += L"\\R";
+            if (i + 1 < s.size() && s[i + 1] == L'\n') ++i;
+            break;
+        case L'\n':
+            out += L"\\R";
+            break;
+        case L'\t':
+            out += L"\\t";
+            break;
+        default:
+            out += c;
+            break;
         }
     }
     return out;
@@ -19549,6 +19559,8 @@ void MultiReplace::loadUIConfigFromIni()
 
     resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
     useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
+    pickupSelection = CFG.readBool(L"Options", L"PickupSelection", true);
+    autoEscapeForFindInput = CFG.readBool(L"Options", L"AutoEscapeForFindInput", false);
     ResultDock::setPerEntryColorsEnabled(resultDockPerEntryColorsEnabled);
 
     if (_replaceListView)

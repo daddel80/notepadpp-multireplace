@@ -360,7 +360,7 @@ Control the behavior of search operations and cursor movement.
 **Find input from selection** — Controls how the editor selection is brought into the **Find what** field. See [Filling the Find Field from Selection](#filling-the-find-field-from-selection) for the full workflow.
 
 - **Fill Find field with selected text on activation** — When enabled, the current Scintilla selection is copied into the **Find what** field when MultiReplace becomes visible, and whenever the **Ctrl+Shift+H** hotkey is pressed (regardless of focus).
-- **Auto-escape special characters for active search mode** — When enabled, the picked-up text is automatically escaped to match the active search mode literally. In **Regex** mode, metacharacters like `(`, `)`, `.`, `+`, `?` are prefixed with `\`. In **Extended** mode, line breaks and tabs are converted to `\n`, `\r`, `\t`. In **Normal** mode no transformation is applied.
+- **Auto-escape special characters for active search mode** — When enabled, the picked-up text is automatically escaped to match the active search mode literally. In **Regex** mode, metacharacters like `(`, `)`, `.`, `+`, `?` are prefixed with `\`, tabs become `\t`, and any line ending (CR, LF, or CRLF) becomes `\R` (matches any newline sequence). In **Extended** mode, line breaks and tabs are converted to `\n`, `\r`, `\t`. In **Normal** mode no transformation is applied.
 
 ### 2. List View and Layout
 Manage the visual elements and behavior of the replacement list to save screen space or increase information density.
