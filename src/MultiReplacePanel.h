@@ -581,6 +581,11 @@ public:
         StaticDialog::display(toShow);
     };
 
+    void pickupSelectionIntoFindEdit();
+    void activateAndFocusFindEdit();
+
+    inline HWND getHSelf() const { return _hSelf; }
+
     inline void setParent(HWND parent2set) {
         _hParent = parent2set;
         _hParent = parent2set;
@@ -680,6 +685,8 @@ public:
         bool resultDockPerEntryColorsEnabled;
         bool useListColorsForMarking;
         bool duplicateBookmarksEnabled;
+        bool pickupSelection;
+        bool autoEscapeForFindInput;
     };
 
     static Settings getSettings();
@@ -1065,6 +1072,8 @@ private:
     inline static bool resultDockPerEntryColorsEnabled = true;  // Per-entry background colors in ResultDock
     inline static bool useListColorsForMarking = true;          // Use different colors per list entry when marking
     inline static size_t maxFileSizeMB = 100;
+    inline static bool pickupSelection = true;
+    inline static bool autoEscapeForFindInput = false;
 
     inline static std::vector<int> _textMarkerIds;  // Fixed IDs for text marking (0-9 = list, last = single)
     inline static bool _textMarkersInitialized = false;
@@ -1442,6 +1451,8 @@ private:
     void refreshColumnStylesIfNeeded();
     std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
     std::wstring getSelectedText();
+    std::wstring escapeForExtendedMode(const std::wstring& s);
+    std::wstring escapeForRegexMode(const std::wstring& s);
     LRESULT getEOLLengthForLine(LRESULT line);
     std::string getEOLStyle();
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true) const;

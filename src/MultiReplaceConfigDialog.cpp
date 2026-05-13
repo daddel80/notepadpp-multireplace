@@ -71,6 +71,8 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_MUTE_SOUNDS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, muteSounds), 0, 0 });
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_LIMIT_FILESIZE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, limitFileSizeEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_MAX_FILESIZE_EDIT, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, maxFileSizeMB), 1, 10000 });
+    _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_PICKUP_SELECTION, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, pickupSelection), 0, 0 });
+    _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_AUTO_ESCAPE_FIND, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, autoEscapeForFindInput), 0, 0 });
 }
 
 void MultiReplaceConfigDialog::applyBindingsToUI_Generic(void* settingsPtr)
@@ -192,6 +194,11 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_MUTE_SOUNDS,             L"config_chk_mute_sounds",         386, 18 },
         { IDC_CFG_SHOW_FORMULA_ERRORS,     L"config_chk_show_formula_errors", 386, 18 },
         { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize",      260, 18 },
+
+        // Find Input from Selection group
+        { IDC_CFG_GRP_FIND_INPUT,          L"config_grp_find_input",            0,  0 },
+        { IDC_CFG_PICKUP_SELECTION,        L"config_chk_pickup_selection",    416, 18 },
+        { IDC_CFG_AUTO_ESCAPE_FIND,        L"config_chk_auto_escape_find",    416, 18 },
 
         // List View Panel - List Behavior: groupW=460, innerWidth=460-44=416
         { IDC_CFG_GRP_LIST_BEHAVIOR,       L"config_grp_list_behavior",       0, 0 },
@@ -764,6 +771,20 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
 
     lb.AddNumberEdit(IDC_CFG_MAX_FILESIZE_EDIT, 270, -24, 45, 20);
     createStaticText(_hSearchReplacePanel, innerLeft + 325, lb.y - 22, 30, 18, IDC_CFG_FILESIZE_MB_LABEL, LM.getLPCW(L"config_lbl_max_filesize_mb"));
+
+    // Second group: Find input from selection
+    const int findInputY = y + 186 + 14;
+    const int findInputH = 94;
+    createGroupBox(_hSearchReplacePanel, left, findInputY, groupW, findInputH,
+        IDC_CFG_GRP_FIND_INPUT, LM.getLPCW(L"config_grp_find_input"));
+    {
+        const int fiInnerLeft = left + 22;
+        const int fiInnerTop = findInputY + 30;
+        const int fiInnerWidth = groupW - 44;
+        LayoutBuilder fi(this, _hSearchReplacePanel, fiInnerLeft, fiInnerTop, fiInnerWidth, 26);
+        fi.AddCheckbox(IDC_CFG_PICKUP_SELECTION, LM.getLPCW(L"config_chk_pickup_selection"));
+        fi.AddCheckbox(IDC_CFG_AUTO_ESCAPE_FIND, LM.getLPCW(L"config_chk_auto_escape_find"));
+    }
 }
 
 HWND MultiReplaceConfigDialog::createPanel() {
@@ -993,6 +1014,8 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     s.resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
     s.useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
     s.duplicateBookmarksEnabled = CFG.readBool(L"Options", L"DuplicateBookmarks", false);
+    s.pickupSelection = CFG.readBool(L"Options", L"PickupSelection", true);
+    s.autoEscapeForFindInput = CFG.readBool(L"Options", L"AutoEscapeForFindInput", false);
 
     registerBindingsOnce();
     applyBindingsToUI_Generic((void*)&s);
@@ -1199,6 +1222,8 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.resultDockPerEntryColorsEnabled = true;
     def.useListColorsForMarking = true;
     def.listDimIntensity = 50;
+    def.pickupSelection = true;
+    def.autoEscapeForFindInput = false;
 
     MultiReplace::writeStructToConfig(def);
 

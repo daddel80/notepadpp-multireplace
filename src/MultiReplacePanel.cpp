@@ -154,6 +154,16 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
             }
         }
 
+        if (pMsg->message == WM_KEYDOWN && pMsg->wParam == 'H'
+            && (GetKeyState(VK_CONTROL) & 0x8000)
+            && (GetKeyState(VK_SHIFT) & 0x8000)) {
+            if (instance->_hSelf) {
+                instance->pickupSelectionIntoFindEdit();
+                pMsg->message = WM_NULL;
+                return 1;
+            }
+        }
+
         // Ctrl+L: Toggle list collapse/expand (focus-independent within panel)
         if (pMsg->message == WM_KEYDOWN && pMsg->wParam == 'L' && (GetKeyState(VK_CONTROL) & 0x8000)) {
             HWND hFocus = GetFocus();
@@ -514,10 +524,11 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
-    // Status Message -> Normal1 (narrower when list open to make room for toolbar buttons)
-    int toolbarButtonsWidth = (useListEnabled || keepListVisible) ? sx(128 + 10) : 0;  // 5 buttons + gap, or 0 when collapsed
-    int statusWidth = listWidth - toolbarButtonsWidth;
-    ctrlMap[IDC_STATUS_MESSAGE] = { sx(19), statusRowY + sy(2), statusWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, nullptr, false, FontRole::Normal1 };
+    // Status Message -> Normal1 (anchored to right-side controls so SS_ENDELLIPSIS truncates instead of overlapping)
+    const int statusStartX = sx(19);
+    const int rightLimit = (useListEnabled || keepListVisible) ? buttonX : checkbox2X;
+    int statusWidth = rightLimit - statusStartX - sx(8);
+    ctrlMap[IDC_STATUS_MESSAGE] = { statusStartX, statusRowY + sy(2), statusWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, nullptr, false, FontRole::Normal1 };
 
     // --- Toolbar buttons in status row: [➕][📂][💾▾]  [▲][▼] ---
     // Status row layout: file-ops on the left, item-ops on the right,
@@ -5958,12 +5969,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_SHOWWINDOW:
     {
         if (wParam == TRUE) {
-            std::wstring wstr = getSelectedText();
-
-            // Set selected text in IDC_FIND_EDIT
-            if (!wstr.empty()) {
-                SetWindowTextW(GetDlgItem(_hSelf, IDC_FIND_EDIT), wstr.c_str());
-            }
+            pickupSelectionIntoFindEdit();
 
             // Tandem was suspended on hide; re-engage if still enabled.
             // We bypass tandemDockToCurrentEdge here on purpose - it
@@ -14818,6 +14824,72 @@ std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int ma
     return displayPath;
 }
 
+std::wstring MultiReplace::escapeForExtendedMode(const std::wstring& s)
+{
+    std::wstring out;
+    out.reserve(s.size() + 16);
+    for (wchar_t c : s) {
+        switch (c) {
+        case L'\\': out += L"\\\\"; break;
+        case L'\n': out += L"\\n";  break;
+        case L'\r': out += L"\\r";  break;
+        case L'\t': out += L"\\t";  break;
+        case L'\0': out += L"\\0";  break;
+        default:    out += c;       break;
+        }
+    }
+    return out;
+}
+
+std::wstring MultiReplace::escapeForRegexMode(const std::wstring& s)
+{
+    std::wstring out;
+    out.reserve(s.size() + 32);
+    for (wchar_t c : s) {
+        switch (c) {
+        case L'\\': case L'.': case L'+': case L'*': case L'?':
+        case L'(':  case L')': case L'[': case L']': case L'{': case L'}':
+        case L'|':  case L'^': case L'$':
+            out += L'\\';
+            out += c;
+            break;
+        case L'\n': out += L"\\n"; break;
+        case L'\r': out += L"\\r"; break;
+        case L'\t': out += L"\\t"; break;
+        default:    out += c;      break;
+        }
+    }
+    return out;
+}
+
+void MultiReplace::pickupSelectionIntoFindEdit()
+{
+    if (!pickupSelection) return;
+
+    std::wstring sel = getSelectedText();
+    if (sel.empty()) return;
+
+    if (autoEscapeForFindInput) {
+        if (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED) {
+            sel = escapeForRegexMode(sel);
+        }
+        else if (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED) {
+            sel = escapeForExtendedMode(sel);
+        }
+    }
+
+    SetWindowTextW(GetDlgItem(_hSelf, IDC_FIND_EDIT), sel.c_str());
+}
+
+void MultiReplace::activateAndFocusFindEdit()
+{
+    if (!_hSelf) return;
+    ::SetForegroundWindow(_hSelf);
+    if (HWND hFind = ::GetDlgItem(_hSelf, IDC_FIND_EDIT)) {
+        ::SetFocus(hFind);
+    }
+}
+
 std::wstring MultiReplace::getSelectedText()
 {
     Sci_Position lengthWithNul = static_cast<Sci_Position>(SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, 0));
@@ -19530,6 +19602,8 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
     s.useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
     s.duplicateBookmarksEnabled = CFG.readBool(L"Options", L"DuplicateBookmarks", false);
+    s.pickupSelection = CFG.readBool(L"Options", L"PickupSelection", true);
+    s.autoEscapeForFindInput = CFG.readBool(L"Options", L"AutoEscapeForFindInput", false);
     return s;
 }
 
@@ -19557,6 +19631,8 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeBool(L"Options", L"ResultDockPerEntryColors", s.resultDockPerEntryColorsEnabled);
     CFG.writeBool(L"Options", L"UseListColorsForMarking", s.useListColorsForMarking);
     CFG.writeBool(L"Options", L"DuplicateBookmarks", s.duplicateBookmarksEnabled);
+    CFG.writeBool(L"Options", L"PickupSelection", s.pickupSelection);
+    CFG.writeBool(L"Options", L"AutoEscapeForFindInput", s.autoEscapeForFindInput);
 }
 
 // Persistence keys for the "reopen panel on startup" feature.
@@ -19737,6 +19813,8 @@ void MultiReplace::applyConfigSettingsOnly()
     _formulaErrorDialogEnabled = CFG.readBool(L"Engines", L"ShowErrorDialogs", true);
     limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
+    pickupSelection = CFG.readBool(L"Options", L"PickupSelection", true);
+    autoEscapeForFindInput = CFG.readBool(L"Options", L"AutoEscapeForFindInput", false);
 
     // Library Mode: keep list visible
     bool newKeepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);

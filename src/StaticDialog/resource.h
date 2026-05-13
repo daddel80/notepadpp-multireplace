@@ -317,7 +317,7 @@
 // ===================================================================
 
 // -------------------------------------------------------------------
-//  Search & Replace Panel (7900-7909)
+//  Search & Replace Panel (7900-7919)
 // -------------------------------------------------------------------
 #define IDC_CFG_GRP_SEARCH_BEHAVIOUR      7900
 #define IDC_CFG_STAY_AFTER_REPLACE        7901
@@ -327,6 +327,9 @@
 #define IDC_CFG_MAX_FILESIZE_EDIT         7905
 #define IDC_CFG_FILESIZE_MB_LABEL         7906
 #define IDC_CFG_SHOW_FORMULA_ERRORS       7907
+#define IDC_CFG_GRP_FIND_INPUT            7910
+#define IDC_CFG_PICKUP_SELECTION          7911
+#define IDC_CFG_AUTO_ESCAPE_FIND          7912
 
 // -------------------------------------------------------------------
 //  List View Panel - Result Dock Group (7920-7929)

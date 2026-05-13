@@ -346,6 +346,11 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_limit_filesize", L"File Search: Skip files larger than" },
 { L"config_lbl_max_filesize_mb", L"MB" },
 
+// Find Input from Selection
+{ L"config_grp_find_input", L"Find input from selection" },
+{ L"config_chk_pickup_selection", L"Fill Find field with selected text on activation" },
+{ L"config_chk_auto_escape_find", L"Auto-escape special characters for active search mode" },
+
 // List View Settings
 { L"config_grp_list_behavior", L"List Behavior" },
 { L"config_chk_doubleclick", L"Edit in-place on double-click" },

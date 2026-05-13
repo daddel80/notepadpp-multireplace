@@ -16,6 +16,7 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
 - [Search Configuration](#search-configuration)
   - [Search Mode](#search-mode)
   - [Match Options](#match-options)
+  - [Filling the Find Field from Selection](#filling-the-find-field-from-selection)
 - [Search Scopes and Targets](#search-scopes-and-targets)
   - [Search Scopes](#search-scopes)
   - [CSV Scope and Column Operations](#csv-scope-and-column-operations)
@@ -92,6 +93,14 @@ These options refine the search behavior across all modes.
 - **Wrap Around** — If active, the search continues from the beginning of the document after reaching the end.
 - **Replace matches** — Applies to all **Replace All** actions (current document, open documents, and in files). Allows you to specify exactly which occurrences of a match to replace. Accepts single numbers, commas, or ranges (e.g., `1,3,5-7`).
 - **Bookmark matched lines** — A small checkbox to the left of the **Mark Matches** button. When ticked, every match line additionally receives a Notepad++ bookmark, so the matches can be navigated with F2 / Shift+F2.
+
+### Filling the Find Field from Selection
+Highlight text in the editor, then bring it into the **Find what** field in one step:
+
+- **Ctrl+Shift+H** — Global hotkey. Copies the current Scintilla selection into the **Find what** field regardless of which window has focus, without opening or focusing MultiReplace.
+- **On panel activation** — When the panel becomes visible (opened from the menu, or after being hidden), the current selection is also copied into **Find what**.
+
+Both behaviors require **Fill Find field with selected text on activation** to be enabled in [Settings > Search and Replace](#1-search-and-replace). When **Auto-escape special characters for active search mode** is enabled in the same group, the picked-up text is escaped to match literally in the active mode — useful when picking up code fragments while **Regex** or **Extended** mode is active.
 
 ## Search Scopes and Targets
 This section describes **where** to search (Scopes) and **in which files** (Targets).
@@ -347,6 +356,11 @@ Control the behavior of search operations and cursor movement.
 - **Find: Search from cursor position** — If checked,  "Find All", "Replace All", and "Mark" start from the current cursor position. If unchecked, operations always process the entire defined scope.
 - **Mute all sounds** — Disables the notification sound (beep) when a search yields no results. The window will still flash visually to indicate "not found".
 - **File Search: Skip files larger than** — Defines a maximum size (in MB) for **Find/Replace in Files**. Skips larger files to ensure responsiveness and prevent high memory usage.
+
+**Find input from selection** — Controls how the editor selection is brought into the **Find what** field. See [Filling the Find Field from Selection](#filling-the-find-field-from-selection) for the full workflow.
+
+- **Fill Find field with selected text on activation** — When enabled, the current Scintilla selection is copied into the **Find what** field when MultiReplace becomes visible, and whenever the **Ctrl+Shift+H** hotkey is pressed (regardless of focus).
+- **Auto-escape special characters for active search mode** — When enabled, the picked-up text is automatically escaped to match the active search mode literally. In **Regex** mode, metacharacters like `(`, `)`, `.`, `+`, `?` are prefixed with `\`. In **Extended** mode, line breaks and tabs are converted to `\n`, `\r`, `\t`. In **Normal** mode no transformation is applied.
 
 ### 2. List View and Layout
 Manage the visual elements and behavior of the replacement list to save screen space or increase information density.
