@@ -32,6 +32,7 @@
     <ClInclude Include="..\src\ColumnTabs.h" />
     <ClInclude Include="..\src\ConfigManager.h" />
     <ClInclude Include="..\src\CsvListFormat.h" />
+    <ClInclude Include="..\src\DateParse.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
     <ClInclude Include="..\src\Encoding.h" />
@@ -43,6 +44,7 @@
     <ClInclude Include="..\src\engine\ILuaEngineHost.h" />
     <ClInclude Include="..\src\engine\LuaEngine.h" />
     <ClInclude Include="..\src\exprtk\exprtk.hpp" />
+    <ClInclude Include="..\src\FormatSpec.h" />
     <ClInclude Include="..\src\HiddenSciGuard.h" />
     <ClInclude Include="..\src\image_data.h" />
     <ClInclude Include="..\src\IniFileCache.h" />
@@ -96,6 +98,7 @@
     <ClCompile Include="..\src\ColumnTabs.cpp" />
     <ClCompile Include="..\src\ConfigManager.cpp" />
     <ClCompile Include="..\src\CsvListFormat.cpp" />
+    <ClCompile Include="..\src\DateParse.cpp" />
     <ClCompile Include="..\src\DPIManager.cpp" />
     <ClCompile Include="..\src\DropTarget.cpp" />
     <ClCompile Include="..\src\Encoding.cpp" />
@@ -108,6 +111,7 @@
     <ClCompile Include="..\src\engine\ExprTkPatternParser.cpp" />
     <ClCompile Include="..\src\engine\Iformulaengine.cpp" />
     <ClCompile Include="..\src\engine\LuaEngine.cpp" />
+    <ClCompile Include="..\src\FormatSpec.cpp" />
     <ClCompile Include="..\src\image_data.cpp" />
     <ClCompile Include="..\src\IniFileCache.cpp" />
     <ClCompile Include="..\src\LanguageManager.cpp" />

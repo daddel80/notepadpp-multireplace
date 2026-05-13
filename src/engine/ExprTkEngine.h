@@ -33,20 +33,6 @@
 //                an explicit error rather than silently coerced to 0.
 //     txt(N)  -> capture group N as raw string (for return [...])
 //     skip()  -> mark the current match to be left untouched
-//     seq([start, [inc]])
-//             -> sequence value start + (CNT-1)*inc.
-//                Both arguments default to 1 so seq() yields 1,2,3,...
-//                Useful for numbering matches without writing the
-//                start+(CNT-1)*inc formula by hand.
-//     numcol(N) / numcol('name')
-//             -> CSV column on the current row, parsed as double.
-//                Index is 1-based; "name" looks up the document's
-//                first line as a header. NaN on missing column or
-//                non-numeric content. Requires CSV mode to be active.
-//     txtcol(N) / txtcol('name')
-//             -> CSV column on the current row, as raw string. Same
-//                addressing rules as numcol; only useful inside a
-//                return [...] list.
 //
 // The match text is intentionally not exposed as a string variable.
 // Use txt(0) for the raw match string, HIT or num(0) for the numeric
@@ -54,8 +40,8 @@
 //
 // Lifecycle:
 //   1. Construct via EngineFactory::create(EngineType::ExprTk, host).
-//      The host is used for CSV column access (numcol/txtcol), the
-//      recoverable-error dialog, and error reporting.
+//      The host pointer is accepted for symmetry with LuaEngine but
+//      currently unused; ExprTk needs no UI callbacks.
 //   2. initialize() registers variables and functions in the symbol
 //      table.
 //   3. compile(template) splits the template into segments and pre-
@@ -72,6 +58,7 @@
 #include "IFormulaEngine.h"
 #include "ILuaEngineHost.h"
 #include "ExprTkPatternParser.h"
+#include "../FormatSpec.h"
 
 // ExprTk is a single-header library that pulls in a fair amount of
 // template machinery, so the include lives here in the engine TU
@@ -85,6 +72,10 @@ namespace MultiReplaceEngine {
 
     class ExprTkEngine final : public IFormulaEngine {
     public:
+        // The host pointer is accepted for symmetry with LuaEngine; the
+        // ExprTk path currently makes no callbacks back into the host. It
+        // is stored for future use (e.g. an "evaluation log" hook) but
+        // never dereferenced by the current implementation.
         explicit ExprTkEngine(ILuaEngineHost* host);
         ~ExprTkEngine() override;
 
@@ -95,7 +86,7 @@ namespace MultiReplaceEngine {
 
         // beginRun / endRunSummary / endRunSkipAllNoticeText use the
         // base implementations: they read the shared _errorSkipCount /
-        // _skipAllErrors state which handleNaN() maintains via the
+        // _skipAllErrors state which handleInvalid() maintains via the
         // base's handleRecoverableSkip() helper.
 
         bool compile(const std::string& scriptUtf8) override;
@@ -129,9 +120,11 @@ namespace MultiReplaceEngine {
         void reportError(ILuaEngineHost::ErrorCategory category,
             const std::string& details);
 
-        // NaN handling for both the numeric and return-list paths.
-        // Bumps the skip counter and may show the recoverable dialog.
-        void handleNaN(const std::string& exprText);
+        // Invalid-result handling for both the numeric and return-list
+        // paths. Triggered on NaN or Inf: bumps the skip counter and may
+        // show the recoverable dialog. The original match stays intact
+        // when the user skips, so no data is lost.
+        void handleInvalid(const std::string& exprText);
 
         // Parse a UTF-8 capture string into a double. Returns NaN for
         // empty / non-numeric input. Accepts both '.' and ',' as decimal
@@ -152,8 +145,9 @@ namespace MultiReplaceEngine {
         // Errors during element traversal are tolerated rather than
         // aborted; an unknown element type is silently skipped so a
         // future ExprTk extension cannot break a running replace.
-        // A NaN scalar element sets _outputHadNaN so the caller can
-        // skip the match (consistent with the numeric-path NaN handling).
+        // A NaN or Inf scalar element sets _outputHadInvalid so the
+        // caller can skip the match (consistent with the numeric-path
+        // invalid-result handling).
         // When escapeForRegex is true, any \ or $ produced by the
         // expression is escaped so the output is safe to feed to a
         // regex replacement engine; literal text segments outside of
@@ -192,34 +186,6 @@ namespace MultiReplaceEngine {
             }
 
             double operator()() override;
-
-        private:
-            ExprTkEngine* _owner;
-        };
-
-        // ExprTk-callable wrapper: implements seq(start, increment), a
-        // sequence generator that returns start, start+inc, start+2*inc,
-        // ... over consecutive matches.
-        //
-        // Both arguments are optional and default to 1, so:
-        //   seq()         -> 1, 2, 3, ...
-        //   seq(10)       -> 10, 11, 12, ...
-        //   seq(0, 10)    -> 0, 10, 20, ...
-        //   seq(100, -10) -> 100, 90, 80, ...
-        //
-        // Built on ivararg_function so the variadic argument count can be
-        // checked at call time rather than fixed at registration. The
-        // result is start + (CNT - 1) * inc; CNT is read directly from
-        // the engine's _varCNT member which is updated at the start of
-        // each execute().
-        class SeqFunction : public exprtk::ivararg_function<double> {
-        public:
-            explicit SeqFunction(ExprTkEngine* owner)
-                : _owner(owner) {
-                exprtk::enable_zero_parameters(*this);  // allow seq() with no args
-            }
-
-            double operator()(const std::vector<double>& args) override;
 
         private:
             ExprTkEngine* _owner;
@@ -265,48 +231,32 @@ namespace MultiReplaceEngine {
             ExprTkEngine* _owner;
         };
 
-        // numcol(N) / numcol('name') - column value as double.
-        // arity-spec "T|S": one argument, scalar (index) or string (header).
-        // Dispatches to the host's CSV column accessors; returns NaN on
-        // any failure (no CSV mode, missing column, non-numeric content).
+        // ExprTk-callable: parsedate(str, fmt) -> Unix timestamp.
         //
-        // Multi-prototype functions ("T|S") route through the psi
-        // variant of operator(); psi tells us which alternative the
-        // parser matched (0=T, 1=S) but resolveCsvCell branches on the
-        // actual parameter type anyway, so psi is unused here.
-        class NumColFunction : public exprtk::igeneric_function<double> {
+        // Parses str against the strftime-style fmt and returns the
+        // resulting time as seconds-since-epoch. With a leading '!'
+        // in fmt the result is treated as UTC; otherwise as local
+        // time (Lua convention, matches our D[...] output spec).
+        //
+        // Returns NaN on parse failure or out-of-range fields, so a
+        // bad input flows through the same recoverable-error dialog
+        // as any other invalid-number result.
+        //
+        // Two string args, scalar return: "SS" arity-spec, plain
+        // igeneric_function (no e_rtrn_string).
+        class ParsedateFunction : public exprtk::igeneric_function<double> {
         public:
             using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
             using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
 
-            explicit NumColFunction(ExprTkEngine* owner)
-                : igenfunct_t("T|S")
+            explicit ParsedateFunction(ExprTkEngine* owner)
+                : igenfunct_t("SS")
                 , _owner(owner) {
             }
 
-            double operator()(const std::size_t& /*psi*/,
-                parameter_list_t parameters) override;
-
-        private:
-            ExprTkEngine* _owner;
-        };
-
-        // txtcol(N) / txtcol('name') - column value as string. Same
-        // dispatch as NumColFunction but returns the raw cell text;
-        // only meaningful inside a return [...] list, mirroring txt().
-        class TxtColFunction : public exprtk::igeneric_function<double> {
-        public:
-            using igenfunct_t = exprtk::igeneric_function<double>;
-            using parameter_list_t = typename igenfunct_t::parameter_list_t;
-
-            explicit TxtColFunction(ExprTkEngine* owner)
-                : igenfunct_t("T|S", igenfunct_t::e_rtrn_string)
-                , _owner(owner) {
-            }
-
-            double operator()(const std::size_t& /*psi*/,
-                std::string& result,
-                parameter_list_t parameters) override;
+            double operator()(parameter_list_t parameters) override;
 
         private:
             ExprTkEngine* _owner;
@@ -314,7 +264,7 @@ namespace MultiReplaceEngine {
 
         // ----- state -------------------------------------------------------
 
-        ILuaEngineHost* _host;
+        ILuaEngineHost* _host;            // accepted, currently unused
 
         // Pre-parsed segments of the most recently compiled template.
         // Kept alongside the expressions so execute() can iterate both in
@@ -330,6 +280,14 @@ namespace MultiReplaceEngine {
         symbol_table_t              _symbolTable;
         parser_t                    _parser;
         std::vector<expression_t>   _compiledExpressions;
+
+        // Per-segment output spec, in lockstep with _compiledExpressions.
+        // hasSpec=false means no "~ spec" suffix; engine uses formatDouble().
+        struct SegmentSpec {
+            bool hasSpec = false;
+            FormatSpec::Spec spec;
+        };
+        std::vector<SegmentSpec>    _segmentSpecs;
 
         // Variables registered with the symbol table. Held as members
         // (not locals) because ExprTk binds them by reference - they must
@@ -365,8 +323,8 @@ namespace MultiReplaceEngine {
         // _wantStop, _skipAllErrors and _errorSkipCount live in
         // IFormulaEngine and are reset by the base beginRun() / per-match
         // by execute() (for _wantStop).
-        bool _wantSkip = false;       // set by skip() in the formula
-        bool _outputHadNaN = false;   // set when a NaN reaches the output
+        bool _wantSkip = false;          // set by skip() in the formula
+        bool _outputHadInvalid = false;  // set when NaN or Inf reaches the output
 
         // The num() callable, registered with the symbol table.
         NumFunction _numFunction;
@@ -378,12 +336,9 @@ namespace MultiReplaceEngine {
         // inside ExprTk return lists).
         TxtFunction _txtFunction;
 
-        // The seq() callable for sequence generation across matches.
-        SeqFunction _seqFunction;
-
-        // CSV column access via the host (numcol/txtcol).
-        NumColFunction _numColFunction;
-        TxtColFunction _txtColFunction;
+        // The parsedate(str, fmt) callable for string-to-timestamp
+        // parsing - the inverse of D[fmt] output.
+        ParsedateFunction _parsedateFunction;
     };
 
 } // namespace MultiReplaceEngine

@@ -518,6 +518,10 @@ nav.pagenav .nav-group.collapsible {
     <a href="#exprtk-string-output" hidden onclick="navClicked(event, 'exprtk-string-output')">String Output</a>
     <a href="#exprtk-operators" hidden onclick="navClicked(event, 'exprtk-operators')">Operators</a>
     <a href="#exprtk-skip" hidden onclick="navClicked(event, 'exprtk-skip')">Skipping Matches</a>
+    <a href="#exprtk-seq" hidden onclick="navClicked(event, 'exprtk-seq')">Sequence Generator</a>
+    <a href="#exprtk-csv" hidden onclick="navClicked(event, 'exprtk-csv')">CSV Column Access</a>
+    <a href="#exprtk-format" hidden onclick="navClicked(event, 'exprtk-format')">Output Formatting</a>
+    <a href="#exprtk-date" hidden onclick="navClicked(event, 'exprtk-date')">Date Handling</a>
     <a href="#exprtk-examples" hidden onclick="navClicked(event, 'exprtk-examples')">Examples</a>
     <a href="#exprtk-limitations" hidden onclick="navClicked(event, 'exprtk-limitations')">Limitations</a>
 </nav>
@@ -1873,6 +1877,277 @@ return {
 
   <br>
 
+  <section id="exprtk-seq">
+    <h2>Sequence Generator</h2>
+    <p><code>seq([start[, increment]])</code> returns the next value in an arithmetic sequence keyed off the match counter <code>CNT</code>. Both arguments are optional and default to <code>1</code>, so:</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Call</th>
+        <th>Output</th>
+      </tr>
+      <tr>
+        <td><code>(?=seq())</code></td>
+        <td>1, 2, 3, 4, ...     (default start=1, inc=1)</td>
+      </tr>
+      <tr>
+        <td><code>(?=seq(10))</code></td>
+        <td>10, 11, 12, 13, ... (start=10, inc defaults to 1)</td>
+      </tr>
+      <tr>
+        <td><code>(?=seq(0, 10))</code></td>
+        <td>0, 10, 20, 30, ...  (custom start and step)</td>
+      </tr>
+      <tr>
+        <td><code>(?=seq(100, -10))</code></td>
+        <td>100, 90, 80, 70, ... (negative step counts down)</td>
+      </tr>
+    </table>
+    <p>It is exactly equivalent to <code>start + (CNT - 1) * inc</code>, just shorter and clearer at the use site. Useful for numbering matches, generating IDs or any other arithmetic series across replacements.</p>
+    <p><strong>Example:</strong></p>
+    <table class="optionsTable">
+      <tr>
+        <th>Input</th>
+        <th>Pattern</th>
+        <th>Replace</th>
+        <th>Output</th>
+      </tr>
+      <tr>
+        <td>apple<br>banana<br>cherry</td>
+        <td><code>^(.+)$</code></td>
+        <td><code>(?=seq(100, 10)). \1</code></td>
+        <td>100. apple<br>110. banana<br>120. cherry</td>
+      </tr>
+    </table>
+  </section>
+
+  <br>
+
+  <section id="exprtk-csv">
+    <h2>CSV Column Access</h2>
+    <p>When CSV mode is active, <code>numcol(N)</code> and <code>txtcol(N)</code> return the value of column N from the <strong>physical line</strong> containing the current match. Index is 1-based; <code>numcol(1)</code> is the first column. Both also accept a header name as a string (<code>numcol('price')</code>); on first use the document's first line is parsed as a header row and cached for the rest of the run.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Function</th>
+        <th>Returns</th>
+        <th>Notes</th>
+      </tr>
+      <tr>
+        <td><code>numcol(N)</code> / <code>numcol('name')</code></td>
+        <td>number</td>
+        <td>Same parsing as <code>num()</code> - <code>.</code>/<code>,</code> decimal separator, NaN on non-numeric content.</td>
+      </tr>
+      <tr>
+        <td><code>txtcol(N)</code> / <code>txtcol('name')</code></td>
+        <td>string</td>
+        <td>Raw cell text. Only meaningful inside <code>return [...]</code>.</td>
+      </tr>
+    </table>
+    <p><strong>Requirements:</strong></p>
+    <ul>
+      <li>CSV mode must be active (the <strong>CSV</strong> scope radio button) and a delimiter configured.</li>
+      <li>Indexing reads the raw row regardless of any column-selection filter the user set.</li>
+      <li>The cell is returned verbatim - no quote stripping, matching the existing CSV column convention used by sort and column highlighting.</li>
+    </ul>
+    <p><strong>Behaviour at the edges:</strong></p>
+    <ul>
+      <li>Missing column (e.g. <code>numcol(99)</code> on a row with 5 columns): <code>NaN</code> for <code>numcol</code>, empty string for <code>txtcol</code>.</li>
+      <li>Unknown header name: same.</li>
+      <li>CSV mode off, no delimiter set, or no current match in progress: same.</li>
+    </ul>
+    <p><strong>Example - lookup by name with arithmetic:</strong></p>
+    <table class="optionsTable">
+      <tr>
+        <th>Input</th>
+        <th>Pattern</th>
+        <th>Replace</th>
+        <th>Output</th>
+      </tr>
+      <tr>
+        <td>product;price;qty<br>apple;1.50;10<br>banana;0.30;25</td>
+        <td><code>^(?!product).+$</code></td>
+        <td><code>(?=return [txt(0), ' total=', numcol('price') * numcol('qty')])</code></td>
+        <td>product;price;qty<br>apple;1.50;10 total=15<br>banana;0.30;25 total=7.5</td>
+      </tr>
+    </table>
+    <p>The negative lookahead in the Find pattern excludes the header row so the formula only runs on data rows. Inside the formula, <code>numcol('price')</code> reads the <code>price</code> column of whichever line the current match landed on.</p>
+  </section>
+
+  <br>
+
+  <section id="exprtk-format">
+    <h2>Output Formatting</h2>
+    <p>By default an ExprTk expression renders its numeric result with the shortest round-trip representation: <code>3.14</code>, <code>42</code>, <code>1.5e+10</code>. For controlled output &mdash; padding, precision, fixed decimal places, hex, time durations &mdash; append a <strong>format spec</strong> to the expression with <code>~</code>:</p>
+    <p><code>(?= formula ~ spec )</code></p>
+    <p>The <code>~</code> separator splits the block into the formula (left) and the spec (right). Whitespace around <code>~</code> is optional. The spec is validated when the rule is compiled, so an invalid spec surfaces immediately as a compile-time error rather than producing garbage at runtime.</p>
+    <p>There are three kinds of spec: <strong>numeric</strong>, <strong>duration</strong>, and <strong>date</strong>.</p>
+
+    <h3>Numeric</h3>
+    <p>Grammar: <code>[+] [0] [width] [.prec | .min-max] [type]</code></p>
+    <table class="optionsTable">
+      <tr>
+        <th>Part</th>
+        <th>Meaning</th>
+      </tr>
+      <tr>
+        <td><code>+</code></td>
+        <td>Always show the sign (<code>+3.14</code>, <code>-3.14</code>).</td>
+      </tr>
+      <tr>
+        <td><code>0</code></td>
+        <td>Zero-pad to <code>width</code> instead of space-padding.</td>
+      </tr>
+      <tr>
+        <td><code>width</code></td>
+        <td>Minimum total field width.</td>
+      </tr>
+      <tr>
+        <td><code>.prec</code></td>
+        <td>Exact number of decimal digits.</td>
+      </tr>
+      <tr>
+        <td><code>.min-max</code></td>
+        <td>Range form: at least <code>min</code>, at most <code>max</code> decimals. Trailing zeros beyond <code>min</code> are stripped.</td>
+      </tr>
+      <tr>
+        <td><code>type</code></td>
+        <td><code>f</code> fixed, <code>e</code> scientific, <code>g</code> shortest, <code>x</code> hex, <code>b</code> binary, <code>o</code> octal. Omit for default rendering.</td>
+      </tr>
+    </table>
+    <p>Integer types <code>x b o</code> accept only <code>0</code> and <code>width</code> modifiers &mdash; precision and <code>+</code> are rejected as a compile error. Negative numbers in <code>x</code> and <code>b</code> produce the 64-bit two's-complement bit pattern (<code>x</code> on <code>-1</code> &rarr; <code>ffffffffffffffff</code>).</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Spec</th>
+        <th>Value</th>
+        <th>Output</th>
+      </tr>
+      <tr><td><code>05.2f</code></td><td><code>3.14159</code></td><td><code>03.14</code></td></tr>
+      <tr><td><code>+8.2f</code></td><td><code>3.14</code></td><td><code>   +3.14</code></td></tr>
+      <tr><td><code>.2-5f</code></td><td><code>3.1</code></td><td><code>3.10</code></td></tr>
+      <tr><td><code>.2-5f</code></td><td><code>3.14159</code></td><td><code>3.14159</code></td></tr>
+      <tr><td><code>08x</code></td><td><code>255</code></td><td><code>000000ff</code></td></tr>
+      <tr><td><code>8b</code></td><td><code>5</code></td><td><code>     101</code></td></tr>
+      <tr><td><code>.3g</code></td><td><code>123456</code></td><td><code>1.23e+05</code></td></tr>
+      <tr><td><code>+</code></td><td><code>3.14</code></td><td><code>+3.14</code></td></tr>
+    </table>
+    <p>The numeric output is locale-independent: the decimal separator is always <code>.</code>, regardless of the system locale. This keeps CSV pipelines reproducible across machines.</p>
+
+    <h3>Duration</h3>
+    <p>Grammar: <code>t&lt;unit&gt;:&lt;mode&gt;</code></p>
+    <p>Treats the value as a duration measured in <code>unit</code> and renders it as a clock-like string.</p>
+    <table class="optionsTable">
+      <tr><th>Unit</th><th>Meaning</th></tr>
+      <tr><td><code>ts</code></td><td>seconds</td></tr>
+      <tr><td><code>tm</code></td><td>minutes</td></tr>
+      <tr><td><code>th</code></td><td>hours</td></tr>
+      <tr><td><code>td</code></td><td>days</td></tr>
+    </table>
+    <table class="optionsTable">
+      <tr><th>Mode</th><th>Output shape</th><th>Example (for 3725 seconds)</th></tr>
+      <tr><td><code>ms</code></td><td><code>M:SS</code></td><td><code>62:05</code></td></tr>
+      <tr><td><code>hm</code></td><td><code>H:MM</code></td><td><code>1:02</code></td></tr>
+      <tr><td><code>hms</code></td><td><code>H:MM:SS</code></td><td><code>1:02:05</code></td></tr>
+      <tr><td><code>dh</code></td><td><code>D HH</code></td><td>(<code>th:dh</code> on 25h &rarr; <code>1 01</code>)</td></tr>
+      <tr><td><code>dhm</code></td><td><code>D HH:MM</code></td><td>(<code>td:dhm</code> on 1.5d &rarr; <code>1 12:00</code>)</td></tr>
+      <tr><td><code>dhms</code></td><td><code>D HH:MM:SS</code></td><td>(<code>td:dhms</code> on 1.5d &rarr; <code>1 12:00:00</code>)</td></tr>
+    </table>
+    <p>The mode is <strong>mandatory</strong> &mdash; <code>t:s</code> alone is not enough, you must pick a mode. Fractional input is truncated (rounded toward zero) before splitting into components. Negative durations carry a leading <code>-</code>.</p>
+
+    <h3>Date</h3>
+    <p>Grammar:</p>
+    <ul>
+      <li><code>D[strftime_pattern]</code> &mdash; local time</li>
+      <li><code>D[!strftime_pattern]</code> &mdash; UTC</li>
+    </ul>
+    <p>Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through <code>strftime</code>. The optional <code>!</code> prefix forces UTC; without it the system's local time zone is used. This follows the same convention as Lua's <code>os.date()</code>.</p>
+    <p>The pattern uses standard strftime conversion specifiers &mdash; <code>%Y</code>, <code>%m</code>, <code>%d</code>, <code>%H</code>, <code>%M</code>, <code>%S</code>, <code>%A</code>, <code>%B</code>, <code>%c</code>, etc. Literal text between specifiers is passed through verbatim.</p>
+    <table class="optionsTable">
+      <tr><th>Spec</th><th>Timestamp</th><th>Output (UTC)</th></tr>
+      <tr><td><code>D[!%Y-%m-%d]</code></td><td><code>1700000000</code></td><td><code>2023-11-14</code></td></tr>
+      <tr><td><code>D[!%Y-%m-%dT%H:%M:%SZ]</code></td><td><code>1700000000</code></td><td><code>2023-11-14T22:13:20Z</code></td></tr>
+      <tr><td><code>D[!%d.%m.%Y]</code></td><td><code>1700000000</code></td><td><code>14.11.2023</code></td></tr>
+      <tr><td><code>D[!%A]</code></td><td><code>0</code></td><td><code>Thursday</code> (epoch was Thursday)</td></tr>
+      <tr><td><code>D[!Year %Y, week %V]</code></td><td><code>1700000000</code></td><td><code>Year 2023, week 46</code></td></tr>
+      <tr><td><code>D[!%c]</code></td><td><code>1700000000</code></td><td><code>Tue Nov 14 22:13:20 2023</code></td></tr>
+    </table>
+    <p><strong>Range:</strong> timestamps must be &ge; 0 (years 1970 onwards). Negative values produce empty output. Subseconds are truncated (<code>1700000000.7</code> is treated as <code>1700000000</code>).</p>
+
+    <h3>Errors and edge cases</h3>
+    <ul>
+      <li><strong>Invalid spec at compile time</strong> &mdash; <code>(?=hit ~ 99q)</code> produces <em>"Invalid format spec '99q': Unknown numeric type letter; expected f/e/g/x/b/o"</em>. The rule fails to compile; no replacements run.</li>
+      <li><strong><code>return [...]</code> cannot be combined with a spec</strong> &mdash; the spec is for numeric output, <code>return</code> lists are for string output. Combining them produces a runtime error.</li>
+      <li><strong>NaN / Inf</strong> &mdash; when the formula itself produces <code>NaN</code> (e.g. parsing a non-numeric capture) or <code>Inf</code> (e.g. division by zero), the spec is not applied; the recoverable-error dialog appears instead, leaving the original match untouched if the user skips.</li>
+      <li><strong><code>~</code> inside the formula</strong> &mdash; the splitter looks for the <strong>last</strong> <code>~</code> at bracket depth 0, ignoring <code>~</code> inside quoted strings (<code>'a~b'</code>) and inside <code>[...]</code> brackets (<code>D[%Y ~ %m]</code>). The first <code>~</code> in the date pattern below is therefore part of the spec, not a separator:
+        <p><code>(?= hit ~ D[%Y-%m-%d ~ %H:%M:%S] )</code></p>
+      </li>
+    </ul>
+  </section>
+
+  <br>
+
+  <section id="exprtk-date">
+    <h2>Date Handling</h2>
+    <p>ExprTk provides one date-related function, the inverse of the <code>D[fmt]</code> output spec:</p>
+    <p><code>parsedate(text, fmt)  -&gt;  Unix timestamp</code></p>
+    <p>Parses <code>text</code> against the strftime-style <code>fmt</code> pattern and returns the resulting time as seconds since 1970-01-01 UTC. As with <code>D[fmt]</code>:</p>
+    <ul>
+      <li>without <code>!</code> prefix &rarr; input is interpreted as <strong>local time</strong></li>
+      <li>with <code>!</code> prefix &rarr; input is interpreted as <strong>UTC</strong></li>
+    </ul>
+    <p>On parse failure (malformed input, out-of-range fields, format mismatch) the function returns <code>NaN</code>, which flows through the standard recoverable-error dialog &mdash; the match stays untouched on Skip.</p>
+
+    <h3>Supported format specifiers</h3>
+    <p><code>parsedate</code> accepts a deliberately small subset of strftime &mdash; everything you need for the common date formats, nothing locale-dependent:</p>
+    <table class="optionsTable">
+      <tr><th>Specifier</th><th>Meaning</th></tr>
+      <tr><td><code>%Y</code></td><td>4-digit year</td></tr>
+      <tr><td><code>%y</code></td><td>2-digit year (00..68 &rarr; 2000..2068, 69..99 &rarr; 1969..1999)</td></tr>
+      <tr><td><code>%m</code></td><td>Month (01..12)</td></tr>
+      <tr><td><code>%d</code></td><td>Day of month (01..31)</td></tr>
+      <tr><td><code>%H</code></td><td>Hour (00..23)</td></tr>
+      <tr><td><code>%I</code></td><td>Hour (01..12), needs <code>%p</code></td></tr>
+      <tr><td><code>%M</code></td><td>Minute (00..59)</td></tr>
+      <tr><td><code>%S</code></td><td>Second (00..60, leap second allowed)</td></tr>
+      <tr><td><code>%p</code></td><td><code>AM</code> or <code>PM</code> (case-insensitive)</td></tr>
+      <tr><td><code>%F</code></td><td>Shortcut for <code>%Y-%m-%d</code></td></tr>
+      <tr><td><code>%T</code></td><td>Shortcut for <code>%H:%M:%S</code></td></tr>
+      <tr><td><code>%%</code></td><td>Literal <code>%</code></td></tr>
+    </table>
+    <p>Whitespace in the format matches <strong>zero or more</strong> whitespace characters in the input. Literal characters must match exactly. Trailing characters in the input beyond what the format consumes are tolerated.</p>
+
+    <h3>Quoting the format string in ExprTk</h3>
+    <p><strong>Use single quotes</strong> for <code>parsedate</code>'s format string. ExprTk's lexer treats <code>!</code> as a logical-NOT operator and <code>%</code> as the modulo operator; both are interpreted differently when they appear directly after a double quote. Single-quoted strings are taken verbatim:</p>
+    <table class="optionsTable">
+      <tr><th>Form</th><th>Status</th></tr>
+      <tr><td><code>parsedate(txt(0), '%Y-%m-%d')</code></td><td>&check; works</td></tr>
+      <tr><td><code>parsedate(txt(0), '!%Y-%m-%d')</code></td><td>&check; works (UTC)</td></tr>
+      <tr><td><code>parsedate(txt(0), "%Y-%m-%d")</code></td><td>&times; token error</td></tr>
+    </table>
+    <p><code>D[fmt]</code> is not affected &mdash; the spec sits inside <code>[...]</code> brackets and bypasses the ExprTk lexer entirely.</p>
+
+    <h3>Time-zone consistency in round-trips</h3>
+    <p>Mixing local and UTC across <code>parsedate</code> and <code>D[...]</code> produces an offset of one time zone. For predictable round-trips, use the <strong>same</strong> UTC/local choice on both sides:</p>
+    <table class="optionsTable">
+      <tr><th>Form</th><th>Status</th></tr>
+      <tr><td><code>(?= parsedate(txt(0), '!%Y-%m-%d') ~ D[!%Y-%m-%d] )</code></td><td>&check; pure UTC</td></tr>
+      <tr><td><code>(?= parsedate(txt(0), '%Y-%m-%d') ~ D[%Y-%m-%d] )</code></td><td>&check; pure local</td></tr>
+      <tr><td><code>(?= parsedate(txt(0), '%Y-%m-%d') ~ D[!%Y-%m-%d] )</code></td><td>&#9888; offset by local TZ</td></tr>
+    </table>
+    <p>The third form is occasionally what you want (e.g. converting a wall-clock log time to a UTC timestamp for storage), but it should be a conscious choice.</p>
+
+    <h3>Date arithmetic</h3>
+    <p>Once a date is a Unix timestamp it's just a number, so all of ExprTk's math applies. A few patterns that come up often:</p>
+    <table class="optionsTable">
+      <tr><th>Goal</th><th>Snippet</th></tr>
+      <tr><td>Add one day</td><td><code>parsedate(txt(0), '!%Y-%m-%d') + 86400</code></td></tr>
+      <tr><td>Add one week</td><td><code>parsedate(txt(0), '!%Y-%m-%d') + 7 * 86400</code></td></tr>
+      <tr><td>Add one hour</td><td><code>parsedate(txt(0), '!%Y-%m-%dT%H:%M:%S') + 3600</code></td></tr>
+      <tr><td>Difference (days)</td><td><code>(parsedate(txt(2), '!%F') - parsedate(txt(1), '!%F')) / 86400</code></td></tr>
+    </table>
+    <p>There is no built-in "add one month" &mdash; months have variable length, so adding <code>30 * 86400</code> is the usual approximation. For exact month arithmetic, switch to the Lua engine which exposes the full <code>os.date</code> / <code>os.time</code> table API.</p>
+  </section>
+
+  <br>
+
   <section id="exprtk-examples">
     <h2>More Examples</h2>
     <p>The examples below are drawn from typical text-processing tasks. Each row in the table is a <strong>single rule</strong> &mdash; copy the Find and Replace columns straight into MultiReplace, set the engine to ExprTk, enable Formula Support and Regex.</p>
@@ -2002,6 +2277,38 @@ return {
       </tr>
     </table>
 
+    <h3>Output formatting</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Description</th>
+      </tr>
+      <tr><td><code>(\d+\.?\d*)</code></td><td><code>(?=num(1) ~ .2f)</code></td><td>Render with exactly 2 decimals (<code>3.1</code> &rarr; <code>3.10</code>).</td></tr>
+      <tr><td><code>(\d+\.?\d*)</code></td><td><code>(?=num(1) ~ 010.4f)</code></td><td>10-char wide, zero-padded, 4 decimals (<code>3.14</code> &rarr; <code>00003.1400</code>).</td></tr>
+      <tr><td><code>(-?\d+\.?\d*)</code></td><td><code>(?=num(1) ~ +.2f)</code></td><td>Always show sign (<code>3.14</code> &rarr; <code>+3.14</code>, <code>-3.14</code> &rarr; <code>-3.14</code>).</td></tr>
+      <tr><td><code>(\d+\.?\d*)</code></td><td><code>(?=num(1) ~ .2-6f)</code></td><td>Up to 6 decimals, at least 2, trailing zeros stripped.</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>0x(?=num(1) ~ 08x)</code></td><td>Decimal &rarr; 8-digit zero-padded hex (<code>255</code> &rarr; <code>0x000000ff</code>).</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ 8b)</code></td><td>Decimal &rarr; binary (<code>5</code> &rarr; <code>     101</code>).</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ ts:hms)</code></td><td>Seconds &rarr; <code>H:MM:SS</code> (<code>3725</code> &rarr; <code>1:02:05</code>).</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ tm:hm)</code></td><td>Minutes &rarr; <code>H:MM</code> workday format (<code>480</code> &rarr; <code>8:00</code>).</td></tr>
+    </table>
+
+    <h3>Date handling</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Description</th>
+      </tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ D[!%Y-%m-%d])</code></td><td>Unix timestamp &rarr; ISO date in UTC.</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ D[!%Y-%m-%dT%H:%M:%SZ])</code></td><td>Unix timestamp &rarr; ISO 8601 with Z suffix.</td></tr>
+      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=parsedate(txt(0), '!%Y-%m-%d') ~ D[!%d.%m.%Y])</code></td><td>Reformat ISO date &rarr; DD.MM.YYYY.</td></tr>
+      <tr><td><code>(\d{2})\.(\d{2})\.(\d{4})</code></td><td><code>(?=parsedate(txt(0), '!%d.%m.%Y') ~ D[!%Y-%m-%d])</code></td><td>Reformat DD.MM.YYYY &rarr; ISO date.</td></tr>
+      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=parsedate(txt(0), '!%Y-%m-%d') + 86400 ~ D[!%Y-%m-%d])</code></td><td>Shift every ISO date by +1 day.</td></tr>
+      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=parsedate(txt(0), '!%Y-%m-%d') ~ D[!%A])</code></td><td>Replace each ISO date with its weekday name.</td></tr>
+    </table>
+
     <h3>Counters</h3>
     <table class="optionsTable">
       <tr>
@@ -2028,11 +2335,12 @@ return {
     <h2>Limitations</h2>
     <p>ExprTk is deliberately scoped. Things it does <strong>not</strong> do:</p>
     <ul>
-      <li><strong>No string manipulation</strong> &mdash; there is no <code>substring</code>, <code>replace</code>, <code>find</code>, <code>format</code>, etc. Strings can only be passed through (via captures, <code>txt(N)</code>, <code>FNAME</code>, <code>FPATH</code>) and assembled in <code>return [...]</code> lists.</li>
+      <li><strong>No string manipulation</strong> &mdash; there is no <code>substring</code>, <code>replace</code>, <code>find</code>, <code>format</code>, etc. Strings can only be passed through (via captures, <code>txt(N)</code>, <code>FNAME</code>, <code>FPATH</code>) and assembled in <code>return [...]</code> lists. (<code>parsedate</code> is the one exception, but it only consumes the string &mdash; it returns a number.)</li>
       <li><strong>UTF-8 inside string literals fails to compile.</strong> A literal like <code>'Gr&ouml;&szlig;e'</code> between <code>'...'</code> will produce an <code>Invalid string token</code> error. Use captures or place non-ASCII text outside the <code>(?=...)</code> block.</li>
       <li><strong>No state across matches.</strong> Each <code>(?=...)</code> evaluation starts fresh. The numeric counters (<code>CNT</code>, <code>LCNT</code>) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use <code>vars({...})</code>.</li>
       <li><strong>No file I/O, no external scripts.</strong> ExprTk has no equivalent to Lua's <code>lvars</code>, <code>lkp</code>, or <code>lcmd</code>.</li>
-      <li><strong>Numeric-only by design.</strong> Operations on text that go beyond passing it through belong in Lua.</li>
+      <li><strong><code>parsedate</code> is intentionally minimal.</strong> It accepts the common strftime specifiers (<code>%Y %y %m %d %H %M %S %I %p %F %T %%</code>) &mdash; enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (<code>%B</code>), weekday names (<code>%A</code>), or week numbers (<code>%V</code>) are <strong>not</strong> accepted on the input side. For richer date input parsing, use Lua's date handling instead.</li>
+      <li><strong>Date timestamps must be &ge; 0.</strong> <code>D[fmt]</code> and <code>parsedate</code> only handle years 1970 onwards. Negative timestamps produce empty output or NaN respectively.</li>
     </ul>
   </section>
 

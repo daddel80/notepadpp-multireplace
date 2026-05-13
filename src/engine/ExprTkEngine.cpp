@@ -18,12 +18,14 @@
 #include <charconv>
 #include <cmath>
 #include <cstring>
+#include <ctime>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 #include <system_error>
 
 #include "../StringUtils.h"
+#include "../DateParse.h"
 namespace SU = StringUtils;
 
 namespace MultiReplaceEngine {
@@ -37,9 +39,7 @@ namespace MultiReplaceEngine {
         , _numFunction(this)
         , _skipFunction(this)
         , _txtFunction(this)
-        , _seqFunction(this)
-        , _numColFunction(this)
-        , _txtColFunction(this)
+        , _parsedateFunction(this)
     {
     }
 
@@ -95,19 +95,9 @@ namespace MultiReplaceEngine {
         // concatenated into the replace text.
         _symbolTable.add_function("txt", _txtFunction);
 
-        // Register seq([start, [inc]]) as a sequence generator. Reads
-        // _varCNT directly so the value tracks the current match index;
-        // both arguments are optional and default to 1, so seq() yields
-        // 1,2,3,... seq(start) yields start, start+1, ... and seq(start,
-        // inc) is fully parametrised. Built on ivararg_function so the
-        // optional-argument count is checked at call time.
-        _symbolTable.add_function("seq", _seqFunction);
-
-        // CSV column accessors. Both delegate to the host, which knows
-        // about the active CSV settings, the line of the current match,
-        // and caches the row's column array for repeated lookups.
-        _symbolTable.add_function("numcol", _numColFunction);
-        _symbolTable.add_function("txtcol", _txtColFunction);
+        // Register parsedate(str, fmt) - the inverse of D[fmt] output.
+        // Returns Unix timestamp on success, NaN on parse failure.
+        _symbolTable.add_function("parsedate", _parsedateFunction);
 
         // ExprTk's standard math constants (pi, epsilon, infinity).
         _symbolTable.add_constants();
@@ -118,6 +108,7 @@ namespace MultiReplaceEngine {
     void ExprTkEngine::shutdown()
     {
         _compiledExpressions.clear();
+        _segmentSpecs.clear();
         _parsedTemplate = ExprTkPatternParser::ParseResult();
         _lastCompiledScript.clear();
         _haveCompiled = false;
@@ -150,11 +141,14 @@ namespace MultiReplaceEngine {
         _host->showErrorMessage(category, "ExprTk", details);
     }
 
-    void ExprTkEngine::handleNaN(const std::string& exprText)
+    void ExprTkEngine::handleInvalid(const std::string& exprText)
     {
         // Delegate the entire skip-state and dialog plumbing to the base
         // class. The engine-specific bit is the translation key for the
-        // detail-text shown in the dialog body.
+        // detail-text shown in the dialog body. Triggered on both NaN
+        // and Inf, since both indicate an unusable numeric result and
+        // letting either reach the output would silently corrupt the
+        // text.
         handleRecoverableSkip(_host, L"ExprTk",
             L"msgbox_recoverable_error_details_exprtk", exprText);
     }
@@ -175,6 +169,7 @@ namespace MultiReplaceEngine {
         // failed compile leaves the engine in a clean "no compile yet"
         // state rather than half-populated leftovers.
         _compiledExpressions.clear();
+        _segmentSpecs.clear();
         _parsedTemplate = ExprTkPatternParser::ParseResult();
         _lastCompiledScript.clear();
         _haveCompiled = false;
@@ -196,26 +191,50 @@ namespace MultiReplaceEngine {
         // Step 2: pre-compile every Expression segment. We allocate one
         // expression per segment; literals are not compiled.
         _compiledExpressions.resize(parseRes.segments.size());
+        _segmentSpecs.assign(parseRes.segments.size(), SegmentSpec{});
         for (std::size_t i = 0; i < parseRes.segments.size(); ++i) {
             const auto& seg = parseRes.segments[i];
             if (seg.type != ExprTkPatternParser::SegmentType::Expression) {
                 continue;
             }
 
+            // Split the segment body at the last unquoted '~' outside
+            // brackets. Anything left of it is the formula; anything
+            // right is an optional output-format spec.
+            auto split = FormatSpec::splitFormulaSpec(seg.text);
+
+            if (split.hasSpec) {
+                FormatSpec::Spec parsed = FormatSpec::parse(
+                    std::wstring(split.spec.begin(), split.spec.end()));
+                if (!parsed.valid) {
+                    std::string msg = "Invalid format spec \"";
+                    msg += split.spec;
+                    msg += "\": ";
+                    msg += parsed.errorMessage;
+                    reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
+                    _compiledExpressions.clear();
+                    _segmentSpecs.clear();
+                    return false;
+                }
+                _segmentSpecs[i].hasSpec = true;
+                _segmentSpecs[i].spec = std::move(parsed);
+            }
+
             expression_t expr;
             expr.register_symbol_table(_symbolTable);
 
-            if (!_parser.compile(seg.text, expr)) {
+            if (!_parser.compile(split.formula, expr)) {
                 // ExprTk failed to compile this expression. Surface the
                 // ExprTk parser error verbatim - it is technical but
                 // precise (e.g. "Unknown variable or function: foo").
                 std::string msg = "Invalid expression \"";
-                msg += seg.text;
+                msg += split.formula;
                 msg += "\": ";
                 msg += _parser.error();
                 reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
 
                 _compiledExpressions.clear();
+                _segmentSpecs.clear();
                 return false;
             }
 
@@ -279,7 +298,7 @@ namespace MultiReplaceEngine {
 
         _wantSkip = false;
         _wantStop = false;
-        _outputHadNaN = false;
+        _outputHadInvalid = false;
 
         _captures.clear();
         _captures.reserve(vars.captures.size() + 1);
@@ -356,15 +375,17 @@ namespace MultiReplaceEngine {
         std::string out;
         out.reserve(scriptUtf8.size());
 
-        // Helper: build the FormulaResult for a NaN-skipped match. Used by
-        // both the numeric path and the return-list path. Sets success=false
-        // when the user picked "Stop" in the dialog, otherwise marks the
-        // match as skipped so the rest of the run can continue.
-        const auto onNaN = [&](FormulaResult& r, const std::string& exprText) {
-            handleNaN(exprText);
+        // Helper: build the FormulaResult for an invalid-result match
+        // (NaN or Inf). Used by both the numeric and return-list paths.
+        // Sets success=false when the user picked "Stop" in the dialog;
+        // otherwise marks the match as skipped so the rest of the run
+        // can continue. Either way, the original match text stays
+        // intact - no data is lost.
+        const auto onInvalid = [&](FormulaResult& r, const std::string& exprText) {
+            handleInvalid(exprText);
             if (_wantStop) {
                 r.success = false;
-                r.errorMessage = "Aborted via NaN dialog";
+                r.errorMessage = "Aborted via formula-error dialog";
                 return;
             }
             r.skip = true;
@@ -389,19 +410,45 @@ namespace MultiReplaceEngine {
             const double value = expr.value();
 
             if (expr.return_invoked()) {
+                // return-lists emit strings; numeric spec makes no sense.
+                if (_segmentSpecs[i].hasSpec) {
+                    std::string msg = "Format spec cannot be combined with return statement: \"";
+                    msg += seg.text;
+                    msg += "\"";
+                    reportError(ILuaEngineHost::ErrorCategory::ExecutionError, msg);
+                    result.success = false;
+                    result.errorMessage = std::move(msg);
+                    return result;
+                }
                 appendExprtkResults(expr, out, escapeOutput);
-                if (_outputHadNaN) {
-                    onNaN(result, seg.text);
+                if (_outputHadInvalid) {
+                    onInvalid(result, seg.text);
                     return result;
                 }
                 continue;
             }
 
-            if (std::isnan(value)) {
-                onNaN(result, seg.text);
+            // NaN or Inf both indicate an unusable numeric result. Route
+            // either through the recoverable-error dialog instead of
+            // letting "nan" / "inf" leak into the output text.
+            if (std::isnan(value) || std::isinf(value)) {
+                onInvalid(result, seg.text);
                 return result;
             }
-            out.append(formatDouble(value));
+
+            // Format through spec, or fall back to shortest round-trip.
+            // FormatSpec only emits ASCII chars (digits, sign, dot,
+            // letters, colon, space), so each wchar fits in a char.
+            if (_segmentSpecs[i].hasSpec) {
+                std::wstring formatted = FormatSpec::apply(_segmentSpecs[i].spec, value);
+                out.reserve(out.size() + formatted.size());
+                for (wchar_t wc : formatted) {
+                    out.push_back(static_cast<char>(wc));
+                }
+            }
+            else {
+                out.append(formatDouble(value));
+            }
         }
 
         result.output = std::move(out);
@@ -449,8 +496,12 @@ namespace MultiReplaceEngine {
             case type_store_t::e_scalar: {
                 const scalar_view_t sv(ts);
                 const double v = sv();
-                if (std::isnan(v)) {
-                    _outputHadNaN = true;
+                // Same invalid-result rule as the numeric path: NaN or
+                // Inf inside a return list aborts the whole list. The
+                // caller picks this up via _outputHadInvalid and routes
+                // through the recoverable-error dialog.
+                if (std::isnan(v) || std::isinf(v)) {
+                    _outputHadInvalid = true;
                     return;
                 }
                 out.append(formatDouble(v));
@@ -536,8 +587,14 @@ namespace MultiReplaceEngine {
 
     std::string ExprTkEngine::formatDouble(double value)
     {
-        if (std::isinf(value)) {
-            return value < 0.0 ? "-inf" : "inf";
+        // Callers are expected to filter NaN and Inf before reaching
+        // here (see the isnan/isinf checks in execute() and
+        // appendExprtkResults()). If one slips through anyway, return
+        // an empty string instead of letting the literal "inf" / "nan"
+        // bleed into the user's text - that would defeat the whole
+        // recoverable-error story.
+        if (std::isnan(value) || std::isinf(value)) {
+            return std::string{};
         }
 
         std::array<char, 64> buf{};
@@ -650,84 +707,92 @@ namespace MultiReplaceEngine {
     }
 
     // ---------------------------------------------------------------------
-    // seq() function implementation
+    // parsedate(str, fmt) -> Unix timestamp (or NaN on failure)
     // ---------------------------------------------------------------------
 
-    double ExprTkEngine::SeqFunction::operator()(const std::vector<double>& args)
-    {
-        // Both arguments are optional. seq() yields 1, 2, 3, ... seq(s)
-        // starts from s with step 1, seq(s, i) is fully parametrised.
-        // We read CNT from the engine directly; it has already been
-        // updated for the current match by execute() before any
-        // expression is evaluated, so seq() returns start on the first
-        // match (CNT=1), start+inc on the second (CNT=2), etc.
-        if (!_owner) return 0.0;
-
-        const double start = !args.empty() ? args[0] : 1.0;
-        const double inc = args.size() > 1 ? args[1] : 1.0;
-        return start + (_owner->_varCNT - 1.0) * inc;
-    }
-
-    // ---------------------------------------------------------------------
-    // numcol() / txtcol() implementations
-    // ---------------------------------------------------------------------
-
-    namespace {
-
-        // Resolves an ExprTk T|S parameter into the host's raw cell text.
-        // Returns false on any failure (non-finite scalar, index < 1,
-        // unknown header name, no CSV mode, ...). On false, cell is
-        // guaranteed empty.
-        bool resolveCsvCell(ILuaEngineHost* host,
-            exprtk::igeneric_function<double>::parameter_list_t parameters,
-            std::string& cell)
-        {
-            using gen_t = exprtk::igeneric_function<double>::generic_type;
-            using scalar_t = gen_t::scalar_view;
-            using string_t = gen_t::string_view;
-
-            cell.clear();
-            if (!host || parameters.size() != 1) return false;
-
-            const auto& p = parameters[0];
-            if (p.type == gen_t::e_scalar) {
-                const scalar_t s(p);
-                const double v = s();
-                if (!std::isfinite(v)) return false;
-                const long long idx = static_cast<long long>(v);
-                if (idx < 1) return false;
-                return host->readCurrentRowColumnByIndex(static_cast<int>(idx), cell);
-            }
-            if (p.type == gen_t::e_string) {
-                const string_t sv(p);
-                return host->readCurrentRowColumnByName(exprtk::to_str(sv), cell);
-            }
-            return false;
-        }
-
-    } // anonymous namespace
-
-    double ExprTkEngine::NumColFunction::operator()(
-        const std::size_t& /*psi*/,
+    double ExprTkEngine::ParsedateFunction::operator()(
         parameter_list_t parameters)
     {
-        std::string cell;
-        if (!_owner || !resolveCsvCell(_owner->_host, parameters, cell)) {
-            return std::numeric_limits<double>::quiet_NaN();
-        }
-        return parseCaptureToDouble(cell);
-    }
+        const double nanResult = std::numeric_limits<double>::quiet_NaN();
 
-    double ExprTkEngine::TxtColFunction::operator()(
-        const std::size_t& /*psi*/,
-        std::string& result,
-        parameter_list_t parameters)
-    {
-        // resolveCsvCell clears 'result' before doing anything else,
-        // so a failed call still leaves the empty-string default.
-        if (!_owner) { result.clear(); return 0.0; }
-        resolveCsvCell(_owner->_host, parameters, result);
-        return 0.0;
+        if (parameters.size() != 2) {
+            return nanResult;
+        }
+
+        // Both args must be strings. The .type tag on a generic_t is
+        // an enum from exprtk::type_store; we compare its raw value.
+        // generic_t::e_string is the matching enumerator (same pattern
+        // as appendExprtkResults() uses on results[i].type).
+        const auto t0 = parameters[0].type;
+        const auto t1 = parameters[1].type;
+        if (t0 != generic_t::e_string || t1 != generic_t::e_string) {
+            return nanResult;
+        }
+
+        const string_t sv0(parameters[0]);
+        const string_t sv1(parameters[1]);
+        std::string input(sv0.begin(), sv0.end());
+        std::string fmt(sv1.begin(), sv1.end());
+
+        // Lua-style '!' prefix in the format means "treat result as UTC".
+        bool utc = false;
+        if (!fmt.empty() && fmt[0] == '!') {
+            utc = true;
+            fmt.erase(fmt.begin());
+        }
+
+        // Run the parser. tm starts zeroed so unset fields contribute
+        // 0/Jan/1/midnight - sensible defaults.
+        std::tm tm{};
+        tm.tm_isdst = -1;  // let mktime figure out DST for local time
+        const bool ok = MultiReplace::parseDateTime(input, fmt, tm);
+        if (!ok) {
+            return nanResult;
+        }
+
+        // Convert tm to time_t. Local time uses mktime (which honors the
+        // current TZ); UTC needs a manual roll since C++17 has no portable
+        // timegm.
+        std::time_t t;
+        if (utc) {
+            // Manual day count from 1970-01-01 plus h/m/s.
+            static const int days_per_month[] =
+            { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+            const long long year = tm.tm_year + 1900;
+            const long long month = tm.tm_mon;       // 0..11
+            const long long day = tm.tm_mday - 1;  // 0-indexed
+
+            if (year < 1970) return nanResult;
+
+            long long days = 0;
+            for (long long y = 1970; y < year; ++y) {
+                const bool leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+                days += leap ? 366 : 365;
+            }
+            for (long long m = 0; m < month; ++m) {
+                int dm = days_per_month[m];
+                if (m == 1) {
+                    const bool leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+                    if (leap) dm = 29;
+                }
+                days += dm;
+            }
+            days += day;
+
+            const long long total = days * 86400
+                + tm.tm_hour * 3600
+                + tm.tm_min * 60
+                + tm.tm_sec;
+            t = static_cast<std::time_t>(total);
+        }
+        else {
+            t = std::mktime(&tm);
+            if (t == static_cast<std::time_t>(-1)) {
+                return nanResult;
+            }
+        }
+
+        return static_cast<double>(t);
     }
 
 } // namespace MultiReplaceEngine

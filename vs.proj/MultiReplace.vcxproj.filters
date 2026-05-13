@@ -141,6 +141,8 @@
       <Filter>engine</Filter>
     </ClCompile>
     <ClCompile Include="..\src\CsvListFormat.cpp" />
+    <ClCompile Include="..\src\FormatSpec.cpp" />
+    <ClCompile Include="..\src\DateParse.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -277,6 +279,8 @@
       <Filter>engine</Filter>
     </ClInclude>
     <ClInclude Include="..\src\CsvListFormat.h" />
+    <ClInclude Include="..\src\FormatSpec.h" />
+    <ClInclude Include="..\src\DateParse.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />
