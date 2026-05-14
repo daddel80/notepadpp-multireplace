@@ -27,6 +27,9 @@ Two engines are available, selected via the `(L)` / `(E)` indicator next to the 
   - [Skipping Matches](#skipping-matches)
   - [Sequence Generator](#sequence-generator)
   - [CSV Column Access](#csv-column-access)
+  - [Library Loading via ecmd](#library-loading-via-ecmd)
+  - [Output Formatting](#output-formatting)
+  - [Date Handling](#date-handling)
   - [More Examples](#more-examples-1)
   - [Limitations](#limitations)
 
@@ -712,6 +715,405 @@ The negative lookahead in the Find pattern excludes the header row so the formul
 
 <br>
 
+### Library Loading via ecmd
+
+Load user-defined functions from a `.ecmd` file with `ecmd(path)`. Functions become callable from any `(?=...)` block in the same Replace-All run, exactly like the built-ins.
+
+**Purpose:** Reusable helpers (conversions, formatters, parsers) that would be tedious to inline. Functions can call each other and themselves (recursion). The library is re-read from disk on every Replace-All, so edits take effect on the next click — no Notepad++ restart.
+
+**Init usage:** Place `(?=ecmd('path'))` in an init entry (empty Find). See [Preload Variables and Helpers](#preload-variables-and-helpers) for the workflow; the same idea applies — ExprTk's init rows preload library functions instead of variables.
+
+| Find      | Replace                                          | Regex | Description |
+|-----------|--------------------------------------------------|-------|-------------|
+| *(empty)* | `(?=ecmd('C:/tmp/roman.ecmd'))`                  | No    | Load library from file (init row — no replacement). |
+| `^(\d+)$` | `(?=return [num2rom(num(1))])`                   | Yes   | Use a string-returning library function. |
+| `^([IVXLCDM]+)$` | `(?=rom2num(txt(1)))`                     | Yes   | Use a number-returning library function. |
+
+**Path notes:** Single backslashes are interpreted as escape sequences inside ExprTk strings. Use forward slashes (`'C:/tmp/file.ecmd'`) or double backslashes (`'C:\\tmp\\file.ecmd'`).
+
+<br>
+
+#### File format
+
+A `.ecmd` file is a sequence of `function NAME(PARAMS) ... end` blocks:
+
+```
+function NAME(PARAMS) [: RETURN] BODY end
+```
+
+- **PARAMS** is a comma-separated list of `name` or `name: TYPE`. `TYPE` is `T` (scalar, the default) or `S` (string), uppercase.
+- **RETURN** is optional. Same letters — `T` (default) or `S`.
+
+Body normalisation: write `return EXPR;` naturally; the loader rewrites it to ExprTk's native `return [EXPR];` form before compilation. Users who prefer the bracketed form can write it directly.
+
+Examples covering all four parameter / return shapes:
+
+```
+function double_it(n)              # T -> T  (defaults, no annotation)
+    return n * 2;
+end
+
+function num2rom(n) : S            # T -> S
+    var r := '';
+    var v := n;
+    while (v >= 1000) { r := r + 'M';  v := v - 1000; };
+    /* ...remaining cases... */
+    return r;
+end
+
+function rom2num(s: S)             # S -> T
+    var total := 0;
+    /* ...parse loop... */
+    return total;
+end
+
+function padleft(s: S, n, fill: S) : S   # S, T, S -> S
+    var r := s;
+    while (r[] < n) { r := fill + r; };
+    return r;
+end
+```
+
+**Calling string-returning functions:** Inside `(?=...)` blocks, wrap them in a `return [...]` list — `(?=return [num2rom(num(1))])`. Number-returning functions can be used directly — `(?=rom2num(txt(1)))`. This matches how the built-in `txt(N)` works.
+
+**Cross-calls and recursion:** Functions in the same file can call each other and themselves. The loader compiles in two passes, so call order doesn't matter:
+
+```
+function isEven(n)
+    if (n == 0) { return 1; };
+    return isOdd(n - 1);
+end
+
+function isOdd(n)
+    if (n == 0) { return 0; };
+    return isEven(n - 1);
+end
+```
+
+**Comments:** Both `/* ... */` and `// ...` work, anywhere in the file or inside function bodies.
+
+**Errors:** Parser, name-collision, and compile errors abort the load with a dialog that names the function and offset. The matching expressions then evaluate to `0` or `''`.
+
+<br>
+
+#### Writing function bodies
+
+Function bodies use a small statement language layered on top of ExprTk's expression syntax. The pieces below cover what's needed for almost any helper.
+
+| Construct | Form | Notes |
+|---|---|---|
+| Local variable | `var x := expr;` | Declares `x` and assigns. Re-declaring shadows in inner blocks. |
+| Assignment | `x := expr;` | `:=` (colon-equals), not `=`. |
+| Block | `{ s1; s2; ... }` | Statement separator is `;`. Trailing `;` before `}` is fine. |
+| If / else | `if (cond) { ... } else { ... };` | Trailing `;` after the closing `}` is required when the if-form is a statement. |
+| Else-if chain | `if (c1) { ... } else if (c2) { ... } else { ... };` | Standard. |
+| While loop | `while (cond) { body; };` | Same trailing `;`. |
+| Return scalar | `return expr;` | Loader wraps as `return [expr];` for ExprTk. |
+| Return string | `return expr;` | Body must declare `: S` and the expression must produce a string. |
+
+**String operations available in bodies:**
+
+| Operation | Example | Notes |
+|---|---|---|
+| Length | `s[]` | Byte length of the string, as a number. |
+| Substring | `s[i:j]` | Bytes from index `i` (inclusive) to `j` (exclusive). 0-based. |
+| Concatenation | `a + b` | `+` joins strings, same operator as numeric add. |
+| Comparison | `s == 'X'`, `s != 'Y'` | Equality only. No `<` on strings. |
+| Literal | `'text'`, `''` for empty | ASCII only inside literals. |
+
+> **Strings are byte arrays, not character sequences.**
+>
+> Captures arrive as UTF-8 bytes. `s[]` returns the **byte count**, not the character count. `s[i:j]` slices **bytes**, not characters. For an `ä` (UTF-8 = two bytes `\xC3\xA4`):
+> - the string `ä` has byte length `2`, not `1`
+> - `s[0:1]` on a value starting with `ä` returns one half of the encoding — invalid UTF-8 — and the resulting output will display as `?` or a replacement glyph
+> - `s[i:i+1] == 'ä'` cannot compile because the right-hand literal contains non-ASCII bytes
+>
+> **Practical rule:** `.ecmd` helpers are safe for ASCII-only input — digits, plain English letters, punctuation. Use them for `num2rom`/`rom2num`, padding, digit stripping, simple parsing. Anything that needs per-character work on text that may contain umlauts, accented letters, CJK, emojis, or other non-ASCII content belongs in the **Lua engine**, which exposes Lua's `utf8.*` library (`utf8.len`, `utf8.offset`, `utf8.char`, `utf8.codepoint`) for correct multi-byte handling. ExprTk has no equivalent.
+
+**A minimal complete example.** Strip leading zeros from a captured number string:
+
+```
+function strip_zeros(s: S) : S
+    var i := 0;
+    while (i < s[] - 1 and s[i:i+1] == '0') { i := i + 1; };
+    return s[i:s[]];
+end
+```
+
+Used in a replace rule:
+
+| Find | Replace | Regex | Description |
+|---|---|---|---|
+| *(empty)* | `(?=ecmd('C:/tmp/helpers.ecmd'))` | No | Load library. |
+| `\b0*(\d+)\b` | `(?=return [strip_zeros(txt(1))])` | Yes | `00042` becomes `42`. |
+
+<br>
+
+#### Complete example: Roman numerals
+
+Spec: convert decimal ↔ Roman in the range 1..3999. Invalid input (`IIII`, `XM`, `IL`, lowercase, out of range) returns `''` or `0`. Validation uses round-trip — `rom2num` accepts only strings that re-encode to themselves via `num2rom`.
+
+`C:/Data/Projekte/MultiReplace/roman.ecmd`:
+
+```
+function num2rom(n) : S
+    if (n < 1 or n > 3999) { return ''; };
+    var r := '';
+    var v := n;
+    while (v >= 1000) { r := r + 'M';  v := v - 1000; };
+    if    (v >= 900)  { r := r + 'CM'; v := v - 900;  };
+    if    (v >= 500)  { r := r + 'D';  v := v - 500;  };
+    if    (v >= 400)  { r := r + 'CD'; v := v - 400;  };
+    while (v >= 100)  { r := r + 'C';  v := v - 100;  };
+    if    (v >= 90)   { r := r + 'XC'; v := v - 90;   };
+    if    (v >= 50)   { r := r + 'L';  v := v - 50;   };
+    if    (v >= 40)   { r := r + 'XL'; v := v - 40;   };
+    while (v >= 10)   { r := r + 'X';  v := v - 10;   };
+    if    (v >= 9)    { r := r + 'IX'; v := v - 9;    };
+    if    (v >= 5)    { r := r + 'V';  v := v - 5;    };
+    if    (v >= 4)    { r := r + 'IV'; v := v - 4;    };
+    while (v >= 1)    { r := r + 'I';  v := v - 1;    };
+    return r;
+end
+
+function rom2num_raw(s: S)
+    if (s[] == 0) { return 0; };
+    var total := 0;
+    var prev := 0;
+    var i := s[] - 1;
+    while (i >= 0) {
+        var c := s[i:i+1];
+        var cur := 0;
+        if      (c == 'I') { cur := 1;    }
+        else if (c == 'V') { cur := 5;    }
+        else if (c == 'X') { cur := 10;   }
+        else if (c == 'L') { cur := 50;   }
+        else if (c == 'C') { cur := 100;  }
+        else if (c == 'D') { cur := 500;  }
+        else if (c == 'M') { cur := 1000; }
+        else               { return 0; };
+        if (cur < prev) { total := total - cur; }
+        else            { total := total + cur; };
+        prev := cur;
+        i := i - 1;
+    };
+    return total;
+end
+
+function rom2num(s: S)
+    var n := rom2num_raw(s);
+    if (n < 1 or n > 3999) { return 0; };
+    if (num2rom(n) == s) { return n; };
+    return 0;
+end
+```
+
+Replace-All rules:
+
+| Find | Replace | Regex | Description |
+|---|---|---|---|
+| *(empty)* | `(?=ecmd('C:/Data/Projekte/MultiReplace/roman.ecmd'))` | No | Load library. |
+| `^(\d+)$` | `(?=return [num2rom(num(1))])` | Yes | Decimal → Roman. |
+| `^([IVXLCDM]+)$` | `(?=rom2num(txt(1)))` | Yes | Roman → decimal. |
+
+Run the two conversion rules **separately** — running both at once converts decimal → Roman, then the Roman match in the same run converts back to decimal. For a real document where chapters look like `Chapter 14:`, use a contextual pattern that doesn't round-trip:
+
+| Find | Replace | Regex | Description |
+|---|---|---|---|
+| `^(Chapter )(\d+)(:.*)$` | `$1(?=return [num2rom(num(2))])$3` | Yes | Chapter `14: ...` becomes `XIV: ...`. |
+
+<br>
+
+### Output Formatting
+
+By default an ExprTk expression renders its numeric result with the shortest round-trip representation: `3.14`, `42`, `1.5e+10`. For controlled output — padding, precision, fixed decimal places, hex, time durations — append a **format spec** to the expression with `~`:
+
+```
+(?= formula ~ spec )
+```
+
+The `~` separator splits the block into the formula (left) and the spec (right). Whitespace around `~` is optional. The spec is validated when the rule is compiled, so an invalid spec surfaces immediately as a compile-time error rather than producing garbage at runtime.
+
+There are three kinds of spec: **numeric**, **duration**, and **date**.
+
+<br>
+
+#### Numeric
+
+Grammar: `[+] [0] [width] [.prec | .min-max] [type]`
+
+| Part      | Meaning                                                                                          |
+|-----------|--------------------------------------------------------------------------------------------------|
+| `+`       | Always show the sign (`+3.14`, `-3.14`).                                                         |
+| `0`       | Zero-pad to `width` instead of space-padding.                                                    |
+| `width`   | Minimum total field width.                                                                       |
+| `.prec`   | Exact number of decimal digits.                                                                  |
+| `.min-max`| Range form: at least `min`, at most `max` decimals. Trailing zeros beyond `min` are stripped.    |
+| `type`    | `f` fixed, `e` scientific, `g` shortest, `x` hex, `b` binary, `o` octal. Omit for default rendering. |
+
+Integer types `x b o` accept only `0` and `width` modifiers — precision and `+` are rejected as a compile error. Negative numbers in `x` and `b` produce the 64-bit two's-complement bit pattern (`x` on `-1` → `ffffffffffffffff`).
+
+| Spec      | Value      | Output      |
+|-----------|------------|-------------|
+| `05.2f`   | `3.14159`  | `03.14`     |
+| `+8.2f`   | `3.14`     | `   +3.14`  |
+| `.2-5f`   | `3.1`      | `3.10`      |
+| `.2-5f`   | `3.14159`  | `3.14159`   |
+| `08x`     | `255`      | `000000ff`  |
+| `8b`      | `5`        | `     101`  |
+| `.3g`     | `123456`   | `1.23e+05`  |
+| `+`       | `3.14`     | `+3.14`     |
+
+The numeric output is locale-independent: the decimal separator is always `.`, regardless of the system locale. This keeps CSV pipelines reproducible across machines.
+
+<br>
+
+#### Duration
+
+Grammar: `t<unit>:<mode>`
+
+Treats the value as a duration measured in `unit` and renders it as a clock-like string.
+
+| Unit  | Meaning  |
+|-------|----------|
+| `ts`  | seconds  |
+| `tm`  | minutes  |
+| `th`  | hours    |
+| `td`  | days     |
+
+| Mode    | Output shape   | Example (for 3725 seconds)        |
+|---------|----------------|-----------------------------------|
+| `ms`    | `M:SS`         | `62:05`                           |
+| `hm`    | `H:MM`         | `1:02`                            |
+| `hms`   | `H:MM:SS`      | `1:02:05`                         |
+| `dh`    | `D HH`         | (`th:dh` on 25h → `1 01`)         |
+| `dhm`   | `D HH:MM`      | (`td:dhm` on 1.5d → `1 12:00`)    |
+| `dhms`  | `D HH:MM:SS`   | (`td:dhms` on 1.5d → `1 12:00:00`)|
+
+The mode is **mandatory** — `t:s` alone is not enough, you must pick a mode. Fractional input is truncated (rounded toward zero) before splitting into components. Negative durations carry a leading `-`.
+
+<br>
+
+#### Date
+
+Grammar:
+
+- `D[strftime_pattern]` — local time
+- `D[!strftime_pattern]` — UTC
+
+Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through `strftime`. The optional `!` prefix forces UTC; without it the system's local time zone is used. This follows the same convention as Lua's `os.date()`.
+
+The pattern uses standard strftime conversion specifiers — `%Y`, `%m`, `%d`, `%H`, `%M`, `%S`, `%A`, `%B`, `%c`, etc. Literal text between specifiers is passed through verbatim.
+
+| Spec                       | Timestamp     | Output (UTC)                       |
+|----------------------------|---------------|------------------------------------|
+| `D[!%Y-%m-%d]`             | `1700000000`  | `2023-11-14`                       |
+| `D[!%Y-%m-%dT%H:%M:%SZ]`   | `1700000000`  | `2023-11-14T22:13:20Z`             |
+| `D[!%d.%m.%Y]`             | `1700000000`  | `14.11.2023`                       |
+| `D[!%A]`                   | `0`           | `Thursday` (epoch was Thursday)    |
+| `D[!Year %Y, week %V]`     | `1700000000`  | `Year 2023, week 46`               |
+| `D[!%c]`                   | `1700000000`  | `Tue Nov 14 22:13:20 2023`         |
+
+**Range:** timestamps must be ≥ 0 (years 1970 onwards). Negative values produce empty output. Subseconds are truncated (`1700000000.7` is treated as `1700000000`).
+
+<br>
+
+#### Errors and edge cases
+
+- **Invalid spec at compile time** — `(?=hit ~ 99q)` produces *"Invalid format spec '99q': Unknown numeric type letter; expected f/e/g/x/b/o"*. The rule fails to compile; no replacements run.
+- **`return [...]` cannot be combined with a spec** — the spec is for numeric output, `return` lists are for string output. Combining them produces a runtime error.
+- **NaN / Inf** — when the formula itself produces `NaN` (e.g. parsing a non-numeric capture) or `Inf` (e.g. division by zero), the spec is not applied; the recoverable-error dialog appears instead, leaving the original match untouched if the user skips.
+- **`~` inside the formula** — the splitter looks for the **last** `~` at bracket depth 0, ignoring `~` inside quoted strings (`'a~b'`) and inside `[...]` brackets (`D[%Y ~ %m]`). The first `~` in the date pattern below is therefore part of the spec, not a separator:
+
+  ```
+  (?= hit ~ D[%Y-%m-%d ~ %H:%M:%S] )
+  ```
+
+<br>
+
+### Date Handling
+
+ExprTk provides one date-related function, the inverse of the `D[fmt]` output spec:
+
+```
+parsedate(text, fmt)  ->  Unix timestamp
+```
+
+Parses `text` against the strftime-style `fmt` pattern and returns the resulting time as seconds since 1970-01-01 UTC. As with `D[fmt]`:
+
+- without `!` prefix → input is interpreted as **local time**
+- with `!` prefix → input is interpreted as **UTC**
+
+On parse failure (malformed input, out-of-range fields, format mismatch) the function returns `NaN`, which flows through the standard recoverable-error dialog — the match stays untouched on Skip.
+
+<br>
+
+#### Supported format specifiers
+
+`parsedate` accepts a deliberately small subset of strftime — everything you need for the common date formats, nothing locale-dependent:
+
+| Specifier | Meaning                                                |
+|-----------|--------------------------------------------------------|
+| `%Y`      | 4-digit year                                           |
+| `%y`      | 2-digit year (00..68 → 2000..2068, 69..99 → 1969..1999)|
+| `%m`      | Month (01..12)                                         |
+| `%d`      | Day of month (01..31)                                  |
+| `%H`      | Hour (00..23)                                          |
+| `%I`      | Hour (01..12), needs `%p`                              |
+| `%M`      | Minute (00..59)                                        |
+| `%S`      | Second (00..60, leap second allowed)                   |
+| `%p`      | `AM` or `PM` (case-insensitive)                        |
+| `%F`      | Shortcut for `%Y-%m-%d`                                |
+| `%T`      | Shortcut for `%H:%M:%S`                                |
+| `%%`      | Literal `%`                                            |
+
+Whitespace in the format matches **zero or more** whitespace characters in the input. Literal characters must match exactly. Trailing characters in the input beyond what the format consumes are tolerated.
+
+<br>
+
+#### Quoting the format string in ExprTk
+
+**Use single quotes** for `parsedate`'s format string. ExprTk's lexer treats `!` as a logical-NOT operator and `%` as the modulo operator; both are interpreted differently when they appear directly after a double quote. Single-quoted strings are taken verbatim:
+
+| Form                                       | Status              |
+|--------------------------------------------|---------------------|
+| `parsedate(txt(0), '%Y-%m-%d')`            | ✓ works             |
+| `parsedate(txt(0), '!%Y-%m-%d')`           | ✓ works (UTC)       |
+| `parsedate(txt(0), "%Y-%m-%d")`            | ✗ token error       |
+
+`D[fmt]` is not affected — the spec sits inside `[...]` brackets and bypasses the ExprTk lexer entirely.
+
+<br>
+
+#### Time-zone consistency in round-trips
+
+Mixing local and UTC across `parsedate` and `D[...]` produces an offset of one time zone. For predictable round-trips, use the **same** UTC/local choice on both sides:
+
+| Form                                                              | Status              |
+|-------------------------------------------------------------------|---------------------|
+| `(?= parsedate(txt(0), '!%Y-%m-%d') ~ D[!%Y-%m-%d] )`             | ✓ pure UTC          |
+| `(?= parsedate(txt(0), '%Y-%m-%d') ~ D[%Y-%m-%d] )`               | ✓ pure local        |
+| `(?= parsedate(txt(0), '%Y-%m-%d') ~ D[!%Y-%m-%d] )`              | ⚠ offset by local TZ|
+
+The third form is occasionally what you want (e.g. converting a wall-clock log time to a UTC timestamp for storage), but it should be a conscious choice.
+
+<br>
+
+#### Date arithmetic
+
+Once a date is a Unix timestamp it's just a number, so all of ExprTk's math applies. A few patterns that come up often:
+
+| Goal              | Snippet                                                                       |
+|-------------------|-------------------------------------------------------------------------------|
+| Add one day       | `parsedate(txt(0), '!%Y-%m-%d') + 86400`                                      |
+| Add one week      | `parsedate(txt(0), '!%Y-%m-%d') + 7 * 86400`                                  |
+| Add one hour      | `parsedate(txt(0), '!%Y-%m-%dT%H:%M:%S') + 3600`                              |
+| Difference (days) | `(parsedate(txt(2), '!%F') - parsedate(txt(1), '!%F')) / 86400`               |
+
+There is no built-in "add one month" — months have variable length, so adding `30 * 86400` is the usual approximation. For exact month arithmetic, switch to the Lua engine which exposes the full `os.date` / `os.time` table API.
+
+<br>
+
 ### More Examples
 
 The examples below are drawn from typical text-processing tasks. Each row in the table is a **single rule** — copy the Find and Replace columns straight into MultiReplace, set the engine to ExprTk, enable Formula Support and Regex.
@@ -772,8 +1174,9 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 
 ExprTk is deliberately scoped. Things it does **not** do:
 
-- **No string manipulation** — there is no `substring`, `replace`, `find`, `format`, etc. Strings can only be passed through (via captures, `txt(N)`, `FNAME`, `FPATH`) and assembled in `return [...]` lists.
-- **UTF-8 inside string literals fails to compile.** A literal like `'Größe'` between `'...'` will produce an `Invalid string token` error. Use captures or place non-ASCII text outside the `(?=...)` block.
+- **No string manipulation inside `(?=...)`.** Inline blocks can only pass strings through (via captures, `txt(N)`, `FNAME`, `FPATH`) and assemble them in `return [...]` lists. For substring, concatenation, indexed access, and length, write helper functions in a `.ecmd` library — bodies have `s[]`, `s[i:j]`, and `+` available (see [Library Loading via ecmd](#library-loading-via-ecmd)). (`parsedate` is the one inline exception, but it only consumes the string — it returns a number.)
+- **UTF-8 inside string literals fails to compile.** A literal like `'Größe'` between `'...'` will produce an `Invalid string token` error. This applies to both inline expressions and `.ecmd` bodies. Use captures or place non-ASCII text outside the `(?=...)` block. Captures themselves arrive as UTF-8 bytes and can be passed through unchanged, but per-character slicing breaks them — see the warning in [Library Loading via ecmd](#library-loading-via-ecmd).
 - **No state across matches.** Each `(?=...)` evaluation starts fresh. The numeric counters (`CNT`, `LCNT`) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use `vars({...})`.
-- **No file I/O, no external scripts.** ExprTk has no equivalent to Lua's `lvars`, `lkp`, or `lcmd`.
-- **Numeric-only by design.** Operations on text that go beyond passing it through belong in Lua.
+- **No data file loading.** ExprTk has no equivalent to Lua's `lvars` (preload variables from disk) or `lkp` (key lookup from disk). `ecmd` loads **code**, not data.
+- **`parsedate` is intentionally minimal.** It accepts the common strftime specifiers (`%Y %y %m %d %H %M %S %I %p %F %T %%`) — enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (`%B`), weekday names (`%A`), or week numbers (`%V`) are **not** accepted on the input side. For richer date input parsing, use Lua's date handling instead.
+- **Date timestamps must be ≥ 0.** `D[fmt]` and `parsedate` only handle years 1970 onwards. Negative timestamps produce empty output or NaN respectively.

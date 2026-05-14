@@ -4,7 +4,7 @@
 //   g++ -std=c++20 -Wall -Wextra format_spec_qa.cpp ../fs/FormatSpec.cpp -o format_spec_qa
 //   ./format_spec_qa
 
-#include "../FormatSpec.h"
+#include "../exprtk/FormatSpec.h"
 
 #include <cstdio>
 #include <cstdlib>

@@ -127,6 +127,25 @@ namespace MultiReplaceEngine {
     }
 
     // ---------------------------------------------------------------------
+    // Per-run lifecycle
+    // ---------------------------------------------------------------------
+
+    void LuaEngine::beginRun()
+    {
+        IFormulaEngine::beginRun();
+
+        // Tear the state down and rebuild from scratch. Cheap (sub-ms)
+        // and guarantees a clean slate: any lcmd-loaded helper, any
+        // user-set global, any side-effect from a previous run is gone.
+        // Re-runs of the same list now also re-read .lcmd files from
+        // disk, so the user's edits take effect on the next click.
+        if (_luaState) {
+            shutdown();
+            initialize();
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Compile cache
     // ---------------------------------------------------------------------
 

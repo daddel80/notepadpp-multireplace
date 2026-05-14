@@ -19,13 +19,16 @@
 #include <cmath>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 #include <system_error>
 
 #include "../StringUtils.h"
-#include "../DateParse.h"
+#include "../exprtk/DateParse.h"
+#include "../Encoding.h"
 namespace SU = StringUtils;
 
 namespace MultiReplaceEngine {
@@ -40,6 +43,7 @@ namespace MultiReplaceEngine {
         , _skipFunction(this)
         , _txtFunction(this)
         , _parsedateFunction(this)
+        , _ecmdLoaderFunction(this)
     {
     }
 
@@ -99,6 +103,12 @@ namespace MultiReplaceEngine {
         // Returns Unix timestamp on success, NaN on parse failure.
         _symbolTable.add_function("parsedate", _parsedateFunction);
 
+        // Register ecmd("path") - the library loader. Functions loaded
+        // through it land in _ecmdLibrary's own symbol_table, which we
+        // register against every compiled expression in compile().
+        _symbolTable.add_function("ecmd", _ecmdLoaderFunction);
+        _ecmdLibrary = std::make_unique<EcmdLibrary>();
+
         // ExprTk's standard math constants (pi, epsilon, infinity).
         _symbolTable.add_constants();
 
@@ -112,6 +122,7 @@ namespace MultiReplaceEngine {
         _parsedTemplate = ExprTkPatternParser::ParseResult();
         _lastCompiledScript.clear();
         _haveCompiled = false;
+        _ecmdLibrary.reset();
 
         // We deliberately do NOT clear the symbol table here - if the
         // engine gets compile()'d again later, the same variable bindings
@@ -123,10 +134,26 @@ namespace MultiReplaceEngine {
     // Per-run lifecycle
     // ---------------------------------------------------------------------
 
-    // beginRun / endRunSummary / endRunSkipAllNoticeText are inherited
-    // from IFormulaEngine - the base implementation uses the shared
-    // _skipAllErrors / _errorSkipCount state which we drive via
-    // handleRecoverableSkip() below.
+    void ExprTkEngine::beginRun()
+    {
+        IFormulaEngine::beginRun();
+
+        // Drop the previous run's ecmd library and start fresh. This is
+        // what makes ecmd("path") re-read the file on every Replace-All
+        // (user edits to the .ecmd take effect on the next run) and what
+        // makes removing the ecmd() init slot also remove its functions.
+        //
+        // Side effect: the compile cache is invalidated because the
+        // library symbol_table now refers to a different object, so any
+        // previously compiled expression that called an ecmd function
+        // would point at freed registrations.
+        _ecmdLibrary = std::make_unique<EcmdLibrary>();
+        _compiledExpressions.clear();
+        _segmentSpecs.clear();
+        _parsedTemplate = ExprTkPatternParser::ParseResult();
+        _lastCompiledScript.clear();
+        _haveCompiled = false;
+    }
 
     // ---------------------------------------------------------------------
     // Error reporting
@@ -222,6 +249,13 @@ namespace MultiReplaceEngine {
 
             expression_t expr;
             expr.register_symbol_table(_symbolTable);
+            if (_ecmdLibrary) {
+                // Calls into ecmd-loaded functions resolve against the
+                // library's own symbol table. Registering it here lets
+                // user expressions like (?=num2rom(num(1))) compile
+                // against whatever the current Replace-All run has loaded.
+                expr.register_symbol_table(_ecmdLibrary->symbolTable());
+            }
 
             if (!_parser.compile(split.formula, expr)) {
                 // ExprTk failed to compile this expression. Surface the
@@ -793,6 +827,289 @@ namespace MultiReplaceEngine {
         }
 
         return static_cast<double>(t);
+    }
+
+    // ---------------------------------------------------------------------
+    // EcmdFunctionInstance
+    // ---------------------------------------------------------------------
+
+    std::string ExprTkEngine::EcmdFunctionInstance::makeParamSequence(
+        const std::vector<EcmdParser::ParamDef>& params)
+    {
+        std::string seq;
+        seq.reserve(params.size());
+        for (const auto& p : params) {
+            seq.push_back(static_cast<char>(p.type));
+        }
+        return seq;
+    }
+
+    ExprTkEngine::EcmdFunctionInstance::igenfunct_t::return_type
+        ExprTkEngine::EcmdFunctionInstance::makeReturnType(EcmdParser::ValueType rt)
+    {
+        return (rt == EcmdParser::ValueType::String)
+            ? igenfunct_t::e_rtrn_string
+            : igenfunct_t::e_rtrn_scalar;
+    }
+
+    ExprTkEngine::EcmdFunctionInstance::EcmdFunctionInstance(
+        const EcmdParser::FunctionDef& def)
+        : igenfunct_t(makeParamSequence(def.params), makeReturnType(def.returnType))
+        , _name(def.name)
+        , _body(def.body)
+    {
+        // Build the routing table and the per-kind slot vectors. Each
+        // parameter gets one slot (unique_ptr for stable addresses) bound
+        // into _innerSymbols under the parameter's name, so the user's
+        // body can read it directly.
+        _argRoutes.reserve(def.params.size());
+
+        for (const auto& p : def.params) {
+            if (p.type == EcmdParser::ValueType::String) {
+                _stringSlots.push_back(std::make_unique<std::string>());
+                _innerSymbols.add_stringvar(p.name, *_stringSlots.back());
+                _argRoutes.push_back({ true, _stringSlots.size() - 1 });
+            }
+            else {
+                _scalarSlots.push_back(std::make_unique<double>(0.0));
+                _innerSymbols.add_variable(p.name, *_scalarSlots.back());
+                _argRoutes.push_back({ false, _scalarSlots.size() - 1 });
+            }
+        }
+        _innerSymbols.add_constants();
+
+        // ExprTk's igeneric_function rejects zero-argument calls by
+        // default - explicitly enable them so user functions declared
+        // as 'function name() ... end' can be called as 'name()'.
+        if (def.params.empty()) {
+            this->allow_zero_parameters() = true;
+        }
+    }
+
+    void ExprTkEngine::EcmdFunctionInstance::prepareSymbolTables(
+        symbol_table_t& libTable)
+    {
+        _innerExpr.register_symbol_table(_innerSymbols);
+        // Sharing the library table here is what enables cross-calls and
+        // recursion: when this function's body parses a name like
+        // 'num2rom', the parser looks it up in libTable and binds the
+        // call to the EcmdFunctionInstance registered there.
+        _innerExpr.register_symbol_table(libTable);
+    }
+
+    bool ExprTkEngine::EcmdFunctionInstance::compileBody(
+        parser_t& parser, std::string& errorOut)
+    {
+        if (parser.compile(_body, _innerExpr)) {
+            return true;
+        }
+        errorOut = "In function '" + _name + "': " + parser.error();
+        return false;
+    }
+
+    // ---- Argument marshalling (shared between scalar and string paths) --
+
+    void ExprTkEngine::EcmdFunctionInstance::marshalArgs(
+        parameter_list_t parameters, ArgSnapshot& out)
+    {
+        out.scalars.reserve(_scalarSlots.size());
+        out.strings.reserve(_stringSlots.size());
+
+        // ExprTk guarantees that for a fixed-signature generic function
+        // parameters.size() matches the declared parameter-sequence
+        // length, so iterating up to that count is safe.
+        for (std::size_t i = 0; i < parameters.size(); ++i) {
+            const auto& route = _argRoutes[i];
+            if (route.isString) {
+                out.strings.push_back(*_stringSlots[route.slotIndex]);
+                const generic_t::string_view sv(parameters[i]);
+                _stringSlots[route.slotIndex]->assign(sv.begin(), sv.size());
+            }
+            else {
+                out.scalars.push_back(*_scalarSlots[route.slotIndex]);
+                const generic_t::scalar_view sc(parameters[i]);
+                *_scalarSlots[route.slotIndex] = sc();
+            }
+        }
+    }
+
+    void ExprTkEngine::EcmdFunctionInstance::restoreArgs(
+        std::size_t paramCount, ArgSnapshot& snapshot)
+    {
+        std::size_t scalarPos = 0;
+        std::size_t stringPos = 0;
+        for (std::size_t i = 0; i < paramCount; ++i) {
+            const auto& route = _argRoutes[i];
+            if (route.isString) {
+                *_stringSlots[route.slotIndex] = std::move(snapshot.strings[stringPos++]);
+            }
+            else {
+                *_scalarSlots[route.slotIndex] = snapshot.scalars[scalarPos++];
+            }
+        }
+    }
+
+    double ExprTkEngine::EcmdFunctionInstance::operator()(
+        parameter_list_t parameters)
+    {
+        ArgSnapshot snapshot;
+        marshalArgs(parameters, snapshot);
+
+        // Scalar-return user functions may end either in a final
+        // expression (value() carries the result) or in a 'return [x]'
+        // statement (results() carries it and value() is 0); capture
+        // both and pick whichever applies.
+        const double valueResult = _innerExpr.value();
+        double result = std::numeric_limits<double>::quiet_NaN();
+        if (_innerExpr.return_invoked()) {
+            if (_innerExpr.results().count() > 0) {
+                _innerExpr.results().get_scalar(0, result);
+            }
+        }
+        else {
+            result = valueResult;
+        }
+
+        restoreArgs(parameters.size(), snapshot);
+        return result;
+    }
+
+    double ExprTkEngine::EcmdFunctionInstance::operator()(
+        std::string& result, parameter_list_t parameters)
+    {
+        result.clear();
+
+        ArgSnapshot snapshot;
+        marshalArgs(parameters, snapshot);
+
+        _innerExpr.value();
+        if (_innerExpr.return_invoked() && _innerExpr.results().count() > 0) {
+            _innerExpr.results().get_string(0, result);
+        }
+
+        restoreArgs(parameters.size(), snapshot);
+        return 0.0;
+    }
+
+    // ---------------------------------------------------------------------
+    // EcmdLibrary
+    // ---------------------------------------------------------------------
+
+    bool ExprTkEngine::EcmdLibrary::load(const std::string& fileContent,
+        const std::string& sourceLabel,
+        std::string& errorOut)
+    {
+        auto parsed = EcmdParser::parse(fileContent);
+        if (!parsed.success) {
+            errorOut = sourceLabel + " (offset " + std::to_string(parsed.errorPos)
+                + "): " + parsed.errorMessage;
+            return false;
+        }
+
+        // Pass 1: build every instance and register it in _libTable.
+        // Bodies stay uncompiled at this point so a later body that calls
+        // an earlier-defined function (or itself, or another function
+        // defined further down the file) finds the name resolved.
+        std::vector<std::unique_ptr<EcmdFunctionInstance>> pending;
+        pending.reserve(parsed.functions.size());
+
+        for (auto& def : parsed.functions) {
+            auto inst = std::make_unique<EcmdFunctionInstance>(def);
+            if (!_libTable.add_function(inst->name(), *inst)) {
+                errorOut = sourceLabel + ": function '" + inst->name()
+                    + "' clashes with an existing name";
+                // Roll back: remove anything we already added so the
+                // library stays in a consistent state. add_function
+                // returned true only for entries we own; iterate them.
+                for (auto& priorInst : pending) {
+                    _libTable.remove_function(priorInst->name());
+                }
+                return false;
+            }
+            pending.push_back(std::move(inst));
+        }
+
+        // Pass 2: compile bodies. Cross-calls and recursion resolve now
+        // because all names from this load (plus any previously loaded)
+        // are visible in _libTable.
+        for (auto& inst : pending) {
+            inst->prepareSymbolTables(_libTable);
+            std::string err;
+            if (!inst->compileBody(_parser, err)) {
+                errorOut = sourceLabel + ": " + err;
+                for (auto& priorInst : pending) {
+                    _libTable.remove_function(priorInst->name());
+                }
+                return false;
+            }
+        }
+
+        // Commit on success: transfer ownership of compiled instances.
+        for (auto& inst : pending) {
+            _instances.push_back(std::move(inst));
+        }
+        return true;
+    }
+
+    // ---------------------------------------------------------------------
+    // EcmdLoaderFunction
+    // ---------------------------------------------------------------------
+
+    double ExprTkEngine::EcmdLoaderFunction::operator()(
+        parameter_list_t parameters)
+    {
+        if (!_owner || parameters.size() != 1) {
+            return 0.0;
+        }
+        if (parameters[0].type != generic_t::e_string) {
+            return 0.0;
+        }
+        const string_t sv(parameters[0]);
+        _owner->loadEcmdFile(std::string(sv.begin(), sv.size()));
+        return 0.0;
+    }
+
+    // ---------------------------------------------------------------------
+    // loadEcmdFile
+    // ---------------------------------------------------------------------
+
+    void ExprTkEngine::loadEcmdFile(const std::string& utf8Path)
+    {
+        if (!_ecmdLibrary) {
+            // Defensive: should always exist between initialize() and
+            // shutdown(); ignore loads otherwise.
+            return;
+        }
+
+        // Windows-correct path handling: convert UTF-8 to wide so
+        // non-ASCII directory names work the same as Lua's
+        // safeLoadFileSandbox does.
+        std::wstring wpath = Encoding::utf8ToWString(utf8Path);
+        std::ifstream in(std::filesystem::path(wpath), std::ios::binary);
+        if (!in) {
+            reportError(ILuaEngineHost::ErrorCategory::ExecutionError,
+                "ecmd: cannot open file '" + utf8Path + "'");
+            return;
+        }
+
+        std::ostringstream buf;
+        buf << in.rdbuf();
+        std::string content = buf.str();
+
+        // Strip a leading UTF-8 BOM if present, so the parser sees clean
+        // ASCII at offset 0.
+        if (content.size() >= 3
+            && static_cast<unsigned char>(content[0]) == 0xEF
+            && static_cast<unsigned char>(content[1]) == 0xBB
+            && static_cast<unsigned char>(content[2]) == 0xBF)
+        {
+            content.erase(0, 3);
+        }
+
+        std::string err;
+        if (!_ecmdLibrary->load(content, utf8Path, err)) {
+            reportError(ILuaEngineHost::ErrorCategory::CompileError, err);
+        }
     }
 
 } // namespace MultiReplaceEngine

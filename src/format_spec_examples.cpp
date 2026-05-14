@@ -2,7 +2,7 @@
 // examples. Run after format_spec_qa to copy real outputs into
 // MR-style notes or docs.
 
-#include "../fs/FormatSpec.h"
+#include "exprtk/FormatSpec.h"
 
 #include <iostream>
 #include <string>

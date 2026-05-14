@@ -33,6 +33,8 @@
 //                an explicit error rather than silently coerced to 0.
 //     txt(N)  -> capture group N as raw string (for return [...])
 //     skip()  -> mark the current match to be left untouched
+//     ecmd(p) -> load a library of user-defined functions from path p
+//                (typically used in an empty-Find init slot)
 //
 // The match text is intentionally not exposed as a string variable.
 // Use txt(0) for the raw match string, HIT or num(0) for the numeric
@@ -58,13 +60,15 @@
 #include "IFormulaEngine.h"
 #include "ILuaEngineHost.h"
 #include "ExprTkPatternParser.h"
-#include "../FormatSpec.h"
+#include "../exprtk/EcmdParser.h"
+#include "../exprtk/FormatSpec.h"
 
 // ExprTk is a single-header library that pulls in a fair amount of
 // template machinery, so the include lives here in the engine TU
 // only. Other code paths see ExprTkEngine through IFormulaEngine.
 #include "../exprtk/exprtk.hpp"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -84,10 +88,12 @@ namespace MultiReplaceEngine {
         bool initialize() override;
         void shutdown()   override;
 
-        // beginRun / endRunSummary / endRunSkipAllNoticeText use the
-        // base implementations: they read the shared _errorSkipCount /
-        // _skipAllErrors state which handleInvalid() maintains via the
-        // base's handleRecoverableSkip() helper.
+        // ecmd-loaded user libraries live for one Replace-All run only.
+        // beginRun() discards any library state from the previous run so
+        // a re-run reloads the .ecmd files fresh from disk and removing
+        // the ecmd() init slot makes its functions disappear.
+        // _errorSkipCount / _skipAllErrors are still reset by the base.
+        void beginRun() override;
 
         bool compile(const std::string& scriptUtf8) override;
 
@@ -262,6 +268,170 @@ namespace MultiReplaceEngine {
             ExprTkEngine* _owner;
         };
 
+        // ----- ecmd library plumbing ---------------------------------------
+        //
+        // A user-defined function loaded from a .ecmd file. One instance
+        // per function. Holds a pre-compiled ExprTk expression (the user-
+        // authored body) plus the argument slots bound to it by reference.
+        //
+        // Operation:
+        //   - At Replace-All start, EcmdLibrary::load() builds one instance
+        //     per function in the file.
+        //   - ExprTk routes a call to this instance through operator(),
+        //     where we marshal incoming params into the bound slots, run
+        //     the inner expression, and hand back the result.
+        //   - Re-entrancy: each operator() saves the current slot values
+        //     before overwriting them and restores them on return, so a
+        //     function can call itself (recursion) or call another ecmd
+        //     function that calls it back (mutual recursion).
+        //
+        // The two operator() overloads cover scalar and string return
+        // respectively; which one ExprTk picks depends on the rtrn_type
+        // we declared in the igeneric_function constructor.
+        class EcmdFunctionInstance : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+
+            EcmdFunctionInstance(const EcmdParser::FunctionDef& def);
+
+            // Register both the per-instance inner symbol table (for the
+            // bound argument slots) and the shared library symbol table
+            // (so cross-calls to other ecmd functions resolve). Must be
+            // called before compileBody().
+            void prepareSymbolTables(symbol_table_t& libTable);
+
+            // Compile the user-authored body string. Must run after
+            // prepareSymbolTables(), and after every function in the
+            // library has been registered in libTable so cross-call name
+            // lookups succeed at compile time.
+            bool compileBody(parser_t& parser, std::string& errorOut);
+
+            // Scalar-return path (declared when returnType == 'T').
+            double operator()(parameter_list_t parameters) override;
+
+            // String-return path (declared when returnType == 'S').
+            double operator()(std::string& result,
+                parameter_list_t parameters) override;
+
+            const std::string& name() const { return _name; }
+
+        private:
+            // Build the ExprTk parameter-sequence string ("T", "S", "TS",
+            // ...) from the parameter type list.
+            static std::string makeParamSequence(
+                const std::vector<EcmdParser::ParamDef>& params);
+
+            static igenfunct_t::return_type makeReturnType(
+                EcmdParser::ValueType rt);
+
+            // Snapshot of all argument slots before a call, kept so the
+            // restore step can put them back exactly as they were. Holds
+            // values, not references, so it survives even when the slot
+            // is overwritten by a recursive call.
+            struct ArgSnapshot {
+                std::vector<double>      scalars;
+                std::vector<std::string> strings;
+            };
+
+            // Save current slot values, then write the incoming params
+            // into them. Shared between the scalar and string overloads.
+            void marshalArgs(parameter_list_t parameters, ArgSnapshot& out);
+
+            // Restore slot values from a prior snapshot, consuming it in
+            // the same order the marshal pushed entries.
+            void restoreArgs(std::size_t paramCount, ArgSnapshot& snapshot);
+
+            std::string                                 _name;
+            std::string                                 _body;
+
+            symbol_table_t                              _innerSymbols;
+            expression_t                                _innerExpr;
+
+            // Argument slots, bound into _innerSymbols by reference.
+            // unique_ptrs because vector<T>::push_back may relocate the
+            // backing buffer and invalidate ExprTk's reference bindings.
+            std::vector<std::unique_ptr<double>>        _scalarSlots;
+            std::vector<std::unique_ptr<std::string>>   _stringSlots;
+
+            // Routing: for each parameter, kind (scalar/string) and index
+            // into the matching slot vector. Used by operator() to copy
+            // the i-th incoming param into the right slot.
+            struct ArgRoute {
+                bool        isString;
+                std::size_t slotIndex;
+            };
+            std::vector<ArgRoute>                       _argRoutes;
+        };
+
+        // Owns all ecmd functions loaded during the current run. Lifetime
+        // is one Replace-All: re-created in beginRun(). The library's own
+        // symbol_table is what holds the function registrations; the
+        // outer engine expression registers this table alongside its main
+        // symbol_table so user-written (?=...) blocks can call any loaded
+        // function.
+        class EcmdLibrary {
+        public:
+            EcmdLibrary() = default;
+
+            // Returns the library's symbol_table. The engine registers
+            // this against every compiled (?=...) expression so calls to
+            // ecmd-loaded functions resolve at compile time.
+            symbol_table_t& symbolTable() { return _libTable; }
+
+            // Load every function from the parsed file. Two-pass:
+            //  1) construct and register all instances at the library's
+            //     symbol_table (empty bodies still uncompiled).
+            //  2) compile each body. Since all names are now visible in
+            //     _libTable, cross-calls and recursion resolve.
+            // Returns false on any parser, registration, or compile
+            // failure, with errorOut filled by an actionable message.
+            bool load(const std::string& fileContent,
+                const std::string& sourceLabel,
+                std::string& errorOut);
+
+            bool empty() const { return _instances.empty(); }
+
+        private:
+            symbol_table_t                                       _libTable;
+            std::vector<std::unique_ptr<EcmdFunctionInstance>>   _instances;
+            // Parser is owned by the library so its diagnostic state
+            // doesn't leak across loads from different files.
+            parser_t                                             _parser;
+        };
+
+        // ExprTk-callable: ecmd("path") -> 0. The user invokes this from
+        // an empty-Find init slot to load a library of functions for the
+        // current Replace-All run.
+        //
+        // One string arg, scalar return: "S" arity-spec, plain
+        // igeneric_function (no e_rtrn_string). The return value (always
+        // 0.0) is the same convention skip() uses - the meaningful effect
+        // is the side-effect of loading the file.
+        class EcmdLoaderFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
+
+            explicit EcmdLoaderFunction(ExprTkEngine* owner)
+                : igenfunct_t("S")
+                , _owner(owner) {
+            }
+
+            double operator()(parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
+        // Read `utf8Path` from disk and feed its contents into the
+        // current ecmd library. Errors flow through reportError() with
+        // the path mentioned in the diagnostic.
+        void loadEcmdFile(const std::string& utf8Path);
+
         // ----- state -------------------------------------------------------
 
         ILuaEngineHost* _host;            // accepted, currently unused
@@ -339,6 +509,16 @@ namespace MultiReplaceEngine {
         // The parsedate(str, fmt) callable for string-to-timestamp
         // parsing - the inverse of D[fmt] output.
         ParsedateFunction _parsedateFunction;
+
+        // The ecmd("path") loader callable, registered with the symbol
+        // table at initialize().
+        EcmdLoaderFunction _ecmdLoaderFunction;
+
+        // The set of user functions loaded during this Replace-All run.
+        // Discarded and re-created in beginRun() so .ecmd files are
+        // re-read fresh each run. Null between shutdown() and the next
+        // initialize().
+        std::unique_ptr<EcmdLibrary> _ecmdLibrary;
     };
 
 } // namespace MultiReplaceEngine

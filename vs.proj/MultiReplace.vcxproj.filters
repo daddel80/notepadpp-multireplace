@@ -141,8 +141,15 @@
       <Filter>engine</Filter>
     </ClCompile>
     <ClCompile Include="..\src\CsvListFormat.cpp" />
-    <ClCompile Include="..\src\FormatSpec.cpp" />
-    <ClCompile Include="..\src\DateParse.cpp" />
+    <ClCompile Include="..\src\exprtk\DateParse.cpp">
+      <Filter>ExprTK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\exprtk\FormatSpec.cpp">
+      <Filter>ExprTK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\exprtk\EcmdParser.cpp">
+      <Filter>ExprTK</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -271,7 +278,6 @@
     <ClInclude Include="..\src\engine\ILuaEngineHost.h">
       <Filter>engine</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\exprtk\exprtk.hpp" />
     <ClInclude Include="..\src\engine\ExprTkEngine.h">
       <Filter>engine</Filter>
     </ClInclude>
@@ -279,8 +285,18 @@
       <Filter>engine</Filter>
     </ClInclude>
     <ClInclude Include="..\src\CsvListFormat.h" />
-    <ClInclude Include="..\src\FormatSpec.h" />
-    <ClInclude Include="..\src\DateParse.h" />
+    <ClInclude Include="..\src\exprtk\exprtk.hpp">
+      <Filter>ExprTK</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\exprtk\DateParse.h">
+      <Filter>ExprTK</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\exprtk\FormatSpec.h">
+      <Filter>ExprTK</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\exprtk\EcmdParser.h">
+      <Filter>ExprTK</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />
@@ -295,6 +311,9 @@
     </Filter>
     <Filter Include="docs">
       <UniqueIdentifier>{cda245c8-12e3-4134-8a53-2dcff1b4face}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ExprTK">
+      <UniqueIdentifier>{61b9ec36-da57-4fdd-89fa-03bb2923d0bb}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

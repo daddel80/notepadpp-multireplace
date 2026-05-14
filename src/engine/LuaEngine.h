@@ -43,6 +43,13 @@ namespace MultiReplaceEngine {
         bool initialize() override;
         void shutdown() override;
 
+        // lcmd-loaded user libraries live for one Replace-All run only.
+        // beginRun() tears down the Lua state and rebuilds it so any
+        // .lcmd files referenced from the init slot are re-read fresh
+        // on each run, and removing the lcmd() call also removes its
+        // functions from the global namespace.
+        void beginRun() override;
+
         bool compile(const std::string& scriptUtf8) override;
 
         FormulaResult execute(
