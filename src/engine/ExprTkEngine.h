@@ -33,6 +33,20 @@
 //                an explicit error rather than silently coerced to 0.
 //     txt(N)  -> capture group N as raw string (for return [...])
 //     skip()  -> mark the current match to be left untouched
+//     seq([start, [inc]])
+//             -> sequence value start + (CNT-1)*inc.
+//                Both arguments default to 1 so seq() yields 1,2,3,...
+//                Useful for numbering matches without writing the
+//                start+(CNT-1)*inc formula by hand.
+//     numcol(N) / numcol('name')
+//             -> CSV column on the current row, parsed as double.
+//                Index is 1-based; "name" looks up the document's
+//                first line as a header. NaN on missing column or
+//                non-numeric content. Requires CSV mode to be active.
+//     txtcol(N) / txtcol('name')
+//             -> CSV column on the current row, as raw string. Same
+//                addressing rules as numcol; only useful inside a
+//                return [...] list.
 //     ecmd(p) -> load a library of user-defined functions from path p
 //                (typically used in an empty-Find init slot)
 //
@@ -231,6 +245,81 @@ namespace MultiReplaceEngine {
             // ignored by ExprTk in this mode but must be present to
             // match the base-class signature.
             double operator()(std::string& result,
+                parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
+        // ExprTk-callable wrapper: implements seq(start, increment), a
+        // sequence generator that returns start, start+inc, start+2*inc,
+        // ... over consecutive matches.
+        //
+        // Both arguments are optional and default to 1, so:
+        //   seq()         -> 1, 2, 3, ...
+        //   seq(10)       -> 10, 11, 12, ...
+        //   seq(0, 10)    -> 0, 10, 20, ...
+        //   seq(100, -10) -> 100, 90, 80, ...
+        //
+        // Built on ivararg_function so the variadic argument count can be
+        // checked at call time rather than fixed at registration. The
+        // result is start + (CNT - 1) * inc; CNT is read directly from
+        // the engine's _varCNT member which is updated at the start of
+        // each execute().
+        class SeqFunction : public exprtk::ivararg_function<double> {
+        public:
+            explicit SeqFunction(ExprTkEngine* owner)
+                : _owner(owner) {
+                exprtk::enable_zero_parameters(*this);  // allow seq() with no args
+            }
+
+            double operator()(const std::vector<double>& args) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
+        // numcol(N) / numcol('name') - column value as double.
+        // arity-spec "T|S": one argument, scalar (index) or string (header).
+        // Dispatches to the host's CSV column accessors; returns NaN on
+        // any failure (no CSV mode, missing column, non-numeric content).
+        //
+        // Multi-prototype functions ("T|S") route through the psi
+        // variant of operator(); psi tells us which alternative the
+        // parser matched (0=T, 1=S) but resolveCsvCell branches on the
+        // actual parameter type anyway, so psi is unused here.
+        class NumColFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+
+            explicit NumColFunction(ExprTkEngine* owner)
+                : igenfunct_t("T|S")
+                , _owner(owner) {
+            }
+
+            double operator()(const std::size_t& /*psi*/,
+                parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
+        // txtcol(N) / txtcol('name') - column value as string. Same
+        // dispatch as NumColFunction but returns the raw cell text;
+        // only meaningful inside a return [...] list, mirroring txt().
+        class TxtColFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+
+            explicit TxtColFunction(ExprTkEngine* owner)
+                : igenfunct_t("T|S", igenfunct_t::e_rtrn_string)
+                , _owner(owner) {
+            }
+
+            double operator()(const std::size_t& /*psi*/,
+                std::string& result,
                 parameter_list_t parameters) override;
 
         private:
@@ -505,6 +594,13 @@ namespace MultiReplaceEngine {
         // The txt() callable for string-typed capture access (used
         // inside ExprTk return lists).
         TxtFunction _txtFunction;
+
+        // The seq() callable for sequence generation across matches.
+        SeqFunction _seqFunction;
+
+        // CSV column access via the host (numcol/txtcol).
+        NumColFunction _numColFunction;
+        TxtColFunction _txtColFunction;
 
         // The parsedate(str, fmt) callable for string-to-timestamp
         // parsing - the inverse of D[fmt] output.
