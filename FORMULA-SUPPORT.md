@@ -22,7 +22,7 @@ Two engines are available, selected via the `(L)` / `(E)` indicator next to the 
   - [Variables and Captures](#variables-and-captures)
   - [Math Functions](#math-functions)
   - [Control Flow](#control-flow)
-  - [String Output via `return [...]`](#string-output-via-return-)
+  - [String Output](#string-output)
   - [Operators](#operators-1)
   - [Skipping Matches](#skipping-matches)
   - [Sequence Generator](#sequence-generator)
@@ -434,7 +434,7 @@ The **Debug Mode** provides a safe environment to test complex logic involving c
 
 ## ExprTk Reference
 
-ExprTk is a numeric expression engine. Its design goal is concise inline math: where Lua wraps every formula in `set(...)`, ExprTk drops the formula directly into the replace string via `(?=...)` markers. This makes it the better choice when the work is mostly arithmetic, statistics, or value transformation on captured numbers.
+ExprTk is a numeric expression engine. Its design goal is concise inline math: where Lua wraps every formula in `set(...)`, ExprTk drops the formula directly into the replace string via `(?=...)` markers. This makes it the better choice when the work is mostly arithmetic, statistics, or value transformation on captured numbers. Strings are supported too — see [String Output](#string-output).
 
 ---
 
@@ -495,21 +495,21 @@ ExprTk receives the same per-match context as Lua, but exposed differently becau
 | `COL` / `col`   | CSV column index (CSV mode), 0 otherwise.                       |
 | `HIT` / `hit`   | Numeric value of the full match (same as `num(0)`).             |
 
-#### String variables (read-only, usable only in `return [...]` lists)
+#### String variables (read-only)
 
 | Name              | Description                                  |
 |-------------------|----------------------------------------------|
 | `FPATH` / `fpath` | Full path of the document being processed.   |
 | `FNAME` / `fname` | Filename without path.                       |
 
-To access the matched text as a string, use `txt(0)` inside a `return [...]` list. To reference the match in the replace template directly, use `$0` (whole match) or an explicit capture group `(...)` referenced with `\1`.
+To access the matched text as a string, use `txt(0)`. To reference the match in the replace template directly, use `$0` (whole match) or an explicit capture group `(...)` referenced with `\1`.
 
 #### Capture access
 
 | Function  | Returns | Use case                                                              |
 |-----------|---------|-----------------------------------------------------------------------|
 | `num(N)`  | number  | Capture group N as `double`. `num(0)` is the full match. Non-numeric captures yield `NaN`. |
-| `txt(N)` | string  | Capture group N as text. `txt(0)` is the full match. Only valid inside a `return [...]` list. |
+| `txt(N)` | string  | Capture group N as text. `txt(0)` is the full match. |
 
 #### Match-aware functions
 
@@ -518,7 +518,7 @@ To access the matched text as a string, use `txt(0)` inside a `return [...]` lis
 | `seq([s,[i]])` | number  | Sequence value `s + (CNT-1)*i`. Both arguments default to `1` so `seq()` yields 1, 2, 3, ... See [Sequence Generator](#sequence-generator). |
 | `skip()`       | -       | Mark the current match as untouched. See [Skipping Matches](#skipping-matches).                   |
 | `numcol(N)` / `numcol('name')` | number | CSV column on the current row, parsed as `double`. NaN if missing or non-numeric. See [CSV Column Access](#csv-column-access). |
-| `txtcol(N)` / `txtcol('name')` | string | CSV column as text. Only valid inside `return [...]`. See [CSV Column Access](#csv-column-access). |
+| `txtcol(N)` / `txtcol('name')` | string | CSV column as text. See [CSV Column Access](#csv-column-access). |
 
 **Number parsing notes:**
 
@@ -608,17 +608,28 @@ Example — clamp a captured value but show "OVER" if it exceeded:
 
 <br>
 
-### String Output via `return [...]`
+### String Output
 
-ExprTk expressions normally produce a number. To emit a **string** — e.g. to combine literal text with `txt(N)` capture text — wrap the output in a `return` list:
+An ExprTk expression normally produces a number, but it can also produce a string directly. Use string literals, string variables, captures via `txt(N)`, string-returning library functions, slicing, concatenation, or conditionals:
 
 ```
-(?=return ['prefix-', txt(1), '-suffix'])
+(?='hello')                              -> hello
+(?=fpath)                                -> /home/user/file.txt
+(?=fpath + '.bak')                       -> /home/user/file.txt.bak
+(?=fpath[6:10])                          -> user           (byte slice)
+(?=txt(1) + '_done')                     -> match_done
+(?=num2rom(num(1)))                      -> XIV            (library function)
+(?=cnt > 5 ? 'big' : 'small')            -> big or small
 ```
 
-The list elements can be string literals, the string variables (`FPATH`, `FNAME`), `txt(N)` capture text (use `txt(0)` for the full match), and numeric expressions (which are converted to text). This is the only path for any non-numeric output.
+Each `(?=...)` block produces one value. Compose larger output by placing blocks alongside literal text or backreferences in the replace template:
 
-> **String literals are ASCII-only.** UTF-8 bytes in `'...'` will fail to compile. Non-ASCII text must come from the document via captures or string variables, or be placed in the literal portion of the replace string outside `(?=...)`. See [Limitations](#limitations) below.
+```
+Find:    ^(Chapter )(\d+)(:.*)$
+Replace: $1(?=num2rom(num(2)))$3        -> Chapter XIV: ...
+```
+
+> **String literals are ASCII-only.** UTF-8 bytes inside `'...'` will fail to compile. Non-ASCII text must come from the document via captures or string variables, or be placed in the literal portion of the replace string outside `(?=...)`. See [Limitations](#limitations) below.
 
 <br>
 
@@ -680,7 +691,7 @@ When CSV mode is active, `numcol(N)` and `txtcol(N)` return the value of column 
 | Function                       | Returns | Notes                                                                            |
 |--------------------------------|---------|----------------------------------------------------------------------------------|
 | `numcol(N)` / `numcol('name')` | number  | Same parsing as `num()` - `.`/`,` decimal separator, NaN on non-numeric content. |
-| `txtcol(N)` / `txtcol('name')` | string  | Raw cell text. Only meaningful inside `return [...]`.                            |
+| `txtcol(N)` / `txtcol('name')` | string  | Raw cell text.                                                                  |
 
 **Requirements:**
 - CSV mode must be active (the **CSV** scope radio button) and a delimiter configured.
@@ -702,7 +713,7 @@ Row:     banana;0.30;25
 
 ```
 Find:    ^(?!product).+$
-Replace: (?=return [txt(0), ' total=', numcol('price') * numcol('qty')])
+Replace: $0 total=(?=numcol('price') * numcol('qty'))
 ```
 
 ```
@@ -726,7 +737,7 @@ Load user-defined functions from a `.ecmd` file with `ecmd(path)`. Functions bec
 | Find      | Replace                                          | Regex | Description |
 |-----------|--------------------------------------------------|-------|-------------|
 | *(empty)* | `(?=ecmd('C:/tmp/roman.ecmd'))`                  | No    | Load library from file (init row — no replacement). |
-| `^(\d+)$` | `(?=return [num2rom(num(1))])`                   | Yes   | Use a string-returning library function. |
+| `^(\d+)$` | `(?=num2rom(num(1)))`                            | Yes   | Use a string-returning library function. |
 | `^([IVXLCDM]+)$` | `(?=rom2num(txt(1)))`                     | Yes   | Use a number-returning library function. |
 
 **Path notes:** Single backslashes are interpreted as escape sequences inside ExprTk strings. Use forward slashes (`'C:/tmp/file.ecmd'`) or double backslashes (`'C:\\tmp\\file.ecmd'`).
@@ -743,8 +754,6 @@ function NAME(PARAMS) [: RETURN] BODY end
 
 - **PARAMS** is a comma-separated list of `name` or `name: TYPE`. `TYPE` is `T` (scalar, the default) or `S` (string), uppercase.
 - **RETURN** is optional. Same letters — `T` (default) or `S`.
-
-Body normalisation: write `return EXPR;` naturally; the loader rewrites it to ExprTk's native `return [EXPR];` form before compilation. Users who prefer the bracketed form can write it directly.
 
 Examples covering all four parameter / return shapes:
 
@@ -774,7 +783,7 @@ function padleft(s: S, n, fill: S) : S   # S, T, S -> S
 end
 ```
 
-**Calling string-returning functions:** Inside `(?=...)` blocks, wrap them in a `return [...]` list — `(?=return [num2rom(num(1))])`. Number-returning functions can be used directly — `(?=rom2num(txt(1)))`. This matches how the built-in `txt(N)` works.
+**Calling string-returning functions:** Use them directly in `(?=...)` blocks just like number-returning ones — `(?=num2rom(num(1)))`, `(?=rom2num(txt(1)))`. The output type matches what the function returns.
 
 **Cross-calls and recursion:** Functions in the same file can call each other and themselves. The loader compiles in two passes, so call order doesn't matter:
 
@@ -808,7 +817,7 @@ Function bodies use a small statement language layered on top of ExprTk's expres
 | If / else | `if (cond) { ... } else { ... };` | Trailing `;` after the closing `}` is required when the if-form is a statement. |
 | Else-if chain | `if (c1) { ... } else if (c2) { ... } else { ... };` | Standard. |
 | While loop | `while (cond) { body; };` | Same trailing `;`. |
-| Return scalar | `return expr;` | Loader wraps as `return [expr];` for ExprTk. |
+| Return scalar | `return expr;` | Body returns a number. |
 | Return string | `return expr;` | Body must declare `: S` and the expression must produce a string. |
 
 **String operations available in bodies:**
@@ -845,7 +854,7 @@ Used in a replace rule:
 | Find | Replace | Regex | Description |
 |---|---|---|---|
 | *(empty)* | `(?=ecmd('C:/tmp/helpers.ecmd'))` | No | Load library. |
-| `\b0*(\d+)\b` | `(?=return [strip_zeros(txt(1))])` | Yes | `00042` becomes `42`. |
+| `\b0*(\d+)\b` | `(?=strip_zeros(txt(1)))` | Yes | `00042` becomes `42`. |
 
 <br>
 
@@ -913,14 +922,14 @@ Replace-All rules:
 | Find | Replace | Regex | Description |
 |---|---|---|---|
 | *(empty)* | `(?=ecmd('C:/Data/Projekte/MultiReplace/roman.ecmd'))` | No | Load library. |
-| `^(\d+)$` | `(?=return [num2rom(num(1))])` | Yes | Decimal → Roman. |
+| `^(\d+)$` | `(?=num2rom(num(1)))` | Yes | Decimal → Roman. |
 | `^([IVXLCDM]+)$` | `(?=rom2num(txt(1)))` | Yes | Roman → decimal. |
 
 Run the two conversion rules **separately** — running both at once converts decimal → Roman, then the Roman match in the same run converts back to decimal. For a real document where chapters look like `Chapter 14:`, use a contextual pattern that doesn't round-trip:
 
 | Find | Replace | Regex | Description |
 |---|---|---|---|
-| `^(Chapter )(\d+)(:.*)$` | `$1(?=return [num2rom(num(2))])$3` | Yes | Chapter `14: ...` becomes `XIV: ...`. |
+| `^(Chapter )(\d+)(:.*)$` | `$1(?=num2rom(num(2)))$3` | Yes | Chapter `14: ...` becomes `XIV: ...`. |
 
 <br>
 
@@ -1021,7 +1030,7 @@ The pattern uses standard strftime conversion specifiers — `%Y`, `%m`, `%d`, `
 #### Errors and edge cases
 
 - **Invalid spec at compile time** — `(?=hit ~ 99q)` produces *"Invalid format spec '99q': Unknown numeric type letter; expected f/e/g/x/b/o"*. The rule fails to compile; no replacements run.
-- **`return [...]` cannot be combined with a spec** — the spec is for numeric output, `return` lists are for string output. Combining them produces a runtime error.
+- **A format spec cannot be combined with string output** — the spec is for numeric output. Combining `~ spec` with a string-producing formula (e.g. `(?='hello' ~ 05f)`) is rejected at compile time with a clear diagnostic.
 - **NaN / Inf** — when the formula itself produces `NaN` (e.g. parsing a non-numeric capture) or `Inf` (e.g. division by zero), the spec is not applied; the recoverable-error dialog appears instead, leaving the original match untouched if the user skips.
 - **`~` inside the formula** — the splitter looks for the **last** `~` at bracket depth 0, ignoring `~` inside quoted strings (`'a~b'`) and inside `[...]` brackets (`D[%Y ~ %m]`). The first `~` in the date pattern below is therefore part of the spec, not a separator:
 
@@ -1155,9 +1164,9 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 
 | Find          | Replace                                                 | Description                                                              |
 |---------------|---------------------------------------------------------|--------------------------------------------------------------------------|
-| `(\w+)`       | `(?=return ['<', txt(1), '>'])`                        | Wrap every match in angle brackets.                                      |
-| `(\d+)`       | `(?=return ['#', CNT, ': ', txt(1)])`                  | Prefix each match with a running global counter.                         |
-| `(\w+)`       | `(?=return [FNAME, ': ', txt(1)])`                     | Tag each match with the source filename.                                 |
+| `(\w+)`       | `<(?=txt(1))>`                                          | Wrap every match in angle brackets.                                      |
+| `(\d+)`       | `#(?=CNT): (?=txt(1))`                                  | Prefix each match with a running global counter.                         |
+| `(\w+)`       | `(?=FNAME): (?=txt(1))`                                 | Tag each match with the source filename.                                 |
 
 #### Counters
 
@@ -1174,7 +1183,7 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 
 ExprTk is deliberately scoped. Things it does **not** do:
 
-- **No string manipulation inside `(?=...)`.** Inline blocks can only pass strings through (via captures, `txt(N)`, `FNAME`, `FPATH`) and assemble them in `return [...]` lists. For substring, concatenation, indexed access, and length, write helper functions in a `.ecmd` library — bodies have `s[]`, `s[i:j]`, and `+` available (see [Library Loading via ecmd](#library-loading-via-ecmd)). (`parsedate` is the one inline exception, but it only consumes the string — it returns a number.)
+- **String manipulation is limited inside `(?=...)`.** Built-in support covers concatenation (`+`), slicing (`s[i:j]`), and length (`s[]`). For more (per-character work, formatted assembly, custom encodings), write helper functions in a `.ecmd` library — bodies have the same operators plus `var` declarations and control flow (see [Library Loading via ecmd](#library-loading-via-ecmd)). For UTF-8-aware character manipulation, use the Lua engine instead.
 - **UTF-8 inside string literals fails to compile.** A literal like `'Größe'` between `'...'` will produce an `Invalid string token` error. This applies to both inline expressions and `.ecmd` bodies. Use captures or place non-ASCII text outside the `(?=...)` block. Captures themselves arrive as UTF-8 bytes and can be passed through unchanged, but per-character slicing breaks them — see the warning in [Library Loading via ecmd](#library-loading-via-ecmd).
 - **No state across matches.** Each `(?=...)` evaluation starts fresh. The numeric counters (`CNT`, `LCNT`) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use `vars({...})`.
 - **No data file loading.** ExprTk has no equivalent to Lua's `lvars` (preload variables from disk) or `lkp` (key lookup from disk). `ecmd` loads **code**, not data.
