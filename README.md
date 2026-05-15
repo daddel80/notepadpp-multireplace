@@ -47,7 +47,7 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
 ## Key Features
 
 - **Batch Replacement Lists** — Run any number of search-and-replace pairs in a single pass, either in the current document, across filtered open documents, or in entire directory trees.
-- **CSV Column Toolkit** — Search, replace, sort, or delete specific columns; numeric-aware sorting and header exclusion included.
+- **CSV Column Toolkit** — Search, replace, sort, or delete specific columns; with numeric-aware sorting and header exclusion across all operations.
 - **Reusable Replacement Lists** — Save, load, and drag-and-drop lists with all options intact—perfect for recurring workflows.
 - **Rule-Driven & Variable Replacements** — Variables, conditions, and calculations enable dynamic, context-aware substitutions.
 - **External Lookup Tables** — Swap matches with values from external hash/lookup files—ideal for large or frequently updated mapping tables.
@@ -122,7 +122,7 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
 **Available Column Operations:**
 - **Sorting Lines by Columns** — Sort lines based on one or more columns in ascending or descending order. The sorting algorithm correctly handles mixed numeric and text values, including currency formats like `$100`, `100 EUR`, or `.5`.
   - **Smart Undo (Toggle Sort)** — A second click on the same sort button reverts the lines to their original order. This powerful undo works even if rows have been modified, added, or deleted after the initial sort.
-  - **Exclude Header Lines** — You can protect header rows from being sorted. Configure the number of header rows in [Settings > CSV Options](#3-csv-options).
+- **Exclude Header Lines** — Header rows are protected from sort, duplicate detection, and find/replace. Configure the number of header rows in [Settings > CSV Options](#3-csv-options). Set to `0` to disable.
 - **Deleting Multiple Columns** — Remove specified columns at once, automatically cleaning up obsolete delimiters.
 - **Clipboard Column Copying** — Copy the content of specified columns, including their delimiters, to the clipboard.
 - **Flow Tabs Alignment** — Visually aligns columns in tab-delimited and CSV files for easier reading and editing.
@@ -386,7 +386,7 @@ Settings specific to the CSV column manipulation and alignment features.
 
 - **Flow Tabs: Right-align numeric columns** — When using the **Flow Tabs** feature (Column Alignment), numeric values will be right-aligned within their columns for better readability. Text remains left-aligned.
 - **Flow Tabs: Don't show intro message** — Suppresses the informational dialog that appears when activating Flow Tabs for the first time.
-- **CSV Sort: Header lines to exclude** — Specifies the number of header rows to protect from sorting and duplicate detection.
+- **CSV: Header lines to exclude** — Number of header rows protected from sort, duplicate detection, and find/replace. Set to `0` to disable.
 - **Mark duplicate rows with bookmarks** — Places Notepad++ bookmarks on duplicate lines for navigation (F2 / Shift+F2). Clears existing bookmarks when active.
 
 ### 4. Export

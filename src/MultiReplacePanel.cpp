@@ -10788,9 +10788,20 @@ SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRE
     SIZE_T startColumnIndex = columnInfo.startColumnIndex;
     LRESULT totalLines = columnInfo.totalLines;
 
+    // Exclude header rows (like sort and duplicate detection do).
+    const LRESULT headerLines = static_cast<LRESULT>(CSVheaderLinesCount);
+    if (totalLines <= headerLines) {
+        return result;
+    }
+    if (startLine < headerLines) {
+        if (isBackward) return result;
+        startLine = headerLines;
+        startColumnIndex = 1;
+    }
+
     // Set line iteration based on search direction
     LRESULT line = startLine;
-    while (isBackward ? (line >= 0) : (line < totalLines)) {
+    while (isBackward ? (line >= headerLines) : (line < totalLines)) {
         // Avoid out-of-bounds access in lineDelimiterPositions
         if (line >= static_cast<LRESULT>(lineDelimiterPositions.size())) {
             break;
