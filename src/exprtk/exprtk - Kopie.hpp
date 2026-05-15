@@ -22214,68 +22214,6 @@ namespace exprtk
          return expr.control_block_ && details::is_generally_string_node(expr.control_block_->expr);
       }
 
-      // ----------------------------------------------------------------
-      // get_string  (extension, daddel80 patch)
-      //
-      // Retrieves the string value produced by the root node of an
-      // expression that returns a string directly, without using
-      // 'return [...]'. Symmetric to is_string() above.
-      //
-      // Triggers evaluation first, then casts the root to
-      // string_base_node to read the string. If the node also exposes
-      // range_interface (slicing notation like fpath[6:10]), the
-      // computed sub-range is applied so the caller sees the user-
-      // visible slice, not the full base string.
-      //
-      // Covers all string-producing root nodes: string_literal,
-      // stringvar, string_range, string_concat, string_function,
-      // conditional_string, str_vararg, etc., everything that
-      // is_string() returns true for.
-      //
-      // Returns false (and leaves 'out' untouched) when the expression
-      // is not string-typed or the cast fails.
-      // ----------------------------------------------------------------
-      static inline bool get_string(const expression<T>& expr, std::string& out)
-      {
-         if (!is_string(expr))
-            return false;
-
-         // Trigger evaluation - this populates the string in the root node.
-         expr.control_block_->expr->value();
-
-         // All string-producing nodes implement string_base_node<T>.
-         const details::string_base_node<T>* sbn =
-            dynamic_cast<const details::string_base_node<T>*>(expr.control_block_->expr);
-
-         if (!sbn)
-            return false;
-
-         const std::string base_str = sbn->str();
-
-         // If the node also has a range (string slicing like fpath[6:10]),
-         // apply the slice. Otherwise the full string is what the user sees.
-         details::range_interface<T>* ri =
-            dynamic_cast<details::range_interface<T>*>(expr.control_block_->expr);
-
-         if (ri)
-         {
-            typename details::range_interface<T>::range_t& rp = ri->range_ref();
-            std::size_t r0 = 0;
-            std::size_t r1 = 0;
-            if (rp(r0, r1, *sbn))
-            {
-               if (r0 <= r1 && r1 <= base_str.size())
-               {
-                  out.assign(base_str, r0, r1 - r0);
-                  return true;
-               }
-            }
-         }
-
-         out = base_str;
-         return true;
-      }
-
       static inline bool is_unary(const expression<T>& expr)
       {
          return expr.control_block_ && details::is_unary_node(expr.control_block_->expr);

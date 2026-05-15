@@ -289,6 +289,30 @@ namespace MultiReplaceEngine {
                 return false;
             }
 
+            // Detect string-producing root nodes (e.g. (?=num2rom(num(1))),
+            // (?='abc'), (?=fpath + '.bak')). These are read via
+            // expression_helper::get_string() at eval time, bypassing the
+            // 'return [...]' detour. Cached at compile to avoid per-eval
+            // type checks. The existing 'return [...]' path is unchanged
+            // and remains available.
+            _segmentSpecs[i].isString =
+                exprtk::expression_helper<double>::is_string(expr);
+
+            // Format specs are numeric formatters (e.g. %05.2f). Combining
+            // them with a string-producing formula has no defined meaning.
+            // Catch it at compile time, same diagnostic style as the
+            // return-statement counterpart in the eval path.
+            if (_segmentSpecs[i].isString && _segmentSpecs[i].hasSpec) {
+                std::string msg = "Format spec cannot be combined with a string-returning formula: \"";
+                msg += seg.text;
+                msg += "\"";
+                reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
+
+                _compiledExpressions.clear();
+                _segmentSpecs.clear();
+                return false;
+            }
+
             _compiledExpressions[i] = std::move(expr);
         }
 
@@ -458,6 +482,39 @@ namespace MultiReplaceEngine {
             // which output path applies, because value() is 0.0 in that
             // case and would otherwise look like a normal numeric eval.
             auto& expr = _compiledExpressions[i];
+
+            // Direct-string path: when the root node is string-producing
+            // (e.g. (?=num2rom(num(1))), (?='abc'), (?=fpath + '.bak')),
+            // read the string straight from the root node via the
+            // expression_helper::get_string() extension. This avoids the
+            // user having to wrap every string result in 'return [...]',
+            // while leaving the explicit return-list path untouched.
+            //
+            // The isString flag was cached at compile time; here we only
+            // pay the cost of get_string() which internally triggers
+            // value() exactly once. NaN/Inf cannot occur in this branch
+            // because a string-producing root node does not carry a
+            // numeric result through value() (it returns T but the
+            // semantic payload is the string).
+            if (_segmentSpecs[i].isString) {
+                std::string strOut;
+                if (!exprtk::expression_helper<double>::get_string(expr, strOut)) {
+                    // is_string() was true at compile but get_string()
+                    // failed at eval. Should not happen for any node type
+                    // we know of, but report as a soft skip so a
+                    // pathological case never crashes the run.
+                    onInvalid(result, seg.text);
+                    return result;
+                }
+                if (escapeOutput && _host) {
+                    out.append(_host->escapeForRegex(strOut));
+                }
+                else {
+                    out.append(strOut);
+                }
+                continue;
+            }
+
             const double value = expr.value();
 
             if (expr.return_invoked()) {

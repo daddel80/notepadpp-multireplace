@@ -542,8 +542,12 @@ namespace MultiReplaceEngine {
 
         // Per-segment output spec, in lockstep with _compiledExpressions.
         // hasSpec=false means no "~ spec" suffix; engine uses formatDouble().
+        // isString=true means the root node is string-producing (e.g.
+        // (?=num2rom(num(1))) or (?='abc')); the engine reads the string
+        // directly via expression_helper::get_string() instead of value().
         struct SegmentSpec {
             bool hasSpec = false;
+            bool isString = false;
             FormatSpec::Spec spec;
         };
         std::vector<SegmentSpec>    _segmentSpecs;
