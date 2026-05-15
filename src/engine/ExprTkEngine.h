@@ -357,6 +357,103 @@ namespace MultiReplaceEngine {
             ExprTkEngine* _owner;
         };
 
+        // Base-conversion built-ins: num <-> hex/bin/oct.
+        //
+        // num2X(n)   takes a scalar, returns a bare lowercase string
+        //            ("ff", "1010", "77") - no "0x" / "0b" / "0o" prefix.
+        //            Negative inputs come out as "-f". Float inputs are
+        //            truncated toward zero before conversion.
+        // X2num(s)   takes a string, returns a scalar. Accepts the input
+        //            case-insensitively and with or without the matching
+        //            prefix; surrounding whitespace is trimmed.
+        //            Invalid characters for the base yield NaN.
+        class Num2BaseFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using scalar_t = typename generic_t::scalar_view;
+
+            Num2BaseFunction(ExprTkEngine* owner, int base)
+                : igenfunct_t("T", igenfunct_t::e_rtrn_string)
+                , _owner(owner)
+                , _base(base) {
+            }
+
+            double operator()(std::string& result,
+                parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+            int _base;
+        };
+
+        class Base2NumFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
+
+            Base2NumFunction(ExprTkEngine* owner, int base)
+                : igenfunct_t("S")
+                , _owner(owner)
+                , _base(base) {
+            }
+
+            double operator()(parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+            int _base;
+        };
+
+        // Roman numerals: num2rom(n) / rom2num(s).
+        //
+        // num2rom: emits uppercase canonical form using subtractive
+        //   pairs (IV, IX, XL, XC, CD, CM). Range 1..3999; outside
+        //   that range, or for NaN/Inf inputs, returns empty string.
+        //   Float inputs truncate toward zero.
+        // rom2num: lenient parser. Accepts mixed case and tolerates
+        //   non-canonical forms like "IIII" for 4. Invalid characters
+        //   or surrounding garbage yield NaN.
+        class Num2RomFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using scalar_t = typename generic_t::scalar_view;
+
+            explicit Num2RomFunction(ExprTkEngine* owner)
+                : igenfunct_t("T", igenfunct_t::e_rtrn_string)
+                , _owner(owner) {
+            }
+
+            double operator()(std::string& result,
+                parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
+        class Rom2NumFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
+
+            explicit Rom2NumFunction(ExprTkEngine* owner)
+                : igenfunct_t("S")
+                , _owner(owner) {
+            }
+
+            double operator()(parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
         // ----- ecmd library plumbing ---------------------------------------
         //
         // A user-defined function loaded from a .ecmd file. One instance
@@ -609,6 +706,22 @@ namespace MultiReplaceEngine {
         // The parsedate(str, fmt) callable for string-to-timestamp
         // parsing - the inverse of D[fmt] output.
         ParsedateFunction _parsedateFunction;
+
+        // Base-conversion built-ins. Two parameterised templates serve
+        // hex/bin/oct in both directions; each instance carries its base
+        // (16/2/8) so the same operator() logic handles all six names.
+        Num2BaseFunction _num2hexFunction;
+        Num2BaseFunction _num2binFunction;
+        Num2BaseFunction _num2octFunction;
+        Base2NumFunction _hex2numFunction;
+        Base2NumFunction _bin2numFunction;
+        Base2NumFunction _oct2numFunction;
+
+        // Roman numeral conversions. Separate classes because Roman
+        // is not a positional system - the parameterised Base*Function
+        // pattern doesn't fit.
+        Num2RomFunction _num2romFunction;
+        Rom2NumFunction _rom2numFunction;
 
         // The ecmd("path") loader callable, registered with the symbol
         // table at initialize().

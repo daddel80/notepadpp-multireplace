@@ -519,6 +519,7 @@ nav.pagenav .nav-group.collapsible {
     <a href="#exprtk-operators" hidden onclick="navClicked(event, 'exprtk-operators')">Operators</a>
     <a href="#exprtk-skip" hidden onclick="navClicked(event, 'exprtk-skip')">Skipping Matches</a>
     <a href="#exprtk-seq" hidden onclick="navClicked(event, 'exprtk-seq')">Sequence Generator</a>
+    <a href="#exprtk-baseconv" hidden onclick="navClicked(event, 'exprtk-baseconv')">Base Conversions</a>
     <a href="#exprtk-csv" hidden onclick="navClicked(event, 'exprtk-csv')">CSV Column Access</a>
     <a href="#exprtk-ecmd" hidden onclick="navClicked(event, 'exprtk-ecmd')">Library Loading (ecmd)</a>
     <a href="#exprtk-format" hidden onclick="navClicked(event, 'exprtk-format')">Output Formatting</a>
@@ -619,7 +620,7 @@ nav.pagenav .nav-group.collapsible {
       <tr>
         <td>Insert match counter</td>
         <td><code>set(CNT .. ". " .. MATCH)</code></td>
-        <td><code>(?=CNT). (?=return [txt(0)])</code></td>
+        <td><code>(?=CNT). (?=txt(0))</code></td>
       </tr>
       <tr>
         <td>Convert &deg;F to &deg;C</td>
@@ -629,7 +630,7 @@ nav.pagenav .nav-group.collapsible {
       <tr>
         <td>Wrap match in brackets</td>
         <td><code>set("&lt;" .. MATCH .. "&gt;")</code></td>
-        <td><code>(?=return ['&lt;', txt(0), '&gt;'])</code></td>
+        <td><code>(?='&lt;' + txt(0) + '&gt;')</code></td>
       </tr>
     </table>
   </section>
@@ -1655,7 +1656,7 @@ return {
       </tr>
     </table>
 
-    <h3>String variables (read-only, usable only in <code>return [...]</code> lists)</h3>
+    <h3>String variables (read-only)</h3>
     <table class="optionsTable">
       <tr>
         <th>Name</th>
@@ -1670,7 +1671,7 @@ return {
         <td>Filename without path.</td>
       </tr>
     </table>
-    <p>To access the matched text as a string, use <code>txt(0)</code> inside a <code>return [...]</code> list, or <code>\0</code> / <code>$0</code> directly in the replace pattern (regular regex back-reference).</p>
+    <p>To access the matched text as a string, use <code>txt(0)</code> directly in a <code>(?=...)</code> block, or <code>\0</code> / <code>$0</code> in the replace pattern as a regex back-reference.</p>
 
     <h3>Capture access</h3>
     <table class="optionsTable">
@@ -1687,7 +1688,7 @@ return {
       <tr>
         <td><code>txt(N)</code></td>
         <td>string</td>
-        <td>Capture group N as text. <code>txt(0)</code> is the full match. Only valid inside a <code>return [...]</code> list.</td>
+        <td>Capture group N as text. <code>txt(0)</code> is the full match. Usable directly in <code>(?=...)</code> blocks.</td>
       </tr>
     </table>
 
@@ -1840,10 +1841,13 @@ return {
   <br>
 
   <section id="exprtk-string-output">
-    <h2>String Output via <code>return [...]</code></h2>
-    <p>ExprTk expressions normally produce a number. To emit a <strong>string</strong> &mdash; e.g. to combine literal text with <code>txt(N)</code> capture text &mdash; wrap the output in a <code>return</code> list:</p>
-    <p><code>(?=return ['prefix-', txt(1), '-suffix'])</code></p>
-    <p>The list elements can be string literals, the string variables (<code>FPATH</code>, <code>FNAME</code>), <code>txt(N)</code> capture text (use <code>txt(0)</code> for the full match), and numeric expressions (which are converted to text). This is the only path for any non-numeric output.</p>
+    <h2>String Output</h2>
+    <p>ExprTk expressions can produce either a number or a string. A string result is emitted directly from a <code>(?=...)</code> block; no wrapper is needed.</p>
+    <p><code>(?=txt(1))</code> &nbsp; &mdash; emit capture 1 as text<br>
+       <code>(?='prefix-' + txt(1))</code> &nbsp; &mdash; concatenate literals and captures<br>
+       <code>(?=fname + ': ' + txt(0))</code> &nbsp; &mdash; mix string variables with captures</p>
+    <p>String sources include literals in single quotes, the string variables (<code>FPATH</code>, <code>FNAME</code>), <code>txt(N)</code> capture text (use <code>txt(0)</code> for the full match), <code>txtcol(...)</code> CSV columns, and the conversion functions (<code>num2hex</code>, <code>num2rom</code>, etc.). The <code>+</code> operator concatenates strings.</p>
+    <p>The legacy form <code>(?=return [a, b, c])</code> still compiles and behaves the same as <code>(?=a + b + c)</code>; new expressions should prefer the direct form.</p>
     <section class="note">
       <p><strong>String literals are ASCII-only.</strong> UTF-8 bytes in <code>'...'</code> will fail to compile. Non-ASCII text must come from the document via captures or string variables, or be placed in the literal portion of the replace string outside <code>(?=...)</code>. See <a href="#exprtk-limitations">Limitations</a> below.</p>
     </section>
@@ -1923,6 +1927,101 @@ return {
 
   <br>
 
+  <section id="exprtk-baseconv">
+    <h2>Base Conversions</h2>
+    <p>Built-in functions for converting between decimal and hexadecimal, binary, octal, or Roman numerals. Each base has a pair of functions: <code>numXXX</code> for <em>to-string</em> output, <code>XXXnum</code> for parsing back to a number.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Function</th>
+        <th>Returns</th>
+        <th>Example</th>
+      </tr>
+      <tr>
+        <td><code>num2hex(n)</code></td>
+        <td>string</td>
+        <td><code>num2hex(255)</code> &rarr; <code>"ff"</code></td>
+      </tr>
+      <tr>
+        <td><code>num2bin(n)</code></td>
+        <td>string</td>
+        <td><code>num2bin(10)</code> &rarr; <code>"1010"</code></td>
+      </tr>
+      <tr>
+        <td><code>num2oct(n)</code></td>
+        <td>string</td>
+        <td><code>num2oct(511)</code> &rarr; <code>"777"</code></td>
+      </tr>
+      <tr>
+        <td><code>num2rom(n)</code></td>
+        <td>string</td>
+        <td><code>num2rom(2024)</code> &rarr; <code>"MMXXIV"</code></td>
+      </tr>
+      <tr>
+        <td><code>hex2num(s)</code></td>
+        <td>number</td>
+        <td><code>hex2num('ff')</code> &rarr; <code>255</code></td>
+      </tr>
+      <tr>
+        <td><code>bin2num(s)</code></td>
+        <td>number</td>
+        <td><code>bin2num('1010')</code> &rarr; <code>10</code></td>
+      </tr>
+      <tr>
+        <td><code>oct2num(s)</code></td>
+        <td>number</td>
+        <td><code>oct2num('777')</code> &rarr; <code>511</code></td>
+      </tr>
+      <tr>
+        <td><code>rom2num(s)</code></td>
+        <td>number</td>
+        <td><code>rom2num('MMXXIV')</code> &rarr; <code>2024</code></td>
+      </tr>
+    </table>
+    <p><strong>Output conventions:</strong></p>
+    <ul>
+      <li>Hex/bin/oct outputs are <strong>bare lowercase</strong> &mdash; no <code>0x</code> / <code>0b</code> / <code>0o</code> prefix. Compose prefixes if you want them: <code>(?='0x' + num2hex(num(1)))</code>.</li>
+      <li>Roman output is <strong>uppercase canonical</strong> form (subtractive pairs <code>IV</code>, <code>IX</code>, <code>XL</code>, etc.).</li>
+      <li>Negative inputs to the bases produce <code>"-&lt;digits&gt;"</code> (e.g. <code>num2hex(-15)</code> &rarr; <code>"-f"</code>). For Roman, only the range 1..3999 is meaningful; out of range returns an empty string.</li>
+      <li>Float inputs truncate toward zero (<code>num2hex(15.7) == num2hex(15)</code>).</li>
+    </ul>
+    <p><strong>Parser conventions:</strong></p>
+    <ul>
+      <li><code>hex2num</code>, <code>bin2num</code>, <code>oct2num</code> accept input <strong>case-insensitively</strong>, with or without the matching prefix, and trim surrounding whitespace. Invalid characters for the target base yield <code>NaN</code>.</li>
+      <li><code>rom2num</code> is lenient: accepts both case and tolerates non-canonical forms like <code>"IIII"</code> for 4. Invalid characters yield <code>NaN</code>.</li>
+      <li>Numeric overflow (values beyond double's safe-integer ceiling 2<sup>53</sup>) yields <code>NaN</code> rather than silently losing precision.</li>
+    </ul>
+    <p><strong>Examples:</strong></p>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>(?='0x' + num2hex(num(1)))</code></td>
+        <td>Decimal &rarr; <code>0xff</code></td>
+      </tr>
+      <tr>
+        <td><code>0x([0-9a-fA-F]+)</code></td>
+        <td><code>(?=hex2num(txt(1)))</code></td>
+        <td>Hex literal &rarr; decimal</td>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>(?=num2rom(num(1)))</code></td>
+        <td>Chapter <code>14</code> &rarr; <code>XIV</code></td>
+      </tr>
+      <tr>
+        <td><code>([IVXLCDM]+)</code></td>
+        <td><code>(?=rom2num(txt(1)))</code></td>
+        <td>Roman &rarr; decimal</td>
+      </tr>
+    </table>
+  </section>
+
+  <br>
+
   <section id="exprtk-csv">
     <h2>CSV Column Access</h2>
     <p>When CSV mode is active, <code>numcol(N)</code> and <code>txtcol(N)</code> return the value of column N from the <strong>physical line</strong> containing the current match. Index is 1-based; <code>numcol(1)</code> is the first column. Both also accept a header name as a string (<code>numcol('price')</code>); on first use the document's first line is parsed as a header row and cached for the rest of the run.</p>
@@ -1940,7 +2039,7 @@ return {
       <tr>
         <td><code>txtcol(N)</code> / <code>txtcol('name')</code></td>
         <td>string</td>
-        <td>Raw cell text. Only meaningful inside <code>return [...]</code>.</td>
+        <td>Raw cell text. Usable directly in <code>(?=...)</code> blocks and composable with <code>+</code>.</td>
       </tr>
     </table>
     <p><strong>Requirements:</strong></p>
@@ -1966,7 +2065,7 @@ return {
       <tr>
         <td>product;price;qty<br>apple;1.50;10<br>banana;0.30;25</td>
         <td><code>^(?!product).+$</code></td>
-        <td><code>(?=return [txt(0), ' total=', numcol('price') * numcol('qty')])</code></td>
+        <td><code>(?=txt(0) + ' total=' + (numcol('price') * numcol('qty')))</code></td>
         <td>product;price;qty<br>apple;1.50;10 total=15<br>banana;0.30;25 total=7.5</td>
       </tr>
     </table>
@@ -1989,19 +2088,19 @@ return {
       </tr>
       <tr>
         <td><em>(empty)</em></td>
-        <td><code>(?=ecmd('C:/tmp/roman.ecmd'))</code></td>
+        <td><code>(?=ecmd('C:/tmp/helpers.ecmd'))</code></td>
         <td>No</td>
         <td>Load library from file (init row &mdash; no replacement).</td>
       </tr>
       <tr>
         <td><code>^(\d+)$</code></td>
-        <td><code>(?=return [num2rom(num(1))])</code></td>
+        <td><code>(?=padleft(txt(1), 5, '0'))</code></td>
         <td>Yes</td>
         <td>Use a string-returning library function.</td>
       </tr>
       <tr>
-        <td><code>^([IVXLCDM]+)$</code></td>
-        <td><code>(?=rom2num(txt(1)))</code></td>
+        <td><code>^(\d+)$</code></td>
+        <td><code>(?=double_it(num(1)))</code></td>
         <td>Yes</td>
         <td>Use a number-returning library function.</td>
       </tr>
@@ -2021,18 +2120,12 @@ return {
     return n * 2;
 end
 
-function num2rom(n) : S            # T -&gt; S
-    var r := '';
-    var v := n;
-    while (v &gt;= 1000) { r := r + 'M';  v := v - 1000; };
-    /* ...remaining cases... */
-    return r;
+function tag(label: S) : S         # S -&gt; S
+    return '[' + label + ']';
 end
 
-function rom2num(s: S)             # S -&gt; T
-    var total := 0;
-    /* ...parse loop... */
-    return total;
+function digit_count(s: S)         # S -&gt; T
+    return s[];                    /* string length */
 end
 
 function padleft(s: S, n, fill: S) : S   # S, T, S -&gt; S
@@ -2041,7 +2134,7 @@ function padleft(s: S, n, fill: S) : S   # S, T, S -&gt; S
     return r;
 end
 </code></pre>
-    <p><strong>Calling string-returning functions:</strong> Inside <code>(?=...)</code> blocks, wrap them in a <code>return [...]</code> list &mdash; <code>(?=return [num2rom(num(1))])</code>. Number-returning functions can be used directly &mdash; <code>(?=rom2num(txt(1)))</code>. This matches how the built-in <code>txt(N)</code> works.</p>
+    <p><strong>Calling library functions:</strong> Used directly in <code>(?=...)</code> blocks just like built-ins &mdash; <code>(?=padleft(txt(1), 5, '0'))</code>, <code>(?=double_it(num(1)))</code>. The output type matches what the function returns.</p>
     <p><strong>Cross-calls and recursion:</strong> Functions in the same file can call each other and themselves. The loader compiles in two passes, so call order doesn't matter:</p>
     <pre><code>function isEven(n)
     if (n == 0) { return 1; };
@@ -2171,64 +2264,45 @@ end
       </tr>
       <tr>
         <td><code>\b0*(\d+)\b</code></td>
-        <td><code>(?=return [strip_zeros(txt(1))])</code></td>
+        <td><code>(?=strip_zeros(txt(1)))</code></td>
         <td>Yes</td>
         <td><code>00042</code> becomes <code>42</code>.</td>
       </tr>
     </table>
 
-    <h3>Complete example: Roman numerals</h3>
-    <p>Spec: convert decimal &harr; Roman in the range 1..3999. Invalid input (<code>IIII</code>, <code>XM</code>, <code>IL</code>, lowercase, out of range) returns <code>''</code> or <code>0</code>. Validation uses round-trip &mdash; <code>rom2num</code> accepts only strings that re-encode to themselves via <code>num2rom</code>.</p>
-    <p><code>C:/Data/Projekte/MultiReplace/roman.ecmd</code>:</p>
-    <pre><code>function num2rom(n) : S
-    if (n &lt; 1 or n &gt; 3999) { return ''; };
-    var r := '';
-    var v := n;
-    while (v &gt;= 1000) { r := r + 'M';  v := v - 1000; };
-    if    (v &gt;= 900)  { r := r + 'CM'; v := v - 900;  };
-    if    (v &gt;= 500)  { r := r + 'D';  v := v - 500;  };
-    if    (v &gt;= 400)  { r := r + 'CD'; v := v - 400;  };
-    while (v &gt;= 100)  { r := r + 'C';  v := v - 100;  };
-    if    (v &gt;= 90)   { r := r + 'XC'; v := v - 90;   };
-    if    (v &gt;= 50)   { r := r + 'L';  v := v - 50;   };
-    if    (v &gt;= 40)   { r := r + 'XL'; v := v - 40;   };
-    while (v &gt;= 10)   { r := r + 'X';  v := v - 10;   };
-    if    (v &gt;= 9)    { r := r + 'IX'; v := v - 9;    };
-    if    (v &gt;= 5)    { r := r + 'V';  v := v - 5;    };
-    if    (v &gt;= 4)    { r := r + 'IV'; v := v - 4;    };
-    while (v &gt;= 1)    { r := r + 'I';  v := v - 1;    };
+    <h3>Complete example: ID-tag generator</h3>
+    <p>Spec: wrap each captured number in a fixed-width zero-padded ID tag like <code>[ID-00042]</code>. Demonstrates a library function that takes both a number and a width, returns a string, and composes with literals at the call site.</p>
+    <p><code>C:/Data/Projekte/MultiReplace/idtag.ecmd</code>:</p>
+    <pre><code>function padleft(s: S, n, fill: S) : S
+    var r := s;
+    while (r[] &lt; n) { r := fill + r; };
     return r;
 end
 
-function rom2num_raw(s: S)
-    if (s[] == 0) { return 0; };
-    var total := 0;
-    var prev := 0;
-    var i := s[] - 1;
-    while (i &gt;= 0) {
-        var c := s[i:i+1];
-        var cur := 0;
-        if      (c == 'I') { cur := 1;    }
-        else if (c == 'V') { cur := 5;    }
-        else if (c == 'X') { cur := 10;   }
-        else if (c == 'L') { cur := 50;   }
-        else if (c == 'C') { cur := 100;  }
-        else if (c == 'D') { cur := 500;  }
-        else if (c == 'M') { cur := 1000; }
-        else               { return 0; };
-        if (cur &lt; prev) { total := total - cur; }
-        else            { total := total + cur; };
-        prev := cur;
-        i := i - 1;
+function num_to_str(n) : S
+    /* tiny n -&gt; "n" helper, since ExprTk strings can't take numbers directly */
+    if (n == 0) { return '0'; };
+    var s := '';
+    var v := n;
+    while (v &gt; 0) {
+        var d := v % 10;
+        if      (d == 0) { s := '0' + s; }
+        else if (d == 1) { s := '1' + s; }
+        else if (d == 2) { s := '2' + s; }
+        else if (d == 3) { s := '3' + s; }
+        else if (d == 4) { s := '4' + s; }
+        else if (d == 5) { s := '5' + s; }
+        else if (d == 6) { s := '6' + s; }
+        else if (d == 7) { s := '7' + s; }
+        else if (d == 8) { s := '8' + s; }
+        else             { s := '9' + s; };
+        v := (v - d) / 10;
     };
-    return total;
+    return s;
 end
 
-function rom2num(s: S)
-    var n := rom2num_raw(s);
-    if (n &lt; 1 or n &gt; 3999) { return 0; };
-    if (num2rom(n) == s) { return n; };
-    return 0;
+function id_tag(n, width) : S
+    return '[ID-' + padleft(num_to_str(n), width, '0') + ']';
 end
 </code></pre>
     <p><strong>Replace-All rules:</strong></p>
@@ -2241,38 +2315,18 @@ end
       </tr>
       <tr>
         <td><em>(empty)</em></td>
-        <td><code>(?=ecmd('C:/Data/Projekte/MultiReplace/roman.ecmd'))</code></td>
+        <td><code>(?=ecmd('C:/Data/Projekte/MultiReplace/idtag.ecmd'))</code></td>
         <td>No</td>
         <td>Load library.</td>
       </tr>
       <tr>
-        <td><code>^(\d+)$</code></td>
-        <td><code>(?=return [num2rom(num(1))])</code></td>
+        <td><code>\b(\d+)\b</code></td>
+        <td><code>(?=id_tag(num(1), 5))</code></td>
         <td>Yes</td>
-        <td>Decimal &rarr; Roman.</td>
-      </tr>
-      <tr>
-        <td><code>^([IVXLCDM]+)$</code></td>
-        <td><code>(?=rom2num(txt(1)))</code></td>
-        <td>Yes</td>
-        <td>Roman &rarr; decimal.</td>
+        <td>Each number becomes <code>[ID-NNNNN]</code>.</td>
       </tr>
     </table>
-    <p>Run the two conversion rules <strong>separately</strong> &mdash; running both at once converts decimal &rarr; Roman, then the Roman match in the same run converts back to decimal. For a real document where chapters look like <code>Chapter 14:</code>, use a contextual pattern that doesn't round-trip:</p>
-    <table class="optionsTable">
-      <tr>
-        <th>Find</th>
-        <th>Replace</th>
-        <th>Regex</th>
-        <th>Description</th>
-      </tr>
-      <tr>
-        <td><code>^(Chapter )(\d+)(:.*)$</code></td>
-        <td><code>$1(?=return [num2rom(num(2))])$3</code></td>
-        <td>Yes</td>
-        <td>Chapter <code>14: ...</code> becomes <code>XIV: ...</code>.</td>
-      </tr>
-    </table>
+    <p>For built-in formatting needs (zero padding, fixed width, hex, etc.) consider the <a href="#exprtk-format">format spec</a> with <code>~</code>: <code>(?=num(1) ~ 05)</code> produces the same zero-padded number without a library function. The example above is shown to illustrate the library mechanics &mdash; for simple numeric formatting the spec is more direct.</p>
   </section>
 
   <br>
@@ -2377,7 +2431,7 @@ end
     <h3>Errors and edge cases</h3>
     <ul>
       <li><strong>Invalid spec at compile time</strong> &mdash; <code>(?=hit ~ 99q)</code> produces <em>"Invalid format spec '99q': Unknown numeric type letter; expected f/e/g/x/b/o"</em>. The rule fails to compile; no replacements run.</li>
-      <li><strong><code>return [...]</code> cannot be combined with a spec</strong> &mdash; the spec is for numeric output, <code>return</code> lists are for string output. Combining them produces a runtime error.</li>
+      <li><strong>String output cannot be combined with a spec</strong> &mdash; the spec is for numeric output. Combining <code>~ spec</code> with a string-producing formula (e.g. <code>(?='hello' ~ 05f)</code>) is rejected at compile time with a clear diagnostic.</li>
       <li><strong>NaN / Inf</strong> &mdash; when the formula itself produces <code>NaN</code> (e.g. parsing a non-numeric capture) or <code>Inf</code> (e.g. division by zero), the spec is not applied; the recoverable-error dialog appears instead, leaving the original match untouched if the user skips.</li>
       <li><strong><code>~</code> inside the formula</strong> &mdash; the splitter looks for the <strong>last</strong> <code>~</code> at bracket depth 0, ignoring <code>~</code> inside quoted strings (<code>'a~b'</code>) and inside <code>[...]</code> brackets (<code>D[%Y ~ %m]</code>). The first <code>~</code> in the date pattern below is therefore part of the spec, not a separator:
         <p><code>(?= hit ~ D[%Y-%m-%d ~ %H:%M:%S] )</code></p>
@@ -2565,17 +2619,17 @@ end
       </tr>
       <tr>
         <td><code>(\w+)</code></td>
-        <td><code>(?=return ['&lt;', txt(1), '&gt;'])</code></td>
+        <td><code>(?='&lt;' + txt(1) + '&gt;')</code></td>
         <td>Wrap every match in angle brackets.</td>
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>(?=return ['#', CNT, ': ', txt(1)])</code></td>
+        <td><code>(?='#' + CNT + ': ' + txt(1))</code></td>
         <td>Prefix each match with a running global counter.</td>
       </tr>
       <tr>
         <td><code>(\w+)</code></td>
-        <td><code>(?=return [FNAME, ': ', txt(1)])</code></td>
+        <td><code>(?=fname + ': ' + txt(1))</code></td>
         <td>Tag each match with the source filename.</td>
       </tr>
     </table>
@@ -2638,7 +2692,7 @@ end
     <h2>Limitations</h2>
     <p>ExprTk is deliberately scoped. Things it does <strong>not</strong> do:</p>
     <ul>
-      <li><strong>No string manipulation inside <code>(?=...)</code>.</strong> Inline blocks can only pass strings through (via captures, <code>txt(N)</code>, <code>FNAME</code>, <code>FPATH</code>) and assemble them in <code>return [...]</code> lists. For substring, concatenation, indexed access, and length, write helper functions in a <code>.ecmd</code> library &mdash; bodies have <code>s[]</code>, <code>s[i:j]</code>, and <code>+</code> available (see <a href="#exprtk-ecmd">Library Loading via ecmd</a>). (<code>parsedate</code> is the one inline exception, but it only consumes the string &mdash; it returns a number.)</li>
+      <li><strong>Limited string manipulation inside <code>(?=...)</code>.</strong> Inline blocks support string composition with the <code>+</code> operator (e.g. <code>(?='&lt;' + txt(1) + '&gt;')</code>), and can pass strings through captures, <code>txt(N)</code>, <code>txtcol</code>, <code>FNAME</code>, <code>FPATH</code>, and the conversion built-ins. For substring slicing, indexed access, and length, write helper functions in a <code>.ecmd</code> library &mdash; bodies have <code>s[]</code>, <code>s[i:j]</code>, and <code>+</code> available (see <a href="#exprtk-ecmd">Library Loading via ecmd</a>). (<code>parsedate</code> is the one inline exception that consumes a string and returns a number.)</li>
       <li><strong>UTF-8 inside string literals fails to compile.</strong> A literal like <code>'Gr&ouml;&szlig;e'</code> between <code>'...'</code> will produce an <code>Invalid string token</code> error. This applies to both inline expressions and <code>.ecmd</code> bodies. Use captures or place non-ASCII text outside the <code>(?=...)</code> block. Captures themselves arrive as UTF-8 bytes and can be passed through unchanged, but per-character slicing breaks them &mdash; see the warning in <a href="#exprtk-ecmd">Library Loading via ecmd</a>.</li>
       <li><strong>No state across matches.</strong> Each <code>(?=...)</code> evaluation starts fresh. The numeric counters (<code>CNT</code>, <code>LCNT</code>) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use <code>vars({...})</code>.</li>
       <li><strong>No data file loading.</strong> ExprTk has no equivalent to Lua's <code>lvars</code> (preload variables from disk) or <code>lkp</code> (key lookup from disk). <code>ecmd</code> loads <strong>code</strong>, not data.</li>

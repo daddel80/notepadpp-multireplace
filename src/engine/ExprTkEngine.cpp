@@ -46,6 +46,14 @@ namespace MultiReplaceEngine {
         , _numColFunction(this)
         , _txtColFunction(this)
         , _parsedateFunction(this)
+        , _num2hexFunction(this, 16)
+        , _num2binFunction(this, 2)
+        , _num2octFunction(this, 8)
+        , _hex2numFunction(this, 16)
+        , _bin2numFunction(this, 2)
+        , _oct2numFunction(this, 8)
+        , _num2romFunction(this)
+        , _rom2numFunction(this)
         , _ecmdLoaderFunction(this)
     {
     }
@@ -119,6 +127,22 @@ namespace MultiReplaceEngine {
         // Register parsedate(str, fmt) - the inverse of D[fmt] output.
         // Returns Unix timestamp on success, NaN on parse failure.
         _symbolTable.add_function("parsedate", _parsedateFunction);
+
+        // Base conversions: numeric <-> hex/bin/oct as built-ins. num2X
+        // returns a bare lowercase string; X2num accepts the input case-
+        // insensitively, with or without the matching prefix, NaN on
+        // invalid characters.
+        _symbolTable.add_function("num2hex", _num2hexFunction);
+        _symbolTable.add_function("num2bin", _num2binFunction);
+        _symbolTable.add_function("num2oct", _num2octFunction);
+        _symbolTable.add_function("hex2num", _hex2numFunction);
+        _symbolTable.add_function("bin2num", _bin2numFunction);
+        _symbolTable.add_function("oct2num", _oct2numFunction);
+
+        // Roman numerals: standard 1..3999 range. num2rom emits canonical
+        // subtractive form; rom2num is lenient about non-canonical input.
+        _symbolTable.add_function("num2rom", _num2romFunction);
+        _symbolTable.add_function("rom2num", _rom2numFunction);
 
         // Register ecmd("path") - the library loader. Functions loaded
         // through it land in _ecmdLibrary's own symbol_table, which we
@@ -901,6 +925,260 @@ namespace MultiReplaceEngine {
         }
 
         return static_cast<double>(t);
+    }
+
+    // ---------------------------------------------------------------------
+    // Base conversions: num <-> hex/bin/oct
+    // ---------------------------------------------------------------------
+
+    namespace {
+
+        // Returns true and writes the value if 'c' is a valid digit for
+        // the given base (2/8/16). Hex accepts upper- and lowercase.
+        bool digitForBase(char c, int base, int& outValue)
+        {
+            if (c >= '0' && c <= '9') {
+                outValue = c - '0';
+            }
+            else if (base == 16 && c >= 'a' && c <= 'f') {
+                outValue = 10 + (c - 'a');
+            }
+            else if (base == 16 && c >= 'A' && c <= 'F') {
+                outValue = 10 + (c - 'A');
+            }
+            else {
+                return false;
+            }
+            return outValue < base;
+        }
+
+        // Strips ASCII whitespace from both ends. Used so hex2num(" ff ")
+        // still parses cleanly.
+        std::string trimAscii(const std::string& s)
+        {
+            const auto isSpace = [](unsigned char c) {
+                return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+                };
+            std::size_t first = 0;
+            while (first < s.size() && isSpace(static_cast<unsigned char>(s[first]))) ++first;
+            std::size_t last = s.size();
+            while (last > first && isSpace(static_cast<unsigned char>(s[last - 1]))) --last;
+            return s.substr(first, last - first);
+        }
+
+        // Removes a leading base-prefix if present (0x/0X for hex,
+        // 0b/0B for binary, 0o/0O for octal). Returns the offset to
+        // continue parsing from.
+        std::size_t skipBasePrefix(const std::string& s, int base)
+        {
+            if (s.size() < 2 || s[0] != '0') return 0;
+            const char p = s[1];
+            if (base == 16 && (p == 'x' || p == 'X')) return 2;
+            if (base == 2 && (p == 'b' || p == 'B')) return 2;
+            if (base == 8 && (p == 'o' || p == 'O')) return 2;
+            return 0;
+        }
+
+        // Renders a non-negative integer in the given base as lowercase
+        // ASCII. Always emits at least "0" so num2hex(0) -> "0".
+        std::string formatUnsignedBase(unsigned long long v, int base)
+        {
+            if (v == 0) return std::string("0");
+
+            static const char kDigits[] = "0123456789abcdef";
+            char buf[80];
+            std::size_t pos = sizeof(buf);
+            while (v > 0) {
+                buf[--pos] = kDigits[v % static_cast<unsigned>(base)];
+                v /= static_cast<unsigned>(base);
+            }
+            return std::string(buf + pos, sizeof(buf) - pos);
+        }
+
+    } // anonymous namespace
+
+    double ExprTkEngine::Num2BaseFunction::operator()(
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        result.clear();
+
+        if (parameters.size() != 1) {
+            return 0.0;
+        }
+        const scalar_t s(parameters[0]);
+        const double v = s();
+
+        // NaN or Inf -> empty string. Same recoverable-error contract
+        // as formatDouble(): never let "nan"/"inf" leak into output.
+        if (!std::isfinite(v)) {
+            return 0.0;
+        }
+
+        // Truncate toward zero so num2hex(15.7) == num2hex(15) and
+        // num2hex(-15.7) == num2hex(-15). Matches (int) cast semantics.
+        const long long signedVal = static_cast<long long>(v);
+        const bool negative = signedVal < 0;
+        const unsigned long long magnitude = negative
+            ? static_cast<unsigned long long>(-(signedVal + 1)) + 1ULL  // safe abs for INT64_MIN
+            : static_cast<unsigned long long>(signedVal);
+
+        std::string body = formatUnsignedBase(magnitude, _base);
+        if (negative) {
+            result.reserve(body.size() + 1);
+            result.push_back('-');
+            result.append(body);
+        }
+        else {
+            result = std::move(body);
+        }
+        return 0.0;
+    }
+
+    double ExprTkEngine::Base2NumFunction::operator()(
+        parameter_list_t parameters)
+    {
+        const double nanResult = std::numeric_limits<double>::quiet_NaN();
+
+        if (parameters.size() != 1) {
+            return nanResult;
+        }
+        const string_t sv(parameters[0]);
+        const std::string raw = trimAscii(exprtk::to_str(sv));
+        if (raw.empty()) {
+            return nanResult;
+        }
+
+        std::size_t i = 0;
+        bool negative = false;
+        if (raw[i] == '+' || raw[i] == '-') {
+            negative = (raw[i] == '-');
+            ++i;
+        }
+        i += skipBasePrefix(raw.substr(i), _base);
+        if (i >= raw.size()) {
+            return nanResult;   // sign or prefix with no digits
+        }
+
+        // Accumulate as unsigned to avoid intermediate-signed overflow.
+        // Cap at 2^53 (double's safe-integer ceiling) so the round-trip
+        // through double doesn't silently lose precision; over the cap
+        // we return NaN rather than a corrupted value.
+        unsigned long long acc = 0;
+        const unsigned long long kSafeMax = (1ULL << 53);
+
+        for (; i < raw.size(); ++i) {
+            int digit = 0;
+            if (!digitForBase(raw[i], _base, digit)) {
+                return nanResult;
+            }
+            if (acc > kSafeMax / static_cast<unsigned>(_base)) {
+                return nanResult;
+            }
+            acc = acc * static_cast<unsigned>(_base) + static_cast<unsigned>(digit);
+            if (acc > kSafeMax) {
+                return nanResult;
+            }
+        }
+
+        const double mag = static_cast<double>(acc);
+        return negative ? -mag : mag;
+    }
+
+    // ---------------------------------------------------------------------
+    // Roman numerals: num2rom / rom2num
+    // ---------------------------------------------------------------------
+
+    namespace {
+
+        // Greedy emission from largest to smallest. Subtractive pairs
+        // (CM, CD, XC, XL, IX, IV) sit in the table so a single loop
+        // produces the canonical form without special-case branches.
+        std::string romanFromInt(int n)
+        {
+            static const struct { int value; const char* glyph; } kTable[] = {
+                {1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"},
+                { 100, "C"}, { 90, "XC"}, { 50, "L"}, { 40, "XL"},
+                {  10, "X"}, {  9, "IX"}, {  5, "V"}, {  4, "IV"},
+                {   1, "I"}
+            };
+            std::string out;
+            for (const auto& row : kTable) {
+                while (n >= row.value) {
+                    out += row.glyph;
+                    n -= row.value;
+                }
+            }
+            return out;
+        }
+
+        // Returns the integer value for a single Roman glyph, or -1 if
+        // the character is not a Roman numeral. Case-insensitive.
+        int romanGlyphValue(char c)
+        {
+            switch (c) {
+            case 'I': case 'i': return 1;
+            case 'V': case 'v': return 5;
+            case 'X': case 'x': return 10;
+            case 'L': case 'l': return 50;
+            case 'C': case 'c': return 100;
+            case 'D': case 'd': return 500;
+            case 'M': case 'm': return 1000;
+            default: return -1;
+            }
+        }
+
+    } // anonymous namespace
+
+    double ExprTkEngine::Num2RomFunction::operator()(
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        result.clear();
+
+        if (parameters.size() != 1) return 0.0;
+        const scalar_t s(parameters[0]);
+        const double v = s();
+        if (!std::isfinite(v)) return 0.0;
+
+        // Range check first: classical Roman covers 1..3999. Out of
+        // range -> empty string (same recoverable-error pattern as
+        // num2hex(NaN)).
+        const long long iv = static_cast<long long>(v);
+        if (iv < 1 || iv > 3999) return 0.0;
+
+        result = romanFromInt(static_cast<int>(iv));
+        return 0.0;
+    }
+
+    double ExprTkEngine::Rom2NumFunction::operator()(
+        parameter_list_t parameters)
+    {
+        const double nanResult = std::numeric_limits<double>::quiet_NaN();
+
+        if (parameters.size() != 1) return nanResult;
+        const string_t sv(parameters[0]);
+        const std::string raw = trimAscii(exprtk::to_str(sv));
+        if (raw.empty()) return nanResult;
+
+        // Left-to-right scan: when a glyph's value is smaller than the
+        // next one, it counts as negative (IV = -1 + 5 = 4). Lenient
+        // toward non-canonical forms - "IIII" sums to 4, same as "IV".
+        long long total = 0;
+        const std::size_t n = raw.size();
+        for (std::size_t i = 0; i < n; ++i) {
+            const int curr = romanGlyphValue(raw[i]);
+            if (curr < 0) return nanResult;
+            const int next = (i + 1 < n) ? romanGlyphValue(raw[i + 1]) : -1;
+            if (next > curr) {
+                total += (next - curr);
+                ++i;  // consume the next glyph too
+            }
+            else {
+                total += curr;
+            }
+        }
+        return static_cast<double>(total);
     }
 
     // ---------------------------------------------------------------------

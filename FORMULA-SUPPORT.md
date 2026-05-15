@@ -26,6 +26,7 @@ Two engines are available, selected via the `(L)` / `(E)` indicator next to the 
   - [Operators](#operators-1)
   - [Skipping Matches](#skipping-matches)
   - [Sequence Generator](#sequence-generator)
+  - [Base Conversions](#base-conversions)
   - [CSV Column Access](#csv-column-access)
   - [Library Loading via ecmd](#library-loading-via-ecmd)
   - [Output Formatting](#output-formatting)
@@ -610,7 +611,7 @@ Example — clamp a captured value but show "OVER" if it exceeded:
 
 ### String Output
 
-An ExprTk expression normally produces a number, but it can also produce a string directly. Use string literals, string variables, captures via `txt(N)`, string-returning library functions, slicing, concatenation, or conditionals:
+An ExprTk expression normally produces a number, but it can also produce a string directly. Use string literals, string variables, captures via `txt(N)`, built-in conversion functions, slicing, concatenation, or conditionals:
 
 ```
 (?='hello')                              -> hello
@@ -618,7 +619,7 @@ An ExprTk expression normally produces a number, but it can also produce a strin
 (?=fpath + '.bak')                       -> /home/user/file.txt.bak
 (?=fpath[6:10])                          -> user           (byte slice)
 (?=txt(1) + '_done')                     -> match_done
-(?=num2rom(num(1)))                      -> XIV            (library function)
+(?=num2rom(num(1)))                      -> XIV            (built-in conversion)
 (?=cnt > 5 ? 'big' : 'small')            -> big or small
 ```
 
@@ -684,6 +685,43 @@ Output:   100. apple
 
 <br>
 
+### Base Conversions
+
+Built-in functions for converting between decimal and hexadecimal, binary, octal, or Roman numerals. Each base has a pair of functions: `numXXX` for *to-string* output, `XXXnum` for parsing back to a number.
+
+| Function     | Returns | Example                              |
+|--------------|---------|--------------------------------------|
+| `num2hex(n)` | string  | `num2hex(255)` → `"ff"`              |
+| `num2bin(n)` | string  | `num2bin(10)` → `"1010"`             |
+| `num2oct(n)` | string  | `num2oct(511)` → `"777"`             |
+| `num2rom(n)` | string  | `num2rom(2024)` → `"MMXXIV"`         |
+| `hex2num(s)` | number  | `hex2num('ff')` → `255`              |
+| `bin2num(s)` | number  | `bin2num('1010')` → `10`             |
+| `oct2num(s)` | number  | `oct2num('777')` → `511`             |
+| `rom2num(s)` | number  | `rom2num('MMXXIV')` → `2024`         |
+
+**Output conventions:**
+- Hex/bin/oct outputs are **bare lowercase** — no `0x` / `0b` / `0o` prefix. Compose prefixes if you want them: `(?='0x' + num2hex(num(1)))`.
+- Roman output is **uppercase canonical** form (subtractive pairs `IV`, `IX`, `XL`, etc.).
+- Negative inputs to the bases produce `"-<digits>"` (e.g. `num2hex(-15)` → `"-f"`). For Roman, only the range 1..3999 is meaningful; out of range returns an empty string.
+- Float inputs truncate toward zero (`num2hex(15.7) == num2hex(15)`).
+
+**Parser conventions:**
+- `hex2num`, `bin2num`, `oct2num` accept input **case-insensitively**, with or without the matching prefix, and trim surrounding whitespace. Invalid characters for the target base yield `NaN`.
+- `rom2num` is lenient: accepts both case and tolerates non-canonical forms like `"IIII"` for 4. Invalid characters yield `NaN`.
+- Numeric overflow (values beyond double's safe-integer ceiling 2^53) yields `NaN` rather than silently losing precision.
+
+**Examples:**
+
+| Find                  | Replace                          | Description                  |
+|-----------------------|----------------------------------|------------------------------|
+| `(\d+)`               | `(?='0x' + num2hex(num(1)))`     | Decimal → `0xff`             |
+| `0x([0-9a-fA-F]+)`    | `(?=hex2num(txt(1)))`            | Hex literal → decimal        |
+| `(\d+)`               | `(?=num2rom(num(1)))`            | Chapter `14` → `XIV`         |
+| `([IVXLCDM]+)`        | `(?=rom2num(txt(1)))`            | Roman → decimal              |
+
+<br>
+
 ### CSV Column Access
 
 When CSV mode is active, `numcol(N)` and `txtcol(N)` return the value of column N from the **physical line** containing the current match. Index is 1-based; `numcol(1)` is the first column. Both also accept a header name as a string (`numcol('price')`); on first use the document's first line is parsed as a header row and cached for the rest of the run.
@@ -736,9 +774,9 @@ Load user-defined functions from a `.ecmd` file with `ecmd(path)`. Functions bec
 
 | Find      | Replace                                          | Regex | Description |
 |-----------|--------------------------------------------------|-------|-------------|
-| *(empty)* | `(?=ecmd('C:/tmp/roman.ecmd'))`                  | No    | Load library from file (init row — no replacement). |
-| `^(\d+)$` | `(?=num2rom(num(1)))`                            | Yes   | Use a string-returning library function. |
-| `^([IVXLCDM]+)$` | `(?=rom2num(txt(1)))`                     | Yes   | Use a number-returning library function. |
+| *(empty)* | `(?=ecmd('C:/tmp/helpers.ecmd'))`                | No    | Load library from file (init row — no replacement). |
+| `^(\d+)$` | `(?=padleft(txt(1), 5, '0'))`                    | Yes   | Use a string-returning library function. |
+| `^(\d+)$` | `(?=double_it(num(1)))`                          | Yes   | Use a number-returning library function. |
 
 **Path notes:** Single backslashes are interpreted as escape sequences inside ExprTk strings. Use forward slashes (`'C:/tmp/file.ecmd'`) or double backslashes (`'C:\\tmp\\file.ecmd'`).
 
@@ -762,18 +800,12 @@ function double_it(n)              # T -> T  (defaults, no annotation)
     return n * 2;
 end
 
-function num2rom(n) : S            # T -> S
-    var r := '';
-    var v := n;
-    while (v >= 1000) { r := r + 'M';  v := v - 1000; };
-    /* ...remaining cases... */
-    return r;
+function tag(label: S) : S         # S -> S
+    return '[' + label + ']';
 end
 
-function rom2num(s: S)             # S -> T
-    var total := 0;
-    /* ...parse loop... */
-    return total;
+function digit_count(s: S)         # S -> T
+    return s[];                    /* string length */
 end
 
 function padleft(s: S, n, fill: S) : S   # S, T, S -> S
@@ -783,7 +815,7 @@ function padleft(s: S, n, fill: S) : S   # S, T, S -> S
 end
 ```
 
-**Calling string-returning functions:** Use them directly in `(?=...)` blocks just like number-returning ones — `(?=num2rom(num(1)))`, `(?=rom2num(txt(1)))`. The output type matches what the function returns.
+**Calling library functions:** Used directly in `(?=...)` blocks just like built-ins — `(?=padleft(txt(1), 5, '0'))`, `(?=double_it(num(1)))`. The output type matches what the function returns.
 
 **Cross-calls and recursion:** Functions in the same file can call each other and themselves. The loader compiles in two passes, so call order doesn't matter:
 
@@ -837,7 +869,7 @@ Function bodies use a small statement language layered on top of ExprTk's expres
 > - `s[0:1]` on a value starting with `ä` returns one half of the encoding — invalid UTF-8 — and the resulting output will display as `?` or a replacement glyph
 > - `s[i:i+1] == 'ä'` cannot compile because the right-hand literal contains non-ASCII bytes
 >
-> **Practical rule:** `.ecmd` helpers are safe for ASCII-only input — digits, plain English letters, punctuation. Use them for `num2rom`/`rom2num`, padding, digit stripping, simple parsing. Anything that needs per-character work on text that may contain umlauts, accented letters, CJK, emojis, or other non-ASCII content belongs in the **Lua engine**, which exposes Lua's `utf8.*` library (`utf8.len`, `utf8.offset`, `utf8.char`, `utf8.codepoint`) for correct multi-byte handling. ExprTk has no equivalent.
+> **Practical rule:** `.ecmd` helpers are safe for ASCII-only input — digits, plain English letters, punctuation. Use them for padding, digit stripping, simple parsing, ID-tag formatting. Anything that needs per-character work on text that may contain umlauts, accented letters, CJK, emojis, or other non-ASCII content belongs in the **Lua engine**, which exposes Lua's `utf8.*` library (`utf8.len`, `utf8.offset`, `utf8.char`, `utf8.codepoint`) for correct multi-byte handling. ExprTk has no equivalent.
 
 **A minimal complete example.** Strip leading zeros from a captured number string:
 
@@ -858,62 +890,43 @@ Used in a replace rule:
 
 <br>
 
-#### Complete example: Roman numerals
+#### Complete example: ID-tag generator
 
-Spec: convert decimal ↔ Roman in the range 1..3999. Invalid input (`IIII`, `XM`, `IL`, lowercase, out of range) returns `''` or `0`. Validation uses round-trip — `rom2num` accepts only strings that re-encode to themselves via `num2rom`.
+Spec: wrap each captured number in a fixed-width zero-padded ID tag like `[ID-00042]`. Demonstrates a library function that takes both a number and a width, returns a string, and composes with literals at the call site.
 
-`C:/Data/Projekte/MultiReplace/roman.ecmd`:
+`C:/Data/Projekte/MultiReplace/idtag.ecmd`:
 
 ```
-function num2rom(n) : S
-    if (n < 1 or n > 3999) { return ''; };
-    var r := '';
-    var v := n;
-    while (v >= 1000) { r := r + 'M';  v := v - 1000; };
-    if    (v >= 900)  { r := r + 'CM'; v := v - 900;  };
-    if    (v >= 500)  { r := r + 'D';  v := v - 500;  };
-    if    (v >= 400)  { r := r + 'CD'; v := v - 400;  };
-    while (v >= 100)  { r := r + 'C';  v := v - 100;  };
-    if    (v >= 90)   { r := r + 'XC'; v := v - 90;   };
-    if    (v >= 50)   { r := r + 'L';  v := v - 50;   };
-    if    (v >= 40)   { r := r + 'XL'; v := v - 40;   };
-    while (v >= 10)   { r := r + 'X';  v := v - 10;   };
-    if    (v >= 9)    { r := r + 'IX'; v := v - 9;    };
-    if    (v >= 5)    { r := r + 'V';  v := v - 5;    };
-    if    (v >= 4)    { r := r + 'IV'; v := v - 4;    };
-    while (v >= 1)    { r := r + 'I';  v := v - 1;    };
+function padleft(s: S, n, fill: S) : S
+    var r := s;
+    while (r[] < n) { r := fill + r; };
     return r;
 end
 
-function rom2num_raw(s: S)
-    if (s[] == 0) { return 0; };
-    var total := 0;
-    var prev := 0;
-    var i := s[] - 1;
-    while (i >= 0) {
-        var c := s[i:i+1];
-        var cur := 0;
-        if      (c == 'I') { cur := 1;    }
-        else if (c == 'V') { cur := 5;    }
-        else if (c == 'X') { cur := 10;   }
-        else if (c == 'L') { cur := 50;   }
-        else if (c == 'C') { cur := 100;  }
-        else if (c == 'D') { cur := 500;  }
-        else if (c == 'M') { cur := 1000; }
-        else               { return 0; };
-        if (cur < prev) { total := total - cur; }
-        else            { total := total + cur; };
-        prev := cur;
-        i := i - 1;
+function num_to_str(n) : S
+    /* tiny n -> "n" helper, since ExprTk strings can't take numbers directly */
+    if (n == 0) { return '0'; };
+    var s := '';
+    var v := n;
+    while (v > 0) {
+        var d := v % 10;
+        if      (d == 0) { s := '0' + s; }
+        else if (d == 1) { s := '1' + s; }
+        else if (d == 2) { s := '2' + s; }
+        else if (d == 3) { s := '3' + s; }
+        else if (d == 4) { s := '4' + s; }
+        else if (d == 5) { s := '5' + s; }
+        else if (d == 6) { s := '6' + s; }
+        else if (d == 7) { s := '7' + s; }
+        else if (d == 8) { s := '8' + s; }
+        else             { s := '9' + s; };
+        v := (v - d) / 10;
     };
-    return total;
+    return s;
 end
 
-function rom2num(s: S)
-    var n := rom2num_raw(s);
-    if (n < 1 or n > 3999) { return 0; };
-    if (num2rom(n) == s) { return n; };
-    return 0;
+function id_tag(n, width) : S
+    return '[ID-' + padleft(num_to_str(n), width, '0') + ']';
 end
 ```
 
@@ -921,15 +934,10 @@ Replace-All rules:
 
 | Find | Replace | Regex | Description |
 |---|---|---|---|
-| *(empty)* | `(?=ecmd('C:/Data/Projekte/MultiReplace/roman.ecmd'))` | No | Load library. |
-| `^(\d+)$` | `(?=num2rom(num(1)))` | Yes | Decimal → Roman. |
-| `^([IVXLCDM]+)$` | `(?=rom2num(txt(1)))` | Yes | Roman → decimal. |
+| *(empty)* | `(?=ecmd('C:/Data/Projekte/MultiReplace/idtag.ecmd'))` | No | Load library. |
+| `\b(\d+)\b` | `(?=id_tag(num(1), 5))` | Yes | Each number becomes `[ID-NNNNN]`. |
 
-Run the two conversion rules **separately** — running both at once converts decimal → Roman, then the Roman match in the same run converts back to decimal. For a real document where chapters look like `Chapter 14:`, use a contextual pattern that doesn't round-trip:
-
-| Find | Replace | Regex | Description |
-|---|---|---|---|
-| `^(Chapter )(\d+)(:.*)$` | `$1(?=num2rom(num(2)))$3` | Yes | Chapter `14: ...` becomes `XIV: ...`. |
+For built-in formatting needs (zero padding, fixed width, hex, etc.) consider the [format spec](#output-formatting) with `~`: `(?=num(1) ~ 05)` produces the same zero-padded number without a library function. The example above is shown to illustrate the library mechanics — for simple numeric formatting the spec is more direct.
 
 <br>
 
