@@ -2595,7 +2595,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     std::vector<ReplaceItemData> itemsToAdd = { itemData };
     itemsToAdd[0].isDirty = true;
     itemsToAdd[0].lastModified = getCurrentTimestamp();
-    addItemsToReplaceList(itemsToAdd);
+    addItemsToReplaceList(itemsToAdd, 0);  // 0 = insert at top
 
     // Show a status message indicating the value added to the list
     std::wstring message;
@@ -2610,8 +2610,8 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     // Update the item count in the ListView
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
-    // Select newly added line
-    size_t newItemIndex = replaceListData.size() - 1;
+    // Select newly added line (now at the top)
+    size_t newItemIndex = 0;
     ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED); // Delete previous selection
     ListView_SetItemState(_replaceListView, static_cast<int>(newItemIndex), LVIS_SELECTED, LVIS_SELECTED);
     ListView_EnsureVisible(_replaceListView, static_cast<int>(newItemIndex), FALSE);
@@ -14888,7 +14888,23 @@ void MultiReplace::pickupSelectionIntoFindEdit()
         }
     }
 
-    SetWindowTextW(GetDlgItem(_hSelf, IDC_FIND_EDIT), sel.c_str());
+    HWND hFind = GetDlgItem(_hSelf, IDC_FIND_EDIT);
+    SetWindowTextW(hFind, sel.c_str());
+
+    // After pickup, bring the panel to the foreground and hand focus to
+    // the Find edit, with its full contents selected, so the user can
+    // immediately type to replace, hit Tab to move on, or press Enter
+    // to search - mirroring Notepad++'s own S&R dialog and the Windows
+    // convention for pre-filled inputs.
+    //
+    // SetForegroundWindow is needed for the Ctrl+Shift+H hotkey path:
+    // the user has just selected text in the editor, so the editor (not
+    // MR) owns the foreground. Without this, SetFocus would only move
+    // the focus within MR's thread, leaving keyboard input flowing
+    // into the editor.
+    ::SetForegroundWindow(_hSelf);
+    ::SetFocus(hFind);
+    ::SendMessageW(hFind, EM_SETSEL, 0, -1);
 }
 
 void MultiReplace::activateAndFocusFindEdit()
