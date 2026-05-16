@@ -10631,11 +10631,68 @@ void MultiReplace::handleFindPrevButton() {
     }
 }
 
+SearchResult MultiReplace::performRegexBackwardFallback(const SearchContext& context, SelectionRange range)
+{
+    const LRESULT scanEnd = range.start;
+    LRESULT pos = range.end;
+    SearchResult lastMatch;
+
+    SearchContext probeCtx = context;
+    probeCtx.retrieveFoundText = false;
+    probeCtx.highlightMatch = false;
+
+    while (pos < scanEnd) {
+        SearchResult r = performSingleSearch(probeCtx, { pos, scanEnd });
+        if (r.pos < 0) break;
+
+        // Re-run at the match position without the upper bound to detect
+        // greedy matches that Scintilla clipped to fit the range.
+        SearchResult unclipped = performSingleSearch(probeCtx, { r.pos, context.docLength });
+        if (unclipped.pos != r.pos || unclipped.length != r.length) break;
+        if (unclipped.pos + unclipped.length > scanEnd) break;
+
+        lastMatch = r;
+
+        Sci_Position next = advanceAfterMatch(r);
+        if (next <= pos) next = pos + 1;        // forward progress on zero-length match
+        pos = next;
+    }
+
+    if (lastMatch.pos < 0) return lastMatch;
+
+    // Finalize like performListSearch*: retrieve text + highlight for the final match.
+    if (context.retrieveFoundText) {
+        send(SCI_SETTARGETRANGE, lastMatch.pos, lastMatch.pos + lastMatch.length);
+        const int codepage = (context.cachedCodepage >= 0)
+            ? context.cachedCodepage
+            : static_cast<int>(send(SCI_GETCODEPAGE));
+        const size_t bytesPerChar = (codepage == SC_CP_UTF8) ? 4u : 1u;
+        const size_t cap = static_cast<size_t>(lastMatch.length) * bytesPerChar + 1;
+        std::string buf(cap, '\0');
+        LRESULT textLength = send(SCI_GETTARGETTEXT, 0, reinterpret_cast<LPARAM>(buf.data()));
+        if (textLength < 0) textLength = 0;
+        if (static_cast<size_t>(textLength) >= cap) textLength = static_cast<LRESULT>(cap - 1);
+        buf.resize(static_cast<size_t>(textLength));
+        lastMatch.foundText = std::move(buf);
+    }
+
+    if (context.highlightMatch) {
+        displayResultCentered(lastMatch.pos, lastMatch.pos + lastMatch.length, true);
+    }
+
+    return lastMatch;
+}
+
 SearchResult MultiReplace::performSingleSearch(const SearchContext& context, SelectionRange range)
 {
-    // Early exit if the search string is empty
     if (context.findText.empty()) {
-        return {};  // Return default-initialized SearchResult
+        return {};
+    }
+
+    // Route backward+regex through forward-scan fallback (SCI_SEARCHINTARGET
+    // can't search regex backwards).
+    if (range.start > range.end && (context.searchFlags & SCFIND_REGEXP)) {
+        return performRegexBackwardFallback(context, range);
     }
 
     // Set the target range and search flags via Scintilla

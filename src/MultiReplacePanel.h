@@ -1346,6 +1346,7 @@ private:
     //Find
     void handleFindNextButton();
     void handleFindPrevButton();
+    SearchResult performRegexBackwardFallback(const SearchContext& context, SelectionRange range);
     SearchResult performSingleSearch(const SearchContext& context, SelectionRange range);
     SearchResult performSearchForward(const SearchContext& context, LRESULT start);
     SearchResult performSearchBackward(const SearchContext& context, LRESULT start);
