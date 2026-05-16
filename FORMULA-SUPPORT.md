@@ -20,6 +20,7 @@ Two engines are available, selected via the `(L)` / `(E)` indicator next to the 
   - [Quick Start: ExprTk](#quick-start-exprtk)
   - [Pattern Syntax](#pattern-syntax---)
   - [Variables and Captures](#variables-and-captures)
+  - [Match History](#match-history)
   - [Math Functions](#math-functions)
   - [Control Flow](#control-flow)
   - [String Output](#string-output)
@@ -70,6 +71,8 @@ Two engines are available, selected via the `(L)` / `(E)` indicator next to the 
 ### Variables Overview
 
 All variables below are registered under both upper- and lowercase. Pick whichever style reads better — `CNT` and `cnt` refer to the same value, as do `match` and `MATCH`, `cap1` and `CAP1`, and so on.
+
+**Function names are also case-insensitive.** `num(1)`, `Num(1)`, and `NUM(1)` all call the same function; the same applies to `numprev` / `NumPrev` / `NUMPREV`, `txt` / `TXT`, and every other built-in. This is enforced consistently from the parser through to the match-history analyser.
 
 | Variable        | Description |
 |-----------------|-------------|
@@ -463,6 +466,15 @@ ExprTk is a numeric expression engine. Its design goal is concise inline math: w
 
    A single replace string can contain **any number** of `(?=...)` blocks interleaved with literal text. This is the core idiom — small, focused expressions instead of one big script.
 
+5. **Build a running total across matches:**
+
+   - **Find:** `(\d+)`
+   - **Replace:** `(?=num(1) + numprev())`
+   - **Input lines:** `5`, `10`, `3`
+   - **Output lines:** `5`, `15`, `18`
+
+   `numprev()` reads the previous match's value with `0` as the implicit fallback, so the chain bootstraps automatically on the first match. See [Match History](#match-history) for the full reader catalogue.
+
 <br>
 
 ### Pattern Syntax: `(?= ... )`
@@ -507,10 +519,14 @@ To access the matched text as a string, use `txt(0)`. To reference the match in 
 
 #### Capture access
 
-| Function  | Returns | Use case                                                              |
-|-----------|---------|-----------------------------------------------------------------------|
-| `num(N)`  | number  | Capture group N as `double`. `num(0)` is the full match. Non-numeric captures yield `NaN`. |
-| `txt(N)` | string  | Capture group N as text. `txt(0)` is the full match. |
+| Function       | Returns | Use case                                                              |
+|----------------|---------|-----------------------------------------------------------------------|
+| `num(N)`       | number  | Capture group N as `double`. `num(0)` is the full match. Non-numeric captures yield `NaN`. |
+| `num(N, P)`    | number  | Capture N from the match `P` matches ago. `P=0` is the current match. Past history → `NaN`. See [Match History](#match-history). |
+| `num(N, P, V)` | number  | Same, but `V` is the fallback when the lookup fails or the captured text doesn't parse. |
+| `txt(N)`       | string  | Capture group N as text. `txt(0)` is the full match. |
+| `txt(N, P)`    | string  | Capture N text from the match `P` matches ago. Past history → empty string. |
+| `txt(N, P, V)` | string  | Same, but `V` is the fallback string when the lookup fails. |
 
 #### Match-aware functions
 
@@ -536,6 +552,128 @@ To access the matched text as a string, use `txt(0)`. To reference the match in 
 | `"3,14abc"`                          | `3.14`              | trailing characters tolerated                   |
 | `"1,234,567"` (US thousands)         | `1.234`             | thousands separators not recognised — strip them in the regex first |
 | `"1.234,56"` or `"1,234.56"`         | `1.234` or `1`      | mixed separators are unreliable — avoid relying on them |
+
+<br>
+
+### Match History
+
+ExprTk keeps a small ring buffer of previously processed matches so a formula can look back at what an earlier match captured or what an earlier block emitted. The buffer is sized at compile time from the lookback depth the template actually uses — templates that never use a history function pay no runtime cost at all.
+
+**Three reader families**, all sharing the same `(p[, v])` lookback shape:
+
+| Reader family         | Reads from history                | Block index                                       |
+|-----------------------|-----------------------------------|---------------------------------------------------|
+| `num` / `txt`         | A specific **capture group**      | `n` = capture index                               |
+| `numout` / `txtout`   | A specific **block's output**     | `n` = block index (0-based, by template position) |
+| `numprev` / `txtprev` | The **same block's** output       | implicit (= the running block)                    |
+
+Shared argument semantics:
+
+| Arg | Meaning                                                                                  |
+|-----|------------------------------------------------------------------------------------------|
+| `n` | Capture or block index. Literal negative `n` is rejected at compile time in `num`/`txt` arity-2/3. |
+| `p` | Lookback depth. `p=0` is the current match; `p=1` the previous; `p>=2` walks further back. Literal negative `p` is rejected at compile time. |
+| `v` | Optional fallback. Returned when the lookup fails — past history, out-of-range, type mismatch (numeric reader against a string slot or vice versa), or, for numeric readers, a non-finite result. |
+
+A **block** is one `(?=...)` expression in the template, numbered `0, 1, 2, ...` in source order (literal text in between doesn't count).
+
+<br>
+
+#### num(N, P), num(N, P, V) — capture from a previous match
+
+| Function       | Default `p` | Default `v` | Description                                       |
+|----------------|-------------|-------------|---------------------------------------------------|
+| `num(N, P)`    | —           | `NaN`       | Capture N from the match P matches ago.           |
+| `num(N, P, V)` | —           | `V`         | Same, plus `V` when the capture doesn't parse to a finite number. |
+
+| Find          | Replace                                          | Description                                                                 |
+|---------------|--------------------------------------------------|-----------------------------------------------------------------------------|
+| `^(\d+)$`     | `(?=num(1, 0) - num(1, 1, 0))`                   | Difference to the previous match's capture 1. First match's diff = its own value (V=0 fallback). |
+| `(\d+),(\d+)` | `(?=num(2) - num(2, 1, 0))`                      | Same idea on capture 2, with arity-1 sugar for the current match.            |
+
+<br>
+
+#### txt(N, P), txt(N, P, V) — capture text from a previous match
+
+| Function       | Default `p` | Default `v` | Description                                       |
+|----------------|-------------|-------------|---------------------------------------------------|
+| `txt(N, P)`    | —           | `""`        | Capture N text from the match P matches ago.      |
+| `txt(N, P, V)` | —           | `V`         | Same, with explicit fallback string.              |
+
+| Find      | Replace                                              | Description                                                |
+|-----------|------------------------------------------------------|------------------------------------------------------------|
+| `^(\w+)$` | `(?=txt(1, 1, 'first') + ' -> ' + txt(1))`           | Predecessor chain: `first -> word1`, `word1 -> word2`, ... |
+
+<br>
+
+#### numout / txtout — read a block's output
+
+| Function          | Default `p` | Default `v` | Description                                                                 |
+|-------------------|-------------|-------------|-----------------------------------------------------------------------------|
+| `numout(N)`       | **1**       | `NaN`       | Block N's numeric output from the previous match.                           |
+| `numout(N, P)`    | —           | `NaN`       | Block N's numeric output from match P ago. `P=0` reads earlier finished blocks of the same match. |
+| `numout(N, P, V)` | —           | `V`         | Same, with explicit fallback (also fires on type mismatch and non-finite).  |
+| `txtout(N)`       | **1**       | `""`        | Block N's string output from the previous match.                            |
+| `txtout(N, P)`    | —           | `""`        | Block N's string output from match P ago.                                   |
+| `txtout(N, P, V)` | —           | `V`         | Same, with explicit fallback string.                                        |
+
+The arity-1 default `P=1` reflects the typical question — "what did block N emit last time?" — and saves a redundant `, 1`. Within the current match (`P=0`), a block can only read **earlier** finished blocks; reading the current block or any later one returns the fallback.
+
+| Find            | Replace                                              | Description                                                                |
+|-----------------|------------------------------------------------------|----------------------------------------------------------------------------|
+| `^(\w+),(\d+)$` | `(?=num(2)) (?=numout(0, 0) * 2)`                    | Block 1 reads block 0's output of the same match (`P=0`) and doubles it.   |
+| `(\d+)`         | `(?=num(1)) prev:(?=numout(0, 1, 0))`                | First spec emits the value; second spec emits the previous match's block 0 (or 0 the first time). |
+
+<br>
+
+#### numprev / txtprev — same block, previous match
+
+| Function        | Default `p` | Default `v` | Description                                                                 |
+|-----------------|-------------|-------------|-----------------------------------------------------------------------------|
+| `numprev()`     | **1**       | **0**       | Same block's numeric output from the previous match. **`v=0` default** makes running totals a one-liner. |
+| `numprev(P)`    | —           | `NaN`       | Same block's numeric output from match P ago.                               |
+| `numprev(P, V)` | —           | `V`         | Same, with explicit fallback (also fires on type mismatch and non-finite).  |
+| `txtprev()`     | **1**       | `""`        | Same block's string output from the previous match.                         |
+| `txtprev(P)`    | —           | `""`        | Same block's string output from match P ago.                                |
+| `txtprev(P, V)` | —           | `V`         | Same, with explicit fallback string.                                        |
+
+`numprev` / `txtprev` are shorthand for `numout(currentBlockIndex, p, v)` / `txtout(currentBlockIndex, p, v)`. The block index is implicit — every block tracks its own independent history. The `numprev()` arity-0's `v=0` default is the key ergonomic feature: without it, the first match in a running-total chain would propagate `NaN` and corrupt every subsequent result.
+
+| Find      | Replace                                                    | Description                                                                 |
+|-----------|------------------------------------------------------------|-----------------------------------------------------------------------------|
+| `(\d+)`   | `(?=num(1) + numprev())`                                   | Running total. First match emits its value alone (no previous, v=0); subsequent matches accumulate. |
+| `(\d+)`   | `(?=max(num(1), numprev(1, 0), numprev(2, 0)))`            | Per-match maximum over the current value and the two preceding ones. Missing history → 0. |
+| `^(\w+)$` | `(?=txtprev(1, 'first') + ' -> ' + txt(1))`                | Predecessor chain with explicit fallback for the first match.               |
+
+<br>
+
+#### Skipped matches are not in history
+
+A match where the formula called `skip()` is left untouched in the document **and** is not recorded in history. From a `numprev()` / `numout` perspective, skipped matches simply do not exist. This avoids surprising shifts in lookback indices when filtering rules are in play.
+
+| Find    | Replace                                                  | Description                                                                       |
+|---------|----------------------------------------------------------|-----------------------------------------------------------------------------------|
+| `(\d+)` | `(?=num(1) < 10 ? skip() : num(1) + numprev())`          | Running total over values ≥ 10. Small values are skipped and don't contribute to the next match's `numprev()`. |
+
+<br>
+
+#### Compile-time errors
+
+The analyzer runs once when the template is compiled and rejects literal arguments that cannot work:
+
+| Pattern                                       | Error                                                                 |
+|-----------------------------------------------|-----------------------------------------------------------------------|
+| Literal `p < 0`                               | `"p must be non-negative in ..."` — applies to every history reader.  |
+| Literal `p > 1024`                            | `"p exceeds hard cap (1024) in ..."` — hard upper bound on ring depth.|
+| Literal `n < 0` in `num`/`txt` arity-2/3      | `"n must be non-negative in ..."` — note `num(-1)` (arity-1) still returns `0` for backwards compatibility. |
+
+Errors driven by runtime values (a variable that happens to evaluate to a negative number, an out-of-range block index, etc.) fall back to `v` silently instead of aborting — consistent with the rest of ExprTk's defensive failure handling.
+
+<br>
+
+#### Buffer sizing
+
+The ring depth is set automatically from the literal `p` values in the template, or `64` if any `p` is dynamic. The capture buffer is sized for the largest literal capture index, falling back to "size on first match" when the index is dynamic. There is no user-visible knob — the analyzer picks the right size from the template.
 
 <br>
 
@@ -1176,6 +1314,18 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 | `(\d+)`       | `#(?=CNT): (?=txt(1))`                                  | Prefix each match with a running global counter.                         |
 | `(\w+)`       | `(?=FNAME): (?=txt(1))`                                 | Tag each match with the source filename.                                 |
 
+#### Cross-match calculations
+
+| Find            | Replace                                              | Description                                                                |
+|-----------------|------------------------------------------------------|----------------------------------------------------------------------------|
+| `(\d+)`         | `(?=num(1) + numprev())`                             | Running total. First match emits its own value (no previous, v=0 fallback); each subsequent match adds to the accumulator. |
+| `^(\d+)$`       | `(?=num(1) - num(1, 1, 0))`                          | Difference to the previous match. First match keeps its own value via the v=0 fallback. |
+| `^(\w+)$`       | `(?=txtprev(1, 'first') + ' -> ' + txt(1))`          | Predecessor chain: each line becomes `prev -> current`, with `first` standing in for the unavailable predecessor on match 1. |
+| `(\d+)`         | `(?=max(num(1), numprev(1, 0), numprev(2, 0)))`      | Per-match maximum over the current value and the two preceding ones. Missing history falls back to 0. |
+| `^(\w+),(\d+)$` | `(?=num(2)) (?=numout(0, 0) * 2)`                    | Block 1 reads block 0's output within the same match via `numout(0, 0)` and doubles it. |
+
+See the [Match History](#match-history) section for the full reader catalogue and buffer sizing rules.
+
 #### Counters
 
 | Find          | Replace                       | Description                                                              |
@@ -1193,7 +1343,7 @@ ExprTk is deliberately scoped. Things it does **not** do:
 
 - **String manipulation is limited inside `(?=...)`.** Built-in support covers concatenation (`+`), slicing (`s[i:j]`), and length (`s[]`). For more (per-character work, formatted assembly, custom encodings), write helper functions in a `.ecmd` library — bodies have the same operators plus `var` declarations and control flow (see [Library Loading via ecmd](#library-loading-via-ecmd)). For UTF-8-aware character manipulation, use the Lua engine instead.
 - **UTF-8 inside string literals fails to compile.** A literal like `'Größe'` between `'...'` will produce an `Invalid string token` error. This applies to both inline expressions and `.ecmd` bodies. Use captures or place non-ASCII text outside the `(?=...)` block. Captures themselves arrive as UTF-8 bytes and can be passed through unchanged, but per-character slicing breaks them — see the warning in [Library Loading via ecmd](#library-loading-via-ecmd).
-- **No state across matches.** Each `(?=...)` evaluation starts fresh. The numeric counters (`CNT`, `LCNT`) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use `vars({...})`.
+- **No general user-defined state across matches.** Each `(?=...)` evaluation starts fresh — you cannot create your own named variables that persist. The [Match History](#match-history) functions cover the common case (read earlier captures and block outputs), and `CNT` / `LCNT` are provided by the host. For arbitrary per-key state (a cumulative table keyed by string, a per-value tally), switch to the Lua engine and use `vars({...})`.
 - **No data file loading.** ExprTk has no equivalent to Lua's `lvars` (preload variables from disk) or `lkp` (key lookup from disk). `ecmd` loads **code**, not data.
 - **`parsedate` is intentionally minimal.** It accepts the common strftime specifiers (`%Y %y %m %d %H %M %S %I %p %F %T %%`) — enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (`%B`), weekday names (`%A`), or week numbers (`%V`) are **not** accepted on the input side. For richer date input parsing, use Lua's date handling instead.
 - **Date timestamps must be ≥ 0.** `D[fmt]` and `parsedate` only handle years 1970 onwards. Negative timestamps produce empty output or NaN respectively.

@@ -513,6 +513,7 @@ nav.pagenav .nav-group.collapsible {
     <a href="#exprtk-quickstart" hidden onclick="navClicked(event, 'exprtk-quickstart')">Quick Start</a>
     <a href="#exprtk-pattern-syntax" hidden onclick="navClicked(event, 'exprtk-pattern-syntax')">Pattern Syntax</a>
     <a href="#exprtk-variables" hidden onclick="navClicked(event, 'exprtk-variables')">Variables and Captures</a>
+    <a href="#exprtk-match-history" hidden onclick="navClicked(event, 'exprtk-match-history')">Match History</a>
     <a href="#exprtk-math" hidden onclick="navClicked(event, 'exprtk-math')">Math Functions</a>
     <a href="#exprtk-control-flow" hidden onclick="navClicked(event, 'exprtk-control-flow')">Control Flow</a>
     <a href="#exprtk-string-output" hidden onclick="navClicked(event, 'exprtk-string-output')">String Output</a>
@@ -693,6 +694,7 @@ nav.pagenav .nav-group.collapsible {
       <section id="Variables">
     <h2>Variables Overview</h2>
     <p>All variables below are registered under both upper- and lowercase. Pick whichever style reads better &mdash; <code>CNT</code> and <code>cnt</code> refer to the same value, as do <code>match</code> and <code>MATCH</code>, <code>cap1</code> and <code>CAP1</code>, and so on.</p>
+    <p><strong>Function names are also case-insensitive.</strong> <code>num(1)</code>, <code>Num(1)</code>, and <code>NUM(1)</code> all call the same function; the same applies to <code>numprev</code> / <code>NumPrev</code> / <code>NUMPREV</code>, <code>txt</code> / <code>TXT</code>, and every other built-in. This is enforced consistently from the parser through to the match-history analyser.</p>
     <table class="optionsTable">
       <tr>
         <th>Variable</th>
@@ -1686,9 +1688,29 @@ return {
         <td>Capture group N as <code>double</code>. <code>num(0)</code> is the full match. Non-numeric captures yield <code>NaN</code>.</td>
       </tr>
       <tr>
+        <td><code>num(N, P)</code></td>
+        <td>number</td>
+        <td>Capture N from the match <code>P</code> matches ago. <code>P=0</code> is the current match. Past history &rarr; <code>NaN</code>. See <a href="#exprtk-match-history">Match History</a>.</td>
+      </tr>
+      <tr>
+        <td><code>num(N, P, V)</code></td>
+        <td>number</td>
+        <td>Same, but <code>V</code> is the fallback when the lookup fails or the captured text doesn't parse.</td>
+      </tr>
+      <tr>
         <td><code>txt(N)</code></td>
         <td>string</td>
         <td>Capture group N as text. <code>txt(0)</code> is the full match. Usable directly in <code>(?=...)</code> blocks.</td>
+      </tr>
+      <tr>
+        <td><code>txt(N, P)</code></td>
+        <td>string</td>
+        <td>Capture N text from the match <code>P</code> matches ago. Past history &rarr; empty string.</td>
+      </tr>
+      <tr>
+        <td><code>txt(N, P, V)</code></td>
+        <td>string</td>
+        <td>Same, but <code>V</code> is the fallback string when the lookup fails.</td>
       </tr>
     </table>
 
@@ -1749,6 +1771,135 @@ return {
   </section>
 
   <br>
+
+
+  <br>
+
+  <section id="exprtk-match-history">
+    <h2>Match History</h2>
+    <p>ExprTk keeps a small ring buffer of previously processed matches so a formula can look back at what an earlier match captured or what an earlier block emitted. The buffer is sized at compile time from the lookback depth the template actually uses &mdash; templates that never use a history function pay no runtime cost at all.</p>
+
+    <p><strong>Three reader families</strong>, all sharing the same <code>(p[, v])</code> lookback shape:</p>
+
+    <table class="optionsTable">
+      <tr><th>Reader family</th><th>Reads from history</th><th>Block index</th></tr>
+      <tr><td><code>num</code> / <code>txt</code></td><td>A specific <strong>capture group</strong></td><td><code>n</code> = capture index</td></tr>
+      <tr><td><code>numout</code> / <code>txtout</code></td><td>A specific <strong>block's output</strong></td><td><code>n</code> = block index (0-based, by template position)</td></tr>
+      <tr><td><code>numprev</code> / <code>txtprev</code></td><td>The <strong>same block's</strong> output</td><td>implicit (= the running block)</td></tr>
+    </table>
+
+    <p>Shared argument semantics:</p>
+
+    <table class="optionsTable">
+      <tr><th>Arg</th><th>Meaning</th></tr>
+      <tr><td><code>n</code></td><td>Capture or block index. Literal negative <code>n</code> is rejected at compile time in <code>num</code>/<code>txt</code> arity-2/3.</td></tr>
+      <tr><td><code>p</code></td><td>Lookback depth. <code>p=0</code> is the current match; <code>p=1</code> the previous; <code>p&gt;=2</code> walks further back. Literal negative <code>p</code> is rejected at compile time.</td></tr>
+      <tr><td><code>v</code></td><td>Optional fallback. Returned when the lookup fails &mdash; past history, out-of-range, type mismatch (numeric reader against a string slot or vice versa), or, for numeric readers, a non-finite result.</td></tr>
+    </table>
+
+    <p>A <strong>block</strong> is one <code>(?=...)</code> expression in the template, numbered <code>0, 1, 2, ...</code> in source order (literal text in between doesn't count).</p>
+
+    <br>
+
+    <h3>num(N, P), num(N, P, V) &mdash; capture from a previous match</h3>
+    <table class="optionsTable">
+      <tr><th>Function</th><th>Default <code>p</code></th><th>Default <code>v</code></th><th>Description</th></tr>
+      <tr><td><code>num(N, P)</code></td><td>&mdash;</td><td><code>NaN</code></td><td>Capture N from the match P matches ago.</td></tr>
+      <tr><td><code>num(N, P, V)</code></td><td>&mdash;</td><td><code>V</code></td><td>Same, plus <code>V</code> when the capture doesn't parse to a finite number.</td></tr>
+    </table>
+
+    <table class="optionsTable">
+      <tr><th>Find</th><th>Replace</th><th>Description</th></tr>
+      <tr><td><code>^(\d+)$</code></td><td><code>(?=num(1, 0) - num(1, 1, 0))</code></td><td>Difference to the previous match's capture 1. First match's diff = its own value (V=0 fallback).</td></tr>
+      <tr><td><code>(\d+),(\d+)</code></td><td><code>(?=num(2) - num(2, 1, 0))</code></td><td>Same idea on capture 2, with arity-1 sugar for the current match.</td></tr>
+    </table>
+
+    <br>
+
+    <h3>txt(N, P), txt(N, P, V) &mdash; capture text from a previous match</h3>
+    <table class="optionsTable">
+      <tr><th>Function</th><th>Default <code>p</code></th><th>Default <code>v</code></th><th>Description</th></tr>
+      <tr><td><code>txt(N, P)</code></td><td>&mdash;</td><td><code>""</code></td><td>Capture N text from the match P matches ago.</td></tr>
+      <tr><td><code>txt(N, P, V)</code></td><td>&mdash;</td><td><code>V</code></td><td>Same, with explicit fallback string.</td></tr>
+    </table>
+
+    <table class="optionsTable">
+      <tr><th>Find</th><th>Replace</th><th>Description</th></tr>
+      <tr><td><code>^(\w+)$</code></td><td><code>(?=txt(1, 1, 'first') + ' -&gt; ' + txt(1))</code></td><td>Predecessor chain: <code>first -&gt; word1</code>, <code>word1 -&gt; word2</code>, ...</td></tr>
+    </table>
+
+    <br>
+
+    <h3>numout / txtout &mdash; read a block's output</h3>
+    <table class="optionsTable">
+      <tr><th>Function</th><th>Default <code>p</code></th><th>Default <code>v</code></th><th>Description</th></tr>
+      <tr><td><code>numout(N)</code></td><td><strong>1</strong></td><td><code>NaN</code></td><td>Block N's numeric output from the previous match.</td></tr>
+      <tr><td><code>numout(N, P)</code></td><td>&mdash;</td><td><code>NaN</code></td><td>Block N's numeric output from match P ago. <code>P=0</code> reads earlier finished blocks of the same match.</td></tr>
+      <tr><td><code>numout(N, P, V)</code></td><td>&mdash;</td><td><code>V</code></td><td>Same, with explicit fallback (also fires on type mismatch and non-finite).</td></tr>
+      <tr><td><code>txtout(N)</code></td><td><strong>1</strong></td><td><code>""</code></td><td>Block N's string output from the previous match.</td></tr>
+      <tr><td><code>txtout(N, P)</code></td><td>&mdash;</td><td><code>""</code></td><td>Block N's string output from match P ago.</td></tr>
+      <tr><td><code>txtout(N, P, V)</code></td><td>&mdash;</td><td><code>V</code></td><td>Same, with explicit fallback string.</td></tr>
+    </table>
+
+    <p>The arity-1 default <code>P=1</code> reflects the typical question &mdash; "what did block N emit last time?" &mdash; and saves a redundant <code>, 1</code>. Within the current match (<code>P=0</code>), a block can only read <strong>earlier</strong> finished blocks; reading the current block or any later one returns the fallback.</p>
+
+    <table class="optionsTable">
+      <tr><th>Find</th><th>Replace</th><th>Description</th></tr>
+      <tr><td><code>^(\w+),(\d+)$</code></td><td><code>(?=num(2)) (?=numout(0, 0) * 2)</code></td><td>Block 1 reads block 0's output of the same match (<code>P=0</code>) and doubles it.</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1)) prev:(?=numout(0, 1, 0))</code></td><td>First spec emits the value; second spec emits the previous match's block 0 (or 0 the first time).</td></tr>
+    </table>
+
+    <br>
+
+    <h3>numprev / txtprev &mdash; same block, previous match</h3>
+    <table class="optionsTable">
+      <tr><th>Function</th><th>Default <code>p</code></th><th>Default <code>v</code></th><th>Description</th></tr>
+      <tr><td><code>numprev()</code></td><td><strong>1</strong></td><td><strong>0</strong></td><td>Same block's numeric output from the previous match. <strong><code>v=0</code> default</strong> makes running totals a one-liner.</td></tr>
+      <tr><td><code>numprev(P)</code></td><td>&mdash;</td><td><code>NaN</code></td><td>Same block's numeric output from match P ago.</td></tr>
+      <tr><td><code>numprev(P, V)</code></td><td>&mdash;</td><td><code>V</code></td><td>Same, with explicit fallback (also fires on type mismatch and non-finite).</td></tr>
+      <tr><td><code>txtprev()</code></td><td><strong>1</strong></td><td><code>""</code></td><td>Same block's string output from the previous match.</td></tr>
+      <tr><td><code>txtprev(P)</code></td><td>&mdash;</td><td><code>""</code></td><td>Same block's string output from match P ago.</td></tr>
+      <tr><td><code>txtprev(P, V)</code></td><td>&mdash;</td><td><code>V</code></td><td>Same, with explicit fallback string.</td></tr>
+    </table>
+
+    <p><code>numprev</code> / <code>txtprev</code> are shorthand for <code>numout(currentBlockIndex, p, v)</code> / <code>txtout(currentBlockIndex, p, v)</code>. The block index is implicit &mdash; every block tracks its own independent history. The <code>numprev()</code> arity-0's <code>v=0</code> default is the key ergonomic feature: without it, the first match in a running-total chain would propagate <code>NaN</code> and corrupt every subsequent result.</p>
+
+    <table class="optionsTable">
+      <tr><th>Find</th><th>Replace</th><th>Description</th></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) + numprev())</code></td><td>Running total. First match emits its value alone (no previous, v=0); subsequent matches accumulate.</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=max(num(1), numprev(1, 0), numprev(2, 0)))</code></td><td>Per-match maximum over the current value and the two preceding ones. Missing history &rarr; 0.</td></tr>
+      <tr><td><code>^(\w+)$</code></td><td><code>(?=txtprev(1, 'first') + ' -&gt; ' + txt(1))</code></td><td>Predecessor chain with explicit fallback for the first match.</td></tr>
+    </table>
+
+    <br>
+
+    <h3>Skipped matches are not in history</h3>
+    <p>A match where the formula called <code>skip()</code> is left untouched in the document <strong>and</strong> is not recorded in history. From a <code>numprev()</code> / <code>numout</code> perspective, skipped matches simply do not exist. This avoids surprising shifts in lookback indices when filtering rules are in play.</p>
+
+    <table class="optionsTable">
+      <tr><th>Find</th><th>Replace</th><th>Description</th></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) &lt; 10 ? skip() : num(1) + numprev())</code></td><td>Running total over values &ge; 10. Small values are skipped and don't contribute to the next match's <code>numprev()</code>.</td></tr>
+    </table>
+
+    <br>
+
+    <h3>Compile-time errors</h3>
+    <p>The analyzer runs once when the template is compiled and rejects literal arguments that cannot work:</p>
+
+    <table class="optionsTable">
+      <tr><th>Pattern</th><th>Error</th></tr>
+      <tr><td>Literal <code>p &lt; 0</code></td><td><code>"p must be non-negative in ..."</code> &mdash; applies to every history reader.</td></tr>
+      <tr><td>Literal <code>p &gt; 1024</code></td><td><code>"p exceeds hard cap (1024) in ..."</code> &mdash; hard upper bound on ring depth.</td></tr>
+      <tr><td>Literal <code>n &lt; 0</code> in <code>num</code>/<code>txt</code> arity-2/3</td><td><code>"n must be non-negative in ..."</code> &mdash; note <code>num(-1)</code> (arity-1) still returns <code>0</code> for backwards compatibility.</td></tr>
+    </table>
+
+    <p>Errors driven by runtime values (a variable that happens to evaluate to a negative number, an out-of-range block index, etc.) fall back to <code>v</code> silently instead of aborting &mdash; consistent with the rest of ExprTk's defensive failure handling.</p>
+
+    <br>
+
+    <h3>Buffer sizing</h3>
+    <p>The ring depth is set automatically from the literal <code>p</code> values in the template, or <code>64</code> if any <code>p</code> is dynamic. The capture buffer is sized for the largest literal capture index, falling back to "size on first match" when the index is dynamic. There is no user-visible knob &mdash; the analyzer picks the right size from the template.</p>
+  </section>
 
   <section id="exprtk-math">
     <h2>Math Functions</h2>

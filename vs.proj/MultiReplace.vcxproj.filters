@@ -134,9 +134,6 @@
     <ClCompile Include="..\src\engine\ExprTkEngine.cpp">
       <Filter>engine</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\engine\ExprTkPatternParser.cpp">
-      <Filter>engine</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\engine\Iformulaengine.cpp">
       <Filter>engine</Filter>
     </ClCompile>
@@ -148,6 +145,18 @@
       <Filter>ExprTK</Filter>
     </ClCompile>
     <ClCompile Include="..\src\exprtk\EcmdParser.cpp">
+      <Filter>ExprTK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\exprtk\MatchHistory.cpp">
+      <Filter>ExprTK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\exprtk\MatchHistoryAnalysis.cpp">
+      <Filter>ExprTK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\exprtk\NumberParse.cpp">
+      <Filter>ExprTK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\exprtk\ExprTkPatternParser.cpp">
       <Filter>ExprTK</Filter>
     </ClCompile>
   </ItemGroup>
@@ -281,9 +290,6 @@
     <ClInclude Include="..\src\engine\ExprTkEngine.h">
       <Filter>engine</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\engine\ExprTkPatternParser.h">
-      <Filter>engine</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\CsvListFormat.h" />
     <ClInclude Include="..\src\exprtk\exprtk.hpp">
       <Filter>ExprTK</Filter>
@@ -295,6 +301,18 @@
       <Filter>ExprTK</Filter>
     </ClInclude>
     <ClInclude Include="..\src\exprtk\EcmdParser.h">
+      <Filter>ExprTK</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\exprtk\MatchHistory.h">
+      <Filter>ExprTK</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\exprtk\MatchHistoryAnalysis.h">
+      <Filter>ExprTK</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\exprtk\NumberParse.h">
+      <Filter>ExprTK</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\exprtk\ExprTkPatternParser.h">
       <Filter>ExprTK</Filter>
     </ClInclude>
   </ItemGroup>

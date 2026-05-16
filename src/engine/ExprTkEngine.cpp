@@ -28,10 +28,52 @@
 
 #include "../StringUtils.h"
 #include "../exprtk/DateParse.h"
+#include "../exprtk/MatchHistoryAnalysis.h"
+#include "../exprtk/NumberParse.h"
 #include "../Encoding.h"
 namespace SU = StringUtils;
 
 namespace MultiReplaceEngine {
+
+    namespace {
+
+        // Shared helpers for the generic-function arity dispatch in the
+        // history readers and the upgraded num/txt overloads. The
+        // parameter slot type varies across overloads, so the readScalar
+        // template lets the compiler pick whatever exact reference type
+        // ExprTk hands us; constructing a scalar_view from it is the
+        // documented way to read a Scalar parameter.
+        template <typename P>
+        inline double readScalar(const P& p)
+        {
+            using gen_t = typename exprtk::igeneric_function<double>::generic_type;
+            using scalar_t = typename gen_t::scalar_view;
+            return scalar_t(p)();
+        }
+
+        // Turn a possibly-fractional, possibly-negative double into a
+        // non-negative integral index. Returns false (and leaves out
+        // untouched) for NaN, infinity, or a negative value. Trims toward
+        // zero on the positive side so num(1.7, ...) means num(1, ...).
+        inline bool toIndex(double v, long long& out)
+        {
+            if (!std::isfinite(v)) return false;
+            const long long ll = static_cast<long long>(v);
+            if (ll < 0) return false;
+            out = ll;
+            return true;
+        }
+
+        // Same shape but signed: used for the p lookback argument where
+        // negative values fall back to v at runtime rather than aborting.
+        inline bool toSigned(double v, long long& out)
+        {
+            if (!std::isfinite(v)) return false;
+            out = static_cast<long long>(v);
+            return true;
+        }
+
+    } // anonymous namespace
 
     // ---------------------------------------------------------------------
     // Construction / destruction
@@ -43,6 +85,10 @@ namespace MultiReplaceEngine {
         , _skipFunction(this)
         , _txtFunction(this)
         , _seqFunction(this)
+        , _numOutFunction(this)
+        , _txtOutFunction(this)
+        , _numPrevFunction(this)
+        , _txtPrevFunction(this)
         , _numColFunction(this)
         , _txtColFunction(this)
         , _parsedateFunction(this)
@@ -117,6 +163,16 @@ namespace MultiReplaceEngine {
         // inc) is fully parametrised. Built on ivararg_function so the
         // optional-argument count is checked at call time.
         _symbolTable.add_function("seq", _seqFunction);
+
+        // Match history readers. numout(N[, P[, V]]) and txtout(N[, P[, V]])
+        // read block N's emission P matches ago; numprev / txtprev are the
+        // same-block shorthand. Buffer is sized at compile time from the
+        // analyzer's findings - zero-cost when the template uses none of
+        // these.
+        _symbolTable.add_function("numout", _numOutFunction);
+        _symbolTable.add_function("txtout", _txtOutFunction);
+        _symbolTable.add_function("numprev", _numPrevFunction);
+        _symbolTable.add_function("txtprev", _txtPrevFunction);
 
         // CSV column accessors. Both delegate to the host, which knows
         // about the active CSV settings, the line of the current match,
@@ -194,6 +250,15 @@ namespace MultiReplaceEngine {
         _parsedTemplate = ExprTkPatternParser::ParseResult();
         _lastCompiledScript.clear();
         _haveCompiled = false;
+
+        // Discard match history from any previous run. Each Replace-All
+        // starts with an empty ring; the first match in the run sees
+        // _history.size() == 0, so numprev() / numout() bootstrap with
+        // their v fallback (0 for numprev arity-0, NaN otherwise).
+        _history.clear();
+        _currentBlockIndex = 0;
+        // _currentBlockOutputs and _captureSlotsForHistory keep their
+        // capacity; their content is overwritten on the next match.
     }
 
     // ---------------------------------------------------------------------
@@ -235,12 +300,23 @@ namespace MultiReplaceEngine {
 
         // Drop any previous state before we attempt a new compile, so a
         // failed compile leaves the engine in a clean "no compile yet"
-        // state rather than half-populated leftovers.
+        // state rather than half-populated leftovers. This includes the
+        // history-related members: if compile() succeeds the Step-2.5
+        // block reassigns them with the new dimensions, and if compile()
+        // fails partway through we'd otherwise leak a stale ring buffer
+        // from the previous successful compile into the next attempt.
+        // (Functionally tolerated because `_haveCompiled = false` keeps
+        // execute() from running, but cleaner state simplifies reasoning
+        // and aligns with the other members reset here.)
         _compiledExpressions.clear();
         _segmentSpecs.clear();
         _parsedTemplate = ExprTkPatternParser::ParseResult();
         _lastCompiledScript.clear();
         _haveCompiled = false;
+        _history = MatchHistory{};
+        _historyCaptureCap = 0;
+        _currentBlockOutputs.clear();
+        _captureSlotsForHistory.clear();
 
         // Step 1: split the template into literal/expression segments.
         auto parseRes = ExprTkPatternParser::parse(scriptUtf8);
@@ -338,6 +414,52 @@ namespace MultiReplaceEngine {
             }
 
             _compiledExpressions[i] = std::move(expr);
+        }
+
+        // Step 2.5: Match-history analysis.
+        // Walk the parsed template, find every num/txt arity-2/3 and
+        // every numout/txtout/numprev/txtprev call, and read out:
+        //   - the maximum lookback depth (sizes the ring buffer)
+        //   - the maximum capture index (sizes each entry's capture vec)
+        //   - any literal-argument errors (negative p, hard-cap overflow,
+        //     negative n in num/txt arity-2/3)
+        //
+        // Errors abort compile via reportError() with the analyzer's
+        // diagnostic message verbatim; success only resizes the ring,
+        // it does not allocate per-entry storage (that happens lazily
+        // on the first push from execute()).
+        {
+            std::string historyErr;
+            HistoryAnalysis ha = analyzeHistory(parseRes, historyErr);
+            if (!historyErr.empty()) {
+                reportError(ILuaEngineHost::ErrorCategory::CompileError,
+                    historyErr);
+                _compiledExpressions.clear();
+                _segmentSpecs.clear();
+                return false;
+            }
+
+            // Size the ring buffer. depth=0 path keeps pushSwap as a
+            // no-op so templates without history pay no runtime cost.
+            //
+            // Block indexing convention: block N is the N-th Expression
+            // segment in the template (0-based, in source order); Literal
+            // segments don't count. This matches user-visible semantics:
+            // `numout(0, 1)` reads the FIRST (?=...) block's previous
+            // output, regardless of how much literal text precedes or
+            // follows it. ha.blockCount comes from analyzeHistory which
+            // counts only Expression segments.
+            const std::size_t blockCount = ha.blockCount;
+            const std::size_t captureSlots = ha.maxCaptureIndex + 1;
+            _history = MatchHistory(ha.maxLookback, captureSlots, blockCount);
+            _historyCaptureCap = captureSlots;
+
+            // Size the per-match block-output vector to match the
+            // expression count - one slot per (?=...) in the template.
+            // The execute() loop maps from segment-index to expression-
+            // index via a running counter. (Empty staging vectors at
+            // this point - they were cleared at the top of compile().)
+            _currentBlockOutputs.assign(blockCount, BlockOutput{});
         }
 
         // Step 3: cache for re-use.
@@ -492,6 +614,23 @@ namespace MultiReplaceEngine {
             r.outputIsRegexSafe = isRegexMatch;
             };
 
+        // Reset per-match history state. _currentBlockIndex tracks which
+        // expression-block is evaluating so numprev / txtprev can resolve
+        // their implicit n. _currentBlockOutputs is already sized to the
+        // expression count from compile(); each slot is overwritten as
+        // the matching block evaluates. Skip-cases leave the slot with
+        // stale data from the previous match - that's fine because
+        // skipped matches don't push to history.
+        _currentBlockIndex = 0;
+
+        // Maps segment-index to expression-index: only Expression segments
+        // increment this. The user-visible "block index" addresses this
+        // counter, not the raw segment position - so a template like
+        //   foo (?=A) bar (?=B)
+        // gives A=block 0 and B=block 1, with the "foo " and " bar "
+        // literals contributing nothing.
+        std::size_t expressionIdx = 0;
+
         const auto& segs = _parsedTemplate.segments;
         for (std::size_t i = 0; i < segs.size(); ++i) {
             const auto& seg = segs[i];
@@ -500,6 +639,14 @@ namespace MultiReplaceEngine {
                 out.append(seg.text);
                 continue;
             }
+
+            // Set the running block index BEFORE eval so numprev/txtprev
+            // inside this expression know their implicit n. The
+            // within-match guard in lookupBlockOutputAt uses this value
+            // to block reads of the running block or any later one.
+            // expressionIdx counts only Expression segments - matching
+            // the user-visible block-index convention.
+            _currentBlockIndex = expressionIdx;
 
             // Eval. ExprTk's return statement turns into a side-channel
             // result list - we must check return_invoked() to decide
@@ -530,12 +677,19 @@ namespace MultiReplaceEngine {
                     onInvalid(result, seg.text);
                     return result;
                 }
+                // Record for history. txtout/txtprev readers will see
+                // this slot in subsequent matches; numout/numprev get a
+                // type-mismatch fallback because the slot is String.
+                if (expressionIdx < _currentBlockOutputs.size()) {
+                    _currentBlockOutputs[expressionIdx].setString(strOut);
+                }
                 if (escapeOutput && _host) {
                     out.append(_host->escapeForRegex(strOut));
                 }
                 else {
                     out.append(strOut);
                 }
+                ++expressionIdx;
                 continue;
             }
 
@@ -552,11 +706,28 @@ namespace MultiReplaceEngine {
                     result.errorMessage = std::move(msg);
                     return result;
                 }
+                // Capture the assembled return-list string into the
+                // block-output slot for history. appendExprtkResults
+                // writes to `out` directly, so we snapshot the portion
+                // it just wrote by tracking the size delta. This is a
+                // narrow path (only fires for the legacy 'return [...]'
+                // style) but the steady-state cost is one substring.
+                const std::size_t outSizeBefore = out.size();
                 appendExprtkResults(expr, out, escapeOutput);
                 if (_outputHadInvalid) {
                     onInvalid(result, seg.text);
                     return result;
                 }
+                if (expressionIdx < _currentBlockOutputs.size()) {
+                    // Use the unescaped pre-append snapshot if available;
+                    // for simplicity record the appended bytes, which is
+                    // what the user-visible output saw. History readers
+                    // see the same string the document received.
+                    _currentBlockOutputs[expressionIdx].setString(
+                        std::string_view(out.data() + outSizeBefore,
+                            out.size() - outSizeBefore));
+                }
+                ++expressionIdx;
                 continue;
             }
 
@@ -567,6 +738,15 @@ namespace MultiReplaceEngine {
                 onInvalid(result, seg.text);
                 return result;
             }
+
+            // Record the numeric output for history before formatting.
+            // The formatted string isn't what numout/numprev want - they
+            // want the raw double so subsequent numeric reads keep full
+            // precision.
+            if (expressionIdx < _currentBlockOutputs.size()) {
+                _currentBlockOutputs[expressionIdx].setNumber(value);
+            }
+            ++expressionIdx;
 
             // Format through spec, or fall back to shortest round-trip.
             // FormatSpec only emits ASCII chars (digits, sign, dot,
@@ -587,6 +767,58 @@ namespace MultiReplaceEngine {
         result.success = true;
         result.skip = _wantSkip;
         result.outputIsRegexSafe = isRegexMatch;
+
+        // Match-history push: only successful, non-skipped matches make
+        // it into the ring. Skipped matches are invisible to subsequent
+        // numprev/numout lookups, which is exactly what users with skip-
+        // based filtering want.
+        //
+        // The push is a no-op when the ring depth is 0 (no template uses
+        // history) - so templates that don't touch history pay nothing.
+        //
+        // The capture-slot snapshot is built lazily here from the live
+        // _strMATCH and _captureStrings. The full match goes into slot 0,
+        // capture groups into slots 1..N. pushSwap then swaps the entire
+        // vector into the ring so its string buffers rotate with the
+        // entry that was just evicted.
+        if (!_wantSkip && _history.depth() > 0) {
+            // Build the snapshot. The vector is held as a member so its
+            // capacity is preserved across matches. Slot 0 = full match;
+            // 1..N = capture groups.
+            const std::size_t cap = std::max<std::size_t>(
+                _historyCaptureCap,
+                _captureStrings.size() + 1);
+
+            if (_captureSlotsForHistory.size() < cap) {
+                _captureSlotsForHistory.resize(cap);
+            }
+            _captureSlotsForHistory[0].assign(_strMATCH);
+            for (std::size_t k = 0; k < _captureStrings.size(); ++k) {
+                if (k + 1 < _captureSlotsForHistory.size()) {
+                    _captureSlotsForHistory[k + 1].assign(_captureStrings[k]);
+                }
+            }
+            // Slots beyond _captureStrings.size()+1 must be cleared so a
+            // ring entry from a previous, wider match doesn't leak its
+            // strings via the swap. (Steady-state cost: assigning an
+            // empty string reuses the existing capacity.)
+            for (std::size_t k = _captureStrings.size() + 1;
+                k < _captureSlotsForHistory.size(); ++k) {
+                _captureSlotsForHistory[k].assign(std::string_view{});
+            }
+
+            // If the runtime regex produced more captures than the
+            // compile-time literal scan predicted (only possible when
+            // the template used a non-literal capture index), grow
+            // every ring entry to match before the push.
+            if (cap > _historyCaptureCap) {
+                _history.resizeCaptureSlots(cap);
+                _historyCaptureCap = cap;
+            }
+
+            _history.pushSwap(_captureSlotsForHistory, _currentBlockOutputs);
+        }
+
         return result;
     }
 
@@ -741,28 +973,66 @@ namespace MultiReplaceEngine {
     // num() function implementation
     // ---------------------------------------------------------------------
 
-    double ExprTkEngine::NumFunction::operator()(const double& index)
+    double ExprTkEngine::NumFunction::operator()(const std::size_t& /*psi*/,
+        parameter_list_t parameters)
     {
-        // Index is passed as double; floor to integer. Negative or non-
-        // integer indices are treated as out-of-range (return 0.0) rather
-        // than thrown, so a malformed expression like num(-1) doesn't
-        // abort the whole match.
-        if (!std::isfinite(index)) {
+        const double nanResult = std::numeric_limits<double>::quiet_NaN();
+
+        const std::size_t arity = parameters.size();
+        if (arity < 1 || arity > 3 || !_owner) {
             return 0.0;
         }
 
-        // Truncate toward zero. num(1.5) becomes num(1); num(-0.5) -> 0.
-        const long long idx = static_cast<long long>(index);
-        if (idx < 0) {
-            return 0.0;
+        // First arg = capture index. Negative or non-finite -> legacy
+        // 0.0 for arity-1 (backwards compatibility with the original
+        // num() semantics), v-fallback for arity-2/3.
+        const double indexD = readScalar(parameters[0]);
+        long long idx = 0;
+        const bool indexOk = toIndex(indexD, idx);
+
+        // -----------------------------------------------------------------
+        // Arity 1: legacy num(N) - read capture from the current match.
+        // Out-of-range indices return 0.0, matching the pre-history
+        // behaviour every existing template depends on.
+        // -----------------------------------------------------------------
+        if (arity == 1) {
+            if (!indexOk) return 0.0;
+            const auto& caps = _owner->_captures;
+            const std::size_t u = static_cast<std::size_t>(idx);
+            if (u >= caps.size()) return 0.0;
+            return caps[u];
         }
 
-        const auto& caps = _owner->_captures;
-        if (static_cast<std::size_t>(idx) >= caps.size()) {
-            return 0.0;
+        // -----------------------------------------------------------------
+        // Arity 2/3: num(N, P) / num(N, P, V) - read capture N from the
+        // match P matches ago. Fallback is NaN (arity-2) or V (arity-3),
+        // applied when:
+        //   - the index isn't a valid non-negative integer,
+        //   - the lookback fails (past history, dynamic n out of range),
+        //   - or, for arity-3 only, the looked-up value is not finite.
+        // -----------------------------------------------------------------
+        double fallback = nanResult;
+        if (arity == 3) {
+            fallback = readScalar(parameters[2]);
         }
 
-        return caps[static_cast<std::size_t>(idx)];
+        if (!indexOk) return fallback;
+
+        const double pD = readScalar(parameters[1]);
+        long long pLookback = 0;
+        if (!toSigned(pD, pLookback) || pLookback < 0) {
+            return fallback;
+        }
+
+        double value = 0.0;
+        if (!_owner->lookupCaptureAt(idx, pLookback, value)) {
+            return fallback;
+        }
+
+        if (arity == 3 && !std::isfinite(value)) {
+            return fallback;
+        }
+        return value;
     }
 
     // ---------------------------------------------------------------------
@@ -787,6 +1057,7 @@ namespace MultiReplaceEngine {
     // ---------------------------------------------------------------------
 
     double ExprTkEngine::TxtFunction::operator()(
+        const std::size_t& /*psi*/,
         std::string& result,
         parameter_list_t parameters)
     {
@@ -794,43 +1065,57 @@ namespace MultiReplaceEngine {
         // rather than aborting eval, mirroring num(N)'s defensive style.
         result.clear();
 
-        if (!_owner || parameters.size() != 1) {
+        const std::size_t arity = parameters.size();
+        if (!_owner || arity < 1 || arity > 3) {
             return 0.0;
         }
 
-        // The "T" arity-spec promised one Scalar argument; wrap it in a
-        // scalar_view to read the value. The view is a thin reference
-        // wrapper so this is cheap.
-        const scalar_t s(parameters[0]);
-        const double index = s();
+        // First arg = capture index.
+        const double indexD = readScalar(parameters[0]);
+        long long idx = 0;
+        const bool indexOk = toIndex(indexD, idx);
 
-        if (!std::isfinite(index)) {
+        // -----------------------------------------------------------------
+        // Arity 1: legacy txt(N) - capture from the current match. The
+        // value is left empty on any failure (mirrors the original
+        // pre-history defensive behaviour).
+        // -----------------------------------------------------------------
+        if (arity == 1) {
+            if (!indexOk) return 0.0;
+            const std::size_t u = static_cast<std::size_t>(idx);
+            if (u == 0) {
+                result = _owner->_strMATCH;
+                return 0.0;
+            }
+            if (u - 1 < _owner->_captureStrings.size()) {
+                result = _owner->_captureStrings[u - 1];
+            }
             return 0.0;
         }
 
-        // Truncate toward zero so txt(1.7) means txt(1). Negative
-        // indices fall through to the empty-string default.
-        const long long idx = static_cast<long long>(index);
-        if (idx < 0) {
+        // -----------------------------------------------------------------
+        // Arity 2/3: txt(N, P) / txt(N, P, V) - read capture N text from
+        // the match P matches ago. Fallback is "" (arity-2) or V (arity-3).
+        // -----------------------------------------------------------------
+        std::string fallback;
+        if (arity == 3) {
+            // V is a string in arity-3 (declared "T|TT|TTS"). The third
+            // slot is a string_view, not a scalar.
+            const string_view_t sv(parameters[2]);
+            fallback.assign(sv.begin(), sv.size());
+        }
+
+        if (!indexOk) { result = fallback; return 0.0; }
+
+        const double pD = readScalar(parameters[1]);
+        long long pLookback = 0;
+        if (!toSigned(pD, pLookback) || pLookback < 0) {
+            result = fallback;
             return 0.0;
         }
 
-        const std::size_t uidx = static_cast<std::size_t>(idx);
-
-        // txt(0) is the full match. _strMATCH is refreshed at the top
-        // of execute() before any expression is evaluated, so it always
-        // holds the current match's text here.
-        if (uidx == 0) {
-            result = _owner->_strMATCH;
-            return 0.0;
-        }
-
-        // txt(N) for N >= 1 reads capture group N, stored 0-based in
-        // _captureStrings. Beyond the last capture we return the empty
-        // string - same defensive behaviour as num() for numeric
-        // out-of-range.
-        if (uidx - 1 < _owner->_captureStrings.size()) {
-            result = _owner->_captureStrings[uidx - 1];
+        if (!_owner->lookupCaptureAt(idx, pLookback, result)) {
+            result = fallback;
         }
 
         // Numeric return value is discarded by ExprTk in e_rtrn_string
@@ -1481,6 +1766,318 @@ namespace MultiReplaceEngine {
         const double start = !args.empty() ? args[0] : 1.0;
         const double inc = args.size() > 1 ? args[1] : 1.0;
         return start + (_owner->_varCNT - 1.0) * inc;
+    }
+
+    // ---------------------------------------------------------------------
+    // Match history readers - numout / txtout / numprev / txtprev
+    // ---------------------------------------------------------------------
+    //
+    // The shape is identical across the four: every overload takes its
+    // own subset of (n, p, v). The lookup helpers below are typed
+    // (numeric vs. string) so callers don't need to know how the ring
+    // buffer stores block outputs internally.
+    //
+    // Failure routing:
+    //   - past history / out-of-range block / type mismatch
+    //     -> lookup returns false, caller substitutes fallback
+    //   - within current match, reading the running block or any later
+    //     one always fails (the slot doesn't carry a meaningful value
+    //     until the block has finished evaluating)
+    //   - for arity-3 numeric readers, a non-finite looked-up value
+    //     also routes to fallback (keeps NaN out of running totals)
+    // ---------------------------------------------------------------------
+
+    bool ExprTkEngine::lookupCaptureAt(long long n,
+        long long pLookback,
+        double& out) const
+    {
+        if (n < 0) return false;
+        if (pLookback < 0) return false;
+
+        if (pLookback == 0) {
+            // Current match: read from the live capture vector.
+            const std::size_t u = static_cast<std::size_t>(n);
+            if (u >= _captures.size()) return false;
+            out = _captures[u];
+            return true;
+        }
+
+        const MatchHistoryEntry* entry = _history.lookback(
+            static_cast<std::size_t>(pLookback));
+        if (!entry) return false;
+
+        const std::size_t u = static_cast<std::size_t>(n);
+        if (u >= entry->captures.size()) return false;
+
+        out = entry->captures[u].asNumber();
+        return true;
+    }
+
+    bool ExprTkEngine::lookupCaptureAt(long long n,
+        long long pLookback,
+        std::string& out) const
+    {
+        if (n < 0) return false;
+        if (pLookback < 0) return false;
+
+        if (pLookback == 0) {
+            const std::size_t u = static_cast<std::size_t>(n);
+            if (u == 0) { out = _strMATCH; return true; }
+            if (u - 1 >= _captureStrings.size()) return false;
+            out = _captureStrings[u - 1];
+            return true;
+        }
+
+        const MatchHistoryEntry* entry = _history.lookback(
+            static_cast<std::size_t>(pLookback));
+        if (!entry) return false;
+
+        const std::size_t u = static_cast<std::size_t>(n);
+        if (u >= entry->captures.size()) return false;
+
+        out = entry->captures[u].asString();
+        return true;
+    }
+
+    bool ExprTkEngine::lookupBlockOutputAt(long long n,
+        long long pLookback,
+        double& out) const
+    {
+        if (n < 0) return false;
+        if (pLookback < 0) return false;
+
+        if (pLookback == 0) {
+            // Within-match: a block can only read EARLIER finished blocks.
+            // The currently-running block and any later one return false
+            // so the caller routes to fallback.
+            const std::size_t u = static_cast<std::size_t>(n);
+            if (u >= _currentBlockIndex) return false;
+            if (u >= _currentBlockOutputs.size()) return false;
+            const BlockOutput& bo = _currentBlockOutputs[u];
+            if (bo.type != BlockOutput::Number) return false;
+            out = bo.numValue;
+            return true;
+        }
+
+        const MatchHistoryEntry* entry = _history.lookback(
+            static_cast<std::size_t>(pLookback));
+        if (!entry) return false;
+
+        const std::size_t u = static_cast<std::size_t>(n);
+        if (u >= entry->blockOutputs.size()) return false;
+
+        const BlockOutput& bo = entry->blockOutputs[u];
+        if (bo.type != BlockOutput::Number) return false;
+        out = bo.numValue;
+        return true;
+    }
+
+    bool ExprTkEngine::lookupBlockOutputAt(long long n,
+        long long pLookback,
+        std::string& out) const
+    {
+        if (n < 0) return false;
+        if (pLookback < 0) return false;
+
+        if (pLookback == 0) {
+            const std::size_t u = static_cast<std::size_t>(n);
+            if (u >= _currentBlockIndex) return false;
+            if (u >= _currentBlockOutputs.size()) return false;
+            const BlockOutput& bo = _currentBlockOutputs[u];
+            if (bo.type != BlockOutput::String) return false;
+            out = bo.strValue;
+            return true;
+        }
+
+        const MatchHistoryEntry* entry = _history.lookback(
+            static_cast<std::size_t>(pLookback));
+        if (!entry) return false;
+
+        const std::size_t u = static_cast<std::size_t>(n);
+        if (u >= entry->blockOutputs.size()) return false;
+
+        const BlockOutput& bo = entry->blockOutputs[u];
+        if (bo.type != BlockOutput::String) return false;
+        out = bo.strValue;
+        return true;
+    }
+
+    // ---------------------------------------------------------------------
+    // numout(N), numout(N, P), numout(N, P, V)
+    // ---------------------------------------------------------------------
+
+    double ExprTkEngine::NumOutFunction::operator()(const std::size_t& /*psi*/,
+        parameter_list_t parameters)
+    {
+        const double nanResult = std::numeric_limits<double>::quiet_NaN();
+
+        const std::size_t arity = parameters.size();
+        if (!_owner || arity < 1 || arity > 3) return 0.0;
+
+        const double indexD = readScalar(parameters[0]);
+        long long n = 0;
+        const bool indexOk = toIndex(indexD, n);
+
+        // Arity-1 default: P = 1 (previous match).
+        long long pLookback = 1;
+        if (arity >= 2) {
+            const double pD = readScalar(parameters[1]);
+            if (!toSigned(pD, pLookback) || pLookback < 0) {
+                return arity == 3 ? readScalar(parameters[2]) : nanResult;
+            }
+        }
+
+        const double fallback = arity == 3
+            ? readScalar(parameters[2])
+            : nanResult;
+
+        if (!indexOk) return fallback;
+
+        double value = 0.0;
+        if (!_owner->lookupBlockOutputAt(n, pLookback, value)) {
+            return fallback;
+        }
+        if (arity == 3 && !std::isfinite(value)) {
+            return fallback;
+        }
+        return value;
+    }
+
+    // ---------------------------------------------------------------------
+    // txtout(N), txtout(N, P), txtout(N, P, V)
+    // ---------------------------------------------------------------------
+
+    double ExprTkEngine::TxtOutFunction::operator()(
+        const std::size_t& /*psi*/,
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        result.clear();
+
+        const std::size_t arity = parameters.size();
+        if (!_owner || arity < 1 || arity > 3) return 0.0;
+
+        const double indexD = readScalar(parameters[0]);
+        long long n = 0;
+        const bool indexOk = toIndex(indexD, n);
+
+        // Arity-1 default: P = 1 (previous match).
+        long long pLookback = 1;
+        if (arity >= 2) {
+            const double pD = readScalar(parameters[1]);
+            if (!toSigned(pD, pLookback) || pLookback < 0) {
+                if (arity == 3) {
+                    const string_view_t sv(parameters[2]);
+                    result.assign(sv.begin(), sv.size());
+                }
+                return 0.0;
+            }
+        }
+
+        std::string fallback;
+        if (arity == 3) {
+            const string_view_t sv(parameters[2]);
+            fallback.assign(sv.begin(), sv.size());
+        }
+
+        if (!indexOk) { result = fallback; return 0.0; }
+
+        if (!_owner->lookupBlockOutputAt(n, pLookback, result)) {
+            result = fallback;
+        }
+        return 0.0;
+    }
+
+    // ---------------------------------------------------------------------
+    // numprev(), numprev(P), numprev(P, V)
+    //
+    // Same as numout(currentBlockIndex, P[, V]) - the block index is
+    // implicit. Arity-0 carries the ergonomic v=0 default that makes
+    // (?=num(1) + numprev()) bootstrap a running total without manually
+    // covering the "no previous" case.
+    // ---------------------------------------------------------------------
+
+    double ExprTkEngine::NumPrevFunction::operator()(const std::size_t& /*psi*/,
+        parameter_list_t parameters)
+    {
+        const double nanResult = std::numeric_limits<double>::quiet_NaN();
+
+        const std::size_t arity = parameters.size();
+        if (!_owner || arity > 2) return 0.0;
+
+        // Arity 0: numprev() -> previous match, fallback 0.
+        if (arity == 0) {
+            const long long n = static_cast<long long>(_owner->_currentBlockIndex);
+            double value = 0.0;
+            if (!_owner->lookupBlockOutputAt(n, /*pLookback=*/1, value)) {
+                return 0.0;  // ergonomic v=0 default
+            }
+            if (!std::isfinite(value)) return 0.0;
+            return value;
+        }
+
+        // Arity 1: numprev(P) -> match P ago, fallback NaN.
+        // Arity 2: numprev(P, V) -> match P ago, fallback V.
+        const double pD = readScalar(parameters[0]);
+        long long pLookback = 0;
+        const bool pOk = toSigned(pD, pLookback) && pLookback >= 0;
+
+        const double fallback = arity == 2
+            ? readScalar(parameters[1])
+            : nanResult;
+
+        if (!pOk) return fallback;
+
+        const long long n = static_cast<long long>(_owner->_currentBlockIndex);
+        double value = 0.0;
+        if (!_owner->lookupBlockOutputAt(n, pLookback, value)) {
+            return fallback;
+        }
+        if (arity == 2 && !std::isfinite(value)) {
+            return fallback;
+        }
+        return value;
+    }
+
+    // ---------------------------------------------------------------------
+    // txtprev(), txtprev(P), txtprev(P, V)
+    // ---------------------------------------------------------------------
+
+    double ExprTkEngine::TxtPrevFunction::operator()(
+        const std::size_t& /*psi*/,
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        result.clear();
+
+        const std::size_t arity = parameters.size();
+        if (!_owner || arity > 2) return 0.0;
+
+        if (arity == 0) {
+            const long long n = static_cast<long long>(_owner->_currentBlockIndex);
+            _owner->lookupBlockOutputAt(n, /*pLookback=*/1, result);
+            // Whether the lookup succeeded or not, result is either the
+            // string or empty - both are acceptable arity-0 outputs.
+            return 0.0;
+        }
+
+        const double pD = readScalar(parameters[0]);
+        long long pLookback = 0;
+        const bool pOk = toSigned(pD, pLookback) && pLookback >= 0;
+
+        std::string fallback;
+        if (arity == 2) {
+            const string_view_t sv(parameters[1]);
+            fallback.assign(sv.begin(), sv.size());
+        }
+
+        if (!pOk) { result = fallback; return 0.0; }
+
+        const long long n = static_cast<long long>(_owner->_currentBlockIndex);
+        if (!_owner->lookupBlockOutputAt(n, pLookback, result)) {
+            result = fallback;
+        }
+        return 0.0;
     }
 
     // ---------------------------------------------------------------------

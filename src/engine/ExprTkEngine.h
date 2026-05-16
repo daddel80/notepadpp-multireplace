@@ -73,9 +73,10 @@
 
 #include "IFormulaEngine.h"
 #include "ILuaEngineHost.h"
-#include "ExprTkPatternParser.h"
+#include "../exprtk/ExprTkPatternParser.h"
 #include "../exprtk/EcmdParser.h"
 #include "../exprtk/FormatSpec.h"
+#include "../exprtk/MatchHistory.h"
 
 // ExprTk is a single-header library that pulls in a fair amount of
 // template machinery, so the include lives here in the engine TU
@@ -179,14 +180,36 @@ namespace MultiReplaceEngine {
         // _captures vector populated at the start of execute().
         // Out-of-range indices return 0.0 (consistent with the empty-
         // capture rule in parseCaptureToDouble).
-        class NumFunction : public exprtk::ifunction<double> {
+        // ExprTk-callable wrapper: implements num(N), num(N, P), and
+        // num(N, P, V).
+        //
+        //   num(N)         -> capture N from the current match (legacy)
+        //   num(N, P)      -> capture N from the match P matches ago
+        //                     (P=0 = current match, P=1 = previous, ...).
+        //                     Returns NaN when the lookup fails or the
+        //                     captured text doesn't parse.
+        //   num(N, P, V)   -> same as num(N, P) but V is the fallback
+        //                     when the lookup fails or the result is not
+        //                     finite.
+        //
+        // The "T|TT|TTT" arity-spec declares three overloads: 1, 2, or 3
+        // Scalar arguments. ExprTk dispatches to operator() with the
+        // matching parameter_list_t at compile time; we route on
+        // parameters.size() in the implementation.
+        class NumFunction : public exprtk::igeneric_function<double> {
         public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using scalar_t = typename generic_t::scalar_view;
+
             explicit NumFunction(ExprTkEngine* owner)
-                : exprtk::ifunction<double>(1)   // arity = 1
+                : igenfunct_t("T|TT|TTT")
                 , _owner(owner) {
             }
 
-            double operator()(const double& index) override;
+            double operator()(const std::size_t& psi,
+                parameter_list_t parameters) override;
 
         private:
             ExprTkEngine* _owner;
@@ -219,11 +242,13 @@ namespace MultiReplaceEngine {
         // txt() is to surface the *string* form of a capture.
         //
         // Only meaningful inside an ExprTk return statement, e.g.
-        //   (?=return ['<', txt(1), '>'])
-        // outside a return ExprTk will refuse to compile because the
-        // surrounding numeric expression cannot consume a string.
+        //   (?='<' + txt(1) + '>')   (or simply (?=txt(1)) for one capture)
         //
-        // The "T" arity-spec declares one Scalar argument (the index).
+        // The "T|TT|TTS" arity-spec declares three overloads:
+        //   txt(N)         -> capture N from the current match (legacy)
+        //   txt(N, P)      -> capture N text from the match P matches ago
+        //                     (P=0 = current). Empty string on failure.
+        //   txt(N, P, V)   -> same, with explicit fallback string V.
         // The e_rtrn_string flag tells ExprTk this function returns a
         // string, so it can be used in string contexts within an
         // expression (Section 15 of the ExprTk docs).
@@ -233,18 +258,121 @@ namespace MultiReplaceEngine {
             using generic_t = typename igenfunct_t::generic_type;
             using parameter_list_t = typename igenfunct_t::parameter_list_t;
             using scalar_t = typename generic_t::scalar_view;
+            using string_view_t = typename generic_t::string_view;
 
             explicit TxtFunction(ExprTkEngine* owner)
-                : igenfunct_t("T", igenfunct_t::e_rtrn_string)
+                : igenfunct_t("T|TT|TTS", igenfunct_t::e_rtrn_string)
                 , _owner(owner) {
             }
 
-            // Override picks up the string-return overload because we
-            // declared e_rtrn_string in the constructor. The first
-            // parameter receives the result; the return double is
-            // ignored by ExprTk in this mode but must be present to
-            // match the base-class signature.
-            double operator()(std::string& result,
+            // Override for multi-arity e_rtrn_string mode: psi is the
+            // parameter-sequence index (which overload was matched),
+            // result receives the string, the numeric return is ignored.
+            double operator()(const std::size_t& psi,
+                std::string& result,
+                parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
+        // ---------------------------------------------------------------
+        // Match-history readers
+        //
+        // Four functions that look back at previously processed matches:
+        //   numout(N[, P[, V]])  -> block N's numeric output P matches ago
+        //   txtout(N[, P[, V]])  -> block N's string  output P matches ago
+        //   numprev([P[, V]])    -> same block's numeric output P matches ago
+        //   txtprev([P[, V]])    -> same block's string  output P matches ago
+        //
+        // Block indices follow source order: each (?=...) in the template
+        // is numbered 0, 1, 2, ...  After every successful, non-skipped
+        // match, the engine snapshots the captures plus what each block
+        // emitted, and pushes the snapshot into a ring buffer that the
+        // four readers query.
+        //
+        // The "Z" arity marker is ExprTk's zero-parameter spec - the
+        // arity-0 overloads of numprev / txtprev use it. The igeneric
+        // overload that receives both the overload index (psi) and the
+        // parameter list is the right hook for multi-arity functions.
+        // ---------------------------------------------------------------
+
+        class NumOutFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using generic_t = typename igenfunct_t::generic_type;
+            using scalar_t = typename generic_t::scalar_view;
+
+            explicit NumOutFunction(ExprTkEngine* owner)
+                : igenfunct_t("T|TT|TTT")
+                , _owner(owner) {
+            }
+
+            double operator()(const std::size_t& psi,
+                parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
+        class TxtOutFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using generic_t = typename igenfunct_t::generic_type;
+            using scalar_t = typename generic_t::scalar_view;
+            using string_view_t = typename generic_t::string_view;
+
+            explicit TxtOutFunction(ExprTkEngine* owner)
+                : igenfunct_t("T|TT|TTS", igenfunct_t::e_rtrn_string)
+                , _owner(owner) {
+            }
+
+            double operator()(const std::size_t& psi,
+                std::string& result,
+                parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
+        class NumPrevFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using generic_t = typename igenfunct_t::generic_type;
+            using scalar_t = typename generic_t::scalar_view;
+
+            explicit NumPrevFunction(ExprTkEngine* owner)
+                : igenfunct_t("Z|T|TT")
+                , _owner(owner) {
+                exprtk::enable_zero_parameters(*this);  // allow numprev()
+            }
+
+            double operator()(const std::size_t& psi,
+                parameter_list_t parameters) override;
+
+        private:
+            ExprTkEngine* _owner;
+        };
+
+        class TxtPrevFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using generic_t = typename igenfunct_t::generic_type;
+            using scalar_t = typename generic_t::scalar_view;
+            using string_view_t = typename generic_t::string_view;
+
+            explicit TxtPrevFunction(ExprTkEngine* owner)
+                : igenfunct_t("Z|T|TS", igenfunct_t::e_rtrn_string)
+                , _owner(owner) {
+                exprtk::enable_zero_parameters(*this);  // allow txtprev()
+            }
+
+            double operator()(const std::size_t& psi,
+                std::string& result,
                 parameter_list_t parameters) override;
 
         private:
@@ -671,6 +799,14 @@ namespace MultiReplaceEngine {
         // directly); slots 0..N-1 hold capture[1..N].
         std::vector<std::string> _captureStrings;
 
+        // Capture-slot snapshot for the history ring. Built once per
+        // successful, non-skipped match from _strMATCH + _captureStrings,
+        // then swapped into the ring by pushSwap (so its string buffers
+        // rotate with the entry that was just evicted, preserving
+        // capacity across matches with no allocation in steady state).
+        // Index 0 = the full match; index 1..N = capture groups.
+        std::vector<CaptureSlot> _captureSlotsForHistory;
+
         // Holds the current match's string-side metadata for ExprTk's
         // string-typed symbol table entries. ExprTk binds string vars by
         // reference (Section 13 of the ExprTk docs), so these have to
@@ -698,6 +834,14 @@ namespace MultiReplaceEngine {
 
         // The seq() callable for sequence generation across matches.
         SeqFunction _seqFunction;
+
+        // Match-history readers: numout/txtout read a specific block's
+        // output P matches ago; numprev/txtprev are the same-block
+        // shorthand (block index is the running block).
+        NumOutFunction  _numOutFunction;
+        TxtOutFunction  _txtOutFunction;
+        NumPrevFunction _numPrevFunction;
+        TxtPrevFunction _txtPrevFunction;
 
         // CSV column access via the host (numcol/txtcol).
         NumColFunction _numColFunction;
@@ -732,6 +876,51 @@ namespace MultiReplaceEngine {
         // re-read fresh each run. Null between shutdown() and the next
         // initialize().
         std::unique_ptr<EcmdLibrary> _ecmdLibrary;
+
+        // -----------------------------------------------------------------
+        // Match-history storage
+        //
+        // The ring is sized at compile time from the analyzer's findings
+        // (HistoryAnalysis::maxLookbackDepth). When no template uses
+        // history, depth stays at 0 and pushSwap() is a no-op.
+        //
+        // _currentBlockOutputs records each (?=...) block's emission
+        // (number or string, tagged) as the block evaluates within a
+        // single match. After every successful, non-skipped match,
+        // execute() pushes the captures + the block-output snapshot
+        // into _history (which swaps them in - no copy).
+        //
+        // _currentBlockIndex tracks which block is currently evaluating,
+        // so numprev / txtprev know their implicit n.
+        // -----------------------------------------------------------------
+        MatchHistory                _history;
+        std::vector<BlockOutput>    _currentBlockOutputs;
+        std::size_t                 _currentBlockIndex = 0;
+
+        // Cached capture-index ceiling from the history analyzer. Used
+        // to right-size each match's capture vector before push so the
+        // history slots never grow during eval.
+        std::size_t _historyCaptureCap = 0;
+
+        // Lookup helpers shared by the four history readers. Defined in
+        // the .cpp to keep the header lean. Each returns success/failure
+        // plus the read value; routing of the v-fallback happens in the
+        // caller because the fallback type differs (numeric vs. string).
+        bool lookupCaptureAt(long long n,
+            long long pLookback,
+            double& out) const;
+
+        bool lookupCaptureAt(long long n,
+            long long pLookback,
+            std::string& out) const;
+
+        bool lookupBlockOutputAt(long long n,
+            long long pLookback,
+            double& out) const;
+
+        bool lookupBlockOutputAt(long long n,
+            long long pLookback,
+            std::string& out) const;
     };
 
 } // namespace MultiReplaceEngine
