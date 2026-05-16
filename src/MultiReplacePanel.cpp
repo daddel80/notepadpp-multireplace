@@ -3240,33 +3240,21 @@ void MultiReplace::handleCopyToListButton() {
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
 
-    // Enable the ListView only if it was off. The primary action here
-    // is the insert (and its "value added" toast); flipping the
-    // use-list state is a secondary convenience for the case where
-    // the list was collapsed. The expand sequence below mirrors the
-    // ON branch of IDC_USE_LIST_BUTTON: in Library mode the list is
-    // already visible and only needs the active-state flip + repaint;
-    // in Classic mode the ListView, toolbar icon buttons and tab bar
-    // were all hidden and need an explicit ShowWindow pass.
-    if (!useListEnabled) {
+    // Classic Mode: auto-expand so the user sees the insert took effect.
+    // Library Mode: keep disabled state — list is visible (dimmed) anyway.
+    if (!useListEnabled && !keepListVisible) {
         useListEnabled = true;
 
-        if (keepListVisible) {
-            updateUseListState(true);
-            InvalidateRect(_replaceListView, nullptr, TRUE);
-        }
-        else {
-            const std::vector<int> listToolbarButtons = {
-                IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-                IDC_UP_BUTTON, IDC_DOWN_BUTTON
-            };
-            updateUseListState(true);
-            adjustWindowSize();
-            ShowWindow(_replaceListView, SW_SHOW);
-            for (int id : listToolbarButtons)
-                ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
-            setBottomRowVisible(true);
-        }
+        const std::vector<int> listToolbarButtons = {
+            IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+            IDC_UP_BUTTON, IDC_DOWN_BUTTON
+        };
+        updateUseListState(true);
+        adjustWindowSize();
+        ShowWindow(_replaceListView, SW_SHOW);
+        for (int id : listToolbarButtons)
+            ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
+        setBottomRowVisible(true);
     }
 }
 
@@ -10631,6 +10619,9 @@ void MultiReplace::handleFindPrevButton() {
     }
 }
 
+// Forward-scan fallback: SCI_SEARCHINTARGET forces forward direction under
+// SCFIND_REGEXP, so we scan forward and keep the rightmost match, validating
+// each one against an unbounded re-search to reject range-clipped greedy hits.
 SearchResult MultiReplace::performRegexBackwardFallback(const SearchContext& context, SelectionRange range)
 {
     const LRESULT scanEnd = range.start;
@@ -10645,8 +10636,7 @@ SearchResult MultiReplace::performRegexBackwardFallback(const SearchContext& con
         SearchResult r = performSingleSearch(probeCtx, { pos, scanEnd });
         if (r.pos < 0) break;
 
-        // Re-run at the match position without the upper bound to detect
-        // greedy matches that Scintilla clipped to fit the range.
+        // Reject clipped greedy matches by comparing against an unbounded re-search.
         SearchResult unclipped = performSingleSearch(probeCtx, { r.pos, context.docLength });
         if (unclipped.pos != r.pos || unclipped.length != r.length) break;
         if (unclipped.pos + unclipped.length > scanEnd) break;
@@ -10654,13 +10644,12 @@ SearchResult MultiReplace::performRegexBackwardFallback(const SearchContext& con
         lastMatch = r;
 
         Sci_Position next = advanceAfterMatch(r);
-        if (next <= pos) next = pos + 1;        // forward progress on zero-length match
+        if (next <= pos) next = pos + 1;
         pos = next;
     }
 
     if (lastMatch.pos < 0) return lastMatch;
 
-    // Finalize like performListSearch*: retrieve text + highlight for the final match.
     if (context.retrieveFoundText) {
         send(SCI_SETTARGETRANGE, lastMatch.pos, lastMatch.pos + lastMatch.length);
         const int codepage = (context.cachedCodepage >= 0)
@@ -16679,6 +16668,7 @@ void MultiReplace::captureStateIntoTab(TabState& tab)
     tab.matchCase = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED;
     tab.formulaSupport = IsDlgButtonChecked(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX) == BST_CHECKED;
     tab.wrapAround = IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED;
+    tab.listEnabled = useListEnabled;
     tab.replaceAtMatches = IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED;
     tab.replaceAtMatchesEdit = getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT);
 
@@ -16751,6 +16741,13 @@ void MultiReplace::restoreStateFromTab(const TabState& tab)
         : (tab.searchMode == 1) ? IDC_EXTENDED_RADIO
         : IDC_NORMAL_RADIO;
     CheckRadioButton(_hSelf, IDC_NORMAL_RADIO, IDC_REGEX_RADIO, searchRadio);
+
+    // Per-tab list state applies in Library Mode only; the flag is kept
+    // regardless so it takes effect again once Library Mode is re-enabled.
+    if (keepListVisible && useListEnabled != tab.listEnabled) {
+        useListEnabled = tab.listEnabled;
+        updateUseListState(false);
+    }
 
     // Scope. Order matters here for two reasons:
     // 1) The scope radio is set FIRST, so even a brief paint pass during
@@ -16870,6 +16867,7 @@ void MultiReplace::writeTabsToConfig()
         CFG.writeBool(L"Tabs", prefix + L"_MatchCase", t.matchCase);
         CFG.writeBool(L"Tabs", prefix + L"_FormulaSupport", t.formulaSupport);
         CFG.writeBool(L"Tabs", prefix + L"_WrapAround", t.wrapAround);
+        CFG.writeBool(L"Tabs", prefix + L"_ListEnabled", t.listEnabled);
         CFG.writeBool(L"Tabs", prefix + L"_ReplaceAtMatches", t.replaceAtMatches);
         CFG.writeString(L"Tabs", prefix + L"_ReplaceAtMatchesEdit", t.replaceAtMatchesEdit);
         CFG.writeString(L"Tabs", prefix + L"_Engine",
@@ -17005,6 +17003,7 @@ void MultiReplace::loadTabsFromConfig()
         tab->formulaSupport = CFG.readBool(L"Tabs", prefix + L"_FormulaSupport",
             CFG.readBool(L"Tabs", prefix + L"_UseVariables", false));
         tab->wrapAround = CFG.readBool(L"Tabs", prefix + L"_WrapAround", false);
+        tab->listEnabled = CFG.readBool(L"Tabs", prefix + L"_ListEnabled", true);
         tab->replaceAtMatches = CFG.readBool(L"Tabs", prefix + L"_ReplaceAtMatches", false);
         tab->replaceAtMatchesEdit = CFG.readString(L"Tabs", prefix + L"_ReplaceAtMatchesEdit", L"1");
         {

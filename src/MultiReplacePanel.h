@@ -321,6 +321,7 @@ struct TabState {
     bool         matchCase = false;
     bool         formulaSupport = false;
     bool         wrapAround = false;
+    bool         listEnabled = true;
     bool         replaceAtMatches = false;
     std::wstring replaceAtMatchesEdit = L"1";
 
@@ -394,6 +395,7 @@ struct TabState {
         , matchCase(other.matchCase)
         , formulaSupport(other.formulaSupport)
         , wrapAround(other.wrapAround)
+        , listEnabled(other.listEnabled)
         , replaceAtMatches(other.replaceAtMatches)
         , replaceAtMatchesEdit(other.replaceAtMatchesEdit)
         , engine(other.engine)
