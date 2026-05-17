@@ -4716,6 +4716,7 @@ void MultiReplace::pasteItemsIntoList() {
     // otherwise rewind and use the legacy positional path.
     CsvListFormat::HeaderIndex hdr;
     bool nameBased = false;
+    bool swapRegexExtended = false;
     const auto pos = contentStream.tellg();
     std::wstring firstLine;
     if (std::getline(contentStream, firstLine)) {
@@ -4725,6 +4726,17 @@ void MultiReplace::pasteItemsIntoList() {
         if (maybeHdr.looksLikeNames && maybeHdr.hasFind) {
             hdr = maybeHdr;
             nameBased = true;
+            // Legacy pre-V5 BUG swap: UseVariables header AND Regex before Extended. TODO: remove.
+            const int rIdx = hdr.idx[static_cast<int>(CsvListFormat::Field::Regex)];
+            const int eIdx = hdr.idx[static_cast<int>(CsvListFormat::Field::Extended)];
+            if (rIdx >= 0 && eIdx >= 0 && rIdx < eIdx) {
+                for (const auto& c : cells) {
+                    if (CsvListFormat::normalizeName(c) == L"usevariables") {
+                        swapRegexExtended = true;
+                        break;
+                    }
+                }
+            }
         }
         else {
             contentStream.clear();
@@ -4750,6 +4762,7 @@ void MultiReplace::pasteItemsIntoList() {
                 item.formulaSupport = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::FormulaSupport, false);
                 item.extended = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Extended, false);
                 item.regex = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Regex, false);
+                if (swapRegexExtended) std::swap(item.extended, item.regex);
                 item.comments = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Comments, L"");
             }
             else {
@@ -15881,6 +15894,21 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     const CsvListFormat::HeaderIndex hdr = CsvListFormat::buildIndex(headerCells);
     const bool nameBased = hdr.looksLikeNames;
 
+    // Legacy pre-V5 files: header has UseVariables column AND Regex before Extended. TODO: remove.
+    bool swapRegexExtended = false;
+    if (nameBased) {
+        const int rIdx = hdr.idx[static_cast<int>(CsvListFormat::Field::Regex)];
+        const int eIdx = hdr.idx[static_cast<int>(CsvListFormat::Field::Extended)];
+        if (rIdx >= 0 && eIdx >= 0 && rIdx < eIdx) {
+            for (const auto& cell : headerCells) {
+                if (CsvListFormat::normalizeName(cell) == L"usevariables") {
+                    swapRegexExtended = true;
+                    break;
+                }
+            }
+        }
+    }
+
     // Find is required; everything else has a default.
     if (nameBased && !hdr.hasFind) {
         throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_invalid_column_count")));
@@ -15905,6 +15933,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
                 item.formulaSupport = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::FormulaSupport, false);
                 item.extended = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Extended, false);
                 item.regex = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Regex, false);
+                if (swapRegexExtended) std::swap(item.extended, item.regex);
                 item.comments = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Comments, L"");
                 item.lastModified = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::LastModified, L"");
             }
