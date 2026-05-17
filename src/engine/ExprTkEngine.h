@@ -47,7 +47,7 @@
 //             -> CSV column on the current row, as raw string. Same
 //                addressing rules as numcol; only useful inside a
 //                return [...] list.
-//     ecmd(p) -> load a library of user-defined functions from path p
+//     loadlib(p) -> load a library of user-defined functions from path p
 //                (typically used in an empty-Find init slot)
 //
 // The match text is intentionally not exposed as a string variable.
@@ -105,8 +105,8 @@ namespace MultiReplaceEngine {
 
         // ecmd-loaded user libraries live for one Replace-All run only.
         // beginRun() discards any library state from the previous run so
-        // a re-run reloads the .ecmd files fresh from disk and removing
-        // the ecmd() init slot makes its functions disappear.
+        // a re-run reloads the .elib files fresh from disk and removing
+        // the loadlib() init slot makes its functions disappear.
         // _errorSkipCount / _skipAllErrors are still reset by the base.
         void beginRun() override;
 
@@ -454,7 +454,7 @@ namespace MultiReplaceEngine {
             ExprTkEngine* _owner;
         };
 
-        // ExprTk-callable: parsedate(str, fmt) -> Unix timestamp.
+        // ExprTk-callable: todate(str, fmt) -> Unix timestamp.
         //
         // Parses str against the strftime-style fmt and returns the
         // resulting time as seconds-since-epoch. With a leading '!'
@@ -467,14 +467,14 @@ namespace MultiReplaceEngine {
         //
         // Two string args, scalar return: "SS" arity-spec, plain
         // igeneric_function (no e_rtrn_string).
-        class ParsedateFunction : public exprtk::igeneric_function<double> {
+        class TodateFunction : public exprtk::igeneric_function<double> {
         public:
             using igenfunct_t = exprtk::igeneric_function<double>;
             using generic_t = typename igenfunct_t::generic_type;
             using parameter_list_t = typename igenfunct_t::parameter_list_t;
             using string_t = typename generic_t::string_view;
 
-            explicit ParsedateFunction(ExprTkEngine* owner)
+            explicit TodateFunction(ExprTkEngine* owner)
                 : igenfunct_t("SS")
                 , _owner(owner) {
             }
@@ -584,7 +584,7 @@ namespace MultiReplaceEngine {
 
         // ----- ecmd library plumbing ---------------------------------------
         //
-        // A user-defined function loaded from a .ecmd file. One instance
+        // A user-defined function loaded from a .elib file. One instance
         // per function. Holds a pre-compiled ExprTk expression (the user-
         // authored body) plus the argument slots bound to it by reference.
         //
@@ -715,7 +715,7 @@ namespace MultiReplaceEngine {
             parser_t                                             _parser;
         };
 
-        // ExprTk-callable: ecmd("path") -> 0. The user invokes this from
+        // ExprTk-callable: loadlib("path") -> 0. The user invokes this from
         // an empty-Find init slot to load a library of functions for the
         // current Replace-All run.
         //
@@ -847,9 +847,9 @@ namespace MultiReplaceEngine {
         NumColFunction _numColFunction;
         TxtColFunction _txtColFunction;
 
-        // The parsedate(str, fmt) callable for string-to-timestamp
+        // The todate(str, fmt) callable for string-to-timestamp
         // parsing - the inverse of D[fmt] output.
-        ParsedateFunction _parsedateFunction;
+        TodateFunction _todateFunction;
 
         // Base-conversion built-ins. Two parameterised templates serve
         // hex/bin/oct in both directions; each instance carries its base
@@ -867,12 +867,12 @@ namespace MultiReplaceEngine {
         Num2RomFunction _num2romFunction;
         Rom2NumFunction _rom2numFunction;
 
-        // The ecmd("path") loader callable, registered with the symbol
+        // The loadlib("path") loader callable, registered with the symbol
         // table at initialize().
         EcmdLoaderFunction _ecmdLoaderFunction;
 
         // The set of user functions loaded during this Replace-All run.
-        // Discarded and re-created in beginRun() so .ecmd files are
+        // Discarded and re-created in beginRun() so .elib files are
         // re-read fresh each run. Null between shutdown() and the next
         // initialize().
         std::unique_ptr<EcmdLibrary> _ecmdLibrary;

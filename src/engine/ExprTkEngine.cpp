@@ -91,7 +91,7 @@ namespace MultiReplaceEngine {
         , _txtPrevFunction(this)
         , _numColFunction(this)
         , _txtColFunction(this)
-        , _parsedateFunction(this)
+        , _todateFunction(this)
         , _num2hexFunction(this, 16)
         , _num2binFunction(this, 2)
         , _num2octFunction(this, 8)
@@ -180,9 +180,9 @@ namespace MultiReplaceEngine {
         _symbolTable.add_function("numcol", _numColFunction);
         _symbolTable.add_function("txtcol", _txtColFunction);
 
-        // Register parsedate(str, fmt) - the inverse of D[fmt] output.
+        // Register todate(str, fmt) - the inverse of D[fmt] output.
         // Returns Unix timestamp on success, NaN on parse failure.
-        _symbolTable.add_function("parsedate", _parsedateFunction);
+        _symbolTable.add_function("todate", _todateFunction);
 
         // Base conversions: numeric <-> hex/bin/oct as built-ins. num2X
         // returns a bare lowercase string; X2num accepts the input case-
@@ -200,10 +200,10 @@ namespace MultiReplaceEngine {
         _symbolTable.add_function("num2rom", _num2romFunction);
         _symbolTable.add_function("rom2num", _rom2numFunction);
 
-        // Register ecmd("path") - the library loader. Functions loaded
+        // Register loadlib("path") - the library loader. Functions loaded
         // through it land in _ecmdLibrary's own symbol_table, which we
         // register against every compiled expression in compile().
-        _symbolTable.add_function("ecmd", _ecmdLoaderFunction);
+        _symbolTable.add_function("loadlib", _ecmdLoaderFunction);
         _ecmdLibrary = std::make_unique<EcmdLibrary>();
 
         // ExprTk's standard math constants (pi, epsilon, infinity).
@@ -236,9 +236,9 @@ namespace MultiReplaceEngine {
         IFormulaEngine::beginRun();
 
         // Drop the previous run's ecmd library and start fresh. This is
-        // what makes ecmd("path") re-read the file on every Replace-All
-        // (user edits to the .ecmd take effect on the next run) and what
-        // makes removing the ecmd() init slot also remove its functions.
+        // what makes loadlib("path") re-read the file on every Replace-All
+        // (user edits to the .elib take effect on the next run) and what
+        // makes removing the loadlib() init slot also remove its functions.
         //
         // Side effect: the compile cache is invalidated because the
         // library symbol_table now refers to a different object, so any
@@ -1124,10 +1124,10 @@ namespace MultiReplaceEngine {
     }
 
     // ---------------------------------------------------------------------
-    // parsedate(str, fmt) -> Unix timestamp (or NaN on failure)
+    // todate(str, fmt) -> Unix timestamp (or NaN on failure)
     // ---------------------------------------------------------------------
 
-    double ExprTkEngine::ParsedateFunction::operator()(
+    double ExprTkEngine::TodateFunction::operator()(
         parameter_list_t parameters)
     {
         const double nanResult = std::numeric_limits<double>::quiet_NaN();

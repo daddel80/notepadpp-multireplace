@@ -29,7 +29,7 @@ Two engines are available, selected via the `(L)` / `(E)` indicator next to the 
   - [Sequence Generator](#sequence-generator)
   - [Base Conversions](#base-conversions)
   - [CSV Column Access](#csv-column-access)
-  - [Library Loading via ecmd](#library-loading-via-ecmd)
+  - [Library Loading via loadlib](#library-loading-via-loadlib)
   - [Output Formatting](#output-formatting)
   - [Date Handling](#date-handling)
   - [More Examples](#more-examples-1)
@@ -902,27 +902,27 @@ The negative lookahead in the Find pattern excludes the header row so the formul
 
 <br>
 
-### Library Loading via ecmd
+### Library Loading via loadlib
 
-Load user-defined functions from a `.ecmd` file with `ecmd(path)`. Functions become callable from any `(?=...)` block in the same Replace-All run, exactly like the built-ins.
+Load user-defined functions from a `.elib` file with `loadlib(path)`. Functions become callable from any `(?=...)` block in the same Replace-All run, exactly like the built-ins.
 
 **Purpose:** Reusable helpers (conversions, formatters, parsers) that would be tedious to inline. Functions can call each other and themselves (recursion). The library is re-read from disk on every Replace-All, so edits take effect on the next click — no Notepad++ restart.
 
-**Init usage:** Place `(?=ecmd('path'))` in an init entry (empty Find). See [Preload Variables and Helpers](#preload-variables-and-helpers) for the workflow; the same idea applies — ExprTk's init rows preload library functions instead of variables.
+**Init usage:** Place `(?=loadlib('path'))` in an init entry (empty Find). See [Preload Variables and Helpers](#preload-variables-and-helpers) for the workflow; the same idea applies — ExprTk's init rows preload library functions instead of variables.
 
 | Find      | Replace                                          | Regex | Description |
 |-----------|--------------------------------------------------|-------|-------------|
-| *(empty)* | `(?=ecmd('C:/tmp/helpers.ecmd'))`                | No    | Load library from file (init row — no replacement). |
+| *(empty)* | `(?=loadlib('C:/tmp/helpers.elib'))`                | No    | Load library from file (init row — no replacement). |
 | `^(\d+)$` | `(?=padleft(txt(1), 5, '0'))`                    | Yes   | Use a string-returning library function. |
 | `^(\d+)$` | `(?=double_it(num(1)))`                          | Yes   | Use a number-returning library function. |
 
-**Path notes:** Single backslashes are interpreted as escape sequences inside ExprTk strings. Use forward slashes (`'C:/tmp/file.ecmd'`) or double backslashes (`'C:\\tmp\\file.ecmd'`).
+**Path notes:** Single backslashes are interpreted as escape sequences inside ExprTk strings. Use forward slashes (`'C:/tmp/file.elib'`) or double backslashes (`'C:\\tmp\\file.elib'`).
 
 <br>
 
 #### File format
 
-A `.ecmd` file is a sequence of `function NAME(PARAMS) ... end` blocks:
+A `.elib` file is a sequence of `function NAME(PARAMS) ... end` blocks:
 
 ```
 function NAME(PARAMS) [: RETURN] BODY end
@@ -1007,7 +1007,7 @@ Function bodies use a small statement language layered on top of ExprTk's expres
 > - `s[0:1]` on a value starting with `ä` returns one half of the encoding — invalid UTF-8 — and the resulting output will display as `?` or a replacement glyph
 > - `s[i:i+1] == 'ä'` cannot compile because the right-hand literal contains non-ASCII bytes
 >
-> **Practical rule:** `.ecmd` helpers are safe for ASCII-only input — digits, plain English letters, punctuation. Use them for padding, digit stripping, simple parsing, ID-tag formatting. Anything that needs per-character work on text that may contain umlauts, accented letters, CJK, emojis, or other non-ASCII content belongs in the **Lua engine**, which exposes Lua's `utf8.*` library (`utf8.len`, `utf8.offset`, `utf8.char`, `utf8.codepoint`) for correct multi-byte handling. ExprTk has no equivalent.
+> **Practical rule:** `.elib` helpers are safe for ASCII-only input — digits, plain English letters, punctuation. Use them for padding, digit stripping, simple parsing, ID-tag formatting. Anything that needs per-character work on text that may contain umlauts, accented letters, CJK, emojis, or other non-ASCII content belongs in the **Lua engine**, which exposes Lua's `utf8.*` library (`utf8.len`, `utf8.offset`, `utf8.char`, `utf8.codepoint`) for correct multi-byte handling. ExprTk has no equivalent.
 
 **A minimal complete example.** Strip leading zeros from a captured number string:
 
@@ -1023,7 +1023,7 @@ Used in a replace rule:
 
 | Find | Replace | Regex | Description |
 |---|---|---|---|
-| *(empty)* | `(?=ecmd('C:/tmp/helpers.ecmd'))` | No | Load library. |
+| *(empty)* | `(?=loadlib('C:/tmp/helpers.elib'))` | No | Load library. |
 | `\b0*(\d+)\b` | `(?=strip_zeros(txt(1)))` | Yes | `00042` becomes `42`. |
 
 <br>
@@ -1032,7 +1032,7 @@ Used in a replace rule:
 
 Spec: wrap each captured number in a fixed-width zero-padded ID tag like `[ID-00042]`. Demonstrates a library function that takes both a number and a width, returns a string, and composes with literals at the call site.
 
-`C:/Data/Projekte/MultiReplace/idtag.ecmd`:
+`C:/Data/Projekte/MultiReplace/idtag.elib`:
 
 ```
 function padleft(s: S, n, fill: S) : S
@@ -1072,7 +1072,7 @@ Replace-All rules:
 
 | Find | Replace | Regex | Description |
 |---|---|---|---|
-| *(empty)* | `(?=ecmd('C:/Data/Projekte/MultiReplace/idtag.ecmd'))` | No | Load library. |
+| *(empty)* | `(?=loadlib('C:/Data/Projekte/MultiReplace/idtag.elib'))` | No | Load library. |
 | `\b(\d+)\b` | `(?=id_tag(num(1), 5))` | Yes | Each number becomes `[ID-NNNNN]`. |
 
 For built-in formatting needs (zero padding, fixed width, hex, etc.) consider the [format spec](#output-formatting) with `~`: `(?=num(1) ~ 05)` produces the same zero-padded number without a library function. The example above is shown to illustrate the library mechanics — for simple numeric formatting the spec is more direct.
@@ -1191,7 +1191,7 @@ The pattern uses standard strftime conversion specifiers — `%Y`, `%m`, `%d`, `
 ExprTk provides one date-related function, the inverse of the `D[fmt]` output spec:
 
 ```
-parsedate(text, fmt)  ->  Unix timestamp
+todate(text, fmt)  ->  Unix timestamp
 ```
 
 Parses `text` against the strftime-style `fmt` pattern and returns the resulting time as seconds since 1970-01-01 UTC. As with `D[fmt]`:
@@ -1205,7 +1205,7 @@ On parse failure (malformed input, out-of-range fields, format mismatch) the fun
 
 #### Supported format specifiers
 
-`parsedate` accepts a deliberately small subset of strftime — everything you need for the common date formats, nothing locale-dependent:
+`todate` accepts a deliberately small subset of strftime — everything you need for the common date formats, nothing locale-dependent:
 
 | Specifier | Meaning                                                |
 |-----------|--------------------------------------------------------|
@@ -1228,13 +1228,13 @@ Whitespace in the format matches **zero or more** whitespace characters in the i
 
 #### Quoting the format string in ExprTk
 
-**Use single quotes** for `parsedate`'s format string. ExprTk's lexer treats `!` as a logical-NOT operator and `%` as the modulo operator; both are interpreted differently when they appear directly after a double quote. Single-quoted strings are taken verbatim:
+**Use single quotes** for `todate`'s format string. ExprTk's lexer treats `!` as a logical-NOT operator and `%` as the modulo operator; both are interpreted differently when they appear directly after a double quote. Single-quoted strings are taken verbatim:
 
 | Form                                       | Status              |
 |--------------------------------------------|---------------------|
-| `parsedate(txt(0), '%Y-%m-%d')`            | ✓ works             |
-| `parsedate(txt(0), '!%Y-%m-%d')`           | ✓ works (UTC)       |
-| `parsedate(txt(0), "%Y-%m-%d")`            | ✗ token error       |
+| `todate(txt(0), '%Y-%m-%d')`            | ✓ works             |
+| `todate(txt(0), '!%Y-%m-%d')`           | ✓ works (UTC)       |
+| `todate(txt(0), "%Y-%m-%d")`            | ✗ token error       |
 
 `D[fmt]` is not affected — the spec sits inside `[...]` brackets and bypasses the ExprTk lexer entirely.
 
@@ -1242,13 +1242,13 @@ Whitespace in the format matches **zero or more** whitespace characters in the i
 
 #### Time-zone consistency in round-trips
 
-Mixing local and UTC across `parsedate` and `D[...]` produces an offset of one time zone. For predictable round-trips, use the **same** UTC/local choice on both sides:
+Mixing local and UTC across `todate` and `D[...]` produces an offset of one time zone. For predictable round-trips, use the **same** UTC/local choice on both sides:
 
 | Form                                                              | Status              |
 |-------------------------------------------------------------------|---------------------|
-| `(?= parsedate(txt(0), '!%Y-%m-%d') ~ D[!%Y-%m-%d] )`             | ✓ pure UTC          |
-| `(?= parsedate(txt(0), '%Y-%m-%d') ~ D[%Y-%m-%d] )`               | ✓ pure local        |
-| `(?= parsedate(txt(0), '%Y-%m-%d') ~ D[!%Y-%m-%d] )`              | ⚠ offset by local TZ|
+| `(?= todate(txt(0), '!%Y-%m-%d') ~ D[!%Y-%m-%d] )`             | ✓ pure UTC          |
+| `(?= todate(txt(0), '%Y-%m-%d') ~ D[%Y-%m-%d] )`               | ✓ pure local        |
+| `(?= todate(txt(0), '%Y-%m-%d') ~ D[!%Y-%m-%d] )`              | ⚠ offset by local TZ|
 
 The third form is occasionally what you want (e.g. converting a wall-clock log time to a UTC timestamp for storage), but it should be a conscious choice.
 
@@ -1260,10 +1260,10 @@ Once a date is a Unix timestamp it's just a number, so all of ExprTk's math appl
 
 | Goal              | Snippet                                                                       |
 |-------------------|-------------------------------------------------------------------------------|
-| Add one day       | `parsedate(txt(0), '!%Y-%m-%d') + 86400`                                      |
-| Add one week      | `parsedate(txt(0), '!%Y-%m-%d') + 7 * 86400`                                  |
-| Add one hour      | `parsedate(txt(0), '!%Y-%m-%dT%H:%M:%S') + 3600`                              |
-| Difference (days) | `(parsedate(txt(2), '!%F') - parsedate(txt(1), '!%F')) / 86400`               |
+| Add one day       | `todate(txt(0), '!%Y-%m-%d') + 86400`                                      |
+| Add one week      | `todate(txt(0), '!%Y-%m-%d') + 7 * 86400`                                  |
+| Add one hour      | `todate(txt(0), '!%Y-%m-%dT%H:%M:%S') + 3600`                              |
+| Difference (days) | `(todate(txt(2), '!%F') - todate(txt(1), '!%F')) / 86400`               |
 
 There is no built-in "add one month" — months have variable length, so adding `30 * 86400` is the usual approximation. For exact month arithmetic, switch to the Lua engine which exposes the full `os.date` / `os.time` table API.
 
@@ -1341,9 +1341,9 @@ See the [Match History](#match-history) section for the full reader catalogue an
 
 ExprTk is deliberately scoped. Things it does **not** do:
 
-- **String manipulation is limited inside `(?=...)`.** Built-in support covers concatenation (`+`), slicing (`s[i:j]`), and length (`s[]`). For more (per-character work, formatted assembly, custom encodings), write helper functions in a `.ecmd` library — bodies have the same operators plus `var` declarations and control flow (see [Library Loading via ecmd](#library-loading-via-ecmd)). For UTF-8-aware character manipulation, use the Lua engine instead.
-- **UTF-8 inside string literals fails to compile.** A literal like `'Größe'` between `'...'` will produce an `Invalid string token` error. This applies to both inline expressions and `.ecmd` bodies. Use captures or place non-ASCII text outside the `(?=...)` block. Captures themselves arrive as UTF-8 bytes and can be passed through unchanged, but per-character slicing breaks them — see the warning in [Library Loading via ecmd](#library-loading-via-ecmd).
+- **String manipulation is limited inside `(?=...)`.** Built-in support covers concatenation (`+`), slicing (`s[i:j]`), and length (`s[]`). For more (per-character work, formatted assembly, custom encodings), write helper functions in a `.elib` library — bodies have the same operators plus `var` declarations and control flow (see [Library Loading via loadlib](#library-loading-via-loadlib)). For UTF-8-aware character manipulation, use the Lua engine instead.
+- **UTF-8 inside string literals fails to compile.** A literal like `'Größe'` between `'...'` will produce an `Invalid string token` error. This applies to both inline expressions and `.elib` bodies. Use captures or place non-ASCII text outside the `(?=...)` block. Captures themselves arrive as UTF-8 bytes and can be passed through unchanged, but per-character slicing breaks them — see the warning in [Library Loading via loadlib](#library-loading-via-loadlib).
 - **No general user-defined state across matches.** Each `(?=...)` evaluation starts fresh — you cannot create your own named variables that persist. The [Match History](#match-history) functions cover the common case (read earlier captures and block outputs), and `CNT` / `LCNT` are provided by the host. For arbitrary per-key state (a cumulative table keyed by string, a per-value tally), switch to the Lua engine and use `vars({...})`.
-- **No data file loading.** ExprTk has no equivalent to Lua's `lvars` (preload variables from disk) or `lkp` (key lookup from disk). `ecmd` loads **code**, not data.
-- **`parsedate` is intentionally minimal.** It accepts the common strftime specifiers (`%Y %y %m %d %H %M %S %I %p %F %T %%`) — enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (`%B`), weekday names (`%A`), or week numbers (`%V`) are **not** accepted on the input side. For richer date input parsing, use Lua's date handling instead.
-- **Date timestamps must be ≥ 0.** `D[fmt]` and `parsedate` only handle years 1970 onwards. Negative timestamps produce empty output or NaN respectively.
+- **No data file loading.** ExprTk has no equivalent to Lua's `lvars` (preload variables from disk) or `lkp` (key lookup from disk). `loadlib` loads **code**, not data.
+- **`todate` is intentionally minimal.** It accepts the common strftime specifiers (`%Y %y %m %d %H %M %S %I %p %F %T %%`) — enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (`%B`), weekday names (`%A`), or week numbers (`%V`) are **not** accepted on the input side. For richer date input parsing, use Lua's date handling instead.
+- **Date timestamps must be ≥ 0.** `D[fmt]` and `todate` only handle years 1970 onwards. Negative timestamps produce empty output or NaN respectively.

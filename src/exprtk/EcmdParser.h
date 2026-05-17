@@ -6,7 +6,7 @@
 // (at your option) any later version.
 //
 // EcmdParser.h
-// Parser for .ecmd files - libraries of user-defined ExprTk functions.
+// Parser for .elib files - libraries of user-defined ExprTk functions.
 // Each function definition is a textual block of the form
 //
 //     function NAME(PARAMS) [: RETURN] BODY end
@@ -91,7 +91,7 @@ namespace MultiReplaceEngine {
             std::size_t                 errorPos = 0;
         };
 
-        // Parse the full contents of a .ecmd file. Stateless and pure;
+        // Parse the full contents of a .elib file. Stateless and pure;
         // safe to call from any thread.
         static ParseResult parse(const std::string& fileContent);
 

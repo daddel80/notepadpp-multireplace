@@ -2226,10 +2226,10 @@ return {
   <br>
 
   <section id="exprtk-ecmd">
-    <h2>Library Loading via ecmd</h2>
-    <p>Load user-defined functions from a <code>.ecmd</code> file with <code>ecmd(path)</code>. Functions become callable from any <code>(?=...)</code> block in the same Replace-All run, exactly like the built-ins.</p>
+    <h2>Library Loading via loadlib</h2>
+    <p>Load user-defined functions from a <code>.elib</code> file with <code>loadlib(path)</code>. Functions become callable from any <code>(?=...)</code> block in the same Replace-All run, exactly like the built-ins.</p>
     <p><strong>Purpose:</strong> Reusable helpers (conversions, formatters, parsers) that would be tedious to inline. Functions can call each other and themselves (recursion). The library is re-read from disk on every Replace-All, so edits take effect on the next click &mdash; no Notepad++ restart.</p>
-    <p><strong>Init usage:</strong> Place <code>(?=ecmd('path'))</code> in an init entry (empty Find). See <a href="#preload-variables--helpers">Preload Variables &amp; Helpers</a> for the workflow; the same idea applies &mdash; ExprTk's init rows preload library functions instead of variables.</p>
+    <p><strong>Init usage:</strong> Place <code>(?=loadlib('path'))</code> in an init entry (empty Find). See <a href="#preload-variables--helpers">Preload Variables &amp; Helpers</a> for the workflow; the same idea applies &mdash; ExprTk's init rows preload library functions instead of variables.</p>
     <table class="optionsTable">
       <tr>
         <th>Find</th>
@@ -2239,7 +2239,7 @@ return {
       </tr>
       <tr>
         <td><em>(empty)</em></td>
-        <td><code>(?=ecmd('C:/tmp/helpers.ecmd'))</code></td>
+        <td><code>(?=loadlib('C:/tmp/helpers.elib'))</code></td>
         <td>No</td>
         <td>Load library from file (init row &mdash; no replacement).</td>
       </tr>
@@ -2256,10 +2256,10 @@ return {
         <td>Use a number-returning library function.</td>
       </tr>
     </table>
-    <p><strong>Path notes:</strong> Single backslashes are interpreted as escape sequences inside ExprTk strings. Use forward slashes (<code>'C:/tmp/file.ecmd'</code>) or double backslashes (<code>'C:\\tmp\\file.ecmd'</code>).</p>
+    <p><strong>Path notes:</strong> Single backslashes are interpreted as escape sequences inside ExprTk strings. Use forward slashes (<code>'C:/tmp/file.elib'</code>) or double backslashes (<code>'C:\\tmp\\file.elib'</code>).</p>
 
     <h3>File format</h3>
-    <p>A <code>.ecmd</code> file is a sequence of <code>function NAME(PARAMS) ... end</code> blocks:</p>
+    <p>A <code>.elib</code> file is a sequence of <code>function NAME(PARAMS) ... end</code> blocks:</p>
     <p><code>function NAME(PARAMS) [: RETURN] BODY end</code></p>
     <ul>
       <li><strong>PARAMS</strong> is a comma-separated list of <code>name</code> or <code>name: TYPE</code>. <code>TYPE</code> is <code>T</code> (scalar, the default) or <code>S</code> (string), uppercase.</li>
@@ -2390,7 +2390,7 @@ end
         <li><code>s[0:1]</code> on a value starting with <code>&auml;</code> returns one half of the encoding &mdash; invalid UTF-8 &mdash; and the resulting output will display as <code>?</code> or a replacement glyph</li>
         <li><code>s[i:i+1] == '&auml;'</code> cannot compile because the right-hand literal contains non-ASCII bytes</li>
       </ul>
-      <p><strong>Practical rule:</strong> <code>.ecmd</code> helpers are safe for ASCII-only input &mdash; digits, plain English letters, punctuation. Use them for <code>num2rom</code>/<code>rom2num</code>, padding, digit stripping, simple parsing. Anything that needs per-character work on text that may contain umlauts, accented letters, CJK, emojis, or other non-ASCII content belongs in the <strong>Lua engine</strong>, which exposes Lua's <code>utf8.*</code> library (<code>utf8.len</code>, <code>utf8.offset</code>, <code>utf8.char</code>, <code>utf8.codepoint</code>) for correct multi-byte handling. ExprTk has no equivalent.</p>
+      <p><strong>Practical rule:</strong> <code>.elib</code> helpers are safe for ASCII-only input &mdash; digits, plain English letters, punctuation. Use them for <code>num2rom</code>/<code>rom2num</code>, padding, digit stripping, simple parsing. Anything that needs per-character work on text that may contain umlauts, accented letters, CJK, emojis, or other non-ASCII content belongs in the <strong>Lua engine</strong>, which exposes Lua's <code>utf8.*</code> library (<code>utf8.len</code>, <code>utf8.offset</code>, <code>utf8.char</code>, <code>utf8.codepoint</code>) for correct multi-byte handling. ExprTk has no equivalent.</p>
     </section>
     <p><strong>A minimal complete example.</strong> Strip leading zeros from a captured number string:</p>
     <pre><code>function strip_zeros(s: S) : S
@@ -2409,7 +2409,7 @@ end
       </tr>
       <tr>
         <td><em>(empty)</em></td>
-        <td><code>(?=ecmd('C:/tmp/helpers.ecmd'))</code></td>
+        <td><code>(?=loadlib('C:/tmp/helpers.elib'))</code></td>
         <td>No</td>
         <td>Load library.</td>
       </tr>
@@ -2423,7 +2423,7 @@ end
 
     <h3>Complete example: ID-tag generator</h3>
     <p>Spec: wrap each captured number in a fixed-width zero-padded ID tag like <code>[ID-00042]</code>. Demonstrates a library function that takes both a number and a width, returns a string, and composes with literals at the call site.</p>
-    <p><code>C:/Data/Projekte/MultiReplace/idtag.ecmd</code>:</p>
+    <p><code>C:/Data/Projekte/MultiReplace/idtag.elib</code>:</p>
     <pre><code>function padleft(s: S, n, fill: S) : S
     var r := s;
     while (r[] &lt; n) { r := fill + r; };
@@ -2466,7 +2466,7 @@ end
       </tr>
       <tr>
         <td><em>(empty)</em></td>
-        <td><code>(?=ecmd('C:/Data/Projekte/MultiReplace/idtag.ecmd'))</code></td>
+        <td><code>(?=loadlib('C:/Data/Projekte/MultiReplace/idtag.elib'))</code></td>
         <td>No</td>
         <td>Load library.</td>
       </tr>
@@ -2595,7 +2595,7 @@ end
   <section id="exprtk-date">
     <h2>Date Handling</h2>
     <p>ExprTk provides one date-related function, the inverse of the <code>D[fmt]</code> output spec:</p>
-    <p><code>parsedate(text, fmt)  -&gt;  Unix timestamp</code></p>
+    <p><code>todate(text, fmt)  -&gt;  Unix timestamp</code></p>
     <p>Parses <code>text</code> against the strftime-style <code>fmt</code> pattern and returns the resulting time as seconds since 1970-01-01 UTC. As with <code>D[fmt]</code>:</p>
     <ul>
       <li>without <code>!</code> prefix &rarr; input is interpreted as <strong>local time</strong></li>
@@ -2604,7 +2604,7 @@ end
     <p>On parse failure (malformed input, out-of-range fields, format mismatch) the function returns <code>NaN</code>, which flows through the standard recoverable-error dialog &mdash; the match stays untouched on Skip.</p>
 
     <h3>Supported format specifiers</h3>
-    <p><code>parsedate</code> accepts a deliberately small subset of strftime &mdash; everything you need for the common date formats, nothing locale-dependent:</p>
+    <p><code>todate</code> accepts a deliberately small subset of strftime &mdash; everything you need for the common date formats, nothing locale-dependent:</p>
     <table class="optionsTable">
       <tr><th>Specifier</th><th>Meaning</th></tr>
       <tr><td><code>%Y</code></td><td>4-digit year</td></tr>
@@ -2623,22 +2623,22 @@ end
     <p>Whitespace in the format matches <strong>zero or more</strong> whitespace characters in the input. Literal characters must match exactly. Trailing characters in the input beyond what the format consumes are tolerated.</p>
 
     <h3>Quoting the format string in ExprTk</h3>
-    <p><strong>Use single quotes</strong> for <code>parsedate</code>'s format string. ExprTk's lexer treats <code>!</code> as a logical-NOT operator and <code>%</code> as the modulo operator; both are interpreted differently when they appear directly after a double quote. Single-quoted strings are taken verbatim:</p>
+    <p><strong>Use single quotes</strong> for <code>todate</code>'s format string. ExprTk's lexer treats <code>!</code> as a logical-NOT operator and <code>%</code> as the modulo operator; both are interpreted differently when they appear directly after a double quote. Single-quoted strings are taken verbatim:</p>
     <table class="optionsTable">
       <tr><th>Form</th><th>Status</th></tr>
-      <tr><td><code>parsedate(txt(0), '%Y-%m-%d')</code></td><td>&check; works</td></tr>
-      <tr><td><code>parsedate(txt(0), '!%Y-%m-%d')</code></td><td>&check; works (UTC)</td></tr>
-      <tr><td><code>parsedate(txt(0), "%Y-%m-%d")</code></td><td>&times; token error</td></tr>
+      <tr><td><code>todate(txt(0), '%Y-%m-%d')</code></td><td>&check; works</td></tr>
+      <tr><td><code>todate(txt(0), '!%Y-%m-%d')</code></td><td>&check; works (UTC)</td></tr>
+      <tr><td><code>todate(txt(0), "%Y-%m-%d")</code></td><td>&times; token error</td></tr>
     </table>
     <p><code>D[fmt]</code> is not affected &mdash; the spec sits inside <code>[...]</code> brackets and bypasses the ExprTk lexer entirely.</p>
 
     <h3>Time-zone consistency in round-trips</h3>
-    <p>Mixing local and UTC across <code>parsedate</code> and <code>D[...]</code> produces an offset of one time zone. For predictable round-trips, use the <strong>same</strong> UTC/local choice on both sides:</p>
+    <p>Mixing local and UTC across <code>todate</code> and <code>D[...]</code> produces an offset of one time zone. For predictable round-trips, use the <strong>same</strong> UTC/local choice on both sides:</p>
     <table class="optionsTable">
       <tr><th>Form</th><th>Status</th></tr>
-      <tr><td><code>(?= parsedate(txt(0), '!%Y-%m-%d') ~ D[!%Y-%m-%d] )</code></td><td>&check; pure UTC</td></tr>
-      <tr><td><code>(?= parsedate(txt(0), '%Y-%m-%d') ~ D[%Y-%m-%d] )</code></td><td>&check; pure local</td></tr>
-      <tr><td><code>(?= parsedate(txt(0), '%Y-%m-%d') ~ D[!%Y-%m-%d] )</code></td><td>&#9888; offset by local TZ</td></tr>
+      <tr><td><code>(?= todate(txt(0), '!%Y-%m-%d') ~ D[!%Y-%m-%d] )</code></td><td>&check; pure UTC</td></tr>
+      <tr><td><code>(?= todate(txt(0), '%Y-%m-%d') ~ D[%Y-%m-%d] )</code></td><td>&check; pure local</td></tr>
+      <tr><td><code>(?= todate(txt(0), '%Y-%m-%d') ~ D[!%Y-%m-%d] )</code></td><td>&#9888; offset by local TZ</td></tr>
     </table>
     <p>The third form is occasionally what you want (e.g. converting a wall-clock log time to a UTC timestamp for storage), but it should be a conscious choice.</p>
 
@@ -2646,10 +2646,10 @@ end
     <p>Once a date is a Unix timestamp it's just a number, so all of ExprTk's math applies. A few patterns that come up often:</p>
     <table class="optionsTable">
       <tr><th>Goal</th><th>Snippet</th></tr>
-      <tr><td>Add one day</td><td><code>parsedate(txt(0), '!%Y-%m-%d') + 86400</code></td></tr>
-      <tr><td>Add one week</td><td><code>parsedate(txt(0), '!%Y-%m-%d') + 7 * 86400</code></td></tr>
-      <tr><td>Add one hour</td><td><code>parsedate(txt(0), '!%Y-%m-%dT%H:%M:%S') + 3600</code></td></tr>
-      <tr><td>Difference (days)</td><td><code>(parsedate(txt(2), '!%F') - parsedate(txt(1), '!%F')) / 86400</code></td></tr>
+      <tr><td>Add one day</td><td><code>todate(txt(0), '!%Y-%m-%d') + 86400</code></td></tr>
+      <tr><td>Add one week</td><td><code>todate(txt(0), '!%Y-%m-%d') + 7 * 86400</code></td></tr>
+      <tr><td>Add one hour</td><td><code>todate(txt(0), '!%Y-%m-%dT%H:%M:%S') + 3600</code></td></tr>
+      <tr><td>Difference (days)</td><td><code>(todate(txt(2), '!%F') - todate(txt(1), '!%F')) / 86400</code></td></tr>
     </table>
     <p>There is no built-in "add one month" &mdash; months have variable length, so adding <code>30 * 86400</code> is the usual approximation. For exact month arithmetic, switch to the Lua engine which exposes the full <code>os.date</code> / <code>os.time</code> table API.</p>
   </section>
@@ -2811,10 +2811,10 @@ end
       </tr>
       <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ D[!%Y-%m-%d])</code></td><td>Unix timestamp &rarr; ISO date in UTC.</td></tr>
       <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ D[!%Y-%m-%dT%H:%M:%SZ])</code></td><td>Unix timestamp &rarr; ISO 8601 with Z suffix.</td></tr>
-      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=parsedate(txt(0), '!%Y-%m-%d') ~ D[!%d.%m.%Y])</code></td><td>Reformat ISO date &rarr; DD.MM.YYYY.</td></tr>
-      <tr><td><code>(\d{2})\.(\d{2})\.(\d{4})</code></td><td><code>(?=parsedate(txt(0), '!%d.%m.%Y') ~ D[!%Y-%m-%d])</code></td><td>Reformat DD.MM.YYYY &rarr; ISO date.</td></tr>
-      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=parsedate(txt(0), '!%Y-%m-%d') + 86400 ~ D[!%Y-%m-%d])</code></td><td>Shift every ISO date by +1 day.</td></tr>
-      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=parsedate(txt(0), '!%Y-%m-%d') ~ D[!%A])</code></td><td>Replace each ISO date with its weekday name.</td></tr>
+      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), '!%Y-%m-%d') ~ D[!%d.%m.%Y])</code></td><td>Reformat ISO date &rarr; DD.MM.YYYY.</td></tr>
+      <tr><td><code>(\d{2})\.(\d{2})\.(\d{4})</code></td><td><code>(?=todate(txt(0), '!%d.%m.%Y') ~ D[!%Y-%m-%d])</code></td><td>Reformat DD.MM.YYYY &rarr; ISO date.</td></tr>
+      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), '!%Y-%m-%d') + 86400 ~ D[!%Y-%m-%d])</code></td><td>Shift every ISO date by +1 day.</td></tr>
+      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), '!%Y-%m-%d') ~ D[!%A])</code></td><td>Replace each ISO date with its weekday name.</td></tr>
     </table>
 
     <h3>Counters</h3>
@@ -2843,12 +2843,12 @@ end
     <h2>Limitations</h2>
     <p>ExprTk is deliberately scoped. Things it does <strong>not</strong> do:</p>
     <ul>
-      <li><strong>Limited string manipulation inside <code>(?=...)</code>.</strong> Inline blocks support string composition with the <code>+</code> operator (e.g. <code>(?='&lt;' + txt(1) + '&gt;')</code>), and can pass strings through captures, <code>txt(N)</code>, <code>txtcol</code>, <code>FNAME</code>, <code>FPATH</code>, and the conversion built-ins. For substring slicing, indexed access, and length, write helper functions in a <code>.ecmd</code> library &mdash; bodies have <code>s[]</code>, <code>s[i:j]</code>, and <code>+</code> available (see <a href="#exprtk-ecmd">Library Loading via ecmd</a>). (<code>parsedate</code> is the one inline exception that consumes a string and returns a number.)</li>
-      <li><strong>UTF-8 inside string literals fails to compile.</strong> A literal like <code>'Gr&ouml;&szlig;e'</code> between <code>'...'</code> will produce an <code>Invalid string token</code> error. This applies to both inline expressions and <code>.ecmd</code> bodies. Use captures or place non-ASCII text outside the <code>(?=...)</code> block. Captures themselves arrive as UTF-8 bytes and can be passed through unchanged, but per-character slicing breaks them &mdash; see the warning in <a href="#exprtk-ecmd">Library Loading via ecmd</a>.</li>
+      <li><strong>Limited string manipulation inside <code>(?=...)</code>.</strong> Inline blocks support string composition with the <code>+</code> operator (e.g. <code>(?='&lt;' + txt(1) + '&gt;')</code>), and can pass strings through captures, <code>txt(N)</code>, <code>txtcol</code>, <code>FNAME</code>, <code>FPATH</code>, and the conversion built-ins. For substring slicing, indexed access, and length, write helper functions in a <code>.elib</code> library &mdash; bodies have <code>s[]</code>, <code>s[i:j]</code>, and <code>+</code> available (see <a href="#exprtk-ecmd">Library Loading via loadlib</a>). (<code>todate</code> is the one inline exception that consumes a string and returns a number.)</li>
+      <li><strong>UTF-8 inside string literals fails to compile.</strong> A literal like <code>'Gr&ouml;&szlig;e'</code> between <code>'...'</code> will produce an <code>Invalid string token</code> error. This applies to both inline expressions and <code>.elib</code> bodies. Use captures or place non-ASCII text outside the <code>(?=...)</code> block. Captures themselves arrive as UTF-8 bytes and can be passed through unchanged, but per-character slicing breaks them &mdash; see the warning in <a href="#exprtk-ecmd">Library Loading via loadlib</a>.</li>
       <li><strong>No state across matches.</strong> Each <code>(?=...)</code> evaluation starts fresh. The numeric counters (<code>CNT</code>, <code>LCNT</code>) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use <code>vars({...})</code>.</li>
-      <li><strong>No data file loading.</strong> ExprTk has no equivalent to Lua's <code>lvars</code> (preload variables from disk) or <code>lkp</code> (key lookup from disk). <code>ecmd</code> loads <strong>code</strong>, not data.</li>
-      <li><strong><code>parsedate</code> is intentionally minimal.</strong> It accepts the common strftime specifiers (<code>%Y %y %m %d %H %M %S %I %p %F %T %%</code>) &mdash; enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (<code>%B</code>), weekday names (<code>%A</code>), or week numbers (<code>%V</code>) are <strong>not</strong> accepted on the input side. For richer date input parsing, use Lua's date handling instead.</li>
-      <li><strong>Date timestamps must be &ge; 0.</strong> <code>D[fmt]</code> and <code>parsedate</code> only handle years 1970 onwards. Negative timestamps produce empty output or NaN respectively.</li>
+      <li><strong>No data file loading.</strong> ExprTk has no equivalent to Lua's <code>lvars</code> (preload variables from disk) or <code>lkp</code> (key lookup from disk). <code>loadlib</code> loads <strong>code</strong>, not data.</li>
+      <li><strong><code>todate</code> is intentionally minimal.</strong> It accepts the common strftime specifiers (<code>%Y %y %m %d %H %M %S %I %p %F %T %%</code>) &mdash; enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (<code>%B</code>), weekday names (<code>%A</code>), or week numbers (<code>%V</code>) are <strong>not</strong> accepted on the input side. For richer date input parsing, use Lua's date handling instead.</li>
+      <li><strong>Date timestamps must be &ge; 0.</strong> <code>D[fmt]</code> and <code>todate</code> only handle years 1970 onwards. Negative timestamps produce empty output or NaN respectively.</li>
     </ul>
   </section>
 

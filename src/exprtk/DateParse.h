@@ -7,7 +7,7 @@
 //
 // DateParse.h
 // Parser for date/time strings against a strftime-style format. Used
-// by the ExprTk parsedate() function as the inverse of D[fmt] output.
+// by the ExprTk todate() function as the inverse of D[fmt] output.
 //
 // Supported specifiers:
 //   %Y  4-digit year         %F  shortcut for %Y-%m-%d
@@ -42,7 +42,7 @@ namespace MultiReplace {
     // mismatch or out-of-range value; tm contents are undefined after
     // a failed parse.
     bool parseDateTime(std::string_view input,
-                       std::string_view format,
-                       std::tm& tm);
+        std::string_view format,
+        std::tm& tm);
 
 }  // namespace MultiReplace

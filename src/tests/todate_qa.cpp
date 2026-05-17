@@ -1,7 +1,7 @@
 // Standalone tests for DateParse.
 // Compile:
-//   g++ -std=c++20 -Wall -Wextra parsedate_qa.cpp ../fs/DateParse.cpp -o parsedate_qa
-//   ./parsedate_qa [-v]
+//   g++ -std=c++20 -Wall -Wextra todate_qa.cpp ../fs/DateParse.cpp -o todate_qa
+//   ./todate_qa [-v]
 
 #include "../exprtk/DateParse.h"
 
