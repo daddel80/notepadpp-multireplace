@@ -14,7 +14,7 @@
 // through a thin public surface.
 
 #include "../exprtk/EcmdParser.h"
-#include "../exprtk/exprtk.hpp"
+#include "../exprtk/third_party/exprtk.hpp"
 
 #include <cstdio>
 #include <cstring>

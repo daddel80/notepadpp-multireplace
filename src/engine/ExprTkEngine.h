@@ -81,7 +81,7 @@
 // ExprTk is a single-header library that pulls in a fair amount of
 // template machinery, so the include lives here in the engine TU
 // only. Other code paths see ExprTkEngine through IFormulaEngine.
-#include "../exprtk/exprtk.hpp"
+#include "../exprtk/third_party/exprtk.hpp"
 
 #include <memory>
 #include <string>

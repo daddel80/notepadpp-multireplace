@@ -976,7 +976,7 @@ namespace MultiReplaceEngine {
     double ExprTkEngine::NumFunction::operator()(const std::size_t& /*psi*/,
         parameter_list_t parameters)
     {
-        const double nanResult = std::numeric_limits<double>::quiet_NaN();
+        constexpr double nanResult = std::numeric_limits<double>::quiet_NaN();
 
         const std::size_t arity = parameters.size();
         if (arity < 1 || arity > 3 || !_owner) {
@@ -1130,7 +1130,7 @@ namespace MultiReplaceEngine {
     double ExprTkEngine::TodateFunction::operator()(
         parameter_list_t parameters)
     {
-        const double nanResult = std::numeric_limits<double>::quiet_NaN();
+        constexpr double nanResult = std::numeric_limits<double>::quiet_NaN();
 
         if (parameters.size() != 2) {
             return nanResult;
@@ -1323,7 +1323,7 @@ namespace MultiReplaceEngine {
     double ExprTkEngine::Base2NumFunction::operator()(
         parameter_list_t parameters)
     {
-        const double nanResult = std::numeric_limits<double>::quiet_NaN();
+        constexpr double nanResult = std::numeric_limits<double>::quiet_NaN();
 
         if (parameters.size() != 1) {
             return nanResult;
@@ -1439,7 +1439,7 @@ namespace MultiReplaceEngine {
     double ExprTkEngine::Rom2NumFunction::operator()(
         parameter_list_t parameters)
     {
-        const double nanResult = std::numeric_limits<double>::quiet_NaN();
+        constexpr double nanResult = std::numeric_limits<double>::quiet_NaN();
 
         if (parameters.size() != 1) return nanResult;
         const string_t sv(parameters[0]);
@@ -1909,7 +1909,7 @@ namespace MultiReplaceEngine {
     double ExprTkEngine::NumOutFunction::operator()(const std::size_t& /*psi*/,
         parameter_list_t parameters)
     {
-        const double nanResult = std::numeric_limits<double>::quiet_NaN();
+        constexpr double nanResult = std::numeric_limits<double>::quiet_NaN();
 
         const std::size_t arity = parameters.size();
         if (!_owner || arity < 1 || arity > 3) return 0.0;
@@ -2000,7 +2000,7 @@ namespace MultiReplaceEngine {
     double ExprTkEngine::NumPrevFunction::operator()(const std::size_t& /*psi*/,
         parameter_list_t parameters)
     {
-        const double nanResult = std::numeric_limits<double>::quiet_NaN();
+        constexpr double nanResult = std::numeric_limits<double>::quiet_NaN();
 
         const std::size_t arity = parameters.size();
         if (!_owner || arity > 2) return 0.0;

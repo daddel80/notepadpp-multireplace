@@ -321,7 +321,7 @@ namespace FormatSpec {
             long long mins = rem / 60;
             long long secs = rem % 60;
 
-            char buf[64];
+            char buf[64] = {};
             switch (spec.durationMode) {
             case DurationMode::Ms:
                 // M:SS - minutes can grow large; no day/hour folding.
