@@ -699,6 +699,7 @@ ExprTk ships with a substantially richer numeric library than Lua's `math.*`. Th
 | `mod(a, b)` or `a % b`  | Modulo.                                                    |
 | `clamp(lo, x, hi)`      | Constrain `x` to the range `[lo, hi]`.                     |
 | `inrange(lo, x, hi)`    | 1 if `lo <= x <= hi`, else 0.                              |
+| `isnum(x)`              | 1 if `x` is a finite number, else 0. Generic — accepts a number (`isnum(num(1))`, `isnum(2*x)`) or a string (`isnum(txt(1))`, `isnum('42')`). |
 
 #### Aggregates (variadic)
 
@@ -725,6 +726,27 @@ ExprTk ships with a substantially richer numeric library than Lua's `math.*`. Th
 #### Constants
 
 `pi`, `epsilon`, `inf`.
+
+#### Random
+
+| Function           | Description                                                                 |
+|--------------------|-----------------------------------------------------------------------------|
+| `rnd()`            | Uniform real in `[0, 1)`.                                                   |
+| `rnd(hi)`          | Integer in `[1, hi]` inclusive. Degenerate input (`hi < 1`) returns `0`.    |
+| `rnd(lo, hi)`      | Integer in `[lo, hi]` inclusive. Reversed arguments are tolerated.          |
+| `rndseed(n)`       | Reseed the generator for reproducible sequences. Returns `n`.               |
+
+The generator is Mersenne Twister 64-bit (`std::mt19937_64`), seeded once at startup from system entropy via `std::seed_seq` with four random words for proper initial-state distribution. Not cryptographic.
+
+Examples:
+
+```
+(?= rnd() )                  # 0.34782...
+(?= rnd(6) )                 # 1..6 (dice roll)
+(?= rnd(10, 99) )            # two-digit integer
+(?= rnd() < 0.3 ? 'A' : 'B') # ~30% A, ~70% B (inside return [...])
+(?= rndseed(42); rnd() )     # always the same draw for seed 42
+```
 
 <br>
 
@@ -1158,7 +1180,29 @@ Grammar:
 
 Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through `strftime`. The optional `!` prefix forces UTC; without it the system's local time zone is used. This follows the same convention as Lua's `os.date()`.
 
-The pattern uses standard strftime conversion specifiers — `%Y`, `%m`, `%d`, `%H`, `%M`, `%S`, `%A`, `%B`, `%c`, etc. Literal text between specifiers is passed through verbatim.
+The pattern accepts any standard strftime specifier. Literal text between specifiers is passed through verbatim. Common specifiers:
+
+| Specifier   | Meaning                                                    |
+|-------------|------------------------------------------------------------|
+| `%Y` `%y`   | 4-digit year / 2-digit year                                |
+| `%m` `%d`   | Month (01..12) / day of month (01..31)                     |
+| `%H` `%I`   | Hour 24h (00..23) / hour 12h (01..12)                      |
+| `%M` `%S`   | Minute (00..59) / second (00..60)                          |
+| `%A` `%a`   | Full weekday name / abbreviated (`Monday` / `Mon`)         |
+| `%B` `%b`   | Full month name / abbreviated (`January` / `Jan`)          |
+| `%j`        | Day of year (001..366)                                     |
+| `%V`        | ISO 8601 week number (01..53)                              |
+| `%U` `%W`   | Week number, Sunday-start / Monday-start                   |
+| `%F`        | Shortcut for `%Y-%m-%d`                                    |
+| `%T`        | Shortcut for `%H:%M:%S`                                    |
+| `%R`        | Shortcut for `%H:%M`                                       |
+| `%D`        | Shortcut for `%m/%d/%y`                                    |
+| `%c` `%x` `%X` | Locale-aware date+time / date / time                    |
+| `%p`        | `AM` / `PM` (locale-dependent)                             |
+| `%z` `%Z`   | Timezone offset (`+0200`) / name (`CEST`)                  |
+| `%%`        | Literal `%`                                                |
+
+Weekday/month names follow the system locale. The full list of `strftime` specifiers is platform-defined and passes through verbatim — anything your C library supports works here.
 
 | Spec                       | Timestamp     | Output (UTC)                       |
 |----------------------------|---------------|------------------------------------|
@@ -1188,7 +1232,30 @@ The pattern uses standard strftime conversion specifiers — `%Y`, `%m`, `%d`, `
 
 ### Date Handling
 
-ExprTk provides one date-related function, the inverse of the `D[fmt]` output spec:
+ExprTk provides three date-related functions:
+
+```
+now()              ->  Unix timestamp (current time, with subsecond fraction)
+today()            ->  Unix timestamp at local midnight today
+todate(text, fmt)  ->  Unix timestamp (parses a date string)
+```
+
+All three return seconds since 1970-01-01 UTC as `double`. They pair directly with `D[fmt]` for output.
+
+`now()` reads the current system clock on every call (it's live, not cached per replace-all). To freeze it for a multi-step expression, assign it once: `var t := now(); ...`.
+
+`today()` is the timestamp of **00:00:00 in the local time zone today** — useful for "seconds since midnight" patterns or comparing dates without time-of-day.
+
+Examples:
+
+```
+(?= now() ~ D[%Y-%m-%d %H:%M:%S] )      # current local timestamp
+(?= today() ~ D[%Y-%m-%d] )             # today's date only
+(?= (now() - today()) / 3600 )          # hours since midnight (e.g. 14.67)
+(?= floor((now() - todate(txt(1), '%Y-%m-%d')) / 86400) )  # days since a date
+```
+
+For `todate` specifically, the inverse of the `D[fmt]` output spec:
 
 ```
 todate(text, fmt)  ->  Unix timestamp
@@ -1203,7 +1270,7 @@ On parse failure (malformed input, out-of-range fields, format mismatch) the fun
 
 <br>
 
-#### Supported format specifiers
+#### Format specifiers for parsing (todate)
 
 `todate` accepts a deliberately small subset of strftime — everything you need for the common date formats, nothing locale-dependent:
 
@@ -1290,6 +1357,7 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 | `(\d+)`       | `(?=num(1) < 100 ? skip() : num(1))`                          | Keep only numbers ≥ 100; smaller ones stay untouched (skipped, not zeroed).|
 | `(\d+\.?\d*)` | `(?=inrange(0, num(1), 1) ? num(1) : skip())`                 | Keep only values in `[0..1]`, skip the rest.                               |
 | `(\d+\.?\d*)` | `(?=num(1) > avg(0, 100, 200) ? num(1) : skip())`             | Skip below-average values (here against a fixed reference average).        |
+| `(\S+)`       | `(?=isnum(txt(1)) ? num(1) * 2 : skip())`                     | Double numeric captures, leave non-numeric ones untouched.                 |
 
 #### Mixed expressions in one rule
 

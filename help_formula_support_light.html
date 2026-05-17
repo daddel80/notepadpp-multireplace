@@ -1925,6 +1925,7 @@ return {
       <tr><td><code>mod(a, b)</code> or <code>a % b</code></td><td>Modulo.</td></tr>
       <tr><td><code>clamp(lo, x, hi)</code></td><td>Constrain <code>x</code> to the range <code>[lo, hi]</code>.</td></tr>
       <tr><td><code>inrange(lo, x, hi)</code></td><td>1 if <code>lo &le; x &le; hi</code>, else 0.</td></tr>
+      <tr><td><code>isnum(x)</code></td><td>1 if <code>x</code> is a finite number, else 0. Generic &mdash; accepts a number (<code>isnum(num(1))</code>, <code>isnum(2*x)</code>) or a string (<code>isnum(txt(1))</code>, <code>isnum('42')</code>).</td></tr>
     </table>
 
     <h3>Aggregates (variadic)</h3>
@@ -1956,6 +1957,25 @@ return {
 
     <h3>Constants</h3>
     <p><code>pi</code>, <code>epsilon</code>, <code>inf</code>.</p>
+
+    <h3>Random</h3>
+    <table class="optionsTable">
+      <tr>
+        <th>Function</th>
+        <th>Description</th>
+      </tr>
+      <tr><td><code>rnd()</code></td><td>Uniform real in <code>[0, 1)</code>.</td></tr>
+      <tr><td><code>rnd(hi)</code></td><td>Integer in <code>[1, hi]</code> inclusive. Degenerate input (<code>hi &lt; 1</code>) returns <code>0</code>.</td></tr>
+      <tr><td><code>rnd(lo, hi)</code></td><td>Integer in <code>[lo, hi]</code> inclusive. Reversed arguments are tolerated.</td></tr>
+      <tr><td><code>rndseed(n)</code></td><td>Reseed the generator for reproducible sequences. Returns <code>n</code>.</td></tr>
+    </table>
+    <p>The generator is Mersenne Twister 64-bit (<code>std::mt19937_64</code>), seeded once at startup from system entropy via <code>std::seed_seq</code> with four random words for proper initial-state distribution. Not cryptographic.</p>
+    <p>Examples:</p>
+    <pre><code>(?= rnd() )                  # 0.34782...
+(?= rnd(6) )                 # 1..6 (dice roll)
+(?= rnd(10, 99) )            # two-digit integer
+(?= rnd() &lt; 0.3 ? 'A' : 'B') # ~30% A, ~70% B (inside return [...])
+(?= rndseed(42); rnd() )     # always the same draw for seed 42</code></pre>
   </section>
 
   <br>
@@ -2567,7 +2587,31 @@ end
       <li><code>D[!strftime_pattern]</code> &mdash; UTC</li>
     </ul>
     <p>Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through <code>strftime</code>. The optional <code>!</code> prefix forces UTC; without it the system's local time zone is used. This follows the same convention as Lua's <code>os.date()</code>.</p>
-    <p>The pattern uses standard strftime conversion specifiers &mdash; <code>%Y</code>, <code>%m</code>, <code>%d</code>, <code>%H</code>, <code>%M</code>, <code>%S</code>, <code>%A</code>, <code>%B</code>, <code>%c</code>, etc. Literal text between specifiers is passed through verbatim.</p>
+    <p>The pattern accepts any standard strftime specifier. Literal text between specifiers is passed through verbatim. Common specifiers:</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Specifier</th>
+        <th>Meaning</th>
+      </tr>
+      <tr><td><code>%Y</code> <code>%y</code></td><td>4-digit year / 2-digit year</td></tr>
+      <tr><td><code>%m</code> <code>%d</code></td><td>Month (01..12) / day of month (01..31)</td></tr>
+      <tr><td><code>%H</code> <code>%I</code></td><td>Hour 24h (00..23) / hour 12h (01..12)</td></tr>
+      <tr><td><code>%M</code> <code>%S</code></td><td>Minute (00..59) / second (00..60)</td></tr>
+      <tr><td><code>%A</code> <code>%a</code></td><td>Full weekday name / abbreviated (<code>Monday</code> / <code>Mon</code>)</td></tr>
+      <tr><td><code>%B</code> <code>%b</code></td><td>Full month name / abbreviated (<code>January</code> / <code>Jan</code>)</td></tr>
+      <tr><td><code>%j</code></td><td>Day of year (001..366)</td></tr>
+      <tr><td><code>%V</code></td><td>ISO 8601 week number (01..53)</td></tr>
+      <tr><td><code>%U</code> <code>%W</code></td><td>Week number, Sunday-start / Monday-start</td></tr>
+      <tr><td><code>%F</code></td><td>Shortcut for <code>%Y-%m-%d</code></td></tr>
+      <tr><td><code>%T</code></td><td>Shortcut for <code>%H:%M:%S</code></td></tr>
+      <tr><td><code>%R</code></td><td>Shortcut for <code>%H:%M</code></td></tr>
+      <tr><td><code>%D</code></td><td>Shortcut for <code>%m/%d/%y</code></td></tr>
+      <tr><td><code>%c</code> <code>%x</code> <code>%X</code></td><td>Locale-aware date+time / date / time</td></tr>
+      <tr><td><code>%p</code></td><td><code>AM</code> / <code>PM</code> (locale-dependent)</td></tr>
+      <tr><td><code>%z</code> <code>%Z</code></td><td>Timezone offset (<code>+0200</code>) / name (<code>CEST</code>)</td></tr>
+      <tr><td><code>%%</code></td><td>Literal <code>%</code></td></tr>
+    </table>
+    <p>Weekday/month names follow the system locale. The full list of <code>strftime</code> specifiers is platform-defined and passes through verbatim &mdash; anything your C library supports works here.</p>
     <table class="optionsTable">
       <tr><th>Spec</th><th>Timestamp</th><th>Output (UTC)</th></tr>
       <tr><td><code>D[!%Y-%m-%d]</code></td><td><code>1700000000</code></td><td><code>2023-11-14</code></td></tr>
@@ -2594,7 +2638,19 @@ end
 
   <section id="exprtk-date">
     <h2>Date Handling</h2>
-    <p>ExprTk provides one date-related function, the inverse of the <code>D[fmt]</code> output spec:</p>
+    <p>ExprTk provides three date-related functions:</p>
+    <pre><code>now()              -&gt;  Unix timestamp (current time, with subsecond fraction)
+today()            -&gt;  Unix timestamp at local midnight today
+todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
+    <p>All three return seconds since 1970-01-01 UTC as <code>double</code>. They pair directly with <code>D[fmt]</code> for output.</p>
+    <p><code>now()</code> reads the current system clock on every call (it's live, not cached per replace-all). To freeze it for a multi-step expression, assign it once: <code>var t := now(); ...</code>.</p>
+    <p><code>today()</code> is the timestamp of <strong>00:00:00 in the local time zone today</strong> &mdash; useful for "seconds since midnight" patterns or comparing dates without time-of-day.</p>
+    <p>Examples:</p>
+    <pre><code>(?= now() ~ D[%Y-%m-%d %H:%M:%S] )      # current local timestamp
+(?= today() ~ D[%Y-%m-%d] )             # today's date only
+(?= (now() - today()) / 3600 )          # hours since midnight (e.g. 14.67)
+(?= floor((now() - todate(txt(1), '%Y-%m-%d')) / 86400) )  # days since a date</code></pre>
+    <p>For <code>todate</code> specifically, the inverse of the <code>D[fmt]</code> output spec:</p>
     <p><code>todate(text, fmt)  -&gt;  Unix timestamp</code></p>
     <p>Parses <code>text</code> against the strftime-style <code>fmt</code> pattern and returns the resulting time as seconds since 1970-01-01 UTC. As with <code>D[fmt]</code>:</p>
     <ul>
@@ -2603,7 +2659,7 @@ end
     </ul>
     <p>On parse failure (malformed input, out-of-range fields, format mismatch) the function returns <code>NaN</code>, which flows through the standard recoverable-error dialog &mdash; the match stays untouched on Skip.</p>
 
-    <h3>Supported format specifiers</h3>
+    <h3>Format specifiers for parsing (todate)</h3>
     <p><code>todate</code> accepts a deliberately small subset of strftime &mdash; everything you need for the common date formats, nothing locale-dependent:</p>
     <table class="optionsTable">
       <tr><th>Specifier</th><th>Meaning</th></tr>
@@ -2715,6 +2771,11 @@ end
         <td><code>(\d+\.?\d*)</code></td>
         <td><code>(?=num(1) &gt; avg(0, 100, 200) ? num(1) : skip())</code></td>
         <td>Skip below-average values (here against a fixed reference average).</td>
+      </tr>
+      <tr>
+        <td><code>(\S+)</code></td>
+        <td><code>(?=isnum(txt(1)) ? num(1) * 2 : skip())</code></td>
+        <td>Double numeric captures, leave non-numeric ones untouched.</td>
       </tr>
     </table>
 

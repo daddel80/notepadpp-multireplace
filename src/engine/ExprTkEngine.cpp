@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <ctime>
@@ -91,6 +92,11 @@ namespace MultiReplaceEngine {
         , _txtPrevFunction(this)
         , _numColFunction(this)
         , _txtColFunction(this)
+        , _isNumFunction()
+        , _rndFunction()
+        , _rndSeedFunction(&_rndFunction)
+        , _nowFunction()
+        , _todayFunction()
         , _todateFunction(this)
         , _num2hexFunction(this, 16)
         , _num2binFunction(this, 2)
@@ -179,6 +185,17 @@ namespace MultiReplaceEngine {
         // and caches the row's column array for repeated lookups.
         _symbolTable.add_function("numcol", _numColFunction);
         _symbolTable.add_function("txtcol", _txtColFunction);
+
+        // isnum(x) - finite-number predicate, accepts scalar or string.
+        _symbolTable.add_function("isnum", _isNumFunction);
+
+        // Pseudo-random number generator (mt19937_64, properly seeded).
+        _symbolTable.add_function("rnd", _rndFunction);
+        _symbolTable.add_function("rndseed", _rndSeedFunction);
+
+        // now() / today() - current time built-ins.
+        _symbolTable.add_function("now", _nowFunction);
+        _symbolTable.add_function("today", _todayFunction);
 
         // Register todate(str, fmt) - the inverse of D[fmt] output.
         // Returns Unix timestamp on success, NaN on parse failure.
@@ -2140,6 +2157,125 @@ namespace MultiReplaceEngine {
         if (!_owner) { result.clear(); return 0.0; }
         resolveCsvCell(_owner->_host, parameters, result);
         return 0.0;
+    }
+
+    double ExprTkEngine::IsNumFunction::operator()(
+        const std::size_t& /*psi*/,
+        parameter_list_t parameters)
+    {
+        if (parameters.size() != 1) return 0.0;
+
+        const auto& p = parameters[0];
+        if (p.type == generic_t::e_scalar) {
+            const scalar_t sv(p);
+            return std::isfinite(sv()) ? 1.0 : 0.0;
+        }
+        if (p.type == generic_t::e_string) {
+            const string_t sv(p);
+            const double v = parseCaptureToDouble(std::string(&sv[0], sv.size()));
+            return std::isfinite(v) ? 1.0 : 0.0;
+        }
+        return 0.0;
+    }
+
+    // ---------------------------------------------------------------------
+    // Random number generator: rnd() / rnd(hi) / rnd(lo, hi)
+    // ---------------------------------------------------------------------
+
+    ExprTkEngine::RndFunction::RndFunction()
+        : igenfunct_t("Z|T|TT")
+    {
+        // Allow the zero-argument variant rnd().
+        exprtk::enable_zero_parameters(*this);
+
+        // Seed the engine with 4 random_device words. A single word would
+        // only cover 32 of mt19937_64's state bits, leaving the early
+        // sequence biased; seed_seq with 4 words follows the C++ standard
+        // guidance for proper initial-state distribution.
+        std::random_device rd;
+        std::seed_seq seq{ rd(), rd(), rd(), rd() };
+        _engine.seed(seq);
+    }
+
+    double ExprTkEngine::RndFunction::operator()(
+        const std::size_t& /*psi*/,
+        parameter_list_t parameters)
+    {
+        const std::size_t arity = parameters.size();
+
+        // rnd() - uniform real in [0, 1).
+        if (arity == 0) {
+            std::uniform_real_distribution<double> dist(0.0, 1.0);
+            return dist(_engine);
+        }
+
+        // Convert scalar args. Non-finite inputs collapse to 0; integer
+        // truncation is intentional - "between 1 and 10.7" means 1..10.
+        auto toInt = [](double d) -> long long {
+            if (!std::isfinite(d)) return 0;
+            return static_cast<long long>(d);
+            };
+
+        if (arity == 1) {
+            const scalar_t s(parameters[0]);
+            const long long hi = toInt(s());
+            if (hi < 1) return 0.0;  // rnd(0) or rnd(negative): degenerate
+            std::uniform_int_distribution<long long> dist(1, hi);
+            return static_cast<double>(dist(_engine));
+        }
+
+        // arity == 2
+        const scalar_t a(parameters[0]);
+        const scalar_t b(parameters[1]);
+        long long lo = toInt(a());
+        long long hi = toInt(b());
+        if (hi < lo) std::swap(lo, hi);  // tolerate reversed args
+        std::uniform_int_distribution<long long> dist(lo, hi);
+        return static_cast<double>(dist(_engine));
+    }
+
+    double ExprTkEngine::RndSeedFunction::operator()(const double& seed)
+    {
+        if (!_rnd) return 0.0;
+        // Cast the user-supplied seed to uint64_t. Negative or fractional
+        // inputs are accepted - the bit pattern after the cast becomes the
+        // seed, which is deterministic for a given input.
+        _rnd->reseed(static_cast<std::uint64_t>(static_cast<long long>(seed)));
+        return seed;
+    }
+
+    // ---------------------------------------------------------------------
+    // Current time: now() / today()
+    // ---------------------------------------------------------------------
+
+    double ExprTkEngine::NowFunction::operator()()
+    {
+        // system_clock since epoch in microseconds, converted to seconds
+        // as double. Subsecond fraction is preserved; floor(now()) recovers
+        // whole seconds when needed.
+        const auto now = std::chrono::system_clock::now();
+        const auto us = std::chrono::duration_cast<std::chrono::microseconds>(
+            now.time_since_epoch()).count();
+        return static_cast<double>(us) / 1'000'000.0;
+    }
+
+    double ExprTkEngine::TodayFunction::operator()()
+    {
+        // Local midnight today as Unix seconds. localtime expands to broken-
+        // down local time; zeroing H/M/S and feeding back through mktime
+        // produces the timestamp at 00:00:00 in the host's local zone.
+        const std::time_t t = std::time(nullptr);
+        std::tm lt{};
+#ifdef _WIN32
+        localtime_s(&lt, &t);
+#else
+        localtime_r(&t, &lt);
+#endif
+        lt.tm_hour = 0;
+        lt.tm_min = 0;
+        lt.tm_sec = 0;
+        lt.tm_isdst = -1;  // let mktime resolve DST
+        return static_cast<double>(std::mktime(&lt));
     }
 
 } // namespace MultiReplaceEngine

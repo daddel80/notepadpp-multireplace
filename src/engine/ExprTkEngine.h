@@ -84,6 +84,7 @@
 #include "../exprtk/third_party/exprtk.hpp"
 
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -452,6 +453,85 @@ namespace MultiReplaceEngine {
 
         private:
             ExprTkEngine* _owner;
+        };
+
+        // isnum(x) - 1.0 if x is a finite number, 0.0 otherwise. Accepts
+        // a scalar (finite check) or a string (parse-then-finite check).
+        // The two paths converge: isnum(num(N)) and isnum(txt(N)) give
+        // identical results because num() runs the same parseCaptureToDouble.
+        class IsNumFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using scalar_t = typename generic_t::scalar_view;
+            using string_t = typename generic_t::string_view;
+
+            IsNumFunction() : igenfunct_t("T|S") {}
+
+            double operator()(const std::size_t& psi,
+                parameter_list_t parameters) override;
+        };
+
+        // rnd() / rnd(hi) / rnd(lo, hi) - pseudo-random numbers.
+        //   rnd()         uniform real in [0, 1)
+        //   rnd(hi)       integer in [1, hi] inclusive
+        //   rnd(lo, hi)   integer in [lo, hi] inclusive
+        // Engine is std::mt19937_64 seeded once at construction from
+        // std::random_device via std::seed_seq with 4 words (good initial
+        // state distribution per C++ standard guidance). rndseed(n) below
+        // can reseed for reproducible sequences.
+        class RndFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using scalar_t = typename generic_t::scalar_view;
+
+            RndFunction();
+
+            double operator()(const std::size_t& psi,
+                parameter_list_t parameters) override;
+
+            // Reseed for reproducibility. Used by RndSeedFunction.
+            void reseed(std::uint64_t s) { _engine.seed(s); }
+
+        private:
+            std::mt19937_64 _engine;
+        };
+
+        // rndseed(n) - reseed the rnd() generator for reproducible
+        // sequences. Returns the seed value unchanged so it composes
+        // cleanly in an expression.
+        class RndSeedFunction : public exprtk::ifunction<double> {
+        public:
+            explicit RndSeedFunction(RndFunction* rnd)
+                : exprtk::ifunction<double>(1), _rnd(rnd) {}
+
+            double operator()(const double& seed) override;
+
+        private:
+            RndFunction* _rnd;
+        };
+
+        // now() - current Unix timestamp in seconds, with subsecond
+        // fraction. Implemented as a live call (not cached per replace-all),
+        // so chained calls inside a single match see slightly different
+        // values. To freeze the value across a multi-step expression, store
+        // it: var t := now(); ...
+        class NowFunction : public exprtk::ifunction<double> {
+        public:
+            NowFunction() : exprtk::ifunction<double>(0) {}
+            double operator()() override;
+        };
+
+        // today() - Unix timestamp at local midnight today (00:00:00 in
+        // the system's local time zone). Useful for "seconds since
+        // midnight" patterns or comparing dates without time-of-day.
+        class TodayFunction : public exprtk::ifunction<double> {
+        public:
+            TodayFunction() : exprtk::ifunction<double>(0) {}
+            double operator()() override;
         };
 
         // ExprTk-callable: todate(str, fmt) -> Unix timestamp.
@@ -846,6 +926,18 @@ namespace MultiReplaceEngine {
         // CSV column access via the host (numcol/txtcol).
         NumColFunction _numColFunction;
         TxtColFunction _txtColFunction;
+
+        // isnum(x) - finite check, accepts scalars and strings.
+        IsNumFunction _isNumFunction;
+
+        // rnd() / rnd(hi) / rnd(lo, hi) and rndseed(n). RndSeedFunction
+        // holds a pointer to _rndFunction to reseed its engine in place.
+        RndFunction _rndFunction;
+        RndSeedFunction _rndSeedFunction;
+
+        // now() and today() - current time built-ins.
+        NowFunction _nowFunction;
+        TodayFunction _todayFunction;
 
         // The todate(str, fmt) callable for string-to-timestamp
         // parsing - the inverse of D[fmt] output.
