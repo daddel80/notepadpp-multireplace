@@ -17274,39 +17274,49 @@ void MultiReplace::rebuildTabControl()
     repositionNewTabButton();
 
     // After a rebuild the common control places the active tab
-    // somewhere visible - often centered when it is newly inserted
-    // at the end. That looks wrong: a freshly added tab should snap
-    // flush to the right edge so the strip reads continuously from
-    // left to right and "+" sits glued to it. Push the strip until
-    // no further right-scroll is possible: the common control will
-    // refuse to advance once the last tab is fully right-aligned.
-    if (!_tabs.empty()
-        && _activeTabIndex == static_cast<int>(_tabs.size()) - 1)
-    {
-        if (HWND hUpDown = FindWindowExW(hTab, nullptr, UPDOWN_CLASS, nullptr)) {
-            const int count = TabCtrl_GetItemCount(hTab);
+    // somewhere visible - often centered when newly inserted at the
+    // end. We need two corrections here:
+    //
+    // 1. If everything fits but Win32 has scrolled the strip left
+    //    (because SetCurSel forced the active tab visible), snap the
+    //    strip back to tab 0 so earlier tabs are reachable.
+    //
+    // 2. If the strip genuinely overflows and the active tab is the
+    //    last one, scroll right until the new tab is flush against
+    //    the right edge.
+    //
+    // Technique adapted from Notepad++'s TabBar.cpp: scroll the tab
+    // control directly with SB_THUMBPOSITION and the desired tab
+    // index. This is undocumented but stable - the WM_HSCROLL goes
+    // to the tab control itself, not to its internal UpDown.
+    if (!_tabs.empty()) {
+        const int count = TabCtrl_GetItemCount(hTab);
+        RECT rcFirst, rcLast, rcClient;
+        if (count > 0
+            && GetClientRect(hTab, &rcClient)
+            && TabCtrl_GetItemRect(hTab, 0, &rcFirst)
+            && TabCtrl_GetItemRect(hTab, count - 1, &rcLast))
+        {
+            const int viewRight = rcClient.right - rcClient.left;
+            const int stripWidth = rcLast.right - rcFirst.left;
+            const bool everythingFits = (stripWidth <= viewRight);
 
-            // Stop only when scrolling produces no further movement.
-            // Checking "is the last tab visible" stops too early: the
-            // common control may show it centered, leaving an empty
-            // gap on the right that pushes "+" away from the tabs.
-            const int safetyMax = count + 2;
-            int prevLeft = INT_MIN;
-            for (int step = 0; step < safetyMax; ++step) {
-                RECT rcLast;
-                if (!TabCtrl_GetItemRect(hTab, count - 1, &rcLast)) break;
-                if (rcLast.left == prevLeft) break;
-                prevLeft = rcLast.left;
-                SendMessage(hUpDown, WM_HSCROLL,
-                    MAKEWPARAM(SB_LINERIGHT, 0),
-                    reinterpret_cast<LPARAM>(hUpDown));
+            if (everythingFits && rcFirst.left < 0) {
+                // Snap strip back to start.
+                SendMessage(hTab, WM_HSCROLL,
+                    MAKEWPARAM(SB_THUMBPOSITION, 0), 0);
+                repositionNewTabButton();
             }
-            SetWindowPos(hUpDown, nullptr, -10000, -10000, 0, 0,
-                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
+            else if (!everythingFits
+                && _activeTabIndex == count - 1
+                && rcLast.right > viewRight)
+            {
+                // Push strip right so the new last tab is visible.
+                SendMessage(hTab, WM_HSCROLL,
+                    MAKEWPARAM(SB_THUMBPOSITION, count - 1), 0);
+                repositionNewTabButton();
+            }
         }
-        // The scroll moved the strip; rerun the layout so left/right
-        // indicators reflect the new clipping state.
-        repositionNewTabButton();
     }
 
     // Honor collapsed-list state; otherwise SW_SHOW leaves a tab-strip
