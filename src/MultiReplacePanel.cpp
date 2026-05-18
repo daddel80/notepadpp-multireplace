@@ -17211,6 +17211,17 @@ std::wstring MultiReplace::truncateTabName(const std::wstring& name, size_t maxC
     return name.substr(0, maxChars - 1) + L"\u2026";
 }
 
+std::wstring MultiReplace::buildTabLabel(int tabIndex) const
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return {};
+    std::wstring label = truncateTabName(_tabs[tabIndex]->name,
+        static_cast<size_t>(tabMaxLength));
+    if (_tabs[tabIndex]->isDirty) {
+        label += L" \u25CF";  // U+25CF BLACK CIRCLE
+    }
+    return label;
+}
+
 void MultiReplace::rebuildTabControl()
 {
     HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
@@ -17230,17 +17241,11 @@ void MultiReplace::rebuildTabControl()
     TabCtrl_SetPadding(hTab, 6, 3);
     TabCtrl_SetMinTabWidth(hTab, 40);
 
-    // Insert one tab item per TabState, with a truncated display name.
-    // Dirty tabs get a Unicode bullet appended as a visual indicator.
-    // The bullet inherits the tab text color, so light/dark mode is
-    // handled automatically - no custom drawing needed.
+    // Insert one tab item per TabState. Label = truncated name plus
+    // dirty bullet (built by buildTabLabel). The bullet inherits tab
+    // text color, so light/dark mode is handled automatically.
     for (size_t i = 0; i < _tabs.size(); ++i) {
-        std::wstring label = truncateTabName(_tabs[i]->name,
-            static_cast<size_t>(tabMaxLength));
-        if (_tabs[i]->isDirty) {
-            label += L" \u25CF";  // U+25CF BLACK CIRCLE
-        }
-
+        std::wstring label = buildTabLabel(static_cast<int>(i));
         TCITEM item = {};
         item.mask = TCIF_TEXT;
         item.pszText = const_cast<LPWSTR>(label.c_str());
@@ -17495,12 +17500,21 @@ void MultiReplace::ensureTabVisible(int tabIndex)
     const int count = TabCtrl_GetItemCount(hTab);
     if (tabIndex < 0 || tabIndex >= count) return;
 
-    HWND hUpDown = FindWindowExW(hTab, nullptr, UPDOWN_CLASS, nullptr);
-    if (!hUpDown) return;
-
     RECT clientRc;
     GetClientRect(hTab, &clientRc);
     const int viewW = clientRc.right - clientRc.left;
+
+    // Early exit if the tab is already fully within the view. Touching
+    // the UpDown control (even just briefly showing and hiding it) can
+    // cause Win32 to reflow the strip, which would shift the scroll
+    // position even though no scroll is actually needed.
+    RECT rcTarget;
+    if (TabCtrl_GetItemRect(hTab, tabIndex, &rcTarget)) {
+        if (rcTarget.left >= 0 && rcTarget.right <= viewW) return;
+    }
+
+    HWND hUpDown = FindWindowExW(hTab, nullptr, UPDOWN_CLASS, nullptr);
+    if (!hUpDown) return;
 
     // Bring the UpDown back into a valid position so it can accept
     // synthesized clicks. Mirror what scrollTabStrip does.
@@ -18628,19 +18642,21 @@ void MultiReplace::moveTab(int fromIdx, int toIdx)
     if (toIdx < 0 || toIdx >= n) return;
     if (fromIdx == toIdx) return;
 
-    // Remember the active tab by id so we can re-find it after the
-    // shuffle (the active tab's index usually shifts too).
+    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+    if (!hTab) return;
+
+    // Remember active tab by id so we can re-find it after the shuffle.
     int activeId = -1;
     if (_activeTabIndex >= 0 && _activeTabIndex < n) {
         activeId = _tabs[_activeTabIndex]->id;
     }
 
-    // Extract the moving tab, then insert at the new index.
+    // Reorder the data vector.
     auto moving = std::move(_tabs[fromIdx]);
     _tabs.erase(_tabs.begin() + fromIdx);
     _tabs.insert(_tabs.begin() + toIdx, std::move(moving));
 
-    // Restore the active index by id lookup.
+    // Restore active index by id lookup.
     if (activeId >= 0) {
         for (size_t i = 0; i < _tabs.size(); ++i) {
             if (_tabs[i]->id == activeId) {
@@ -18650,20 +18666,34 @@ void MultiReplace::moveTab(int fromIdx, int toIdx)
         }
     }
 
-    // Suppress redraw during the delete-and-reinsert rebuild, then
-    // do a single atomic repaint. Without this the tab control paints
-    // the empty state between TabCtrl_DeleteAllItems and the first
-    // TabCtrl_InsertItem and the user sees a flicker.
-    HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
-    if (hTab) SendMessage(hTab, WM_SETREDRAW, FALSE, 0);
-    rebuildTabControl();
-    if (hTab) {
-        SendMessage(hTab, WM_SETREDRAW, TRUE, 0);
-        RedrawWindow(hTab, nullptr, nullptr,
-            RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE);
+    // In-place label update on the existing tab items. Do NOT delete
+    // and re-insert: that would trigger Win32's auto-scroll behaviour
+    // and reset the scroll position of the strip. Only the labels in
+    // the affected range [min(from,to), max(from,to)] actually changed.
+    const int lo = std::min(fromIdx, toIdx);
+    const int hi = std::max(fromIdx, toIdx);
+    SendMessage(hTab, WM_SETREDRAW, FALSE, 0);
+    for (int i = lo; i <= hi; ++i) {
+        std::wstring label = buildTabLabel(i);
+        TCITEM item = {};
+        item.mask = TCIF_TEXT;
+        item.pszText = const_cast<LPWSTR>(label.c_str());
+        TabCtrl_SetItem(hTab, i, &item);
     }
-    // Tab data itself did not change, only order; no ListView refresh
-    // needed.
+
+    // Re-sync Win32 selection with our model. SetCurSel doesn't scroll
+    // when the target is already visible, so the strip position is
+    // preserved.
+    TabCtrl_SetCurSel(hTab, _activeTabIndex);
+
+    SendMessage(hTab, WM_SETREDRAW, TRUE, 0);
+    RedrawWindow(hTab, nullptr, nullptr,
+        RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE);
+
+    // Indicators may need to update (active tab visibility may have
+    // changed clippedLeft/Right). repositionNewTabButton only moves the
+    // ancillary controls; it does not scroll the strip.
+    repositionNewTabButton();
 }
 
 void MultiReplace::showTabContextMenu(int tabIndex, int screenX, int screenY)
@@ -19280,7 +19310,23 @@ void MultiReplace::commitInlineTabRename()
     // so this only ever updates an untitled tab's draft label.
     if (!newName.empty() && newName != _tabs[idx]->name) {
         _tabs[idx]->name = newName;
-        rebuildTabControl();
+
+        // In-place label update on the existing tab item. Avoid
+        // rebuildTabControl here: a full delete-and-reinsert would
+        // trigger Win32's auto-scroll and shift the strip just as the
+        // user is about to click on another tab.
+        HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
+        if (hTab) {
+            std::wstring label = buildTabLabel(idx);
+            TCITEM item = {};
+            item.mask = TCIF_TEXT;
+            item.pszText = const_cast<LPWSTR>(label.c_str());
+            TabCtrl_SetItem(hTab, idx, &item);
+
+            // Width may have changed, so re-evaluate "+" / "..." layout.
+            repositionNewTabButton();
+        }
+
         if (idx == _activeTabIndex) updateTabTooltip(idx);
     }
 }

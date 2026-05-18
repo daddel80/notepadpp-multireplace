@@ -1535,6 +1535,9 @@ private:
 
     void updateTabTooltip(int tabIndex);
     static std::wstring truncateTabName(const std::wstring& name, size_t maxChars = 14);
+    // Tab label = truncated name plus dirty bullet if applicable. Used
+    // by every code path that writes a tab's text into the tab control.
+    std::wstring buildTabLabel(int tabIndex) const;
 
     // Tab dirty-indicator management. markActiveTabDirty compares the
     // current list hash against the baseline from the last save/load
