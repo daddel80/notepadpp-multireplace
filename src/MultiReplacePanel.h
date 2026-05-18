@@ -447,15 +447,19 @@ enum class SearchDirection {
 
 struct ResizableColWidths {
     HWND listView;
-    int listViewWidth;
-    int findCountWidth;
-    int replaceCountWidth;
-    int findWidth;
-    int replaceWidth;
-    int commentsWidth;
-    int timestampWidth;
-    int deleteWidth;
-    int margin;
+    int  listViewWidth;
+    int  findCountWidth;
+    int  replaceCountWidth;
+    int  findWidth;
+    int  replaceWidth;
+    int  commentsWidth;
+    int  timestampWidth;
+    int  deleteWidth;
+    int  margin;
+    bool findLocked;
+    bool replaceLocked;
+    bool commentsLocked;
+    bool commentsVisible;
 };
 
 // Column-width strategy for createListViewColumns().
@@ -1192,6 +1196,10 @@ private:
     // time it is activated. Called on WM_SIZE so tabs sized before
     // the change still fit the panel when the user revisits them.
     void markAllTabsNeedRelayout();
+    // Arithmetic redistribute for all tabs still flagged as needing
+    // relayout. Called before persisting so stored widths reflect the
+    // current panel size instead of loading stale next session.
+    void recomputeStoredWidthsForLazyTabs();
     void insertSingleColumn(ColumnID id, int& currentIndex, int perColumnWidth, LVCOLUMN& lvc);
     bool isColumnVisible(ColumnID id) const;
     bool validateColumnOrder(const std::vector<ColumnID>& order) const;

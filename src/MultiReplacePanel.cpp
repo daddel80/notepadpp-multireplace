@@ -2537,7 +2537,11 @@ void MultiReplace::createListViewColumns(WidthMode mode) {
             (isCommentsColumnVisible) ? commentsColumnWidth : 0,
             (isTimestampColumnVisible) ? timestampWidth_scaled : 0,
             (isDeleteButtonVisible) ? deleteButtonColumnWidth : 0,
-            GetSystemMetrics(SM_CXVSCROLL)
+            GetSystemMetrics(SM_CXVSCROLL),
+            findColumnLockedEnabled,
+            replaceColumnLockedEnabled,
+            commentsColumnLockedEnabled,
+            isCommentsColumnVisible
         };
         perColumnWidth = calcDynamicColWidth(widths);
     }
@@ -2702,7 +2706,6 @@ int MultiReplace::getColumnWidth(ColumnID columnID) {
 }
 
 int MultiReplace::calcDynamicColWidth(const ResizableColWidths& widths) {
-    // Calculate the total width of fixed columns
     int totalWidthFixedColumns = boxWidth_scaled + (checkMarkWidth_scaled * 5)
         + widths.findCountWidth
         + widths.replaceCountWidth
@@ -2714,36 +2717,68 @@ int MultiReplace::calcDynamicColWidth(const ResizableColWidths& widths) {
     // frame width from ctrlMap, so the inner content area is narrower
     // by roughly this amount. Deducting it here prevents the rightmost
     // column from slipping behind the scrollbar after a redistribute
-    // pass (tab switch, resize, visibility toggle, …).
-    //
-    // Value chosen empirically to cover WS_BORDER plus a small layout
-    // padding. Not passed through sx() — the border is a fixed pixel
-    // count in Windows regardless of DPI scaling, and empirical testing
-    // showed DPI-scaling caused a 1 px header/row offset. Kept on the
-    // resize hot path with no per-frame Win32 calls.
+    // pass (tab switch, resize, visibility toggle, …). The value covers
+    // WS_BORDER plus a small layout padding - not passed through sx()
+    // because Windows borders are fixed pixels regardless of DPI.
     const int borderOverhead = 3;
 
-    // Calculate the remaining width by subtracting fixed widths and visible static column widths
     int totalRemainingWidth = widths.listViewWidth
-        - widths.margin  // Adjust for the vertical scrollbar margin
+        - widths.margin
         - borderOverhead
         - totalWidthFixedColumns
-        - (findColumnLockedEnabled ? widths.findWidth : 0)
-        - (replaceColumnLockedEnabled ? widths.replaceWidth : 0)
-        - (commentsColumnLockedEnabled ? widths.commentsWidth : 0);
+        - (widths.findLocked ? widths.findWidth : 0)
+        - (widths.replaceLocked ? widths.replaceWidth : 0)
+        - (widths.commentsLocked ? widths.commentsWidth : 0);
 
-    // Calculate the number of dynamic columns
-    int dynamicColumnCount = (!findColumnLockedEnabled)
-        + (!replaceColumnLockedEnabled)
-        + (!commentsColumnLockedEnabled && isCommentsColumnVisible);
-
-    // Ensure at least one dynamic column is present for safety
+    int dynamicColumnCount = (!widths.findLocked)
+        + (!widths.replaceLocked)
+        + (!widths.commentsLocked && widths.commentsVisible);
     dynamicColumnCount = std::max(dynamicColumnCount, 1);
 
-    // Calculate the width for each dynamic column
-    int perColumnWidth = std::max(totalRemainingWidth / dynamicColumnCount, MIN_GENERAL_WIDTH_scaled);
+    return std::max(totalRemainingWidth / dynamicColumnCount, MIN_GENERAL_WIDTH_scaled);
+}
 
-    return perColumnWidth; // Return the calculated width for each dynamic column
+void MultiReplace::recomputeStoredWidthsForLazyTabs()
+{
+    // Arithmetic counterpart to a Redistribute pass, applied to every
+    // tab still flagged as needing relayout (typically inactive tabs
+    // after a panel resize). Without this, stored widths would persist
+    // at the panel size from before the resize and load stale next
+    // session, until the user touches each tab manually.
+    if (_tabs.empty()) return;
+
+    const ControlInfo& listCtrlInfo = ctrlMap[IDC_REPLACE_LIST];
+    const int margin = GetSystemMetrics(SM_CXVSCROLL);
+
+    for (auto& tabPtr : _tabs) {
+        TabState& t = *tabPtr;
+        if (!t.needsRelayout) continue;
+
+        ResizableColWidths w = {
+            _replaceListView,
+            listCtrlInfo.cx,
+            t.findCountVisible ? t.findCountWidth : 0,
+            t.replaceCountVisible ? t.replaceCountWidth : 0,
+            t.findWidth,
+            t.replaceWidth,
+            t.commentsVisible ? t.commentsWidth : 0,
+            t.timestampVisible ? timestampWidth_scaled : 0,
+            t.deleteButtonVisible ? deleteButtonColumnWidth : 0,
+            margin,
+            t.findLocked,
+            t.replaceLocked,
+            t.commentsLocked,
+            t.commentsVisible
+        };
+
+        const int perCol = calcDynamicColWidth(w);
+
+        if (!t.findLocked)                          t.findWidth = perCol;
+        if (!t.replaceLocked)                       t.replaceWidth = perCol;
+        if (!t.commentsLocked && t.commentsVisible) t.commentsWidth = perCol;
+
+        t.needsRelayout = false;
+    }
 }
 
 void MultiReplace::updateListViewAndColumns() {
@@ -2773,7 +2808,11 @@ void MultiReplace::updateListViewAndColumns() {
         (isCommentsColumnVisible) ? commentsColumnWidth : 0,
         (isTimestampColumnVisible) ? timestampWidth_scaled : 0,
         (isDeleteButtonVisible) ? deleteButtonColumnWidth : 0,
-        GetSystemMetrics(SM_CXVSCROLL)
+        GetSystemMetrics(SM_CXVSCROLL),
+        findColumnLockedEnabled,
+        replaceColumnLockedEnabled,
+        commentsColumnLockedEnabled,
+        isCommentsColumnVisible
     };
 
     // Calculate dynamic column width
@@ -16850,6 +16889,10 @@ void MultiReplace::writeTabsToConfig()
     if (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
         captureStateIntoTab(*_tabs[_activeTabIndex]);
     }
+
+    // Bring inactive tabs in line with the current panel size so their
+    // stored widths don't load stale next session.
+    recomputeStoredWidthsForLazyTabs();
 
     // Untitled tabs have no saved file as reference - their baseline
     // is the snapshot itself. Without this, they would come back
