@@ -17386,8 +17386,8 @@ void MultiReplace::repositionNewTabButton()
     const bool overflow = (tabCount > 0) &&
         (naturalStripWidth + sx(2) > maxTabCtrlWidth);
 
-    // Detect which side the strip is currently scrolled past. Only
-    // meaningful while overflowing - otherwise everything fits.
+    // Which side has tabs scrolled out of view. Only meaningful while
+    // overflowing.
     bool clippedLeft = false;
     bool clippedRight = false;
     if (overflow) {
@@ -17407,14 +17407,24 @@ void MultiReplace::repositionNewTabButton()
     const int leftDotPad = (overflow && clippedLeft) ? (dotW + gap) : 0;
     const int tabLeftRel = tabLeftBase + leftDotPad;
 
-    // Tab control geometry: hug the tabs when they fit, otherwise
-    // fill the available width up to the overflow anchor.
+    // Hug the tabs unless the strip overflows on the right. The
+    // overflow-only-on-the-left case still hugs: any empty space
+    // right of the last tab would be dead tab-control area that
+    // swallows hover and clicks but visually reads as tab-strip.
     int newTabCtrlWidth;
     if (tabCount == 0) {
         newTabCtrlWidth = sx(60);
     }
     else if (!overflow) {
         newTabCtrlWidth = std::min(naturalStripWidth + sx(2),
+            maxTabCtrlWidth - leftDotPad);
+    }
+    else if (!clippedRight) {
+        RECT rcLast;
+        const int lastRight = TabCtrl_GetItemRect(hTab, tabCount - 1, &rcLast)
+            ? rcLast.right
+            : (maxTabCtrlWidth - leftDotPad);
+        newTabCtrlWidth = std::min(lastRight + sx(2),
             maxTabCtrlWidth - leftDotPad);
     }
     else {
@@ -17514,52 +17524,65 @@ void MultiReplace::ensureTabVisible(int tabIndex)
     GetClientRect(hTab, &clientRc);
     const int viewW = clientRc.right - clientRc.left;
 
-    // Early exit if the tab is already fully within the view. Touching
-    // the UpDown control (even just briefly showing and hiding it) can
-    // cause Win32 to reflow the strip, which would shift the scroll
-    // position even though no scroll is actually needed.
+    // Skip the UpDown scroll pass when the target is already in view
+    // (touching the UpDown can reflow the strip), but still drop
+    // through to repositionNewTabButton: Win32 may have scrolled the
+    // strip itself, flipping clippedRight and shifting the geometry.
+    bool alreadyVisible = false;
     RECT rcTarget;
     if (TabCtrl_GetItemRect(hTab, tabIndex, &rcTarget)) {
-        if (rcTarget.left >= 0 && rcTarget.right <= viewW) return;
+        alreadyVisible = (rcTarget.left >= 0 && rcTarget.right <= viewW);
     }
 
-    HWND hUpDown = FindWindowExW(hTab, nullptr, UPDOWN_CLASS, nullptr);
-    if (!hUpDown) return;
+    HWND hUpDown = alreadyVisible ? nullptr : FindWindowExW(hTab, nullptr, UPDOWN_CLASS, nullptr);
+    if (!alreadyVisible && !hUpDown) return;
 
-    // Bring the UpDown back into a valid position so it can accept
-    // synthesized clicks. Mirror what scrollTabStrip does.
-    RECT udRect;
-    GetWindowRect(hUpDown, &udRect);
-    const int udW = (udRect.right - udRect.left) > 0 ? (udRect.right - udRect.left) : 38;
-    const int udH = (udRect.bottom - udRect.top) > 0 ? (udRect.bottom - udRect.top) : 18;
-    const int defX = clientRc.right - udW;
+    if (!alreadyVisible) {
+        // Bring the UpDown back into a valid position so it can accept
+        // synthesized clicks. Mirror what scrollTabStrip does.
+        RECT udRect;
+        GetWindowRect(hUpDown, &udRect);
+        const int udW = (udRect.right - udRect.left) > 0 ? (udRect.right - udRect.left) : 38;
+        const int udH = (udRect.bottom - udRect.top) > 0 ? (udRect.bottom - udRect.top) : 18;
+        const int defX = clientRc.right - udW;
 
-    SetWindowPos(hUpDown, nullptr, defX, 0, udW, udH,
-        SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        SetWindowPos(hUpDown, nullptr, defX, 0, udW, udH,
+            SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
 
-    RECT udClient;
-    GetClientRect(hUpDown, &udClient);
-    const int halfW = (udClient.right - udClient.left) / 2;
-    const int clickY = (udClient.bottom - udClient.top) / 2;
+        RECT udClient;
+        GetClientRect(hUpDown, &udClient);
+        const int halfW = (udClient.right - udClient.left) / 2;
+        const int clickY = (udClient.bottom - udClient.top) / 2;
 
-    const int safetyMax = count + 2;
-    for (int step = 0; step < safetyMax; ++step) {
-        RECT rc;
-        if (!TabCtrl_GetItemRect(hTab, tabIndex, &rc)) break;
-        if (rc.left >= 0 && rc.right <= viewW) break;
+        const int safetyMax = count + 2;
+        for (int step = 0; step < safetyMax; ++step) {
+            RECT rc;
+            if (!TabCtrl_GetItemRect(hTab, tabIndex, &rc)) break;
+            if (rc.left >= 0 && rc.right <= viewW) break;
 
-        const int clickX = (rc.left < 0) ? halfW / 2 : halfW + halfW / 2;
-        const LPARAM mouseLP = MAKELPARAM(clickX, clickY);
-        SendMessage(hUpDown, WM_LBUTTONDOWN, MK_LBUTTON, mouseLP);
-        SendMessage(hUpDown, WM_LBUTTONUP, 0, mouseLP);
+            const int clickX = (rc.left < 0) ? halfW / 2 : halfW + halfW / 2;
+            const LPARAM mouseLP = MAKELPARAM(clickX, clickY);
+            SendMessage(hUpDown, WM_LBUTTONDOWN, MK_LBUTTON, mouseLP);
+            SendMessage(hUpDown, WM_LBUTTONUP, 0, mouseLP);
+        }
+
+        SetWindowPos(hUpDown, nullptr, -10000, -10000, udW, udH,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+        InvalidateRect(hTab, nullptr, TRUE);
+        UpdateWindow(hTab);
     }
-
-    SetWindowPos(hUpDown, nullptr, -10000, -10000, udW, udH,
-        SWP_NOZORDER | SWP_NOACTIVATE);
-    InvalidateRect(hTab, nullptr, TRUE);
-    UpdateWindow(hTab);
+    else {
+        // Win32 scrolls via ScrollWindow without invalidating, leaving
+        // stale pixels (half-clipped tab labels) behind. Force redraw.
+        InvalidateRect(hTab, nullptr, TRUE);
+        UpdateWindow(hTab);
+    }
 
     repositionNewTabButton();
+
+    // Tab tooltips bind to fixed rects at TTM_ADDTOOL time; re-register
+    // since the strip may have scrolled.
+    updateTabTooltip(_activeTabIndex);
 }
 
 void MultiReplace::scrollTabStrip(int direction)
@@ -17615,6 +17638,10 @@ void MultiReplace::scrollTabStrip(int direction)
     UpdateWindow(hTab);
 
     repositionNewTabButton();
+
+    // Tooltips bind to fixed rects at TTM_ADDTOOL time, so after the
+    // strip scrolled the tooltip-to-tab mapping is stale. Re-register.
+    updateTabTooltip(_activeTabIndex);
 }
 
 void MultiReplace::showTabListPopup()
@@ -18704,6 +18731,11 @@ void MultiReplace::moveTab(int fromIdx, int toIdx)
     // changed clippedLeft/Right). repositionNewTabButton only moves the
     // ancillary controls; it does not scroll the strip.
     repositionNewTabButton();
+
+    // Tooltips bind to fixed rects at TTM_ADDTOOL time, so after the
+    // tabs shifted their positions the tooltip-to-tab mapping is
+    // stale. Re-register so each tooltip points to the right tab.
+    updateTabTooltip(_activeTabIndex);
 }
 
 void MultiReplace::showTabContextMenu(int tabIndex, int screenX, int screenY)
@@ -19495,8 +19527,18 @@ LRESULT CALLBACK MultiReplace::tabControlSubclassProc(HWND hwnd, UINT msg, WPARA
             self->_tabDragStartPt = pt;
             self->_tabDragActive = false;   // becomes true after threshold
             SetCapture(hwnd);
+
+            // Win32's default tab-control occasionally swallows
+            // TCN_SELCHANGE for the rightmost tab when it sits close
+            // to the client edge - the click registers but the
+            // selection never advances. Drive the switch ourselves so
+            // the click is honoured regardless of internal quirks.
+            if (idx != TabCtrl_GetCurSel(hwnd)) {
+                TabCtrl_SetCurSel(hwnd, idx);
+                self->switchToTab(idx);
+            }
         }
-        break;  // let default proc also switch the selected tab
+        break;  // let default proc also process the click
     }
 
     case WM_MOUSEMOVE: {
