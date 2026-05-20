@@ -847,13 +847,10 @@ Output:   100. apple
 
 ### Base Conversions
 
-Built-in functions for converting between decimal and hexadecimal, binary, octal, or Roman numerals. Each base has a pair of functions: `numXXX` for *to-string* output, `XXXnum` for parsing back to a number.
+Built-in functions for parsing hexadecimal, binary, octal, or Roman numerals back to a number, plus Roman output. The decimal-to-hex/bin/oct *output* direction is handled by the format spec `~ x` / `~ b` / `~ o` (see the Number formatting section), so there is no `num2hex`-style built-in.
 
 | Function     | Returns | Example                              |
 |--------------|---------|--------------------------------------|
-| `num2hex(n)` | string  | `num2hex(255)` → `"ff"`              |
-| `num2bin(n)` | string  | `num2bin(10)` → `"1010"`             |
-| `num2oct(n)` | string  | `num2oct(511)` → `"777"`             |
 | `num2rom(n)` | string  | `num2rom(2024)` → `"MMXXIV"`         |
 | `hex2num(s)` | number  | `hex2num('ff')` → `255`              |
 | `bin2num(s)` | number  | `bin2num('1010')` → `10`             |
@@ -861,10 +858,9 @@ Built-in functions for converting between decimal and hexadecimal, binary, octal
 | `rom2num(s)` | number  | `rom2num('MMXXIV')` → `2024`         |
 
 **Output conventions:**
-- Hex/bin/oct outputs are **bare lowercase** — no `0x` / `0b` / `0o` prefix. Compose prefixes if you want them: `(?='0x' + num2hex(num(1)))`.
+- Hex/bin/oct output via `~ x` / `~ b` / `~ o` is **bare lowercase** — no `0x` / `0b` / `0o` prefix. Compose prefixes if you want them: `(?='0x' + num(1) ~ x)`.
 - Roman output is **uppercase canonical** form (subtractive pairs `IV`, `IX`, `XL`, etc.).
-- Negative inputs to the bases produce `"-<digits>"` (e.g. `num2hex(-15)` → `"-f"`). For Roman, only the range 1..3999 is meaningful; out of range returns an empty string.
-- Float inputs truncate toward zero (`num2hex(15.7) == num2hex(15)`).
+- For Roman, only the range 1..3999 is meaningful; out of range returns an empty string.
 
 **Parser conventions:**
 - `hex2num`, `bin2num`, `oct2num` accept input **case-insensitively**, with or without the matching prefix, and trim surrounding whitespace. Invalid characters for the target base yield `NaN`.
@@ -875,7 +871,7 @@ Built-in functions for converting between decimal and hexadecimal, binary, octal
 
 | Find                  | Replace                          | Description                  |
 |-----------------------|----------------------------------|------------------------------|
-| `(\d+)`               | `(?='0x' + num2hex(num(1)))`     | Decimal → `0xff`             |
+| `(\d+)`               | `(?='0x' + num(1) ~ x)`          | Decimal → `0xff`             |
 | `0x([0-9a-fA-F]+)`    | `(?=hex2num(txt(1)))`            | Hex literal → decimal        |
 | `(\d+)`               | `(?=num2rom(num(1)))`            | Chapter `14` → `XIV`         |
 | `([IVXLCDM]+)`        | `(?=rom2num(txt(1)))`            | Roman → decimal              |

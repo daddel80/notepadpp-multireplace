@@ -2017,7 +2017,7 @@ return {
     <p><code>(?=txt(1))</code> &nbsp; &mdash; emit capture 1 as text<br>
        <code>(?='prefix-' + txt(1))</code> &nbsp; &mdash; concatenate literals and captures<br>
        <code>(?=fname + ': ' + txt(0))</code> &nbsp; &mdash; mix string variables with captures</p>
-    <p>String sources include literals in single quotes, the string variables (<code>FPATH</code>, <code>FNAME</code>), <code>txt(N)</code> capture text (use <code>txt(0)</code> for the full match), <code>txtcol(...)</code> CSV columns, and the conversion functions (<code>num2hex</code>, <code>num2rom</code>, etc.). The <code>+</code> operator concatenates strings.</p>
+    <p>String sources include literals in single quotes, the string variables (<code>FPATH</code>, <code>FNAME</code>), <code>txt(N)</code> capture text (use <code>txt(0)</code> for the full match), <code>txtcol(...)</code> CSV columns, and the conversion functions (<code>num2rom</code>, <code>hex2num</code>, etc.). The <code>+</code> operator concatenates strings.</p>
     <p>The legacy form <code>(?=return [a, b, c])</code> still compiles and behaves the same as <code>(?=a + b + c)</code>; new expressions should prefer the direct form.</p>
     <section class="note">
       <p><strong>String literals are ASCII-only.</strong> UTF-8 bytes in <code>'...'</code> will fail to compile. Non-ASCII text must come from the document via captures or string variables, or be placed in the literal portion of the replace string outside <code>(?=...)</code>. See <a href="#exprtk-limitations">Limitations</a> below.</p>
@@ -2100,27 +2100,12 @@ return {
 
   <section id="exprtk-baseconv">
     <h2>Base Conversions</h2>
-    <p>Built-in functions for converting between decimal and hexadecimal, binary, octal, or Roman numerals. Each base has a pair of functions: <code>numXXX</code> for <em>to-string</em> output, <code>XXXnum</code> for parsing back to a number.</p>
+    <p>Built-in functions for parsing hexadecimal, binary, octal, or Roman numerals back to a number, plus Roman output. The decimal-to-hex/bin/oct <em>output</em> direction is handled by the format spec <code>~ x</code> / <code>~ b</code> / <code>~ o</code> (see the Number formatting section), so there is no <code>num2hex</code>-style built-in.</p>
     <table class="optionsTable">
       <tr>
         <th>Function</th>
         <th>Returns</th>
         <th>Example</th>
-      </tr>
-      <tr>
-        <td><code>num2hex(n)</code></td>
-        <td>string</td>
-        <td><code>num2hex(255)</code> &rarr; <code>"ff"</code></td>
-      </tr>
-      <tr>
-        <td><code>num2bin(n)</code></td>
-        <td>string</td>
-        <td><code>num2bin(10)</code> &rarr; <code>"1010"</code></td>
-      </tr>
-      <tr>
-        <td><code>num2oct(n)</code></td>
-        <td>string</td>
-        <td><code>num2oct(511)</code> &rarr; <code>"777"</code></td>
       </tr>
       <tr>
         <td><code>num2rom(n)</code></td>
@@ -2150,10 +2135,9 @@ return {
     </table>
     <p><strong>Output conventions:</strong></p>
     <ul>
-      <li>Hex/bin/oct outputs are <strong>bare lowercase</strong> &mdash; no <code>0x</code> / <code>0b</code> / <code>0o</code> prefix. Compose prefixes if you want them: <code>(?='0x' + num2hex(num(1)))</code>.</li>
+      <li>Hex/bin/oct output via <code>~ x</code> / <code>~ b</code> / <code>~ o</code> is <strong>bare lowercase</strong> &mdash; no <code>0x</code> / <code>0b</code> / <code>0o</code> prefix. Compose prefixes if you want them: <code>(?='0x' + num(1) ~ x)</code>.</li>
       <li>Roman output is <strong>uppercase canonical</strong> form (subtractive pairs <code>IV</code>, <code>IX</code>, <code>XL</code>, etc.).</li>
-      <li>Negative inputs to the bases produce <code>"-&lt;digits&gt;"</code> (e.g. <code>num2hex(-15)</code> &rarr; <code>"-f"</code>). For Roman, only the range 1..3999 is meaningful; out of range returns an empty string.</li>
-      <li>Float inputs truncate toward zero (<code>num2hex(15.7) == num2hex(15)</code>).</li>
+      <li>For Roman, only the range 1..3999 is meaningful; out of range returns an empty string.</li>
     </ul>
     <p><strong>Parser conventions:</strong></p>
     <ul>
@@ -2170,7 +2154,7 @@ return {
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>(?='0x' + num2hex(num(1)))</code></td>
+        <td><code>(?='0x' + num(1) ~ x)</code></td>
         <td>Decimal &rarr; <code>0xff</code></td>
       </tr>
       <tr>

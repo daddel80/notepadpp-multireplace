@@ -98,9 +98,6 @@ namespace MultiReplaceEngine {
         , _nowFunction()
         , _todayFunction()
         , _todateFunction(this)
-        , _num2hexFunction(this, 16)
-        , _num2binFunction(this, 2)
-        , _num2octFunction(this, 8)
         , _hex2numFunction(this, 16)
         , _bin2numFunction(this, 2)
         , _oct2numFunction(this, 8)
@@ -201,13 +198,11 @@ namespace MultiReplaceEngine {
         // Returns Unix timestamp on success, NaN on parse failure.
         _symbolTable.add_function("todate", _todateFunction);
 
-        // Base conversions: numeric <-> hex/bin/oct as built-ins. num2X
-        // returns a bare lowercase string; X2num accepts the input case-
-        // insensitively, with or without the matching prefix, NaN on
-        // invalid characters.
-        _symbolTable.add_function("num2hex", _num2hexFunction);
-        _symbolTable.add_function("num2bin", _num2binFunction);
-        _symbolTable.add_function("num2oct", _num2octFunction);
+        // Base parsing: hex/bin/oct string -> numeric as built-ins. X2num
+        // accepts the input case-insensitively, with or without the
+        // matching prefix, NaN on invalid characters. The reverse
+        // direction (numeric -> base string) is covered by the format
+        // spec '~ x' / '~ b' / '~ o'.
         _symbolTable.add_function("hex2num", _hex2numFunction);
         _symbolTable.add_function("bin2num", _bin2numFunction);
         _symbolTable.add_function("oct2num", _oct2numFunction);
@@ -1311,61 +1306,7 @@ namespace MultiReplaceEngine {
             return 0;
         }
 
-        // Renders a non-negative integer in the given base as lowercase
-        // ASCII. Always emits at least "0" so num2hex(0) -> "0".
-        std::string formatUnsignedBase(unsigned long long v, int base)
-        {
-            if (v == 0) return std::string("0");
-
-            static const char kDigits[] = "0123456789abcdef";
-            char buf[80];
-            std::size_t pos = sizeof(buf);
-            while (v > 0) {
-                buf[--pos] = kDigits[v % static_cast<unsigned>(base)];
-                v /= static_cast<unsigned>(base);
-            }
-            return std::string(buf + pos, sizeof(buf) - pos);
-        }
-
     } // anonymous namespace
-
-    double ExprTkEngine::Num2BaseFunction::operator()(
-        std::string& result,
-        parameter_list_t parameters)
-    {
-        result.clear();
-
-        if (parameters.size() != 1) {
-            return 0.0;
-        }
-        const scalar_t s(parameters[0]);
-        const double v = s();
-
-        // NaN or Inf -> empty string. Same recoverable-error contract
-        // as formatDouble(): never let "nan"/"inf" leak into output.
-        if (!std::isfinite(v)) {
-            return 0.0;
-        }
-
-        // Truncate toward zero so num2hex(15.7) == num2hex(15) and
-        // num2hex(-15.7) == num2hex(-15). Matches (int) cast semantics.
-        const long long signedVal = static_cast<long long>(v);
-        const bool negative = signedVal < 0;
-        const unsigned long long magnitude = negative
-            ? static_cast<unsigned long long>(-(signedVal + 1)) + 1ULL  // safe abs for INT64_MIN
-            : static_cast<unsigned long long>(signedVal);
-
-        std::string body = formatUnsignedBase(magnitude, _base);
-        if (negative) {
-            result.reserve(body.size() + 1);
-            result.push_back('-');
-            result.append(body);
-        }
-        else {
-            result = std::move(body);
-        }
-        return 0.0;
-    }
 
     double ExprTkEngine::Base2NumFunction::operator()(
         parameter_list_t parameters)
@@ -1474,8 +1415,8 @@ namespace MultiReplaceEngine {
         if (!std::isfinite(v)) return 0.0;
 
         // Range check first: classical Roman covers 1..3999. Out of
-        // range -> empty string (same recoverable-error pattern as
-        // num2hex(NaN)).
+        // range -> empty string (same recoverable-error pattern as the
+        // non-finite guard above).
         const long long iv = static_cast<long long>(v);
         if (iv < 1 || iv > 3999) return 0.0;
 

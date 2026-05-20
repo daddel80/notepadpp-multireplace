@@ -539,7 +539,7 @@ namespace MultiReplaceEngine {
         // Parses str against the strftime-style fmt and returns the
         // resulting time as seconds-since-epoch. With a leading '!'
         // in fmt the result is treated as UTC; otherwise as local
-        // time (Lua convention, matches our D[...] output spec).
+        // time (Lua convention, matches our d: output spec).
         //
         // Returns NaN on parse failure or out-of-range fields, so a
         // bad input flows through the same recoverable-error dialog
@@ -565,37 +565,15 @@ namespace MultiReplaceEngine {
             ExprTkEngine* _owner;
         };
 
-        // Base-conversion built-ins: num <-> hex/bin/oct.
+        // Base-parsing built-in: hex/bin/oct string -> numeric.
         //
-        // num2X(n)   takes a scalar, returns a bare lowercase string
-        //            ("ff", "1010", "77") - no "0x" / "0b" / "0o" prefix.
-        //            Negative inputs come out as "-f". Float inputs are
-        //            truncated toward zero before conversion.
         // X2num(s)   takes a string, returns a scalar. Accepts the input
         //            case-insensitively and with or without the matching
         //            prefix; surrounding whitespace is trimmed.
         //            Invalid characters for the base yield NaN.
-        class Num2BaseFunction : public exprtk::igeneric_function<double> {
-        public:
-            using igenfunct_t = exprtk::igeneric_function<double>;
-            using generic_t = typename igenfunct_t::generic_type;
-            using parameter_list_t = typename igenfunct_t::parameter_list_t;
-            using scalar_t = typename generic_t::scalar_view;
-
-            Num2BaseFunction(ExprTkEngine* owner, int base)
-                : igenfunct_t("T", igenfunct_t::e_rtrn_string)
-                , _owner(owner)
-                , _base(base) {
-            }
-
-            double operator()(std::string& result,
-                parameter_list_t parameters) override;
-
-        private:
-            ExprTkEngine* _owner;
-            int _base;
-        };
-
+        //
+        // The reverse direction (numeric -> base string) is provided by
+        // the format spec '~ x' / '~ b' / '~ o', not a built-in.
         class Base2NumFunction : public exprtk::igeneric_function<double> {
         public:
             using igenfunct_t = exprtk::igeneric_function<double>;
@@ -940,15 +918,13 @@ namespace MultiReplaceEngine {
         TodayFunction _todayFunction;
 
         // The todate(str, fmt) callable for string-to-timestamp
-        // parsing - the inverse of D[fmt] output.
+        // parsing - the inverse of d:fmt output.
         TodateFunction _todateFunction;
 
-        // Base-conversion built-ins. Two parameterised templates serve
-        // hex/bin/oct in both directions; each instance carries its base
-        // (16/2/8) so the same operator() logic handles all six names.
-        Num2BaseFunction _num2hexFunction;
-        Num2BaseFunction _num2binFunction;
-        Num2BaseFunction _num2octFunction;
+        // Base-parsing built-ins: hex/bin/oct string -> numeric. The
+        // parameterised class carries its base (16/2/8) so one operator()
+        // handles all three names. The reverse direction (numeric -> base
+        // string) is covered by the format spec '~ x' / '~ b' / '~ o'.
         Base2NumFunction _hex2numFunction;
         Base2NumFunction _bin2numFunction;
         Base2NumFunction _oct2numFunction;
