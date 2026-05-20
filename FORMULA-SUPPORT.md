@@ -1111,7 +1111,7 @@ By default an ExprTk expression renders its numeric result with the shortest rou
 
 The `~` separator splits the block into the formula (left) and the spec (right). Whitespace around `~` is optional. The spec is validated when the rule is compiled, so an invalid spec surfaces immediately as a compile-time error rather than producing garbage at runtime.
 
-There are three kinds of spec: **numeric**, **duration**, and **date**.
+There are four kinds of spec: **numeric**, **text**, **duration**, and **date**.
 
 <br>
 
@@ -1126,9 +1126,9 @@ Grammar: `[+] [0] [width] [.prec | .min-max] [type]`
 | `width`   | Minimum total field width.                                                                       |
 | `.prec`   | Exact number of decimal digits.                                                                  |
 | `.min-max`| Range form: at least `min`, at most `max` decimals. Trailing zeros beyond `min` are stripped.    |
-| `type`    | `f` fixed, `e` scientific, `g` shortest, `x` hex, `b` binary, `o` octal. Omit for default rendering. |
+| `type`    | `f` fixed, `e` scientific, `g` shortest, `x` hex, `b` binary, `o` octal, `d` integer. Omit for default rendering. |
 
-Integer types `x b o` accept only `0` and `width` modifiers — precision and `+` are rejected as a compile error. Negative numbers in `x` and `b` produce the 64-bit two's-complement bit pattern (`x` on `-1` → `ffffffffffffffff`).
+Integer types `x b o d` reject precision (no fractional part to format). Hex/binary/octal also reject `+` because they are formatted as unsigned bit patterns (negative numbers in `x` and `b` produce the 64-bit two's-complement pattern, `x` on `-1` → `ffffffffffffffff`). Signed base-10 (`d`) accepts `+` normally.
 
 | Spec      | Value      | Output      |
 |-----------|------------|-------------|
@@ -1140,8 +1140,58 @@ Integer types `x b o` accept only `0` and `width` modifiers — precision and `+
 | `8b`      | `5`        | `     101`  |
 | `.3g`     | `123456`   | `1.23e+05`  |
 | `+`       | `3.14`     | `+3.14`     |
+| `d`       | `3.7`      | `3`         |
+| `+05d`    | `-42`      | `-0042`     |
 
 The numeric output is locale-independent: the decimal separator is always `.`, regardless of the system locale. This keeps CSV pipelines reproducible across machines.
+
+The `d` type truncates fractional input toward zero before output (`3.7` → `3`, `-3.7` → `-3`). For rounded behaviour use `round()` first: `round(num(1)) ~ d`.
+
+##### Optional `n:` marker
+
+For visual consistency with the other spec families (`d:`, `t:`, `ts:`), a numeric spec can be prefixed with `n:`. The two forms are equivalent:
+
+| Form           | Output      |
+|----------------|-------------|
+| `~ 5.2f`       | ` 3.14`     |
+| `~ n:5.2f`     | ` 3.14`     |
+
+The marker is optional — the bare form stays the recommended default since numeric is the common case and the short form reads cleaner. `n:` is offered for callers who prefer an explicit marker on every spec.
+
+<br>
+
+#### Text
+
+Grammar: `t:[fill][align][width][.maxlen]`
+
+Pads, aligns, and optionally truncates a string-returning formula. Required marker is `t:` (with the colon). Length semantics operate on **UTF-8 codepoints**, so multi-byte characters like `ä` count as one.
+
+| Part      | Meaning                                                                                          |
+|-----------|--------------------------------------------------------------------------------------------------|
+| `fill`    | Optional. Single character used for padding. Must be followed by an align letter to disambiguate from width. Defaults to space. |
+| `align`   | `<` left, `>` right, `^` center. Optional. Defaults to `<` (left).                               |
+| `width`   | Minimum codepoint length; pads with `fill` to reach this width.                                  |
+| `.maxlen` | Maximum codepoint length; truncates at a codepoint boundary if exceeded.                         |
+
+Text specs require a **string-returning formula** (e.g. `txt(1)`, `num2rom(...)`, `'literal'`, or any ExprTk string concatenation). Combining a text spec with a numeric formula is a compile-time error, and vice versa.
+
+| Spec        | Input          | Output                |
+|-------------|----------------|-----------------------|
+| `t:<15`     | `"foo"`        | `"foo            "`   |
+| `t:>15`     | `"foo"`        | `"            foo"`   |
+| `t:^15`     | `"foo"`        | `"      foo      "`   |
+| `t:15`      | `"foo"`        | `"foo            "`   |
+| `t:.5`      | `"hello world"`| `"hello"`             |
+| `t:15.3`    | `"longstring"` | `"lon            "`   |
+| `t:*<15`    | `"foo"`        | `"foo************"`   |
+| `t:.<15`    | `"Ch1"`        | `"Ch1............"`   |
+| `t:0>5`     | `"42"`         | `"00042"`             |
+| `t:<10`     | `"Größe"`      | `"Größe     "` (5 codepoints) |
+| `t:.3`      | `"Größe"`      | `"Grö"` (codepoint boundary)  |
+
+The `t` marker is shared with **duration** (`ts:`, `tm:`, `th:`, `td:`): the parser looks at the second character — `:` takes the text path, a unit letter (`s`/`m`/`h`/`d`) takes the duration path. So `t:<15` and `ts:hms` cannot be confused.
+
+If both fill and align use the same character (`t:<<10` → fill `<`, align `<`), the lookahead still resolves cleanly: a fill character is only consumed when an align letter follows it.
 
 <br>
 
@@ -1175,8 +1225,8 @@ The mode is **mandatory** — `t:s` alone is not enough, you must pick a mode. F
 
 Grammar:
 
-- `D[strftime_pattern]` — local time
-- `D[!strftime_pattern]` — UTC
+- `d:strftime_pattern` — local time
+- `d:!strftime_pattern` — UTC
 
 Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through `strftime`. The optional `!` prefix forces UTC; without it the system's local time zone is used. This follows the same convention as Lua's `os.date()`.
 
@@ -1206,27 +1256,33 @@ Weekday/month names follow the system locale. The full list of `strftime` specif
 
 | Spec                       | Timestamp     | Output (UTC)                       |
 |----------------------------|---------------|------------------------------------|
-| `D[!%Y-%m-%d]`             | `1700000000`  | `2023-11-14`                       |
-| `D[!%Y-%m-%dT%H:%M:%SZ]`   | `1700000000`  | `2023-11-14T22:13:20Z`             |
-| `D[!%d.%m.%Y]`             | `1700000000`  | `14.11.2023`                       |
-| `D[!%A]`                   | `0`           | `Thursday` (epoch was Thursday)    |
-| `D[!Year %Y, week %V]`     | `1700000000`  | `Year 2023, week 46`               |
-| `D[!%c]`                   | `1700000000`  | `Tue Nov 14 22:13:20 2023`         |
+| `d:!%Y-%m-%d`              | `1700000000`  | `2023-11-14`                       |
+| `d:!%Y-%m-%dT%H:%M:%SZ`    | `1700000000`  | `2023-11-14T22:13:20Z`             |
+| `d:!%d.%m.%Y`              | `1700000000`  | `14.11.2023`                       |
+| `d:!%A`                    | `0`           | `Thursday` (epoch was Thursday)    |
+| `d:!Year %Y, week %V`      | `1700000000`  | `Year 2023, week 46`               |
+| `d:!%c`                    | `1700000000`  | `Tue Nov 14 22:13:20 2023`         |
 
 **Range:** timestamps must be ≥ 0 (years 1970 onwards). Negative values produce empty output. Subseconds are truncated (`1700000000.7` is treated as `1700000000`).
+
+**Tilde in date patterns:** `~` is the spec separator and therefore cannot appear inside the strftime pattern itself — use any other literal between specifiers (`-`, `/`, `:`, space, etc.). This matters in practice only for unusual patterns; standard date/time separators are unaffected.
 
 <br>
 
 #### Errors and edge cases
 
-- **Invalid spec at compile time** — `(?=hit ~ 99q)` produces *"Invalid format spec '99q': Unknown numeric type letter; expected f/e/g/x/b/o"*. The rule fails to compile; no replacements run.
-- **A format spec cannot be combined with string output** — the spec is for numeric output. Combining `~ spec` with a string-producing formula (e.g. `(?='hello' ~ 05f)`) is rejected at compile time with a clear diagnostic.
+- **Invalid spec at compile time** — `(?=hit ~ 99q)` produces *"Invalid format spec '99q': Unknown numeric type letter; expected f/e/g/x/b/o/d"*. The rule fails to compile; no replacements run.
+- **Spec / formula type mismatch** — every spec family expects a matching formula type:
+  - Numeric / date / duration specs expect a numeric-returning formula. Pairing them with a string-returning formula (e.g. `(?='hello' ~ 05f)`) is rejected at compile time.
+  - Text specs (`t:...`) expect a string-returning formula. Pairing them with a numeric formula (e.g. `(?=num(1) ~ t:<15)`) is rejected at compile time.
 - **NaN / Inf** — when the formula itself produces `NaN` (e.g. parsing a non-numeric capture) or `Inf` (e.g. division by zero), the spec is not applied; the recoverable-error dialog appears instead, leaving the original match untouched if the user skips.
-- **`~` inside the formula** — the splitter looks for the **last** `~` at bracket depth 0, ignoring `~` inside quoted strings (`'a~b'`) and inside `[...]` brackets (`D[%Y ~ %m]`). The first `~` in the date pattern below is therefore part of the spec, not a separator:
+- **`~` inside the formula** — the splitter looks for the **last** `~` outside string quotes. ExprTk string literals (`'a~b'`, `"a~b"`) are quote-aware, so a `~` inside them does not split:
 
   ```
-  (?= hit ~ D[%Y-%m-%d ~ %H:%M:%S] )
+  (?= 'note ~ check' + txt(1) ~ t:<20 )
   ```
+
+  The `~` inside the single-quoted literal is part of the formula; the final `~` is the spec separator.
 
 <br>
 
@@ -1240,7 +1296,7 @@ today()            ->  Unix timestamp at local midnight today
 todate(text, fmt)  ->  Unix timestamp (parses a date string)
 ```
 
-All three return seconds since 1970-01-01 UTC as `double`. They pair directly with `D[fmt]` for output.
+All three return seconds since 1970-01-01 UTC as `double`. They pair directly with `d:fmt` for output.
 
 `now()` reads the current system clock on every call (it's live, not cached per replace-all). To freeze it for a multi-step expression, assign it once: `var t := now(); ...`.
 
@@ -1249,19 +1305,19 @@ All three return seconds since 1970-01-01 UTC as `double`. They pair directly wi
 Examples:
 
 ```
-(?= now() ~ D[%Y-%m-%d %H:%M:%S] )      # current local timestamp
-(?= today() ~ D[%Y-%m-%d] )             # today's date only
+(?= now() ~ d:%Y-%m-%d %H:%M:%S )      # current local timestamp
+(?= today() ~ d:%Y-%m-%d )             # today's date only
 (?= (now() - today()) / 3600 )          # hours since midnight (e.g. 14.67)
 (?= floor((now() - todate(txt(1), '%Y-%m-%d')) / 86400) )  # days since a date
 ```
 
-For `todate` specifically, the inverse of the `D[fmt]` output spec:
+For `todate` specifically, the inverse of the `d:fmt` output spec:
 
 ```
 todate(text, fmt)  ->  Unix timestamp
 ```
 
-Parses `text` against the strftime-style `fmt` pattern and returns the resulting time as seconds since 1970-01-01 UTC. As with `D[fmt]`:
+Parses `text` against the strftime-style `fmt` pattern and returns the resulting time as seconds since 1970-01-01 UTC. As with `d:fmt`:
 
 - without `!` prefix → input is interpreted as **local time**
 - with `!` prefix → input is interpreted as **UTC**
@@ -1303,19 +1359,19 @@ Whitespace in the format matches **zero or more** whitespace characters in the i
 | `todate(txt(0), '!%Y-%m-%d')`           | ✓ works (UTC)       |
 | `todate(txt(0), "%Y-%m-%d")`            | ✗ token error       |
 
-`D[fmt]` is not affected — the spec sits inside `[...]` brackets and bypasses the ExprTk lexer entirely.
+The `d:fmt` output spec is not affected — the pattern follows after the `d:` marker and is consumed by the FormatSpec parser, not by the ExprTk lexer.
 
 <br>
 
 #### Time-zone consistency in round-trips
 
-Mixing local and UTC across `todate` and `D[...]` produces an offset of one time zone. For predictable round-trips, use the **same** UTC/local choice on both sides:
+Mixing local and UTC across `todate` and `d:fmt` produces an offset of one time zone. For predictable round-trips, use the **same** UTC/local choice on both sides:
 
-| Form                                                              | Status              |
-|-------------------------------------------------------------------|---------------------|
-| `(?= todate(txt(0), '!%Y-%m-%d') ~ D[!%Y-%m-%d] )`             | ✓ pure UTC          |
-| `(?= todate(txt(0), '%Y-%m-%d') ~ D[%Y-%m-%d] )`               | ✓ pure local        |
-| `(?= todate(txt(0), '%Y-%m-%d') ~ D[!%Y-%m-%d] )`              | ⚠ offset by local TZ|
+| Form                                                          | Status              |
+|---------------------------------------------------------------|---------------------|
+| `(?= todate(txt(0), '!%Y-%m-%d') ~ d:!%Y-%m-%d )`             | ✓ pure UTC          |
+| `(?= todate(txt(0), '%Y-%m-%d') ~ d:%Y-%m-%d )`               | ✓ pure local        |
+| `(?= todate(txt(0), '%Y-%m-%d') ~ d:!%Y-%m-%d )`              | ⚠ offset by local TZ|
 
 The third form is occasionally what you want (e.g. converting a wall-clock log time to a UTC timestamp for storage), but it should be a conscious choice.
 
@@ -1414,4 +1470,4 @@ ExprTk is deliberately scoped. Things it does **not** do:
 - **No general user-defined state across matches.** Each `(?=...)` evaluation starts fresh — you cannot create your own named variables that persist. The [Match History](#match-history) functions cover the common case (read earlier captures and block outputs), and `CNT` / `LCNT` are provided by the host. For arbitrary per-key state (a cumulative table keyed by string, a per-value tally), switch to the Lua engine and use `vars({...})`.
 - **No data file loading.** ExprTk has no equivalent to Lua's `lvars` (preload variables from disk) or `lkp` (key lookup from disk). `loadlib` loads **code**, not data.
 - **`todate` is intentionally minimal.** It accepts the common strftime specifiers (`%Y %y %m %d %H %M %S %I %p %F %T %%`) — enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (`%B`), weekday names (`%A`), or week numbers (`%V`) are **not** accepted on the input side. For richer date input parsing, use Lua's date handling instead.
-- **Date timestamps must be ≥ 0.** `D[fmt]` and `todate` only handle years 1970 onwards. Negative timestamps produce empty output or NaN respectively.
+- **Date timestamps must be ≥ 0.** `d:fmt` and `todate` only handle years 1970 onwards. Negative timestamps produce empty output or NaN respectively.

@@ -87,7 +87,101 @@ namespace FormatSpec {
             return out;
         }
 
-        // ---- Numeric parser -------------------------------------------
+        // ---- Text parser ----------------------------------------------
+        // Form: [fill][align][width][.maxlen]
+        // Caller has already stripped the leading 't:' marker, so 's'
+        // here is the body. An empty body is rejected because at least
+        // one component (width, align, ...) needs to be present for the
+        // spec to do anything.
+        //
+        // Fill / align disambiguation: a leading fill character is only
+        // recognised if the second character is an align letter
+        // ('<', '>', '^'). Without that lookahead, a spec like 't:*15'
+        // would be ambiguous - is '*' a fill or just a stray character?
+        // Requiring align after fill makes the intent explicit.
+        //
+        // Fill is captured as the leading UTF-8 codepoint (1-4 bytes),
+        // not a single byte, so non-ASCII fill characters (umlauts,
+        // accented letters, etc.) work even though they take two bytes
+        // in UTF-8.
+        Spec parseString(const std::wstring& s) {
+            if (s.empty()) {
+                return makeError("Text spec is empty (need width, align, or fill+align after 't:')");
+            }
+
+            Spec out;
+            out.kind = Kind::Text;
+
+            size_t i = 0;
+
+            // Decide whether the leading codepoint is a fill character.
+            // It is, only when the next codepoint is an align letter.
+            auto isAlignChar = [](wchar_t c) {
+                return c == L'<' || c == L'>' || c == L'^';
+                };
+
+            // Lookahead: fill takes the leading codepoint only if an
+            // align letter follows it. This handles three cases cleanly:
+            //   '*<'  -> fill '*', align left   (ordinary fill)
+            //   '<<'  -> fill '<', align left   (align-char used as fill)
+            //   '<5'  -> no fill, align left, width 5
+            // With just one character available, no fill is possible.
+            if (s.size() >= 2 && isAlignChar(s[1])) {
+                // Fill is the first codepoint. Encode it as UTF-8 so it
+                // can be appended cheaply during rendering.
+                const wchar_t fillCp = s[0];
+                out.textFill.clear();
+                if (fillCp < 0x80) {
+                    out.textFill.push_back(static_cast<char>(fillCp));
+                }
+                else if (fillCp < 0x800) {
+                    out.textFill.push_back(static_cast<char>(0xC0 | (fillCp >> 6)));
+                    out.textFill.push_back(static_cast<char>(0x80 | (fillCp & 0x3F)));
+                }
+                else {
+                    out.textFill.push_back(static_cast<char>(0xE0 | (fillCp >> 12)));
+                    out.textFill.push_back(static_cast<char>(0x80 | ((fillCp >> 6) & 0x3F)));
+                    out.textFill.push_back(static_cast<char>(0x80 | (fillCp & 0x3F)));
+                }
+                i = 1;  // s[1] is an align letter (guaranteed by the lookahead)
+            }
+
+            // Align letter, optional. Defaults to Left when omitted. If a
+            // fill was consumed above, i points at the align letter the
+            // lookahead already verified, so this branch always matches there.
+            if (i < s.size() && isAlignChar(s[i])) {
+                switch (s[i]) {
+                case L'<': out.textAlign = TextAlign::Left;   break;
+                case L'>': out.textAlign = TextAlign::Right;  break;
+                case L'^': out.textAlign = TextAlign::Center; break;
+                }
+                ++i;
+            }
+
+            // Width, optional.
+            if (i < s.size() && isDigit(s[i])) {
+                out.width = readInt(s, i);
+            }
+
+            // Max-length, optional. '.' followed by a non-negative integer.
+            if (i < s.size() && s[i] == L'.') {
+                ++i;
+                int m = readInt(s, i);
+                if (m < 0) {
+                    return makeError("Text spec '.' must be followed by a digit");
+                }
+                out.textMaxLength = m;
+            }
+
+            // Anything left over is a parse error.
+            if (i != s.size()) {
+                return makeError("Unexpected trailing characters in text spec");
+            }
+
+            out.valid = true;
+            return out;
+        }
+
         // Form: [+] [0] [width] [.prec | .min-max] [type]
         Spec parseNumeric(const std::wstring& s) {
             Spec out;
@@ -138,8 +232,9 @@ namespace FormatSpec {
                 case L'x': out.numericType = NumericType::Hex;         break;
                 case L'b': out.numericType = NumericType::Binary;      break;
                 case L'o': out.numericType = NumericType::Octal;       break;
+                case L'd': out.numericType = NumericType::Integer;     break;
                 default:
-                    return makeError("Unknown numeric type letter; expected f/e/g/x/b/o");
+                    return makeError("Unknown numeric type letter; expected f/e/g/x/b/o/d");
                 }
             }
             else {
@@ -151,19 +246,28 @@ namespace FormatSpec {
                 }
             }
 
-            // Integer-output types (x/b/o) reject precision and force-sign
-            // because they don't apply meaningfully to integers.
-            const bool isIntegerType =
-                (out.numericType == NumericType::Hex
-                    || out.numericType == NumericType::Binary
-                    || out.numericType == NumericType::Octal);
-            if (isIntegerType) {
-                if (out.precisionMin >= 0) {
-                    return makeError("Precision not allowed with integer types (x/b/o)");
-                }
-                if (out.forceSign) {
-                    return makeError("'+' flag not allowed with integer types (x/b/o)");
-                }
+            // Precision applies to floating-point output only. Integer
+            // outputs (x/b/o/d) reject it because there's no fractional
+            // part to format.
+            const bool acceptsPrecision =
+                (out.numericType == NumericType::Default
+                    || out.numericType == NumericType::Fixed
+                    || out.numericType == NumericType::Scientific
+                    || out.numericType == NumericType::General);
+            if (!acceptsPrecision && out.precisionMin >= 0) {
+                return makeError("Precision not allowed with integer types (x/b/o/d)");
+            }
+
+            // Force-sign is meaningful for signed outputs. Hex/binary/octal
+            // are formatted as unsigned bit patterns (two's complement for
+            // negatives), so '+' has no sensible meaning there; signed
+            // base-10 ('d') keeps it.
+            const bool acceptsForceSign =
+                (out.numericType != NumericType::Hex
+                    && out.numericType != NumericType::Binary
+                    && out.numericType != NumericType::Octal);
+            if (!acceptsForceSign && out.forceSign) {
+                return makeError("'+' flag not allowed with integer types (x/b/o)");
             }
 
             out.valid = true;
@@ -198,6 +302,7 @@ namespace FormatSpec {
             case NumericType::Fixed:      fmt += "f"; break;
             case NumericType::Scientific: fmt += "e"; break;
             case NumericType::General:    fmt += "g"; break;
+            case NumericType::Integer:    fmt += "lld"; break;
             case NumericType::Hex:        fmt = "%";
                 if (spec.zeroPad) fmt += "0";
                 if (spec.width >= 0) fmt += std::to_string(spec.width);
@@ -252,7 +357,7 @@ namespace FormatSpec {
                 return std::wstring(body.begin(), body.end());
             }
 
-            // printf path for f/e/g/x/o.
+            // printf path for f/e/g/x/o/d.
             std::array<char, 128> buf{};
             int n;
             if (spec.numericType == NumericType::Hex
@@ -260,6 +365,10 @@ namespace FormatSpec {
                 long long iv = static_cast<long long>(value);
                 n = std::snprintf(buf.data(), buf.size(), fmt.c_str(),
                     static_cast<unsigned long long>(iv));
+            }
+            else if (spec.numericType == NumericType::Integer) {
+                n = std::snprintf(buf.data(), buf.size(), fmt.c_str(),
+                    static_cast<long long>(value));
             }
             else {
                 n = std::snprintf(buf.data(), buf.size(), fmt.c_str(), value);
@@ -358,19 +467,93 @@ namespace FormatSpec {
             return std::wstring(body.begin(), body.end());
         }
 
-        // ---- Date parser ----------------------------------------------
-        // Form: D[<strftime fmt>] or D[!<strftime fmt>]
-        Spec parseDate(const std::wstring& s) {
-            // s starts with 'D' and was already trimmed.
-            if (s.size() < 3 || s[1] != L'[' || s.back() != L']') {
-                return makeError("Date spec must be D[<format>], e.g. D[%Y-%m-%d]");
+        // ---- Text renderer --------------------------------------------
+        //
+        // Codepoint-aware so that multi-byte UTF-8 sequences count as one
+        // character. Width pads with spec.textFill on the appropriate
+        // side(s); max-length truncates without ever splitting a
+        // codepoint mid-sequence.
+        //
+        // UTF-8 lead-byte test: continuation bytes have the bit pattern
+        // 10xxxxxx, so anything that does NOT match (byte & 0xC0) == 0x80
+        // is a codepoint start. That's all the decoder we need for
+        // counting and slicing.
+        std::wstring formatString(const Spec& spec, const std::string& text) {
+            auto isLeadByte = [](unsigned char b) {
+                return (b & 0xC0) != 0x80;
+                };
+
+            // Count codepoints in the input.
+            std::size_t codepointCount = 0;
+            for (unsigned char b : text) {
+                if (isLeadByte(b)) ++codepointCount;
             }
 
+            // Truncate to textMaxLength codepoints, slicing at a lead-byte
+            // boundary. byteCutoff sits at the start of the (maxLen+1)-th
+            // codepoint, i.e. the first byte we drop.
+            std::size_t byteCutoff = text.size();
+            if (spec.textMaxLength >= 0
+                && codepointCount > static_cast<std::size_t>(spec.textMaxLength)) {
+                std::size_t cpSeen = 0;
+                for (std::size_t i = 0; i < text.size(); ++i) {
+                    if (isLeadByte(static_cast<unsigned char>(text[i]))) {
+                        if (cpSeen == static_cast<std::size_t>(spec.textMaxLength)) {
+                            byteCutoff = i;
+                            break;
+                        }
+                        ++cpSeen;
+                    }
+                }
+                codepointCount = static_cast<std::size_t>(spec.textMaxLength);
+            }
+            const std::string body(text.data(), byteCutoff);
+
+            // Pad to spec.width codepoints. If already at or above width,
+            // emit as-is.
+            std::string out;
+            const int width = spec.width;
+            if (width > 0 && codepointCount < static_cast<std::size_t>(width)) {
+                const std::size_t padCount =
+                    static_cast<std::size_t>(width) - codepointCount;
+
+                // Compute left/right pad counts based on alignment.
+                std::size_t padLeft = 0;
+                std::size_t padRight = 0;
+                switch (spec.textAlign) {
+                case TextAlign::Left:   padRight = padCount; break;
+                case TextAlign::Right:  padLeft = padCount; break;
+                case TextAlign::Center:
+                    padLeft = padCount / 2;
+                    padRight = padCount - padLeft;
+                    break;
+                }
+
+                out.reserve(text.size() + padCount * spec.textFill.size());
+                for (std::size_t k = 0; k < padLeft; ++k)  out.append(spec.textFill);
+                out.append(body);
+                for (std::size_t k = 0; k < padRight; ++k) out.append(spec.textFill);
+            }
+            else {
+                out = body;
+            }
+
+            // Convert UTF-8 bytes to wstring. Each byte maps to one
+            // wchar; the engine immediately collapses these back to char
+            // on the output path. We could decode to real wide
+            // codepoints, but that's redundant work for an output that
+            // ends up as a byte stream anyway.
+            return std::wstring(out.begin(), out.end());
+        }
+
+        // Form: d:<strftime fmt> or d:!<strftime fmt>
+        // Caller has already verified that s starts with "d:".
+        Spec parseDate(const std::wstring& s) {
             Spec out;
             out.kind = Kind::Date;
 
-            // Strip the D[ ... ] brackets.
-            std::wstring body = s.substr(2, s.size() - 3);
+            // Strip the "d:" prefix.
+            std::wstring body = s.substr(2);
 
             // Lua-style '!' prefix forces UTC.
             if (!body.empty() && body[0] == L'!') {
@@ -379,7 +562,7 @@ namespace FormatSpec {
             }
 
             if (body.empty()) {
-                return makeError("Date spec is empty (need a strftime pattern inside D[...])");
+                return makeError("Date spec is empty (need a strftime pattern after 'd:')");
             }
 
             // Convert wstring -> utf8 narrow for strftime. The strftime
@@ -457,6 +640,30 @@ namespace FormatSpec {
 
     }  // unnamed namespace
 
+    // ---- Top-level dispatch -------------------------------------------
+    //
+    // Spec families are distinguished by the leading character (plus a
+    // single lookahead where needed):
+    //
+    //   'd:'                  -> Date
+    //   'n:'                  -> Numeric (explicit marker; equivalent to bare)
+    //   't:'                  -> Text
+    //   't' + unit letter     -> Duration (ts/tm/th/td)
+    //   anything else         -> Numeric (default family, no marker)
+    //
+    // Numeric is the unmarked default so that the common case stays
+    // short (`5.2f`, `04x`). The optional `n:` form is offered for
+    // callers who prefer a marker on every spec for visual consistency
+    // with `d:`, `t:` etc. Both forms produce identical output.
+    //
+    // The 't' prefix is shared between Text and Duration: the second
+    // character decides. ':' -> Text body, unit letter -> Duration. This
+    // lookahead lets txt() consumers map to a `t:` marker without
+    // colliding with the existing `ts:` / `tm:` etc. specs.
+    //
+    // Other families wear a leading marker so their grammars can grow
+    // independently without retroactively ambiguating the numeric
+    // parser.
     Spec parse(const std::wstring& specText) {
         std::wstring s = trim(specText);
 
@@ -464,13 +671,26 @@ namespace FormatSpec {
             return makeError("Empty spec");
         }
 
-        // Date: D[...] or D[!...]
-        if (s[0] == L'D' && s.size() >= 2 && s[1] == L'[') {
+        // Date: d:<fmt>  (also d:!<fmt> for UTC)
+        if (s.size() >= 2 && s[0] == L'd' && s[1] == L':') {
             return parseDate(s);
         }
 
-        // Duration: starts with 't' followed by a unit letter and ':'.
+        // Numeric (explicit marker): strip 'n:' and continue as if it
+        // had been bare. The trailing part still has to satisfy the
+        // normal numeric grammar - 'n:' on its own is rejected as an
+        // empty numeric spec.
+        if (s.size() >= 2 && s[0] == L'n' && s[1] == L':') {
+            return parseNumeric(s.substr(2));
+        }
+
+        // 't' family: text (t:...) or duration (t<unit>:...). The second
+        // character disambiguates - ':' takes us to the text parser,
+        // anything else stays on the duration path.
         if (s[0] == L't') {
+            if (s.size() >= 2 && s[1] == L':') {
+                return parseString(s.substr(2));
+            }
             return parseDuration(s);
         }
 
@@ -484,8 +704,22 @@ namespace FormatSpec {
         case Kind::Date:     return formatDate(spec, value);
         case Kind::Duration: return formatDuration(spec, value);
         case Kind::Numeric:  return formatPrintf(spec, value);
+        case Kind::Text:     return L"";  // type mismatch; caller routes via string overload
         }
         return L"";
+    }
+
+    std::wstring apply(const Spec& spec, const std::string& text) {
+        if (!spec.valid) return L"";
+
+        // Only Text specs make sense here. For numeric / date / duration
+        // a string input is a type mismatch; we pass the input through
+        // unchanged so the engine layer can surface it verbatim (the
+        // caller is expected to have flagged the mismatch upstream).
+        if (spec.kind == Kind::Text) {
+            return formatString(spec, text);
+        }
+        return std::wstring(text.begin(), text.end());
     }
 
     // ---- Formula / spec splitter --------------------------------------
@@ -501,23 +735,21 @@ namespace FormatSpec {
     }
 
     Split splitFormulaSpec(const std::string& blockBody) {
-        // Forward scan tracking quote state and bracket depth. We
-        // remember the position of the last '~' that occurs while we
-        // are NOT inside a quoted string and at bracket depth 0.
+        // Forward scan tracking quote state only. We remember the
+        // position of the last '~' that occurs while we are NOT inside
+        // a quoted string.
         //
         // ExprTk string literals use either single or double quotes.
         // Quoted strings can contain backslash escapes; we handle the
         // typical \' \" \\ cases so an escaped quote does not flip
         // the quote state.
         //
-        // Brackets: square brackets [...] are tracked so that future
-        // date specs like D[%Y-%m-%d ~ %H:%M] do not get split inside.
-        // Round and curly brackets do not need tracking because no '~'
-        // can legitimately appear inside an ExprTk call or list.
+        // Picking the LAST '~' keeps a formula that legitimately contains
+        // '~' (e.g. ExprTk's multi-sequence operator `~{a; b}`) unambiguous
+        // - the trailing '~' is always the spec separator.
         long long lastTilde = -1;
 
         wchar_t quoteCh = 0;        // 0 = not in quote; otherwise the opening quote
-        int bracketDepth = 0;
 
         for (size_t i = 0; i < blockBody.size(); ++i) {
             char c = blockBody[i];
@@ -537,10 +769,8 @@ namespace FormatSpec {
                 quoteCh = (wchar_t)c;
                 continue;
             }
-            if (c == '[') { ++bracketDepth; continue; }
-            if (c == ']') { if (bracketDepth > 0) --bracketDepth; continue; }
 
-            if (c == '~' && bracketDepth == 0) {
+            if (c == '~') {
                 lastTilde = static_cast<long long>(i);
             }
         }

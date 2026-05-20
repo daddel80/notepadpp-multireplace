@@ -2507,7 +2507,7 @@ end
     <p>By default an ExprTk expression renders its numeric result with the shortest round-trip representation: <code>3.14</code>, <code>42</code>, <code>1.5e+10</code>. For controlled output &mdash; padding, precision, fixed decimal places, hex, time durations &mdash; append a <strong>format spec</strong> to the expression with <code>~</code>:</p>
     <p><code>(?= formula ~ spec )</code></p>
     <p>The <code>~</code> separator splits the block into the formula (left) and the spec (right). Whitespace around <code>~</code> is optional. The spec is validated when the rule is compiled, so an invalid spec surfaces immediately as a compile-time error rather than producing garbage at runtime.</p>
-    <p>There are three kinds of spec: <strong>numeric</strong>, <strong>duration</strong>, and <strong>date</strong>.</p>
+    <p>There are four kinds of spec: <strong>numeric</strong>, <strong>text</strong>, <strong>duration</strong>, and <strong>date</strong>.</p>
 
     <h3>Numeric</h3>
     <p>Grammar: <code>[+] [0] [width] [.prec | .min-max] [type]</code></p>
@@ -2538,10 +2538,10 @@ end
       </tr>
       <tr>
         <td><code>type</code></td>
-        <td><code>f</code> fixed, <code>e</code> scientific, <code>g</code> shortest, <code>x</code> hex, <code>b</code> binary, <code>o</code> octal. Omit for default rendering.</td>
+        <td><code>f</code> fixed, <code>e</code> scientific, <code>g</code> shortest, <code>x</code> hex, <code>b</code> binary, <code>o</code> octal, <code>d</code> integer. Omit for default rendering.</td>
       </tr>
     </table>
-    <p>Integer types <code>x b o</code> accept only <code>0</code> and <code>width</code> modifiers &mdash; precision and <code>+</code> are rejected as a compile error. Negative numbers in <code>x</code> and <code>b</code> produce the 64-bit two's-complement bit pattern (<code>x</code> on <code>-1</code> &rarr; <code>ffffffffffffffff</code>).</p>
+    <p>Integer types <code>x b o d</code> reject precision (no fractional part to format). Hex/binary/octal also reject <code>+</code> because they are formatted as unsigned bit patterns (negative numbers in <code>x</code> and <code>b</code> produce the 64-bit two's-complement pattern, <code>x</code> on <code>-1</code> &rarr; <code>ffffffffffffffff</code>). Signed base-10 (<code>d</code>) accepts <code>+</code> normally.</p>
     <table class="optionsTable">
       <tr>
         <th>Spec</th>
@@ -2556,8 +2556,55 @@ end
       <tr><td><code>8b</code></td><td><code>5</code></td><td><code>     101</code></td></tr>
       <tr><td><code>.3g</code></td><td><code>123456</code></td><td><code>1.23e+05</code></td></tr>
       <tr><td><code>+</code></td><td><code>3.14</code></td><td><code>+3.14</code></td></tr>
+      <tr><td><code>d</code></td><td><code>3.7</code></td><td><code>3</code></td></tr>
+      <tr><td><code>+05d</code></td><td><code>-42</code></td><td><code>-0042</code></td></tr>
     </table>
     <p>The numeric output is locale-independent: the decimal separator is always <code>.</code>, regardless of the system locale. This keeps CSV pipelines reproducible across machines.</p>
+    <p>The <code>d</code> type truncates fractional input toward zero before output (<code>3.7</code> &rarr; <code>3</code>, <code>-3.7</code> &rarr; <code>-3</code>). For rounded behaviour use <code>round()</code> first: <code>round(num(1)) ~ d</code>.</p>
+
+    <h4>Optional <code>n:</code> marker</h4>
+    <p>For visual consistency with the other spec families (<code>d:</code>, <code>t:</code>, <code>ts:</code>), a numeric spec can be prefixed with <code>n:</code>. The two forms are equivalent:</p>
+    <table class="optionsTable">
+      <tr><th>Form</th><th>Output</th></tr>
+      <tr><td><code>~ 5.2f</code></td><td><code> 3.14</code></td></tr>
+      <tr><td><code>~ n:5.2f</code></td><td><code> 3.14</code></td></tr>
+    </table>
+    <p>The marker is optional &mdash; the bare form stays the recommended default since numeric is the common case and the short form reads cleaner. <code>n:</code> is offered for callers who prefer an explicit marker on every spec.</p>
+
+    <h3>Text</h3>
+    <p>Grammar: <code>t:[fill][align][width][.maxlen]</code></p>
+    <p>Pads, aligns, and optionally truncates a string-returning formula. Required marker is <code>t:</code> (with the colon). Length semantics operate on <strong>UTF-8 codepoints</strong>, so multi-byte characters like <code>&auml;</code> count as one.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Part</th>
+        <th>Meaning</th>
+      </tr>
+      <tr><td><code>fill</code></td><td>Optional. Single character used for padding. Must be followed by an align letter to disambiguate from width. Defaults to space.</td></tr>
+      <tr><td><code>align</code></td><td><code>&lt;</code> left, <code>&gt;</code> right, <code>^</code> center. Optional. Defaults to <code>&lt;</code> (left).</td></tr>
+      <tr><td><code>width</code></td><td>Minimum codepoint length; pads with <code>fill</code> to reach this width.</td></tr>
+      <tr><td><code>.maxlen</code></td><td>Maximum codepoint length; truncates at a codepoint boundary if exceeded.</td></tr>
+    </table>
+    <p>Text specs require a <strong>string-returning formula</strong> (e.g. <code>txt(1)</code>, <code>num2rom(...)</code>, <code>'literal'</code>, or any ExprTk string concatenation). Combining a text spec with a numeric formula is a compile-time error, and vice versa.</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Spec</th>
+        <th>Input</th>
+        <th>Output</th>
+      </tr>
+      <tr><td><code>t:&lt;15</code></td><td><code>"foo"</code></td><td><code>"foo            "</code></td></tr>
+      <tr><td><code>t:&gt;15</code></td><td><code>"foo"</code></td><td><code>"            foo"</code></td></tr>
+      <tr><td><code>t:^15</code></td><td><code>"foo"</code></td><td><code>"      foo      "</code></td></tr>
+      <tr><td><code>t:15</code></td><td><code>"foo"</code></td><td><code>"foo            "</code></td></tr>
+      <tr><td><code>t:.5</code></td><td><code>"hello world"</code></td><td><code>"hello"</code></td></tr>
+      <tr><td><code>t:15.3</code></td><td><code>"longstring"</code></td><td><code>"lon            "</code></td></tr>
+      <tr><td><code>t:*&lt;15</code></td><td><code>"foo"</code></td><td><code>"foo************"</code></td></tr>
+      <tr><td><code>t:.&lt;15</code></td><td><code>"Ch1"</code></td><td><code>"Ch1............"</code></td></tr>
+      <tr><td><code>t:0&gt;5</code></td><td><code>"42"</code></td><td><code>"00042"</code></td></tr>
+      <tr><td><code>t:&lt;10</code></td><td><code>"Gr&ouml;&szlig;e"</code></td><td><code>"Gr&ouml;&szlig;e     "</code> (5 codepoints)</td></tr>
+      <tr><td><code>t:.3</code></td><td><code>"Gr&ouml;&szlig;e"</code></td><td><code>"Gr&ouml;"</code> (codepoint boundary)</td></tr>
+    </table>
+    <p>The <code>t</code> marker is shared with <strong>duration</strong> (<code>ts:</code>, <code>tm:</code>, <code>th:</code>, <code>td:</code>): the parser looks at the second character &mdash; <code>:</code> takes the text path, a unit letter (<code>s</code>/<code>m</code>/<code>h</code>/<code>d</code>) takes the duration path. So <code>t:&lt;15</code> and <code>ts:hms</code> cannot be confused.</p>
+    <p>If both fill and align use the same character (<code>t:&lt;&lt;10</code> &rarr; fill <code>&lt;</code>, align <code>&lt;</code>), the lookahead still resolves cleanly: a fill character is only consumed when an align letter follows it.</p>
 
     <h3>Duration</h3>
     <p>Grammar: <code>t&lt;unit&gt;:&lt;mode&gt;</code></p>
@@ -2583,8 +2630,8 @@ end
     <h3>Date</h3>
     <p>Grammar:</p>
     <ul>
-      <li><code>D[strftime_pattern]</code> &mdash; local time</li>
-      <li><code>D[!strftime_pattern]</code> &mdash; UTC</li>
+      <li><code>d:strftime_pattern</code> &mdash; local time</li>
+      <li><code>d:!strftime_pattern</code> &mdash; UTC</li>
     </ul>
     <p>Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through <code>strftime</code>. The optional <code>!</code> prefix forces UTC; without it the system's local time zone is used. This follows the same convention as Lua's <code>os.date()</code>.</p>
     <p>The pattern accepts any standard strftime specifier. Literal text between specifiers is passed through verbatim. Common specifiers:</p>
@@ -2614,22 +2661,29 @@ end
     <p>Weekday/month names follow the system locale. The full list of <code>strftime</code> specifiers is platform-defined and passes through verbatim &mdash; anything your C library supports works here.</p>
     <table class="optionsTable">
       <tr><th>Spec</th><th>Timestamp</th><th>Output (UTC)</th></tr>
-      <tr><td><code>D[!%Y-%m-%d]</code></td><td><code>1700000000</code></td><td><code>2023-11-14</code></td></tr>
-      <tr><td><code>D[!%Y-%m-%dT%H:%M:%SZ]</code></td><td><code>1700000000</code></td><td><code>2023-11-14T22:13:20Z</code></td></tr>
-      <tr><td><code>D[!%d.%m.%Y]</code></td><td><code>1700000000</code></td><td><code>14.11.2023</code></td></tr>
-      <tr><td><code>D[!%A]</code></td><td><code>0</code></td><td><code>Thursday</code> (epoch was Thursday)</td></tr>
-      <tr><td><code>D[!Year %Y, week %V]</code></td><td><code>1700000000</code></td><td><code>Year 2023, week 46</code></td></tr>
-      <tr><td><code>D[!%c]</code></td><td><code>1700000000</code></td><td><code>Tue Nov 14 22:13:20 2023</code></td></tr>
+      <tr><td><code>d:!%Y-%m-%d</code></td><td><code>1700000000</code></td><td><code>2023-11-14</code></td></tr>
+      <tr><td><code>d:!%Y-%m-%dT%H:%M:%SZ</code></td><td><code>1700000000</code></td><td><code>2023-11-14T22:13:20Z</code></td></tr>
+      <tr><td><code>d:!%d.%m.%Y</code></td><td><code>1700000000</code></td><td><code>14.11.2023</code></td></tr>
+      <tr><td><code>d:!%A</code></td><td><code>0</code></td><td><code>Thursday</code> (epoch was Thursday)</td></tr>
+      <tr><td><code>d:!Year %Y, week %V</code></td><td><code>1700000000</code></td><td><code>Year 2023, week 46</code></td></tr>
+      <tr><td><code>d:!%c</code></td><td><code>1700000000</code></td><td><code>Tue Nov 14 22:13:20 2023</code></td></tr>
     </table>
     <p><strong>Range:</strong> timestamps must be &ge; 0 (years 1970 onwards). Negative values produce empty output. Subseconds are truncated (<code>1700000000.7</code> is treated as <code>1700000000</code>).</p>
+    <p><strong>Tilde in date patterns:</strong> <code>~</code> is the spec separator and therefore cannot appear inside the strftime pattern itself &mdash; use any other literal between specifiers (<code>-</code>, <code>/</code>, <code>:</code>, space, etc.). This matters in practice only for unusual patterns; standard date/time separators are unaffected.</p>
 
     <h3>Errors and edge cases</h3>
     <ul>
-      <li><strong>Invalid spec at compile time</strong> &mdash; <code>(?=hit ~ 99q)</code> produces <em>"Invalid format spec '99q': Unknown numeric type letter; expected f/e/g/x/b/o"</em>. The rule fails to compile; no replacements run.</li>
-      <li><strong>String output cannot be combined with a spec</strong> &mdash; the spec is for numeric output. Combining <code>~ spec</code> with a string-producing formula (e.g. <code>(?='hello' ~ 05f)</code>) is rejected at compile time with a clear diagnostic.</li>
+      <li><strong>Invalid spec at compile time</strong> &mdash; <code>(?=hit ~ 99q)</code> produces <em>"Invalid format spec '99q': Unknown numeric type letter; expected f/e/g/x/b/o/d"</em>. The rule fails to compile; no replacements run.</li>
+      <li><strong>Spec / formula type mismatch</strong> &mdash; every spec family expects a matching formula type:
+        <ul>
+          <li>Numeric / date / duration specs expect a numeric-returning formula. Pairing them with a string-returning formula (e.g. <code>(?='hello' ~ 05f)</code>) is rejected at compile time.</li>
+          <li>Text specs (<code>t:...</code>) expect a string-returning formula. Pairing them with a numeric formula (e.g. <code>(?=num(1) ~ t:&lt;15)</code>) is rejected at compile time.</li>
+        </ul>
+      </li>
       <li><strong>NaN / Inf</strong> &mdash; when the formula itself produces <code>NaN</code> (e.g. parsing a non-numeric capture) or <code>Inf</code> (e.g. division by zero), the spec is not applied; the recoverable-error dialog appears instead, leaving the original match untouched if the user skips.</li>
-      <li><strong><code>~</code> inside the formula</strong> &mdash; the splitter looks for the <strong>last</strong> <code>~</code> at bracket depth 0, ignoring <code>~</code> inside quoted strings (<code>'a~b'</code>) and inside <code>[...]</code> brackets (<code>D[%Y ~ %m]</code>). The first <code>~</code> in the date pattern below is therefore part of the spec, not a separator:
-        <p><code>(?= hit ~ D[%Y-%m-%d ~ %H:%M:%S] )</code></p>
+      <li><strong><code>~</code> inside the formula</strong> &mdash; the splitter looks for the <strong>last</strong> <code>~</code> outside string quotes. ExprTk string literals (<code>'a~b'</code>, <code>"a~b"</code>) are quote-aware, so a <code>~</code> inside them does not split:
+        <p><code>(?= 'note ~ check' + txt(1) ~ t:&lt;20 )</code></p>
+        The <code>~</code> inside the single-quoted literal is part of the formula; the final <code>~</code> is the spec separator.
       </li>
     </ul>
   </section>
@@ -2642,17 +2696,17 @@ end
     <pre><code>now()              -&gt;  Unix timestamp (current time, with subsecond fraction)
 today()            -&gt;  Unix timestamp at local midnight today
 todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
-    <p>All three return seconds since 1970-01-01 UTC as <code>double</code>. They pair directly with <code>D[fmt]</code> for output.</p>
+    <p>All three return seconds since 1970-01-01 UTC as <code>double</code>. They pair directly with <code>d:fmt</code> for output.</p>
     <p><code>now()</code> reads the current system clock on every call (it's live, not cached per replace-all). To freeze it for a multi-step expression, assign it once: <code>var t := now(); ...</code>.</p>
     <p><code>today()</code> is the timestamp of <strong>00:00:00 in the local time zone today</strong> &mdash; useful for "seconds since midnight" patterns or comparing dates without time-of-day.</p>
     <p>Examples:</p>
-    <pre><code>(?= now() ~ D[%Y-%m-%d %H:%M:%S] )      # current local timestamp
-(?= today() ~ D[%Y-%m-%d] )             # today's date only
+    <pre><code>(?= now() ~ d:%Y-%m-%d %H:%M:%S )      # current local timestamp
+(?= today() ~ d:%Y-%m-%d )             # today's date only
 (?= (now() - today()) / 3600 )          # hours since midnight (e.g. 14.67)
 (?= floor((now() - todate(txt(1), '%Y-%m-%d')) / 86400) )  # days since a date</code></pre>
-    <p>For <code>todate</code> specifically, the inverse of the <code>D[fmt]</code> output spec:</p>
+    <p>For <code>todate</code> specifically, the inverse of the <code>d:fmt</code> output spec:</p>
     <p><code>todate(text, fmt)  -&gt;  Unix timestamp</code></p>
-    <p>Parses <code>text</code> against the strftime-style <code>fmt</code> pattern and returns the resulting time as seconds since 1970-01-01 UTC. As with <code>D[fmt]</code>:</p>
+    <p>Parses <code>text</code> against the strftime-style <code>fmt</code> pattern and returns the resulting time as seconds since 1970-01-01 UTC. As with <code>d:fmt</code>:</p>
     <ul>
       <li>without <code>!</code> prefix &rarr; input is interpreted as <strong>local time</strong></li>
       <li>with <code>!</code> prefix &rarr; input is interpreted as <strong>UTC</strong></li>
@@ -2686,15 +2740,15 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
       <tr><td><code>todate(txt(0), '!%Y-%m-%d')</code></td><td>&check; works (UTC)</td></tr>
       <tr><td><code>todate(txt(0), "%Y-%m-%d")</code></td><td>&times; token error</td></tr>
     </table>
-    <p><code>D[fmt]</code> is not affected &mdash; the spec sits inside <code>[...]</code> brackets and bypasses the ExprTk lexer entirely.</p>
+    <p>The <code>d:fmt</code> output spec is not affected &mdash; the pattern follows after the <code>d:</code> marker and is consumed by the FormatSpec parser, not by the ExprTk lexer.</p>
 
     <h3>Time-zone consistency in round-trips</h3>
-    <p>Mixing local and UTC across <code>todate</code> and <code>D[...]</code> produces an offset of one time zone. For predictable round-trips, use the <strong>same</strong> UTC/local choice on both sides:</p>
+    <p>Mixing local and UTC across <code>todate</code> and <code>d:fmt</code> produces an offset of one time zone. For predictable round-trips, use the <strong>same</strong> UTC/local choice on both sides:</p>
     <table class="optionsTable">
       <tr><th>Form</th><th>Status</th></tr>
-      <tr><td><code>(?= todate(txt(0), '!%Y-%m-%d') ~ D[!%Y-%m-%d] )</code></td><td>&check; pure UTC</td></tr>
-      <tr><td><code>(?= todate(txt(0), '%Y-%m-%d') ~ D[%Y-%m-%d] )</code></td><td>&check; pure local</td></tr>
-      <tr><td><code>(?= todate(txt(0), '%Y-%m-%d') ~ D[!%Y-%m-%d] )</code></td><td>&#9888; offset by local TZ</td></tr>
+      <tr><td><code>(?= todate(txt(0), '!%Y-%m-%d') ~ d:!%Y-%m-%d )</code></td><td>&check; pure UTC</td></tr>
+      <tr><td><code>(?= todate(txt(0), '%Y-%m-%d') ~ d:%Y-%m-%d )</code></td><td>&check; pure local</td></tr>
+      <tr><td><code>(?= todate(txt(0), '%Y-%m-%d') ~ d:!%Y-%m-%d )</code></td><td>&#9888; offset by local TZ</td></tr>
     </table>
     <p>The third form is occasionally what you want (e.g. converting a wall-clock log time to a UTC timestamp for storage), but it should be a conscious choice.</p>
 
@@ -2870,12 +2924,12 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
         <th>Replace</th>
         <th>Description</th>
       </tr>
-      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ D[!%Y-%m-%d])</code></td><td>Unix timestamp &rarr; ISO date in UTC.</td></tr>
-      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ D[!%Y-%m-%dT%H:%M:%SZ])</code></td><td>Unix timestamp &rarr; ISO 8601 with Z suffix.</td></tr>
-      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), '!%Y-%m-%d') ~ D[!%d.%m.%Y])</code></td><td>Reformat ISO date &rarr; DD.MM.YYYY.</td></tr>
-      <tr><td><code>(\d{2})\.(\d{2})\.(\d{4})</code></td><td><code>(?=todate(txt(0), '!%d.%m.%Y') ~ D[!%Y-%m-%d])</code></td><td>Reformat DD.MM.YYYY &rarr; ISO date.</td></tr>
-      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), '!%Y-%m-%d') + 86400 ~ D[!%Y-%m-%d])</code></td><td>Shift every ISO date by +1 day.</td></tr>
-      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), '!%Y-%m-%d') ~ D[!%A])</code></td><td>Replace each ISO date with its weekday name.</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ d:!%Y-%m-%d)</code></td><td>Unix timestamp &rarr; ISO date in UTC.</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ d:!%Y-%m-%dT%H:%M:%SZ)</code></td><td>Unix timestamp &rarr; ISO 8601 with Z suffix.</td></tr>
+      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), '!%Y-%m-%d') ~ d:!%d.%m.%Y)</code></td><td>Reformat ISO date &rarr; DD.MM.YYYY.</td></tr>
+      <tr><td><code>(\d{2})\.(\d{2})\.(\d{4})</code></td><td><code>(?=todate(txt(0), '!%d.%m.%Y') ~ d:!%Y-%m-%d)</code></td><td>Reformat DD.MM.YYYY &rarr; ISO date.</td></tr>
+      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), '!%Y-%m-%d') + 86400 ~ d:!%Y-%m-%d)</code></td><td>Shift every ISO date by +1 day.</td></tr>
+      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), '!%Y-%m-%d') ~ d:!%A)</code></td><td>Replace each ISO date with its weekday name.</td></tr>
     </table>
 
     <h3>Counters</h3>
@@ -2909,7 +2963,7 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
       <li><strong>No state across matches.</strong> Each <code>(?=...)</code> evaluation starts fresh. The numeric counters (<code>CNT</code>, <code>LCNT</code>) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use <code>vars({...})</code>.</li>
       <li><strong>No data file loading.</strong> ExprTk has no equivalent to Lua's <code>lvars</code> (preload variables from disk) or <code>lkp</code> (key lookup from disk). <code>loadlib</code> loads <strong>code</strong>, not data.</li>
       <li><strong><code>todate</code> is intentionally minimal.</strong> It accepts the common strftime specifiers (<code>%Y %y %m %d %H %M %S %I %p %F %T %%</code>) &mdash; enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (<code>%B</code>), weekday names (<code>%A</code>), or week numbers (<code>%V</code>) are <strong>not</strong> accepted on the input side. For richer date input parsing, use Lua's date handling instead.</li>
-      <li><strong>Date timestamps must be &ge; 0.</strong> <code>D[fmt]</code> and <code>todate</code> only handle years 1970 onwards. Negative timestamps produce empty output or NaN respectively.</li>
+      <li><strong>Date timestamps must be &ge; 0.</strong> <code>d:fmt</code> and <code>todate</code> only handle years 1970 onwards. Negative timestamps produce empty output or NaN respectively.</li>
     </ul>
   </section>
 

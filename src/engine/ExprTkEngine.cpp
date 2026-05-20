@@ -197,7 +197,7 @@ namespace MultiReplaceEngine {
         _symbolTable.add_function("now", _nowFunction);
         _symbolTable.add_function("today", _todayFunction);
 
-        // Register todate(str, fmt) - the inverse of D[fmt] output.
+        // Register todate(str, fmt) - the inverse of d:fmt output.
         // Returns Unix timestamp on success, NaN on parse failure.
         _symbolTable.add_function("todate", _todateFunction);
 
@@ -415,19 +415,33 @@ namespace MultiReplaceEngine {
             _segmentSpecs[i].isString =
                 exprtk::expression_helper<double>::is_string(expr);
 
-            // Format specs are numeric formatters (e.g. %05.2f). Combining
-            // them with a string-producing formula has no defined meaning.
-            // Catch it at compile time, same diagnostic style as the
-            // return-statement counterpart in the eval path.
-            if (_segmentSpecs[i].isString && _segmentSpecs[i].hasSpec) {
-                std::string msg = "Format spec cannot be combined with a string-returning formula: \"";
-                msg += seg.text;
-                msg += "\"";
-                reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
-
-                _compiledExpressions.clear();
-                _segmentSpecs.clear();
-                return false;
+            // Type-match the spec against the expression's result type.
+            // The Text spec family (t:...) needs a string-returning
+            // formula; the other spec families (numeric, date, duration)
+            // need a numeric one. Anything else is a mismatch we surface
+            // at compile time, same diagnostic style as the return-
+            // statement counterpart in the eval path.
+            if (_segmentSpecs[i].hasSpec) {
+                const bool specIsText =
+                    (_segmentSpecs[i].spec.kind == FormatSpec::Kind::Text);
+                if (specIsText && !_segmentSpecs[i].isString) {
+                    std::string msg = "Text format spec (t:...) requires a string-returning formula: \"";
+                    msg += seg.text;
+                    msg += "\"";
+                    reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
+                    _compiledExpressions.clear();
+                    _segmentSpecs.clear();
+                    return false;
+                }
+                if (!specIsText && _segmentSpecs[i].isString) {
+                    std::string msg = "Numeric/date/duration format spec cannot be combined with a string-returning formula: \"";
+                    msg += seg.text;
+                    msg += "\"";
+                    reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
+                    _compiledExpressions.clear();
+                    _segmentSpecs.clear();
+                    return false;
+                }
             }
 
             _compiledExpressions[i] = std::move(expr);
@@ -700,11 +714,25 @@ namespace MultiReplaceEngine {
                 if (expressionIdx < _currentBlockOutputs.size()) {
                     _currentBlockOutputs[expressionIdx].setString(strOut);
                 }
-                if (escapeOutput && _host) {
-                    out.append(_host->escapeForRegex(strOut));
+                // Apply text format spec if present. The compile-time
+                // check upstream guaranteed that any spec attached here
+                // is of Kind::Text, so the string overload is safe.
+                std::string formatted;
+                if (_segmentSpecs[i].hasSpec) {
+                    std::wstring w = FormatSpec::apply(_segmentSpecs[i].spec, strOut);
+                    formatted.reserve(w.size());
+                    for (wchar_t wc : w) {
+                        formatted.push_back(static_cast<char>(wc));
+                    }
                 }
                 else {
-                    out.append(strOut);
+                    formatted = strOut;
+                }
+                if (escapeOutput && _host) {
+                    out.append(_host->escapeForRegex(formatted));
+                }
+                else {
+                    out.append(formatted);
                 }
                 ++expressionIdx;
                 continue;
@@ -766,8 +794,10 @@ namespace MultiReplaceEngine {
             ++expressionIdx;
 
             // Format through spec, or fall back to shortest round-trip.
-            // FormatSpec only emits ASCII chars (digits, sign, dot,
-            // letters, colon, space), so each wchar fits in a char.
+            // Numeric/date/duration specs emit only ASCII (digits, sign,
+            // dot, letters, colon, space), so each wchar fits in a char.
+            // Text specs never reach this path - they are string-typed and
+            // handled in the isString branch above.
             if (_segmentSpecs[i].hasSpec) {
                 std::wstring formatted = FormatSpec::apply(_segmentSpecs[i].spec, value);
                 out.reserve(out.size() + formatted.size());
