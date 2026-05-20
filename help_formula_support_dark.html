@@ -521,6 +521,7 @@ nav.pagenav .nav-group.collapsible {
     <a href="#exprtk-skip" hidden onclick="navClicked(event, 'exprtk-skip')">Skipping Matches</a>
     <a href="#exprtk-seq" hidden onclick="navClicked(event, 'exprtk-seq')">Sequence Generator</a>
     <a href="#exprtk-baseconv" hidden onclick="navClicked(event, 'exprtk-baseconv')">Base Conversions</a>
+    <a href="#exprtk-stringpack" hidden onclick="navClicked(event, 'exprtk-stringpack')">String Pack</a>
     <a href="#exprtk-csv" hidden onclick="navClicked(event, 'exprtk-csv')">CSV Column Access</a>
     <a href="#exprtk-ecmd" hidden onclick="navClicked(event, 'exprtk-ecmd')">Library Loading (ecmd)</a>
     <a href="#exprtk-format" hidden onclick="navClicked(event, 'exprtk-format')">Output Formatting</a>
@@ -2172,6 +2173,51 @@ return {
         <td><code>(?=rom2num(txt(1)))</code></td>
         <td>Roman &rarr; decimal</td>
       </tr>
+    </table>
+  </section>
+
+  <br>
+
+  <section id="exprtk-stringpack">
+    <h2>String Pack</h2>
+    <p>String helpers for measuring, slicing, splitting, cleaning, and converting text. Lengths and positions count <strong>UTF-8 codepoints</strong> (not bytes), and indices are <strong>1-based</strong>.</p>
+    <table class="optionsTable">
+      <tr><th>Function</th><th>Returns</th><th>Example</th></tr>
+      <tr><td><code>len(s)</code></td><td>number</td><td><code>len('Größe')</code> &rarr; <code>5</code></td></tr>
+      <tr><td><code>find(s, needle)</code></td><td>number</td><td><code>find('hello world', 'world')</code> &rarr; <code>7</code></td></tr>
+      <tr><td><code>slice(s, start, n)</code></td><td>string</td><td><code>slice('hello', 2, 3)</code> &rarr; <code>"ell"</code></td></tr>
+      <tr><td><code>split(s, sep, i)</code></td><td>string</td><td><code>split('a,b,c', ',', 2)</code> &rarr; <code>"b"</code></td></tr>
+      <tr><td><code>trim(s)</code></td><td>string</td><td><code>trim('  abc  ')</code> &rarr; <code>"abc"</code></td></tr>
+      <tr><td><code>ltrim(s)</code></td><td>string</td><td><code>ltrim('  abc  ')</code> &rarr; <code>"abc  "</code></td></tr>
+      <tr><td><code>rtrim(s)</code></td><td>string</td><td><code>rtrim('  abc  ')</code> &rarr; <code>"  abc"</code></td></tr>
+      <tr><td><code>replace(s, from, to)</code></td><td>string</td><td><code>replace('a.b.c', '.', '-')</code> &rarr; <code>"a-b-c"</code></td></tr>
+      <tr><td><code>reptxt(s, n)</code></td><td>string</td><td><code>reptxt('ab', 3)</code> &rarr; <code>"ababab"</code></td></tr>
+      <tr><td><code>tonum(s)</code></td><td>number</td><td><code>tonum('3,14')</code> &rarr; <code>3.14</code></td></tr>
+      <tr><td><code>totxt(n)</code></td><td>string</td><td><code>totxt(42)</code> &rarr; <code>"42"</code></td></tr>
+      <tr><td><code>totxt(n, fmt)</code></td><td>string</td><td><code>totxt(255, 'x')</code> &rarr; <code>"ff"</code></td></tr>
+      <tr><td><code>chr2num(c)</code></td><td>number</td><td><code>chr2num('€')</code> &rarr; <code>8364</code></td></tr>
+      <tr><td><code>num2chr(n)</code></td><td>string</td><td><code>num2chr(8364)</code> &rarr; <code>"€"</code></td></tr>
+    </table>
+    <p><strong>Conventions:</strong></p>
+    <ul>
+      <li><code>find</code> returns <code>0</code> when the needle is absent; an empty needle returns <code>1</code>.</li>
+      <li><code>slice</code> clamps <code>n</code> to the available remainder; a <code>start</code> below 1 or past the end yields <code>""</code>.</li>
+      <li><code>split</code> returns <code>""</code> for an out-of-range field; consecutive or trailing separators produce empty fields; an empty separator returns <code>s</code> for <code>i==1</code>.</li>
+      <li><code>trim</code>/<code>ltrim</code>/<code>rtrim</code> strip ASCII whitespace (space, tab, CR, LF).</li>
+      <li><code>replace</code> substitutes every occurrence; an empty <code>from</code> returns <code>s</code> unchanged.</li>
+      <li><code>reptxt</code> returns <code>""</code> for <code>n &lt; 1</code>; very large output is capped to protect memory.</li>
+      <li><code>tonum</code> accepts both <code>.</code> and <code>,</code> as the decimal separator and is the value-returning counterpart of <code>isnum</code>.</li>
+      <li><code>totxt(n, fmt)</code> uses the same <code>fmt</code> grammar as the <code>~</code> format spec; an invalid spec, an empty <code>fmt</code>, or a text spec (<code>t:...</code>) applied to a number all yield <code>""</code>. Note that <code>totxt(n, '')</code> is therefore not the same as <code>totxt(n)</code> &mdash; use the single-argument form for the default representation.</li>
+      <li>Integer-based format specs (<code>d</code>, <code>x</code>, <code>o</code>, <code>b</code>, durations) require a value within the signed 64-bit range; magnitudes at or above 2^63, as well as non-finite values, yield <code>""</code>. Floating-point specs (<code>f</code>, <code>e</code>, <code>g</code>) have no such limit.</li>
+      <li><code>chr2num</code>/<code>num2chr</code> operate on full Unicode codepoints. <code>num2chr</code> returns <code>""</code> for negative values, surrogates, or values above U+10FFFF.</li>
+    </ul>
+    <p><strong>Examples:</strong></p>
+    <table class="optionsTable">
+      <tr><th>Find</th><th>Replace</th><th>Description</th></tr>
+      <tr><td><code>(.+)</code></td><td><code>(?=slice(txt(1), 1, 3))</code></td><td>First 3 codepoints</td></tr>
+      <tr><td><code>(\S+)@(\S+)</code></td><td><code>(?=split(txt(2), '.', 1))</code></td><td>Domain's first label</td></tr>
+      <tr><td><code>\s*(.+?)\s*</code></td><td><code>(?=trim(txt(1)))</code></td><td>Strip surrounding whitespace</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=totxt(num(1), '04d'))</code></td><td>Zero-pad to 4 digits</td></tr>
     </table>
   </section>
 

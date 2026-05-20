@@ -28,6 +28,7 @@ Two engines are available, selected via the `(L)` / `(E)` indicator next to the 
   - [Skipping Matches](#skipping-matches)
   - [Sequence Generator](#sequence-generator)
   - [Base Conversions](#base-conversions)
+  - [String Pack](#string-pack)
   - [CSV Column Access](#csv-column-access)
   - [Library Loading via loadlib](#library-loading-via-loadlib)
   - [Output Formatting](#output-formatting)
@@ -875,6 +876,50 @@ Built-in functions for parsing hexadecimal, binary, octal, or Roman numerals bac
 | `0x([0-9a-fA-F]+)`    | `(?=hex2num(txt(1)))`            | Hex literal → decimal        |
 | `(\d+)`               | `(?=num2rom(num(1)))`            | Chapter `14` → `XIV`         |
 | `([IVXLCDM]+)`        | `(?=rom2num(txt(1)))`            | Roman → decimal              |
+
+<br>
+
+### String Pack
+
+String helpers for measuring, slicing, splitting, cleaning, and converting text. Lengths and positions count **UTF-8 codepoints** (not bytes), and indices are **1-based**.
+
+| Function              | Returns | Example                                              |
+|-----------------------|---------|------------------------------------------------------|
+| `len(s)`              | number  | `len('Größe')` → `5`                                 |
+| `find(s, needle)`     | number  | `find('hello world', 'world')` → `7` (0 if absent)   |
+| `slice(s, start, n)`  | string  | `slice('hello', 2, 3)` → `"ell"`                     |
+| `split(s, sep, i)`    | string  | `split('a,b,c', ',', 2)` → `"b"`                     |
+| `trim(s)`             | string  | `trim('  abc  ')` → `"abc"`                           |
+| `ltrim(s)`            | string  | `ltrim('  abc  ')` → `"abc  "`                        |
+| `rtrim(s)`            | string  | `rtrim('  abc  ')` → `"  abc"`                        |
+| `replace(s, from, to)`| string  | `replace('a.b.c', '.', '-')` → `"a-b-c"`             |
+| `reptxt(s, n)`        | string  | `reptxt('ab', 3)` → `"ababab"`                       |
+| `tonum(s)`            | number  | `tonum('3,14')` → `3.14` (`NaN` if not numeric)      |
+| `totxt(n)`            | string  | `totxt(42)` → `"42"`                                 |
+| `totxt(n, fmt)`       | string  | `totxt(255, 'x')` → `"ff"`                           |
+| `chr2num(c)`          | number  | `chr2num('€')` → `8364`                              |
+| `num2chr(n)`          | string  | `num2chr(8364)` → `"€"`                              |
+
+**Conventions:**
+- `find` returns `0` when the needle is absent; an empty needle returns `1`.
+- `slice` clamps `n` to the available remainder; a `start` below 1 or past the end yields `""`.
+- `split` returns `""` for an out-of-range field; consecutive or trailing separators produce empty fields; an empty separator returns `s` for `i==1`.
+- `trim`/`ltrim`/`rtrim` strip ASCII whitespace (space, tab, CR, LF).
+- `replace` substitutes every occurrence; an empty `from` returns `s` unchanged.
+- `reptxt` returns `""` for `n < 1`; very large output is capped to protect memory.
+- `tonum` accepts both `.` and `,` as the decimal separator and is the value-returning counterpart of `isnum`.
+- `totxt(n, fmt)` uses the same `fmt` grammar as the `~` format spec; an invalid spec, an empty `fmt`, or a text spec (`t:...`) applied to a number all yield `""`. Note that `totxt(n, '')` is therefore not the same as `totxt(n)` — use the single-argument form for the default representation.
+- Integer-based format specs (`d`, `x`, `o`, `b`, durations) require a value within the signed 64-bit range; magnitudes at or above 2^63, as well as non-finite values, yield `""`. Floating-point specs (`f`, `e`, `g`) have no such limit.
+- `chr2num`/`num2chr` operate on full Unicode codepoints. `num2chr` returns `""` for negative values, surrogates, or values above U+10FFFF.
+
+**Examples:**
+
+| Find                  | Replace                              | Description                       |
+|-----------------------|--------------------------------------|-----------------------------------|
+| `(.+)`                | `(?=slice(txt(1), 1, 3))`            | First 3 codepoints                |
+| `(\S+)@(\S+)`         | `(?=split(txt(2), '.', 1))`          | Domain's first label              |
+| `\s*(.+?)\s*`         | `(?=trim(txt(1)))`                   | Strip surrounding whitespace      |
+| `(\d+)`               | `(?=totxt(num(1), '04d'))`           | Zero-pad to 4 digits              |
 
 <br>
 

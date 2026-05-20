@@ -640,6 +640,182 @@ namespace MultiReplaceEngine {
             ExprTkEngine* _owner;
         };
 
+        // ----- String pack -------------------------------------------------
+        // Codepoint-based string helpers. Positions and lengths count UTF-8
+        // codepoints, not bytes; indices are 1-based.
+
+        // len(s) -> codepoint count.
+        class LenFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
+
+            LenFunction() : igenfunct_t("S") {}
+
+            double operator()(parameter_list_t parameters) override;
+        };
+
+        // find(s, needle) -> 1-based codepoint position of the first match,
+        // 0 if not found. Empty needle returns 1.
+        class FindFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
+
+            FindFunction() : igenfunct_t("SS") {}
+
+            double operator()(parameter_list_t parameters) override;
+        };
+
+        // slice(s, start, n) -> n codepoints from 1-based position start.
+        // start < 1, n < 1, or start past the end yield "". n is clamped
+        // to the available remainder.
+        class SliceFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
+
+            SliceFunction() : igenfunct_t("STT", igenfunct_t::e_rtrn_string) {}
+
+            double operator()(std::string& result,
+                parameter_list_t parameters) override;
+        };
+
+        // split(s, sep, i) -> the 1-based i-th field after splitting s on
+        // sep. i out of range yields "". Empty sep returns s for i==1.
+        // Consecutive or trailing separators produce empty fields.
+        class SplitFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
+
+            SplitFunction() : igenfunct_t("SST", igenfunct_t::e_rtrn_string) {}
+
+            double operator()(std::string& result,
+                parameter_list_t parameters) override;
+        };
+
+        // trim/ltrim/rtrim(s) -> s with ASCII whitespace removed from both
+        // ends / the left / the right.
+        class TrimFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
+
+            // mode: 0 both, 1 left, 2 right.
+            explicit TrimFunction(int mode)
+                : igenfunct_t("S", igenfunct_t::e_rtrn_string), _mode(mode) {
+            }
+
+            double operator()(std::string& result,
+                parameter_list_t parameters) override;
+
+        private:
+            int _mode;
+        };
+
+        // replace(s, from, to) -> s with every occurrence of from replaced
+        // by to. Empty from returns s unchanged.
+        class ReplaceFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
+
+            ReplaceFunction() : igenfunct_t("SSS", igenfunct_t::e_rtrn_string) {}
+
+            double operator()(std::string& result,
+                parameter_list_t parameters) override;
+        };
+
+        // reptxt(s, n) -> s repeated n times. n < 1 yields "". Oversized
+        // output (beyond an internal ceiling) yields "".
+        class ReptxtFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
+
+            ReptxtFunction() : igenfunct_t("ST", igenfunct_t::e_rtrn_string) {}
+
+            double operator()(std::string& result,
+                parameter_list_t parameters) override;
+        };
+
+        // tonum(s) -> s parsed as a number, NaN on failure. Accepts '.'
+        // and ',' as decimal separator (the inverse pairing of isnum).
+        class TonumFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
+
+            TonumFunction() : igenfunct_t("S") {}
+
+            double operator()(parameter_list_t parameters) override;
+        };
+
+        // chr2num(c) -> Unicode codepoint of the first character of c,
+        // NaN for empty or malformed input.
+        class Chr2NumFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using string_t = typename generic_t::string_view;
+
+            Chr2NumFunction() : igenfunct_t("S") {}
+
+            double operator()(parameter_list_t parameters) override;
+        };
+
+        // num2chr(n) -> the UTF-8 character for codepoint n. Surrogates,
+        // negative values, and values above U+10FFFF yield "".
+        class Num2ChrFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using scalar_t = typename generic_t::scalar_view;
+
+            Num2ChrFunction() : igenfunct_t("T", igenfunct_t::e_rtrn_string) {}
+
+            double operator()(std::string& result,
+                parameter_list_t parameters) override;
+        };
+
+        // totxt(n) -> n as a string (shortest round-trip, same as the
+        // default number output). totxt(n, fmt) -> n formatted with the
+        // '~ fmt' grammar. fmt is parsed per call; an invalid fmt, or a
+        // text spec (t:...) applied to a number, yields "".
+        class TotxtFunction : public exprtk::igeneric_function<double> {
+        public:
+            using igenfunct_t = exprtk::igeneric_function<double>;
+            using generic_t = typename igenfunct_t::generic_type;
+            using parameter_list_t = typename igenfunct_t::parameter_list_t;
+            using scalar_t = typename generic_t::scalar_view;
+            using string_t = typename generic_t::string_view;
+
+            TotxtFunction() : igenfunct_t("T|TS", igenfunct_t::e_rtrn_string) {}
+
+            double operator()(const std::size_t& psi,
+                std::string& result,
+                parameter_list_t parameters) override;
+        };
+
         // ----- ecmd library plumbing ---------------------------------------
         //
         // A user-defined function loaded from a .elib file. One instance
@@ -934,6 +1110,21 @@ namespace MultiReplaceEngine {
         // pattern doesn't fit.
         Num2RomFunction _num2romFunction;
         Rom2NumFunction _rom2numFunction;
+
+        // String pack.
+        LenFunction _lenFunction;
+        FindFunction _findFunction;
+        SliceFunction _sliceFunction;
+        SplitFunction _splitFunction;
+        TrimFunction _trimFunction;
+        TrimFunction _ltrimFunction;
+        TrimFunction _rtrimFunction;
+        ReplaceFunction _replaceFunction;
+        ReptxtFunction _reptxtFunction;
+        TonumFunction _tonumFunction;
+        Chr2NumFunction _chr2numFunction;
+        Num2ChrFunction _num2chrFunction;
+        TotxtFunction _totxtFunction;
 
         // The loadlib("path") loader callable, registered with the symbol
         // table at initialize().

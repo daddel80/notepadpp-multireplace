@@ -19,6 +19,15 @@ namespace FormatSpec {
 
     namespace {
 
+        // True if value can be cast to long long without overflow. The
+        // integer-emitting paths (d/x/o/b, duration) rely on a
+        // static_cast<long long>(value), which is undefined for values
+        // outside the int64 range. 9.22e18 is just below 2^63.
+        bool fitsInt64(double value) {
+            return value >= -9223372036854775808.0
+                && value < 9223372036854775808.0;
+        }
+
         // ASCII-only trim for the small spec strings we parse.
         std::wstring trim(const std::wstring& s) {
             size_t a = 0, b = s.size();
@@ -343,6 +352,7 @@ namespace FormatSpec {
             // Binary path. Integer cast (negative values get two's
             // complement of the 64-bit representation).
             if (spec.numericType == NumericType::Binary) {
+                if (!fitsInt64(value)) return L"";
                 long long iv = static_cast<long long>(value);
                 unsigned long long u = static_cast<unsigned long long>(iv);
                 std::string body;
@@ -362,11 +372,13 @@ namespace FormatSpec {
             int n;
             if (spec.numericType == NumericType::Hex
                 || spec.numericType == NumericType::Octal) {
+                if (!fitsInt64(value)) return L"";
                 long long iv = static_cast<long long>(value);
                 n = std::snprintf(buf.data(), buf.size(), fmt.c_str(),
                     static_cast<unsigned long long>(iv));
             }
             else if (spec.numericType == NumericType::Integer) {
+                if (!fitsInt64(value)) return L"";
                 n = std::snprintf(buf.data(), buf.size(), fmt.c_str(),
                     static_cast<long long>(value));
             }
@@ -422,6 +434,7 @@ namespace FormatSpec {
             const bool negative = seconds < 0.0;
             if (negative) seconds = -seconds;
 
+            if (!fitsInt64(seconds)) return L"";
             long long totalSec = static_cast<long long>(seconds);
             long long days = totalSec / 86400;
             long long rem = totalSec % 86400;
@@ -699,6 +712,12 @@ namespace FormatSpec {
 
     std::wstring apply(const Spec& spec, double value) {
         if (!spec.valid) return L"";
+
+        // Every numeric kind needs a finite value; a non-finite one is
+        // unrepresentable, so emit "" rather than letting "inf"/"nan" or
+        // an overflowed integer cast leak out. Callers may also pre-filter,
+        // but guarding here keeps the formatter self-contained.
+        if (spec.kind != Kind::Text && !std::isfinite(value)) return L"";
 
         switch (spec.kind) {
         case Kind::Date:     return formatDate(spec, value);

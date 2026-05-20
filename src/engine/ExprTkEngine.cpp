@@ -54,14 +54,14 @@ namespace MultiReplaceEngine {
 
         // Turn a possibly-fractional, possibly-negative double into a
         // non-negative integral index. Returns false (and leaves out
-        // untouched) for NaN, infinity, or a negative value. Trims toward
-        // zero on the positive side so num(1.7, ...) means num(1, ...).
+        // untouched) for NaN, infinity, a value outside the int64 range,
+        // or a negative value. Trims toward zero on the positive side so
+        // num(1.7, ...) means num(1, ...).
         inline bool toIndex(double v, long long& out)
         {
             if (!std::isfinite(v)) return false;
-            const long long ll = static_cast<long long>(v);
-            if (ll < 0) return false;
-            out = ll;
+            if (v < 0.0 || v >= 9223372036854775808.0) return false;
+            out = static_cast<long long>(v);
             return true;
         }
 
@@ -70,7 +70,86 @@ namespace MultiReplaceEngine {
         inline bool toSigned(double v, long long& out)
         {
             if (!std::isfinite(v)) return false;
+            if (v < -9223372036854775808.0 || v >= 9223372036854775808.0) return false;
             out = static_cast<long long>(v);
+            return true;
+        }
+
+        // UTF-8 lead byte: anything not matching 10xxxxxx starts a codepoint.
+        inline bool isLeadByte(unsigned char b) { return (b & 0xC0) != 0x80; }
+
+        // Number of UTF-8 codepoints in s.
+        inline std::size_t cpLen(const std::string& s)
+        {
+            std::size_t n = 0;
+            for (unsigned char b : s) if (isLeadByte(b)) ++n;
+            return n;
+        }
+
+        // Byte offset of the cp-th codepoint (0-based cp). Returns s.size()
+        // if cp is at or past the end.
+        inline std::size_t cpOffset(const std::string& s, std::size_t cp)
+        {
+            std::size_t seen = 0;
+            for (std::size_t i = 0; i < s.size(); ++i) {
+                if (isLeadByte(static_cast<unsigned char>(s[i]))) {
+                    if (seen == cp) return i;
+                    ++seen;
+                }
+            }
+            return s.size();
+        }
+
+        // Decode the first UTF-8 codepoint of s into out. Returns false for
+        // empty input or a malformed leading sequence.
+        inline bool cpDecodeFirst(const std::string& s, unsigned int& out)
+        {
+            if (s.empty()) return false;
+            const unsigned char b0 = static_cast<unsigned char>(s[0]);
+            int extra; unsigned int cp;
+            if (b0 < 0x80) { out = b0; return true; }
+            else if ((b0 & 0xE0) == 0xC0) { extra = 1; cp = b0 & 0x1F; }
+            else if ((b0 & 0xF0) == 0xE0) { extra = 2; cp = b0 & 0x0F; }
+            else if ((b0 & 0xF8) == 0xF0) { extra = 3; cp = b0 & 0x07; }
+            else return false;
+
+            if (s.size() < static_cast<std::size_t>(extra + 1)) return false;
+            for (int i = 1; i <= extra; ++i) {
+                const unsigned char b = static_cast<unsigned char>(s[i]);
+                if ((b & 0xC0) != 0x80) return false;
+                cp = (cp << 6) | (b & 0x3F);
+            }
+            // Reject surrogates and out-of-range values, matching the
+            // encoder's contract.
+            if (cp > 0x10FFFFu || (cp >= 0xD800u && cp <= 0xDFFFu)) return false;
+            out = cp;
+            return true;
+        }
+
+        // Encode codepoint cp as UTF-8. Returns false for surrogates or
+        // values above U+10FFFF.
+        inline bool cpEncodeUtf8(unsigned int cp, std::string& out)
+        {
+            out.clear();
+            if (cp > 0x10FFFFu || (cp >= 0xD800u && cp <= 0xDFFFu)) return false;
+            if (cp < 0x80u) {
+                out.push_back(static_cast<char>(cp));
+            }
+            else if (cp < 0x800u) {
+                out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+                out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+            }
+            else if (cp < 0x10000u) {
+                out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+                out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+                out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+            }
+            else {
+                out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+                out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+                out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+                out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+            }
             return true;
         }
 
@@ -103,6 +182,19 @@ namespace MultiReplaceEngine {
         , _oct2numFunction(this, 8)
         , _num2romFunction(this)
         , _rom2numFunction(this)
+        , _lenFunction()
+        , _findFunction()
+        , _sliceFunction()
+        , _splitFunction()
+        , _trimFunction(0)
+        , _ltrimFunction(1)
+        , _rtrimFunction(2)
+        , _replaceFunction()
+        , _reptxtFunction()
+        , _tonumFunction()
+        , _chr2numFunction()
+        , _num2chrFunction()
+        , _totxtFunction()
         , _ecmdLoaderFunction(this)
     {
     }
@@ -211,6 +303,21 @@ namespace MultiReplaceEngine {
         // subtractive form; rom2num is lenient about non-canonical input.
         _symbolTable.add_function("num2rom", _num2romFunction);
         _symbolTable.add_function("rom2num", _rom2numFunction);
+
+        // String pack: codepoint-based, 1-based indices.
+        _symbolTable.add_function("len", _lenFunction);
+        _symbolTable.add_function("find", _findFunction);
+        _symbolTable.add_function("slice", _sliceFunction);
+        _symbolTable.add_function("split", _splitFunction);
+        _symbolTable.add_function("trim", _trimFunction);
+        _symbolTable.add_function("ltrim", _ltrimFunction);
+        _symbolTable.add_function("rtrim", _rtrimFunction);
+        _symbolTable.add_function("replace", _replaceFunction);
+        _symbolTable.add_function("reptxt", _reptxtFunction);
+        _symbolTable.add_function("tonum", _tonumFunction);
+        _symbolTable.add_function("chr2num", _chr2numFunction);
+        _symbolTable.add_function("num2chr", _num2chrFunction);
+        _symbolTable.add_function("totxt", _totxtFunction);
 
         // Register loadlib("path") - the library loader. Functions loaded
         // through it land in _ecmdLibrary's own symbol_table, which we
@@ -1279,18 +1386,35 @@ namespace MultiReplaceEngine {
             return outValue < base;
         }
 
+        // ASCII whitespace predicate, shared by the trim helpers.
+        inline bool isAsciiSpace(unsigned char c)
+        {
+            return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+        }
+
         // Strips ASCII whitespace from both ends. Used so hex2num(" ff ")
         // still parses cleanly.
         std::string trimAscii(const std::string& s)
         {
-            const auto isSpace = [](unsigned char c) {
-                return c == ' ' || c == '\t' || c == '\r' || c == '\n';
-                };
             std::size_t first = 0;
-            while (first < s.size() && isSpace(static_cast<unsigned char>(s[first]))) ++first;
+            while (first < s.size() && isAsciiSpace(static_cast<unsigned char>(s[first]))) ++first;
             std::size_t last = s.size();
-            while (last > first && isSpace(static_cast<unsigned char>(s[last - 1]))) --last;
+            while (last > first && isAsciiSpace(static_cast<unsigned char>(s[last - 1]))) --last;
             return s.substr(first, last - first);
+        }
+
+        std::string ltrimAscii(const std::string& s)
+        {
+            std::size_t first = 0;
+            while (first < s.size() && isAsciiSpace(static_cast<unsigned char>(s[first]))) ++first;
+            return s.substr(first);
+        }
+
+        std::string rtrimAscii(const std::string& s)
+        {
+            std::size_t last = s.size();
+            while (last > 0 && isAsciiSpace(static_cast<unsigned char>(s[last - 1]))) --last;
+            return s.substr(0, last);
         }
 
         // Removes a leading base-prefix if present (0x/0X for hex,
@@ -1414,11 +1538,13 @@ namespace MultiReplaceEngine {
         const double v = s();
         if (!std::isfinite(v)) return 0.0;
 
-        // Range check first: classical Roman covers 1..3999. Out of
+        // Range check on the double first: classical Roman covers
+        // 1..3999. Checking before the cast also keeps the cast in range
+        // (an out-of-range double->int conversion is undefined). Out of
         // range -> empty string (same recoverable-error pattern as the
         // non-finite guard above).
+        if (v < 1.0 || v >= 4000.0) return 0.0;
         const long long iv = static_cast<long long>(v);
-        if (iv < 1 || iv > 3999) return 0.0;
 
         result = romanFromInt(static_cast<int>(iv));
         return 0.0;
@@ -1452,6 +1578,230 @@ namespace MultiReplaceEngine {
             }
         }
         return static_cast<double>(total);
+    }
+
+    // ---------------------------------------------------------------------
+    // String pack
+    // ---------------------------------------------------------------------
+
+    double ExprTkEngine::LenFunction::operator()(
+        parameter_list_t parameters)
+    {
+        if (parameters.size() != 1) return 0.0;
+        const string_t sv(parameters[0]);
+        return static_cast<double>(cpLen(exprtk::to_str(sv)));
+    }
+
+    double ExprTkEngine::FindFunction::operator()(
+        parameter_list_t parameters)
+    {
+        if (parameters.size() != 2) return 0.0;
+        const std::string hay = exprtk::to_str(string_t(parameters[0]));
+        const std::string needle = exprtk::to_str(string_t(parameters[1]));
+
+        if (needle.empty()) return 1.0;
+        const std::size_t bytePos = hay.find(needle);
+        if (bytePos == std::string::npos) return 0.0;
+
+        // Count codepoints from the start up to the match, no copy.
+        std::size_t cp = 0;
+        for (std::size_t i = 0; i < bytePos; ++i) {
+            if (isLeadByte(static_cast<unsigned char>(hay[i]))) ++cp;
+        }
+        return static_cast<double>(cp + 1);  // 1-based
+    }
+
+    double ExprTkEngine::SliceFunction::operator()(
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        result.clear();
+        if (parameters.size() != 3) return 0.0;
+
+        const std::string s = exprtk::to_str(string_t(parameters[0]));
+        long long startVal = 0, nVal = 0;
+        if (!toIndex(readScalar(parameters[1]), startVal)) return 0.0;
+        if (!toIndex(readScalar(parameters[2]), nVal)) return 0.0;
+        if (startVal < 1 || nVal < 1) return 0.0;
+
+        const std::size_t total = cpLen(s);
+        const std::size_t startCp = static_cast<std::size_t>(startVal - 1);
+        if (startCp >= total) return 0.0;
+
+        // Clamp the count to the remainder before adding, so a huge nVal
+        // cannot overflow startCp + nVal.
+        const std::size_t avail = total - startCp;
+        const std::size_t take = (static_cast<std::size_t>(nVal) < avail)
+            ? static_cast<std::size_t>(nVal) : avail;
+        const std::size_t b0 = cpOffset(s, startCp);
+        const std::size_t b1 = cpOffset(s, startCp + take);
+        result = s.substr(b0, b1 - b0);
+        return 0.0;
+    }
+
+    double ExprTkEngine::SplitFunction::operator()(
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        result.clear();
+        if (parameters.size() != 3) return 0.0;
+
+        const std::string s = exprtk::to_str(string_t(parameters[0]));
+        const std::string sep = exprtk::to_str(string_t(parameters[1]));
+        long long iVal = 0;
+        if (!toIndex(readScalar(parameters[2]), iVal)) return 0.0;
+        if (iVal < 1) return 0.0;
+
+        // Empty separator: whole string is field 1, nothing beyond.
+        if (sep.empty()) {
+            if (iVal == 1) result = s;
+            return 0.0;
+        }
+
+        std::size_t fieldStart = 0;
+        long long field = 1;
+        while (true) {
+            const std::size_t pos = s.find(sep, fieldStart);
+            if (field == iVal) {
+                const std::size_t end = (pos == std::string::npos) ? s.size() : pos;
+                result = s.substr(fieldStart, end - fieldStart);
+                return 0.0;
+            }
+            if (pos == std::string::npos) return 0.0;  // i past last field
+            fieldStart = pos + sep.size();
+            ++field;
+        }
+    }
+
+    double ExprTkEngine::TrimFunction::operator()(
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        result.clear();
+        if (parameters.size() != 1) return 0.0;
+        const std::string s = exprtk::to_str(string_t(parameters[0]));
+        switch (_mode) {
+        case 1:  result = ltrimAscii(s); break;
+        case 2:  result = rtrimAscii(s); break;
+        default: result = trimAscii(s);  break;
+        }
+        return 0.0;
+    }
+
+    double ExprTkEngine::ReplaceFunction::operator()(
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        result.clear();
+        if (parameters.size() != 3) return 0.0;
+
+        const std::string s = exprtk::to_str(string_t(parameters[0]));
+        const std::string from = exprtk::to_str(string_t(parameters[1]));
+        const std::string to = exprtk::to_str(string_t(parameters[2]));
+
+        if (from.empty()) { result = s; return 0.0; }
+
+        std::size_t pos = 0;
+        while (true) {
+            const std::size_t found = s.find(from, pos);
+            if (found == std::string::npos) {
+                result.append(s, pos, std::string::npos);
+                break;
+            }
+            result.append(s, pos, found - pos);
+            result.append(to);
+            pos = found + from.size();
+        }
+        return 0.0;
+    }
+
+    double ExprTkEngine::ReptxtFunction::operator()(
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        result.clear();
+        if (parameters.size() != 2) return 0.0;
+
+        const std::string s = exprtk::to_str(string_t(parameters[0]));
+        long long nVal = 0;
+        if (!toIndex(readScalar(parameters[1]), nVal)) return 0.0;
+        if (nVal < 1 || s.empty()) return 0.0;
+
+        // Ceiling guard against overflow / runaway allocation.
+        constexpr std::size_t kMaxOut = 64u * 1024u * 1024u;
+        if (static_cast<std::size_t>(nVal) > kMaxOut / s.size()) return 0.0;
+
+        result.reserve(s.size() * static_cast<std::size_t>(nVal));
+        for (long long k = 0; k < nVal; ++k) result.append(s);
+        return 0.0;
+    }
+
+    double ExprTkEngine::TonumFunction::operator()(
+        parameter_list_t parameters)
+    {
+        if (parameters.size() != 1) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        const string_t sv(parameters[0]);
+        return ExprTkEngine::parseCaptureToDouble(exprtk::to_str(sv));
+    }
+
+    double ExprTkEngine::Chr2NumFunction::operator()(
+        parameter_list_t parameters)
+    {
+        constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+        if (parameters.size() != 1) return nan;
+        const string_t sv(parameters[0]);
+        unsigned int cp = 0;
+        if (!cpDecodeFirst(exprtk::to_str(sv), cp)) return nan;
+        return static_cast<double>(cp);
+    }
+
+    double ExprTkEngine::Num2ChrFunction::operator()(
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        result.clear();
+        if (parameters.size() != 1) return 0.0;
+        const scalar_t s(parameters[0]);
+        const double v = s();
+        if (!std::isfinite(v) || v < 0.0 || v > 1114111.0) return 0.0;
+        cpEncodeUtf8(static_cast<unsigned int>(v), result);
+        return 0.0;
+    }
+
+    double ExprTkEngine::TotxtFunction::operator()(
+        const std::size_t& /*psi*/,
+        std::string& result,
+        parameter_list_t parameters)
+    {
+        result.clear();
+        const std::size_t arity = parameters.size();
+        if (arity < 1 || arity > 2) return 0.0;
+
+        const double v = scalar_t(parameters[0])();
+        if (!std::isfinite(v)) return 0.0;  // Inf/NaN -> "" (both paths)
+
+        // totxt(n): shortest round-trip, same as default number output.
+        if (arity == 1) {
+            result = formatDouble(v);
+            return 0.0;
+        }
+
+        // totxt(n, fmt): parse fmt per call and apply. Widen the ASCII
+        // spec to wstring for the parser. Invalid fmt or a text spec on a
+        // number yields "" (FormatSpec::apply returns empty for those).
+        const string_t fv(parameters[1]);
+        const std::string fmt = exprtk::to_str(fv);
+        const std::wstring wfmt(fmt.begin(), fmt.end());
+
+        const FormatSpec::Spec spec = FormatSpec::parse(wfmt);
+        if (!spec.valid) return 0.0;
+
+        const std::wstring out = FormatSpec::apply(spec, v);
+        result.reserve(out.size());
+        for (wchar_t wc : out) result.push_back(static_cast<char>(wc));
+        return 0.0;
     }
 
     // ---------------------------------------------------------------------
@@ -2094,8 +2444,10 @@ namespace MultiReplaceEngine {
                 const scalar_t s(p);
                 const double v = s();
                 if (!std::isfinite(v)) return false;
+                // Column index is passed on as int; bound the double
+                // before the cast so neither conversion overflows.
+                if (v < 1.0 || v >= 2147483648.0) return false;
                 const long long idx = static_cast<long long>(v);
-                if (idx < 1) return false;
                 return host->readCurrentRowColumnByIndex(static_cast<int>(idx), cell);
             }
             if (p.type == gen_t::e_string) {
@@ -2180,10 +2532,12 @@ namespace MultiReplaceEngine {
             return dist(_engine);
         }
 
-        // Convert scalar args. Non-finite inputs collapse to 0; integer
-        // truncation is intentional - "between 1 and 10.7" means 1..10.
+        // Convert scalar args. Non-finite or out-of-range inputs collapse
+        // to 0; integer truncation is intentional - "between 1 and 10.7"
+        // means 1..10.
         auto toInt = [](double d) -> long long {
             if (!std::isfinite(d)) return 0;
+            if (d < -9223372036854775808.0 || d >= 9223372036854775808.0) return 0;
             return static_cast<long long>(d);
             };
 
@@ -2210,8 +2564,16 @@ namespace MultiReplaceEngine {
         if (!_rnd) return 0.0;
         // Cast the user-supplied seed to uint64_t. Negative or fractional
         // inputs are accepted - the bit pattern after the cast becomes the
-        // seed, which is deterministic for a given input.
-        _rnd->reseed(static_cast<std::uint64_t>(static_cast<long long>(seed)));
+        // seed, which is deterministic for a given input. Non-finite or
+        // out-of-range values seed with 0 (an out-of-range double->int
+        // conversion would otherwise be undefined).
+        long long s = 0;
+        if (std::isfinite(seed)
+            && seed >= -9223372036854775808.0
+            && seed < 9223372036854775808.0) {
+            s = static_cast<long long>(seed);
+        }
+        _rnd->reseed(static_cast<std::uint64_t>(s));
         return seed;
     }
 
