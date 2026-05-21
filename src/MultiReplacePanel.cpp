@@ -6242,16 +6242,23 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_COMMAND:
     {
-        // RAII guard: temporarily flips list-vs-input mode while Ctrl+Shift is held.
-        // Only takes effect when the list is visible; otherwise the toggle would
-        // silently activate hidden rules.
+        // RAII: flips list-vs-input mode while Ctrl+Shift is held. On restore,
+        // repaints synchronously (RDW_UPDATENOW) so the dim overlay matches again -
+        // the replace pass pumps its own loop, so a deferred paint can be lost.
         struct InputFieldsBypass {
-            bool& listFlag; bool saved;
-            InputFieldsBypass(bool& flag, bool bypass, bool listVisible)
-                : listFlag(flag), saved(flag) {
+            bool& listFlag; bool saved; HWND listView; const bool& bypassActive;
+            InputFieldsBypass(bool& flag, bool bypass, bool listVisible,
+                HWND list, const bool& stillActive)
+                : listFlag(flag), saved(flag), listView(list), bypassActive(stillActive) {
                 if (bypass && listVisible) listFlag = !saved;
             }
-            ~InputFieldsBypass() { listFlag = saved; }
+            ~InputFieldsBypass() {
+                listFlag = saved;
+                if (bypassActive && listView) {
+                    RedrawWindow(listView, nullptr, nullptr,
+                        RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+                }
+            }
         };
 
         switch (LOWORD(wParam))
@@ -6548,7 +6555,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             InputFieldsBypass bypass(useListEnabled,
                 _altBypassActive && !isFindAllInFiles && !isFindAllInDocs,
-                useListEnabled || keepListVisible);
+                useListEnabled || keepListVisible,
+                _replaceListView, _altBypassActive);
 
             CloseDebugWindow();
             resetCountColumns();
@@ -6606,7 +6614,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_FIND_NEXT_BUTTON:
         {
-            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible);
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible, _replaceListView, _altBypassActive);
 
             CloseDebugWindow();
             resetCountColumns();
@@ -6617,7 +6625,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_FIND_PREV_BUTTON:
         {
-            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible);
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible, _replaceListView, _altBypassActive);
 
             CloseDebugWindow();
             resetCountColumns();
@@ -6628,7 +6636,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_BUTTON:
         {
-            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible);
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible, _replaceListView, _altBypassActive);
 
             CloseDebugWindow();
             resetCountColumns();
@@ -6639,7 +6647,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_REPLACE_ALL_SMALL_BUTTON:
         {
-            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible);
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible, _replaceListView, _altBypassActive);
 
             CloseDebugWindow();
             resetCountColumns();
@@ -6660,7 +6668,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             InputFieldsBypass bypass(useListEnabled,
                 _altBypassActive && !isReplaceAllInDocs && !isReplaceInFiles,
-                useListEnabled || keepListVisible);
+                useListEnabled || keepListVisible,
+                _replaceListView, _altBypassActive);
 
             CloseDebugWindow();
 
@@ -6698,7 +6707,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_MARK_MATCHES_BUTTON:
         case IDC_MARK_BUTTON:
         {
-            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible);
+            InputFieldsBypass bypass(useListEnabled, _altBypassActive, useListEnabled || keepListVisible, _replaceListView, _altBypassActive);
 
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
