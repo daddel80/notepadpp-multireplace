@@ -523,7 +523,7 @@ nav.pagenav .nav-group.collapsible {
     <a href="#exprtk-baseconv" hidden onclick="navClicked(event, 'exprtk-baseconv')">Base Conversions</a>
     <a href="#exprtk-stringpack" hidden onclick="navClicked(event, 'exprtk-stringpack')">String Pack</a>
     <a href="#exprtk-csv" hidden onclick="navClicked(event, 'exprtk-csv')">CSV Column Access</a>
-    <a href="#exprtk-ecmd" hidden onclick="navClicked(event, 'exprtk-ecmd')">Library Loading (ecmd)</a>
+    <a href="#exprtk-loadlib" hidden onclick="navClicked(event, 'exprtk-loadlib')">Library Loading via loadlib</a>
     <a href="#exprtk-format" hidden onclick="navClicked(event, 'exprtk-format')">Output Formatting</a>
     <a href="#exprtk-date" hidden onclick="navClicked(event, 'exprtk-date')">Date Handling</a>
     <a href="#exprtk-examples" hidden onclick="navClicked(event, 'exprtk-examples')">Examples</a>
@@ -2277,7 +2277,7 @@ return {
 
   <br>
 
-  <section id="exprtk-ecmd">
+  <section id="exprtk-loadlib">
     <h2>Library Loading via loadlib</h2>
     <p>Load user-defined functions from a <code>.elib</code> file with <code>loadlib(path)</code>. Functions become callable from any <code>(?=...)</code> block in the same Replace-All run, exactly like the built-ins.</p>
     <p><strong>Purpose:</strong> Reusable helpers (conversions, formatters, parsers) that would be tedious to inline. Functions can call each other and themselves (recursion). The library is re-read from disk on every Replace-All, so edits take effect on the next click &mdash; no Notepad++ restart.</p>
@@ -2539,7 +2539,19 @@ end
     <p>By default an ExprTk expression renders its numeric result with the shortest round-trip representation: <code>3.14</code>, <code>42</code>, <code>1.5e+10</code>. For controlled output &mdash; padding, precision, fixed decimal places, hex, time durations &mdash; append a <strong>format spec</strong> to the expression with <code>~</code>:</p>
     <p><code>(?= formula ~ spec )</code></p>
     <p>The <code>~</code> separator splits the block into the formula (left) and the spec (right). Whitespace around <code>~</code> is optional. The spec is validated when the rule is compiled, so an invalid spec surfaces immediately as a compile-time error rather than producing garbage at runtime.</p>
-    <p>There are four kinds of spec: <strong>numeric</strong>, <strong>text</strong>, <strong>duration</strong>, and <strong>date</strong>.</p>
+    <p>There are four kinds of spec: <strong>numeric</strong>, <strong>text</strong>, <strong>duration</strong>, and <strong>date</strong>. One concrete example of each, so the abstract <code>formula ~ spec</code> above has something to map onto:</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Kind</th>
+        <th>Full block</th>
+        <th>Result</th>
+      </tr>
+      <tr><td>numeric</td><td><code>(?= num(1) ~ .2f )</code></td><td><code>3.14</code></td></tr>
+      <tr><td>text</td><td><code>(?= txt(1) ~ t:&lt;10 )</code></td><td><code>foo&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></td></tr>
+      <tr><td>duration</td><td><code>(?= num(1) ~ ts:hms )</code></td><td><code>1:02:05</code></td></tr>
+      <tr><td>date</td><td><code>(?= now() ~ d:%Y-%m-%d )</code></td><td><code>2026-05-21</code></td></tr>
+    </table>
+    <p>Each kind has its own grammar, detailed below.</p>
 
     <h3>Numeric</h3>
     <p>Grammar: <code>[+] [0] [width] [.prec | .min-max] [type]</code></p>
@@ -2990,7 +3002,7 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
     <h2>Limitations</h2>
     <p>ExprTk is deliberately scoped. Things it does <strong>not</strong> do:</p>
     <ul>
-      <li><strong>Limited string manipulation inside <code>(?=...)</code>.</strong> Inline blocks support string composition with the <code>+</code> operator (e.g. <code>(?='&lt;' + txt(1) + '&gt;')</code>), and can pass strings through captures, <code>txt(N)</code>, <code>txtcol</code>, <code>FNAME</code>, <code>FPATH</code>, and the conversion built-ins. For substring slicing, indexed access, and length, write helper functions in a <code>.elib</code> library &mdash; bodies have <code>s[]</code>, <code>s[i:j]</code>, and <code>+</code> available (see <a href="#exprtk-ecmd">Library Loading via loadlib</a>). (<code>todate</code> is the one inline exception that consumes a string and returns a number.)</li>
+      <li><strong>String manipulation inside <code>(?=...)</code>.</strong> The String Pack covers the common cases codepoint-correctly: length (<code>len</code>), search (<code>find</code>), slicing (<code>slice</code>), splitting (<code>split</code>), trimming, replacement, repetition, and codepoint conversion (see <a href="#exprtk-stringpack">String Pack</a>). The low-level byte primitives <code>s[i:j]</code> and <code>s[]</code> remain for ASCII/byte work. For anything beyond the built-ins &mdash; formatted assembly, custom encodings, multi-step parsing &mdash; write helper functions in a <code>.elib</code> library (see <a href="#exprtk-loadlib">Library Loading via loadlib</a>).</li>
       <li><strong>UTF-8 inside string literals fails to compile.</strong> A literal like <code>'Gr&ouml;&szlig;e'</code> between <code>'...'</code> produces an <code>Invalid string token</code> error. This applies to both inline expressions and <code>.elib</code> bodies. The restriction is on <strong>literals only</strong> &mdash; non-ASCII text from a capture works fully. Source non-ASCII needles and content from <code>txt(N)</code> rather than typing them as literals (<code>find(txt(1), txt(2))</code> instead of <code>find(txt(1), '&auml;')</code>), and process them with the codepoint-aware <a href="#exprtk-stringpack">String Pack</a> functions, which handle multi-byte content correctly.</li>
       <li><strong>No state across matches.</strong> Each <code>(?=...)</code> evaluation starts fresh. The numeric counters (<code>CNT</code>, <code>LCNT</code>) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use <code>vars({...})</code>.</li>
       <li><strong>No data file loading.</strong> ExprTk has no equivalent to Lua's <code>lvars</code> (preload variables from disk) or <code>lkp</code> (key lookup from disk). <code>loadlib</code> loads <strong>code</strong>, not data.</li>

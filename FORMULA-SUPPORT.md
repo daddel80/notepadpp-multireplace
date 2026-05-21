@@ -1155,7 +1155,16 @@ By default an ExprTk expression renders its numeric result with the shortest rou
 
 The `~` separator splits the block into the formula (left) and the spec (right). Whitespace around `~` is optional. The spec is validated when the rule is compiled, so an invalid spec surfaces immediately as a compile-time error rather than producing garbage at runtime.
 
-There are four kinds of spec: **numeric**, **text**, **duration**, and **date**.
+There are four kinds of spec: **numeric**, **text**, **duration**, and **date**. One concrete example of each, so the abstract `formula ~ spec` above has something to map onto:
+
+| Kind     | Full block                       | Result        |
+|----------|----------------------------------|---------------|
+| numeric  | `(?= num(1) ~ .2f )`             | `3.14`        |
+| text     | `(?= txt(1) ~ t:<10 )`           | `foo       `  |
+| duration | `(?= num(1) ~ ts:hms )`          | `1:02:05`     |
+| date     | `(?= now() ~ d:%Y-%m-%d )`       | `2026-05-21`  |
+
+Each kind has its own grammar, detailed below.
 
 <br>
 
