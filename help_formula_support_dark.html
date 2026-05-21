@@ -1968,13 +1968,15 @@ return {
       <tr><td><code>rnd()</code></td><td>Uniform real in <code>[0, 1)</code>.</td></tr>
       <tr><td><code>rnd(hi)</code></td><td>Integer in <code>[1, hi]</code> inclusive. Degenerate input (<code>hi &lt; 1</code>) returns <code>0</code>.</td></tr>
       <tr><td><code>rnd(lo, hi)</code></td><td>Integer in <code>[lo, hi]</code> inclusive. Reversed arguments are tolerated.</td></tr>
+      <tr><td><code>rndnorm(mean, std)</code></td><td>Gaussian (normal) random number. A non-positive <code>std</code> returns <code>mean</code>.</td></tr>
       <tr><td><code>rndseed(n)</code></td><td>Reseed the generator for reproducible sequences. Returns <code>n</code>.</td></tr>
     </table>
-    <p>The generator is Mersenne Twister 64-bit (<code>std::mt19937_64</code>), seeded once at startup from system entropy via <code>std::seed_seq</code> with four random words for proper initial-state distribution. Not cryptographic.</p>
+    <p>The generator is Mersenne Twister 64-bit (<code>std::mt19937_64</code>), seeded once at startup from system entropy via <code>std::seed_seq</code> with four random words for proper initial-state distribution. Not cryptographic. <code>rnd</code> and <code>rndnorm</code> share the one generator, so <code>rndseed</code> makes both reproducible.</p>
     <p>Examples:</p>
     <pre><code>(?= rnd() )                  # 0.34782...
 (?= rnd(6) )                 # 1..6 (dice roll)
 (?= rnd(10, 99) )            # two-digit integer
+(?= rndnorm(100, 15) )       # IQ-like Gaussian around 100
 (?= rnd() &lt; 0.3 ? 'A' : 'B') # ~30% A, ~70% B (inside return [...])
 (?= rndseed(42); rnd() )     # always the same draw for seed 42</code></pre>
   </section>
@@ -2409,12 +2411,12 @@ end
       <tr>
         <td>Length</td>
         <td><code>s[]</code></td>
-        <td>Byte length of the string, as a number.</td>
+        <td>Byte length of the string, as a number. Low-level; for codepoint length use <code>len(s)</code>.</td>
       </tr>
       <tr>
         <td>Substring</td>
         <td><code>s[i:j]</code></td>
-        <td>Bytes from index <code>i</code> (inclusive) to <code>j</code> (exclusive). 0-based.</td>
+        <td>Bytes from index <code>i</code> (inclusive) to <code>j</code> (exclusive). 0-based. Low-level; for codepoint slicing use <code>slice(s, start, n)</code>.</td>
       </tr>
       <tr>
         <td>Concatenation</td>
@@ -2433,14 +2435,14 @@ end
       </tr>
     </table>
     <section class="note">
-      <p><strong>Strings are byte arrays, not character sequences.</strong></p>
-      <p>Captures arrive as UTF-8 bytes. <code>s[]</code> returns the <strong>byte count</strong>, not the character count. <code>s[i:j]</code> slices <strong>bytes</strong>, not characters. For an <code>&auml;</code> (UTF-8 = two bytes <code>\xC3\xA4</code>):</p>
+      <p><strong><code>s[]</code> and <code>s[i:j]</code> are byte-level operations.</strong></p>
+      <p>They are the raw, low-level primitives: <code>s[]</code> returns the <strong>byte count</strong> and <code>s[i:j]</code> slices <strong>bytes</strong>, both 0-based. For an <code>&auml;</code> (UTF-8 = two bytes <code>\xC3\xA4</code>):</p>
       <ul>
-        <li>the string <code>&auml;</code> has byte length <code>2</code>, not <code>1</code></li>
-        <li><code>s[0:1]</code> on a value starting with <code>&auml;</code> returns one half of the encoding &mdash; invalid UTF-8 &mdash; and the resulting output will display as <code>?</code> or a replacement glyph</li>
-        <li><code>s[i:i+1] == '&auml;'</code> cannot compile because the right-hand literal contains non-ASCII bytes</li>
+        <li><code>s[]</code> on <code>&auml;</code> is <code>2</code>, not <code>1</code></li>
+        <li><code>s[0:1]</code> on a value starting with <code>&auml;</code> returns one half of the encoding &mdash; invalid UTF-8 &mdash; and displays as <code>?</code> or a replacement glyph</li>
       </ul>
-      <p><strong>Practical rule:</strong> <code>.elib</code> helpers are safe for ASCII-only input &mdash; digits, plain English letters, punctuation. Use them for <code>num2rom</code>/<code>rom2num</code>, padding, digit stripping, simple parsing. Anything that needs per-character work on text that may contain umlauts, accented letters, CJK, emojis, or other non-ASCII content belongs in the <strong>Lua engine</strong>, which exposes Lua's <code>utf8.*</code> library (<code>utf8.len</code>, <code>utf8.offset</code>, <code>utf8.char</code>, <code>utf8.codepoint</code>) for correct multi-byte handling. ExprTk has no equivalent.</p>
+      <p><strong>Prefer the String Pack for text.</strong> The codepoint-aware functions <code>len</code>, <code>find</code>, <code>slice</code>, <code>split</code>, <code>trim</code>, <code>replace</code>, <code>reptxt</code>, <code>chr2num</code>, and <code>num2chr</code> (see <a href="#exprtk-stringpack">String Pack</a>) count and slice by <strong>codepoint</strong>, are <strong>1-based</strong>, and handle multi-byte content correctly &mdash; <code>slice('Gr&ouml;&szlig;e', 2, 3)</code> returns <code>r&ouml;&szlig;</code>, where <code>s[1:4]</code> would cut the encoding apart. Reach for <code>s[]</code> / <code>s[i:j]</code> only when you specifically want byte-level work on ASCII data.</p>
+      <p><strong>Note on literals.</strong> A non-ASCII literal such as <code>'&auml;'</code> cannot appear inside an expression &mdash; the lexer rejects it (see <a href="#exprtk-limitations">Limitations</a>). Non-ASCII needles must come from a capture: <code>find(txt(1), txt(2))</code>, not <code>find(txt(1), '&auml;')</code>. Captures arrive as UTF-8 bytes and pass through the String Pack functions unchanged.</p>
     </section>
     <p><strong>A minimal complete example.</strong> Strip leading zeros from a captured number string:</p>
     <pre><code>function strip_zeros(s: S) : S
@@ -2989,7 +2991,7 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
     <p>ExprTk is deliberately scoped. Things it does <strong>not</strong> do:</p>
     <ul>
       <li><strong>Limited string manipulation inside <code>(?=...)</code>.</strong> Inline blocks support string composition with the <code>+</code> operator (e.g. <code>(?='&lt;' + txt(1) + '&gt;')</code>), and can pass strings through captures, <code>txt(N)</code>, <code>txtcol</code>, <code>FNAME</code>, <code>FPATH</code>, and the conversion built-ins. For substring slicing, indexed access, and length, write helper functions in a <code>.elib</code> library &mdash; bodies have <code>s[]</code>, <code>s[i:j]</code>, and <code>+</code> available (see <a href="#exprtk-ecmd">Library Loading via loadlib</a>). (<code>todate</code> is the one inline exception that consumes a string and returns a number.)</li>
-      <li><strong>UTF-8 inside string literals fails to compile.</strong> A literal like <code>'Gr&ouml;&szlig;e'</code> between <code>'...'</code> will produce an <code>Invalid string token</code> error. This applies to both inline expressions and <code>.elib</code> bodies. Use captures or place non-ASCII text outside the <code>(?=...)</code> block. Captures themselves arrive as UTF-8 bytes and can be passed through unchanged, but per-character slicing breaks them &mdash; see the warning in <a href="#exprtk-ecmd">Library Loading via loadlib</a>.</li>
+      <li><strong>UTF-8 inside string literals fails to compile.</strong> A literal like <code>'Gr&ouml;&szlig;e'</code> between <code>'...'</code> produces an <code>Invalid string token</code> error. This applies to both inline expressions and <code>.elib</code> bodies. The restriction is on <strong>literals only</strong> &mdash; non-ASCII text from a capture works fully. Source non-ASCII needles and content from <code>txt(N)</code> rather than typing them as literals (<code>find(txt(1), txt(2))</code> instead of <code>find(txt(1), '&auml;')</code>), and process them with the codepoint-aware <a href="#exprtk-stringpack">String Pack</a> functions, which handle multi-byte content correctly.</li>
       <li><strong>No state across matches.</strong> Each <code>(?=...)</code> evaluation starts fresh. The numeric counters (<code>CNT</code>, <code>LCNT</code>) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use <code>vars({...})</code>.</li>
       <li><strong>No data file loading.</strong> ExprTk has no equivalent to Lua's <code>lvars</code> (preload variables from disk) or <code>lkp</code> (key lookup from disk). <code>loadlib</code> loads <strong>code</strong>, not data.</li>
       <li><strong><code>todate</code> is intentionally minimal.</strong> It accepts the common strftime specifiers (<code>%Y %y %m %d %H %M %S %I %p %F %T %%</code>) &mdash; enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (<code>%B</code>), weekday names (<code>%A</code>), or week numbers (<code>%V</code>) are <strong>not</strong> accepted on the input side. For richer date input parsing, use Lua's date handling instead.</li>

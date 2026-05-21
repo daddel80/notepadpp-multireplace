@@ -496,6 +496,11 @@ namespace MultiReplaceEngine {
             // Reseed for reproducibility. Used by RndSeedFunction.
             void reseed(std::uint64_t s) { _engine.seed(s); }
 
+            // Draw from a normal distribution on the shared engine, so
+            // rndseed() makes rndnorm() reproducible too. Used by
+            // RndNormFunction.
+            double nextNormal(double mean, double stddev);
+
         private:
             std::mt19937_64 _engine;
         };
@@ -509,6 +514,22 @@ namespace MultiReplaceEngine {
                 : exprtk::ifunction<double>(1), _rnd(rnd) {}
 
             double operator()(const double& seed) override;
+
+        private:
+            RndFunction* _rnd;
+        };
+
+        // rndnorm(mean, std) - Gaussian (normal) random number, drawn from
+        // the same engine as rnd() so rndseed() makes it reproducible too.
+        // A non-positive or non-finite std collapses to the mean (a
+        // zero-width distribution), matching the recoverable-error style of
+        // the other generators.
+        class RndNormFunction : public exprtk::ifunction<double> {
+        public:
+            explicit RndNormFunction(RndFunction* rnd)
+                : exprtk::ifunction<double>(2), _rnd(rnd) {}
+
+            double operator()(const double& mean, const double& stddev) override;
 
         private:
             RndFunction* _rnd;
@@ -978,7 +999,12 @@ namespace MultiReplaceEngine {
         // Read `utf8Path` from disk and feed its contents into the
         // current ecmd library. Errors flow through reportError() with
         // the path mentioned in the diagnostic.
-        void loadEcmdFile(const std::string& utf8Path);
+        // Loads a .elib library at eval time. Returns false on any
+        // failure (unreadable path, parse error); the failure is also
+        // latched in _loadlibFailed so execute() can abort the run with a
+        // single diagnostic instead of letting dependent expressions raise
+        // follow-up "undefined symbol" errors.
+        bool loadEcmdFile(const std::string& utf8Path);
 
         // ----- state -------------------------------------------------------
 
@@ -1088,6 +1114,7 @@ namespace MultiReplaceEngine {
         // holds a pointer to _rndFunction to reseed its engine in place.
         RndFunction _rndFunction;
         RndSeedFunction _rndSeedFunction;
+        RndNormFunction _rndNormFunction;
 
         // now() and today() - current time built-ins.
         NowFunction _nowFunction;
@@ -1135,6 +1162,13 @@ namespace MultiReplaceEngine {
         // re-read fresh each run. Null between shutdown() and the next
         // initialize().
         std::unique_ptr<EcmdLibrary> _ecmdLibrary;
+
+        // Run-scoped latch for a failed loadlib(). Set by loadEcmdFile()
+        // when a library cannot be loaded, checked by execute() right after
+        // eval to abort the run with one structural error. Reset in
+        // beginRun(). Mirrors the run-scoped error flags in IFormulaEngine.
+        bool        _loadlibFailed = false;
+        std::string _loadlibError;
 
         // -----------------------------------------------------------------
         // Match-history storage

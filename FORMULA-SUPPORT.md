@@ -735,9 +735,10 @@ ExprTk ships with a substantially richer numeric library than Lua's `math.*`. Th
 | `rnd()`            | Uniform real in `[0, 1)`.                                                   |
 | `rnd(hi)`          | Integer in `[1, hi]` inclusive. Degenerate input (`hi < 1`) returns `0`.    |
 | `rnd(lo, hi)`      | Integer in `[lo, hi]` inclusive. Reversed arguments are tolerated.          |
+| `rndnorm(mean, std)` | Gaussian (normal) random number. A non-positive `std` returns `mean`.    |
 | `rndseed(n)`       | Reseed the generator for reproducible sequences. Returns `n`.               |
 
-The generator is Mersenne Twister 64-bit (`std::mt19937_64`), seeded once at startup from system entropy via `std::seed_seq` with four random words for proper initial-state distribution. Not cryptographic.
+The generator is Mersenne Twister 64-bit (`std::mt19937_64`), seeded once at startup from system entropy via `std::seed_seq` with four random words for proper initial-state distribution. Not cryptographic. `rnd` and `rndnorm` share the one generator, so `rndseed` makes both reproducible.
 
 Examples:
 
@@ -745,6 +746,7 @@ Examples:
 (?= rnd() )                  # 0.34782...
 (?= rnd(6) )                 # 1..6 (dice roll)
 (?= rnd(10, 99) )            # two-digit integer
+(?= rndnorm(100, 15) )       # IQ-like Gaussian around 100
 (?= rnd() < 0.3 ? 'A' : 'B') # ~30% A, ~70% B (inside return [...])
 (?= rndseed(42); rnd() )     # always the same draw for seed 42
 ```
@@ -1057,20 +1059,21 @@ Function bodies use a small statement language layered on top of ExprTk's expres
 
 | Operation | Example | Notes |
 |---|---|---|
-| Length | `s[]` | Byte length of the string, as a number. |
-| Substring | `s[i:j]` | Bytes from index `i` (inclusive) to `j` (exclusive). 0-based. |
+| Length | `s[]` | Byte length of the string, as a number. Low-level; for codepoint length use `len(s)`. |
+| Substring | `s[i:j]` | Bytes from index `i` (inclusive) to `j` (exclusive). 0-based. Low-level; for codepoint slicing use `slice(s, start, n)`. |
 | Concatenation | `a + b` | `+` joins strings, same operator as numeric add. |
 | Comparison | `s == 'X'`, `s != 'Y'` | Equality only. No `<` on strings. |
 | Literal | `'text'`, `''` for empty | ASCII only inside literals. |
 
-> **Strings are byte arrays, not character sequences.**
+> **`s[]` and `s[i:j]` are byte-level operations.**
 >
-> Captures arrive as UTF-8 bytes. `s[]` returns the **byte count**, not the character count. `s[i:j]` slices **bytes**, not characters. For an `ä` (UTF-8 = two bytes `\xC3\xA4`):
-> - the string `ä` has byte length `2`, not `1`
-> - `s[0:1]` on a value starting with `ä` returns one half of the encoding — invalid UTF-8 — and the resulting output will display as `?` or a replacement glyph
-> - `s[i:i+1] == 'ä'` cannot compile because the right-hand literal contains non-ASCII bytes
+> They are the raw, low-level primitives: `s[]` returns the **byte count** and `s[i:j]` slices **bytes**, both 0-based. For an `ä` (UTF-8 = two bytes `\xC3\xA4`):
+> - `s[]` on `ä` is `2`, not `1`
+> - `s[0:1]` on a value starting with `ä` returns one half of the encoding — invalid UTF-8 — and displays as `?` or a replacement glyph
 >
-> **Practical rule:** `.elib` helpers are safe for ASCII-only input — digits, plain English letters, punctuation. Use them for padding, digit stripping, simple parsing, ID-tag formatting. Anything that needs per-character work on text that may contain umlauts, accented letters, CJK, emojis, or other non-ASCII content belongs in the **Lua engine**, which exposes Lua's `utf8.*` library (`utf8.len`, `utf8.offset`, `utf8.char`, `utf8.codepoint`) for correct multi-byte handling. ExprTk has no equivalent.
+> **Prefer the String Pack for text.** The codepoint-aware functions `len`, `find`, `slice`, `split`, `trim`, `replace`, `reptxt`, `chr2num`, and `num2chr` (see [String Pack](#string-pack)) count and slice by **codepoint**, are **1-based**, and handle multi-byte content correctly — `slice('Größe', 2, 3)` returns `röß`, where `s[1:4]` would cut the encoding apart. Reach for `s[]` / `s[i:j]` only when you specifically want byte-level work on ASCII data.
+>
+> **Note on literals.** A non-ASCII literal such as `'ä'` cannot appear inside an expression — the lexer rejects it (see [Limitations](#limitations)). Non-ASCII needles must come from a capture: `find(txt(1), txt(2))`, not `find(txt(1), 'ä')`. Captures arrive as UTF-8 bytes and pass through the String Pack functions unchanged.
 
 **A minimal complete example.** Strip leading zeros from a captured number string:
 
@@ -1506,8 +1509,8 @@ See the [Match History](#match-history) section for the full reader catalogue an
 
 ExprTk is deliberately scoped. Things it does **not** do:
 
-- **String manipulation is limited inside `(?=...)`.** Built-in support covers concatenation (`+`), slicing (`s[i:j]`), and length (`s[]`). For more (per-character work, formatted assembly, custom encodings), write helper functions in a `.elib` library — bodies have the same operators plus `var` declarations and control flow (see [Library Loading via loadlib](#library-loading-via-loadlib)). For UTF-8-aware character manipulation, use the Lua engine instead.
-- **UTF-8 inside string literals fails to compile.** A literal like `'Größe'` between `'...'` will produce an `Invalid string token` error. This applies to both inline expressions and `.elib` bodies. Use captures or place non-ASCII text outside the `(?=...)` block. Captures themselves arrive as UTF-8 bytes and can be passed through unchanged, but per-character slicing breaks them — see the warning in [Library Loading via loadlib](#library-loading-via-loadlib).
+- **String manipulation inside `(?=...)`.** The String Pack covers the common cases codepoint-correctly: length (`len`), search (`find`), slicing (`slice`), splitting (`split`), trimming, replacement, repetition, and codepoint conversion (see [String Pack](#string-pack)). The low-level byte primitives `s[i:j]` and `s[]` remain for ASCII/byte work. For anything beyond the built-ins — formatted assembly, custom encodings, multi-step parsing — write helper functions in a `.elib` library (see [Library Loading via loadlib](#library-loading-via-loadlib)).
+- **UTF-8 inside string literals fails to compile.** A literal like `'Größe'` between `'...'` produces an `Invalid string token` error. This applies to both inline expressions and `.elib` bodies. The restriction is on **literals only** — non-ASCII text from a capture works fully. Source non-ASCII needles and content from `txt(N)` rather than typing them as literals (`find(txt(1), txt(2))` instead of `find(txt(1), 'ä')`), and process them with the codepoint-aware [String Pack](#string-pack) functions, which handle multi-byte content correctly.
 - **No general user-defined state across matches.** Each `(?=...)` evaluation starts fresh — you cannot create your own named variables that persist. The [Match History](#match-history) functions cover the common case (read earlier captures and block outputs), and `CNT` / `LCNT` are provided by the host. For arbitrary per-key state (a cumulative table keyed by string, a per-value tally), switch to the Lua engine and use `vars({...})`.
 - **No data file loading.** ExprTk has no equivalent to Lua's `lvars` (preload variables from disk) or `lkp` (key lookup from disk). `loadlib` loads **code**, not data.
 - **`todate` is intentionally minimal.** It accepts the common strftime specifiers (`%Y %y %m %d %H %M %S %I %p %F %T %%`) — enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (`%B`), weekday names (`%A`), or week numbers (`%V`) are **not** accepted on the input side. For richer date input parsing, use Lua's date handling instead.

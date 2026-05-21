@@ -1,0 +1,2 @@
+"1","","(?=loadlib('C:/Users/knoetho/source/repos/notepadpp-multireplace/tests/edge_tests/broken.elib'))","0","0","1","0","1","T2: BROKEN elib - expect ONE parse-error msg, hard abort"
+"1","\[A\] (\S+)","[A] (?=wrap(txt(1)))","0","0","1","0","1","T2: should NOT be reached"

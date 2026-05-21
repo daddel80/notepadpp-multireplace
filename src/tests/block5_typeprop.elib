@@ -1,0 +1,17 @@
+function wrap(s: S) : S
+    return '[' + s + ']';
+end
+
+function strlen_via_lib(s: S)
+    return s[];
+end
+
+function echo_num(n)
+    return n * 1;
+end
+
+function pad3(s: S, fill: S) : S
+    var r := s;
+    while (r[] < 3) { r := fill + r; };
+    return r;
+end

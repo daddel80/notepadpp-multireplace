@@ -13,6 +13,21 @@
 
 #include "ExprTkEngine.h"
 
+// ===== TEMP DEBUG LOGGING (loadlib crash investigation) - REMOVE AFTER =====
+#include <windows.h>
+#include <cstdio>
+#include <cstdarg>
+static void MR_DBG(const char* fmt, ...) {
+    char buf[1024];
+    va_list ap; va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    OutputDebugStringA("[MRDBG] ");
+    OutputDebugStringA(buf);
+    OutputDebugStringA("\n");
+}
+// ===========================================================================
+
 #include <algorithm>
 #include <array>
 #include <charconv>
@@ -174,6 +189,7 @@ namespace MultiReplaceEngine {
         , _isNumFunction()
         , _rndFunction()
         , _rndSeedFunction(&_rndFunction)
+        , _rndNormFunction(&_rndFunction)
         , _nowFunction()
         , _todayFunction()
         , _todateFunction(this)
@@ -281,6 +297,7 @@ namespace MultiReplaceEngine {
         // Pseudo-random number generator (mt19937_64, properly seeded).
         _symbolTable.add_function("rnd", _rndFunction);
         _symbolTable.add_function("rndseed", _rndSeedFunction);
+        _symbolTable.add_function("rndnorm", _rndNormFunction);
 
         // now() / today() - current time built-ins.
         _symbolTable.add_function("now", _nowFunction);
@@ -366,6 +383,9 @@ namespace MultiReplaceEngine {
         _ecmdLibrary = std::make_unique<EcmdLibrary>();
         _compiledExpressions.clear();
         _segmentSpecs.clear();
+        _loadlibFailed = false;
+        _loadlibError.clear();
+        MR_DBG("beginRun: new ecmdLibrary, cleared expressions");
         _parsedTemplate = ExprTkPatternParser::ParseResult();
         _lastCompiledScript.clear();
         _haveCompiled = false;
@@ -411,9 +431,13 @@ namespace MultiReplaceEngine {
 
     bool ExprTkEngine::compile(const std::string& scriptUtf8)
     {
+        MR_DBG("compile ENTER: script='%s' haveCompiled=%d cacheMatch=%d",
+            scriptUtf8.c_str(), (int)_haveCompiled,
+            (int)(scriptUtf8 == _lastCompiledScript));
         // Cache hit: the same template was compiled last time, nothing to
         // do. Mirrors the behaviour of LuaEngine::ensureCompiled.
         if (_haveCompiled && scriptUtf8 == _lastCompiledScript) {
+            MR_DBG("compile: CACHE HIT, returning true without recompile");
             return true;
         }
 
@@ -494,6 +518,8 @@ namespace MultiReplaceEngine {
             }
 
             if (!_parser.compile(split.formula, expr)) {
+                MR_DBG("  seg[%zu] ExprTk compile FAILED: formula='%s' err='%s'",
+                    i, split.formula.c_str(), _parser.error().c_str());
                 // ExprTk failed to compile this expression. Surface the
                 // ExprTk parser error verbatim - it is technical but
                 // precise (e.g. "Unknown variable or function: foo").
@@ -507,6 +533,7 @@ namespace MultiReplaceEngine {
                 _segmentSpecs.clear();
                 return false;
             }
+            MR_DBG("  seg[%zu] ExprTk compile OK: formula='%s'", i, split.formula.c_str());
 
             // Detect string-producing root nodes (e.g. (?=num2rom(num(1))),
             // (?='abc'), (?=fpath + '.bak')). These are read via
@@ -599,6 +626,8 @@ namespace MultiReplaceEngine {
         _parsedTemplate = std::move(parseRes);
         _lastCompiledScript = scriptUtf8;
         _haveCompiled = true;
+        MR_DBG("compile DONE OK: %zu segments, %zu compiledExpressions",
+            _parsedTemplate.segments.size(), _compiledExpressions.size());
         return true;
     }
 
@@ -613,6 +642,9 @@ namespace MultiReplaceEngine {
         int  /*documentCodepage*/)
     {
         FormulaResult result;
+        MR_DBG("execute ENTER: script='%s' haveCompiled=%d compiledExpr.size=%zu segs=%zu",
+            scriptUtf8.c_str(), (int)_haveCompiled,
+            _compiledExpressions.size(), _parsedTemplate.segments.size());
 
         // When the caller is in regex mode the rendered output will be
         // routed through a regex replacement engine. Expression results
@@ -786,6 +818,24 @@ namespace MultiReplaceEngine {
             // which output path applies, because value() is 0.0 in that
             // case and would otherwise look like a normal numeric eval.
             auto& expr = _compiledExpressions[i];
+            MR_DBG("  execute seg[%zu] exprIdx=%zu isString=%d compiledExpr.size=%zu hasSpec=%d",
+                i, expressionIdx, (int)_segmentSpecs[i].isString,
+                _compiledExpressions.size(), (int)_segmentSpecs[i].hasSpec);
+
+            // Defensive guard: only evaluate a properly compiled expression.
+            // A default-constructed or half-initialised expression would
+            // crash inside value()/return_invoked() (a corrupt control
+            // block surfaces as an access violation in a callback). Treat
+            // it as a structural error and abort the run cleanly instead.
+            if (!exprtk::is_valid(expr)) {
+                std::string msg = "Internal error: expression not compiled: \"";
+                msg += seg.text;
+                msg += "\"";
+                reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
+                result.success = false;
+                result.errorMessage = std::move(msg);
+                return result;
+            }
 
             // Direct-string path: when the root node is string-producing
             // (e.g. (?=num2rom(num(1))), (?='abc'), (?=fpath + '.bak')),
@@ -840,7 +890,21 @@ namespace MultiReplaceEngine {
                 continue;
             }
 
+            MR_DBG("  execute seg[%zu] about to call value()", i);
             const double value = expr.value();
+            MR_DBG("  execute seg[%zu] value()=%g, about to call return_invoked()", i, value);
+
+            // A failed loadlib() latches here. It is a structural failure
+            // (the library and everything depending on it is unavailable),
+            // so we abort the whole run with one diagnostic rather than
+            // letting dependent expressions raise follow-up errors.
+            if (_loadlibFailed) {
+                reportError(ILuaEngineHost::ErrorCategory::CompileError,
+                    _loadlibError);
+                result.success = false;
+                result.errorMessage = _loadlibError;
+                return result;
+            }
 
             if (expr.return_invoked()) {
                 // return-lists emit strings; numeric spec makes no sense.
@@ -2033,6 +2097,7 @@ namespace MultiReplaceEngine {
     double ExprTkEngine::EcmdLoaderFunction::operator()(
         parameter_list_t parameters)
     {
+        MR_DBG("loadlib CALLBACK invoked, argc=%zu", parameters.size());
         if (!_owner || parameters.size() != 1) {
             return 0.0;
         }
@@ -2040,6 +2105,9 @@ namespace MultiReplaceEngine {
             return 0.0;
         }
         const string_t sv(parameters[0]);
+        // Failure is latched in _loadlibFailed inside loadEcmdFile and
+        // surfaced by execute(); the callback's own return value is
+        // irrelevant to ExprTk here.
         _owner->loadEcmdFile(std::string(sv.begin(), sv.size()));
         return 0.0;
     }
@@ -2048,12 +2116,39 @@ namespace MultiReplaceEngine {
     // loadEcmdFile
     // ---------------------------------------------------------------------
 
-    void ExprTkEngine::loadEcmdFile(const std::string& utf8Path)
+    // Detects control characters (CR/LF/TAB/BS etc.) in a path. Their
+    // presence means the user wrote backslashes that ExprTk's string
+    // lexer consumed as escapes ('\t' -> TAB, '\n' -> LF, ...), destroying
+    // the path. A real filesystem path never contains them.
+    static bool pathHasControlChars(const std::string& p)
     {
+        for (unsigned char c : p) {
+            if (c < 0x20) return true;
+        }
+        return false;
+    }
+
+    bool ExprTkEngine::loadEcmdFile(const std::string& utf8Path)
+    {
+        MR_DBG("loadEcmdFile ENTER: path='%s'", utf8Path.c_str());
         if (!_ecmdLibrary) {
+            MR_DBG("loadEcmdFile: no library, ignoring");
             // Defensive: should always exist between initialize() and
             // shutdown(); ignore loads otherwise.
-            return;
+            return false;
+        }
+
+        // A path mangled by backslash-escapes is the most common failure
+        // mode (paths pasted from Explorer). Diagnose it explicitly rather
+        // than reporting a confusing "cannot open" on a destroyed path.
+        if (pathHasControlChars(utf8Path)) {
+            MR_DBG("loadEcmdFile: path has control chars (backslash escapes)");
+            _loadlibFailed = true;
+            _loadlibError =
+                "loadlib: path contains control characters - backslashes are "
+                "interpreted as escapes. Use forward slashes (C:/dir/lib.elib) "
+                "or doubled backslashes (C:\\\\dir\\\\lib.elib).";
+            return false;
         }
 
         // Windows-correct path handling: convert UTF-8 to wide so
@@ -2062,9 +2157,10 @@ namespace MultiReplaceEngine {
         std::wstring wpath = Encoding::utf8ToWString(utf8Path);
         std::ifstream in(std::filesystem::path(wpath), std::ios::binary);
         if (!in) {
-            reportError(ILuaEngineHost::ErrorCategory::ExecutionError,
-                "ecmd: cannot open file '" + utf8Path + "'");
-            return;
+            MR_DBG("loadEcmdFile: CANNOT OPEN '%s'", utf8Path.c_str());
+            _loadlibFailed = true;
+            _loadlibError = "loadlib: cannot open file '" + utf8Path + "'";
+            return false;
         }
 
         std::ostringstream buf;
@@ -2083,8 +2179,11 @@ namespace MultiReplaceEngine {
 
         std::string err;
         if (!_ecmdLibrary->load(content, utf8Path, err)) {
-            reportError(ILuaEngineHost::ErrorCategory::CompileError, err);
+            _loadlibFailed = true;
+            _loadlibError = err;
+            return false;
         }
+        return true;
     }
 
     // ---------------------------------------------------------------------
@@ -2575,6 +2674,24 @@ namespace MultiReplaceEngine {
         }
         _rnd->reseed(static_cast<std::uint64_t>(s));
         return seed;
+    }
+
+    double ExprTkEngine::RndFunction::nextNormal(double mean, double stddev)
+    {
+        std::normal_distribution<double> dist(mean, stddev);
+        return dist(_engine);
+    }
+
+    double ExprTkEngine::RndNormFunction::operator()(
+        const double& mean, const double& stddev)
+    {
+        if (!_rnd) return 0.0;
+        // A non-finite mean, or a non-positive / non-finite std, has no
+        // valid distribution. Collapse to the mean (or 0 if that is also
+        // unusable) instead of letting normal_distribution see bad input.
+        if (!std::isfinite(mean)) return 0.0;
+        if (!std::isfinite(stddev) || stddev <= 0.0) return mean;
+        return _rnd->nextNormal(mean, stddev);
     }
 
     // ---------------------------------------------------------------------
