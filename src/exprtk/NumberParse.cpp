@@ -26,16 +26,27 @@ namespace MultiReplaceEngine {
             return std::numeric_limits<double>::quiet_NaN();
         }
 
-        // Build a working buffer only when we need to rewrite ',' to '.'
-        // (the comma-decimal locale path). The common case of plain ASCII
-        // numerics with a '.' or no separator at all parses directly from
-        // the input - no allocation.
+        // Exactly one decimal separator is allowed. Anything with more
+        // than one separator - mixed ('.' and ',') or repeated ('1.000.000',
+        // '1,000,000') - is a thousands-grouped or otherwise ambiguous form
+        // that cannot be read as a single number, so it yields NaN rather
+        // than a misleading partial value. Thousands separators are not
+        // supported - strip them in the regex first.
+        const long long sepCount =
+            std::count(s.begin(), s.end(), '.') +
+            std::count(s.begin(), s.end(), ',');
+        if (sepCount > 1) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+
+        // Rewrite a lone ',' to '.' for the comma-decimal path; a working
+        // buffer is built solely for that case. Plain '.' numerics and
+        // integers parse directly from the input - no allocation.
         std::string buf;
         const char* first = s.data();
         const char* last = s.data() + s.size();
 
-        if (s.find('.') == std::string::npos &&
-            s.find(',') != std::string::npos) {
+        if (s.find(',') != std::string::npos) {
             buf.assign(s);
             std::replace(buf.begin(), buf.end(), ',', '.');
             first = buf.data();
@@ -50,8 +61,7 @@ namespace MultiReplaceEngine {
 
         // Trailing junk after a valid numeric prefix is consumed silently.
         // "1.5abc" -> 1.5. This matches how most programming languages
-        // treat a number embedded in a larger string and, more importantly,
-        // matches what the engine has always done.
+        // treat a number embedded in a larger string.
         return value;
     }
 

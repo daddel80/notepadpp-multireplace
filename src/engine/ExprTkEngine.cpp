@@ -1103,40 +1103,10 @@ namespace MultiReplaceEngine {
 
     double ExprTkEngine::parseCaptureToDouble(const std::string& s)
     {
-        if (s.empty()) {
-            return std::numeric_limits<double>::quiet_NaN();
-        }
-
-        // Accept both '.' and ',' as decimal separator. If the string
-        // contains a '.', commas are left alone so from_chars stops at
-        // the first comma (preserving trailing-junk semantics for inputs
-        // like "1.5,extra"). If there is no '.', any ',' is normalised
-        // to '.' so comma-decimal locales parse correctly.
-        std::string buf;
-        const char* first = s.data();
-        const char* last = s.data() + s.size();
-
-        if (s.find('.') == std::string::npos &&
-            s.find(',') != std::string::npos) {
-            buf.assign(s);
-            std::replace(buf.begin(), buf.end(), ',', '.');
-            first = buf.data();
-            last = buf.data() + buf.size();
-        }
-
-        double value = 0.0;
-        auto res = std::from_chars(first, last, value);
-        if (res.ec != std::errc{}) {
-            // Non-numeric input - return NaN so the formula author can
-            // either propagate it (NaN-as-error) or guard explicitly
-            // with a NaN check (x != x). Silent 0.0 fallback would
-            // corrupt data when matches contain unexpected text.
-            return std::numeric_limits<double>::quiet_NaN();
-        }
-
-        // Trailing junk like "1.5abc" yields 1.5. Consistent with how
-        // most programming languages read numeric prefixes.
-        return value;
+        // Single source of truth for capture-to-number parsing (separator
+        // handling, trailing-junk tolerance, NaN on failure). Match history
+        // reads the same helper directly, so num() and numprev() agree.
+        return parseNumber(s);
     }
 
     std::string ExprTkEngine::formatDouble(double value)

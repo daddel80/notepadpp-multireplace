@@ -540,7 +540,7 @@ To access the matched text as a string, use `txt(0)`. To reference the match in 
 
 **Number parsing notes:**
 
-`num(N)` parses captures with both `.` and `,` accepted as decimal separator, tolerates trailing non-numeric characters, and yields `NaN` when the input has no leading digits. When an expression evaluates to `NaN` (or to `±Infinity` from things like `0/0`, `log(-1)`, `sqrt(-1)`), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. Skipped matches are left untouched, so no original data is lost.
+`num(N)` parses captures with a single `.` or `,` accepted as the decimal separator (more than one separator - mixed or repeated, as in thousands grouping - yields `NaN`, since the intended value is ambiguous), tolerates trailing non-numeric characters, and yields `NaN` when the input has no leading digits. When an expression evaluates to `NaN` (or to `±Infinity` from things like `0/0`, `log(-1)`, `sqrt(-1)`), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. Skipped matches are left untouched, so no original data is lost.
 
 | Capture text                         | `num(N)`            | Note                                            |
 |--------------------------------------|---------------------|-------------------------------------------------|
@@ -551,8 +551,15 @@ To access the matched text as a string, use `txt(0)`. To reference the match in 
 | `""`, `"abc"`                        | `NaN`               | unparseable                                     |
 | `"$100"`                             | `NaN`               | leading non-digit                               |
 | `"3,14abc"`                          | `3.14`              | trailing characters tolerated                   |
-| `"1,234,567"` (US thousands)         | `1.234`             | thousands separators not recognised — strip them in the regex first |
-| `"1.234,56"` or `"1,234.56"`         | `1.234` or `1`      | mixed separators are unreliable — avoid relying on them |
+| `"1,234,567"`, `"1.000.000"` (thousands) | `NaN`           | more than one separator is rejected — remove the grouping first (see below) |
+| `"1.234,56"` or `"1,234.56"`         | `NaN`               | mixing `.` and `,` is rejected — capture a single separator type |
+
+**Reading grouped numbers.** Because more than one separator yields `NaN`, a thousands-grouped number must have its grouping removed before parsing. Do this in the formula with `replace()`, once you know which character is the grouping separator:
+
+- US grouping (`1,234.56`): `(?=tonum(replace(txt(1), ',', '')))` → `1234.56`
+- European grouping (`1.234,56`): `(?=tonum(replace(txt(1), '.', '')))` → `1234.56` (the remaining comma is read as the decimal point)
+
+This needs the format to be known up front — a value with a single separator (e.g. `1.234`) stays ambiguous between a decimal and a thousands group and cannot be disambiguated automatically.
 
 <br>
 

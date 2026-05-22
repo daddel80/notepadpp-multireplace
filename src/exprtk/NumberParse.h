@@ -27,15 +27,17 @@ namespace MultiReplaceEngine {
     // Parse `s` as a double. Returns:
     //   - NaN for empty input.
     //   - NaN if the leading characters do not form a number.
+    //   - NaN if the input has more than one separator ('.' or ','),
+    //     whether mixed ("1.234,56") or repeated ("1.000.000"): the
+    //     intended value is ambiguous (thousands grouping vs. decimal).
     //   - The parsed value otherwise (trailing junk after a valid
     //     numeric prefix is silently dropped: "1.5abc" -> 1.5).
     //
-    // Decimal separator: if the input contains '.', commas are treated
-    // as part of trailing junk; if it does not contain '.', any ','
-    // becomes the decimal point. This matches the long-standing
-    // behaviour of the engine on the kind of European-locale data
-    // ("1,5" meaning 1.5) where the regex pipeline upstream cannot
-    // know which convention is in use.
+    // Decimal separator: a single separator type is accepted. '.' is
+    // the decimal point; if only ',' is present it is treated as the
+    // decimal point ("1,5" -> 1.5) for European-locale data, since the
+    // regex pipeline upstream cannot know which convention is in use.
+    // Thousands separators are not supported - strip them in the regex.
     double parseNumber(const std::string& s);
 
 } // namespace MultiReplaceEngine
