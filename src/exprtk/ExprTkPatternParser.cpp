@@ -125,11 +125,27 @@ namespace MultiReplaceEngine {
 
                 // Depth-counting scan to the matching ')'. Inside the
                 // expression we deliberately do NOT honour escape
-                // sequences - the formula engine sees the raw text.
+                // sequences - the formula engine sees the raw text. A
+                // single-quoted string literal is skipped whole so its
+                // parentheses are not counted (ExprTk uses '' for an
+                // embedded quote).
                 int depth = 1;
                 while (i < n && depth > 0) {
                     const char c = templ[i];
-                    if (c == '(') {
+                    if (c == '\'') {
+                        ++i;
+                        while (i < n) {
+                            if (templ[i] == '\'') {
+                                if (i + 1 < n && templ[i + 1] == '\'') {
+                                    i += 2;   // escaped quote, stay in string
+                                    continue;
+                                }
+                                break;        // closing quote
+                            }
+                            ++i;
+                        }
+                    }
+                    else if (c == '(') {
                         ++depth;
                     }
                     else if (c == ')') {

@@ -829,6 +829,16 @@ namespace MultiReplaceEngine {
                     onInvalid(result, seg.text);
                     return result;
                 }
+                // get_string() evaluates the whole expression, so a
+                // loadlib() called inside a string-producing segment can
+                // latch here too. Same structural abort as the numeric path.
+                if (_loadlibFailed) {
+                    reportError(ILuaEngineHost::ErrorCategory::CompileError,
+                        _loadlibError);
+                    result.success = false;
+                    result.errorMessage = _loadlibError;
+                    return result;
+                }
                 // Record for history. txtout/txtprev readers will see
                 // this slot in subsequent matches; numout/numprev get a
                 // type-mismatch fallback because the slot is String.
