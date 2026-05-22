@@ -666,7 +666,7 @@ The analyzer runs once when the template is compiled and rejects literal argumen
 |-----------------------------------------------|-----------------------------------------------------------------------|
 | Literal `p < 0`                               | `"p must be non-negative in ..."` — applies to every history reader.  |
 | Literal `p > 1024`                            | `"p exceeds hard cap (1024) in ..."` — hard upper bound on ring depth.|
-| Literal `n < 0` in `num`/`txt` arity-2/3      | `"n must be non-negative in ..."` — note `num(-1)` (arity-1) still returns `0` for backwards compatibility. |
+| Literal `n < 0` in `num`/`txt` arity-2/3      | `"n must be non-negative in ..."` — note `num(-1)` (arity-1) is not a compile error; it yields `NaN` at runtime like any other missing capture. |
 
 Errors driven by runtime values (a variable that happens to evaluate to a negative number, an out-of-range block index, etc.) fall back to `v` silently instead of aborting — consistent with the rest of ExprTk's defensive failure handling.
 

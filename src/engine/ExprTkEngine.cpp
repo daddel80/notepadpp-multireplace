@@ -1173,23 +1173,21 @@ namespace MultiReplaceEngine {
             return 0.0;
         }
 
-        // First arg = capture index. Negative or non-finite -> legacy
-        // 0.0 for arity-1 (backwards compatibility with the original
-        // num() semantics), v-fallback for arity-2/3.
+        // First arg = capture index. A missing capture yields NaN
+        // (arity 1/2) or the v-fallback (arity 3).
         const double indexD = readScalar(parameters[0]);
         long long idx = 0;
         const bool indexOk = toIndex(indexD, idx);
 
         // -----------------------------------------------------------------
-        // Arity 1: legacy num(N) - read capture from the current match.
-        // Out-of-range indices return 0.0, matching the pre-history
-        // behaviour every existing template depends on.
+        // Arity 1: num(N) - capture N from the current match.
+        // num(0) is the full match.
         // -----------------------------------------------------------------
         if (arity == 1) {
-            if (!indexOk) return 0.0;
+            if (!indexOk) return nanResult;
             const auto& caps = _owner->_captures;
             const std::size_t u = static_cast<std::size_t>(idx);
-            if (u >= caps.size()) return 0.0;
+            if (u >= caps.size()) return nanResult;
             return caps[u];
         }
 
@@ -1252,7 +1250,7 @@ namespace MultiReplaceEngine {
         parameter_list_t parameters)
     {
         // Default to empty: an out-of-range or malformed call yields ""
-        // rather than aborting eval, mirroring num(N)'s defensive style.
+        // (the natural empty value for text) rather than aborting eval.
         result.clear();
 
         const std::size_t arity = parameters.size();
@@ -1266,9 +1264,8 @@ namespace MultiReplaceEngine {
         const bool indexOk = toIndex(indexD, idx);
 
         // -----------------------------------------------------------------
-        // Arity 1: legacy txt(N) - capture from the current match. The
-        // value is left empty on any failure (mirrors the original
-        // pre-history defensive behaviour).
+        // Arity 1: txt(N) - capture N from the current match.
+        // txt(0) is the full match.
         // -----------------------------------------------------------------
         if (arity == 1) {
             if (!indexOk) return 0.0;
