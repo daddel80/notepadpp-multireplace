@@ -230,7 +230,7 @@ Powered by the [Lua programming language](https://www.lua.org/). See [Lua String
 
 ### ExprTk
 
-Powered by [ExprTk](https://www.partow.net/programming/exprtk/index.html) by Arash Partow ([source on GitHub](https://github.com/ArashPartow/exprtk)) — a header-only C++ mathematical expression library. The MultiReplace integration syntax is documented in the [ExprTk Reference](FORMULA-SUPPORT.md#exprtk-reference).
+Powered by [ExprTk](https://www.partow.net/programming/exprtk/index.html) by Arash Partow ([source on GitHub](https://github.com/ArashPartow/exprtk)) — a header-only C++ mathematical expression library. The MultiReplace integration syntax is documented in the [ExprTk Reference](FORMULA-SUPPORT.md#exprtk-reference). The `(?=...)` formula marker and the approach of exposing capture groups and match state as formula variables are adapted from Coises' [Columns++](https://coises.github.io/ColumnsPlusPlus/).
 
 <br>
 

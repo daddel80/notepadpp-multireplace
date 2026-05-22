@@ -113,8 +113,6 @@ struct UndoRedoAction {
     std::function<void()> redoAction;
 };
 
-
-
 enum class FontRole {
     Standard = 0,
     Normal1, // 14px MS Shell Dlg 2
@@ -214,8 +212,6 @@ struct ColumnInfo {
     LRESULT startLine;
     SIZE_T startColumnIndex;
 };
-
-
 
 struct HighlightedTabs {
     std::unordered_set<int> bufferIDs;  // Stores buffer IDs with active highlighting
@@ -578,7 +574,6 @@ public:
     // Helper functions for scaling
     inline int sx(int value) { return dpiMgr->scaleX(value); }
     inline int sy(int value) { return dpiMgr->scaleY(value); }
-
     static inline void setInstance(MultiReplace* inst) {
         instance = inst;
     }
@@ -589,9 +584,7 @@ public:
 
     void pickupSelectionIntoFindEdit();
     void activateAndFocusFindEdit();
-
     inline HWND getHSelf() const { return _hSelf; }
-
     inline void setParent(HWND parent2set) {
         _hParent = parent2set;
         _hParent = parent2set;
@@ -629,16 +622,11 @@ public:
 #define SCFIND_REGEXP_SKIPCRLFASONE             0x08000000
 #endif
 
-// Build Scintilla search flags using the same flag combinations as
-// Notepad++'s own Find/Replace, so MR's regex behaviour stays consistent
-// with the host. This includes the empty-match handling that makes `^`
-// replace on empty lines, CRLF-as-one, and POSIX mode.
-//
-// Use this everywhere search flags are built, both for SCI_SETSEARCHFLAGS
-// and for storing in SearchContext::searchFlags / Hit::searchFlags. The
-// flags are deterministic for a given (wholeWord, matchCase, regex,
-// dotMatchesNL, isReplaceAll) tuple, so storing them and re-building them
-// for comparison stays consistent.
+// Build Scintilla search flags matching Notepad++'s own Find/Replace, so
+// MR's regex behaviour stays consistent with the host (empty-match handling
+// for `^` on empty lines, CRLF-as-one, POSIX mode). Use everywhere flags are
+// built. Deterministic for a given (wholeWord, matchCase, regex, dotMatchesNL,
+// isReplaceAll) tuple, so storing and re-building them for comparison is safe.
     static inline int buildSearchFlags(bool wholeWord, bool matchCase, bool regex,
         bool dotMatchesNL = false,
         bool isReplaceAll = true)
@@ -700,15 +688,11 @@ public:
     // Getters for ConfigDialog
     bool isUseListEnabled() const;
     bool isTwoButtonsModeEnabled() const;
-
     void loadUIConfigFromIni();
     void loadSettingsToPanelUI();
     void syncUIToCache();
     void applyConfigSettingsOnly();
     static  std::pair<std::wstring, std::wstring> generateConfigFilePaths();
-
-    // Snapshot directory holds per-tab CSV shutdown caches (one file per tab).
-    // User-chosen CSVs stay at the user's own paths and are never moved here.
     static std::wstring getSnapshotsDir();
     static bool         snapshotsDirExists();
     static bool         ensureSnapshotsDir();  // returns false only on filesystem error
@@ -750,13 +734,13 @@ public:
     inline static SortDirection currentSortState = SortDirection::Unsorted; // Status of column sort
     inline static bool isSortedColumn = false; // Indicates if a column is sorted
 
-    // Static methods for Event Handling
-    static void onSelectionChanged();
-    static void onTextChanged();
+#pragma region Event Handling
+    static void processTextChange(SCNotification* notifyCode);
+    static void processLog();
     static void onDocumentSwitched();
     static void pointerToScintilla();
-    static void processLog();
-    static void processTextChange(SCNotification* notifyCode);
+    static void onSelectionChanged();
+    static void onTextChanged();
     static void onCaretPositionChanged();
     static void onThemeChanged();
     static void signalShutdown();
@@ -765,6 +749,7 @@ public:
     static void toggleReopenOnStartup();
     static void loadConfigOnce();
     static void migrateLegacyStartupKeys();
+#pragma endregion
 
     enum class ChangeType { Insert, Delete, Modify };
     enum class ReplaceMode { Normal, Extended, Regex };
@@ -786,7 +771,6 @@ public:
     inline static HWND       hwndExpandBtn = nullptr;
     bool _keepOnTopDuringBatch = false;
     void setBatchUIState(HWND hDlg, bool inProgress);
-
     static void loadLanguageGlobal();
     static void refreshUILanguage();
 
@@ -844,14 +828,14 @@ private:
 
     DPIManager* dpiMgr; // Pointer to DPIManager instance
 
-    // Static variables related to GUI 
+    // Static variables related to GUI
     inline static HWND s_hScintilla = nullptr;
     inline static HWND s_hDlg = nullptr;
     HWND hwndEdit = nullptr;
     WNDPROC originalListViewProc;
     inline static std::map<int, ControlInfo> ctrlMap{};
 
-    // Instance-specific GUI-related variables 
+    // Instance-specific GUI-related variables
     HINSTANCE hInstance;
     HWND _hScintilla;
     HWND _replaceListView;
@@ -906,7 +890,6 @@ private:
     // Preferences (input)
     int preferredColumnTabsStyleId = 30; // preferred ColumnTabs id; -1 = auto
 
-
     // Assigned (output)
     // Pools (runtime)
     std::vector<int> textStyles;           // highlight pool (excludes ColumnTabs + standard)
@@ -923,7 +906,7 @@ private:
         31                     // N++ mark
     };
 
-    // Data-related variables 
+    // Data-related variables
     size_t markedStringsCount = 0;
     bool allSelected = true;
     std::unordered_map<int, int> colorToStyleMap;
@@ -932,12 +915,9 @@ private:
     std::vector<ReplaceItemData> replaceListData;
     std::vector<LineInfo> lineDelimiterPositions;
     std::vector<char> lineBuffer; // reusable Buffer for findDelimitersInLine()
-    // Per-match cache for numcol/txtcol. Lazily filled on the first
-    // call within a match; refilled when the next call resolves to a
-    // different line. Cleared by handleClearDelimiterState() on
-    // document switch and by findAllDelimitersInDocument() on full
-    // delimiter rebuild; the per-line update path drops just
-    // _csvRowCacheLine to force re-extraction of the touched line.
+    // Per-match cache for numcol/txtcol. Lazily filled per match, refilled
+    // on line change. Cleared on document switch and full delimiter rebuild;
+    // the per-line path drops just _csvRowCacheLine to re-extract that line.
     mutable LRESULT _csvRowCacheLine = -1;
     mutable std::vector<std::string> _csvRowCacheColumns;
     mutable std::vector<char> _csvLineBuffer; // reusable line-bytes buffer for extractColumnsForLine()
@@ -962,10 +942,10 @@ private:
     std::string cachedFilePath;
     std::string cachedFileName;
 
-    // Debugging and logging related 
+    // Debugging and logging related
     std::wstring findNextButtonText;        // member variable to ensure persists for button label throughout the object's lifetime.
 
-    // Scintilla related 
+    // Scintilla related
     SciFnDirect pSciMsg = nullptr;
     sptr_t pSciWndData = 0;
     HighlightedTabs highlightedTabs;
@@ -998,11 +978,9 @@ private:
     // widths and leak them into the incoming tab.
     bool _suppressLiveWidthSync = false;
 
-    // Suppresses the EN_CHANGE handler on the CSV edit fields from
-    // auto-selecting the Column scope radio. Used while restoreStateFromTab
-    // pushes values into those edits programmatically; without it the
-    // scope radio briefly flickers to CSV before settling on the
-    // restored scope.
+    // Suppresses the CSV-edit EN_CHANGE handler from auto-selecting the
+    // Column scope radio while restoreStateFromTab writes values
+    // programmatically (avoids a scope-radio flicker).
     bool _suppressScopeAutoSelect = false;
 
     // Last width seen by WM_SIZE; -1 means baseline not yet captured.
@@ -1069,9 +1047,16 @@ private:
     inline static bool _luaSafeModeEnabled = false;        // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
     inline static bool allFromCursorEnabled = false;      // Controls the starting point for Replace All, Find All and Mark when wrap is OFF.
     inline static bool keepListVisible = false;            // Library mode: list stays visible when toggled off, only dims
-    inline static int  listDimIntensity = 50;               // INI setting [Options] DimIntensity (0-100): how strongly the inactive list is dimmed. Persisted, but not surfaced in the config dialog.
-    inline static int  tabMaxLength = 15;                    // INI setting [Options] TabMaxLength (4-60): how many characters of a tab label are shown. Persisted, but not surfaced in the config dialog.
-    inline static MultiReplaceEngine::EngineType _defaultEngine = MultiReplaceEngine::EngineType::Lua;  // INI setting [Options] DefaultEngine (Lua/ExprTk): the engine new tabs start with. Updated only on a deliberate engine selection click; loading a list with a different engine does not change it. Persisted, but not surfaced in the config dialog.
+    // INI [Options] DimIntensity (0-100): dimming of the inactive list.
+    // Persisted, not shown in the config dialog.
+    inline static int  listDimIntensity = 50;
+    // INI [Options] TabMaxLength (4-60): visible chars of a tab label.
+    // Persisted, not shown in the config dialog.
+    inline static int  tabMaxLength = 15;
+    // INI [Options] DefaultEngine: engine new tabs start with. Set only on a
+    // deliberate engine-selection click (not when loading a list). Persisted,
+    // not shown in the config dialog.
+    inline static MultiReplaceEngine::EngineType _defaultEngine = MultiReplaceEngine::EngineType::Lua;
     inline static bool flowTabsIntroDontShowEnabled = false;
     inline static bool flowTabsNumericAlignEnabled = true;
     inline static bool limitFileSizeEnabled = false;
@@ -1141,7 +1126,7 @@ private:
     bool replaceColumnLockedEnabled; // Indicates if the "Replace" column is locked
     bool commentsColumnLockedEnabled;// Indicates if the "Comments" column is locked
 
-    // Window DPI scaled size 
+    // Window DPI scaled size
     int MIN_WIDTH_scaled;
     int MIN_HEIGHT_scaled;
     int SHRUNK_HEIGHT_scaled;
@@ -1152,7 +1137,7 @@ private:
     int DEFAULT_COLUMN_WIDTH_FIND_COUNT_scaled;
     int DEFAULT_COLUMN_WIDTH_REPLACE_COUNT_scaled;
 
-    // Initialization
+#pragma region Initialization
     void initializeWindowSize();
     RECT calculateMinWindowFrame(HWND hwnd);
     void createFonts();
@@ -1178,7 +1163,9 @@ private:
     void adjustWindowSize();
     void updateUseListState(bool isUpdate);
 
-    //List Data Operations
+#pragma endregion
+
+#pragma region List Data Operations
     void addItemsToReplaceList(const std::vector<ReplaceItemData>& items, size_t insertPosition);
     void removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove);
     void modifyItemInReplaceList(size_t index, const ReplaceItemData& newData);
@@ -1187,18 +1174,13 @@ private:
     void scrollToIndices(size_t firstIndex, size_t lastIndex);
     void exportDataToClipboard();
 
+#pragma endregion
 
-    //ListView
+#pragma region ListView
     HWND CreateHeaderTooltip(HWND hwndParent);
     void AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnIndex, LPCTSTR pszText);
     void createListViewColumns(WidthMode mode = WidthMode::Redistribute);
-    // Mark every inactive tab as needing a full redistribute the next
-    // time it is activated. Called on WM_SIZE so tabs sized before
-    // the change still fit the panel when the user revisits them.
     void markAllTabsNeedRelayout();
-    // Arithmetic redistribute for all tabs still flagged as needing
-    // relayout. Called before persisting so stored widths reflect the
-    // current panel size instead of loading stale next session.
     void recomputeStoredWidthsForLazyTabs();
     void insertSingleColumn(ColumnID id, int& currentIndex, int perColumnWidth, LVCOLUMN& lvc);
     bool isColumnVisible(ColumnID id) const;
@@ -1214,27 +1196,15 @@ private:
     void updateHeaderSelection();
     void updateHeaderSortDirection();
     void showColumnVisibilityMenu(HWND hWnd, POINT pt);
-    // Column that was right-clicked in the header. Stashed by
-    // showColumnVisibilityMenu so the Lock/Unlock command handler
-    // knows which column to toggle.
+    // Header column right-clicked for Lock/Unlock; set by showColumnVisibilityMenu.
     ColumnID _tagetedLockColumn = ColumnID::INVALID;
 
     // ----- Engine selector UI -----------------------------------------
-    // Pop up the small engine-chooser menu next to the (L)/(E) marker.
-    // The marker itself is IDC_FORMULA_SUPPORT_ENGINE; this opens the menu
-    // that lets the user switch between Lua and ExprTk for the active tab.
+    // The (L)/(E) marker (IDC_FORMULA_SUPPORT_ENGINE) lets the user switch
+    // the active tab between Lua and ExprTk.
     void showEngineSelectorMenu();
-
-    // Apply a new engine selection to the active tab. Updates the tab's
-    // EngineType, drops the cached engine instance so getActiveEngine()
-    // creates a fresh one on next use, and refreshes the (L)/(E) marker.
     void applyEngineSelection(MultiReplaceEngine::EngineType type);
-
-    // Refresh the (L)/(E) marker text from the active tab's engine. Also
-    // enables/disables the marker according to the "Formula Support"
-    // checkbox state.
     void syncEngineSelectorLabel();
-
     void handleCopyBack(NMITEMACTIVATE* pnmia);
     void handleUpdateFromFields();
     static std::wstring getCurrentTimestamp();
@@ -1253,17 +1223,21 @@ private:
     ColumnID getColumnIDFromIndex(int columnIndex) const;
     int getColumnIndexFromID(ColumnID columnID) const;
 
-    //UI Settings
+#pragma endregion
+
+#pragma region UI Settings
     void onTooltipsToggled(bool enable);
     void destroyAllTooltipWindows();
     void rebuildAllTooltips();
 
-    //Contextmenu List
+#pragma endregion
+
+#pragma region Contextmenu List
     void toggleBooleanAt(int itemIndex, ColumnID columnID);
     void editTextAt(int itemIndex, ColumnID columnID);
     void closeEditField(bool commitChanges);
-    static LRESULT CALLBACK ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
     static LRESULT CALLBACK EditControlSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+    static LRESULT CALLBACK ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
     void toggleEditExpand();
     void createContextMenu(HWND hwnd, POINT ptScreen, MenuState state);
     MenuState checkMenuConditions(POINT ptScreen);
@@ -1271,20 +1245,22 @@ private:
     void copySelectedItemsToClipboard();
     bool canPasteFromClipboard();
     void pasteItemsIntoList();
-    void handleEditOnDoubleClick(int itemIndex, ColumnID columnID);
+    int searchInListData(int startIdx, const std::wstring& searchText, bool forward);
     void toggleListSearchBar();
     void showListSearchBar();
     void hideListSearchBar();
     void findInList(bool forward);
-    int searchInListData(int startIdx, const std::wstring& searchText, bool forward);
     void jumpToNextMatchInEditor(size_t listIndex);
+    void handleEditOnDoubleClick(int itemIndex, ColumnID columnID);
 
-    //Replace
+#pragma endregion
+
+#pragma region Replace
     void replaceAllInOpenedDocs();
     bool handleReplaceAllButton(bool showCompletionMessage = true, const std::filesystem::path* explicitPath = nullptr);
     void handleReplaceButton();
-    bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX);
     bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context);
+    bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     void updateLineDelimiterAfterReplace(Sci_Position pos);
@@ -1294,13 +1270,12 @@ private:
     bool hasAnySelectedEntry() const;
     Sci_Position computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled);
 
-    void updateFilePathCache(const std::filesystem::path* explicitPath = nullptr);
+#pragma endregion
 
+#pragma region Lua Engine
     // ----- ILuaEngineHost implementation ------------------------------
-    // Bridge implementations forwarded to existing MR helpers; declared
-    // here so the formula engine can call back without including the
-    // whole panel header. See engine/LuaEngine.h for the contract.
-    std::string escapeForRegex(const std::string& input) override;
+    // Bridge callbacks for the formula engine. See engine/LuaEngine.h.
+    std::string  escapeForRegex(const std::string& input) override;
     int          showDebugWindow(const std::string& message) override;
     void         refreshUiListView() override;
     void         showErrorMessage(MultiReplaceEngine::ILuaEngineHost::ErrorCategory category,
@@ -1317,9 +1292,7 @@ private:
     bool         readCurrentRowColumnByName(const std::string& headerName,
         std::string& out) const override;
 
-    // Replace-pipeline helpers that work in terms of the engine-agnostic
-    // FormulaVars structure. Used by the replace pipeline to populate
-    // the per-match data the active engine consumes.
+    // Populate the engine-agnostic FormulaVars for the current match.
     void fillFormulaVars(MultiReplaceEngine::FormulaVars& vars,
         Sci_Position matchPos,
         const std::string& foundText,
@@ -1329,11 +1302,12 @@ private:
     void fillCapturesForEngine(MultiReplaceEngine::FormulaVars& vars,
         int documentCodepage);
 
-    // Returns the active tab's engine, creating it on first call.
-    // Returns nullptr if engine creation fails.
     MultiReplaceEngine::IFormulaEngine* getActiveEngine();
+    void updateFilePathCache(const std::filesystem::path* explicitPath = nullptr);
 
-    //Lua Debug Window
+#pragma endregion
+
+#pragma region Lua Debug Window
     int ShowDebugWindow(const std::string& message);
     static LRESULT CALLBACK DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     static void CopyListViewToClipboard(HWND hListView);
@@ -1341,19 +1315,25 @@ private:
     void SetDebugComplete();
     void WaitForDebugWindowClose(bool autoClose = false);
 
-    //Replace in Files
-    bool handleBrowseDirectoryButton();
+#pragma endregion
+
+#pragma region Replace in Files
     bool selectDirectoryDialog(HWND owner, std::wstring& outPath);
+    bool handleBrowseDirectoryButton();
     void handleReplaceInFiles();
 
-    //Find All
+#pragma endregion
+
+#pragma region Find All
     std::wstring sanitizeSearchPattern(const std::wstring& raw);
     void trimHitToFirstLine(const std::function<LRESULT(UINT, WPARAM, LPARAM)>& sciSend, ResultDock::Hit& h);
     void handleFindAllButton();
     void handleFindAllInDocsButton();
     void handleFindInFiles();
 
-    //Find
+#pragma endregion
+
+#pragma region Find
     void handleFindNextButton();
     void handleFindPrevButton();
     SearchResult performRegexBackwardFallback(const SearchContext& context, SelectionRange range);
@@ -1370,12 +1350,10 @@ private:
     void captureCurrentSelectionAsScope();
     std::wstring getSelectionScopeSuffix();
 
-    //Mark
+#pragma endregion
+
+#pragma region Mark
     void handleMarkMatchesButton();
-    // markString runs the search-and-mark loop. If bookmarkMarkerId is
-    // non-negative, every match line additionally gets a bookmark via
-    // SCI_MARKERADD — driven by the "+ Bookmarks" checkbox next to the
-    // Mark Matches button.
     int markString(const SearchContext& context, Sci_Position initialStart,
         const std::wstring& findText = L"",
         int bookmarkMarkerId = -1);
@@ -1388,10 +1366,14 @@ private:
     void updateTextMarkerStyles();
     std::vector<size_t> getIndicesOfUniqueEnabledItems(bool removeDuplicates) const;
 
-    //CSV
-    void handleCopyColumnsToClipboard();
+#pragma endregion
+
+#pragma region CSV
     bool confirmColumnDeletion();
     void handleDeleteColumns();
+    void handleCopyColumnsToClipboard();
+    bool buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const;
+    bool applyFlowTabStops(const ColumnTabs::CT_ColumnModelView* existingModel = nullptr);
     void handleColumnGridTabsButton();
     void handleDuplicatesButton();
     void findAndMarkDuplicates(bool showDialog = true);
@@ -1402,14 +1384,14 @@ private:
     void showDeleteDuplicatesDialog();
     void deleteDuplicateLines();
     void clearFlowTabsIfAny();
-    bool buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const;
-    bool applyFlowTabStops(const ColumnTabs::CT_ColumnModelView* existingModel = nullptr);
     bool runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& body);
     bool showFlowTabsIntroDialog(bool& dontShowFlag) const;
     ViewState saveViewState() const;
     void restoreViewStateExact(const ViewState& s);
 
-    //CSV Sort
+#pragma endregion
+
+#pragma region CSV Sort
     std::vector<CombinedColumns> extractColumnData(SIZE_T startLine, SIZE_T lineCount);
     void sortRowsByColumn(SortDirection sortDirection);
     void reorderLinesInScintilla(const std::vector<size_t>& sortedIndex);
@@ -1420,16 +1402,14 @@ private:
     void detectNumericColumns(std::vector<CombinedColumns>& data);
     int compareColumnValue(const ColumnValue& left, const ColumnValue& right);
 
-    //Scope
+#pragma endregion
+
+#pragma region Scope
     bool parseColumnAndDelimiterData();
     bool validateDelimiterData();
     void findAllDelimitersInDocument();
     void findDelimitersInLine(LRESULT line);
     ColumnInfo getColumnInfo(LRESULT startPosition);
-    // Per-line column extraction shared by readCurrentRowColumnByIndex/Name.
-    // Reads from lineDelimiterPositions (kept current by the existing
-    // delimiter-cache machinery) and returns the raw byte ranges between
-    // delimiters - same convention as extractColumnData, no quote handling.
     bool extractColumnsForLine(LRESULT line,
         std::vector<std::string>& out) const;
     void invalidateCsvRowCache() const;
@@ -1447,7 +1427,9 @@ private:
     void handleDelimiterPositions(DelimiterOperation operation);
     void handleClearDelimiterState();
 
-    //Utilities
+#pragma endregion
+
+#pragma region Utilities
     std::string convertAndExtendW(const std::wstring& input, bool extended, UINT cp) const;
     std::string convertAndExtendW(const std::wstring& input, bool extended);
     static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 100);
@@ -1477,7 +1459,9 @@ private:
     Sci_Position ensureForwardProgress(Sci_Position nextPos, const SearchResult& r);
     void forceWrapRecalculation();
 
-    //FileOperations
+#pragma endregion
+
+#pragma region FileOperations
     std::wstring promptSaveListToCsv(const TabState* tabHint = nullptr);
     std::wstring openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath);
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
@@ -1487,29 +1471,21 @@ private:
     void autoShowCommentsColumn();
     void checkForFileChangesAtStartup();
     void exportToBashScript(const std::wstring& fileName);
-
-    // Save-All: writes every dirty tab. Tabs with a path are saved
-    // silently; tabs without a path show a Save As dialog per tab
-    // (user can cancel individually, like Notepad++).
     void saveAllTabs();
 
-    //INI
+#pragma endregion
+
+#pragma region INI
     void saveSettings();
-    // 3-button Save/Don't save/Cancel prompt. tabIndex < 0 = active
-    // tab via globals; concrete index queries that tab directly.
     int checkForUnsavedChanges(int tabIndex = -1);
     void loadSettings();
     void syncHistoryToCache(HWND hComboBox, const std::wstring& keyPrefix);
 
-    // Multi-tab helpers. Live working state stays in the legacy
-    // members (replaceListData, listFilePath, ...); a TabState is
-    // a snapshot that is swapped in/out on tab switch.
+    // Multi-tab helpers. Live state stays in the legacy members; a TabState
+    // is a snapshot swapped in/out on tab switch.
     void ensurePrimaryTabExists();
     void captureStateIntoTab(TabState& tab);
     void restoreStateFromTab(const TabState& tab);
-
-    // Syncs live ListView column widths back into the global width
-    // members so subsequent captures see the user's latest resize.
     void readColumnWidthsFromListView();
 
     // Multi-tab persistence.
@@ -1523,68 +1499,21 @@ private:
 
     // Tab control rendering.
     void rebuildTabControl();
-    // Lay out the tab strip's right-hand controls so they always sit
-    // directly adjacent to the last visible tab. The "+" button sticks
-    // immediately to the tab control; the overflow dropdown ("v") sits
-    // next to "+" but is only shown when tabs are clipped.
     void repositionNewTabButton();
-
-    // Open a popup listing every tab; clicking an entry switches to it.
-    // Used by the overflow dropdown.
     void showTabListPopup();
-
-    // Scroll the tab strip far enough that the indicated tab is fully
-    // visible. No-op if it is already on screen.
     void ensureTabVisible(int tabIndex);
-
-    // Scroll the strip by one tab in the given direction (negative
-    // left, positive right). Used by the "..." indicators.
     void scrollTabStrip(int direction);
-
     void updateTabTooltip(int tabIndex);
     static std::wstring truncateTabName(const std::wstring& name, size_t maxChars = 14);
-    // Tab label = truncated name plus dirty bullet if applicable. Used
-    // by every code path that writes a tab's text into the tab control.
     std::wstring buildTabLabel(int tabIndex) const;
-
-    // Tab dirty-indicator management. markActiveTabDirty compares the
-    // current list hash against the baseline from the last save/load
-    // and toggles the flag; undoing back to the saved state therefore
-    // clears it automatically. clearTabDirty force-clears after a
-    // successful save. Both rebuild the tab control only on real
-    // state changes.
     void markActiveTabDirty();
     void clearTabDirty(int tabIndex);
-
-    // Shows or hides the tab bar together with the rest of the list UI.
     void setBottomRowVisible(bool visible);
-
-    // Switches active tab, capturing current state into the outgoing
-    // tab and restoring the incoming tab into the live working state.
     void switchToTab(int newIndex);
-
-    // Creates a new empty untitled tab and makes it active.
     void addNewTab();
-
-    // Resets per-tab column state globals (widths, visibility, locks,
-    // order) to plugin defaults. DPI-scaled. Called from bootstrap
-    // paths that create the initial primary tab when no persisted
-    // tab state is available.
     void applyDefaultColumnState();
-
-    // Copies column layout (widths, visibility, locks, order) between
-    // two tabs. Sort order and list data are intentionally not copied.
     void copyLayoutFields(const TabState& src, TabState& dst) const;
-
-    // Copies column layout (widths, visibility, locks, order) from
-    // the active tab into the destination tab so new tabs inherit
-    // the user's workspace preferences. Sort order and list data
-    // are intentionally not copied. No-op if no active tab exists.
     void inheritLayoutFromActiveTab(TabState& dst) const;
-
-    // Reorders tabs: moves the tab at fromIdx so it sits at toIdx in
-    // the tab vector. Updates _activeTabIndex consistently and
-    // rebuilds the tab control. Idempotent if fromIdx == toIdx.
     void moveTab(int fromIdx, int toIdx);
 
     // Tab context menu actions.
@@ -1598,26 +1527,22 @@ private:
     void onTabSaveAs(int tabIndex);
     void onTabOpenFileLocation(int tabIndex);
     void onTabApplyLayoutToAll(int sourceTabIndex);
-
-    // Find an open tab by its file path (case-insensitive on Windows).
-    // Returns the tab index, or -1 if no tab has this file open.
     int findTabByFilePath(const std::wstring& filePath) const;
 
     // Inline rename editing on a tab.
     void beginInlineTabRename(int tabIndex);
     void commitInlineTabRename();
     void cancelInlineTabRename();
-
-    // File-backed tabs rename their .mrl on disk via Save-As + delete.
     void renameTabFile(int tabIndex);
     static LRESULT CALLBACK tabRenameEditProc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK tabControlSubclassProc(HWND, UINT, WPARAM, LPARAM,
         UINT_PTR, DWORD_PTR);
     static LRESULT CALLBACK tabRenameMouseHookProc(int, WPARAM, LPARAM);
 
-    //Debug DPI Information
-    void showDPIAndFontInfo();
+#pragma endregion
 
+#pragma region Debug DPI Information
+    void showDPIAndFontInfo();
     static void displayLogChangesInMessageBox();
 
     // Tandem mode internals. Timer-driven follow, drag-time magnet,
@@ -1632,6 +1557,8 @@ private:
     void tandemPersistEdgeToIni() const;    // write last dock edge to INI cache
     bool tandemLoadEdgeFromIni();           // read last dock edge; false if no persisted value
     bool tandemRestoreFromIniIfEnabled();   // silent startup restore; returns whether state changed
+#pragma endregion
+
 };
 
 extern MultiReplace _MultiReplace;

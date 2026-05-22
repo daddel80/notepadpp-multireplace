@@ -179,7 +179,7 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
             HWND hFocus = GetFocus();
             if (hFocus && (hFocus == instance->_hSelf || IsChild(instance->_hSelf, hFocus))) {
                 if (pMsg->wParam == VK_UP) {
-                    // Alt+Up: Transfer selected row → input fields
+                    // Alt+Up: Transfer selected row -> input fields
                     int iItem = ListView_GetNextItem(instance->_replaceListView, -1, LVNI_SELECTED);
                     if (iItem >= 0) {
                         NMITEMACTIVATE nmia{};
@@ -190,7 +190,7 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
                     return 1;                 // Prevent IsDialogMessage from processing it
                 }
                 if (pMsg->wParam == VK_DOWN) {
-                    // Alt+Down: Transfer input fields → selected rows
+                    // Alt+Down: Transfer input fields -> selected rows
                     instance->handleUpdateFromFields();
                     pMsg->message = WM_NULL;
                     return 1;
@@ -352,7 +352,7 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
     // Base minimum content height (list on/off)
     int minContentHeight = (useListEnabled || keepListVisible) ? MIN_HEIGHT_scaled : SHRUNK_HEIGHT_scaled;
 
-    // Add extra room if “Replace in Files” panel is visible AND we're not in Two-Buttons-Mode
+    // Extra room when the Replace-in-Files panel is visible and not in Two-Buttons mode
     bool twoButtonsMode = IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED;
     int panelExtra = (isFilesPanelNeeded() && !twoButtonsMode) ? sy(REPLACE_FILES_PANEL_HEIGHT) : 0;
 
@@ -524,7 +524,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     ctrlMap[IDC_CLEAR_MARKS_BUTTON] = { buttonX, sy(175), sx(128), sy(24), WC_BUTTON, LM.getLPCW(L"panel_clear_all_marks"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
-    // Status Message -> Normal1 (anchored to right-side controls so SS_ENDELLIPSIS truncates instead of overlapping)
+    // Status Message -> Normal1 (anchored right so SS_ENDELLIPSIS truncates cleanly)
     const int statusStartX = sx(19);
     const int rightLimit = (useListEnabled || keepListVisible) ? buttonX : checkbox2X;
     int statusWidth = rightLimit - statusStartX - sx(8);
@@ -571,7 +571,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_LIST_TABS] = { sx(14) - sx(2), tabBarY, pathWidth, tabBarHeight, WC_TABCONTROL, L"",
         TCS_BOTTOM | TCS_SINGLELINE | TCS_FOCUSNEVER | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
 
-    // New-List "+" button — sits in the tab-bar row immediately to the
+    // New-List "+" button - sits in the tab-bar row immediately to the
     // right of the tab control, vertically centered like the UseList
     // toggle on the same row. Implemented as a STATIC with
     // SS_OWNERDRAW + SS_NOTIFY rather than a real button so it renders
@@ -644,7 +644,7 @@ void MultiReplace::initializeCtrlMap() {
         return;
     }
 
-    // Show or hide the "Export to Bash" button — deprecated, always hidden
+    // Show or hide the "Export to Bash" button - deprecated, always hidden
     ShowWindow(GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON), SW_HIDE);
 
     // Legacy buttons: always hidden (replaced by icon buttons in status row)
@@ -658,7 +658,7 @@ void MultiReplace::initializeCtrlMap() {
     // Initialize the tooltip for the "Use List" button with dynamic text
     updateUseListState(false);
 
-    // Hide list-related controls if list is not enabled (unless Library Mode keeps them visible)
+    // Hide list controls when the list is off (unless Library Mode keeps them visible)
     if (!useListEnabled && !keepListVisible) {
         setBottomRowVisible(false);
         ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_FROM_CSV_BUTTON), SW_HIDE);
@@ -1040,22 +1040,15 @@ void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title)
     }
 }
 
-// ------------------------------------------------------------------
-// isFilesPanelNeeded – single source of truth for panel visibility.
-// Used by positionAndResizeControls, createAndShowWindows, and
-// updateFilesPanel to decide whether the panel area is allocated.
-// ------------------------------------------------------------------
+// Single source of truth for whether the files panel area is allocated.
 bool MultiReplace::isFilesPanelNeeded() const
 {
     return isReplaceInFiles || isFindAllInFiles || isReplaceAllInDocs || isFindAllInDocs;
 }
 
-// ------------------------------------------------------------------
-// matchesDocFilter – check a filename against a semicolon-separated
-// wildcard filter string.  Supports positive patterns (*.log) and
-// exclusion patterns (!*.bak).  Uses the same syntax as the "Filter"
-// field in the "Replace in Files" panel.
-// ------------------------------------------------------------------
+// Check a filename against a semicolon-separated wildcard filter.
+// Supports positive (*.log) and exclusion (!*.bak) patterns, same syntax
+// as the "Filter" field in the Replace-in-Files panel.
 bool MultiReplace::matchesDocFilter(const std::wstring& fileName, const std::wstring& filter) const
 {
     if (filter.empty() || filter == L"*.*" || filter == L"*")
@@ -1081,7 +1074,7 @@ bool MultiReplace::matchesDocFilter(const std::wstring& fileName, const std::wst
         if (pattern[0] == L'!') {
             std::wstring excl = pattern.substr(1);
             if (!excl.empty() && PathMatchSpecW(fileName.c_str(), excl.c_str()))
-                return false;   // exclusion hit → reject
+                return false;   // exclusion hit -> reject
         }
         else {
             hasPositivePattern = true;
@@ -1089,16 +1082,12 @@ bool MultiReplace::matchesDocFilter(const std::wstring& fileName, const std::wst
                 matchedPositive = true;
         }
     }
-    // No positive patterns (only exclusions) → include everything not excluded.
-    // Positive patterns present but none matched → reject.
+    // No positive patterns (only exclusions) -> include everything not excluded.
+    // Positive patterns present but none matched -> reject.
     return hasPositivePattern ? matchedPositive : true;
 }
 
-// ------------------------------------------------------------------
-// updateAllDocsCheckboxState – enable/disable the filter controls
-// based on the "All documents" checkbox.  Called on checkbox click
-// and when the panel switches to Docs mode.
-// ------------------------------------------------------------------
+// Enable/disable the filter controls based on the "All documents" checkbox.
 void MultiReplace::updateAllDocsCheckboxState()
 {
     bool allDocs = (IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) == BST_CHECKED);
@@ -1107,11 +1096,8 @@ void MultiReplace::updateAllDocsCheckboxState()
     // IDC_FILTER_HELP (?) stays always enabled so its tooltip remains accessible
 }
 
-// ------------------------------------------------------------------
-// drainMessageQueue – discard stale mouse/command messages after a
-// synchronous UI-blocking operation, preventing double-execution
-// from queued clicks.
-// ------------------------------------------------------------------
+// Discard stale mouse/command messages after a synchronous UI-blocking
+// operation, preventing double-execution from queued clicks.
 void MultiReplace::drainMessageQueue()
 {
     MSG msg;
@@ -1140,7 +1126,7 @@ void MultiReplace::updateFilesPanel()
     const bool inFilesMode = (isReplaceInFiles || isFindAllInFiles);
     const bool show = (inFilesMode || inDocsMode) && !twoButtonsMode;
 
-    // Determine title – unified logic for both Files and Docs panels.
+    // Determine title - unified logic for both Files and Docs panels.
     // The panel GroupBox always has the same size; only title and
     // which inner controls are visible changes between modes.
     std::wstring titleKey;
@@ -1261,7 +1247,7 @@ void MultiReplace::updateFilesPanel()
             }
 
             // IMPORTANT: Do NOT change the group title while hidden.
-            // No SetDlgItemText() here — prevents any accidental frame repaint.
+            // No SetDlgItemText() here - prevents any accidental frame repaint.
             lastTitleKey.clear();
 
         }
@@ -1283,7 +1269,7 @@ void MultiReplace::updateFilesPanel()
         return;
     }
 
-    // Case C) Visible – mode changed (Files↔Docs) or only the title changed
+    // Case C) Visible - mode changed (Files↔Docs) or only the title changed
     const bool modeChanged = (inDocsMode != lastInDocsMode);
 
     if (modeChanged)
@@ -1529,7 +1515,7 @@ void MultiReplace::refreshUILanguage()
         HWND hCtrl = GetDlgItem(_MultiReplace._hSelf, pair.first);
         if (!hCtrl) continue;
 
-        // Only set text for controls with defined windowName (skip edit fields/comboboxes)
+        // Only controls with a windowName (skip edit fields/comboboxes)
         if (pair.second.windowName && pair.second.windowName[0] != L'\0') {
             SetWindowTextW(hCtrl, pair.second.windowName);
         }
@@ -1652,7 +1638,6 @@ void MultiReplace::refreshUILanguage()
 }
 
 #pragma endregion
-
 
 #pragma region List Data Operations
 
@@ -2267,9 +2252,7 @@ void MultiReplace::exportDataToClipboard() {
     showStatusMessage(LM.get(L"status_export_failed"), MessageStatus::Error);
 }
 
-
 #pragma endregion
-
 
 #pragma region ListView
 
@@ -2312,7 +2295,7 @@ void MultiReplace::AddHeaderTooltip(HWND hwndTT, HWND hwndHeader, int columnInde
     SendMessage(hwndTT, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
 }
 
-// Default column order — used for initialization and reset
+// Default column order - used for initialization and reset
 const std::vector<ColumnID> MultiReplace::defaultColumnOrder = {
     ColumnID::FIND_COUNT,
     ColumnID::REPLACE_COUNT,
@@ -2352,7 +2335,7 @@ bool MultiReplace::isColumnVisible(ColumnID id) const {
 }
 
 bool MultiReplace::validateColumnOrder(const std::vector<ColumnID>& order) const {
-    // Must contain all ColumnIDs — no duplicates, no missing
+    // Must contain all ColumnIDs - no duplicates, no missing
     if (order.size() != defaultColumnOrder.size()) return false;
 
     std::set<ColumnID> seen(order.begin(), order.end());
@@ -2479,7 +2462,7 @@ void MultiReplace::insertSingleColumn(ColumnID id, int& currentIndex, int perCol
         lvc.fmt = LVCFMT_CENTER | LVCFMT_FIXED_WIDTH;
         break;
     default:
-        return; // Unknown column — do not insert
+        return; // Unknown column - do not insert
     }
 
     ListView_InsertColumn(_replaceListView, currentIndex, &lvc);
@@ -2523,7 +2506,7 @@ void MultiReplace::createListViewColumns(WidthMode mode) {
     // UseStored:    each dynamic column keeps its globals-restored
     //               width (which came from the target tab's TabState).
     //               Only runs when the tab's layout still matches the
-    //               current window size — the lazy-relayout flag
+    //               current window size - the lazy-relayout flag
     //               ensures we never land here with stale widths.
     int perColumnWidth = 0;
     if (mode == WidthMode::Redistribute) {
@@ -2717,7 +2700,7 @@ int MultiReplace::calcDynamicColWidth(const ResizableColWidths& widths) {
     // frame width from ctrlMap, so the inner content area is narrower
     // by roughly this amount. Deducting it here prevents the rightmost
     // column from slipping behind the scrollbar after a redistribute
-    // pass (tab switch, resize, visibility toggle, …). The value covers
+    // pass (tab switch, resize, visibility toggle, ...). The value covers
     // WS_BORDER plus a small layout padding - not passed through sx()
     // because Windows borders are fixed pixels regardless of DPI.
     const int borderOverhead = 3;
@@ -2738,6 +2721,7 @@ int MultiReplace::calcDynamicColWidth(const ResizableColWidths& widths) {
     return std::max(totalRemainingWidth / dynamicColumnCount, MIN_GENERAL_WIDTH_scaled);
 }
 
+// Redistribute widths for flagged tabs before persisting.
 void MultiReplace::recomputeStoredWidthsForLazyTabs()
 {
     // Arithmetic counterpart to a Redistribute pass, applied to every
@@ -3280,7 +3264,7 @@ void MultiReplace::handleCopyToListButton() {
     addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
 
     // Classic Mode: auto-expand so the user sees the insert took effect.
-    // Library Mode: keep disabled state — list is visible (dimmed) anyway.
+    // Library Mode: keep disabled state - list is visible (dimmed) anyway.
     if (!useListEnabled && !keepListVisible) {
         useListEnabled = true;
 
@@ -3501,7 +3485,6 @@ void MultiReplace::updateHeaderSortDirection() {
 
 #pragma endregion
 
-
 #pragma region ListView Dialog
 
 void MultiReplace::showColumnVisibilityMenu(HWND hWnd, POINT pt) {
@@ -3623,6 +3606,7 @@ void MultiReplace::showEngineSelectorMenu()
     DestroyMenu(hMenu);
 }
 
+// Drops the cached engine instance so getActiveEngine() rebuilds it.
 void MultiReplace::applyEngineSelection(MultiReplaceEngine::EngineType type)
 {
     if (_activeTabIndex < 0 ||
@@ -3715,7 +3699,6 @@ void MultiReplace::syncEngineSelectorLabel()
 }
 
 #pragma endregion
-
 
 #pragma region UI Settings
 
@@ -3866,7 +3849,6 @@ bool MultiReplace::isTwoButtonsModeEnabled() const {
 
 #pragma endregion
 
-
 #pragma region Contextmenu List
 
 void MultiReplace::toggleBooleanAt(int itemIndex, ColumnID columnID) {
@@ -3938,7 +3920,7 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
     extendedStyle &= ~LVS_EX_INFOTIP;
     ListView_SetExtendedListViewStyle(_replaceListView, extendedStyle);
 
-    // Get subitem rectangle directly from ListView (handles scroll position automatically)
+    // Subitem rect from ListView (scroll position handled automatically)
     // Note: ListView_GetSubItemRect works correctly for column >= 1
     // Editable columns (FIND_TEXT, REPLACE_TEXT, COMMENTS) are always at index >= 1
     RECT subItemRect;
@@ -4144,7 +4126,7 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
     // Retrieve the 'this' pointer from the safe reference data, not from GWLP_USERDATA.
     MultiReplace* pThis = reinterpret_cast<MultiReplace*>(dwRefData);
 
-    // Defensive check: If the pointer is somehow invalid, fall back to the default procedure.
+    // Defensive: invalid pointer -> fall back to the default procedure.
     if (!pThis || !IsWindow(pThis->_hSelf)) {
         return DefSubclassProc(hwnd, msg, wParam, lParam);
     }
@@ -4172,11 +4154,11 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         if (GetKeyState(VK_CONTROL) & 0x8000) {
             if (wParam == VK_UP) {
                 pThis->shiftListItem(Direction::Up);
-                return 0; // Consume — do not pass to ListView
+                return 0; // Consume - do not pass to ListView
             }
             if (wParam == VK_DOWN) {
                 pThis->shiftListItem(Direction::Down);
-                return 0; // Consume — do not pass to ListView
+                return 0; // Consume - do not pass to ListView
             }
         }
         break;
@@ -4186,7 +4168,7 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         std::vector<ColumnID> previousOrder = pThis->columnOrder;
         pThis->syncColumnOrderFromHeader();
         if (!pThis->validateColumnOrder(pThis->columnOrder)) {
-            // Invalid order — revert and rebuild. Widths are stable
+            // Invalid order - revert and rebuild. Widths are stable
             // across column-order changes, so keep the stored values.
             pThis->columnOrder = previousOrder;
             pThis->createListViewColumns(WidthMode::UseStored);
@@ -4270,18 +4252,18 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
                 return TRUE; // Indicate that the message has been handled
             }
 
-            // These values are derived from the HDN_ITEMCHANGEDW and HDN_ITEMCHANGEDA constants:
+            // Derived from HDN_ITEMCHANGEDW/HDN_ITEMCHANGEDA:
             // HDN_ITEMCHANGEDW = 0U - 300U - 21 = -321
             // HDN_ITEMCHANGEDA = 0U - 300U - 1  = -301
-            // The constants are not used directly to avoid unsigned arithmetic overflow warnings.
+            // Not used directly to avoid unsigned-overflow warnings.
             if (code == (int(0) - 300 - 21) || code == (int(0) - 300 - 1)) {
-                // If there is an active edit control, destroy it when the header is changed
+                // Destroy any active edit control on header change
                 if (pThis->hwndEdit && IsWindow(pThis->hwndEdit)) {
                     DestroyWindow(pThis->hwndEdit);
                     pThis->hwndEdit = nullptr;
                 }
 
-                // Set a timer to defer the tooltip update, ensuring the column resize is complete
+                // Defer the tooltip update until the column resize finishes
                 SetTimer(hwnd, 1, 100, nullptr);  // Timer ID 1, 100ms delay
 
             }
@@ -4307,7 +4289,7 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
             int currentRow = hitTestInfo.iItem;
             int currentSubItem = hitTestInfo.iSubItem;
 
-            // Update only if the row, sub-item, or mouse position has significantly changed
+            // Update only on significant row/subitem/mouse change
             if (currentRow != pThis->lastTooltipRow || currentSubItem != pThis->lastTooltipSubItem ||
                 abs(pt.x - pThis->lastMouseX) > 5 || abs(pt.y - pThis->lastMouseY) > 5) {
 
@@ -4339,7 +4321,7 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
     }
 
     case WM_TIMER: {
-        if (wParam == 1) { // Tooltip re-enable timer   
+        if (wParam == 1) { // Tooltip re-enable timer
             KillTimer(hwnd, 1); // Kill the timer first to prevent it from firing again
             if (!pThis->isHoverTextEnabled || pThis->isHoverTextSuppressed) {
                 return 0;
@@ -4486,7 +4468,7 @@ MenuState MultiReplace::checkMenuConditions(POINT ptScreen) {
     POINT ptClient = ptScreen;
     ScreenToClient(_replaceListView, &ptClient);
 
-    // Perform hit testing to determine the exact location of the click within the ListView
+    // Hit-test the click location within the ListView
     LVHITTESTINFO hitInfo = {};
     hitInfo.pt = ptClient;
     int hitTestResult = ListView_HitTest(_replaceListView, &hitInfo);
@@ -4765,7 +4747,7 @@ void MultiReplace::pasteItemsIntoList() {
         if (maybeHdr.looksLikeNames && maybeHdr.hasFind) {
             hdr = maybeHdr;
             nameBased = true;
-            // Legacy pre-V5 BUG swap: UseVariables header AND Regex before Extended. TODO: remove.
+            // Legacy pre-V5 bug swap: UseVariables/Regex before Extended. TODO: remove.
             const int rIdx = hdr.idx[static_cast<int>(CsvListFormat::Field::Regex)];
             const int eIdx = hdr.idx[static_cast<int>(CsvListFormat::Field::Extended)];
             if (rIdx >= 0 && eIdx >= 0 && rIdx < eIdx) {
@@ -5095,27 +5077,27 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
 
         for (size_t i = 0; i < ranges.size(); ++i) {
             if (ranges[i].hitIdx > anchorHitIdx) {
-                // Past the dock line — next hit in block order (any file)
+                // Past the dock line - next hit in block order (any file)
                 foundIdx = i;
                 break;
             }
             if (ranges[i].hitIdx == anchorHitIdx
                 && ranges[i].isCurrentDoc && ranges[i].start >= editorPos) {
-                // Same dock line, same file — advance by position within sub-matches
+                // Same dock line, same file - advance by position within sub-matches
                 foundIdx = i;
                 break;
             }
         }
     }
     else {
-        // No dock cursor — use editor position as anchor
+        // No dock cursor - use editor position as anchor
         for (size_t i = 0; i < ranges.size(); ++i) {
             if (ranges[i].isCurrentDoc && ranges[i].start >= editorPos) {
                 foundIdx = i;
                 break;
             }
         }
-        // Current doc exhausted — find next hit in block order (cross-file)
+        // Current doc exhausted - find next hit in block order (cross-file)
         if (foundIdx == SIZE_MAX) {
             size_t maxCurDocHitIdx = 0;
             for (const auto& r : ranges) {
@@ -5218,7 +5200,6 @@ void MultiReplace::handleEditOnDoubleClick(int itemIndex, ColumnID columnID) {
 
 #pragma endregion
 
-
 #pragma region Dialog
 
 INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
@@ -5258,7 +5239,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         // Activate Dark Mode
         ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
 
-        // Post a custom message to perform post-initialization tasks after the dialog is shown
+        // Post-init tasks, deferred until after the dialog is shown
         PostMessage(_hSelf, WM_POST_INIT, 0, 0);
 
         // Install thread-local message filter hook so Alt+Up/Down reach the
@@ -5452,8 +5433,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         // Unregister Drag-and-Drop (COM-correct cleanup)
         if (dropTarget) {
-            RevokeDragDrop(_replaceListView);  // Calls Release(): refCount 2→1
-            dropTarget->Release();              // Calls Release(): refCount 1→0, deletes itself
+            RevokeDragDrop(_replaceListView);  // Calls Release(): refCount 2->1
+            dropTarget->Release();              // Calls Release(): refCount 1->0, deletes itself
             dropTarget = nullptr;
         }
         if (tabBarDropTarget) {
@@ -5521,7 +5502,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 commitInlineTabRename();
             }
 
-            // Force the edit control of the right mouse click to lose focus by setting focus to the main window
+            // Drop focus from the right-clicked edit control back to the main window
             if (isWindowOpen && hwndEdit && GetFocus() == hwndEdit) {
                 HWND hwndListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
                 SetFocus(hwndListView);
@@ -5698,10 +5679,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     RECT rcItem;
                     ListView_GetItemRect(_replaceListView, idx, &rcItem, LVIR_BOUNDS);
                     RECT rcStripe = { rcItem.left, rcItem.top, rcItem.left + sx(2), rcItem.bottom };
-                    // Use a muted version of the text color for theme-consistent appearance
+                    // Muted text color for theme consistency
                     COLORREF textClr = ListView_GetTextColor(_replaceListView);
                     COLORREF bgClr = ListView_GetBkColor(_replaceListView);
-                    // Blend: 40% text color + 60% background → subtle but visible
+                    // Blend: 40% text color + 60% background -> subtle but visible
                     COLORREF stripe = RGB(
                         (GetRValue(textClr) * 2 + GetRValue(bgClr) * 3) / 5,
                         (GetGValue(textClr) * 2 + GetGValue(bgClr) * 3) / 5,
@@ -5764,8 +5745,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 int subItem = pnmia->iSubItem;
                 int itemIndex = pnmia->iItem;
 
-                // Ensure valid item index, as subItem 0 could refer to the first column or an invalid click area.
-                // This prevents accidental actions when clicking outside valid list items.
+                // Guard against subItem 0 ambiguity (first column vs. invalid click area).
                 if (itemIndex >= 0 && itemIndex < static_cast<int>(replaceListData.size())) {
                     ColumnID columnID = getColumnIDFromIndex(subItem);
 
@@ -5983,7 +5963,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             ptScreen.x = LOWORD(lParam);
             ptScreen.y = HIWORD(lParam);
 
-            // Get the size of the virtual screen (the total width and height of all monitors)
+            // Virtual screen size (all monitors combined)
             int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
             int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
 
@@ -6198,7 +6178,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         else if (pdis->CtlID == IDC_NEW_LIST_BUTTON) {
             // Flat, borderless render against the tab-bar background.
             // STATIC with SS_OWNERDRAW is transparent by default, so no
-            // background fill is needed in the idle state — the tab bar
+            // background fill is needed in the idle state - the tab bar
             // shows through naturally.
             wchar_t buffer[8];
             GetWindowTextW(pdis->hwndItem, buffer, 8);
@@ -6810,7 +6790,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             // STATIC with SS_NOTIFY emits several STN_* notifications;
             // only treat single click and double-click as "open a new
-            // tab" — anything else (focus, enable, …) is a no-op.
+            // tab" - anything else (focus, enable, ...) is a no-op.
             const WORD code = HIWORD(wParam);
             if (code == STN_CLICKED || code == STN_DBLCLK) {
                 addNewTab();
@@ -7124,7 +7104,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDM_RESET_COLUMN_ORDER:
         {
             columnOrder = defaultColumnOrder;
-            // Order change only — preserve the user's stored widths.
+            // Order change only - preserve the user's stored widths.
             createListViewColumns(WidthMode::UseStored);
             ListView_SetItemCountEx(_replaceListView,
                 static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
@@ -7201,7 +7181,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
 #pragma endregion
 
-
 #pragma region Replace
 
 void MultiReplace::replaceAllInOpenedDocs()
@@ -7264,7 +7243,7 @@ void MultiReplace::replaceAllInOpenedDocs()
 
     // Read document filter: when "All documents" is unchecked in the
     // Open Documents panel, skip files that don't match the filter.
-    // An empty filter is treated as *.* (match all) – same as "in Files".
+    // An empty filter is treated as *.* (match all) - same as "in Files".
     const bool filterDocs = (isReplaceAllInDocs || isFindAllInDocs)
         && (IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) != BST_CHECKED);
     std::wstring docFilter;
@@ -7339,7 +7318,7 @@ void MultiReplace::replaceAllInOpenedDocs()
     showStatusMessage(LM.get(L"status_replace_in_docs_summary",
         { std::to_wstring(grandTotalReplace) }), MessageStatus::Success);
 
-    // Refresh column highlighting on the now-active document (suppressed during bulk replace)
+    // Refresh column highlighting on the active doc (suppressed during bulk replace)
     if (isColumnHighlighted) {
         findAllDelimitersInDocument();
         reapplyColumnHighlighting();
@@ -7579,7 +7558,7 @@ void MultiReplace::handleReplaceButton() {
     // the flag so the next run honours the persistent debug toggle again.
     _debugSkipForRun = false;
 
-    // Safety: Selection mode with no selection and no stored scope → do nothing.
+    // Safety: Selection mode with no selection and no stored scope -> do nothing.
     // hasAnyNonEmptySelection() covers rectangular selections whose first
     // sub-selection may be zero-length (Scintilla quirk for column mode).
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
@@ -7716,7 +7695,7 @@ void MultiReplace::handleReplaceButton() {
             /*dotMatchesNL=*/false,
             /*isReplaceAll=*/true);
 
-        // Set search flags before calling `performSearchForward` and 'replaceOne' which contains 'performSearchForward'
+        // Set search flags before performSearchForward/replaceOne (latter calls it too)
         send(SCI_SETSEARCHFLAGS, context.searchFlags);
 
         bool wasReplaced = replaceOne(replaceItem, selection, searchResult, newPos, SIZE_MAX, context);
@@ -7808,7 +7787,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 skipReplace = res.skip;
                 engineOutputIsRegexSafe = res.outputIsRegexSafe;
 
-                // Convert the result from the engine (UTF-8) to the final document codepage.
+                // Convert engine result (UTF-8) to the document codepage.
                 finalReplaceText = convertAndExtendW(
                     Encoding::utf8ToWString(res.output),
                     itemData.extended, documentCodepage);
@@ -7942,7 +7921,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
             // --- Formula engine expansion ---
             if (itemData.formulaSupport) {
-                // Track line position for LCNT (needed even for skipped hits to maintain correct count)
+                // Track line position for LCNT (also for skipped hits, to keep count correct)
                 int currentLineIndex = static_cast<int>(send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(searchResult.pos), 0));
                 if (currentLineIndex != prevLineIdx) { lineFindCount = 0; prevLineIdx = currentLineIndex; }
                 ++lineFindCount;
@@ -8192,7 +8171,6 @@ Sci_Position MultiReplace::computeAllStartPos(const SearchContext& context, bool
 
 #pragma endregion
 
-
 #pragma region Lua Engine
 
 std::string MultiReplace::escapeForRegex(const std::string& input) {
@@ -8214,9 +8192,8 @@ std::string MultiReplace::escapeForRegex(const std::string& input) {
 // ---------------------------------------------------------------------
 // ILuaEngineHost implementation
 // ---------------------------------------------------------------------
-// All overrides forward to existing MR helpers; no business logic
-// duplicated. Engines call these via the IFormulaEngine pointer they
-// were constructed with.
+// Overrides forward to existing MR helpers; engines call these via their
+// IFormulaEngine pointer.
 
 int MultiReplace::showDebugWindow(const std::string& message)
 {
@@ -8384,9 +8361,7 @@ bool MultiReplace::readCurrentRowColumnByName(const std::string& headerName,
 // ---------------------------------------------------------------------
 // Engine pipeline helpers
 // ---------------------------------------------------------------------
-// fillFormulaVars and fillCapturesForEngine collect the per-match
-// variables in the engine-agnostic FormulaVars structure that every
-// IFormulaEngine consumes.
+// Collect per-match variables into the engine-agnostic FormulaVars.
 
 void MultiReplace::fillFormulaVars(MultiReplaceEngine::FormulaVars& vars,
     Sci_Position matchPos,
@@ -8462,6 +8437,7 @@ void MultiReplace::fillCapturesForEngine(MultiReplaceEngine::FormulaVars& vars,
     }
 }
 
+// Active tab's engine, created on first call; nullptr on failure.
 MultiReplaceEngine::IFormulaEngine* MultiReplace::getActiveEngine()
 {
     if (_activeTabIndex < 0 ||
@@ -8503,10 +8479,8 @@ void MultiReplace::updateFilePathCache(const std::filesystem::path* explicitPath
     }
 }
 
-// External entry point used by LuaEngine. Body is identical to MR's
-// historical implementation; kept as a free function so the engine
-// translation unit can link against it without dragging the panel
-// header in.
+// External entry point for LuaEngine. Free function so the engine TU can
+// link against it without including the panel header.
 int luaSafeLoadFileSandbox_impl(lua_State* L)
 {
     const char* path = luaL_checkstring(L, 1);
@@ -8573,7 +8547,6 @@ int luaSafeLoadFileSandbox_impl(lua_State* L)
 }
 
 #pragma endregion
-
 
 #pragma region Lua Debug Window
 
@@ -8812,7 +8785,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
 
     MSG msg = {};
 
-    // Message loop - wait for user response (exit when response is set, NOT when window closes)
+    // Message loop: wait until a response is set (not until the window closes)
     while (IsWindow(hwnd) && debugWindowResponse == -1)
     {
         if (_isShuttingDown) {
@@ -9304,7 +9277,7 @@ void MultiReplace::CloseDebugWindow()
         debugWindowPositionSet = debugWindowSizeSet = true;
     }
 
-    SendMessage(hDebugWnd, WM_CLOSE, 0, 0);  // synchronous → window really gone
+    SendMessage(hDebugWnd, WM_CLOSE, 0, 0);  // synchronous -> window really gone
 }
 
 void MultiReplace::SetDebugComplete()
@@ -9374,7 +9347,6 @@ void MultiReplace::WaitForDebugWindowClose(bool autoClose)
 }
 #pragma endregion
 
-
 #pragma region Replace in Files
 
 bool MultiReplace::selectDirectoryDialog(HWND owner, std::wstring& outPath)
@@ -9406,7 +9378,7 @@ bool MultiReplace::selectDirectoryDialog(HWND owner, std::wstring& outPath)
             IShellItem* psi = nullptr;
             if (SUCCEEDED(pfd->GetResult(&psi)) && psi)
             {
-                // Retrieve the selected folder’s file system path.
+                // Retrieve the selected folder's file system path.
                 PWSTR pszPath = nullptr;
                 if (SUCCEEDED(psi->GetDisplayName(SIGDN_FILESYSPATH, &pszPath)))
                 {
@@ -9433,7 +9405,7 @@ bool MultiReplace::handleBrowseDirectoryButton()
     std::wstring dir;
     if (selectDirectoryDialog(_hSelf, dir))
     {
-        // User picked one — set the combo-box text & keep history
+        // User picked one - set the combo-box text & keep history
         SetDlgItemTextW(_hSelf, IDC_DIR_EDIT, dir.c_str());
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_DIR_EDIT), dir);
     }
@@ -9491,7 +9463,7 @@ void MultiReplace::handleReplaceInFiles() {
     if (!validateDelimiterData()) return;
 
     // parse filter after UI/defaults/checks
-    // Normalize filter: semicolons → spaces for guard compatibility
+    // Normalize filter: semicolons -> spaces for guard compatibility
     // (UI shows semicolon syntax; guard.parseFilter expects spaces)
     std::wstring guardFilter = wFilter;
     std::replace(guardFilter.begin(), guardFilter.end(), L';', L' ');
@@ -9678,7 +9650,6 @@ void MultiReplace::handleReplaceInFiles() {
 
 #pragma endregion
 
-
 #pragma region Find All
 
 std::wstring MultiReplace::sanitizeSearchPattern(const std::wstring& raw) {
@@ -9731,7 +9702,7 @@ void MultiReplace::handleFindAllButton()
 {
     if (!validateDelimiterData()) return;
 
-    // Safety: Selection mode with no selection and no stored scope → do nothing.
+    // Safety: Selection mode with no selection and no stored scope -> do nothing.
     // hasAnyNonEmptySelection() is rectangular-safe.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
@@ -9748,7 +9719,7 @@ void MultiReplace::handleFindAllButton()
         return;
     }
 
-    // Close any open autocomplete/calltip windows to prevent visual artifacts during search
+    // Close open autocomplete/calltip windows to avoid artifacts during search
     ::SendMessage(_hScintilla, SCI_AUTOCCANCEL, 0, 0);
     ::SendMessage(_hScintilla, SCI_CALLTIPCANCEL, 0, 0);
 
@@ -9920,7 +9891,7 @@ void MultiReplace::handleFindAllInDocsButton()
 {
     if (!validateDelimiterData()) return;
 
-    // Close any open autocomplete/calltip windows to prevent visual artifacts during search
+    // Close open autocomplete/calltip windows to avoid artifacts during search
     ::SendMessage(_hScintilla, SCI_AUTOCCANCEL, 0, 0);
     ::SendMessage(_hScintilla, SCI_CALLTIPCANCEL, 0, 0);
 
@@ -10095,7 +10066,7 @@ void MultiReplace::handleFindAllInDocsButton()
     const bool mainVis = !!::IsWindowVisible(nppData._scintillaMainHandle);
     const bool subVis = !!::IsWindowVisible(nppData._scintillaSecondHandle);
 
-    // Document filter – same logic as in replaceAllInOpenedDocs
+    // Document filter - same logic as in replaceAllInOpenedDocs
     const bool filterDocs = (isReplaceAllInDocs || isFindAllInDocs)
         && (IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) != BST_CHECKED);
     std::wstring docFilter;
@@ -10164,7 +10135,7 @@ void MultiReplace::handleFindAllInDocsButton()
 }
 
 void MultiReplace::handleFindInFiles() {
-    // Close any open autocomplete/calltip windows to prevent visual artifacts during search
+    // Close open autocomplete/calltip windows to avoid artifacts during search
     ::SendMessage(_hScintilla, SCI_AUTOCCANCEL, 0, 0);
     ::SendMessage(_hScintilla, SCI_CALLTIPCANCEL, 0, 0);
 
@@ -10203,7 +10174,7 @@ void MultiReplace::handleFindInFiles() {
         return;
     }
     if (!validateDelimiterData()) return;
-    // Normalize filter: semicolons → spaces for guard compatibility
+    // Normalize filter: semicolons -> spaces for guard compatibility
     // (UI shows semicolon syntax; guard.parseFilter expects spaces)
     std::wstring guardFilter = wFilter;
     std::replace(guardFilter.begin(), guardFilter.end(), L';', L' ');
@@ -10445,7 +10416,6 @@ void MultiReplace::handleFindInFiles() {
 }
 #pragma endregion
 
-
 #pragma region Find
 
 void MultiReplace::handleFindNextButton() {
@@ -10454,7 +10424,7 @@ void MultiReplace::handleFindNextButton() {
         return;
     }
 
-    // Safety: Selection mode with no selection and no stored scope → do nothing.
+    // Safety: Selection mode with no selection and no stored scope -> do nothing.
     // hasAnyNonEmptySelection() is rectangular-safe.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
@@ -10571,7 +10541,7 @@ void MultiReplace::handleFindPrevButton() {
         return;
     }
 
-    // Safety: Selection mode with no selection and no stored scope → do nothing.
+    // Safety: Selection mode with no selection and no stored scope -> do nothing.
     // hasAnyNonEmptySelection() is rectangular-safe.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
@@ -10594,7 +10564,7 @@ void MultiReplace::handleFindPrevButton() {
     Sci_Position searchPos;
 
     // Determine starting position for backward search:
-    // If there is a selection and the selection radio is checked, start from the end of the selection.
+    // Selection + selection-radio: start from the end of the selection.
     // Otherwise, use the current cursor position.
     if (selection.length > 0 && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED)) {
         searchPos = selection.endPos;
@@ -10647,7 +10617,7 @@ void MultiReplace::handleFindPrevButton() {
         }
     }
     else {
-        // Single-Mode: lesen → History → Flags → Suche
+        // Single-Mode: lesen -> History -> Flags -> Suche
         std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
 
@@ -10752,7 +10722,7 @@ SearchResult MultiReplace::performSingleSearch(const SearchContext& context, Sel
     Sci_Position pos = send(SCI_SEARCHINTARGET, context.findText.size(), reinterpret_cast<sptr_t>(context.findText.c_str()));
     Sci_Position matchEnd = send(SCI_GETTARGETEND);
 
-    // Accept zero-length matches (matchEnd == pos) so anchors/lookarounds can be replaced.
+    // Accept zero-length matches so anchors/lookarounds can be replaced.
     if (pos < 0 || matchEnd < pos || matchEnd > context.docLength) {
         return {};  // Return empty result if no match is found
     }
@@ -10930,7 +10900,7 @@ SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRE
 
         // Iterate over columns in the specified direction
         for (; (isBackward ? (column >= endColumnIdx) : (column <= endColumnIdx)); column += columnStep) {
-            // Skip columns not specified in columnDelimiterData (check BEFORE bounds calculation)
+            // Skip columns not in columnDelimiterData (before bounds calculation)
             if (columnDelimiterData.columns.find(static_cast<int>(column)) == columnDelimiterData.columns.end()) {
                 continue;
             }
@@ -11111,7 +11081,7 @@ void MultiReplace::displayResultCentered(size_t posStart, size_t posEnd, bool is
     send(SCI_SETVISIBLEPOLICY, CARET_JUMPS | CARET_EVEN, 0);
     send(SCI_ENSUREVISIBLEENFORCEPOLICY, send(SCI_LINEFROMPOSITION, isDownwards ? posEnd : posStart, 0), 0);
 
-    // When searching up, the beginning of the (possible multiline) result is important, when scrolling down the end
+    // Searching up: the result start matters; scrolling down: the end
     send(SCI_GOTOPOS, isDownwards ? posEnd : posStart, 0);
     send(SCI_SETVISIBLEPOLICY, CARET_EVEN, 0);
     send(SCI_ENSUREVISIBLEENFORCEPOLICY, send(SCI_LINEFROMPOSITION, isDownwards ? posEnd : posStart, 0), 0);
@@ -11186,7 +11156,7 @@ void MultiReplace::updateSelectionScope() {
     if (selEnd > selStart) {
         captureCurrentSelectionAsScope();
     }
-    // Case 3: Stale selection or just click - no valid scope (m_selectionScope stays empty)
+    // Case 3: stale selection or plain click - no valid scope (stays empty)
 }
 
 void MultiReplace::captureCurrentSelectionAsScope() {
@@ -11233,14 +11203,13 @@ std::wstring MultiReplace::getSelectionScopeSuffix() {
 
 #pragma endregion
 
-
 #pragma region Mark
 
 void MultiReplace::handleMarkMatchesButton() {
     ensureIndicatorContext();
     if (!validateDelimiterData()) return;
 
-    // Safety: Selection mode with no selection and no stored scope → do nothing.
+    // Safety: Selection mode with no selection and no stored scope -> do nothing.
     // hasAnyNonEmptySelection() is rectangular-safe.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
         if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
@@ -11366,6 +11335,8 @@ void MultiReplace::handleMarkMatchesButton() {
     showStatusMessage(LM.get(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), MessageStatus::Info);
 }
 
+// Search-and-mark loop; a non-negative bookmarkMarkerId also bookmarks
+// each match line (driven by the "+ Bookmarks" checkbox).
 int MultiReplace::markString(const SearchContext& context, Sci_Position initialStart, const std::wstring& findText, int bookmarkMarkerId)
 {
     if (context.findText.empty()) return 0;
@@ -11374,7 +11345,7 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
     const int indicId = resolveIndicatorForText(findText);
     if (indicId < 0) return 0;
 
-    // Set current indicator once — stays valid for all INDICATORFILLRANGE calls
+    // Set current indicator once - stays valid for all INDICATORFILLRANGE calls
     ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicId, 0);
 
     int markCount = 0;
@@ -11437,7 +11408,7 @@ int MultiReplace::resolveIndicatorForText(const std::wstring& findText)
             }
         }
         else {
-            // New text — allocate slot
+            // New text - allocate slot
             int currentSlot = nextSlot;
             if (currentSlot >= maxListSlots) {
                 currentSlot = maxListSlots - 1;
@@ -11464,7 +11435,7 @@ int MultiReplace::resolveIndicatorForText(const std::wstring& findText)
         }
     }
     else {
-        // Single mode — use the last marker
+        // Single mode - use the last marker
         int singleIndex = static_cast<int>(_textMarkerIds.size()) - 1;
         if (singleIndex >= 0) {
             indicId = _textMarkerIds[singleIndex];
@@ -11732,7 +11703,6 @@ std::vector<size_t> MultiReplace::getIndicesOfUniqueEnabledItems(bool removeDupl
 
 #pragma endregion
 
-
 #pragma region CSV
 
 bool MultiReplace::confirmColumnDeletion() {
@@ -11810,7 +11780,7 @@ void MultiReplace::handleDeleteColumns()
                 // Calculate the absolute end position:
                 if (column - 1 < lineInfo.positions.size()) {
                     if (column == 1) {
-                        // When deleting the first column, also delete the following delimiter.
+                        // Deleting the first column also deletes its following delimiter.
                         endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine
                             + columnDelimiterData.delimiterLength;
                     }
@@ -11820,7 +11790,7 @@ void MultiReplace::handleDeleteColumns()
                 }
                 else {
                     // Last column: delete until the end of the line.
-                    // For non-last lines, subtract actual EOL length to preserve the line break.
+                    // Non-last lines: subtract EOL length to keep the line break.
                     if (i < lineCount - 1)
                         endPos = lineEndPos - eolLength;
                     else
@@ -11830,7 +11800,7 @@ void MultiReplace::handleDeleteColumns()
                 deletionRanges.push_back({ startPos, endPos });
             }
 
-            // If deletion ranges were computed for this line, merge contiguous or overlapping ranges.
+            // Merge contiguous/overlapping deletion ranges for this line.
             if (!deletionRanges.empty()) {
                 // Sort ranges by start position.
                 std::sort(deletionRanges.begin(), deletionRanges.end(),
@@ -11841,7 +11811,7 @@ void MultiReplace::handleDeleteColumns()
                 auto currentRange = deletionRanges[0];
                 for (size_t j = 1; j < deletionRanges.size(); ++j) {
                     const auto& nextRange = deletionRanges[j];
-                    // If the next range starts before or exactly when the current range ends, merge them.
+                    // Merge if the next range starts at/before the current end.
                     if (nextRange.first <= currentRange.second) {
                         currentRange.second = std::max(currentRange.second, nextRange.second);
                     }
@@ -11853,7 +11823,7 @@ void MultiReplace::handleDeleteColumns()
                 mergedRanges.push_back(currentRange);
 
                 // Execute the deletions for all merged ranges in reverse order.
-                // (Deleting from rightmost to leftmost prevents shifting of absolute positions.)
+                // Right-to-left deletion keeps absolute positions stable.
                 for (auto it = mergedRanges.rbegin(); it != mergedRanges.rend(); ++it) {
                     LRESULT lengthToDelete = it->second - it->first;
                     if (lengthToDelete > 0) {
@@ -12136,9 +12106,9 @@ void MultiReplace::handleColumnGridTabsButton()
     // From here on: states are in sync.
     // 2) Normal TOGGLE LOGIC
 
-    // ══════════════════════════════════════════════════════════════════════════
+    // ============================================================
     // CASE A: Padding present (and _flowTabsActive == true) -> TURN OFF fully
-    // ══════════════════════════════════════════════════════════════════════════
+    // ============================================================
     if (hasPadNow)
     {
         // Disable logging during bulk text modification
@@ -12160,7 +12130,7 @@ void MultiReplace::handleColumnGridTabsButton()
 
         if (hasResultHits)
         {
-            // Scan for ColumnTabs indicator ranges (same pattern as CT_RemoveAlignedPadding Phase 1)
+            // Scan ColumnTabs indicator ranges (as CT_RemoveAlignedPadding Phase 1)
             const int ctInd = ColumnTabs::CT_GetIndicatorId();
             const Sci_Position docLen = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
             Sci_Position scanPos = 0;
@@ -12214,9 +12184,9 @@ void MultiReplace::handleColumnGridTabsButton()
         return;
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
+    // ============================================================
     // CASE B: Padding not present (and _flowTabsActive == false) -> TURN ON
-    // ══════════════════════════════════════════════════════════════════════════
+    // ============================================================
 
     if (!flowTabsIntroDontShowEnabled) {
         bool dontShow = false;
@@ -12254,9 +12224,9 @@ void MultiReplace::handleColumnGridTabsButton()
 
         {
             // Undo suppression is handled inside CT_ApplyNumericPadding and
-            // CT_InsertAlignedPadding — no ScopedUndoAction needed here.
+            // CT_InsertAlignedPadding - no ScopedUndoAction needed here.
 
-            // Step 1: numeric alignment (optional; modifies text, inserts numeric left padding)
+            // Step 1: numeric alignment (optional; inserts numeric left padding)
             if (flowTabsNumericAlignEnabled) {
                 ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, static_cast<int>(model.Lines.size()) - 1);
                 findAllDelimitersInDocument();
@@ -12280,7 +12250,7 @@ void MultiReplace::handleColumnGridTabsButton()
             bool nothingToAlign = false;
             if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt, &nothingToAlign)) {
                 if (ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
-                    // Numeric padding succeeded, InsertAlignedPadding failed but we have pads
+                    // Numeric padding ok, InsertAlignedPadding failed but pads exist
                     _flowTabsActive = true;
                     if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
                         ::SetWindowText(h, L"⇤");
@@ -12711,7 +12681,7 @@ void MultiReplace::deleteDuplicateLines()
 {
     if (_markedDuplicateLines.empty()) return;
 
-    // Validate document state and rescan if needed (user may have edited while dialog was open)
+    // Validate/rescan document state (may have changed while the dialog was open)
     if (!validateAndRescanIfNeeded()) {
         return;  // No duplicates found after rescan or validation failed
     }
@@ -12871,16 +12841,16 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
     const bool modifiesText =
         (op == CsvOp::Sort) || (op == CsvOp::DeleteColumns);
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ============================================================
     // Batch rendering: suspend redraw during multiple text modifications
-    // ════════════════════════════════════════════════════════════════════════
+    // ============================================================
     const bool needsRedrawLock = (mode == EtabsMode::Padding && modifiesText);
 
     if (needsRedrawLock) {
         ::SendMessage(_hScintilla, WM_SETREDRAW, FALSE, 0);
     }
 
-    // If Padding + modifying op → unpad to get canonical text
+    // If Padding + modifying op -> unpad to get canonical text
     if (mode == EtabsMode::Padding && modifiesText && ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
         ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
         findAllDelimitersInDocument();
@@ -12940,9 +12910,9 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
         break;
     }
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ============================================================
     // Resume rendering and repaint once
-    // ════════════════════════════════════════════════════════════════════════
+    // ============================================================
     if (needsRedrawLock) {
         ::SendMessage(_hScintilla, WM_SETREDRAW, TRUE, 0);
         ::InvalidateRect(_hScintilla, nullptr, TRUE);
@@ -13103,7 +13073,6 @@ void MultiReplace::restoreViewStateExact(const ViewState& s) {
 
 #pragma endregion
 
-
 #pragma region CSV Sort
 
 std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, SIZE_T endLine)
@@ -13112,9 +13081,9 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
     const size_t numLines = endLine - startLine;
     combinedData.reserve(numLines);
 
-    // ══════════════════════════════════════════════════════════════════════
+    // ============================================================
     // OPTIMIZATION: Pre-cache all line positions
-    // ══════════════════════════════════════════════════════════════════════
+    // ============================================================
     std::vector<LRESULT> lineStarts(numLines);
     for (SIZE_T i = startLine; i < endLine; ++i) {
         lineStarts[i - startLine] = send(SCI_POSITIONFROMLINE, i, 0);
@@ -13283,9 +13252,9 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
 
     isSortedColumn = false; // Stop logging changes
 
-    // ══════════════════════════════════════════════════════════════════════
+    // ============================================================
     // OPTIMIZATION: Read entire document once, then extract lines
-    // ══════════════════════════════════════════════════════════════════════
+    // ============================================================
     const Sci_Position docLen = static_cast<Sci_Position>(send(SCI_GETLENGTH, 0, 0));
     std::string fullText(static_cast<size_t>(docLen) + 1, '\0');
     send(SCI_GETTEXT, static_cast<WPARAM>(docLen + 1), reinterpret_cast<sptr_t>(fullText.data()));
@@ -13396,7 +13365,7 @@ void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalO
     }
 
     // Build reordered document: line at position i goes to normalizedOrder[i]
-    // We need to build output in order 0..n-1, so find which source line maps to each target
+    // Build output 0..n-1: map each target line to its source line
     std::vector<size_t> inverseOrder(totalLineCount);
     for (size_t i = 0; i < totalLineCount; ++i) {
         inverseOrder[normalizedOrder[i]] = i;
@@ -13437,7 +13406,6 @@ void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalO
     send(SCI_CLEARALL);
     send(SCI_APPENDTEXT, combinedLines.length(), reinterpret_cast<sptr_t>(combinedLines.c_str()));
 }
-
 
 void MultiReplace::UpdateSortButtonSymbols() {
     HWND hwndAscButton = GetDlgItem(_hSelf, IDC_COLUMN_SORT_ASC_BUTTON);
@@ -13596,7 +13564,6 @@ int MultiReplace::compareColumnValue(const ColumnValue& left, const ColumnValue&
 
 #pragma endregion
 
-
 #pragma region Scope
 
 bool MultiReplace::parseColumnAndDelimiterData() {
@@ -13706,7 +13673,7 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
     // Initialize line information
     LineInfo lineInfo;
 
-    // Pre-reserve based on first line's column count (reduces reallocations for uniform CSVs)
+    // Pre-reserve from the first line's column count (fewer reallocations for uniform CSVs)
     if (!lineDelimiterPositions.empty() && !lineDelimiterPositions[0].positions.empty()) {
         lineInfo.positions.reserve(lineDelimiterPositions[0].positions.size());
     }
@@ -13828,6 +13795,8 @@ ColumnInfo MultiReplace::getColumnInfo(LRESULT startPosition) {
     return { totalLines, startLine, startColumnIndex };
 }
 
+// Raw byte ranges between delimiters for a line (no quote handling),
+// from lineDelimiterPositions. Shared by readCurrentRowColumnBy*.
 bool MultiReplace::extractColumnsForLine(LRESULT line,
     std::vector<std::string>& out) const
 {
@@ -14032,7 +14001,7 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
     }
     std::fill_n(styleBuffer.data(), lineLen, char(0));
 
-    // If no delimiters are found and column 1 is defined, fill the entire line with column 1's style
+    // No delimiters + column 1 defined: style the whole line as column 1
     if (delimCount == 0 && columnDelimiterData.columns.count(1) > 0)
     {
         char style = static_cast<char>(hColumnStyles[0] & 0xFF);
@@ -14261,7 +14230,7 @@ void MultiReplace::processLogForDelimiters() {
         }
     }
 
-    // Workaround: Highlight last lines to fix N++ bug causing loss of styling 
+    // Workaround: Highlight last lines to fix N++ bug causing loss of styling
     fixHighlightAtDocumentEnd();
 
     // Clear Log queue
@@ -14342,7 +14311,7 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         return;
     }
 
-    // If there's been a change in the active window within Notepad++, reset all delimiter settings
+    // Active N++ window changed: reset all delimiter settings
     if (documentSwitched) {
         handleClearDelimiterState();
         documentSwitched = false;
@@ -14443,7 +14412,6 @@ void MultiReplace::displayLogChangesInMessageBox() {
 
 #pragma endregion
 
-
 #pragma region Utilities
 
 static inline bool decodeNumericEscape(const std::wstring& src, size_t pos, int  base, int digits, wchar_t& out)
@@ -14477,7 +14445,7 @@ static inline bool decodeNumericEscape(const std::wstring& src, size_t pos, int 
 
 std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool extended, UINT targetCodepage) const
 {
-    if (!extended)                          // fast path – no escapes
+    if (!extended)                          // fast path - no escapes
         return Encoding::wstringToBytes(input, targetCodepage);
 
     std::wstring out;
@@ -14539,7 +14507,7 @@ std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool exte
             }
             [[fallthrough]];
 
-        default:  // unknown or invalid sequence → keep literally
+        default:  // unknown or invalid sequence -> keep literally
             out.append({ L'\\', esc });
             break;
         }
@@ -15231,7 +15199,7 @@ std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, cons
 
 UINT MultiReplace::getCurrentDocCodePage()
 {
-    // Ask Scintilla for the current code page (always non‑negative)
+    // Ask Scintilla for the current code page (always non-negative)
     LRESULT cp = send(SCI_GETCODEPAGE, 0, 0);
 
     // If Scintilla ever returned 0 (undefined), fall back to ANSI
@@ -15278,7 +15246,6 @@ void MultiReplace::forceWrapRecalculation() {
 }
 
 #pragma endregion
-
 
 #pragma region FileOperations
 
@@ -15635,7 +15602,7 @@ bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     listFilePath = filePath;
     originalListHash = computeListHash(list);
 
-    // Clear dirty flags — list is now in sync with file
+    // Clear dirty flags - list is now in sync with file
     for (auto& item : replaceListData) {
         if (item.isDirty) {
             item.isDirty = false;
@@ -15665,6 +15632,9 @@ bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     return true;
 }
 
+// Save-All: writes every dirty tab. Tabs with a path are saved
+// silently; tabs without a path show a Save As dialog per tab
+// (user can cancel individually, like Notepad++).
 void MultiReplace::saveAllTabs()
 {
     if (_tabs.empty()) return;
@@ -15754,6 +15724,7 @@ void MultiReplace::saveAllTabs()
     }
 }
 
+// 3-button Save/Don't save/Cancel prompt; tabIndex < 0 = active tab.
 int MultiReplace::checkForUnsavedChanges(int tabIndex) {
     // Path A: active tab / legacy single-tab mode - use globals.
     if (tabIndex < 0) {
@@ -15942,7 +15913,7 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     const CsvListFormat::HeaderIndex hdr = CsvListFormat::buildIndex(headerCells);
     const bool nameBased = hdr.looksLikeNames;
 
-    // Legacy pre-V5 files: header has UseVariables column AND Regex before Extended. TODO: remove.
+    // Legacy pre-V5 header: UseVariables column, Regex before Extended. TODO: remove.
     bool swapRegexExtended = false;
     if (nameBased) {
         const int rIdx = hdr.idx[static_cast<int>(CsvListFormat::Field::Regex)];
@@ -16257,7 +16228,6 @@ void MultiReplace::exportToBashScript(const std::wstring& fileName) {
 
 #pragma endregion
 
-
 #pragma region INI
 
 std::pair<std::wstring, std::wstring> MultiReplace::generateConfigFilePaths() {
@@ -16270,6 +16240,8 @@ std::pair<std::wstring, std::wstring> MultiReplace::generateConfigFilePaths() {
     return { settingsPath, configListPath };
 }
 
+// Snapshot directory holds per-tab CSV shutdown caches (one file per tab).
+// User-chosen CSVs stay at the user's own paths and are never moved here.
 std::wstring MultiReplace::getSnapshotsDir()
 {
     wchar_t configDir[MAX_PATH] = {};
@@ -16421,7 +16393,7 @@ void MultiReplace::loadSettingsToPanelUI() {
     bool replaceButtonsMode = CFG.readBool(L"Options", L"ButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    // "+ Bookmarks" companion mode for Mark Matches. Off by default —
+    // "+ Bookmarks" companion mode for Mark Matches. Off by default -
     // most users only want the visual indicator. Persisted alongside
     // the other UI option toggles.
     bool bookmarkMatches = CFG.readBool(L"Options", L"BookmarkMatches", false);
@@ -16563,7 +16535,7 @@ void MultiReplace::loadSettingsToPanelUI() {
             }
         }
 
-        // 3. Export Button — deprecated, always hidden
+        // 3. Export Button - deprecated, always hidden
         HWND hBash = GetDlgItem(instance->_hSelf, IDC_EXPORT_BASH_BUTTON);
         if (hBash) ShowWindow(hBash, SW_HIDE);
 
@@ -16597,7 +16569,7 @@ void MultiReplace::dropLegacyConfigEntries()
 
     // Individual keys that moved from [Options]/[Scope]/[ReplaceInFiles]
     // into per-tab storage. The sections themselves stay because they
-    // still hold current globals (Tooltips, HeaderLines, LimitFileSize…).
+    // still hold current globals (Tooltips, HeaderLines, LimitFileSize...).
     struct LegacyKey { const wchar_t* sec; const wchar_t* key; };
     static const LegacyKey legacyKeys[] = {
         { L"Options",        L"WholeWord"        },
@@ -16718,6 +16690,7 @@ void MultiReplace::ensurePrimaryTabExists()
     captureStateIntoTab(*_tabs[_activeTabIndex]);
 }
 
+// Sync live ListView column widths back into the global width members.
 void MultiReplace::readColumnWidthsFromListView()
 {
     if (!_replaceListView) return;
@@ -16740,7 +16713,7 @@ void MultiReplace::captureStateIntoTab(TabState& tab)
     tab.filePath = listFilePath;
     tab.originalHash = originalListHash;
 
-    // Search options — read from UI controls
+    // Search options - read from UI controls
     tab.wholeWord = IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED;
     tab.matchCase = IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED;
     tab.formulaSupport = IsDlgButtonChecked(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX) == BST_CHECKED;
@@ -16765,7 +16738,7 @@ void MultiReplace::captureStateIntoTab(TabState& tab)
     tab.findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
     tab.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
 
-    // Files / OpenDocs — the filter edit shows either _filesFilter or
+    // Files / OpenDocs - the filter edit shows either _filesFilter or
     // _docsFilter depending on the current mode. Sync the currently
     // visible value back into its member before snapshotting.
     const bool docsMode = (isFindAllInDocs || isReplaceAllInDocs);
@@ -16778,7 +16751,7 @@ void MultiReplace::captureStateIntoTab(TabState& tab)
     tab.inHiddenFolders = IsDlgButtonChecked(_hSelf, IDC_HIDDENFILES_CHECKBOX) == BST_CHECKED;
     tab.allDocuments = IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) == BST_CHECKED;
 
-    // Column layout — first sync live state from ListView into globals
+    // Column layout - first sync live state from ListView into globals
     // (widths from resize handles, order from drag-and-drop), then copy.
     readColumnWidthsFromListView();
     syncColumnOrderFromHeader();
@@ -16806,7 +16779,7 @@ void MultiReplace::restoreStateFromTab(const TabState& tab)
     listFilePath = tab.filePath;
     originalListHash = tab.originalHash;
 
-    // Search options — push into UI
+    // Search options - push into UI
     CheckDlgButton(_hSelf, IDC_WHOLE_WORD_CHECKBOX, tab.wholeWord ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(_hSelf, IDC_MATCH_CASE_CHECKBOX, tab.matchCase ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX, tab.formulaSupport ? BST_CHECKED : BST_UNCHECKED);
@@ -16850,7 +16823,7 @@ void MultiReplace::restoreStateFromTab(const TabState& tab)
     setTextInDialogItem(_hSelf, IDC_FIND_EDIT, tab.findText);
     setTextInDialogItem(_hSelf, IDC_REPLACE_EDIT, tab.replaceText);
 
-    // Files / OpenDocs — show the filter that matches the current mode
+    // Files / OpenDocs - show the filter that matches the current mode
     _filesFilter = tab.filesFilter;
     _docsFilter = tab.docsFilter;
     const bool docsMode = (isFindAllInDocs || isReplaceAllInDocs);
@@ -16860,7 +16833,7 @@ void MultiReplace::restoreStateFromTab(const TabState& tab)
     CheckDlgButton(_hSelf, IDC_HIDDENFILES_CHECKBOX, tab.inHiddenFolders ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(_hSelf, IDC_ALL_DOCS_CHECKBOX, tab.allDocuments ? BST_CHECKED : BST_UNCHECKED);
 
-    // Column layout — push into globals; ListView rebuild happens in switchToTab
+    // Column layout - push into globals; ListView rebuild happens in switchToTab
     findCountColumnWidth = tab.findCountWidth;
     replaceCountColumnWidth = tab.replaceCountWidth;
     findColumnWidth = tab.findWidth;
@@ -16878,6 +16851,7 @@ void MultiReplace::restoreStateFromTab(const TabState& tab)
     columnSortOrder = tab.columnSortOrder;
 }
 
+// Flag all inactive tabs for relayout on next activation (on WM_SIZE).
 void MultiReplace::markAllTabsNeedRelayout()
 {
     // Raise the lazy-relayout flag on every inactive tab. The active
@@ -17052,7 +17026,7 @@ void MultiReplace::loadTabsFromConfig()
 
     const std::wstring dir = getSnapshotsDir();
 
-    // snapshots/ exists → multi-tab era INI. Missing per-tab keys
+    // snapshots/ exists -> multi-tab era INI. Missing per-tab keys
     // take the regular TabState member-initializer defaults (kept in
     // sync with the readXxx defaults below). Legacy INI keys from the
     // pre-multi-tab layout are handled exclusively in the else branch
@@ -17263,6 +17237,7 @@ std::wstring MultiReplace::truncateTabName(const std::wstring& name, size_t maxC
     return name.substr(0, maxChars - 1) + L"\u2026";
 }
 
+// Truncated name plus dirty bullet.
 std::wstring MultiReplace::buildTabLabel(int tabIndex) const
 {
     if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return {};
@@ -17382,6 +17357,7 @@ void MultiReplace::rebuildTabControl()
     updateTabTooltip(_activeTabIndex);
 }
 
+// Keep "+" adjacent to the last tab; overflow "v" shows only when clipped.
 void MultiReplace::repositionNewTabButton()
 {
     HWND hPlus = GetDlgItem(_hSelf, IDC_NEW_LIST_BUTTON);
@@ -17564,6 +17540,7 @@ void MultiReplace::repositionNewTabButton()
     }
 }
 
+// Scroll the strip so the given tab is fully visible; no-op if already on.
 void MultiReplace::ensureTabVisible(int tabIndex)
 {
     HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
@@ -17637,6 +17614,7 @@ void MultiReplace::ensureTabVisible(int tabIndex)
     updateTabTooltip(_activeTabIndex);
 }
 
+// Scroll the strip by one tab (negative left, positive right).
 void MultiReplace::scrollTabStrip(int direction)
 {
     HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
@@ -17696,6 +17674,7 @@ void MultiReplace::scrollTabStrip(int direction)
     updateTabTooltip(_activeTabIndex);
 }
 
+// Popup listing all tabs (overflow dropdown).
 void MultiReplace::showTabListPopup()
 {
     if (_tabs.empty()) return;
@@ -17742,6 +17721,9 @@ void MultiReplace::showTabListPopup()
     }
 }
 
+// Dirty-indicator management. markActiveTabDirty diffs the current list
+// hash against the saved baseline (so undo back to saved clears it);
+// clearTabDirty force-clears after a save. Both rebuild only on change.
 void MultiReplace::markActiveTabDirty()
 {
     if (_activeTabIndex < 0 ||
@@ -17776,6 +17758,7 @@ void MultiReplace::clearTabDirty(int tabIndex)
     rebuildTabControl();
 }
 
+// Show/hide the tab bar together with the rest of the list UI.
 void MultiReplace::setBottomRowVisible(bool visible)
 {
     // The tab strip and its associated indicator widgets share visibility:
@@ -17858,6 +17841,7 @@ void MultiReplace::updateTabTooltip(int /*tabIndex*/)
     }
 }
 
+// Switch active tab: capture outgoing state, restore incoming into live.
 void MultiReplace::switchToTab(int newIndex)
 {
     if (newIndex < 0 || newIndex >= static_cast<int>(_tabs.size())) return;
@@ -17927,6 +17911,8 @@ void MultiReplace::switchToTab(int newIndex)
     updateTabTooltip(_activeTabIndex);
 }
 
+// Reset per-tab column state (widths, visibility, locks, order) to
+// DPI-scaled defaults. Used by bootstrap paths creating the primary tab.
 void MultiReplace::applyDefaultColumnState()
 {
     findColumnWidth = DEFAULT_COLUMN_WIDTH_FIND_scaled;
@@ -17949,6 +17935,7 @@ void MultiReplace::applyDefaultColumnState()
     initColumnOrder();
 }
 
+// Copy column layout between tabs. Sort order and list data are not copied.
 void MultiReplace::copyLayoutFields(const TabState& src, TabState& dst) const
 {
     // Column widths
@@ -17975,6 +17962,8 @@ void MultiReplace::copyLayoutFields(const TabState& src, TabState& dst) const
     dst.columnOrder = src.columnOrder;
 }
 
+// Copy the active tab's column layout into dst so new tabs inherit it.
+// Sort order and list data are not copied. No-op if no active tab.
 void MultiReplace::inheritLayoutFromActiveTab(TabState& dst) const
 {
     if (_activeTabIndex < 0 || _activeTabIndex >= static_cast<int>(_tabs.size())) {
@@ -17986,24 +17975,10 @@ void MultiReplace::inheritLayoutFromActiveTab(TabState& dst) const
 // ===================================================================
 // Tandem mode (experimental)
 // ===================================================================
-//
-// Docks MR to a Bottom/Right/Left edge of Notepad++ and keeps it
-// glued as N++ moves or resizes. Toggled from the plugin menu; the
-// actual dock/undock is done by dragging MR near or away from a
-// host edge (Winamp-style magnet).
-//
-// State flags: _tandemEnabled is user intent (menu toggle),
-// _tandemDocked is runtime (derived from drag behaviour).
-// _tandemHasSnapshot guards the pre-dock geometry snapshot that
-// menu-off restores - discarded when the user drags MR free, so
-// a free release sets the new resting position.
-//
-// Persisted under [Tandem]:
-//   LastDockEdge : last edge the user docked to
-//   Enabled      : feature state at last shutdown (for auto-restore)
-//
-// All geometry and snap math lives in the tandem_dock library;
-// this file is orchestration only.
+// Docks MR to a N++ edge (Bottom/Right/Left) and follows it, Winamp-style
+// magnet. _tandemEnabled = user intent, _tandemDocked = runtime state.
+// Persisted under [Tandem] (LastDockEdge, Enabled). Geometry/snap math
+// lives in the tandem_dock library; this file is orchestration only.
 
 #include "TandemDock.h"
 
@@ -18215,13 +18190,8 @@ void MultiReplace::tandemUndockAndRestore()
 // -------------------------------------------------------------------
 //  Persistence
 // -------------------------------------------------------------------
-//
-// The dock edge is persisted to the regular INI cache via CFG
-// (the global ConfigManager alias). Writes go through the cache
-// and reach disk on the next CFG.save() call - which the plugin
-// already performs at panel shutdown, so no extra save is needed
-// here. Reads happen the first time the feature is enabled in a
-// session; subsequent enables reuse the in-memory value.
+// Dock edge persists via the INI cache (CFG); writes reach disk on the
+// next CFG.save() at shutdown, so no extra save here.
 
 void MultiReplace::tandemPersistEdgeToIni() const
 {
@@ -18413,7 +18383,7 @@ void MultiReplace::applyTandemLayout(const RECT& nppRect)
     // Suppressed during a drag because the workarea union and
     // host's DWM frame both shift pixel-by-pixel as N++ crosses
     // a monitor seam, which makes the nudge produce a slightly
-    // different correction every tick — that's the A->B->A->B
+    // different correction every tick - that's the A->B->A->B
     // flicker users see while holding N++ over the seam. Pixel
     // perfection is not perceptible during the drag anyway; the
     // first post-drag tick re-runs everything and re-flushes.
@@ -18724,6 +18694,7 @@ void MultiReplace::addNewTab()
     updateHeaderSelection();
 }
 
+// Move the tab at fromIdx to toIdx, keeping _activeTabIndex consistent.
 void MultiReplace::moveTab(int fromIdx, int toIdx)
 {
     const int n = static_cast<int>(_tabs.size());
@@ -19095,6 +19066,7 @@ void MultiReplace::onTabCloseAll()
     onTabClose(0);         // closes the old (now non-active) tab at index 0
 }
 
+// Find an open tab by file path (case-insensitive); -1 if none.
 int MultiReplace::findTabByFilePath(const std::wstring& filePath) const
 {
     if (filePath.empty()) return -1;
@@ -19118,7 +19090,7 @@ void MultiReplace::onTabSave(int tabIndex)
 
     TabState& tab = *_tabs[tabIndex];
 
-    // No path on disk yet → fall through to Save As..., consistent with
+    // No path on disk yet -> fall through to Save As..., consistent with
     // N++'s Save behavior on an untitled tab. The menu entry's grayed
     // state already prevents this in normal use, but be defensive in
     // case Save was invoked some other way (e.g. accelerator).
@@ -19441,6 +19413,7 @@ void MultiReplace::cancelInlineTabRename()
     _tabRenameIndex = -1;
 }
 
+// File-backed tabs rename their .mrl on disk via Save-As + delete.
 void MultiReplace::renameTabFile(int tabIndex)
 {
     if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
@@ -19772,7 +19745,7 @@ void MultiReplace::loadUIConfigFromIni()
     int width = (savedWidth < MIN_WIDTH_scaled) ? MIN_WIDTH_scaled : savedWidth;
 
     useListOnHeight = CFG.readInt(L"Window", L"Height", sy(INIT_HEIGHT));
-    // When scaling changed, the config value is at the old scale — rescale it
+    // When scaling changed, the config value is at the old scale - rescale it
     if (ratio != 1.0f) {
         useListOnHeight = static_cast<int>(useListOnHeight * ratio);
     }
@@ -19827,7 +19800,7 @@ void MultiReplace::loadUIConfigFromIni()
 
     if (_replaceListView)
     {
-        // Settings reload — visibility is per-tab and gets restored via
+        // Settings reload - visibility is per-tab and gets restored via
         // restoreStateFromTab, so keep stored widths here.
         // A column rebuild is only required when the scale factor
         // actually changed; otherwise the existing columns are still
@@ -19921,11 +19894,8 @@ static const wchar_t kGeneralIniKeyPanelWasVisible[] = L"PanelWasVisible";
 
 void MultiReplace::migrateLegacyStartupKeys()
 {
-    // Rename: [General]/RestoreOnStartup -> [General]/ReopenOnStartup.
-    // Preserves the user's opt-in setting by copying the value to the
-    // new key before dropping the old one from the cache. A guard
-    // avoids clobbering a value that the new key may already hold
-    // (e.g. if both keys happened to exist after a manual edit).
+    // Rename [General]/RestoreOnStartup -> ReopenOnStartup, preserving the
+    // value. Guard avoids clobbering a value the new key may already hold.
     const wchar_t kLegacyReopenKey[] = L"RestoreOnStartup";
 
     const bool hasLegacy = !CFG.readString(
@@ -19986,7 +19956,7 @@ void MultiReplace::syncUIToCache()
     readColumnWidthsFromListView();
 
     // Current Find/Replace Text, Search Options, Scope, Filter, Directory,
-    // column widths/visibility/lock/order — all live per-tab now under
+    // column widths/visibility/lock/order - all live per-tab now under
     // [Tabs]/TabN_*. Only settings-dialog options remain global.
 
     CFG.writeBool(L"Options", L"ButtonsMode", IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED);
@@ -20023,7 +19993,7 @@ void MultiReplace::syncUIToCache()
     // engine flags above.
     CFG.writeBool(L"Engines", L"ShowErrorDialogs", _formulaErrorDialogEnabled);
 
-    // Scope — only HeaderLines is global (settings-dialog)
+    // Scope - only HeaderLines is global (settings-dialog)
     CFG.writeInt(L"Scope", L"HeaderLines", static_cast<int>(CSVheaderLinesCount));
 
     // Persist the current filter edit field into the active mode's member variable
@@ -20033,7 +20003,7 @@ void MultiReplace::syncUIToCache()
     else
         _filesFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
 
-    // Replace in Files — only settings-dialog keys remain global
+    // Replace in Files - only settings-dialog keys remain global
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", static_cast<int>(maxFileSizeMB));
 
@@ -20041,7 +20011,7 @@ void MultiReplace::syncUIToCache()
     // written - per-tab equivalents are under [Tabs]. Legacy reads
     // remain in loadSettingsToPanelUI for one-time migration.
 
-    // History 
+    // History
     syncHistoryToCache(GetDlgItem(_hSelf, IDC_FIND_EDIT), L"FindTextHistory");
     syncHistoryToCache(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), L"ReplaceTextHistory");
     syncHistoryToCache(GetDlgItem(_hSelf, IDC_FILTER_EDIT), L"FilterHistory");
@@ -20095,7 +20065,7 @@ void MultiReplace::applyConfigSettingsOnly()
     if (keepListVisible != newKeepListVisible) {
         keepListVisible = newKeepListVisible;
         if (keepListVisible && !useListEnabled) {
-            // Switching to Library Mode while list is collapsed → open it as inactive (dimmed)
+            // Library Mode while collapsed: open it as inactive (dimmed)
             adjustWindowSize();
             ShowWindow(_replaceListView, SW_SHOW);
             for (int id : { IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
@@ -20106,7 +20076,7 @@ void MultiReplace::applyConfigSettingsOnly()
             InvalidateRect(_replaceListView, nullptr, TRUE);
         }
         else if (!keepListVisible && !useListEnabled) {
-            // Switching from Library Mode while list is inactive → collapse it
+            // Switching from Library Mode while list is inactive -> collapse it
             if (_listSearchBarVisible) hideListSearchBar();
             ShowWindow(_replaceListView, SW_HIDE);
             for (int id : { IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
@@ -20171,7 +20141,7 @@ void MultiReplace::applyConfigSettingsOnly()
     backgroundTransparency = static_cast<BYTE>(bg);
     if (_hSelf) SetWindowTransparency(_hSelf, foregroundTransparency);
 
-    // UI Updates — Export Bash deprecated, always hidden
+    // UI Updates - Export Bash deprecated, always hidden
     HWND hBash = GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON);
     if (hBash) ShowWindow(hBash, SW_HIDE);
 
@@ -20201,7 +20171,6 @@ void MultiReplace::applyConfigSettingsOnly()
 }
 
 #pragma endregion
-
 
 #pragma region Event Handling -- triggered in beNotified() in MultiReplace.cpp
 
@@ -20377,7 +20346,7 @@ void MultiReplace::onDocumentSwitched()
         g_cleanInProgress = true;
         if (!PostActivateBufferId(g_prevBufId))
         {
-            // Buffer was closed before we could hop back — abandon cleanup.
+            // Buffer was closed before we could hop back - abandon cleanup.
             g_padBufs.erase(g_prevBufId);
             g_pendingCleanId = 0;
             g_cleanInProgress = false;
@@ -20448,7 +20417,7 @@ void MultiReplace::onSelectionChanged()
 
     // -----------------------------------------------------------------------
     // 1) "Replace in Files" mode:
-    //    - Selection-Radio is useless here → always disable and switch
+    //    - Selection-Radio is useless here -> always disable and switch
     // -----------------------------------------------------------------------
     if (instance && (instance->isReplaceInFiles || instance->isFindAllInFiles))
     {
@@ -20500,7 +20469,7 @@ void MultiReplace::onCaretPositionChanged()
 
     LRESULT startPosition = ::SendMessage(getScintillaHandle(), SCI_GETCURRENTPOS, 0, 0);
     if (instance != nullptr) {
-        // isTransient=true: This is a transient position update, don't disable position tracking
+        // isTransient: transient position update, keep position tracking on
         instance->showStatusMessage(LanguageManager::instance().get(L"status_actual_position", { instance->addLineAndColumnMessage(startPosition) }), MessageStatus::Success, false, true);
     }
 
@@ -20577,7 +20546,6 @@ void MultiReplace::toggleReopenOnStartup() {
 }
 
 #pragma endregion
-
 
 #pragma region Debug DPI Information
 
