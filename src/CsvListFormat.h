@@ -19,10 +19,32 @@
 
 namespace CsvListFormat {
 
-    // Split one CSV line into its cells. Handles quoted cells with
-    // embedded commas and "" escapes; trailing CR/LF stripped; cell
-    // bodies are passed through StringUtils::unescapeQuoted.
-    std::vector<std::wstring> parseLine(const std::wstring& line);
+    // The body dialect of a list file. Mr is the internal escaped format
+    // (\\ , \n , \r escapes plus "" quoting); Rfc4180 is plain CSV as
+    // produced by Excel (only "" quoting, backslashes literal, newlines
+    // allowed verbatim inside quoted fields). The dialect is always
+    // declared by the caller, never sniffed from content.
+    enum class Dialect {
+        Mr,
+        Rfc4180
+    };
+
+    // Split a whole CSV text into records (each a vector of cells).
+    // Quote-aware across line breaks: a newline inside a quoted cell is
+    // part of that cell, so multi-line fields survive. CRLF and lone CR
+    // outside quotes both end a record. Cell bodies are decoded by the
+    // chosen dialect: Mr uses StringUtils::unescapeQuoted, Rfc4180 uses
+    // StringUtils::rfcUnquote. delimiter selects the field separator
+    // (comma for the internal format; comma or semicolon for plain CSV).
+    std::vector<std::vector<std::wstring>> readRecords(const std::wstring& text,
+        Dialect dialect = Dialect::Mr, wchar_t delimiter = L',');
+
+    // Sniff the field delimiter of a plain-CSV text by parsing its first
+    // line with each candidate and picking the one whose cells resolve to
+    // a recognizable header (Find present, or >=2 known names). Falls back
+    // to the supplied default when neither candidate looks like a header
+    // (e.g. a headerless file). Only meaningful for the Rfc4180 dialect.
+    wchar_t detectDelimiter(const std::wstring& text, wchar_t fallback = L',');
 
     // ---- Header parsing -----------------------------------------------
 

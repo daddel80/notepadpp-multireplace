@@ -100,6 +100,93 @@ namespace StringUtils {
         return out;
     }
 
+    std::wstring rfcQuote(const std::wstring& value, wchar_t delimiter) {
+        bool needsQuote = false;
+        for (wchar_t ch : value) {
+            if (ch == delimiter || ch == L'"' || ch == L'\n' || ch == L'\r') {
+                needsQuote = true;
+                break;
+            }
+        }
+        if (!needsQuote) return value;
+
+        std::wstring out;
+        out.reserve(value.size() + 4);
+        out += L'"';
+        for (wchar_t ch : value) {
+            if (ch == L'"') out += L"\"\"";
+            else            out += ch;
+        }
+        out += L'"';
+        return out;
+    }
+
+    std::wstring rfcUnquote(const std::wstring& value) {
+        if (value.size() < 2 || value.front() != L'"' || value.back() != L'"') {
+            return value;  // unquoted cell: verbatim
+        }
+        std::wstring out;
+        out.reserve(value.size());
+        for (size_t i = 1; i + 1 < value.size(); ++i) {
+            if (value[i] == L'"' && i + 2 < value.size() && value[i + 1] == L'"') {
+                out += L'"';  // "" -> "
+                ++i;
+            }
+            else {
+                out += value[i];
+            }
+        }
+        return out;
+    }
+
+    std::wstring newlinesToCrlf(const std::wstring& value) {
+        std::wstring out;
+        out.reserve(value.size());
+        for (size_t i = 0; i < value.size(); ++i) {
+            const wchar_t c = value[i];
+            if (c == L'\r') {
+                if (i + 1 < value.size() && value[i + 1] == L'\n') {
+                    out += L"\r\n";  // CRLF stays
+                    ++i;
+                }
+                else {
+                    out += L'\r';    // lone CR stays silent
+                }
+            }
+            else if (c == L'\n') {
+                out += L"\r\n";      // bare LF -> CRLF
+            }
+            else {
+                out += c;
+            }
+        }
+        return out;
+    }
+
+    std::wstring newlinesForPlainCsv(const std::wstring& value) {
+        std::wstring out;
+        out.reserve(value.size());
+        for (size_t i = 0; i < value.size(); ++i) {
+            const wchar_t c = value[i];
+            if (c == L'\r') {
+                if (i + 1 < value.size() && value[i + 1] == L'\n') {
+                    out += L'\n';    // CRLF -> bare LF (real in-cell break)
+                    ++i;
+                }
+                else {
+                    out += L'\r';    // lone CR stays
+                }
+            }
+            else if (c == L'\n') {
+                out += L"\\n";       // foreign lone LF -> literal backslash-n
+            }
+            else {
+                out += c;
+            }
+        }
+        return out;
+    }
+
     // ----------------------------------------------------------------------------
     // Number normalization (used where numeric input is accepted)
     // ----------------------------------------------------------------------------

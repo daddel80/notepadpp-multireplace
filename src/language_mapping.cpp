@@ -69,8 +69,14 @@ const LangKV kEnglishPairs[] = {
 
 // File Dialog
 { L"filetype_all_files", L"All Files (*.*)" },
-{ L"filetype_mrl", L"MultiReplace Lists (*.mrl; *.csv)" },
+{ L"filetype_mrl", L"MultiReplace List (*.mrl)" },
+{ L"filetype_csv_excel", L"CSV (Excel) (*.csv)" },
 { L"filetype_bash", L"Bash Files (*.sh)" },
+
+// Legacy .csv list migration
+{ L"legacy_csv_title", L"MultiReplace - List Format Changed" },
+{ L"legacy_csv_instruction", L"Rename this file from .csv to .mrl, then load it again" },
+{ L"legacy_csv_message", L"This .csv file is an older MultiReplace list, not an Excel CSV file. MultiReplace lists now use the .mrl extension." },
 
 // Tooltips
 { L"tooltip_replace_all", L"Replace All" },

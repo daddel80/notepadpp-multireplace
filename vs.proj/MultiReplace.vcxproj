@@ -54,6 +54,7 @@
     <ClInclude Include="..\src\IniFileCache.h" />
     <ClInclude Include="..\src\LanguageManager.h" />
     <ClInclude Include="..\src\language_mapping.h" />
+    <ClInclude Include="..\src\ListCodec.h" />
     <ClInclude Include="..\src\luaEmbedded.h" />
     <ClInclude Include="..\src\lua\lapi.h" />
     <ClInclude Include="..\src\lua\lauxlib.h" />
@@ -89,6 +90,7 @@
     <ClInclude Include="..\src\NppStyleKit.h" />
     <ClInclude Include="..\src\NumericToken.h" />
     <ClInclude Include="..\src\PluginDefinition.h" />
+    <ClInclude Include="..\src\ReplaceItemData.h" />
     <ClInclude Include="..\src\ResultDock.h" />
     <ClInclude Include="..\src\StaticDialog\Docking.h" />
     <ClInclude Include="..\src\StaticDialog\resource.h" />
@@ -124,6 +126,7 @@
     <ClCompile Include="..\src\IniFileCache.cpp" />
     <ClCompile Include="..\src\LanguageManager.cpp" />
     <ClCompile Include="..\src\language_mapping.cpp" />
+    <ClCompile Include="..\src\ListCodec.cpp" />
     <ClCompile Include="..\src\lua\lapi.c">
       <AdditionalOptions>/w %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>

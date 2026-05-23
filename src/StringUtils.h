@@ -40,6 +40,34 @@ namespace StringUtils {
     // newlines must remain real newlines.
     std::wstring quoteField(const std::wstring& value);
 
+    // RFC 4180 cell encode: quote ONLY when needed (the value contains the
+    // active delimiter, a quote, CR, or LF); double embedded quotes; no
+    // backslash escaping (a backslash stays literal). Newlines are emitted
+    // verbatim inside the quotes. Used by the plain "CSV (Excel)" dialect.
+    std::wstring rfcQuote(const std::wstring& value, wchar_t delimiter = L',');
+
+    // RFC 4180 cell decode: inverse of rfcQuote. A fully quoted cell has
+    // its surrounding quotes removed and "" folded to "; an unquoted cell
+    // is returned verbatim. No backslash handling.
+    std::wstring rfcUnquote(const std::wstring& value);
+
+    // Newline convention bridge for the plain "CSV (Excel)" dialect. MR
+    // keeps real line breaks internally as CRLF; plain CSV stores them as
+    // a bare LF (Excel convention). These two convert between the worlds
+    // at the file edge and are exact inverses for the CRLF case:
+    //
+    //   toCrlf  (on read):  bare \n -> \r\n ; \r\n stays ; lone \r stays
+    //   forPlainCsv (write): \r\n -> bare \n ; lone \n -> literal "\n"
+    //                        text ; lone \r stays
+    //
+    // A lone \n only exists in the model when pasted in directly (never
+    // from an Excel load, which produces \r\n), so on write it is treated
+    // as foreign content and literalized so it cannot split a CSV row.
+    // A lone \r is silent in both Excel and Scintilla and is passed
+    // through untouched. Tabs and other control characters need no rule.
+    std::wstring newlinesToCrlf(const std::wstring& value);
+    std::wstring newlinesForPlainCsv(const std::wstring& value);
+
     bool        normalizeAndValidateNumber(std::string& str);
 
     std::string escapeForRegex(const std::string& input);

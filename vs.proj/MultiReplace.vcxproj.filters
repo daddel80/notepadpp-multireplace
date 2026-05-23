@@ -159,6 +159,7 @@
     <ClCompile Include="..\src\exprtk\ExprTkPatternParser.cpp">
       <Filter>ExprTK</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\ListCodec.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -315,6 +316,8 @@
     <ClInclude Include="..\src\exprtk\third_party\exprtk.hpp">
       <Filter>ExprTK</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\ListCodec.h" />
+    <ClInclude Include="..\src\ReplaceItemData.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

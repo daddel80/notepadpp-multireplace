@@ -24,6 +24,7 @@
 #include "ColumnTabs.h"
 #include "ConfigManager.h"
 #include "CsvListFormat.h"
+#include "ListCodec.h"
 #include "DPIManager.h"
 #include "Encoding.h"
 #include "HiddenSciGuard.h"
@@ -89,6 +90,88 @@ extern MultiReplaceConfigDialog _MultiReplaceConfig;
 static inline bool pathsEqualUtf8(const std::string& a, const std::string& b) {
     return _stricmp(a.c_str(), b.c_str()) == 0;
 }
+
+namespace {
+    // Field delimiter for the plain "CSV (Excel)" dialect on write. An
+    // explicit [List] PlainCsvDelimiter in the INI wins; otherwise the
+    // Windows list separator is used (DE -> ';', US -> ','), so the file
+    // matches what the local spreadsheet expects. Only ',' and ';' are
+    // honored; anything else falls back to comma.
+    wchar_t resolvePlainCsvDelimiter() {
+        // Explicit ',' or ';' in the INI wins. "auto" (or a missing/empty
+        // key) means follow the Windows list separator.
+        const std::wstring fromIni = CFG.readString(L"List", L"PlainCsvDelimiter", L"auto");
+        if (fromIni == L",") return L',';
+        if (fromIni == L";") return L';';
+        // Windows list separator (LOCALE_SLIST) can be up to four chars and
+        // is comma in US locales, semicolon in DE and many others. Treat the
+        // separator as semicolon if the locale value contains one.
+        wchar_t sep[8] = L",";
+        if (GetLocaleInfoW(LOCALE_USER_DEFAULT, LOCALE_SLIST, sep, 8) != 0) {
+            for (const wchar_t* p = sep; *p; ++p) {
+                if (*p == L';') return L';';
+            }
+        }
+        return L',';
+    }
+
+    // The concrete on-disk format a save should produce.
+    struct SaveFormat {
+        CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr;
+        bool   withSettingsBlock = true;   // only the .mrl format carries it
+        wchar_t delimiter = L',';
+    };
+
+    // Lowercased file extension without the dot ("" if none).
+    std::wstring lowerExtension(const std::wstring& path) {
+        const size_t dot = path.find_last_of(L'.');
+        if (dot == std::wstring::npos) return std::wstring();
+        std::wstring ext = path.substr(dot + 1);
+        for (wchar_t& c : ext) {
+            if (c >= L'A' && c <= L'Z') c = c + (L'a' - L'A');
+        }
+        return ext;
+    }
+
+    // The body dialect a file uses, decided by extension: .mrl is the
+    // internal escaped format, everything else (.csv, no extension) is the
+    // plain "CSV (Excel)" dialect. This is the single rule used by load,
+    // drag-and-drop, and double-click - no filter index needed.
+    CsvListFormat::Dialect dialectFromExtension(const std::wstring& path) {
+        return lowerExtension(path) == L"mrl"
+            ? CsvListFormat::Dialect::Mr
+            : CsvListFormat::Dialect::Rfc4180;
+    }
+
+    // Ensure the path carries an extension consistent with the picked save
+    // filter (1 = .mrl, 2 = CSV Excel .csv, 3 = All Files). A typed
+    // extension is respected (user intent wins); only a missing one is
+    // filled in. All Files forces nothing.
+    std::wstring applyExtensionForFilter(const std::wstring& path, int filterIndex) {
+        if (path.find_last_of(L'.') != std::wstring::npos) {
+            return path;  // user typed an extension - keep it
+        }
+        if (filterIndex == 1) return path + L".mrl";
+        if (filterIndex == 2) return path + L".csv";
+        return path;  // All Files or unknown: leave as-is
+    }
+
+    // Decide the save format from the chosen path. The extension is the
+    // single source of truth: .mrl is the internal escaped format with the
+    // settings block; anything else is the plain "CSV (Excel)" dialect
+    // (no block, configurable delimiter).
+    SaveFormat formatFromChoice(const std::wstring& path) {
+        SaveFormat fmt;
+        if (lowerExtension(path) == L"mrl") {
+            return fmt;  // defaults: Mr, with block, comma
+        }
+        fmt.dialect = CsvListFormat::Dialect::Rfc4180;
+        fmt.withSettingsBlock = false;
+        fmt.delimiter = resolvePlainCsvDelimiter();
+        return fmt;
+    }
+}  // namespace
+
 
 // Pointer-sized BufferID
 using BufferId = UINT_PTR;
@@ -4648,15 +4731,7 @@ void MultiReplace::copySelectedItemsToClipboard() {
     for (int i = 0; i < itemCount; ++i) {
         if (ListView_GetItemState(_replaceListView, i, LVIS_SELECTED) & LVIS_SELECTED) {
             const ReplaceItemData& item = replaceListData[i];
-            csvData += std::to_wstring(item.isEnabled) + L",";
-            csvData += StringUtils::escapeQuoted(item.findText) + L",";
-            csvData += StringUtils::escapeQuoted(item.replaceText) + L",";
-            csvData += std::to_wstring(item.wholeWord) + L",";
-            csvData += std::to_wstring(item.matchCase) + L",";
-            csvData += std::to_wstring(item.formulaSupport) + L",";
-            csvData += std::to_wstring(item.extended) + L",";
-            csvData += std::to_wstring(item.regex) + L",";
-            csvData += StringUtils::escapeQuoted(item.comments);
+            csvData += ListCodec::itemToRow(item, false);
             csvData += L'\n';
         }
     }
@@ -4700,13 +4775,11 @@ bool MultiReplace::canPasteFromClipboard() {
     std::wstring content{ raw };
     GlobalUnlock(hData);
 
-    std::wistringstream stream(content);
-    std::wstring line;
-    while (std::getline(stream, line)) {
-        if (line.empty()) {
-            continue;
-        }
-        auto columns = CsvListFormat::parseLine(line);
+    // Quote-aware split so a multi-line quoted field is judged as one
+    // record, consistent with the actual paste path. Pasteable if any
+    // record has a plausible positional column count.
+    std::vector<std::vector<std::wstring>> records = CsvListFormat::readRecords(content);
+    for (const auto& columns : records) {
         if (columns.size() == 8 || columns.size() == 9 || columns.size() == 10) {
             return true;
         }
@@ -4726,77 +4799,46 @@ void MultiReplace::pasteItemsIntoList() {
     std::wstring content(pData);
     GlobalUnlock(hData);
 
-    std::wstringstream contentStream(content);
     std::vector<ReplaceItemData> itemsToInsert;
 
     int insertPosition = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
     if (insertPosition != -1) ++insertPosition;
     else insertPosition = ListView_GetItemCount(_replaceListView);
 
-    // Peek first line: if it looks like a header, parse name-based;
-    // otherwise rewind and use the legacy positional path.
+    // Read all records quote-aware (multi-line quoted fields stay intact).
+    // Peek record 0: if it looks like a header, parse name-based and skip
+    // it; otherwise treat every record as a legacy positional row.
+    std::vector<std::vector<std::wstring>> records = CsvListFormat::readRecords(content);
+
     CsvListFormat::HeaderIndex hdr;
     bool nameBased = false;
     bool swapRegexExtended = false;
-    const auto pos = contentStream.tellg();
-    std::wstring firstLine;
-    if (std::getline(contentStream, firstLine)) {
-        if (!firstLine.empty() && firstLine.back() == L'\r') firstLine.pop_back();
-        auto cells = CsvListFormat::parseLine(firstLine);
-        CsvListFormat::HeaderIndex maybeHdr = CsvListFormat::buildIndex(cells);
+    size_t firstDataRow = 0;
+    if (!records.empty()) {
+        CsvListFormat::HeaderIndex maybeHdr = CsvListFormat::buildIndex(records.front());
         if (maybeHdr.looksLikeNames && maybeHdr.hasFind) {
             hdr = maybeHdr;
             nameBased = true;
+            firstDataRow = 1;
             // Legacy pre-V5 bug swap: UseVariables/Regex before Extended. TODO: remove.
-            const int rIdx = hdr.idx[static_cast<int>(CsvListFormat::Field::Regex)];
-            const int eIdx = hdr.idx[static_cast<int>(CsvListFormat::Field::Extended)];
-            if (rIdx >= 0 && eIdx >= 0 && rIdx < eIdx) {
-                for (const auto& c : cells) {
-                    if (CsvListFormat::normalizeName(c) == L"usevariables") {
-                        swapRegexExtended = true;
-                        break;
-                    }
-                }
-            }
-        }
-        else {
-            contentStream.clear();
-            contentStream.seekg(pos);
+            swapRegexExtended = ListCodec::needsRegexExtendedSwap(hdr, records.front());
         }
     }
 
-    std::wstring line;
-    while (std::getline(contentStream, line)) {
-        if (!line.empty() && line.back() == L'\r') line.pop_back();
-        if (line.empty()) continue;
-
-        std::vector<std::wstring> columns = CsvListFormat::parseLine(line);
+    for (size_t r = firstDataRow; r < records.size(); ++r) {
+        const std::vector<std::wstring>& columns = records[r];
+        // Skip blank records (an empty line yields a single empty cell).
+        if (columns.size() == 1 && columns[0].empty()) continue;
 
         ReplaceItemData item;
         try {
             if (nameBased) {
-                item.isEnabled = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Selected, false);
-                item.findText = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Find, L"");
-                item.replaceText = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Replace, L"");
-                item.wholeWord = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::WholeWord, false);
-                item.matchCase = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::MatchCase, false);
-                item.formulaSupport = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::FormulaSupport, false);
-                item.extended = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Extended, false);
-                item.regex = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Regex, false);
-                if (swapRegexExtended) std::swap(item.extended, item.regex);
-                item.comments = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Comments, L"");
+                item = ListCodec::rowToItem(hdr, columns, swapRegexExtended);
             }
             else {
+                // Tolerant paste: skip rows with an unexpected column count.
                 if (columns.size() < 8 || columns.size() > 10) continue;
-                item.isEnabled = std::stoi(columns[0]) != 0;
-                item.findText = columns[1];
-                item.replaceText = columns[2];
-                item.wholeWord = std::stoi(columns[3]) != 0;
-                item.matchCase = std::stoi(columns[4]) != 0;
-                item.formulaSupport = std::stoi(columns[5]) != 0;
-                item.extended = std::stoi(columns[6]) != 0;
-                item.regex = std::stoi(columns[7]) != 0;
-                item.comments = (columns.size() >= 9 ? columns[8] : L"");
+                item = ListCodec::rowToItemPositional(columns);
             }
         }
         catch (const std::exception&) {
@@ -6716,11 +6758,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_SAVE_AS_BUTTON:
         case ID_SAVE_AS_OPTION:
         {
-            // Save As: always prompt for file path
+            // Save As: always prompt for file path. The format is decided
+            // by the chosen file's extension (.mrl = internal, else Excel).
             std::wstring filePath = promptSaveListToCsv();
 
             if (!filePath.empty()) {
-                saveListToCsv(filePath, replaceListData);
+                const SaveFormat fmt = formatFromChoice(filePath);
+                saveListToCsv(filePath, replaceListData, fmt.dialect, fmt.withSettingsBlock, fmt.delimiter);
             }
 
             return TRUE;
@@ -6729,16 +6773,20 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_SAVE_BUTTON:
         case IDC_SAVE_TO_CSV_BUTTON:
         {
-            // Quick-Save: use existing path, or prompt if none
+            // Quick-Save: use existing path, or prompt if none. The format
+            // always follows the extension: .mrl = internal escaped + block,
+            // .csv (or other) = plain Excel dialect.
             if (!listFilePath.empty()) {
-                saveListToCsv(listFilePath, replaceListData);
+                const SaveFormat fmt = formatFromChoice(listFilePath);
+                saveListToCsv(listFilePath, replaceListData, fmt.dialect, fmt.withSettingsBlock, fmt.delimiter);
             }
             else {
                 // If no file path is set, prompt the user to select a file path
                 std::wstring filePath = promptSaveListToCsv();
 
                 if (!filePath.empty()) {
-                    saveListToCsv(filePath, replaceListData);
+                    const SaveFormat fmt = formatFromChoice(filePath);
+                    saveListToCsv(filePath, replaceListData, fmt.dialect, fmt.withSettingsBlock, fmt.delimiter);
                 }
             }
             return TRUE;
@@ -6753,14 +6801,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_LOAD_LIST_BUTTON:
         case IDC_LOAD_FROM_CSV_BUTTON:
         {
-            std::wstring mrlDescription = LM.get(L"filetype_mrl");  // "MultiReplace Lists (*.mrl; *.csv)"
+            std::wstring mrlDescription = LM.get(L"filetype_mrl");        // "MultiReplace List (*.mrl)"
+            std::wstring csvExcelDescription = LM.get(L"filetype_csv_excel");  // "CSV (Excel) (*.csv)"
             std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
 
-            // Single combined filter: .mrl is the current format, .csv
-            // is accepted for backward compatibility with lists saved
-            // by earlier builds. The on-disk format is the same.
+            // Two formats plus All Files, matching Save. The dialect is not
+            // taken from the picked filter but from the chosen file's
+            // extension (.mrl = internal escaped, else plain "CSV Excel"),
+            // so double-click and drag-and-drop resolve the same way.
             std::vector<std::pair<std::wstring, std::wstring>> filters = {
-                {mrlDescription, L"*.mrl;*.csv"},
+                {mrlDescription, L"*.mrl"},
+                {csvExcelDescription, L"*.csv"},
                 {allFilesDescription, L"*.*"}
             };
 
@@ -15249,7 +15300,7 @@ void MultiReplace::forceWrapRecalculation() {
 
 #pragma region FileOperations
 
-std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath) {
+std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath, int* outFilterIndex) {
     flags |= OFN_NOCHANGEDIR;
     OPENFILENAME ofn = {};
     WCHAR szFile[MAX_PATH] = {};
@@ -15273,8 +15324,14 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::
     if (saveFile ? GetSaveFileName(&ofn) : GetOpenFileName(&ofn)) {
         std::wstring filePath(szFile);
 
-        // If no extension is provided, append the default one
-        if (filePath.find_last_of(L".") == std::wstring::npos) {
+        // Report the 1-based filter the user picked. When the caller asks
+        // for it, the caller also owns extension handling (it knows which
+        // extension each filter maps to), so we do not force one here.
+        // Callers that pass nullptr keep the simple "append default" path.
+        if (outFilterIndex) {
+            *outFilterIndex = static_cast<int>(ofn.nFilterIndex);
+        }
+        else if (filePath.find_last_of(L".") == std::wstring::npos) {
             filePath += L"." + fileExtension;
         }
 
@@ -15285,14 +15342,18 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::
     }
 }
 
-std::wstring MultiReplace::promptSaveListToCsv(const TabState* tabHint) {
-    std::wstring mrlDescription = LM.get(L"filetype_mrl");  // "MultiReplace Lists (*.mrl; *.csv)"
+std::wstring MultiReplace::promptSaveListToCsv(const TabState* tabHint, int* outFilterIndex) {
+    std::wstring mrlDescription = LM.get(L"filetype_mrl");        // "MultiReplace List (*.mrl)"
+    std::wstring csvExcelDescription = LM.get(L"filetype_csv_excel");  // "CSV (Excel) (*.csv)"
     std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
 
-    // Single combined filter: new saves default to .mrl; .csv is still
-    // matched so users can overwrite their existing .csv lists in place.
+    // Two list formats plus All Files. Filter 1 = .mrl (internal escaped
+    // body with the settings block, the default); 2 = plain "CSV (Excel)"
+    // .csv (no escaping, no block, configurable delimiter). The extension
+    // is the single source of truth for the format (see formatFromChoice).
     std::vector<std::pair<std::wstring, std::wstring>> filters = {
-        {mrlDescription, L"*.mrl;*.csv"},
+        {mrlDescription, L"*.mrl"},
+        {csvExcelDescription, L"*.csv"},
         {allFilesDescription, L"*.*"}
     };
 
@@ -15320,15 +15381,27 @@ std::wstring MultiReplace::promptSaveListToCsv(const TabState* tabHint) {
         defaultFileName = L"Untitled.mrl";
     }
 
-    // Call openFileDialog with the default file path and name
+    // Call openFileDialog with the default file path and name. A local
+    // filter index is always captured so the extension can be normalized
+    // even when the caller passed no outFilterIndex (the format itself is
+    // later derived from the extension, not from this index).
+    int localFilterIndex = 1;
+    int* idxSink = outFilterIndex ? outFilterIndex : &localFilterIndex;
     std::wstring filePath = openFileDialog(
         true,
         filters,
         dialogTitle.c_str(),
         OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT,
         L"mrl",
-        defaultFileName
+        defaultFileName,
+        idxSink
     );
+
+    // Normalize the extension to the picked filter (the OS cannot switch
+    // it reliably across filters). A typed extension is kept.
+    if (!filePath.empty()) {
+        filePath = applyExtensionForFilter(filePath, *idxSink);
+    }
 
     return filePath;
 }
@@ -15505,7 +15578,8 @@ namespace {
     }
 } // namespace
 
-bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
+bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list,
+    CsvListFormat::Dialect dialect, wchar_t delimiter) {
     std::ofstream outFile(std::filesystem::path(filePath), std::ios::binary);
 
     if (!outFile.is_open()) {
@@ -15515,22 +15589,13 @@ bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::
     // [BOM] Write UTF-8 BOM for CSV
     outFile.write("\xEF\xBB\xBF", 3);
 
-    // Convert and Write CSV header
-    std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,FormulaSupport,Extended,Regex,Comments,LastModified\n");
+    // Convert and Write CSV header (delimiter-aware for plain CSV)
+    std::string utf8Header = Encoding::wstringToUtf8(ListCodec::headerLine(delimiter) + L"\n");
     outFile << utf8Header;
 
     // Write list items to CSV file
     for (const ReplaceItemData& item : list) {
-        std::wstring line = std::to_wstring(item.isEnabled) + L"," +
-            StringUtils::escapeQuoted(item.findText) + L"," +
-            StringUtils::escapeQuoted(item.replaceText) + L"," +
-            std::to_wstring(item.wholeWord) + L"," +
-            std::to_wstring(item.matchCase) + L"," +
-            std::to_wstring(item.formulaSupport) + L"," +
-            std::to_wstring(item.extended) + L"," +
-            std::to_wstring(item.regex) + L"," +
-            StringUtils::escapeQuoted(item.comments) + L"," +
-            StringUtils::escapeQuoted(item.lastModified) + L"\n";
+        std::wstring line = ListCodec::itemToRow(item, true, dialect, delimiter) + L"\n";
         std::string utf8Line = Encoding::wstringToUtf8(line);
         outFile << utf8Line;
     }
@@ -15554,20 +15619,11 @@ bool MultiReplace::saveListToCsvWithSettings(const std::wstring& filePath, const
     writeSettingsBlock(outFile, tab);
 
     // CSV header
-    std::string utf8Header = Encoding::wstringToUtf8(L"Selected,Find,Replace,WholeWord,MatchCase,FormulaSupport,Extended,Regex,Comments,LastModified\n");
+    std::string utf8Header = Encoding::wstringToUtf8(ListCodec::headerLine() + L"\n");
     outFile << utf8Header;
 
     for (const ReplaceItemData& item : list) {
-        std::wstring line = std::to_wstring(item.isEnabled) + L"," +
-            StringUtils::escapeQuoted(item.findText) + L"," +
-            StringUtils::escapeQuoted(item.replaceText) + L"," +
-            std::to_wstring(item.wholeWord) + L"," +
-            std::to_wstring(item.matchCase) + L"," +
-            std::to_wstring(item.formulaSupport) + L"," +
-            std::to_wstring(item.extended) + L"," +
-            std::to_wstring(item.regex) + L"," +
-            StringUtils::escapeQuoted(item.comments) + L"," +
-            StringUtils::escapeQuoted(item.lastModified) + L"\n";
+        std::wstring line = ListCodec::itemToRow(item, true) + L"\n";
         std::string utf8Line = Encoding::wstringToUtf8(line);
         outFile << utf8Line;
     }
@@ -15577,18 +15633,20 @@ bool MultiReplace::saveListToCsvWithSettings(const std::wstring& filePath, const
     return !outFile.fail();
 }
 
-bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
-    // User-save of the active tab: include the settings block. We
-    // capture the live UI state into the active tab first so the
-    // block reflects what the user sees right now.
+bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list,
+    CsvListFormat::Dialect dialect, bool withSettingsBlock, wchar_t delimiter) {
+    // User-save of the active tab. The .mrl format also captures live UI
+    // state into the settings block; the plain CSV formats are a portable
+    // body only. Either way the save is authoritative: it clears dirty and
+    // adopts the file as the tab's backing path (see below).
     bool ok = false;
-    if (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
+    if (withSettingsBlock && _activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
         captureStateIntoTab(*_tabs[_activeTabIndex]);
         ok = saveListToCsvWithSettings(filePath, list, *_tabs[_activeTabIndex]);
     }
     else {
-        // Defensive: no active tab - write without block.
-        ok = saveListToCsvSilent(filePath, list);
+        // Plain CSV body (escaped or Excel dialect), no settings block.
+        ok = saveListToCsvSilent(filePath, list, dialect, delimiter);
     }
 
     if (!ok) {
@@ -15763,7 +15821,8 @@ int MultiReplace::checkForUnsavedChanges(int tabIndex) {
                     std::wstring filePath = promptSaveListToCsv();
 
                     if (!filePath.empty()) {
-                        if (!saveListToCsv(filePath, replaceListData)) return IDCANCEL;
+                        const SaveFormat fmt = formatFromChoice(filePath);
+                        if (!saveListToCsv(filePath, replaceListData, fmt.dialect, fmt.withSettingsBlock, fmt.delimiter)) return IDCANCEL;
                         return IDYES;  // Proceed with clear after save
                     }
                     else {
@@ -15824,7 +15883,8 @@ int MultiReplace::checkForUnsavedChanges(int tabIndex) {
         }
         std::wstring filePath = promptSaveListToCsv();
         if (filePath.empty()) return IDCANCEL;
-        if (!saveListToCsv(filePath, replaceListData)) return IDCANCEL;
+        const SaveFormat fmt = formatFromChoice(filePath);
+        if (!saveListToCsv(filePath, replaceListData, fmt.dialect, fmt.withSettingsBlock, fmt.delimiter)) return IDCANCEL;
         return IDYES;
     }
 
@@ -15834,7 +15894,8 @@ int MultiReplace::checkForUnsavedChanges(int tabIndex) {
         switchToTab(tabIndex);
         std::wstring filePath = promptSaveListToCsv();
         if (filePath.empty()) return IDCANCEL;
-        if (!saveListToCsv(filePath, replaceListData)) return IDCANCEL;
+        const SaveFormat fmt = formatFromChoice(filePath);
+        if (!saveListToCsv(filePath, replaceListData, fmt.dialect, fmt.withSettingsBlock, fmt.delimiter)) return IDCANCEL;
         return IDYES;
     }
 
@@ -15853,7 +15914,7 @@ int MultiReplace::checkForUnsavedChanges(int tabIndex) {
     return IDCANCEL;
 }
 
-void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings) {
+void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings, CsvListFormat::Dialect dialect) {
     // Open the CSV file
     std::ifstream inFile(std::filesystem::path(filePath), std::ios::binary);
     if (!inFile.is_open()) {
@@ -15903,30 +15964,39 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
         tryReadSettingsBlock(contentStream, discard);
     }
 
-    // Read the header line
-    std::wstring headerLine;
-    if (!std::getline(contentStream, headerLine)) {
+    // Read the remaining CSV text (after the optional settings block)
+    // and split it quote-aware so multi-line quoted fields stay intact.
+    // Record 0 is the header; the rest are data rows.
+    std::wstring csvText(
+        (std::istreambuf_iterator<wchar_t>(contentStream)),
+        std::istreambuf_iterator<wchar_t>());
+    // Plain CSV may use comma or semicolon; sniff it from the header.
+    // The internal escaped format is always comma-separated.
+    const wchar_t delimiter = (dialect == CsvListFormat::Dialect::Rfc4180)
+        ? CsvListFormat::detectDelimiter(csvText)
+        : L',';
+    std::vector<std::vector<std::wstring>> records =
+        CsvListFormat::readRecords(csvText, dialect, delimiter);
+    if (records.empty()) {
         throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_invalid_column_count")));
     }
 
-    const std::vector<std::wstring> headerCells = CsvListFormat::parseLine(headerLine);
+    const std::vector<std::wstring>& headerCells = records.front();
     const CsvListFormat::HeaderIndex hdr = CsvListFormat::buildIndex(headerCells);
     const bool nameBased = hdr.looksLikeNames;
 
-    // Legacy pre-V5 header: UseVariables column, Regex before Extended. TODO: remove.
-    bool swapRegexExtended = false;
-    if (nameBased) {
-        const int rIdx = hdr.idx[static_cast<int>(CsvListFormat::Field::Regex)];
-        const int eIdx = hdr.idx[static_cast<int>(CsvListFormat::Field::Extended)];
-        if (rIdx >= 0 && eIdx >= 0 && rIdx < eIdx) {
-            for (const auto& cell : headerCells) {
-                if (CsvListFormat::normalizeName(cell) == L"usevariables") {
-                    swapRegexExtended = true;
-                    break;
-                }
-            }
-        }
+    // A legacy MultiReplace list (old "Use Variables" header) read through
+    // the plain "CSV (Excel)" path would be silently mangled. Detect it and
+    // signal the caller to guide the user to rename the file to .mrl.
+    if (dialect == CsvListFormat::Dialect::Rfc4180 &&
+        ListCodec::hasLegacyUseVariablesHeader(headerCells)) {
+        throw LegacyMrlCsvException();
     }
+
+    // Legacy pre-V5 header: UseVariables column placed Regex before
+    // Extended; swap the two flags on read. Kept as the migration path for
+    // old lists renamed to .mrl (see the Use-Variables guard above).
+    const bool swapRegexExtended = nameBased && ListCodec::needsRegexExtendedSwap(hdr, headerCells);
 
     // Find is required; everything else has a default.
     if (nameBased && !hdr.hasFind) {
@@ -15935,42 +16005,23 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
     // Temporary list to hold parsed items
     std::vector<ReplaceItemData> tempList;
-    std::wstring line;
 
-    // Read and process each line in the file
-    while (std::getline(contentStream, line)) {
-        std::vector<std::wstring> columns = CsvListFormat::parseLine(line);
+    // Process each data record (skip record 0, the header).
+    for (size_t r = 1; r < records.size(); ++r) {
+        const std::vector<std::wstring>& columns = records[r];
 
         try {
             ReplaceItemData item;
             if (nameBased) {
-                item.isEnabled = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Selected, false);
-                item.findText = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Find, L"");
-                item.replaceText = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Replace, L"");
-                item.wholeWord = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::WholeWord, false);
-                item.matchCase = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::MatchCase, false);
-                item.formulaSupport = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::FormulaSupport, false);
-                item.extended = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Extended, false);
-                item.regex = CsvListFormat::cellAtBool(hdr, columns, CsvListFormat::Field::Regex, false);
-                if (swapRegexExtended) std::swap(item.extended, item.regex);
-                item.comments = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::Comments, L"");
-                item.lastModified = CsvListFormat::cellAt(hdr, columns, CsvListFormat::Field::LastModified, L"");
+                item = ListCodec::rowToItem(hdr, columns, swapRegexExtended);
             }
             else {
-                // Legacy positional: 8=pre-comment, 9=+Comments, 10=+LastModified
+                // Legacy positional: 8=pre-comment, 9=+Comments, 10=+LastModified.
+                // Column-count guard stays here to keep the localized message.
                 if (columns.size() < 8 || columns.size() > 10) {
                     throw CsvLoadException(Encoding::wstringToUtf8(LM.get(L"status_invalid_column_count")));
                 }
-                item.isEnabled = std::stoi(columns[0]) != 0;
-                item.findText = columns[1];
-                item.replaceText = columns[2];
-                item.wholeWord = std::stoi(columns[3]) != 0;
-                item.matchCase = std::stoi(columns[4]) != 0;
-                item.formulaSupport = std::stoi(columns[5]) != 0;
-                item.extended = std::stoi(columns[6]) != 0;
-                item.regex = std::stoi(columns[7]) != 0;
-                item.comments = (columns.size() >= 9) ? columns[8] : L"";
-                item.lastModified = (columns.size() >= 10) ? columns[9] : L"";
+                item = ListCodec::rowToItemPositional(columns);
             }
             tempList.push_back(item);
         }
@@ -15992,6 +16043,12 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
 void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
 {
+    // The body dialect always follows the file extension: .mrl is the
+    // internal escaped format, anything else is plain "CSV (Excel)". This
+    // is the single rule for the load dialog, drag-and-drop, and any other
+    // entry point, so callers never need to pass a dialect.
+    const CsvListFormat::Dialect dialect = dialectFromExtension(filePath);
+
     // Commit an in-progress list cell edit before we move away, and
     // capture live UI state (column widths, search options, etc.)
     // into the outgoing tab so the incoming tab's layout inheritance
@@ -16011,7 +16068,22 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
 
     std::vector<ReplaceItemData> loaded;
     try {
-        loadListFromCsvSilent(filePath, loaded, tab.get());
+        loadListFromCsvSilent(filePath, loaded, tab.get(), dialect);
+    }
+    catch (const LegacyMrlCsvException&) {
+        // Old MultiReplace list opened via the .csv (Excel) path. Guide the
+        // user with a TaskDialog: the rename action is the main instruction
+        // (large, emphasized), the reason follows as plain content.
+        TASKDIALOGCONFIG tdc = { sizeof(TASKDIALOGCONFIG) };
+        tdc.hwndParent = nppData._nppHandle;
+        tdc.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW | TDF_SIZE_TO_CONTENT;
+        tdc.pszWindowTitle = LM.getLPCW(L"legacy_csv_title");
+        tdc.pszMainInstruction = LM.getLPCW(L"legacy_csv_instruction");
+        tdc.pszContent = LM.getLPCW(L"legacy_csv_message");
+        tdc.pszMainIcon = TD_INFORMATION_ICON;
+        tdc.dwCommonButtons = TDCBF_OK_BUTTON;
+        TaskDialogIndirect(&tdc, nullptr, nullptr, nullptr);
+        return;
     }
     catch (const CsvLoadException& ex) {
         showStatusMessage(Encoding::utf8ToWString(ex.what()), MessageStatus::Error);
@@ -19433,7 +19505,7 @@ void MultiReplace::renameTabFile(int tabIndex)
     const std::wstring oldPath = tab.filePath;
 
     std::vector<std::pair<std::wstring, std::wstring>> filters = {
-        { LM.get(L"filetype_mrl"),       L"*.mrl;*.csv" },
+        { LM.get(L"filetype_mrl"),       L"*.mrl" },
         { LM.get(L"filetype_all_files"), L"*.*" }
     };
 
@@ -19880,6 +19952,15 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeBool(L"Options", L"DuplicateBookmarks", s.duplicateBookmarksEnabled);
     CFG.writeBool(L"Options", L"PickupSelection", s.pickupSelection);
     CFG.writeBool(L"Options", L"AutoEscapeForFindInput", s.autoEscapeForFindInput);
+
+    // Always surface the plain "CSV (Excel)" delimiter so it is visible and
+    // editable in the INI. Seed "auto" only when no value exists yet; a
+    // manual "," or ";" the user set is preserved. "auto" follows the
+    // Windows list separator.
+    {
+        const std::wstring cur = CFG.readString(L"List", L"PlainCsvDelimiter", L"");
+        CFG.writeString(L"List", L"PlainCsvDelimiter", cur.empty() ? L"auto" : cur);
+    }
 }
 
 // Persistence keys for the "reopen panel on startup" feature.

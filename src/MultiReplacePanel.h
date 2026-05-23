@@ -46,6 +46,11 @@
 
 // Third-party
 
+// List row data model
+#include "ReplaceItemData.h"
+// CSV list format: dialect enum used in load/save signatures
+#include "CsvListFormat.h"
+
 // Formula engine (Lua / ExprTk dispatcher)
 #include "engine/IFormulaEngine.h"
 #include "engine/EngineFactory.h"
@@ -58,55 +63,6 @@ extern NppData nppData;
 
 enum class DelimiterOperation { LoadAll, Update };
 enum class Direction { Up, Down };
-
-struct ReplaceItemData
-{
-    size_t id = 0;
-    int findCount = -1;
-    int replaceCount = -1;
-    bool isEnabled = true;
-    std::wstring findText;
-    std::wstring replaceText;
-    bool wholeWord = false;
-    bool matchCase = false;
-    bool formulaSupport = false;
-    bool extended = false;
-    bool regex = false;
-    std::wstring comments = L"";
-    bool isDirty = false;           // Session-only: marks row as modified since last save/load
-    std::wstring lastModified;      // Persistent timestamp: set on content change, saved in CSV
-
-    bool operator==(const ReplaceItemData& rhs) const {
-        return
-            isEnabled == rhs.isEnabled &&
-            findText == rhs.findText &&
-            replaceText == rhs.replaceText &&
-            wholeWord == rhs.wholeWord &&
-            matchCase == rhs.matchCase &&
-            extended == rhs.extended &&
-            regex == rhs.regex;
-    }
-
-    bool operator!=(const ReplaceItemData& rhs) const {
-        return !(*this == rhs);
-    }
-};
-
-// Hash function for ReplaceItemData
-struct ReplaceItemDataHasher {
-    std::size_t operator()(const ReplaceItemData& item) const {
-        std::size_t hash = std::hash<bool>{}(item.isEnabled);
-        hash ^= std::hash<std::wstring>{}(item.findText) << 1;
-        hash ^= std::hash<std::wstring>{}(item.replaceText) << 1;
-        hash ^= std::hash<bool>{}(item.wholeWord) << 1;
-        hash ^= std::hash<bool>{}(item.matchCase) << 1;
-        hash ^= std::hash<bool>{}(item.formulaSupport) << 1;
-        hash ^= std::hash<bool>{}(item.extended) << 1;
-        hash ^= std::hash<bool>{}(item.regex) << 1;
-        hash ^= std::hash<std::wstring>{}(item.comments) << 1;
-        return hash;
-    }
-};
 
 struct UndoRedoAction {
     std::function<void()> undoAction;
@@ -492,6 +448,14 @@ private:
     std::string message_;
 };
 
+// Thrown when a file loaded as plain "CSV (Excel)" is actually a legacy
+// MultiReplace list (identified by the old "Use Variables" header column).
+// The caller shows a guidance dialog telling the user to rename it to .mrl.
+class LegacyMrlCsvException : public std::exception {
+public:
+    const char* what() const noexcept override { return "legacy MRL list loaded as CSV"; }
+};
+
 struct EditControlContext
 {
     MultiReplace* pThis;
@@ -765,7 +729,7 @@ public:
     // Drag-and-Drop functionality
     DropTarget* dropTarget = nullptr;  // Pointer to DropTarget instance
     DropTarget* tabBarDropTarget = nullptr;  // Drop target on the tab bar
-    void loadListFromCsvIntoNewTab(const std::wstring& filePath);  // used by DropTarget for all drops
+    void loadListFromCsvIntoNewTab(const std::wstring& filePath);  // dialect is derived from the file extension
     void initializeDragAndDrop();
 
     inline static HWND       hwndExpandBtn = nullptr;
@@ -1462,12 +1426,12 @@ private:
 #pragma endregion
 
 #pragma region FileOperations
-    std::wstring promptSaveListToCsv(const TabState* tabHint = nullptr);
-    std::wstring openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath);
-    bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
+    std::wstring promptSaveListToCsv(const TabState* tabHint = nullptr, int* outFilterIndex = nullptr);
+    std::wstring openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath, int* outFilterIndex = nullptr);
+    bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr, wchar_t delimiter = L',');
     bool saveListToCsvWithSettings(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab);
-    bool saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
-    void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings = nullptr);
+    bool saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr, bool withSettingsBlock = true, wchar_t delimiter = L',');
+    void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings = nullptr, CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr);
     void autoShowCommentsColumn();
     void checkForFileChangesAtStartup();
     void exportToBashScript(const std::wstring& fileName);
