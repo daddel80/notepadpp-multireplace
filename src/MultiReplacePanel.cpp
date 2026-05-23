@@ -4874,6 +4874,9 @@ void MultiReplace::pasteItemsIntoList() {
 
     // Ensure the first inserted item is visible
     ListView_EnsureVisible(_replaceListView, insertPosition, FALSE);
+
+    // Refresh the header checkbox to match the pasted Selected state.
+    updateHeaderSelection();
 }
 
 int MultiReplace::searchInListData(int startIdx, const std::wstring& searchText, bool forward) {
