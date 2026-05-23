@@ -1489,6 +1489,7 @@ private:
     void onTabCloseAll();
     void onTabSave(int tabIndex);
     void onTabSaveAs(int tabIndex);
+    void onTabReload(int tabIndex);
     void onTabOpenFileLocation(int tabIndex);
     void onTabApplyLayoutToAll(int sourceTabIndex);
     int findTabByFilePath(const std::wstring& filePath) const;

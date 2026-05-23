@@ -7207,6 +7207,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDM_TAB_SAVE_AS:
             onTabSaveAs(_tabMenuTargetIndex);
             return TRUE;
+        case IDM_TAB_RELOAD:
+            onTabReload(_tabMenuTargetIndex);
+            return TRUE;
         case IDM_TAB_OPEN_FILE_LOCATION:
             onTabOpenFileLocation(_tabMenuTargetIndex);
             return TRUE;
@@ -17214,7 +17217,8 @@ void MultiReplace::loadTabsFromConfig()
             if (!haveBaseline && !tab->filePath.empty()) {
                 try {
                     std::vector<ReplaceItemData> fileData;
-                    loadListFromCsvSilent(tab->filePath, fileData);
+                    loadListFromCsvSilent(tab->filePath, fileData, nullptr,
+                        dialectFromExtension(tab->filePath));
                     tab->originalHash = computeListHash(fileData);
                     haveBaseline = true;
                 }
@@ -17274,7 +17278,8 @@ void MultiReplace::checkSingleTabForFileChange(int tabIndex)
 
     try {
         std::vector<ReplaceItemData> tempListFromFile;
-        loadListFromCsvSilent(tab.filePath, tempListFromFile);
+        loadListFromCsvSilent(tab.filePath, tempListFromFile, nullptr,
+            dialectFromExtension(tab.filePath));
 
         std::size_t newFileHash = computeListHash(tempListFromFile);
         if (newFileHash != tab.originalHash) {
@@ -18876,6 +18881,8 @@ void MultiReplace::showTabContextMenu(int tabIndex, int screenX, int screenY)
     AppendMenu(hMenu, MF_STRING | (canSave ? 0 : MF_GRAYED),
         IDM_TAB_SAVE, LM.get(L"tab_menu_save").c_str());
     AppendMenu(hMenu, MF_STRING, IDM_TAB_SAVE_AS, LM.get(L"tab_menu_save_as").c_str());
+    AppendMenu(hMenu, MF_STRING | (hasFile ? 0 : MF_GRAYED),
+        IDM_TAB_RELOAD, LM.get(L"tab_menu_reload").c_str());
 
     AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
 
@@ -19274,6 +19281,58 @@ void MultiReplace::onTabSaveAs(int tabIndex)
     // clearTabDirty's fast-path would otherwise skip the rebuild.
     clearTabDirty(tabIndex);
     rebuildTabControl();
+}
+
+void MultiReplace::onTabReload(int tabIndex)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+    if (_tabs[tabIndex]->filePath.empty()) return;  // nothing on disk to revert to
+
+    // Reload reverts the list to the last saved file. Run it in the active
+    // tab so the live list and undo manager refer to the same tab.
+    if (tabIndex != _activeTabIndex) {
+        switchToTab(tabIndex);
+        tabIndex = _activeTabIndex;
+    }
+    TabState& tab = *_tabs[tabIndex];
+
+    // Confirm before discarding unsaved edits.
+    if (tab.isDirty) {
+        std::wstring shortPath = getShortenedFilePath(tab.filePath, 500);
+        int r = MessageBox(nppData._nppHandle,
+            LM.get(L"msgbox_reload_discard_prompt", { shortPath }).c_str(),
+            LM.get(L"msgbox_title_reload").c_str(),
+            MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND);
+        if (r != IDYES) return;
+    }
+
+    // Read the saved file. On failure, leave the list untouched.
+    std::vector<ReplaceItemData> fileList;
+    try {
+        loadListFromCsvSilent(tab.filePath, fileList, nullptr,
+            dialectFromExtension(tab.filePath));
+    }
+    catch (const CsvLoadException& ex) {
+        showStatusMessage(Encoding::utf8ToWString(ex.what()), MessageStatus::Error);
+        return;
+    }
+
+    // Replace the list with the file content; the tab is now in sync.
+    replaceListData = fileList;
+    for (auto& item : replaceListData) item.isDirty = false;
+    tab.data = replaceListData;
+    tab.originalHash = computeListHash(fileList);
+    originalListHash = tab.originalHash;
+
+    ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
+    updateHeaderSelection();
+    clearTabDirty(tabIndex);
+    rebuildTabControl();
+
+    // Reload is a hard reset to disk state, like Notepad++: drop the
+    // tab's undo/redo history rather than making the reload undoable.
+    URM.clear();
 }
 
 void MultiReplace::onTabOpenFileLocation(int tabIndex)

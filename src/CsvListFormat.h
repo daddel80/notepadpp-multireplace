@@ -65,7 +65,7 @@ namespace CsvListFormat {
     // Header-to-column resolution. idx[Field] = -1 means the field
     // was not present in the parsed header row.
     struct HeaderIndex {
-        std::array<int, 11> idx;
+        std::array<int, 11> idx{};   // 0 here; buildIndex fills with -1
         bool hasFind = false;
         bool hasReplace = false;
         bool looksLikeNames = false;
