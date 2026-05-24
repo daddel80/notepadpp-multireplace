@@ -16468,31 +16468,31 @@ void MultiReplace::loadSettingsToPanelUI() {
     std::wstring editAtMatchesText = CFG.readString(L"Options", L"EditAtMatches", L"1");
     setTextInDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT, editAtMatchesText);
 
-    bool replaceButtonsMode = CFG.readBool(L"Options", L"ButtonsMode", false);
+    bool replaceButtonsMode = CFG.readBool(optSec(L"ButtonsMode"), L"ButtonsMode", false);
     SendMessage(GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE), BM_SETCHECK, replaceButtonsMode ? BST_CHECKED : BST_UNCHECKED, 0);
 
     // "+ Bookmarks" companion mode for Mark Matches. Off by default -
     // most users only want the visual indicator. Persisted alongside
     // the other UI option toggles.
-    bool bookmarkMatches = CFG.readBool(L"Options", L"BookmarkMatches", false);
+    bool bookmarkMatches = CFG.readBool(optSec(L"BookmarkMatches"), L"BookmarkMatches", false);
     SendMessage(GetDlgItem(_hSelf, IDC_BOOKMARK_MATCHES_CHECKBOX), BM_SETCHECK, bookmarkMatches ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    useListEnabled = CFG.readBool(L"Options", L"UseList", true);
+    useListEnabled = CFG.readBool(optSec(L"UseList"), L"UseList", true);
     updateUseListState(false);
 
-    ResultDock::setWrapEnabled(CFG.readBool(L"Options", L"DockWrap", false));
-    ResultDock::setPurgeEnabled(CFG.readBool(L"Options", L"DockPurge", false));
+    ResultDock::setWrapEnabled(CFG.readBool(optSec(L"DockWrap"), L"DockWrap", false));
+    ResultDock::setPurgeEnabled(CFG.readBool(optSec(L"DockPurge"), L"DockPurge", false));
 
-    highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);
-    flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
-    flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
+    highlightMatchEnabled = CFG.readBool(optSec(L"HighlightMatch"), L"HighlightMatch", true);
+    flowTabsIntroDontShowEnabled = CFG.readBool(optSec(L"FlowTabsIntroDontShow"), L"FlowTabsIntroDontShow", false);
+    flowTabsNumericAlignEnabled = CFG.readBool(optSec(L"FlowTabsNumericAlign"), L"FlowTabsNumericAlign", true);
 
-    exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
-    muteSounds = CFG.readBool(L"Options", L"MuteSounds", false);
-    doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);
+    exportToBashEnabled = CFG.readBool(optSec(L"ExportToBash"), L"ExportToBash", false);
+    muteSounds = CFG.readBool(optSec(L"MuteSounds"), L"MuteSounds", false);
+    doubleClickEditsEnabled = CFG.readBool(optSec(L"DoubleClickEdits"), L"DoubleClickEdits", true);
 
     // Side Effect: Update Hover Text Logic
-    bool newHover = CFG.readBool(L"Options", L"HoverText", true);
+    bool newHover = CFG.readBool(optSec(L"HoverText"), L"HoverText", true);
     if (isHoverTextEnabled != newHover) {
         isHoverTextEnabled = newHover;
         if (instance && instance->_replaceListView) {
@@ -16503,12 +16503,12 @@ void MultiReplace::loadSettingsToPanelUI() {
     }
 
     // CFG.readInt for editFieldSize
-    editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
+    editFieldSize = CFG.readInt(optSec(L"EditFieldSize"), L"EditFieldSize", 5);
     editFieldSize = std::clamp(editFieldSize, MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
 
-    stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
-    allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
-    groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
+    stayAfterReplaceEnabled = CFG.readBool(optSec(L"StayAfterReplace"), L"StayAfterReplace", false);
+    allFromCursorEnabled = CFG.readBool(optSec(L"AllFromCursor"), L"AllFromCursor", false);
+    groupResultsEnabled = CFG.readBool(optSec(L"GroupResults"), L"GroupResults", false);
 
     // Lua runtime options
     _luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
@@ -16585,7 +16585,7 @@ void MultiReplace::loadSettingsToPanelUI() {
     // --- FINAL UI REFRESH / SIDE EFFECTS ---
     if (instance) {
         // 1. Apply Tooltips state
-        bool currentTooltips = CFG.readBool(L"Options", L"Tooltips", true);
+        bool currentTooltips = CFG.readBool(optSec(L"Tooltips"), L"Tooltips", true);
         if (tooltipsEnabled != currentTooltips) {
             tooltipsEnabled = currentTooltips;
             instance->onTooltipsToggled(tooltipsEnabled);
@@ -17268,6 +17268,32 @@ void MultiReplace::migrateLegacyList()
     // state into a primary tab so further code paths uniformly use
     // the tab model. snapshots/ is created on the next save.
     ensurePrimaryTabExists();
+
+    // V5 stored column visibility/lock state globally in [ListColumns];
+    // V6 keeps it per-tab. Carry the user's choices into the primary tab.
+    // Widths are intentionally not migrated (DPI-dependent, quickly redone).
+    if (!_tabs.empty())
+        migrateLegacyColumnVisibility(*_tabs[0]);
+}
+
+void MultiReplace::migrateLegacyColumnVisibility(TabState& tab)
+{
+    // One-shot V5->V6: only act when the legacy section is present.
+    // Defaults mirror the V5 read defaults so a missing key keeps V5
+    // behaviour. [ListColumns] is dropped afterwards by
+    // dropLegacyConfigEntries; V6 never writes it again.
+    if (!CFG.hasKey(L"ListColumns", L"CommentsVisible") &&
+        !CFG.hasKey(L"ListColumns", L"FindCountVisible") &&
+        !CFG.hasKey(L"ListColumns", L"FindColumnLocked"))
+        return;
+
+    tab.findCountVisible = CFG.readBool(L"ListColumns", L"FindCountVisible", false);
+    tab.replaceCountVisible = CFG.readBool(L"ListColumns", L"ReplaceCountVisible", false);
+    tab.commentsVisible = CFG.readBool(L"ListColumns", L"CommentsVisible", false);
+    tab.deleteButtonVisible = CFG.readBool(L"ListColumns", L"DeleteButtonVisible", true);
+    tab.findLocked = CFG.readBool(L"ListColumns", L"FindColumnLocked", true);
+    tab.replaceLocked = CFG.readBool(L"ListColumns", L"ReplaceColumnLocked", false);
+    tab.commentsLocked = CFG.readBool(L"ListColumns", L"CommentsColumnLocked", true);
 }
 
 void MultiReplace::checkSingleTabForFileChange(int tabIndex)
@@ -19858,16 +19884,16 @@ void MultiReplace::loadUIConfigFromIni()
     int savedLeft = CFG.readInt(L"Window", L"PosX", CENTER_ON_NPP);
     int savedTop = CFG.readInt(L"Window", L"PosY", CENTER_ON_NPP);
 
-    useListEnabled = CFG.readBool(L"Options", L"UseList", true);
-    keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
-    listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
-    tabMaxLength = std::clamp(CFG.readInt(L"Options", L"TabMaxLength", 15), 4, 60);
+    useListEnabled = CFG.readBool(optSec(L"UseList"), L"UseList", true);
+    keepListVisible = CFG.readBool(optSec(L"KeepListVisible"), L"KeepListVisible", false);
+    listDimIntensity = CFG.readInt(optSec(L"DimIntensity"), L"DimIntensity", 50);
+    tabMaxLength = std::clamp(CFG.readInt(optSec(L"TabMaxLength"), L"TabMaxLength", 15), 4, 60);
     {
         // DefaultEngine drives the engine choice for newly created tabs.
         // It is only updated by deliberate engine-selector clicks; loading
         // a list with a different engine does not change it. Read here on
         // startup so the user's last preference survives across sessions.
-        const std::wstring engineStr = CFG.readString(L"Options", L"DefaultEngine", L"Lua");
+        const std::wstring engineStr = CFG.readString(optSec(L"DefaultEngine"), L"DefaultEngine", L"Lua");
         _defaultEngine = MultiReplaceEngine::engineTypeFromString(engineStr);
     }
     updateUseListState(false);
@@ -19923,13 +19949,13 @@ void MultiReplace::loadUIConfigFromIni()
     foregroundTransparency = static_cast<BYTE>(fg);
     backgroundTransparency = static_cast<BYTE>(bg);
 
-    tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
-    isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
+    tooltipsEnabled = CFG.readBool(optSec(L"Tooltips"), L"Tooltips", true);
+    isHoverTextEnabled = CFG.readBool(optSec(L"HoverText"), L"HoverText", true);
 
-    resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
-    useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
-    pickupSelection = CFG.readBool(L"Options", L"PickupSelection", true);
-    autoEscapeForFindInput = CFG.readBool(L"Options", L"AutoEscapeForFindInput", false);
+    resultDockPerEntryColorsEnabled = CFG.readBool(optSec(L"ResultDockPerEntryColors"), L"ResultDockPerEntryColors", true);
+    useListColorsForMarking = CFG.readBool(optSec(L"UseListColorsForMarking"), L"UseListColorsForMarking", true);
+    pickupSelection = CFG.readBool(optSec(L"PickupSelection"), L"PickupSelection", true);
+    autoEscapeForFindInput = CFG.readBool(optSec(L"AutoEscapeForFindInput"), L"AutoEscapeForFindInput", false);
     ResultDock::setPerEntryColorsEnabled(resultDockPerEntryColorsEnabled);
 
     if (_replaceListView)
@@ -19958,62 +19984,99 @@ void MultiReplace::loadUIConfigFromIni()
         SetWindowTransparency(_hSelf, foregroundTransparency);
 }
 
+const wchar_t* MultiReplace::optSec(const std::wstring& key)
+{
+    static const std::unordered_map<std::wstring, const wchar_t*> kSectionOf = {
+        { L"StayAfterReplace",         L"SearchAndReplace" },
+        { L"AllFromCursor",            L"SearchAndReplace" },
+        { L"MuteSounds",               L"SearchAndReplace" },
+        { L"PickupSelection",          L"SearchAndReplace" },
+        { L"AutoEscapeForFindInput",   L"SearchAndReplace" },
+        { L"DefaultEngine",            L"SearchAndReplace" },
+        { L"DoubleClickEdits",         L"ListView" },
+        { L"HoverText",                L"ListView" },
+        { L"HighlightMatch",           L"ListView" },
+        { L"KeepListVisible",          L"ListView" },
+        { L"EditFieldSize",            L"ListView" },
+        { L"UseList",                  L"ListView" },
+        { L"DimIntensity",             L"ListView" },
+        { L"GroupResults",             L"ResultDock" },
+        { L"ResultDockPerEntryColors", L"ResultDock" },
+        { L"DockWrap",                 L"ResultDock" },
+        { L"DockPurge",                L"ResultDock" },
+        { L"FlowTabsNumericAlign",     L"Csv" },
+        { L"FlowTabsIntroDontShow",    L"Csv" },
+        { L"DuplicateBookmarks",       L"Csv" },
+        { L"ExportTemplate",           L"Export" },
+        { L"ExportEscape",             L"Export" },
+        { L"ExportHeader",             L"Export" },
+        { L"ExportToBash",             L"Export" },
+        { L"Tooltips",                 L"Appearance" },
+        { L"UseListColorsForMarking",  L"Appearance" },
+        { L"ButtonsMode",              L"Interface" },
+        { L"BookmarkMatches",          L"Interface" },
+        { L"TabMaxLength",             L"Interface" },
+    };
+    auto it = kSectionOf.find(key);
+    return it != kSectionOf.end() ? it->second : L"Options";
+}
+
 MultiReplace::Settings MultiReplace::getSettings()
 {
     // Always read from INI cache (single source of truth)
     Settings s{};
-    s.tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
-    s.exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
-    s.muteSounds = CFG.readBool(L"Options", L"MuteSounds", false);
-    s.doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);
-    s.highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);
-    s.flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
-    s.flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
-    s.isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
-    s.stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
-    s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
-    s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
-    s.keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
-    s.listDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
-    s.tabMaxLength = std::clamp(CFG.readInt(L"Options", L"TabMaxLength", 15), 4, 60);
+    s.tooltipsEnabled = CFG.readBool(optSec(L"Tooltips"), L"Tooltips", true);
+    s.exportToBashEnabled = CFG.readBool(optSec(L"ExportToBash"), L"ExportToBash", false);
+    s.muteSounds = CFG.readBool(optSec(L"MuteSounds"), L"MuteSounds", false);
+    s.doubleClickEditsEnabled = CFG.readBool(optSec(L"DoubleClickEdits"), L"DoubleClickEdits", true);
+    s.highlightMatchEnabled = CFG.readBool(optSec(L"HighlightMatch"), L"HighlightMatch", true);
+    s.flowTabsIntroDontShowEnabled = CFG.readBool(optSec(L"FlowTabsIntroDontShow"), L"FlowTabsIntroDontShow", false);
+    s.flowTabsNumericAlignEnabled = CFG.readBool(optSec(L"FlowTabsNumericAlign"), L"FlowTabsNumericAlign", true);
+    s.isHoverTextEnabled = CFG.readBool(optSec(L"HoverText"), L"HoverText", true);
+    s.stayAfterReplaceEnabled = CFG.readBool(optSec(L"StayAfterReplace"), L"StayAfterReplace", false);
+    s.groupResultsEnabled = CFG.readBool(optSec(L"GroupResults"), L"GroupResults", false);
+    s.allFromCursorEnabled = CFG.readBool(optSec(L"AllFromCursor"), L"AllFromCursor", false);
+    s.keepListVisible = CFG.readBool(optSec(L"KeepListVisible"), L"KeepListVisible", false);
+    s.listDimIntensity = CFG.readInt(optSec(L"DimIntensity"), L"DimIntensity", 50);
+    s.tabMaxLength = std::clamp(CFG.readInt(optSec(L"TabMaxLength"), L"TabMaxLength", 15), 4, 60);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
-    s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
+    s.editFieldSize = CFG.readInt(optSec(L"EditFieldSize"), L"EditFieldSize", 5);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
-    s.resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
-    s.useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
-    s.duplicateBookmarksEnabled = CFG.readBool(L"Options", L"DuplicateBookmarks", false);
-    s.pickupSelection = CFG.readBool(L"Options", L"PickupSelection", true);
-    s.autoEscapeForFindInput = CFG.readBool(L"Options", L"AutoEscapeForFindInput", false);
+    s.resultDockPerEntryColorsEnabled = CFG.readBool(optSec(L"ResultDockPerEntryColors"), L"ResultDockPerEntryColors", true);
+    s.useListColorsForMarking = CFG.readBool(optSec(L"UseListColorsForMarking"), L"UseListColorsForMarking", true);
+    s.duplicateBookmarksEnabled = CFG.readBool(optSec(L"DuplicateBookmarks"), L"DuplicateBookmarks", false);
+    s.pickupSelection = CFG.readBool(optSec(L"PickupSelection"), L"PickupSelection", true);
+    s.autoEscapeForFindInput = CFG.readBool(optSec(L"AutoEscapeForFindInput"), L"AutoEscapeForFindInput", false);
     return s;
 }
 
 void MultiReplace::writeStructToConfig(const Settings& s)
 {
     // Write all logic options to ConfigManager
-    CFG.writeBool(L"Options", L"Tooltips", s.tooltipsEnabled);
-    CFG.writeBool(L"Options", L"ExportToBash", s.exportToBashEnabled);
-    CFG.writeBool(L"Options", L"MuteSounds", s.muteSounds);
-    CFG.writeBool(L"Options", L"DoubleClickEdits", s.doubleClickEditsEnabled);
-    CFG.writeBool(L"Options", L"HighlightMatch", s.highlightMatchEnabled);
-    CFG.writeBool(L"Options", L"FlowTabsIntroDontShow", s.flowTabsIntroDontShowEnabled);
-    CFG.writeBool(L"Options", L"FlowTabsNumericAlign", s.flowTabsNumericAlignEnabled);
-    CFG.writeBool(L"Options", L"HoverText", s.isHoverTextEnabled);
-    CFG.writeBool(L"Options", L"StayAfterReplace", s.stayAfterReplaceEnabled);
-    CFG.writeBool(L"Options", L"GroupResults", s.groupResultsEnabled);
-    CFG.writeBool(L"Options", L"AllFromCursor", s.allFromCursorEnabled);
-    CFG.writeBool(L"Options", L"KeepListVisible", s.keepListVisible);
-    CFG.writeInt(L"Options", L"DimIntensity", s.listDimIntensity);
-    CFG.writeInt(L"Options", L"TabMaxLength", s.tabMaxLength);
+    CFG.writeBool(optSec(L"Tooltips"), L"Tooltips", s.tooltipsEnabled);
+    CFG.writeBool(optSec(L"ExportToBash"), L"ExportToBash", s.exportToBashEnabled);
+    CFG.writeBool(optSec(L"MuteSounds"), L"MuteSounds", s.muteSounds);
+    CFG.writeBool(optSec(L"DoubleClickEdits"), L"DoubleClickEdits", s.doubleClickEditsEnabled);
+    CFG.writeBool(optSec(L"HighlightMatch"), L"HighlightMatch", s.highlightMatchEnabled);
+    CFG.writeBool(optSec(L"FlowTabsIntroDontShow"), L"FlowTabsIntroDontShow", s.flowTabsIntroDontShowEnabled);
+    CFG.writeBool(optSec(L"FlowTabsNumericAlign"), L"FlowTabsNumericAlign", s.flowTabsNumericAlignEnabled);
+    CFG.writeBool(optSec(L"HoverText"), L"HoverText", s.isHoverTextEnabled);
+    CFG.writeBool(optSec(L"StayAfterReplace"), L"StayAfterReplace", s.stayAfterReplaceEnabled);
+    CFG.writeBool(optSec(L"GroupResults"), L"GroupResults", s.groupResultsEnabled);
+    CFG.writeBool(optSec(L"AllFromCursor"), L"AllFromCursor", s.allFromCursorEnabled);
+    CFG.writeBool(optSec(L"KeepListVisible"), L"KeepListVisible", s.keepListVisible);
+    CFG.writeInt(optSec(L"DimIntensity"), L"DimIntensity", s.listDimIntensity);
+    CFG.writeInt(optSec(L"TabMaxLength"), L"TabMaxLength", s.tabMaxLength);
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", s.maxFileSizeMB);
-    CFG.writeInt(L"Options", L"EditFieldSize", s.editFieldSize);
+    CFG.writeInt(optSec(L"EditFieldSize"), L"EditFieldSize", s.editFieldSize);
     CFG.writeInt(L"Scope", L"HeaderLines", s.csvHeaderLinesCount);
-    CFG.writeBool(L"Options", L"ResultDockPerEntryColors", s.resultDockPerEntryColorsEnabled);
-    CFG.writeBool(L"Options", L"UseListColorsForMarking", s.useListColorsForMarking);
-    CFG.writeBool(L"Options", L"DuplicateBookmarks", s.duplicateBookmarksEnabled);
-    CFG.writeBool(L"Options", L"PickupSelection", s.pickupSelection);
-    CFG.writeBool(L"Options", L"AutoEscapeForFindInput", s.autoEscapeForFindInput);
+    CFG.writeBool(optSec(L"ResultDockPerEntryColors"), L"ResultDockPerEntryColors", s.resultDockPerEntryColorsEnabled);
+    CFG.writeBool(optSec(L"UseListColorsForMarking"), L"UseListColorsForMarking", s.useListColorsForMarking);
+    CFG.writeBool(optSec(L"DuplicateBookmarks"), L"DuplicateBookmarks", s.duplicateBookmarksEnabled);
+    CFG.writeBool(optSec(L"PickupSelection"), L"PickupSelection", s.pickupSelection);
+    CFG.writeBool(optSec(L"AutoEscapeForFindInput"), L"AutoEscapeForFindInput", s.autoEscapeForFindInput);
 
     // Always surface the plain "CSV (Excel)" delimiter so it is visible and
     // editable in the INI. Seed "auto" only when no value exists yet; a
@@ -20054,6 +20117,36 @@ void MultiReplace::migrateLegacyStartupKeys()
     CFG.eraseKey(kGeneralIniSection, kLegacyReopenKey);
 }
 
+void MultiReplace::migrateOptionsLayout()
+{
+    // One-shot: split the historic catch-all [Options] section into
+    // function-based sections. Runs only while the INI still carries the
+    // old schema (IniSchemaVersion < 2). save() then writes the new layout,
+    // so this is a no-op on every subsequent start.
+    const wchar_t kSchemaKey[] = L"IniSchemaVersion";
+    const int schema = CFG.readInt(kGeneralIniSection, kSchemaKey, 1);
+    if (schema >= 2) return;
+
+    // The 29 categorized keys. optSec() is the single source of truth for
+    // the target section; moveKey is a no-op when the key is absent.
+    static const wchar_t* const keys[] = {
+        L"StayAfterReplace", L"AllFromCursor", L"MuteSounds", L"PickupSelection",
+        L"AutoEscapeForFindInput", L"DefaultEngine",
+        L"DoubleClickEdits", L"HoverText", L"HighlightMatch", L"KeepListVisible",
+        L"EditFieldSize", L"UseList", L"DimIntensity",
+        L"GroupResults", L"ResultDockPerEntryColors", L"DockWrap", L"DockPurge",
+        L"FlowTabsNumericAlign", L"FlowTabsIntroDontShow", L"DuplicateBookmarks",
+        L"ExportTemplate", L"ExportEscape", L"ExportHeader", L"ExportToBash",
+        L"Tooltips", L"UseListColorsForMarking",
+        L"ButtonsMode", L"BookmarkMatches", L"TabMaxLength",
+    };
+    for (const wchar_t* k : keys) {
+        CFG.moveKey(L"Options", k, optSec(k));
+    }
+
+    CFG.writeInt(kGeneralIniSection, kSchemaKey, 2);
+}
+
 void MultiReplace::loadConfigOnce()
 {
     const auto settingsPath = generateConfigFilePaths().first;
@@ -20064,6 +20157,7 @@ void MultiReplace::loadConfigOnce()
     // is tied to loadSettings / panel creation) because preferences
     // have to survive even when the user never opens the panel.
     migrateLegacyStartupKeys();
+    migrateOptionsLayout();
 }
 
 void MultiReplace::syncUIToCache()
@@ -20102,30 +20196,30 @@ void MultiReplace::syncUIToCache()
     // column widths/visibility/lock/order - all live per-tab now under
     // [Tabs]/TabN_*. Only settings-dialog options remain global.
 
-    CFG.writeBool(L"Options", L"ButtonsMode", IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED);
-    CFG.writeBool(L"Options", L"BookmarkMatches", IsDlgButtonChecked(_hSelf, IDC_BOOKMARK_MATCHES_CHECKBOX) == BST_CHECKED);
-    CFG.writeBool(L"Options", L"UseList", useListEnabled);
+    CFG.writeBool(optSec(L"ButtonsMode"), L"ButtonsMode", IsDlgButtonChecked(_hSelf, IDC_2_BUTTONS_MODE) == BST_CHECKED);
+    CFG.writeBool(optSec(L"BookmarkMatches"), L"BookmarkMatches", IsDlgButtonChecked(_hSelf, IDC_BOOKMARK_MATCHES_CHECKBOX) == BST_CHECKED);
+    CFG.writeBool(optSec(L"UseList"), L"UseList", useListEnabled);
 
     // Config-managed Options
-    CFG.writeBool(L"Options", L"Tooltips", tooltipsEnabled);
-    CFG.writeBool(L"Options", L"HighlightMatch", highlightMatchEnabled);
-    CFG.writeBool(L"Options", L"FlowTabsIntroDontShow", flowTabsIntroDontShowEnabled);
-    CFG.writeBool(L"Options", L"FlowTabsNumericAlign", flowTabsNumericAlignEnabled);
-    CFG.writeBool(L"Options", L"ExportToBash", exportToBashEnabled);
-    CFG.writeBool(L"Options", L"MuteSounds", muteSounds);
-    CFG.writeBool(L"Options", L"DoubleClickEdits", doubleClickEditsEnabled);
-    CFG.writeBool(L"Options", L"HoverText", isHoverTextEnabled);
-    CFG.writeInt(L"Options", L"EditFieldSize", editFieldSize);
-    CFG.writeBool(L"Options", L"StayAfterReplace", stayAfterReplaceEnabled);
-    CFG.writeBool(L"Options", L"AllFromCursor", allFromCursorEnabled);
-    CFG.writeBool(L"Options", L"GroupResults", groupResultsEnabled);
-    CFG.writeBool(L"Options", L"KeepListVisible", keepListVisible);
-    CFG.writeInt(L"Options", L"DimIntensity", listDimIntensity);
-    CFG.writeInt(L"Options", L"TabMaxLength", tabMaxLength);
-    CFG.writeString(L"Options", L"DefaultEngine",
+    CFG.writeBool(optSec(L"Tooltips"), L"Tooltips", tooltipsEnabled);
+    CFG.writeBool(optSec(L"HighlightMatch"), L"HighlightMatch", highlightMatchEnabled);
+    CFG.writeBool(optSec(L"FlowTabsIntroDontShow"), L"FlowTabsIntroDontShow", flowTabsIntroDontShowEnabled);
+    CFG.writeBool(optSec(L"FlowTabsNumericAlign"), L"FlowTabsNumericAlign", flowTabsNumericAlignEnabled);
+    CFG.writeBool(optSec(L"ExportToBash"), L"ExportToBash", exportToBashEnabled);
+    CFG.writeBool(optSec(L"MuteSounds"), L"MuteSounds", muteSounds);
+    CFG.writeBool(optSec(L"DoubleClickEdits"), L"DoubleClickEdits", doubleClickEditsEnabled);
+    CFG.writeBool(optSec(L"HoverText"), L"HoverText", isHoverTextEnabled);
+    CFG.writeInt(optSec(L"EditFieldSize"), L"EditFieldSize", editFieldSize);
+    CFG.writeBool(optSec(L"StayAfterReplace"), L"StayAfterReplace", stayAfterReplaceEnabled);
+    CFG.writeBool(optSec(L"AllFromCursor"), L"AllFromCursor", allFromCursorEnabled);
+    CFG.writeBool(optSec(L"GroupResults"), L"GroupResults", groupResultsEnabled);
+    CFG.writeBool(optSec(L"KeepListVisible"), L"KeepListVisible", keepListVisible);
+    CFG.writeInt(optSec(L"DimIntensity"), L"DimIntensity", listDimIntensity);
+    CFG.writeInt(optSec(L"TabMaxLength"), L"TabMaxLength", tabMaxLength);
+    CFG.writeString(optSec(L"DefaultEngine"), L"DefaultEngine",
         MultiReplaceEngine::engineTypeToString(_defaultEngine));
-    CFG.writeBool(L"Options", L"DockWrap", ResultDock::wrapEnabled());
-    CFG.writeBool(L"Options", L"DockPurge", ResultDock::purgeEnabled());
+    CFG.writeBool(optSec(L"DockWrap"), L"DockWrap", ResultDock::wrapEnabled());
+    CFG.writeBool(optSec(L"DockPurge"), L"DockPurge", ResultDock::purgeEnabled());
 
     // Lua Options
     CFG.writeBool(L"Lua", L"SafeMode", _luaSafeModeEnabled);
@@ -20180,31 +20274,31 @@ void MultiReplace::syncHistoryToCache(HWND hComboBox, const std::wstring& keyPre
 void MultiReplace::applyConfigSettingsOnly()
 {
     // Tooltip
-    bool newTooltips = CFG.readBool(L"Options", L"Tooltips", true);
+    bool newTooltips = CFG.readBool(optSec(L"Tooltips"), L"Tooltips", true);
     if (tooltipsEnabled != newTooltips) {
         tooltipsEnabled = newTooltips;
         onTooltipsToggled(tooltipsEnabled);
     }
 
     // Boolean Options
-    muteSounds = CFG.readBool(L"Options", L"MuteSounds", false);
-    doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);
-    highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);
-    stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
-    allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
-    groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
-    flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
-    flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
-    exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
+    muteSounds = CFG.readBool(optSec(L"MuteSounds"), L"MuteSounds", false);
+    doubleClickEditsEnabled = CFG.readBool(optSec(L"DoubleClickEdits"), L"DoubleClickEdits", true);
+    highlightMatchEnabled = CFG.readBool(optSec(L"HighlightMatch"), L"HighlightMatch", true);
+    stayAfterReplaceEnabled = CFG.readBool(optSec(L"StayAfterReplace"), L"StayAfterReplace", false);
+    allFromCursorEnabled = CFG.readBool(optSec(L"AllFromCursor"), L"AllFromCursor", false);
+    groupResultsEnabled = CFG.readBool(optSec(L"GroupResults"), L"GroupResults", false);
+    flowTabsIntroDontShowEnabled = CFG.readBool(optSec(L"FlowTabsIntroDontShow"), L"FlowTabsIntroDontShow", false);
+    flowTabsNumericAlignEnabled = CFG.readBool(optSec(L"FlowTabsNumericAlign"), L"FlowTabsNumericAlign", true);
+    exportToBashEnabled = CFG.readBool(optSec(L"ExportToBash"), L"ExportToBash", false);
     _luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
     _formulaErrorDialogEnabled = CFG.readBool(L"Engines", L"ShowErrorDialogs", true);
     limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
-    pickupSelection = CFG.readBool(L"Options", L"PickupSelection", true);
-    autoEscapeForFindInput = CFG.readBool(L"Options", L"AutoEscapeForFindInput", false);
+    pickupSelection = CFG.readBool(optSec(L"PickupSelection"), L"PickupSelection", true);
+    autoEscapeForFindInput = CFG.readBool(optSec(L"AutoEscapeForFindInput"), L"AutoEscapeForFindInput", false);
 
     // Library Mode: keep list visible
-    bool newKeepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
+    bool newKeepListVisible = CFG.readBool(optSec(L"KeepListVisible"), L"KeepListVisible", false);
     if (keepListVisible != newKeepListVisible) {
         keepListVisible = newKeepListVisible;
         if (keepListVisible && !useListEnabled) {
@@ -20233,7 +20327,7 @@ void MultiReplace::applyConfigSettingsOnly()
 
     // Dim intensity (0..100). A value change only affects the next
     // repaint of the dimmed list; no explicit refresh is needed here.
-    int newDimIntensity = CFG.readInt(L"Options", L"DimIntensity", 50);
+    int newDimIntensity = CFG.readInt(optSec(L"DimIntensity"), L"DimIntensity", 50);
     if (listDimIntensity != newDimIntensity) {
         listDimIntensity = newDimIntensity;
         // Repaint if the list is currently dimmed so the change is
@@ -20244,16 +20338,16 @@ void MultiReplace::applyConfigSettingsOnly()
         }
     }
 
-    resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
-    useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
+    resultDockPerEntryColorsEnabled = CFG.readBool(optSec(L"ResultDockPerEntryColors"), L"ResultDockPerEntryColors", true);
+    useListColorsForMarking = CFG.readBool(optSec(L"UseListColorsForMarking"), L"UseListColorsForMarking", true);
     ResultDock::setPerEntryColorsEnabled(resultDockPerEntryColorsEnabled);
 
     // Just update the bookmark setting - no action needed
     // Bookmarks will be handled correctly on next duplicate scan
-    _duplicateBookmarksEnabled = CFG.readBool(L"Options", L"DuplicateBookmarks", false);
+    _duplicateBookmarksEnabled = CFG.readBool(optSec(L"DuplicateBookmarks"), L"DuplicateBookmarks", false);
 
     // Hover Text
-    bool newHover = CFG.readBool(L"Options", L"HoverText", true);
+    bool newHover = CFG.readBool(optSec(L"HoverText"), L"HoverText", true);
     if (isHoverTextEnabled != newHover) {
         isHoverTextEnabled = newHover;
         if (_replaceListView) {
@@ -20264,7 +20358,7 @@ void MultiReplace::applyConfigSettingsOnly()
     }
 
     // Integer Options
-    editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
+    editFieldSize = CFG.readInt(optSec(L"EditFieldSize"), L"EditFieldSize", 5);
     editFieldSize = std::clamp(editFieldSize, MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
 
     CSVheaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
@@ -20652,6 +20746,12 @@ void MultiReplace::signalShutdown() {
     else {
         const auto settingsPath = generateConfigFilePaths().first;
         CFG.forceReload(settingsPath);
+        // forceReload pulls the on-disk INI back into the cache, which
+        // also revives dead legacy entries. Once the workspace is on the
+        // V6 layout (snapshots dir exists, migration long done) those are
+        // pure leftovers - drop them so the panel-closed save stays clean.
+        if (instance && snapshotsDirExists())
+            instance->dropLegacyConfigEntries();
         CFG.writeBool(kGeneralIniSection, kGeneralIniKeyPanelWasVisible, false);
         CFG.save(settingsPath);
     }

@@ -93,6 +93,14 @@ public:
     void eraseKey(const std::wstring& sec, const std::wstring& key);
     void eraseSection(const std::wstring& sec);
 
+    // Migration helpers (one-time INI schema upgrades).
+    // hasKey: true if the key exists in the cache.
+    // moveKey: relocate a key from one section to another, preserving its
+    // value and string-escaping flag. No-op if the source key is absent.
+    bool hasKey(const std::wstring& sec, const std::wstring& key) const;
+    void moveKey(const std::wstring& srcSec, const std::wstring& key,
+        const std::wstring& dstSec);
+
     // Raw access if absolutely necessary
     const IniFileCache& ini() const { return _cache; }
 

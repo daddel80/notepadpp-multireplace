@@ -649,6 +649,10 @@ public:
 
     static Settings getSettings();
     static void writeStructToConfig(const Settings& settings);
+    // Resolve the INI section for a global option key. Returns the
+    // categorized section for the 29 known keys, else "Options" (covers
+    // legacy/per-tab keys and forward-compatible unknown keys).
+    static const wchar_t* optSec(const std::wstring& key);
     // Getters for ConfigDialog
     bool isUseListEnabled() const;
     bool isTwoButtonsModeEnabled() const;
@@ -713,6 +717,7 @@ public:
     static void toggleReopenOnStartup();
     static void loadConfigOnce();
     static void migrateLegacyStartupKeys();
+    static void migrateOptionsLayout();
 #pragma endregion
 
     enum class ChangeType { Insert, Delete, Modify };
@@ -1456,6 +1461,7 @@ private:
     void writeTabsToConfig();
     void loadTabsFromConfig();
     void migrateLegacyList();
+    void migrateLegacyColumnVisibility(TabState& tab);
     void dropLegacyConfigEntries();
     void saveAllTabSnapshots();
     void cleanupOrphanSnapshots();

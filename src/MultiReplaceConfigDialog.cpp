@@ -995,27 +995,27 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
 
     const auto& CFG = ConfigManager::instance();
     MultiReplace::Settings s{};
-    s.tooltipsEnabled = CFG.readBool(L"Options", L"Tooltips", true);
-    s.exportToBashEnabled = CFG.readBool(L"Options", L"ExportToBash", false);
-    s.muteSounds = CFG.readBool(L"Options", L"MuteSounds", false);
-    s.doubleClickEditsEnabled = CFG.readBool(L"Options", L"DoubleClickEdits", true);
-    s.highlightMatchEnabled = CFG.readBool(L"Options", L"HighlightMatch", true);
-    s.flowTabsIntroDontShowEnabled = CFG.readBool(L"Options", L"FlowTabsIntroDontShow", false);
-    s.flowTabsNumericAlignEnabled = CFG.readBool(L"Options", L"FlowTabsNumericAlign", true);
-    s.isHoverTextEnabled = CFG.readBool(L"Options", L"HoverText", true);
-    s.stayAfterReplaceEnabled = CFG.readBool(L"Options", L"StayAfterReplace", false);
-    s.groupResultsEnabled = CFG.readBool(L"Options", L"GroupResults", false);
-    s.allFromCursorEnabled = CFG.readBool(L"Options", L"AllFromCursor", false);
-    s.keepListVisible = CFG.readBool(L"Options", L"KeepListVisible", false);
+    s.tooltipsEnabled = CFG.readBool(MultiReplace::optSec(L"Tooltips"), L"Tooltips", true);
+    s.exportToBashEnabled = CFG.readBool(MultiReplace::optSec(L"ExportToBash"), L"ExportToBash", false);
+    s.muteSounds = CFG.readBool(MultiReplace::optSec(L"MuteSounds"), L"MuteSounds", false);
+    s.doubleClickEditsEnabled = CFG.readBool(MultiReplace::optSec(L"DoubleClickEdits"), L"DoubleClickEdits", true);
+    s.highlightMatchEnabled = CFG.readBool(MultiReplace::optSec(L"HighlightMatch"), L"HighlightMatch", true);
+    s.flowTabsIntroDontShowEnabled = CFG.readBool(MultiReplace::optSec(L"FlowTabsIntroDontShow"), L"FlowTabsIntroDontShow", false);
+    s.flowTabsNumericAlignEnabled = CFG.readBool(MultiReplace::optSec(L"FlowTabsNumericAlign"), L"FlowTabsNumericAlign", true);
+    s.isHoverTextEnabled = CFG.readBool(MultiReplace::optSec(L"HoverText"), L"HoverText", true);
+    s.stayAfterReplaceEnabled = CFG.readBool(MultiReplace::optSec(L"StayAfterReplace"), L"StayAfterReplace", false);
+    s.groupResultsEnabled = CFG.readBool(MultiReplace::optSec(L"GroupResults"), L"GroupResults", false);
+    s.allFromCursorEnabled = CFG.readBool(MultiReplace::optSec(L"AllFromCursor"), L"AllFromCursor", false);
+    s.keepListVisible = CFG.readBool(MultiReplace::optSec(L"KeepListVisible"), L"KeepListVisible", false);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
-    s.editFieldSize = CFG.readInt(L"Options", L"EditFieldSize", 5);
+    s.editFieldSize = CFG.readInt(MultiReplace::optSec(L"EditFieldSize"), L"EditFieldSize", 5);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
-    s.resultDockPerEntryColorsEnabled = CFG.readBool(L"Options", L"ResultDockPerEntryColors", true);
-    s.useListColorsForMarking = CFG.readBool(L"Options", L"UseListColorsForMarking", true);
-    s.duplicateBookmarksEnabled = CFG.readBool(L"Options", L"DuplicateBookmarks", false);
-    s.pickupSelection = CFG.readBool(L"Options", L"PickupSelection", true);
-    s.autoEscapeForFindInput = CFG.readBool(L"Options", L"AutoEscapeForFindInput", false);
+    s.resultDockPerEntryColorsEnabled = CFG.readBool(MultiReplace::optSec(L"ResultDockPerEntryColors"), L"ResultDockPerEntryColors", true);
+    s.useListColorsForMarking = CFG.readBool(MultiReplace::optSec(L"UseListColorsForMarking"), L"UseListColorsForMarking", true);
+    s.duplicateBookmarksEnabled = CFG.readBool(MultiReplace::optSec(L"DuplicateBookmarks"), L"DuplicateBookmarks", false);
+    s.pickupSelection = CFG.readBool(MultiReplace::optSec(L"PickupSelection"), L"PickupSelection", true);
+    s.autoEscapeForFindInput = CFG.readBool(MultiReplace::optSec(L"AutoEscapeForFindInput"), L"AutoEscapeForFindInput", false);
 
     registerBindingsOnce();
     applyBindingsToUI_Generic((void*)&s);
@@ -1066,9 +1066,9 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
 
     // Export Data settings
     if (_hExportPanel) {
-        std::wstring exportTemplate = CFG.readString(L"Options", L"ExportTemplate", kDefaultExportTemplate);
-        bool exportEscape = CFG.readBool(L"Options", L"ExportEscape", false);
-        bool exportHeader = CFG.readBool(L"Options", L"ExportHeader", false);
+        std::wstring exportTemplate = CFG.readString(MultiReplace::optSec(L"ExportTemplate"), L"ExportTemplate", kDefaultExportTemplate);
+        bool exportEscape = CFG.readBool(MultiReplace::optSec(L"ExportEscape"), L"ExportEscape", false);
+        bool exportHeader = CFG.readBool(MultiReplace::optSec(L"ExportHeader"), L"ExportHeader", false);
 
         if (HWND hEdit = GetDlgItem(_hExportPanel, IDC_CFG_EXPORT_TEMPLATE_EDIT)) {
             SetWindowTextW(hEdit, exportTemplate.c_str());
@@ -1124,9 +1124,9 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         bool exportEscape = (IsDlgButtonChecked(_hExportPanel, IDC_CFG_EXPORT_ESCAPE_CHECK) == BST_CHECKED);
         bool exportHeader = (IsDlgButtonChecked(_hExportPanel, IDC_CFG_EXPORT_HEADER_CHECK) == BST_CHECKED);
 
-        ConfigManager::instance().writeString(L"Options", L"ExportTemplate", templateBuf);
-        ConfigManager::instance().writeBool(L"Options", L"ExportEscape", exportEscape);
-        ConfigManager::instance().writeBool(L"Options", L"ExportHeader", exportHeader);
+        ConfigManager::instance().writeString(MultiReplace::optSec(L"ExportTemplate"), L"ExportTemplate", templateBuf);
+        ConfigManager::instance().writeBool(MultiReplace::optSec(L"ExportEscape"), L"ExportEscape", exportEscape);
+        ConfigManager::instance().writeBool(MultiReplace::optSec(L"ExportHeader"), L"ExportHeader", exportHeader);
     }
 
     // Engine-level toggles (outside the Settings struct, written directly).
@@ -1232,9 +1232,9 @@ void MultiReplaceConfigDialog::resetToDefaults()
     cm.writeInt(L"Window", L"BackgroundTransparency", 190);
     cm.writeString(L"Window", L"ScaleFactor", L"1.0");
 
-    cm.writeString(L"Options", L"ExportTemplate", kDefaultExportTemplate);
-    cm.writeBool(L"Options", L"ExportEscape", false);
-    cm.writeBool(L"Options", L"ExportHeader", false);
+    cm.writeString(MultiReplace::optSec(L"ExportTemplate"), L"ExportTemplate", kDefaultExportTemplate);
+    cm.writeBool(MultiReplace::optSec(L"ExportEscape"), L"ExportEscape", false);
+    cm.writeBool(MultiReplace::optSec(L"ExportHeader"), L"ExportHeader", false);
 
     // Engine-level defaults
     cm.writeBool(L"Engines", L"ShowErrorDialogs", true);

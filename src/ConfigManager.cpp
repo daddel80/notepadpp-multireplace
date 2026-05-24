@@ -27,6 +27,8 @@
 #include "StringUtils.h" 
 #include <fstream>
 #include <sstream>
+#include <vector>
+#include <algorithm>
 #include <windows.h>
 
 //
@@ -85,27 +87,54 @@ bool ConfigManager::save(const std::wstring& file) const
     out.write("\xEF\xBB\xBF", 3);
 
     const auto& data = _cache.raw();
-    for (const auto& secPair : data) {
-        const std::wstring& section = secPair.first;
-        out << Encoding::wstringToUtf8(L"[" + section + L"]\n");
 
-        for (const auto& kv : secPair.second) {
-            std::wstring line;
-            std::wstring fullKey = section + L"|" + kv.first;
+    // Write a single section (header + keys + trailing blank line). The
+    // string-key escaping is identical to the legacy path; kept in one place.
+    auto writeSection = [&](const std::wstring& section,
+        const IniFileCache::Section& keys)
+        {
+            out << Encoding::wstringToUtf8(L"[" + section + L"]\n");
+            for (const auto& kv : keys) {
+                const std::wstring fullKey = section + L"|" + kv.first;
+                std::wstring line;
+                if (_stringKeys.find(fullKey) != _stringKeys.end()) {
+                    line = kv.first + L"=" + StringUtils::escapeQuoted(kv.second) + L"\n";
+                }
+                else {
+                    line = kv.first + L"=" + kv.second + L"\n";
+                }
+                out << Encoding::wstringToUtf8(line);
+            }
+            out << '\n';
+        };
 
-            // Check if this key was written as a string (needs escaping)
-            if (_stringKeys.find(fullKey) != _stringKeys.end()) {
-                // String value: escape for proper roundtrip
-                line = kv.first + L"=" + StringUtils::escapeQuoted(kv.second) + L"\n";
-            }
-            else {
-                // Numeric value: write as-is
-                line = kv.first + L"=" + kv.second + L"\n";
-            }
-            out << Encoding::wstringToUtf8(line);
+    // Preferred section order: editable settings first (grouped by function),
+    // machine state last. Any section not listed here is written afterwards
+    // in alphabetical order, so nothing is ever dropped.
+    static const wchar_t* const kSectionOrder[] = {
+        L"General",
+        L"SearchAndReplace", L"Interface", L"ReplaceInFiles", L"Engines", L"Lua",
+        L"Scope", L"Csv", L"List", L"ListView", L"ResultDock",
+        L"Export", L"Appearance", L"Tandem",
+        L"Window", L"Tabs", L"History",
+    };
+
+    std::vector<std::wstring> written;
+    for (const wchar_t* sec : kSectionOrder) {
+        auto it = data.find(sec);
+        if (it != data.end()) {
+            writeSection(it->first, it->second);
+            written.push_back(it->first);
         }
-        out << '\n';
     }
+    // Safety net: emit any remaining sections (unlisted / future) so the
+    // ordering change can never silently lose data.
+    for (const auto& secPair : data) {
+        if (std::find(written.begin(), written.end(), secPair.first) == written.end()) {
+            writeSection(secPair.first, secPair.second);
+        }
+    }
+
     out.close();
     return !out.fail();
 }
@@ -188,5 +217,35 @@ void ConfigManager::eraseSection(const std::wstring& sec)
         else {
             ++it;
         }
+    }
+}
+
+bool ConfigManager::hasKey(const std::wstring& sec, const std::wstring& key) const
+{
+    auto it = _cache._data.find(sec);
+    if (it == _cache._data.end()) return false;
+    return it->second.find(key) != it->second.end();
+}
+
+void ConfigManager::moveKey(const std::wstring& srcSec, const std::wstring& key,
+    const std::wstring& dstSec)
+{
+    if (srcSec == dstSec) return;
+    auto sIt = _cache._data.find(srcSec);
+    if (sIt == _cache._data.end()) return;
+    auto kIt = sIt->second.find(key);
+    if (kIt == sIt->second.end()) return;
+
+    _cache._data[dstSec][key] = kIt->second;
+
+    const std::wstring srcFull = srcSec + L"|" + key;
+    if (_stringKeys.find(srcFull) != _stringKeys.end()) {
+        _stringKeys.insert(dstSec + L"|" + key);
+        _stringKeys.erase(srcFull);
+    }
+
+    sIt->second.erase(kIt);
+    if (sIt->second.empty()) {
+        _cache._data.erase(sIt);
     }
 }
