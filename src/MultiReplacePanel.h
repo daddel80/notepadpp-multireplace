@@ -470,6 +470,17 @@ public:
     // can bridge to tandem_dock::DockEdge without friend declarations.
     enum class TandemDockEdge { Bottom, Right, Left };
 
+    // RAII guard for _suppressLiveWidthSync. Used around tab-switch /
+    // load / new-tab UI refreshes so createListViewColumns does not
+    // overwrite the freshly restored widths with outgoing-tab values.
+    struct SuppressWidthSyncGuard {
+        bool& _flag;
+        explicit SuppressWidthSyncGuard(bool& flag) : _flag(flag) { _flag = true; }
+        ~SuppressWidthSyncGuard() { _flag = false; }
+        SuppressWidthSyncGuard(const SuppressWidthSyncGuard&) = delete;
+        SuppressWidthSyncGuard& operator=(const SuppressWidthSyncGuard&) = delete;
+    };
+
     /// RAII guard for Scintilla undo grouping.
     /// Uses shared nesting counter from SciUndoGuard.h to ensure that
     /// nested operations (e.g., ColumnTabs functions called from here)
@@ -1276,7 +1287,7 @@ private:
 
 #pragma endregion
 
-#pragma region Lua Debug Window
+#pragma region Formula Debug Window
     int ShowDebugWindow(const std::string& message);
     static LRESULT CALLBACK DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     static void CopyListViewToClipboard(HWND hListView);
@@ -1466,6 +1477,10 @@ private:
     void saveAllTabSnapshots();
     void cleanupOrphanSnapshots();
     void checkSingleTabForFileChange(int tabIndex);
+
+#pragma endregion
+
+#pragma region Tabs
 
     // Tab control rendering.
     void rebuildTabControl();

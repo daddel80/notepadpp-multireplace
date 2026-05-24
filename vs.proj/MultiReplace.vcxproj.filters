@@ -160,6 +160,8 @@
       <Filter>ExprTK</Filter>
     </ClCompile>
     <ClCompile Include="..\src\ListCodec.cpp" />
+    <ClCompile Include="..\src\MultiReplacePanel_FlowTabs.cpp" />
+    <ClCompile Include="..\src\MultiReplacePanel_FormulaDebug.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
