@@ -1368,10 +1368,10 @@ The mode is **mandatory** — `ts:` alone is not enough, you must pick a mode. F
 
 Grammar:
 
-- `[ [fill]align ] d:strftime_pattern` — local time
-- `[ [fill]align ] d:!strftime_pattern` — UTC
+- `[ [fill]align ] d:strftime_pattern`  — **local time** (the everyday form)
+- `[ [fill]align ] d:!strftime_pattern` — **UTC** (opt-in)
 
-Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through `strftime`. The optional `!` prefix forces UTC; without it the system's local time zone is used. This follows the same convention as Lua's `os.date()`. An optional frame may precede the marker (see [Frame before a marker](#frame-before-a-marker)).
+Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through `strftime`. A bare `d:` is all you need — it renders in the machine's local time zone. The `!` prefix is **optional** and only switches the output to UTC; it is not required for `d:` to work and follows Lua's `os.date()` convention. An optional frame may precede the marker (see [Frame before a marker](#frame-before-a-marker)).
 
 The pattern accepts any standard strftime specifier. Literal text between specifiers is passed through verbatim. Common specifiers:
 
@@ -1397,7 +1397,16 @@ The pattern accepts any standard strftime specifier. Literal text between specif
 
 Weekday/month names follow the system locale. The full list of `strftime` specifiers is platform-defined and passes through verbatim — anything your C library supports works here.
 
-| Spec                       | Timestamp     | Output (UTC)                       |
+**Local vs. UTC.** The same timestamp formatted both ways differs by your UTC offset. `d:` is the normal, local form; add `!` only when you specifically want UTC:
+
+| Spec                     | Timestamp     | Output                                |
+|--------------------------|---------------|---------------------------------------|
+| `d:%Y-%m-%d %H:%M:%S`    | `1700000000`  | `2023-11-14 23:13:20` (local, CET)    |
+| `d:!%Y-%m-%d %H:%M:%S`   | `1700000000`  | `2023-11-14 22:13:20` (UTC)           |
+
+The examples below use `!` only so the output is reproducible here regardless of your time zone — drop the `!` for local time.
+
+| Spec                       | Timestamp     | Output                             |
 |----------------------------|---------------|------------------------------------|
 | `d:!%Y-%m-%d`              | `1700000000`  | `2023-11-14`                       |
 | `>15 d:!%Y-%m-%d`          | `1700000000`  | `     2023-11-14`                  |
