@@ -1,8 +1,15 @@
 // Test harness for FormatSpec. Builds standalone with the FormatSpec
-// library only - no MR, no ExprTk, no Win32.
+// library only - no MR, no ExprTk, no Win32. Run from the src/tests dir.
 //
-//   g++ -std=c++20 -Wall -Wextra format_spec_qa.cpp ../fs/FormatSpec.cpp -o format_spec_qa
+// MSVC (x64 Native Tools Command Prompt for VS 2022):
+//   cl /std:c++17 /EHsc /I.. format_spec_qa.cpp ..\exprtk\FormatSpec.cpp /Fe:format_spec_qa.exe
+//   format_spec_qa.exe
+//
+// MinGW / g++:
+//   g++ -std=c++17 -Wall -Wextra -I.. format_spec_qa.cpp ../exprtk/FormatSpec.cpp -o format_spec_qa
 //   ./format_spec_qa
+//
+// Pass -v for a verbose pass-by-pass listing.
 
 #include "../exprtk/FormatSpec.h"
 
@@ -40,6 +47,32 @@ void check(const std::wstring& specText, double value,
     if (verbose) {
         std::wprintf(L"PASS  %-14ls  %-14g  -> %-20ls  (%hs)\n",
                      specText.c_str(), value, got.c_str(), label);
+    }
+    ++passed;
+}
+
+void checkText(const std::wstring& specText, const std::string& value,
+               const std::wstring& expected, const char* label)
+{
+    auto spec = FormatSpec::parse(specText);
+    if (!spec.valid) {
+        std::wcout << L"FAIL [" << label << L"] parse error: "
+                   << std::wstring(spec.errorMessage.begin(), spec.errorMessage.end())
+                   << L"\n";
+        ++failed;
+        return;
+    }
+    std::wstring got = FormatSpec::apply(spec, value);
+    if (got != expected) {
+        std::wcout << L"FAIL [" << label << L"] spec=\"" << specText
+                   << L"\" expected=\"" << expected
+                   << L"\" got=\"" << got << L"\"\n";
+        ++failed;
+        return;
+    }
+    if (verbose) {
+        std::wprintf(L"PASS  %-14ls  (text)          -> %-20ls  (%hs)\n",
+                     specText.c_str(), got.c_str(), label);
     }
     ++passed;
 }
@@ -163,6 +196,25 @@ int main(int argc, char** argv) {
     check(L"06.2f", -3.14,       L"-03.14",       "neg with zeropad");
     check(L"x",     -1.0,        L"ffffffffffffffff", "x negative wraps");
 
+    // ---- Numeric: v2 universal frame (align/fill on numbers) ----
+    check(L"5",      123,        L"  123",        "num default align = right");
+    check(L"<5",     123,        L"123  ",        "num align left");
+    check(L">5",     123,        L"  123",        "num align right explicit");
+    check(L"^5",     123,        L" 123 ",        "num align center");
+    check(L">5.2f",  3.14159,    L" 3.14",        "float right + precision");
+    check(L"<5.2f",  3.14159,    L"3.14 ",        "float left + precision");
+    check(L"^5.2f",  3.14159,    L"3.14 ",        "float center + precision");
+    check(L"*>5.2f", 3.14159,    L"*3.14",        "float fill '*' right");
+    check(L"*<5.2f", 3.14159,    L"3.14*",        "float fill '*' left");
+    check(L"<8d",    42,         L"42      ",     "int left");
+    checkParseError(L">05d",                      "align + zeropad conflict");
+
+    // ---- Numeric: default type with precision behaves like 'g' ----
+    check(L".3",     3.14159,    L"3.14",         "default prec = significant (g)");
+    check(L".3",     1234.5678,  L"1.23e+03",     "default prec switches to sci (g)");
+    check(L".3",     3.0,        L"3",            "default prec trims zeros (g)");
+    check(L".5",     3.14159,    L"3.1416",       "default prec 5 significant");
+
     // ---- Duration: ts ----
     check(L"ts:hms",  3725.0,    L"1:02:05",      "ts:hms 1h2m5s");
     check(L"ts:hms",  0.0,       L"0:00:00",      "ts:hms zero");
@@ -182,6 +234,42 @@ int main(int argc, char** argv) {
     // ---- Duration: td ----
     check(L"td:dhms", 1.5,       L"1 12:00:00",   "td:dhms 1.5d");
     check(L"td:dhm",  1.5,       L"1 12:00",      "td:dhm 1.5d");
+
+    // ---- v2 universal frame on duration / date ----
+    check(L"^12 ts:hms", 3725.0,  L"  1:02:05   ", "dur align center");
+    check(L">12 ts:hms", 3725.0,  L"     1:02:05", "dur align right");
+    check(L"<12 ts:hms", 3725.0,  L"1:02:05     ", "dur align left");
+    check(L"*>12ts:hms", 3725.0,  L"*****1:02:05", "dur fill, no space before marker");
+    check(L">15 d:!%Y-%m-%d", 1700000000.0, L"     2023-11-14", "date align right");
+    check(L"<15 d:!%Y-%m-%d", 1700000000.0, L"2023-11-14     ", "date align left");
+
+    // ---- v2 marker-free: bare frame on a STRING value (t: dropped) ----
+    checkText(L">8",    "abc",   L"     abc",     "bare frame on text, right");
+    checkText(L"<8",    "abc",   L"abc     ",     "bare frame on text, left");
+    checkText(L"^8",    "abc",   L"  abc   ",     "bare frame on text, center");
+    checkText(L"*>8",   "abc",   L"*****abc",     "bare frame on text, fill");
+    checkText(L">8.3",  "hello", L"     hel",     "bare frame on text, .3 = truncation");
+    // v2 marker in the MIDDLE: frame, then marker, then body (uniform with d:/ts:)
+    checkText(L">8 t:",  "abc",   L"     abc",     "t: marker after frame");
+    checkText(L">8 t:.3","hello", L"     hel",     "t: after frame + truncation");
+    // n: optional == bare (numeric value), marker after the frame
+    check(L">8 n:.2f", 3.14159,   L"    3.14",     "n: after frame == bare");
+    check(L">8.2f",    3.14159,   L"    3.14",     "bare == n:");
+    // Old marker-FIRST spelling is no longer valid (frame must lead)
+    checkParseError(L"n:>8.2f", "n: before frame rejected");
+    checkParseError(L"t:>8",    "t: before frame rejected");
+    checkParseError(L"t:>8.3",  "t: before frame+trunc rejected");
+    // n: in the middle, marker is cosmetic: same output as bare, all bodies
+    check(L"n:5.2f",  3.14,      L" 3.14",        "n: no frame, body only");
+    check(L"<8 n:.2f",3.14159,   L"3.14    ",     "n: after left-align frame");
+    check(L"^10 n:.2f",3.14159,  L"   3.14   ",   "n: after center frame");
+    check(L"*>8 n:x", 255,       L"******ff",     "n: after fill+align, hex body");
+    // align + zero-pad still conflicts whether the align is in the body (>05d)
+    // or inherited from a frame before n: (>8 n:05)
+    checkParseError(L">05d",     "align+zeropad conflict (body)");
+    checkParseError(L">8 n:05",  "align+zeropad conflict (frame+n:)");
+    // n:/t: alone (no body, no frame): n: empty is an error, t: is a no-op frame
+    checkParseError(L"n:",       "n: with empty body");
 
     // ---- Parse errors ----
     checkParseError(L"",         "empty");
@@ -247,23 +335,11 @@ int main(int argc, char** argv) {
     checkSplit("'a\\'b' ~ 05.2f",             "'a\\'b'",          "05.2f",  true,  "escaped single quote");
     checkSplit("\"a\\\"b\" ~ 05.2f",          "\"a\\\"b\"",       "05.2f",  true,  "escaped double quote");
 
-    // Square brackets - tildes inside are NOT separators
-    checkSplit("ts ~ D[%Y-%m-%d]",            "ts",               "D[%Y-%m-%d]", true, "spec with brackets");
-    checkSplit("ts ~ D[%Y-%m-%d ~ %H:%M:%S]", "ts",               "D[%Y-%m-%d ~ %H:%M:%S]", true, "tilde inside brackets ignored");
-    checkSplit("num(1) ~ D[a~b]c",            "num(1)",           "D[a~b]c", true,  "bracket plus trailing");
-    checkSplit("num(1)~D[~~]",                "num(1)",           "D[~~]",  true,  "many tildes inside brackets");
-
-    // Nested brackets
-    checkSplit("num(1) ~ D[[~]]",             "num(1)",           "D[[~]]", true,  "nested brackets");
-
     // Edge: only tilde, no formula
     checkSplit("~ 05.2f",                     "",                 "05.2f",  true,  "empty formula");
 
     // Edge: trailing tilde, no spec
     checkSplit("num(1) ~",                    "num(1)",           "",       true,  "trailing tilde empty spec");
-
-    // Edge: tilde immediately at brackets
-    checkSplit("num(1)~[~]",                  "num(1)",           "[~]",    true,  "spec starts with bracket");
 
     // Empty input
     checkSplit("",                            "",                 "",       false, "empty input");
@@ -271,29 +347,29 @@ int main(int argc, char** argv) {
     // ---- Date tests (UTC for determinism) ------------------------------
 
     // Known anchor: 1700000000 = 2023-11-14 22:13:20 UTC
-    check(L"D[!%Y-%m-%d]",        1700000000.0, L"2023-11-14",         "date UTC y-m-d");
-    check(L"D[!%H:%M:%S]",        1700000000.0, L"22:13:20",           "date UTC h:m:s");
-    check(L"D[!%Y-%m-%d %H:%M:%S]", 1700000000.0, L"2023-11-14 22:13:20","date UTC datetime");
+    check(L"d:!%Y-%m-%d",        1700000000.0, L"2023-11-14",         "date UTC y-m-d");
+    check(L"d:!%H:%M:%S",        1700000000.0, L"22:13:20",           "date UTC h:m:s");
+    check(L"d:!%Y-%m-%d %H:%M:%S", 1700000000.0, L"2023-11-14 22:13:20","date UTC datetime");
 
     // Unix epoch
-    check(L"D[!%Y-%m-%d]",        0.0,          L"1970-01-01",         "date UTC epoch");
-    check(L"D[!%Y-%m-%dT%H:%M:%SZ]", 0.0,       L"1970-01-01T00:00:00Z","date UTC ISO 8601");
+    check(L"d:!%Y-%m-%d",        0.0,          L"1970-01-01",         "date UTC epoch");
+    check(L"d:!%Y-%m-%dT%H:%M:%SZ", 0.0,       L"1970-01-01T00:00:00Z","date UTC ISO 8601");
 
     // Subsecond truncation: 1.9 still equals 1970-01-01 00:00:01 (truncation, not rounding)
-    check(L"D[!%H:%M:%S]",        1.9,          L"00:00:01",           "date subsecond truncation");
+    check(L"d:!%H:%M:%S",        1.9,          L"00:00:01",           "date subsecond truncation");
 
     // Literal text inside the strftime pattern
-    check(L"D[!Year %Y]",         1700000000.0, L"Year 2023",          "date literal text");
-    check(L"D[!%d.%m.%Y]",        1700000000.0, L"14.11.2023",         "date european format");
+    check(L"d:!Year %Y",         1700000000.0, L"Year 2023",          "date literal text");
+    check(L"d:!%d.%m.%Y",        1700000000.0, L"14.11.2023",         "date european format");
 
     // Locale-dependent (just check non-empty, exact value depends on test runner TZ)
     {
-        auto sp = FormatSpec::parse(L"D[%Y-%m-%d]");
+        auto sp = FormatSpec::parse(L"d:%Y-%m-%d");
         if (sp.valid && !FormatSpec::apply(sp, 1700000000.0).empty()) {
             ++passed;
             if (verbose) {
                 std::wprintf(L"PASS  %-14ls  %-14g  -> (non-empty local)   (date local time path)\n",
-                             L"D[%Y-%m-%d]", 1700000000.0);
+                             L"d:%Y-%m-%d", 1700000000.0);
             }
         } else {
             std::wcout << L"FAIL [date local time path]\n";
@@ -302,22 +378,18 @@ int main(int argc, char** argv) {
     }
 
     // Date parse errors
-    checkParseError(L"D",                     "date no body");
-    checkParseError(L"D[",                    "date unclosed bracket");
-    checkParseError(L"D[]",                   "date empty body");
-    checkParseError(L"D[!]",                  "date only utc marker");
-    checkParseError(L"D[%Y",                  "date pattern but no close");
-    checkParseError(L"Dx[%Y]",                "date bad letter after D");
+    checkParseError(L"d:",                   "date empty pattern");
+    checkParseError(L"d:!",                  "date only utc marker");
 
     // Date negative timestamp returns empty (defensive, would have been
     // routed through dialog upstream).
     {
-        auto sp = FormatSpec::parse(L"D[!%Y-%m-%d]");
+        auto sp = FormatSpec::parse(L"d:!%Y-%m-%d");
         std::wstring r = FormatSpec::apply(sp, -1.0);
         if (r.empty()) {
             ++passed;
             if (verbose) {
-                std::wprintf(L"PASS  D[!%%Y-%%m-%%d]   -1              -> <empty>             (date negative returns empty)\n");
+                std::wprintf(L"PASS  d:!%%Y-%%m-%%d   -1              -> <empty>             (date negative returns empty)\n");
             }
         } else {
             std::wcout << L"FAIL [date negative] got: " << r << L"\n";
@@ -326,15 +398,15 @@ int main(int argc, char** argv) {
     }
 
     // More date edge cases
-    check(L"D[!%A]",              0.0,          L"Thursday",           "date weekday name (epoch=Thu)");
-    check(L"D[!%B]",              0.0,          L"January",            "date month name");
-    check(L"D[!%j]",              0.0,          L"001",                "date day of year");
+    check(L"d:!%A",              0.0,          L"Thursday",           "date weekday name (epoch=Thu)");
+    check(L"d:!%B",              0.0,          L"January",            "date month name");
+    check(L"d:!%j",              0.0,          L"001",                "date day of year");
 
     // Y2038 boundary: 2147483647 = 2038-01-19 03:14:07 UTC (last 32-bit signed)
-    check(L"D[!%Y-%m-%d %H:%M:%S]", 2147483647.0, L"2038-01-19 03:14:07","date Y2038 boundary");
+    check(L"d:!%Y-%m-%d %H:%M:%S", 2147483647.0, L"2038-01-19 03:14:07","date Y2038 boundary");
 
     // Brackets in pattern - test that strftime literals work
-    check(L"D[!(%Y)]",            1700000000.0, L"(2023)",             "date parens in pattern");
+    check(L"d:!(%Y)",            1700000000.0, L"(2023)",             "date parens in pattern");
 
     // ---- Result summary ----
     std::wcout << L"\n========================================\n";

@@ -917,7 +917,7 @@ String helpers for measuring, slicing, splitting, cleaning, and converting text.
 - `replace` substitutes every occurrence; an empty `from` returns `s` unchanged.
 - `reptxt` returns `""` for `n < 1`; very large output is capped to protect memory.
 - `tonum` accepts both `.` and `,` as the decimal separator and is the value-returning counterpart of `isnum`.
-- `totxt(n, fmt)` uses the same `fmt` grammar as the `~` format spec; an invalid spec, an empty `fmt`, or a text spec (`t:...`) applied to a number all yield `""`. Note that `totxt(n, '')` is therefore not the same as `totxt(n)` — use the single-argument form for the default representation.
+- `totxt(n, fmt)` uses the same `fmt` grammar as the `~` format spec and always formats a number, so numeric specs and bare frames both apply (`totxt(42, '>5')` → `"   42"`). An invalid spec, an empty `fmt`, or an explicit text assertion (`t:...`) applied to a number all yield `""`. Note that `totxt(n, '')` is therefore not the same as `totxt(n)` — use the single-argument form for the default representation.
 - Integer-based format specs (`d`, `x`, `o`, `b`, durations) require a value within the signed 64-bit range; magnitudes at or above 2^63, as well as non-finite values, yield `""`. Floating-point specs (`f`, `e`, `g`) have no such limit.
 - `chr2num`/`num2chr` operate on full Unicode codepoints. `num2chr` returns `""` for negative values, surrogates, or values above U+10FFFF.
 
@@ -1154,7 +1154,7 @@ For built-in formatting needs (zero padding, fixed width, hex, etc.) consider th
 
 ### Output Formatting
 
-By default an ExprTk expression renders its numeric result with the shortest round-trip representation: `3.14`, `42`, `1.5e+10`. For controlled output — padding, precision, fixed decimal places, hex, time durations — append a **format spec** to the expression with `~`:
+By default an ExprTk expression renders its result with the shortest round-trip representation: `3.14`, `42`, `1.5e+10` for numbers, the raw string for text. For controlled output — padding, alignment, precision, fixed decimals, hex, time durations, dates — append a **format spec** to the expression with `~`:
 
 ```
 (?= formula ~ spec )
@@ -1162,104 +1162,181 @@ By default an ExprTk expression renders its numeric result with the shortest rou
 
 The `~` separator splits the block into the formula (left) and the spec (right). Whitespace around `~` is optional. The spec is validated when the rule is compiled, so an invalid spec surfaces immediately as a compile-time error rather than producing garbage at runtime.
 
-There are four kinds of spec: **numeric**, **text**, **duration**, and **date**. One concrete example of each, so the abstract `formula ~ spec` above has something to map onto:
+#### The mental model: frame + type
 
-| Kind     | Full block                       | Result        |
-|----------|----------------------------------|---------------|
-| numeric  | `(?= num(1) ~ .2f )`             | `3.14`        |
-| text     | `(?= txt(1) ~ t:<10 )`           | `foo       `  |
-| duration | `(?= num(1) ~ ts:hms )`          | `1:02:05`     |
-| date     | `(?= now() ~ d:%Y-%m-%d )`       | `2026-05-21`  |
+Every spec is a **universal frame** wrapped around a **type-specific body**:
 
-Each kind has its own grammar, detailed below.
+```
+[ [fill] align ] [width]   [marker:]   <type-specific tail>
+```
+
+The **frame** — `fill`, `align`, `width` — pads the finished value and works the **same way for every kind** (number, text, duration, date). Alignment is `<` left, `>` right, `^` center; `fill` is any single character placed before the align char; `width` is the minimum field width. The frame's default alignment depends on the kind: numbers align right, everything else aligns left.
+
+The **type-specific tail** is what differs: decimals and a type letter for numbers, a truncation length for text, a mode for durations, a strftime pattern for dates.
+
+You usually don't need a marker, but it helps to see the full picture first. Conceptually **every spec has a type marker** — `n:` number, `t:` text, `ts:` (and `tm:`/`th:`/`td:`) duration, `d:` date. The marked ("long") form spells the type out, which makes it the easier form to read when learning. The "short" form simply drops the marker:
+
+| Kind     | Long (explicit marker)            | Short (marker dropped)   | Result        |
+|----------|-----------------------------------|--------------------------|---------------|
+| numeric  | `(?= num(1) ~ n:.2f )`            | `(?= num(1) ~ .2f )`     | `3.14`        |
+| text     | `(?= txt(1) ~ t:.3 )`             | `(?= txt(1) ~ .3 )`      | `Ber` (from `Bericht`) |
+| duration | `(?= num(1) ~ ts:hms )`           | *(no short form)*        | `1:02:05`     |
+| date     | `(?= now() ~ d:%Y-%m-%d )`        | *(no short form)*        | `2026-05-21`  |
+
+The two forms are **exactly equivalent** for numbers and text — same output, the marker only states the type explicitly. You may drop `n:` and `t:` because the value's own type already implies them: a number-returning formula takes the numeric path, a string-returning formula the text path. You may **not** drop `d:` or `ts:`, because all three (date, duration, plain number) arrive as a `double` and the marker is the only thing that says which you meant.
+
+So: short is the practical everyday form; long is the same thing spelled out, useful as a learning aid or when you want the rule to assert its type. The per-type sections below call this short, marker-less form the **bare** spec. **When a marker is present it always sits between the frame and the body** — the frame leads, the marker follows, then the body: `>12 d:%Y`, `<8 n:.2f`, `>8 t:.3`. A marker before the frame (`n:<8.2f`) is not valid.
 
 <br>
 
 #### Numeric
 
-Grammar: `[+] [0] [width] [.prec | .min-max] [type]`
+Grammar: `[ [fill]align ] [n:] [+] [0] [width] [.prec | .min-max] [type]`
+
+The optional `n:` marker sits after the frame's fill/align and before the numeric body. The `width` is normally part of the body; with a frame in front of a marker it may instead sit in the frame (`>8 n:.2f`), but never in both places at once. The marker is purely an optional type assertion and never changes the output — see [Type markers](#type-markers-n-and-t) for when it is useful.
 
 | Part      | Meaning                                                                                          |
 |-----------|--------------------------------------------------------------------------------------------------|
+| `fill`+`align` | Optional frame. `<` left, `>` right, `^` center; an optional fill char (any single character) goes directly before the align char. Without an align, numbers default to right alignment. |
 | `+`       | Always show the sign (`+3.14`, `-3.14`).                                                         |
-| `0`       | Zero-pad to `width` instead of space-padding.                                                    |
+| `0`       | Zero-pad to `width` instead of space-padding. Sign-aware (`-03.14`).                             |
 | `width`   | Minimum total field width.                                                                       |
-| `.prec`   | Exact number of decimal digits.                                                                  |
+| `.prec`   | Number of decimal digits (for `f`/`e`); significant digits for the default type and `g`.         |
 | `.min-max`| Range form: at least `min`, at most `max` decimals. Trailing zeros beyond `min` are stripped.    |
-| `type`    | `f` fixed, `e` scientific, `g` shortest, `x` hex, `b` binary, `o` octal, `d` integer. Omit for default rendering. |
+| `type`    | One letter choosing the representation (see the table below). Omit for default (shortest round-trip). |
 
-Integer types `x b o d` reject precision (no fractional part to format). Hex/binary/octal also reject `+` because they are formatted as unsigned bit patterns (negative numbers in `x` and `b` produce the 64-bit two's-complement pattern, `x` on `-1` → `ffffffffffffffff`). Signed base-10 (`d`) accepts `+` normally.
+The `type` letter picks how the number is rendered:
 
-| Spec      | Value      | Output      |
-|-----------|------------|-------------|
-| `05.2f`   | `3.14159`  | `03.14`     |
-| `+8.2f`   | `3.14`     | `   +3.14`  |
-| `.2-5f`   | `3.1`      | `3.10`      |
-| `.2-5f`   | `3.14159`  | `3.14159`   |
-| `08x`     | `255`      | `000000ff`  |
-| `8b`      | `5`        | `     101`  |
-| `.3g`     | `123456`   | `1.23e+05`  |
-| `+`       | `3.14`     | `+3.14`     |
-| `d`       | `3.7`      | `3`         |
-| `+05d`    | `-42`      | `-0042`     |
+| Type | Meaning                                   | Example      | Output      |
+|------|-------------------------------------------|--------------|-------------|
+| `f`  | Fixed-point (decimal places)              | `.2f` of `3.14159` | `3.14`  |
+| `e`  | Scientific notation                       | `.2e` of `31415.9` | `3.14e+04` |
+| `g`  | Significant digits, scientific when large | `.3g` of `123456`  | `1.23e+05` |
+| `x`  | Hexadecimal                               | `x` of `255`       | `ff`    |
+| `b`  | Binary                                    | `b` of `5`         | `101`   |
+| `o`  | Octal                                     | `o` of `64`        | `100`   |
+| `d`  | Integer (truncates toward zero)           | `d` of `3.7`       | `3`     |
 
-The numeric output is locale-independent: the decimal separator is always `.`, regardless of the system locale. This keeps CSV pipelines reproducible across machines.
+The three float types (`f`, `e`, `g`) accept precision; `f` defaults to 6 decimals when none is given (`f` of `3.14159` → `3.141590`). The four integer types (`x`, `b`, `o`, `d`) reject precision since there is no fractional part. Hex, binary, and octal also reject `+`: they format as unsigned bit patterns, so a negative number shows its 64-bit two's-complement form (`x` of `-1` → `ffffffffffffffff`). Signed base-10 (`d`) accepts `+` normally.
 
-The `d` type truncates fractional input toward zero before output (`3.7` → `3`, `-3.7` → `-3`). For rounded behaviour use `round()` first: `round(num(1)) ~ d`.
+**Alignment and zero-pad are mutually exclusive.** The `0` flag zero-fills sign-aware to `width`; an explicit align (`<>^`) space-fills (or fills with your fill char) around the finished number. Asking for both — e.g. `>05d` — is a compile-time error; pick one. (`05d` zero-pads, `>5d` right-aligns with spaces.)
 
-##### Optional `n:` marker
+| Spec      | Value      | Output       | Note                                  |
+|-----------|------------|--------------|---------------------------------------|
+| `05.2f`   | `3.14159`  | `03.14`      | zero-pad to width 5                   |
+| `+8.2f`   | `3.14`     | `   +3.14`   | forced sign, space-pad to 8           |
+| `<8.2f`   | `3.14159`  | `3.14    `   | left-align (frame)                    |
+| `>8.2f`   | `3.14159`  | `    3.14`   | right-align (frame)                   |
+| `^8.2f`   | `3.14159`  | `  3.14  `   | center (frame)                        |
+| `*>8.2f`  | `3.14159`  | `****3.14`   | fill `*`, right                       |
+| `.2-5f`   | `3.1`      | `3.10`       | range precision, min 2 decimals       |
+| `.2-5f`   | `3.14159`  | `3.14159`    | range precision, up to 5              |
+| `.2e`     | `31415.9`  | `3.14e+04`   | scientific notation                   |
+| `.3g`     | `123456`   | `1.23e+05`   | 3 significant digits (`g`)            |
+| `08x`     | `255`      | `000000ff`   | hex, zero-pad                         |
+| `8b`      | `5`        | `     101`   | binary, space-pad                     |
+| `05o`     | `64`       | `00100`      | octal, zero-pad                       |
+| `+`       | `3.14`     | `+3.14`      | forced sign only                      |
+| `d`       | `3.7`      | `3`          | truncates toward zero                 |
+| `+05d`    | `-42`      | `-0042`      | sign-aware zero-pad                   |
+| `>05d`    | `42`       | *error*      | align + zero-pad conflict             |
 
-For visual consistency with the other spec families (`d:`, `t:`, `ts:`), a numeric spec can be prefixed with `n:`. The two forms are equivalent:
+The numeric output is locale-independent: the decimal separator is always `.`, regardless of the system locale. This keeps CSV pipelines reproducible across machines. The `d` type truncates fractional input toward zero (`3.7` → `3`, `-3.7` → `-3`); for rounding use `round(num(1)) ~ d`.
 
-| Form           | Output      |
-|----------------|-------------|
-| `~ 5.2f`       | ` 3.14`     |
-| `~ n:5.2f`     | ` 3.14`     |
+The optional `n:` marker (see [Type markers](#type-markers-n-and-t)) makes "this is a number" explicit. It never changes the output, so the long and short forms are interchangeable:
 
-The marker is optional — the bare form stays the recommended default since numeric is the common case and the short form reads cleaner. `n:` is offered for callers who prefer an explicit marker on every spec.
+| Long (with `n:`) | Short (bare) | Value     | Output     |
+|------------------|--------------|-----------|------------|
+| `n:.2f`          | `.2f`        | `3.14159` | `3.14`     |
+| `<8 n:.2f`       | `<8.2f`      | `3.14159` | `3.14    ` |
+| `n:+06.1f`       | `+06.1f`     | `42`      | `+042.0`   |
+
+##### Default type with precision behaves like `g`
+
+Without a type letter and without precision, the number renders shortest round-trip (`3.14`, `42`). **Add a precision and the default type behaves like `g`** — `.N` means *significant digits*, switching to scientific notation when the magnitude warrants it. This matches Python and Rust, where the no-type float format is defined as "the same as `g`".
+
+| Spec   | Value       | Output      | Why                              |
+|--------|-------------|-------------|----------------------------------|
+| `.3`   | `3.14159`   | `3.14`      | 3 significant digits             |
+| `.3`   | `1234.5678` | `1.23e+03`  | `g` switches to scientific       |
+| `.3`   | `3.0`       | `3`         | `g` trims trailing zeros         |
+
+For fixed decimal places regardless of magnitude, use `f` explicitly: `.3f` on `3.0` → `3.000`.
 
 <br>
 
 #### Text
 
-Grammar: `t:[fill][align][width][.maxlen]`
+Grammar: `[ [fill]align ] [t:] [width] [.maxlen]`
 
-Pads, aligns, and optionally truncates a string-returning formula. Required marker is `t:` (with the colon). Length semantics operate on **UTF-8 codepoints**, so multi-byte characters like `ä` count as one.
+The optional `t:` marker sits after the frame's fill/align and before the body. As with numbers, `width` is normally in the body; with a frame in front of a marker it may sit in the frame (`>8 t:.3`), but never in both.
+
+Pads, aligns, and optionally truncates a string-returning formula. Length semantics operate on **UTF-8 codepoints**, so multi-byte characters like `ä` count as one.
 
 | Part      | Meaning                                                                                          |
 |-----------|--------------------------------------------------------------------------------------------------|
-| `fill`    | Optional. Single character used for padding. Must be followed by an align letter to disambiguate from width. Defaults to space. |
-| `align`   | `<` left, `>` right, `^` center. Optional. Defaults to `<` (left).                               |
+| `fill`    | Optional single padding character. Must be followed by an align char to disambiguate from width. Defaults to space. |
+| `align`   | `<` left, `>` right, `^` center. Optional. Text defaults to `<` (left).                          |
 | `width`   | Minimum codepoint length; pads with `fill` to reach this width.                                  |
-| `.maxlen` | Maximum codepoint length; truncates at a codepoint boundary if exceeded.                         |
+| `.maxlen` | Maximum codepoint length; truncates at a codepoint boundary if exceeded.                          |
 
-Text specs require a **string-returning formula** (e.g. `txt(1)`, `num2rom(...)`, `'literal'`, or any ExprTk string concatenation). Combining a text spec with a numeric formula is a compile-time error, and vice versa.
+**No marker is required.** A bare frame spec on a string-returning formula (e.g. `txt(1)`, `num2rom(...)`, `'literal'`, or any ExprTk string concatenation) is treated as text — the value being a string is enough. The optional `t:` marker (see [Type markers](#type-markers-n-and-t)) asserts "this is a string" but changes nothing about the output.
 
-| Spec        | Input          | Output                |
-|-------------|----------------|-----------------------|
-| `t:<15`     | `"foo"`        | `"foo            "`   |
-| `t:>15`     | `"foo"`        | `"            foo"`   |
-| `t:^15`     | `"foo"`        | `"      foo      "`   |
-| `t:15`      | `"foo"`        | `"foo            "`   |
-| `t:.5`      | `"hello world"`| `"hello"`             |
-| `t:15.3`    | `"longstring"` | `"lon            "`   |
-| `t:*<15`    | `"foo"`        | `"foo************"`   |
-| `t:.<15`    | `"Ch1"`        | `"Ch1............"`   |
-| `t:0>5`     | `"42"`         | `"00042"`             |
-| `t:<10`     | `"Größe"`      | `"Größe     "` (5 codepoints) |
-| `t:.3`      | `"Größe"`      | `"Grö"` (codepoint boundary)  |
+The `.maxlen` part is the truncation control: if the string is longer than `maxlen` codepoints, it is cut to that length (at a codepoint boundary) **before** any padding is applied. This is the same `.N` syntax the numeric specs use for precision — on a string it means "cut to N characters", on a number it means "N decimal/significant digits". The value's type decides which; that is why one spec like `>8.3` does the right thing on either (see the contrast table below).
 
-The `t` marker is shared with **duration** (`ts:`, `tm:`, `th:`, `td:`): the parser looks at the second character — `:` takes the text path, a unit letter (`s`/`m`/`h`/`d`) takes the duration path. So `t:<15` and `ts:hms` cannot be confused.
+| Spec      | Input          | Output                | Note                          |
+|-----------|----------------|-----------------------|-------------------------------|
+| `<15`     | `"foo"`        | `"foo            "`   | left (text default)           |
+| `>15`     | `"foo"`        | `"            foo"`   | right                         |
+| `^15`     | `"foo"`        | `"      foo      "`   | center                        |
+| `.5`      | `"hello world"`| `"hello"`             | truncate to 5, no padding     |
+| `>8.3`    | `"hello"`      | `"     hel"`          | truncate to 3, then right-pad to 8 |
+| `*<15`    | `"foo"`        | `"foo************"`   | fill `*`, left                |
+| `.<15`    | `"Ch1"`        | `"Ch1............"`   | fill `.`, left                |
+| `0>5`     | `"42"`         | `"00042"`             | fill `0`, right               |
+| `<10`     | `"Größe"`      | `"Größe     "`        | 5 codepoints                  |
+| `.3`      | `"Größe"`      | `"Grö"`               | cut at codepoint boundary     |
 
-If both fill and align use the same character (`t:<<10` → fill `<`, align `<`), the lookahead still resolves cleanly: a fill character is only consumed when an align letter follows it.
+If both fill and align use the same character (`<<10` → fill `<`, align `<`), the lookahead still resolves cleanly: a fill character is only consumed when an align char follows it.
+
+The optional `t:` marker (see [Type markers](#type-markers-n-and-t)) makes "this is text" explicit. Like `n:`, it never changes the output — long and short are interchangeable:
+
+| Long (with `t:`) | Short (bare) | Input         | Output      |
+|------------------|--------------|---------------|-------------|
+| `t:.3`           | `.3`         | `"Bericht"`   | `Ber`       |
+| `>8 t:.3`        | `>8.3`       | `"Bericht"`   | `     Ber`  |
+| `t:10`           | `10`         | `"foo"`       | `foo       `|
+
+**`.N` is the same syntax on numbers and strings — only its meaning follows the value type.** This is what lets you write one spec and let the value decide, so a marker is usually unnecessary:
+
+| Spec     | On a number (`3.14159`)           | On a string (`"hello"`)              |
+|----------|-----------------------------------|--------------------------------------|
+| `.3`     | `3.14` — 3 significant digits     | `hel` — cut to 3 codepoints          |
+| `>8.3`   | `    3.14` — precision, then pad  | `     hel` — truncate, then pad       |
+
+The engine routes a number-returning formula through the numeric path and a string-returning formula through the text path automatically, so the same written spec adapts to whichever it gets.
+
+<br>
+
+##### Type markers `n:` and `t:`
+
+The `n:` and `t:` markers are shown alongside the bare forms above — they never change the output, so on the matching value type they are purely cosmetic. Their only job is to **assert the expected type**, so a mismatch fails loudly at compile time instead of being silently reinterpreted. Reach for them when you want a rule to reject the wrong input type, or for visual symmetry with the `d:` / `ts:` markers.
+
+| Block                  | Value   | Result                          |
+|------------------------|---------|---------------------------------|
+| `(?= num(1) ~ >5 t: )` | `42`    | *error* — `t:` wants a string   |
+| `(?= num(1) ~ n:5.2f )`| `42`    | `42.00` — matches, formats      |
+| `(?= txt(1) ~ n:5.2f )`| `"ab"`  | *error* — `n:5.2f` wants a number |
+
+**One asymmetry worth knowing.** A `t:` spec is always a real text assertion. An `n:` spec only asserts "number" when the spec carries a trait that is *exclusively* numeric — a type letter (`f`/`e`/`g`/`x`/`b`/`o`/`d`), a sign (`+`), zero-pad (`0`), or a range precision (`.min-max`). If the spec after `n:` is only a frame (`>6 n:`) or carries just a plain `.N` precision (`n:.3`) — which is polymorphic, not exclusively numeric — the marker is cosmetic and the spec stays type-neutral: on a string it still formats as text (`n:.3` on `"hello"` → `"hel"`, truncation). So `n:5.2f` on a string is an error, but `>6 n:` and `n:.3` on a string are not. For a hard "numbers only" guarantee, give the spec an exclusively numeric trait, not just a frame or a plain `.N`.
 
 <br>
 
 #### Duration
 
-Grammar: `t<unit>:<mode>`
+Grammar: `[ [fill]align ] t<unit>:<mode>`
 
-Treats the value as a duration measured in `unit` and renders it as a clock-like string.
+Treats the value as a duration measured in `unit` and renders it as a clock-like string. An optional frame may precede the marker (see [Frame before a marker](#frame-before-a-marker)).
 
 | Unit  | Meaning  |
 |-------|----------|
@@ -1277,7 +1354,13 @@ Treats the value as a duration measured in `unit` and renders it as a clock-like
 | `dhm`   | `D HH:MM`      | (`td:dhm` on 1.5d → `1 12:00`)    |
 | `dhms`  | `D HH:MM:SS`   | (`td:dhms` on 1.5d → `1 12:00:00`)|
 
-The mode is **mandatory** — `t:s` alone is not enough, you must pick a mode. Fractional input is truncated (rounded toward zero) before splitting into components. Negative durations carry a leading `-`.
+The mode is **mandatory** — `ts:` alone is not enough, you must pick a mode. Fractional input is truncated (toward zero) before splitting into components. Negative durations carry a leading `-`. The `t` marker is shared with **text** (`t:`): the parser looks at the second character — `:` takes the text path, a unit letter (`s`/`m`/`h`/`d`) takes the duration path, so `t:` (text) and `ts:hms` (duration) cannot be confused.
+
+| Spec          | Value  | Output         |
+|---------------|--------|----------------|
+| `ts:hms`      | `3725` | `1:02:05`      |
+| `>12 ts:hms`  | `3725` | `     1:02:05` |
+| `^12 ts:hms`  | `3725` | `  1:02:05   ` |
 
 <br>
 
@@ -1285,10 +1368,10 @@ The mode is **mandatory** — `t:s` alone is not enough, you must pick a mode. F
 
 Grammar:
 
-- `d:strftime_pattern` — local time
-- `d:!strftime_pattern` — UTC
+- `[ [fill]align ] d:strftime_pattern` — local time
+- `[ [fill]align ] d:!strftime_pattern` — UTC
 
-Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through `strftime`. The optional `!` prefix forces UTC; without it the system's local time zone is used. This follows the same convention as Lua's `os.date()`.
+Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through `strftime`. The optional `!` prefix forces UTC; without it the system's local time zone is used. This follows the same convention as Lua's `os.date()`. An optional frame may precede the marker (see [Frame before a marker](#frame-before-a-marker)).
 
 The pattern accepts any standard strftime specifier. Literal text between specifiers is passed through verbatim. Common specifiers:
 
@@ -1317,29 +1400,47 @@ Weekday/month names follow the system locale. The full list of `strftime` specif
 | Spec                       | Timestamp     | Output (UTC)                       |
 |----------------------------|---------------|------------------------------------|
 | `d:!%Y-%m-%d`              | `1700000000`  | `2023-11-14`                       |
+| `>15 d:!%Y-%m-%d`          | `1700000000`  | `     2023-11-14`                  |
 | `d:!%Y-%m-%dT%H:%M:%SZ`    | `1700000000`  | `2023-11-14T22:13:20Z`             |
 | `d:!%d.%m.%Y`              | `1700000000`  | `14.11.2023`                       |
 | `d:!%A`                    | `0`           | `Thursday` (epoch was Thursday)    |
 | `d:!Year %Y, week %V`      | `1700000000`  | `Year 2023, week 46`               |
-| `d:!%c`                    | `1700000000`  | `Tue Nov 14 22:13:20 2023`         |
 
 **Range:** timestamps must be ≥ 0 (years 1970 onwards). Negative values produce empty output. Subseconds are truncated (`1700000000.7` is treated as `1700000000`).
 
-**Tilde in date patterns:** `~` is the spec separator and therefore cannot appear inside the strftime pattern itself — use any other literal between specifiers (`-`, `/`, `:`, space, etc.). This matters in practice only for unusual patterns; standard date/time separators are unaffected.
+**Tilde in date patterns:** `~` is the spec separator and therefore cannot appear inside the strftime pattern — use any other literal between specifiers (`-`, `/`, `:`, space, etc.). Standard date/time separators are unaffected.
+
+<br>
+
+##### Frame before a marker
+
+The rule is uniform across every marker: the frame (fill/align/width) leads, then the marker (`n:`, `t:`, `d:`, `ts:`/`tm:`/`th:`/`td:`), then the body. One optional space is allowed between the frame and the marker, so `>12 d:%Y` and `>12d:%Y` are identical. A marker placed before the frame (`n:<8.2f`, `t:>8.3`) is rejected — the frame always comes first. A marker with no frame at all (`n:5.2f`, `d:%Y`) is fine; there is simply nothing to lead.
+
+| Spec               | Value         | Output            |
+|--------------------|---------------|-------------------|
+| `>12 ts:hms`       | `3725`        | `     1:02:05`    |
+| `>12ts:hms`        | `3725`        | `     1:02:05`    |
+| `^15 d:!%Y-%m-%d`  | `1700000000`  | `  2023-11-14   ` |
+| `<8 n:.2f`         | `3.14159`     | `3.14    `        |
+| `>8 t:.3`          | `"hello"`     | `     hel`        |
 
 <br>
 
 #### Errors and edge cases
 
 - **Invalid spec at compile time** — `(?=hit ~ 99q)` produces *"Invalid format spec '99q': Unknown numeric type letter; expected f/e/g/x/b/o/d"*. The rule fails to compile; no replacements run.
-- **Spec / formula type mismatch** — every spec family expects a matching formula type:
-  - Numeric / date / duration specs expect a numeric-returning formula. Pairing them with a string-returning formula (e.g. `(?='hello' ~ 05f)`) is rejected at compile time.
-  - Text specs (`t:...`) expect a string-returning formula. Pairing them with a numeric formula (e.g. `(?=num(1) ~ t:<15)`) is rejected at compile time.
-- **NaN / Inf** — when the formula itself produces `NaN` (e.g. parsing a non-numeric capture) or `Inf` (e.g. division by zero), the spec is not applied; the recoverable-error dialog appears instead, leaving the original match untouched if the user skips.
-- **`~` inside the formula** — the splitter looks for the **last** `~` outside string quotes. ExprTk string literals (`'a~b'`, `"a~b"`) are quote-aware, so a `~` inside them does not split:
+- **Alignment + zero-pad** — combining an explicit align with the `0` flag (e.g. `>05d`, or `>8 n:05` where the align comes from the frame) is rejected at compile time; the two fills conflict. Use one or the other.
+- **Marker before the frame** — `n:<8.2f` or `t:>8.3` is rejected: the frame must lead, so write `<8 n:.2f` / `>8 t:.3`. A bare body marker with no frame (`n:5.2f`, `t:.5`) is fine.
+- **Width given twice** — stating a width in both the frame and the body (`>8 n:5.2f`) is rejected; put it in one place.
+- **Type assertion mismatch** — a marker that contradicts the value type is rejected at compile time:
+  - `t:` on a numeric-returning formula → error (text spec wants a string).
+  - A spec with an exclusively numeric trait (`5.2f`, `08x`, `d:`, `ts:`) on a string-returning formula → error.
+  - A **bare frame** (`>8`, `^10`, `.5`) carries no type assertion and applies to either type — never a mismatch.
+- **NaN / Inf** — when the formula produces `NaN` (e.g. parsing a non-numeric capture) or `Inf` (e.g. division by zero), the spec is not applied; the recoverable-error dialog appears, leaving the original match untouched if skipped.
+- **`~` inside the formula** — the splitter takes the **last** `~` outside string quotes. ExprTk string literals (`'a~b'`, `"a~b"`) are quote-aware, so a `~` inside them does not split:
 
   ```
-  (?= 'note ~ check' + txt(1) ~ t:<20 )
+  (?= 'note ~ check' + txt(1) ~ >20 )
   ```
 
   The `~` inside the single-quoted literal is part of the formula; the final `~` is the spec separator.

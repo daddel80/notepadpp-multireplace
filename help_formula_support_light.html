@@ -2209,7 +2209,7 @@ return {
       <li><code>replace</code> substitutes every occurrence; an empty <code>from</code> returns <code>s</code> unchanged.</li>
       <li><code>reptxt</code> returns <code>""</code> for <code>n &lt; 1</code>; very large output is capped to protect memory.</li>
       <li><code>tonum</code> accepts both <code>.</code> and <code>,</code> as the decimal separator and is the value-returning counterpart of <code>isnum</code>.</li>
-      <li><code>totxt(n, fmt)</code> uses the same <code>fmt</code> grammar as the <code>~</code> format spec; an invalid spec, an empty <code>fmt</code>, or a text spec (<code>t:...</code>) applied to a number all yield <code>""</code>. Note that <code>totxt(n, '')</code> is therefore not the same as <code>totxt(n)</code> &mdash; use the single-argument form for the default representation.</li>
+      <li><code>totxt(n, fmt)</code> uses the same <code>fmt</code> grammar as the <code>~</code> format spec and always formats a number, so numeric specs and bare frames both apply (<code>totxt(42, '&gt;5')</code> &rarr; <code>"&nbsp;&nbsp;&nbsp;42"</code>). An invalid spec, an empty <code>fmt</code>, or an explicit text assertion (<code>t:...</code>) applied to a number all yield <code>""</code>. Note that <code>totxt(n, '')</code> is therefore not the same as <code>totxt(n)</code> &mdash; use the single-argument form for the default representation.</li>
       <li>Integer-based format specs (<code>d</code>, <code>x</code>, <code>o</code>, <code>b</code>, durations) require a value within the signed 64-bit range; magnitudes at or above 2^63, as well as non-finite values, yield <code>""</code>. Floating-point specs (<code>f</code>, <code>e</code>, <code>g</code>) have no such limit.</li>
       <li><code>chr2num</code>/<code>num2chr</code> operate on full Unicode codepoints. <code>num2chr</code> returns <code>""</code> for negative values, surrogates, or values above U+10FFFF.</li>
     </ul>
@@ -2536,123 +2536,146 @@ end
 
   <section id="exprtk-format">
     <h2>Output Formatting</h2>
-    <p>By default an ExprTk expression renders its numeric result with the shortest round-trip representation: <code>3.14</code>, <code>42</code>, <code>1.5e+10</code>. For controlled output &mdash; padding, precision, fixed decimal places, hex, time durations &mdash; append a <strong>format spec</strong> to the expression with <code>~</code>:</p>
+    <p>By default an ExprTk expression renders its result with the shortest round-trip representation: <code>3.14</code>, <code>42</code>, <code>1.5e+10</code> for numbers, the raw string for text. For controlled output &mdash; padding, alignment, precision, fixed decimals, hex, time durations, dates &mdash; append a <strong>format spec</strong> to the expression with <code>~</code>:</p>
     <p><code>(?= formula ~ spec )</code></p>
     <p>The <code>~</code> separator splits the block into the formula (left) and the spec (right). Whitespace around <code>~</code> is optional. The spec is validated when the rule is compiled, so an invalid spec surfaces immediately as a compile-time error rather than producing garbage at runtime.</p>
-    <p>There are four kinds of spec: <strong>numeric</strong>, <strong>text</strong>, <strong>duration</strong>, and <strong>date</strong>. One concrete example of each, so the abstract <code>formula ~ spec</code> above has something to map onto:</p>
+
+    <h3>The mental model: frame + type</h3>
+    <p>Every spec is a <strong>universal frame</strong> wrapped around a <strong>type-specific body</strong>:</p>
+    <p><code>[ [fill] align ] [width]   [marker:]   &lt;type-specific tail&gt;</code></p>
+    <p>The <strong>frame</strong> &mdash; <code>fill</code>, <code>align</code>, <code>width</code> &mdash; pads the finished value and works the <strong>same way for every kind</strong> (number, text, duration, date). Alignment is <code>&lt;</code> left, <code>&gt;</code> right, <code>^</code> center; <code>fill</code> is any single character placed before the align char; <code>width</code> is the minimum field width. The frame's default alignment depends on the kind: numbers align right, everything else aligns left.</p>
+    <p>The <strong>type-specific tail</strong> is what differs: decimals and a type letter for numbers, a truncation length for text, a mode for durations, a strftime pattern for dates.</p>
+    <p>You usually don't need a marker, but it helps to see the full picture first. Conceptually <strong>every spec has a type marker</strong> &mdash; <code>n:</code> number, <code>t:</code> text, <code>ts:</code> (and <code>tm:</code>/<code>th:</code>/<code>td:</code>) duration, <code>d:</code> date. The marked ("long") form spells the type out, which makes it the easier form to read when learning. The "short" form simply drops the marker:</p>
     <table class="optionsTable">
-      <tr>
-        <th>Kind</th>
-        <th>Full block</th>
-        <th>Result</th>
-      </tr>
-      <tr><td>numeric</td><td><code>(?= num(1) ~ .2f )</code></td><td><code>3.14</code></td></tr>
-      <tr><td>text</td><td><code>(?= txt(1) ~ t:&lt;10 )</code></td><td><code>foo&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></td></tr>
-      <tr><td>duration</td><td><code>(?= num(1) ~ ts:hms )</code></td><td><code>1:02:05</code></td></tr>
-      <tr><td>date</td><td><code>(?= now() ~ d:%Y-%m-%d )</code></td><td><code>2026-05-21</code></td></tr>
+      <tr><th>Kind</th><th>Long (explicit marker)</th><th>Short (marker dropped)</th><th>Result</th></tr>
+      <tr><td>numeric</td><td><code>(?= num(1) ~ n:.2f )</code></td><td><code>(?= num(1) ~ .2f )</code></td><td><code>3.14</code></td></tr>
+      <tr><td>text</td><td><code>(?= txt(1) ~ t:.3 )</code></td><td><code>(?= txt(1) ~ .3 )</code></td><td><code>Ber</code> (from <code>Bericht</code>)</td></tr>
+      <tr><td>duration</td><td><code>(?= num(1) ~ ts:hms )</code></td><td><em>(no short form)</em></td><td><code>1:02:05</code></td></tr>
+      <tr><td>date</td><td><code>(?= now() ~ d:%Y-%m-%d )</code></td><td><em>(no short form)</em></td><td><code>2026-05-21</code></td></tr>
     </table>
-    <p>Each kind has its own grammar, detailed below.</p>
+    <p>The two forms are <strong>exactly equivalent</strong> for numbers and text &mdash; same output, the marker only states the type explicitly. You may drop <code>n:</code> and <code>t:</code> because the value's own type already implies them: a number-returning formula takes the numeric path, a string-returning formula the text path. You may <strong>not</strong> drop <code>d:</code> or <code>ts:</code>, because all three (date, duration, plain number) arrive as a <code>double</code> and the marker is the only thing that says which you meant.</p>
+    <p>So: short is the practical everyday form; long is the same thing spelled out, useful as a learning aid or when you want the rule to assert its type. The per-type sections below call this short, marker-less form the <strong>bare</strong> spec. <strong>When a marker is present it always sits between the frame and the body</strong> &mdash; the frame leads, the marker follows, then the body: <code>&gt;12 d:%Y</code>, <code>&lt;8 n:.2f</code>, <code>&gt;8 t:.3</code>. A marker before the frame (<code>n:&lt;8.2f</code>) is not valid.</p>
 
     <h3>Numeric</h3>
-    <p>Grammar: <code>[+] [0] [width] [.prec | .min-max] [type]</code></p>
+    <p>Grammar: <code>[ [fill]align ] [n:] [+] [0] [width] [.prec | .min-max] [type]</code></p>
+    <p>The optional <code>n:</code> marker sits after the frame's fill/align and before the numeric body. The <code>width</code> is normally part of the body; with a frame in front of a marker it may instead sit in the frame (<code>&gt;8 n:.2f</code>), but never in both places at once. The marker is purely an optional type assertion and never changes the output &mdash; see the type-marker notes below for when it is useful.</p>
     <table class="optionsTable">
-      <tr>
-        <th>Part</th>
-        <th>Meaning</th>
-      </tr>
-      <tr>
-        <td><code>+</code></td>
-        <td>Always show the sign (<code>+3.14</code>, <code>-3.14</code>).</td>
-      </tr>
-      <tr>
-        <td><code>0</code></td>
-        <td>Zero-pad to <code>width</code> instead of space-padding.</td>
-      </tr>
-      <tr>
-        <td><code>width</code></td>
-        <td>Minimum total field width.</td>
-      </tr>
-      <tr>
-        <td><code>.prec</code></td>
-        <td>Exact number of decimal digits.</td>
-      </tr>
-      <tr>
-        <td><code>.min-max</code></td>
-        <td>Range form: at least <code>min</code>, at most <code>max</code> decimals. Trailing zeros beyond <code>min</code> are stripped.</td>
-      </tr>
-      <tr>
-        <td><code>type</code></td>
-        <td><code>f</code> fixed, <code>e</code> scientific, <code>g</code> shortest, <code>x</code> hex, <code>b</code> binary, <code>o</code> octal, <code>d</code> integer. Omit for default rendering.</td>
-      </tr>
+      <tr><th>Part</th><th>Meaning</th></tr>
+      <tr><td><code>fill</code>+<code>align</code></td><td>Optional frame. <code>&lt;</code> left, <code>&gt;</code> right, <code>^</code> center; an optional fill char (any single character) goes directly before the align char. Without an align, numbers default to right alignment.</td></tr>
+      <tr><td><code>+</code></td><td>Always show the sign (<code>+3.14</code>, <code>-3.14</code>).</td></tr>
+      <tr><td><code>0</code></td><td>Zero-pad to <code>width</code> instead of space-padding. Sign-aware (<code>-03.14</code>).</td></tr>
+      <tr><td><code>width</code></td><td>Minimum total field width.</td></tr>
+      <tr><td><code>.prec</code></td><td>Number of decimal digits (for <code>f</code>/<code>e</code>); significant digits for the default type and <code>g</code>.</td></tr>
+      <tr><td><code>.min-max</code></td><td>Range form: at least <code>min</code>, at most <code>max</code> decimals. Trailing zeros beyond <code>min</code> are stripped.</td></tr>
+      <tr><td><code>type</code></td><td>One letter choosing the representation (see the table below). Omit for default (shortest round-trip).</td></tr>
     </table>
-    <p>Integer types <code>x b o d</code> reject precision (no fractional part to format). Hex/binary/octal also reject <code>+</code> because they are formatted as unsigned bit patterns (negative numbers in <code>x</code> and <code>b</code> produce the 64-bit two's-complement pattern, <code>x</code> on <code>-1</code> &rarr; <code>ffffffffffffffff</code>). Signed base-10 (<code>d</code>) accepts <code>+</code> normally.</p>
+    <p>The <code>type</code> letter picks how the number is rendered:</p>
     <table class="optionsTable">
-      <tr>
-        <th>Spec</th>
-        <th>Value</th>
-        <th>Output</th>
-      </tr>
-      <tr><td><code>05.2f</code></td><td><code>3.14159</code></td><td><code>03.14</code></td></tr>
-      <tr><td><code>+8.2f</code></td><td><code>3.14</code></td><td><code>   +3.14</code></td></tr>
-      <tr><td><code>.2-5f</code></td><td><code>3.1</code></td><td><code>3.10</code></td></tr>
-      <tr><td><code>.2-5f</code></td><td><code>3.14159</code></td><td><code>3.14159</code></td></tr>
-      <tr><td><code>08x</code></td><td><code>255</code></td><td><code>000000ff</code></td></tr>
-      <tr><td><code>8b</code></td><td><code>5</code></td><td><code>     101</code></td></tr>
-      <tr><td><code>.3g</code></td><td><code>123456</code></td><td><code>1.23e+05</code></td></tr>
-      <tr><td><code>+</code></td><td><code>3.14</code></td><td><code>+3.14</code></td></tr>
-      <tr><td><code>d</code></td><td><code>3.7</code></td><td><code>3</code></td></tr>
-      <tr><td><code>+05d</code></td><td><code>-42</code></td><td><code>-0042</code></td></tr>
+      <tr><th>Type</th><th>Meaning</th><th>Example</th><th>Output</th></tr>
+      <tr><td><code>f</code></td><td>Fixed-point (decimal places)</td><td><code>.2f</code> of <code>3.14159</code></td><td><code>3.14</code></td></tr>
+      <tr><td><code>e</code></td><td>Scientific notation</td><td><code>.2e</code> of <code>31415.9</code></td><td><code>3.14e+04</code></td></tr>
+      <tr><td><code>g</code></td><td>Significant digits, scientific when large</td><td><code>.3g</code> of <code>123456</code></td><td><code>1.23e+05</code></td></tr>
+      <tr><td><code>x</code></td><td>Hexadecimal</td><td><code>x</code> of <code>255</code></td><td><code>ff</code></td></tr>
+      <tr><td><code>b</code></td><td>Binary</td><td><code>b</code> of <code>5</code></td><td><code>101</code></td></tr>
+      <tr><td><code>o</code></td><td>Octal</td><td><code>o</code> of <code>64</code></td><td><code>100</code></td></tr>
+      <tr><td><code>d</code></td><td>Integer (truncates toward zero)</td><td><code>d</code> of <code>3.7</code></td><td><code>3</code></td></tr>
     </table>
-    <p>The numeric output is locale-independent: the decimal separator is always <code>.</code>, regardless of the system locale. This keeps CSV pipelines reproducible across machines.</p>
-    <p>The <code>d</code> type truncates fractional input toward zero before output (<code>3.7</code> &rarr; <code>3</code>, <code>-3.7</code> &rarr; <code>-3</code>). For rounded behaviour use <code>round()</code> first: <code>round(num(1)) ~ d</code>.</p>
+    <p>The three float types (<code>f</code>, <code>e</code>, <code>g</code>) accept precision; <code>f</code> defaults to 6 decimals when none is given (<code>f</code> of <code>3.14159</code> &rarr; <code>3.141590</code>). The four integer types (<code>x</code>, <code>b</code>, <code>o</code>, <code>d</code>) reject precision since there is no fractional part. Hex, binary, and octal also reject <code>+</code>: they format as unsigned bit patterns, so a negative number shows its 64-bit two's-complement form (<code>x</code> of <code>-1</code> &rarr; <code>ffffffffffffffff</code>). Signed base-10 (<code>d</code>) accepts <code>+</code> normally.</p>
+    <p><strong>Alignment and zero-pad are mutually exclusive.</strong> The <code>0</code> flag zero-fills sign-aware to <code>width</code>; an explicit align (<code>&lt;&gt;^</code>) space-fills (or fills with your fill char) around the finished number. Asking for both &mdash; e.g. <code>&gt;05d</code> &mdash; is a compile-time error; pick one. (<code>05d</code> zero-pads, <code>&gt;5d</code> right-aligns with spaces.)</p>
+    <table class="optionsTable">
+      <tr><th>Spec</th><th>Value</th><th>Output</th><th>Note</th></tr>
+      <tr><td><code>05.2f</code></td><td><code>3.14159</code></td><td><code>03.14</code></td><td>zero-pad to width 5</td></tr>
+      <tr><td><code>+8.2f</code></td><td><code>3.14</code></td><td><code>&nbsp;&nbsp;&nbsp;+3.14</code></td><td>forced sign, space-pad to 8</td></tr>
+      <tr><td><code>&lt;8.2f</code></td><td><code>3.14159</code></td><td><code>3.14&nbsp;&nbsp;&nbsp;&nbsp;</code></td><td>left-align (frame)</td></tr>
+      <tr><td><code>&gt;8.2f</code></td><td><code>3.14159</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;3.14</code></td><td>right-align (frame)</td></tr>
+      <tr><td><code>^8.2f</code></td><td><code>3.14159</code></td><td><code>&nbsp;&nbsp;3.14&nbsp;&nbsp;</code></td><td>center (frame)</td></tr>
+      <tr><td><code>*&gt;8.2f</code></td><td><code>3.14159</code></td><td><code>****3.14</code></td><td>fill <code>*</code>, right</td></tr>
+      <tr><td><code>.2-5f</code></td><td><code>3.1</code></td><td><code>3.10</code></td><td>range precision, min 2 decimals</td></tr>
+      <tr><td><code>.2-5f</code></td><td><code>3.14159</code></td><td><code>3.14159</code></td><td>range precision, up to 5</td></tr>
+      <tr><td><code>.2e</code></td><td><code>31415.9</code></td><td><code>3.14e+04</code></td><td>scientific notation</td></tr>
+      <tr><td><code>.3g</code></td><td><code>123456</code></td><td><code>1.23e+05</code></td><td>3 significant digits (<code>g</code>)</td></tr>
+      <tr><td><code>08x</code></td><td><code>255</code></td><td><code>000000ff</code></td><td>hex, zero-pad</td></tr>
+      <tr><td><code>8b</code></td><td><code>5</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;101</code></td><td>binary, space-pad</td></tr>
+      <tr><td><code>05o</code></td><td><code>64</code></td><td><code>00100</code></td><td>octal, zero-pad</td></tr>
+      <tr><td><code>+</code></td><td><code>3.14</code></td><td><code>+3.14</code></td><td>forced sign only</td></tr>
+      <tr><td><code>d</code></td><td><code>3.7</code></td><td><code>3</code></td><td>truncates toward zero</td></tr>
+      <tr><td><code>+05d</code></td><td><code>-42</code></td><td><code>-0042</code></td><td>sign-aware zero-pad</td></tr>
+      <tr><td><code>&gt;05d</code></td><td><code>42</code></td><td><em>error</em></td><td>align + zero-pad conflict</td></tr>
+    </table>
+    <p>The numeric output is locale-independent: the decimal separator is always <code>.</code>, regardless of the system locale. This keeps CSV pipelines reproducible across machines. The <code>d</code> type truncates fractional input toward zero (<code>3.7</code> &rarr; <code>3</code>, <code>-3.7</code> &rarr; <code>-3</code>); for rounding use <code>round(num(1)) ~ d</code>.</p>
+    <p>The optional <code>n:</code> marker makes "this is a number" explicit. It never changes the output, so the long and short forms are interchangeable:</p>
+    <table class="optionsTable">
+      <tr><th>Long (with <code>n:</code>)</th><th>Short (bare)</th><th>Value</th><th>Output</th></tr>
+      <tr><td><code>n:.2f</code></td><td><code>.2f</code></td><td><code>3.14159</code></td><td><code>3.14</code></td></tr>
+      <tr><td><code>&lt;8 n:.2f</code></td><td><code>&lt;8.2f</code></td><td><code>3.14159</code></td><td><code>3.14&nbsp;&nbsp;&nbsp;&nbsp;</code></td></tr>
+      <tr><td><code>n:+06.1f</code></td><td><code>+06.1f</code></td><td><code>42</code></td><td><code>+042.0</code></td></tr>
+    </table>
 
-    <h4>Optional <code>n:</code> marker</h4>
-    <p>For visual consistency with the other spec families (<code>d:</code>, <code>t:</code>, <code>ts:</code>), a numeric spec can be prefixed with <code>n:</code>. The two forms are equivalent:</p>
+    <h4>Default type with precision behaves like <code>g</code></h4>
+    <p>Without a type letter and without precision, the number renders shortest round-trip (<code>3.14</code>, <code>42</code>). <strong>Add a precision and the default type behaves like <code>g</code></strong> &mdash; <code>.N</code> means <em>significant digits</em>, switching to scientific notation when the magnitude warrants it. This matches Python and Rust, where the no-type float format is defined as "the same as <code>g</code>".</p>
     <table class="optionsTable">
-      <tr><th>Form</th><th>Output</th></tr>
-      <tr><td><code>~ 5.2f</code></td><td><code> 3.14</code></td></tr>
-      <tr><td><code>~ n:5.2f</code></td><td><code> 3.14</code></td></tr>
+      <tr><th>Spec</th><th>Value</th><th>Output</th><th>Why</th></tr>
+      <tr><td><code>.3</code></td><td><code>3.14159</code></td><td><code>3.14</code></td><td>3 significant digits</td></tr>
+      <tr><td><code>.3</code></td><td><code>1234.5678</code></td><td><code>1.23e+03</code></td><td><code>g</code> switches to scientific</td></tr>
+      <tr><td><code>.3</code></td><td><code>3.0</code></td><td><code>3</code></td><td><code>g</code> trims trailing zeros</td></tr>
     </table>
-    <p>The marker is optional &mdash; the bare form stays the recommended default since numeric is the common case and the short form reads cleaner. <code>n:</code> is offered for callers who prefer an explicit marker on every spec.</p>
+    <p>For fixed decimal places regardless of magnitude, use <code>f</code> explicitly: <code>.3f</code> on <code>3.0</code> &rarr; <code>3.000</code>.</p>
 
     <h3>Text</h3>
-    <p>Grammar: <code>t:[fill][align][width][.maxlen]</code></p>
-    <p>Pads, aligns, and optionally truncates a string-returning formula. Required marker is <code>t:</code> (with the colon). Length semantics operate on <strong>UTF-8 codepoints</strong>, so multi-byte characters like <code>&auml;</code> count as one.</p>
+    <p>Grammar: <code>[ [fill]align ] [t:] [width] [.maxlen]</code></p>
+    <p>The optional <code>t:</code> marker sits after the frame's fill/align and before the body. As with numbers, <code>width</code> is normally in the body; with a frame in front of a marker it may sit in the frame (<code>&gt;8 t:.3</code>), but never in both.</p>
+    <p>Pads, aligns, and optionally truncates a string-returning formula. Length semantics operate on <strong>UTF-8 codepoints</strong>, so multi-byte characters like <code>&auml;</code> count as one.</p>
     <table class="optionsTable">
-      <tr>
-        <th>Part</th>
-        <th>Meaning</th>
-      </tr>
-      <tr><td><code>fill</code></td><td>Optional. Single character used for padding. Must be followed by an align letter to disambiguate from width. Defaults to space.</td></tr>
-      <tr><td><code>align</code></td><td><code>&lt;</code> left, <code>&gt;</code> right, <code>^</code> center. Optional. Defaults to <code>&lt;</code> (left).</td></tr>
+      <tr><th>Part</th><th>Meaning</th></tr>
+      <tr><td><code>fill</code></td><td>Optional single padding character. Must be followed by an align char to disambiguate from width. Defaults to space.</td></tr>
+      <tr><td><code>align</code></td><td><code>&lt;</code> left, <code>&gt;</code> right, <code>^</code> center. Optional. Text defaults to <code>&lt;</code> (left).</td></tr>
       <tr><td><code>width</code></td><td>Minimum codepoint length; pads with <code>fill</code> to reach this width.</td></tr>
       <tr><td><code>.maxlen</code></td><td>Maximum codepoint length; truncates at a codepoint boundary if exceeded.</td></tr>
     </table>
-    <p>Text specs require a <strong>string-returning formula</strong> (e.g. <code>txt(1)</code>, <code>num2rom(...)</code>, <code>'literal'</code>, or any ExprTk string concatenation). Combining a text spec with a numeric formula is a compile-time error, and vice versa.</p>
+    <p><strong>No marker is required.</strong> A bare frame spec on a string-returning formula (e.g. <code>txt(1)</code>, <code>num2rom(...)</code>, <code>'literal'</code>, or any ExprTk string concatenation) is treated as text &mdash; the value being a string is enough. The optional <code>t:</code> marker asserts "this is a string" but changes nothing about the output.</p>
+    <p>The <code>.maxlen</code> part is the truncation control: if the string is longer than <code>maxlen</code> codepoints, it is cut to that length (at a codepoint boundary) <strong>before</strong> any padding is applied. This is the same <code>.N</code> syntax the numeric specs use for precision &mdash; on a string it means "cut to N characters", on a number it means "N decimal/significant digits". The value's type decides which; that is why one spec like <code>&gt;8.3</code> does the right thing on either (see the contrast table below).</p>
     <table class="optionsTable">
-      <tr>
-        <th>Spec</th>
-        <th>Input</th>
-        <th>Output</th>
-      </tr>
-      <tr><td><code>t:&lt;15</code></td><td><code>"foo"</code></td><td><code>"foo            "</code></td></tr>
-      <tr><td><code>t:&gt;15</code></td><td><code>"foo"</code></td><td><code>"            foo"</code></td></tr>
-      <tr><td><code>t:^15</code></td><td><code>"foo"</code></td><td><code>"      foo      "</code></td></tr>
-      <tr><td><code>t:15</code></td><td><code>"foo"</code></td><td><code>"foo            "</code></td></tr>
-      <tr><td><code>t:.5</code></td><td><code>"hello world"</code></td><td><code>"hello"</code></td></tr>
-      <tr><td><code>t:15.3</code></td><td><code>"longstring"</code></td><td><code>"lon            "</code></td></tr>
-      <tr><td><code>t:*&lt;15</code></td><td><code>"foo"</code></td><td><code>"foo************"</code></td></tr>
-      <tr><td><code>t:.&lt;15</code></td><td><code>"Ch1"</code></td><td><code>"Ch1............"</code></td></tr>
-      <tr><td><code>t:0&gt;5</code></td><td><code>"42"</code></td><td><code>"00042"</code></td></tr>
-      <tr><td><code>t:&lt;10</code></td><td><code>"Gr&ouml;&szlig;e"</code></td><td><code>"Gr&ouml;&szlig;e     "</code> (5 codepoints)</td></tr>
-      <tr><td><code>t:.3</code></td><td><code>"Gr&ouml;&szlig;e"</code></td><td><code>"Gr&ouml;"</code> (codepoint boundary)</td></tr>
+      <tr><th>Spec</th><th>Input</th><th>Output</th><th>Note</th></tr>
+      <tr><td><code>&lt;15</code></td><td><code>"foo"</code></td><td><code>"foo&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"</code></td><td>left (text default)</td></tr>
+      <tr><td><code>&gt;15</code></td><td><code>"foo"</code></td><td><code>"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;foo"</code></td><td>right</td></tr>
+      <tr><td><code>^15</code></td><td><code>"foo"</code></td><td><code>"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;foo&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"</code></td><td>center</td></tr>
+      <tr><td><code>.5</code></td><td><code>"hello world"</code></td><td><code>"hello"</code></td><td>truncate to 5, no padding</td></tr>
+      <tr><td><code>&gt;8.3</code></td><td><code>"hello"</code></td><td><code>"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;hel"</code></td><td>truncate to 3, then right-pad to 8</td></tr>
+      <tr><td><code>*&lt;15</code></td><td><code>"foo"</code></td><td><code>"foo************"</code></td><td>fill <code>*</code>, left</td></tr>
+      <tr><td><code>.&lt;15</code></td><td><code>"Ch1"</code></td><td><code>"Ch1............"</code></td><td>fill <code>.</code>, left</td></tr>
+      <tr><td><code>0&gt;5</code></td><td><code>"42"</code></td><td><code>"00042"</code></td><td>fill <code>0</code>, right</td></tr>
+      <tr><td><code>&lt;10</code></td><td><code>"Gr&ouml;&szlig;e"</code></td><td><code>"Gr&ouml;&szlig;e&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"</code></td><td>5 codepoints</td></tr>
+      <tr><td><code>.3</code></td><td><code>"Gr&ouml;&szlig;e"</code></td><td><code>"Gr&ouml;"</code></td><td>cut at codepoint boundary</td></tr>
     </table>
-    <p>The <code>t</code> marker is shared with <strong>duration</strong> (<code>ts:</code>, <code>tm:</code>, <code>th:</code>, <code>td:</code>): the parser looks at the second character &mdash; <code>:</code> takes the text path, a unit letter (<code>s</code>/<code>m</code>/<code>h</code>/<code>d</code>) takes the duration path. So <code>t:&lt;15</code> and <code>ts:hms</code> cannot be confused.</p>
-    <p>If both fill and align use the same character (<code>t:&lt;&lt;10</code> &rarr; fill <code>&lt;</code>, align <code>&lt;</code>), the lookahead still resolves cleanly: a fill character is only consumed when an align letter follows it.</p>
+    <p>If both fill and align use the same character (<code>&lt;&lt;10</code> &rarr; fill <code>&lt;</code>, align <code>&lt;</code>), the lookahead still resolves cleanly: a fill character is only consumed when an align char follows it.</p>
+    <p>The optional <code>t:</code> marker makes "this is text" explicit. Like <code>n:</code>, it never changes the output &mdash; long and short are interchangeable:</p>
+    <table class="optionsTable">
+      <tr><th>Long (with <code>t:</code>)</th><th>Short (bare)</th><th>Input</th><th>Output</th></tr>
+      <tr><td><code>t:.3</code></td><td><code>.3</code></td><td><code>"Bericht"</code></td><td><code>Ber</code></td></tr>
+      <tr><td><code>&gt;8 t:.3</code></td><td><code>&gt;8.3</code></td><td><code>"Bericht"</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Ber</code></td></tr>
+      <tr><td><code>t:10</code></td><td><code>10</code></td><td><code>"foo"</code></td><td><code>foo&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></td></tr>
+    </table>
+    <p><strong><code>.N</code> is the same syntax on numbers and strings &mdash; only its meaning follows the value type.</strong> This is what lets you write one spec and let the value decide, so a marker is usually unnecessary:</p>
+    <table class="optionsTable">
+      <tr><th>Spec</th><th>On a number (<code>3.14159</code>)</th><th>On a string (<code>"hello"</code>)</th></tr>
+      <tr><td><code>.3</code></td><td><code>3.14</code> &mdash; 3 significant digits</td><td><code>hel</code> &mdash; cut to 3 codepoints</td></tr>
+      <tr><td><code>&gt;8.3</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;3.14</code> &mdash; precision, then pad</td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;hel</code> &mdash; truncate, then pad</td></tr>
+    </table>
+    <p>The engine routes a number-returning formula through the numeric path and a string-returning formula through the text path automatically, so the same written spec adapts to whichever it gets.</p>
+
+    <h4>Type markers <code>n:</code> and <code>t:</code></h4>
+    <p>The <code>n:</code> and <code>t:</code> markers are shown alongside the bare forms above &mdash; they never change the output, so on the matching value type they are purely cosmetic. Their only job is to <strong>assert the expected type</strong>, so a mismatch fails loudly at compile time instead of being silently reinterpreted. Reach for them when you want a rule to reject the wrong input type, or for visual symmetry with the <code>d:</code> / <code>ts:</code> markers.</p>
+    <table class="optionsTable">
+      <tr><th>Block</th><th>Value</th><th>Result</th></tr>
+      <tr><td><code>(?= num(1) ~ &gt;5 t: )</code></td><td><code>42</code></td><td><em>error</em> &mdash; <code>t:</code> wants a string</td></tr>
+      <tr><td><code>(?= num(1) ~ n:5.2f )</code></td><td><code>42</code></td><td><code>42.00</code> &mdash; matches, formats</td></tr>
+      <tr><td><code>(?= txt(1) ~ n:5.2f )</code></td><td><code>"ab"</code></td><td><em>error</em> &mdash; <code>n:5.2f</code> wants a number</td></tr>
+    </table>
+    <p><strong>One asymmetry worth knowing.</strong> A <code>t:</code> spec is always a real text assertion. An <code>n:</code> spec only asserts "number" when the spec carries a trait that is <em>exclusively</em> numeric &mdash; a type letter (<code>f</code>/<code>e</code>/<code>g</code>/<code>x</code>/<code>b</code>/<code>o</code>/<code>d</code>), a sign (<code>+</code>), zero-pad (<code>0</code>), or a range precision (<code>.min-max</code>). If the spec after <code>n:</code> is only a frame (<code>&gt;6 n:</code>) or carries just a plain <code>.N</code> precision (<code>n:.3</code>) &mdash; which is polymorphic, not exclusively numeric &mdash; the marker is cosmetic and the spec stays type-neutral: on a string it still formats as text (<code>n:.3</code> on <code>"hello"</code> &rarr; <code>"hel"</code>, truncation). So <code>n:5.2f</code> on a string is an error, but <code>&gt;6 n:</code> and <code>n:.3</code> on a string are not. For a hard "numbers only" guarantee, give the spec an exclusively numeric trait, not just a frame or a plain <code>.N</code>.</p>
 
     <h3>Duration</h3>
-    <p>Grammar: <code>t&lt;unit&gt;:&lt;mode&gt;</code></p>
-    <p>Treats the value as a duration measured in <code>unit</code> and renders it as a clock-like string.</p>
+    <p>Grammar: <code>[ [fill]align ] t&lt;unit&gt;:&lt;mode&gt;</code></p>
+    <p>Treats the value as a duration measured in <code>unit</code> and renders it as a clock-like string. An optional frame may precede the marker (see "Frame before a marker" below).</p>
     <table class="optionsTable">
       <tr><th>Unit</th><th>Meaning</th></tr>
       <tr><td><code>ts</code></td><td>seconds</td></tr>
@@ -2669,21 +2692,24 @@ end
       <tr><td><code>dhm</code></td><td><code>D HH:MM</code></td><td>(<code>td:dhm</code> on 1.5d &rarr; <code>1 12:00</code>)</td></tr>
       <tr><td><code>dhms</code></td><td><code>D HH:MM:SS</code></td><td>(<code>td:dhms</code> on 1.5d &rarr; <code>1 12:00:00</code>)</td></tr>
     </table>
-    <p>The mode is <strong>mandatory</strong> &mdash; <code>t:s</code> alone is not enough, you must pick a mode. Fractional input is truncated (rounded toward zero) before splitting into components. Negative durations carry a leading <code>-</code>.</p>
+    <p>The mode is <strong>mandatory</strong> &mdash; <code>ts:</code> alone is not enough, you must pick a mode. Fractional input is truncated (toward zero) before splitting into components. Negative durations carry a leading <code>-</code>. The <code>t</code> marker is shared with <strong>text</strong> (<code>t:</code>): the parser looks at the second character &mdash; <code>:</code> takes the text path, a unit letter (<code>s</code>/<code>m</code>/<code>h</code>/<code>d</code>) takes the duration path, so <code>t:</code> (text) and <code>ts:hms</code> (duration) cannot be confused.</p>
+    <table class="optionsTable">
+      <tr><th>Spec</th><th>Value</th><th>Output</th></tr>
+      <tr><td><code>ts:hms</code></td><td><code>3725</code></td><td><code>1:02:05</code></td></tr>
+      <tr><td><code>&gt;12 ts:hms</code></td><td><code>3725</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1:02:05</code></td></tr>
+      <tr><td><code>^12 ts:hms</code></td><td><code>3725</code></td><td><code>&nbsp;&nbsp;1:02:05&nbsp;&nbsp;&nbsp;</code></td></tr>
+    </table>
 
     <h3>Date</h3>
     <p>Grammar:</p>
     <ul>
-      <li><code>d:strftime_pattern</code> &mdash; local time</li>
-      <li><code>d:!strftime_pattern</code> &mdash; UTC</li>
+      <li><code>[ [fill]align ] d:strftime_pattern</code> &mdash; local time</li>
+      <li><code>[ [fill]align ] d:!strftime_pattern</code> &mdash; UTC</li>
     </ul>
-    <p>Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through <code>strftime</code>. The optional <code>!</code> prefix forces UTC; without it the system's local time zone is used. This follows the same convention as Lua's <code>os.date()</code>.</p>
+    <p>Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through <code>strftime</code>. The optional <code>!</code> prefix forces UTC; without it the system's local time zone is used. This follows the same convention as Lua's <code>os.date()</code>. An optional frame may precede the marker (see "Frame before a marker" below).</p>
     <p>The pattern accepts any standard strftime specifier. Literal text between specifiers is passed through verbatim. Common specifiers:</p>
     <table class="optionsTable">
-      <tr>
-        <th>Specifier</th>
-        <th>Meaning</th>
-      </tr>
+      <tr><th>Specifier</th><th>Meaning</th></tr>
       <tr><td><code>%Y</code> <code>%y</code></td><td>4-digit year / 2-digit year</td></tr>
       <tr><td><code>%m</code> <code>%d</code></td><td>Month (01..12) / day of month (01..31)</td></tr>
       <tr><td><code>%H</code> <code>%I</code></td><td>Hour 24h (00..23) / hour 12h (01..12)</td></tr>
@@ -2706,27 +2732,42 @@ end
     <table class="optionsTable">
       <tr><th>Spec</th><th>Timestamp</th><th>Output (UTC)</th></tr>
       <tr><td><code>d:!%Y-%m-%d</code></td><td><code>1700000000</code></td><td><code>2023-11-14</code></td></tr>
+      <tr><td><code>&gt;15 d:!%Y-%m-%d</code></td><td><code>1700000000</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2023-11-14</code></td></tr>
       <tr><td><code>d:!%Y-%m-%dT%H:%M:%SZ</code></td><td><code>1700000000</code></td><td><code>2023-11-14T22:13:20Z</code></td></tr>
       <tr><td><code>d:!%d.%m.%Y</code></td><td><code>1700000000</code></td><td><code>14.11.2023</code></td></tr>
       <tr><td><code>d:!%A</code></td><td><code>0</code></td><td><code>Thursday</code> (epoch was Thursday)</td></tr>
       <tr><td><code>d:!Year %Y, week %V</code></td><td><code>1700000000</code></td><td><code>Year 2023, week 46</code></td></tr>
-      <tr><td><code>d:!%c</code></td><td><code>1700000000</code></td><td><code>Tue Nov 14 22:13:20 2023</code></td></tr>
     </table>
     <p><strong>Range:</strong> timestamps must be &ge; 0 (years 1970 onwards). Negative values produce empty output. Subseconds are truncated (<code>1700000000.7</code> is treated as <code>1700000000</code>).</p>
-    <p><strong>Tilde in date patterns:</strong> <code>~</code> is the spec separator and therefore cannot appear inside the strftime pattern itself &mdash; use any other literal between specifiers (<code>-</code>, <code>/</code>, <code>:</code>, space, etc.). This matters in practice only for unusual patterns; standard date/time separators are unaffected.</p>
+    <p><strong>Tilde in date patterns:</strong> <code>~</code> is the spec separator and therefore cannot appear inside the strftime pattern &mdash; use any other literal between specifiers (<code>-</code>, <code>/</code>, <code>:</code>, space, etc.). Standard date/time separators are unaffected.</p>
+
+    <h4>Frame before a marker</h4>
+    <p>The rule is uniform across every marker: the frame (fill/align/width) leads, then the marker (<code>n:</code>, <code>t:</code>, <code>d:</code>, <code>ts:</code>/<code>tm:</code>/<code>th:</code>/<code>td:</code>), then the body. One optional space is allowed between the frame and the marker, so <code>&gt;12 d:%Y</code> and <code>&gt;12d:%Y</code> are identical. A marker placed before the frame (<code>n:&lt;8.2f</code>, <code>t:&gt;8.3</code>) is rejected &mdash; the frame always comes first. A marker with no frame at all (<code>n:5.2f</code>, <code>d:%Y</code>) is fine; there is simply nothing to lead.</p>
+    <table class="optionsTable">
+      <tr><th>Spec</th><th>Value</th><th>Output</th></tr>
+      <tr><td><code>&gt;12 ts:hms</code></td><td><code>3725</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1:02:05</code></td></tr>
+      <tr><td><code>&gt;12ts:hms</code></td><td><code>3725</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1:02:05</code></td></tr>
+      <tr><td><code>^15 d:!%Y-%m-%d</code></td><td><code>1700000000</code></td><td><code>&nbsp;&nbsp;2023-11-14&nbsp;&nbsp;&nbsp;</code></td></tr>
+      <tr><td><code>&lt;8 n:.2f</code></td><td><code>3.14159</code></td><td><code>3.14&nbsp;&nbsp;&nbsp;&nbsp;</code></td></tr>
+      <tr><td><code>&gt;8 t:.3</code></td><td><code>"hello"</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;hel</code></td></tr>
+    </table>
 
     <h3>Errors and edge cases</h3>
     <ul>
       <li><strong>Invalid spec at compile time</strong> &mdash; <code>(?=hit ~ 99q)</code> produces <em>"Invalid format spec '99q': Unknown numeric type letter; expected f/e/g/x/b/o/d"</em>. The rule fails to compile; no replacements run.</li>
-      <li><strong>Spec / formula type mismatch</strong> &mdash; every spec family expects a matching formula type:
+      <li><strong>Alignment + zero-pad</strong> &mdash; combining an explicit align with the <code>0</code> flag (e.g. <code>&gt;05d</code>, or <code>&gt;8 n:05</code> where the align comes from the frame) is rejected at compile time; the two fills conflict. Use one or the other.</li>
+      <li><strong>Marker before the frame</strong> &mdash; <code>n:&lt;8.2f</code> or <code>t:&gt;8.3</code> is rejected: the frame must lead, so write <code>&lt;8 n:.2f</code> / <code>&gt;8 t:.3</code>. A bare body marker with no frame (<code>n:5.2f</code>, <code>t:.5</code>) is fine.</li>
+      <li><strong>Width given twice</strong> &mdash; stating a width in both the frame and the body (<code>&gt;8 n:5.2f</code>) is rejected; put it in one place.</li>
+      <li><strong>Type assertion mismatch</strong> &mdash; a marker that contradicts the value type is rejected at compile time:
         <ul>
-          <li>Numeric / date / duration specs expect a numeric-returning formula. Pairing them with a string-returning formula (e.g. <code>(?='hello' ~ 05f)</code>) is rejected at compile time.</li>
-          <li>Text specs (<code>t:...</code>) expect a string-returning formula. Pairing them with a numeric formula (e.g. <code>(?=num(1) ~ t:&lt;15)</code>) is rejected at compile time.</li>
+          <li><code>t:</code> on a numeric-returning formula &rarr; error (text spec wants a string).</li>
+          <li>A spec with an exclusively numeric trait (<code>5.2f</code>, <code>08x</code>, <code>d:</code>, <code>ts:</code>) on a string-returning formula &rarr; error.</li>
+          <li>A <strong>bare frame</strong> (<code>&gt;8</code>, <code>^10</code>, <code>.5</code>) carries no type assertion and applies to either type &mdash; never a mismatch.</li>
         </ul>
       </li>
-      <li><strong>NaN / Inf</strong> &mdash; when the formula itself produces <code>NaN</code> (e.g. parsing a non-numeric capture) or <code>Inf</code> (e.g. division by zero), the spec is not applied; the recoverable-error dialog appears instead, leaving the original match untouched if the user skips.</li>
-      <li><strong><code>~</code> inside the formula</strong> &mdash; the splitter looks for the <strong>last</strong> <code>~</code> outside string quotes. ExprTk string literals (<code>'a~b'</code>, <code>"a~b"</code>) are quote-aware, so a <code>~</code> inside them does not split:
-        <p><code>(?= 'note ~ check' + txt(1) ~ t:&lt;20 )</code></p>
+      <li><strong>NaN / Inf</strong> &mdash; when the formula produces <code>NaN</code> (e.g. parsing a non-numeric capture) or <code>Inf</code> (e.g. division by zero), the spec is not applied; the recoverable-error dialog appears, leaving the original match untouched if skipped.</li>
+      <li><strong><code>~</code> inside the formula</strong> &mdash; the splitter takes the <strong>last</strong> <code>~</code> outside string quotes. ExprTk string literals (<code>'a~b'</code>, <code>"a~b"</code>) are quote-aware, so a <code>~</code> inside them does not split:
+        <p><code>(?= 'note ~ check' + txt(1) ~ &gt;20 )</code></p>
         The <code>~</code> inside the single-quoted literal is part of the formula; the final <code>~</code> is the spec separator.
       </li>
     </ul>

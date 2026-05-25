@@ -539,7 +539,8 @@ namespace MultiReplaceEngine {
                     _segmentSpecs.clear();
                     return false;
                 }
-                if (!specIsText && _segmentSpecs[i].isString) {
+                if (!specIsText && _segmentSpecs[i].isString
+                    && !FormatSpec::isPureFrame(_segmentSpecs[i].spec)) {
                     std::string msg = "Numeric/date/duration format spec cannot be combined with a string-returning formula: \"";
                     msg += seg.text;
                     msg += "\"";

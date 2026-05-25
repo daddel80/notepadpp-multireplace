@@ -113,32 +113,18 @@ namespace FormatSpec {
         // not a single byte, so non-ASCII fill characters (umlauts,
         // accented letters, etc.) work even though they take two bytes
         // in UTF-8.
-        Spec parseString(const std::wstring& s) {
-            if (s.empty()) {
-                return makeError("Text spec is empty (need width, align, or fill+align after 't:')");
-            }
+        bool isAlignChar(wchar_t c) {
+            return c == L'<' || c == L'>' || c == L'^';
+        }
 
-            Spec out;
-            out.kind = Kind::Text;
-
-            size_t i = 0;
-
-            // Decide whether the leading codepoint is a fill character.
-            // It is, only when the next codepoint is an align letter.
-            auto isAlignChar = [](wchar_t c) {
-                return c == L'<' || c == L'>' || c == L'^';
-                };
-
-            // Lookahead: fill takes the leading codepoint only if an
-            // align letter follows it. This handles three cases cleanly:
-            //   '*<'  -> fill '*', align left   (ordinary fill)
-            //   '<<'  -> fill '<', align left   (align-char used as fill)
-            //   '<5'  -> no fill, align left, width 5
-            // With just one character available, no fill is possible.
-            if (s.size() >= 2 && isAlignChar(s[1])) {
-                // Fill is the first codepoint. Encode it as UTF-8 so it
-                // can be appended cheaply during rendering.
-                const wchar_t fillCp = s[0];
+        // Parse a leading universal frame [ [fill] align ] from s starting
+        // at i, writing fill/align into out and advancing i. Shared by the
+        // text and numeric parsers so the fill/align rules live in ONE place.
+        // Fill takes the leading codepoint only when an align letter follows
+        // it ('*<' -> fill '*'; '<5' -> no fill, align left; '<<' -> fill '<').
+        void parseFrame(const std::wstring& s, size_t& i, Spec& out) {
+            if (i + 1 < s.size() && isAlignChar(s[i + 1])) {
+                const wchar_t fillCp = s[i];
                 out.textFill.clear();
                 if (fillCp < 0x80) {
                     out.textFill.push_back(static_cast<char>(fillCp));
@@ -152,12 +138,9 @@ namespace FormatSpec {
                     out.textFill.push_back(static_cast<char>(0x80 | ((fillCp >> 6) & 0x3F)));
                     out.textFill.push_back(static_cast<char>(0x80 | (fillCp & 0x3F)));
                 }
-                i = 1;  // s[1] is an align letter (guaranteed by the lookahead)
+                ++i;  // s[i] is now the align letter (guaranteed by lookahead)
             }
 
-            // Align letter, optional. Defaults to Left when omitted. If a
-            // fill was consumed above, i points at the align letter the
-            // lookahead already verified, so this branch always matches there.
             if (i < s.size() && isAlignChar(s[i])) {
                 switch (s[i]) {
                 case L'<': out.textAlign = TextAlign::Left;   break;
@@ -166,10 +149,36 @@ namespace FormatSpec {
                 }
                 ++i;
             }
+        }
 
-            // Width, optional.
+        // When preFrame is non-null the caller (parse()) has already peeled
+        // the leading frame [ [fill]align ][width] off, so s is the body only
+        // and the frame is inherited. When null this parser reads its own
+        // leading frame (the bare, marker-less path stays byte-identical).
+        Spec parseString(const std::wstring& s, const Spec* preFrame = nullptr) {
+            Spec out;
+            out.kind = Kind::Text;
+
+            size_t i = 0;
+
+            if (preFrame) {
+                out.textFill = preFrame->textFill;
+                out.textAlign = preFrame->textAlign;
+                out.width = preFrame->width;
+            }
+            else {
+                // Leading frame: fill + align (shared with the numeric parser).
+                parseFrame(s, i, out);
+            }
+
+            // Width, optional. May live in the frame (">8 t:.3") OR in the
+            // body ("t:10"), but not both.
             if (i < s.size() && isDigit(s[i])) {
-                out.width = readInt(s, i);
+                int bodyWidth = readInt(s, i);
+                if (preFrame && out.width >= 0) {
+                    return makeError("Width given twice (in frame and in body)");
+                }
+                out.width = bodyWidth;
             }
 
             // Max-length, optional. '.' followed by a non-negative integer.
@@ -191,20 +200,48 @@ namespace FormatSpec {
             return out;
         }
 
-        // Form: [+] [0] [width] [.prec | .min-max] [type]
-        Spec parseNumeric(const std::wstring& s) {
+        // Form: [ [fill] align ] [+] [0] [width] [.prec | .min-max] [type]
+        // preFrame: see parseString. When set, the leading frame is inherited
+        // and only the numeric body (sign/zero/width/prec/type) is parsed here.
+        Spec parseNumeric(const std::wstring& s, const Spec* preFrame = nullptr) {
             Spec out;
             out.kind = Kind::Numeric;
 
             size_t i = 0;
 
+            if (preFrame) {
+                out.textFill = preFrame->textFill;
+                out.textAlign = preFrame->textAlign;
+                out.width = preFrame->width;
+            }
+            else {
+                // Leading universal frame: fill + align (shared with text).
+                parseFrame(s, i, out);
+            }
+
             if (i < s.size() && s[i] == L'+') { out.forceSign = true; ++i; }
             if (i < s.size() && s[i] == L'0') { out.zeroPad = true; ++i; }
 
+            // Explicit align and the zero-pad flag give conflicting fills
+            // (space-alignment vs sign-aware zero-fill). Reject the mix so
+            // the intent is never guessed; the user picks one (e.g. 05d for
+            // zero-pad, or >5d for right-align). The align may come from an
+            // inherited preFrame, so this guard covers both ">05d" and
+            // ">8 n:05" forms.
+            if (out.zeroPad && out.textAlign != TextAlign::Default) {
+                return makeError("Cannot combine explicit alignment (<>^) with the zero-pad flag (0)");
+            }
+
             // Width is the next integer (if any). A leading zero already
-            // consumed above does NOT contribute to width.
+            // consumed above does NOT contribute to width. Width may live in
+            // the frame (">8 n:.2f") OR in the body ("n:5.2f"), but not both -
+            // a frame width plus a body width is a contradiction.
             if (i < s.size() && isDigit(s[i])) {
-                out.width = readInt(s, i);
+                int bodyWidth = readInt(s, i);
+                if (preFrame && out.width >= 0) {
+                    return makeError("Width given twice (in frame and in body)");
+                }
+                out.width = bodyWidth;
             }
 
             // Precision block: '.' followed by either N or min-max.
@@ -250,7 +287,8 @@ namespace FormatSpec {
                 // No type letter, but only legal if at least one modifier
                 // was given. Empty spec is the caller's responsibility.
                 if (!out.forceSign && !out.zeroPad
-                    && out.width < 0 && out.precisionMin < 0) {
+                    && out.width < 0 && out.precisionMin < 0
+                    && out.textAlign == TextAlign::Default) {
                     return makeError("Empty numeric spec");
                 }
             }
@@ -294,7 +332,49 @@ namespace FormatSpec {
         //
         // Locale: snprintf("%f", ...) honors the C locale, not the user
         // locale, so we get dot-decimal regardless of system settings.
+        std::wstring formatNumericBody(const Spec& spec, double value);
+        std::size_t countCodepoints(const std::string& s);
+        std::wstring applyFrame(const Spec& spec, const std::string& body,
+            std::size_t bodyCodepoints, TextAlign effAlign);
+
         std::wstring formatPrintf(const Spec& spec, double value) {
+            // With an explicit frame alignment, the number is rendered WITHOUT
+            // internal width (no printf space-padding), then the universal
+            // frame stage pads/aligns it. Zero-pad cannot reach here together
+            // with explicit align (parser rejects that mix), so there is no
+            // conflict between internal zero-fill and external padding.
+            if (spec.textAlign != TextAlign::Default) {
+                Spec bare = spec;
+                bare.width = -1;              // suppress printf/internal width
+                bare.textAlign = TextAlign::Default;
+                std::wstring body = formatNumericBody(bare, value);
+                if (body.empty()) return L"";  // non-representable (e.g. inf)
+                // The numeric body is ASCII (digits, . - + type letters), so
+                // each wchar maps to one byte; cast explicitly to avoid the
+                // implicit wchar_t->char narrowing warning.
+                std::string narrow;
+                narrow.reserve(body.size());
+                for (wchar_t wc : body) narrow.push_back(static_cast<char>(wc & 0xFF));
+                return applyFrame(spec, narrow, countCodepoints(narrow), spec.textAlign);
+            }
+            return formatNumericBody(spec, value);
+        }
+
+        // Bare numeric renderer: sign, digits, precision, internal zero-pad
+        // and (when no frame align) the original right-aligned width padding.
+        // Output is byte-identical to the pre-frame behavior for every spec
+        // that has no explicit <>^.
+        std::wstring formatNumericBody(const Spec& spec, double value) {
+            // Default type WITH a precision behaves like 'g' (significant
+            // digits), matching Python/Rust where the no-type float format is
+            // "same as g". Without a precision the default stays a shortest
+            // round-trip (handled in the Default branch below).
+            if (spec.numericType == NumericType::Default && spec.precisionMin >= 0) {
+                Spec g = spec;
+                g.numericType = NumericType::General;
+                return formatNumericBody(g, value);
+            }
+
             std::string fmt = "%";
             if (spec.forceSign) fmt += "+";
             if (spec.zeroPad)   fmt += "0";
@@ -491,6 +571,50 @@ namespace FormatSpec {
         // 10xxxxxx, so anything that does NOT match (byte & 0xC0) == 0x80
         // is a codepoint start. That's all the decoder we need for
         // counting and slicing.
+        // Count UTF-8 codepoints (lead bytes) in a byte string.
+        std::size_t countCodepoints(const std::string& s) {
+            std::size_t n = 0;
+            for (unsigned char b : s) {
+                if ((b & 0xC0) != 0x80) ++n;
+            }
+            return n;
+        }
+
+        // Universal frame stage: pad a finished UTF-8 body to spec.width
+        // codepoints using spec.textFill, positioned by effAlign. Type-blind
+        // - the body is already rendered. effAlign must be resolved (never
+        // Default) by the caller, which knows the kind's natural default.
+        std::wstring applyFrame(const Spec& spec, const std::string& body,
+            std::size_t bodyCodepoints, TextAlign effAlign) {
+            std::string out;
+            const int width = spec.width;
+            if (width > 0 && bodyCodepoints < static_cast<std::size_t>(width)) {
+                const std::size_t padCount =
+                    static_cast<std::size_t>(width) - bodyCodepoints;
+
+                std::size_t padLeft = 0;
+                std::size_t padRight = 0;
+                switch (effAlign) {
+                case TextAlign::Default:
+                case TextAlign::Left:   padRight = padCount; break;
+                case TextAlign::Right:  padLeft = padCount; break;
+                case TextAlign::Center:
+                    padLeft = padCount / 2;
+                    padRight = padCount - padLeft;
+                    break;
+                }
+
+                out.reserve(body.size() + padCount * spec.textFill.size());
+                for (std::size_t k = 0; k < padLeft; ++k)  out.append(spec.textFill);
+                out.append(body);
+                for (std::size_t k = 0; k < padRight; ++k) out.append(spec.textFill);
+            }
+            else {
+                out = body;
+            }
+            return std::wstring(out.begin(), out.end());
+        }
+
         std::wstring formatString(const Spec& spec, const std::string& text) {
             auto isLeadByte = [](unsigned char b) {
                 return (b & 0xC0) != 0x80;
@@ -522,41 +646,10 @@ namespace FormatSpec {
             }
             const std::string body(text.data(), byteCutoff);
 
-            // Pad to spec.width codepoints. If already at or above width,
-            // emit as-is.
-            std::string out;
-            const int width = spec.width;
-            if (width > 0 && codepointCount < static_cast<std::size_t>(width)) {
-                const std::size_t padCount =
-                    static_cast<std::size_t>(width) - codepointCount;
-
-                // Compute left/right pad counts based on alignment.
-                std::size_t padLeft = 0;
-                std::size_t padRight = 0;
-                switch (spec.textAlign) {
-                case TextAlign::Left:   padRight = padCount; break;
-                case TextAlign::Right:  padLeft = padCount; break;
-                case TextAlign::Center:
-                    padLeft = padCount / 2;
-                    padRight = padCount - padLeft;
-                    break;
-                }
-
-                out.reserve(text.size() + padCount * spec.textFill.size());
-                for (std::size_t k = 0; k < padLeft; ++k)  out.append(spec.textFill);
-                out.append(body);
-                for (std::size_t k = 0; k < padRight; ++k) out.append(spec.textFill);
-            }
-            else {
-                out = body;
-            }
-
-            // Convert UTF-8 bytes to wstring. Each byte maps to one
-            // wchar; the engine immediately collapses these back to char
-            // on the output path. We could decode to real wide
-            // codepoints, but that's redundant work for an output that
-            // ends up as a byte stream anyway.
-            return std::wstring(out.begin(), out.end());
+            // Frame stage. Text's natural default align is Left.
+            const TextAlign eff =
+                (spec.textAlign == TextAlign::Default) ? TextAlign::Left : spec.textAlign;
+            return applyFrame(spec, body, codepointCount, eff);
         }
 
         // Form: d:<strftime fmt> or d:!<strftime fmt>
@@ -655,28 +748,31 @@ namespace FormatSpec {
 
     // ---- Top-level dispatch -------------------------------------------
     //
-    // Spec families are distinguished by the leading character (plus a
-    // single lookahead where needed):
+    // Grammar (uniform for every kind):
     //
-    //   'd:'                  -> Date
-    //   'n:'                  -> Numeric (explicit marker; equivalent to bare)
-    //   't:'                  -> Text
-    //   't' + unit letter     -> Duration (ts/tm/th/td)
-    //   anything else         -> Numeric (default family, no marker)
+    //   [ [fill]align ][width]  [marker:]  body
+    //   `------ frame ------'   `-- n:/t: --'
+    //                            `-- d:/ts: etc.
     //
-    // Numeric is the unmarked default so that the common case stays
-    // short (`5.2f`, `04x`). The optional `n:` form is offered for
-    // callers who prefer a marker on every spec for visual consistency
-    // with `d:`, `t:` etc. Both forms produce identical output.
+    // The frame (fill, align, width) always comes FIRST, then an optional or
+    // mandatory type marker, then that kind's body. One optional space may sit
+    // between the frame and the marker (">12 ts:hms" == ">12ts:hms"). Markers:
     //
-    // The 't' prefix is shared between Text and Duration: the second
-    // character decides. ':' -> Text body, unit letter -> Duration. This
-    // lookahead lets txt() consumers map to a `t:` marker without
-    // colliding with the existing `ts:` / `tm:` etc. specs.
+    //   d:                    -> Date     (mandatory: a double can't say "date")
+    //   t<unit>: (s/m/h/d)    -> Duration (mandatory: same reason)
+    //   n:                    -> Numeric  (optional; identical output to bare)
+    //   t:                    -> Text     (optional; identical output to bare)
+    //   no marker             -> Numeric body parsed in place; a string value
+    //                            re-reads the same fields as text at apply time
     //
-    // Other families wear a leading marker so their grammars can grow
-    // independently without retroactively ambiguating the numeric
-    // parser.
+    // Numeric is the unmarked default so the common case stays short (`5.2f`,
+    // `04x`). Because the frame is peeled here, the sub-parsers receive the body
+    // plus the pre-parsed frame; only the marker-less path lets parseNumeric
+    // read its own leading frame (kept byte-identical to before).
+    //
+    // A marker before the frame ("n:<8.2f", "t:>8.3") is NOT accepted: the
+    // frame leads, uniformly. This mirrors d:/ts: and removes the old
+    // marker-first numeric/text spelling.
     Spec parse(const std::wstring& specText) {
         std::wstring s = trim(specText);
 
@@ -684,29 +780,47 @@ namespace FormatSpec {
             return makeError("Empty spec");
         }
 
-        // Date: d:<fmt>  (also d:!<fmt> for UTC)
-        if (s.size() >= 2 && s[0] == L'd' && s[1] == L':') {
-            return parseDate(s);
+        // Peel a leading frame [ [fill]align ][width], allow one optional
+        // space, then look for a marker at the resulting position.
+        Spec frame;
+        size_t i = 0;
+        parseFrame(s, i, frame);
+        if (i < s.size() && isDigit(s[i])) {
+            frame.width = readInt(s, i);
+        }
+        size_t j = i;
+        if (j < s.size() && s[j] == L' ') ++j;  // one optional space
+
+        const bool isDate = (j + 1 < s.size() && s[j] == L'd' && s[j + 1] == L':');
+        // Duration marker: 't' + unit letter (s/m/h/d) + ':'
+        const bool durMarker =
+            (j + 2 < s.size() && s[j] == L't'
+                && (s[j + 1] == L's' || s[j + 1] == L'm' || s[j + 1] == L'h' || s[j + 1] == L'd')
+                && s[j + 2] == L':');
+        const bool isNum = (j + 1 < s.size() && s[j] == L'n' && s[j + 1] == L':');
+        // Text marker: 't:' - but only when it is NOT the duration form above
+        // (ts:/tm:/th:/td:). durMarker already excludes those, so a plain
+        // 't' followed by ':' is text.
+        const bool isText = (j + 1 < s.size() && s[j] == L't' && s[j + 1] == L':');
+
+        if (isDate || durMarker) {
+            Spec out = isDate ? parseDate(s.substr(j)) : parseDuration(s.substr(j));
+            if (!out.valid) return out;
+            out.textAlign = frame.textAlign;
+            out.textFill = frame.textFill;
+            out.width = frame.width;
+            return out;
+        }
+        if (isNum) {
+            return parseNumeric(s.substr(j + 2), &frame);
+        }
+        if (isText) {
+            return parseString(s.substr(j + 2), &frame);
         }
 
-        // Numeric (explicit marker): strip 'n:' and continue as if it
-        // had been bare. The trailing part still has to satisfy the
-        // normal numeric grammar - 'n:' on its own is rejected as an
-        // empty numeric spec.
-        if (s.size() >= 2 && s[0] == L'n' && s[1] == L':') {
-            return parseNumeric(s.substr(2));
-        }
-
-        // 't' family: text (t:...) or duration (t<unit>:...). The second
-        // character disambiguates - ':' takes us to the text parser,
-        // anything else stays on the duration path.
-        if (s[0] == L't') {
-            if (s.size() >= 2 && s[1] == L':') {
-                return parseString(s.substr(2));
-            }
-            return parseDuration(s);
-        }
-
+        // No marker: the whole spec (frame included) is a numeric body. Hand
+        // the original string to parseNumeric so it reads its own frame - this
+        // keeps the marker-less path byte-identical to the previous behaviour.
         return parseNumeric(s);
     }
 
@@ -720,24 +834,54 @@ namespace FormatSpec {
         if (spec.kind != Kind::Text && !std::isfinite(value)) return L"";
 
         switch (spec.kind) {
-        case Kind::Date:     return formatDate(spec, value);
-        case Kind::Duration: return formatDuration(spec, value);
+        case Kind::Date:
+        case Kind::Duration: {
+            std::wstring body = (spec.kind == Kind::Date)
+                ? formatDate(spec, value) : formatDuration(spec, value);
+            if (body.empty()) return body;
+            // Frame stage. Date/duration default align is Left.
+            const TextAlign eff =
+                (spec.textAlign == TextAlign::Default) ? TextAlign::Left : spec.textAlign;
+            // body carries one strftime byte per wchar (built that way by the
+            // renderer); cast explicitly to avoid the wchar_t->char warning.
+            std::string narrow;
+            narrow.reserve(body.size());
+            for (wchar_t wc : body) narrow.push_back(static_cast<char>(wc & 0xFF));
+            return applyFrame(spec, narrow, countCodepoints(narrow), eff);
+        }
         case Kind::Numeric:  return formatPrintf(spec, value);
         case Kind::Text:     return L"";  // type mismatch; caller routes via string overload
         }
         return L"";
     }
 
+    bool isPureFrame(const Spec& spec) {
+        return spec.kind == Kind::Numeric
+            && !spec.forceSign && !spec.zeroPad
+            && spec.numericType == NumericType::Default
+            && spec.precisionMax < 0;
+    }
+
     std::wstring apply(const Spec& spec, const std::string& text) {
         if (!spec.valid) return L"";
 
-        // Only Text specs make sense here. For numeric / date / duration
-        // a string input is a type mismatch; we pass the input through
-        // unchanged so the engine layer can surface it verbatim (the
-        // caller is expected to have flagged the mismatch upstream).
         if (spec.kind == Kind::Text) {
             return formatString(spec, text);
         }
+
+        // Marker-free path: a bare spec (parsed as Numeric because number is
+        // the default) applied to a STRING value is treated as text when it
+        // is a pure frame. width stays width and precisionMin becomes the
+        // text max-length (truncation), matching the polymorphic .N rule. A
+        // spec with real numeric traits against a string is a genuine type
+        // mismatch and passes the text through unchanged.
+        if (isPureFrame(spec)) {
+            Spec asText = spec;
+            asText.kind = Kind::Text;
+            asText.textMaxLength = spec.precisionMin;  // .N -> truncation
+            return formatString(asText, text);
+        }
+
         return std::wstring(text.begin(), text.end());
     }
 
