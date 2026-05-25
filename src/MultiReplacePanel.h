@@ -1454,6 +1454,10 @@ private:
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr, wchar_t delimiter = L',');
     bool saveListToCsvWithSettings(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab);
     bool saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr, bool withSettingsBlock = true, wchar_t delimiter = L',');
+    // Save one tab's data to a path, picking the format from its extension
+    // (.mrl = internal + settings block, else plain CSV). Used by the tab
+    // context-menu save paths so they follow the extension like the main save.
+    bool saveTabToFile(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab);
     void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings = nullptr, LoadSource source = LoadSource::Internal);
     void autoShowCommentsColumn();
     void checkForFileChangesAtStartup();

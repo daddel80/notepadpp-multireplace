@@ -133,17 +133,27 @@ namespace {
         return ext;
     }
 
-    // Ensure the path carries an extension consistent with the picked save
-    // filter (1 = .mrl, 2 = CSV Excel .csv, 3 = All Files). A typed
-    // extension is respected (user intent wins); only a missing one is
-    // filled in. All Files forces nothing.
+    // Force the extension to match the picked save filter (1 = .mrl,
+    // 2 = CSV Excel .csv, 3 = All Files), the way Word/Excel do it: the
+    // chosen file type wins and rewrites a mismatched or missing extension.
+    // "All Files" forces nothing - whatever the user typed stands.
     std::wstring applyExtensionForFilter(const std::wstring& path, int filterIndex) {
-        if (path.find_last_of(L'.') != std::wstring::npos) {
-            return path;  // user typed an extension - keep it
+        const std::wstring* wanted = nullptr;
+        static const std::wstring mrl = L"mrl";
+        static const std::wstring csv = L"csv";
+        if (filterIndex == 1) wanted = &mrl;
+        else if (filterIndex == 2) wanted = &csv;
+        if (!wanted) return path;  // All Files or unknown: leave as-is
+
+        if (lowerExtension(path) == *wanted) return path;
+        const size_t dot = path.find_last_of(L'.');
+        const size_t slash = path.find_last_of(L"\\/");
+        // Replace an existing extension only when the dot is part of the
+        // file name (after the last separator), else just append.
+        if (dot != std::wstring::npos && (slash == std::wstring::npos || dot > slash)) {
+            return path.substr(0, dot + 1) + *wanted;
         }
-        if (filterIndex == 1) return path + L".mrl";
-        if (filterIndex == 2) return path + L".csv";
-        return path;  // All Files or unknown: leave as-is
+        return path + L"." + *wanted;
     }
 
     // Decide the save format from the chosen path. The extension is the
@@ -14588,20 +14598,34 @@ std::wstring MultiReplace::promptSaveListToCsv(const TabState* tabHint, int* out
     // later derived from the extension, not from this index).
     int localFilterIndex = 1;
     int* idxSink = outFilterIndex ? outFilterIndex : &localFilterIndex;
+    // No OFN_OVERWRITEPROMPT: the dialog would confirm the typed name
+    // before the filter-driven extension swap below and so could name the
+    // wrong file. The overwrite is confirmed on the final path instead.
     std::wstring filePath = openFileDialog(
         true,
         filters,
         dialogTitle.c_str(),
-        OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT,
+        OFN_PATHMUSTEXIST,
         L"mrl",
         defaultFileName,
         idxSink
     );
+    if (filePath.empty()) return filePath;
 
-    // Normalize the extension to the picked filter (the OS cannot switch
-    // it reliably across filters). A typed extension is kept.
-    if (!filePath.empty()) {
-        filePath = applyExtensionForFilter(filePath, *idxSink);
+    // Force the extension to match the picked filter (Word-style): the
+    // chosen file type wins over a mismatched typed extension.
+    filePath = applyExtensionForFilter(filePath, *idxSink);
+
+    // Confirm overwrite against the FINAL path so the prompt always names
+    // the file that is actually written.
+    std::error_code ec;
+    if (std::filesystem::exists(filePath, ec)) {
+        std::wstring shortPath = getShortenedFilePath(filePath, 500);
+        int answer = MessageBox(nppData._nppHandle,
+            LM.get(L"msgbox_confirm_overwrite_file", { shortPath }).c_str(),
+            LM.get(L"msgbox_title_confirm").c_str(),
+            MB_ICONWARNING | MB_YESNO);
+        if (answer != IDYES) return std::wstring();
     }
 
     return filePath;
@@ -14827,6 +14851,13 @@ bool MultiReplace::saveListToCsvWithSettings(const std::wstring& filePath, const
     return !outFile.fail();
 }
 
+bool MultiReplace::saveTabToFile(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab) {
+    const SaveFormat fmt = formatFromChoice(filePath);
+    return fmt.withSettingsBlock
+        ? saveListToCsvWithSettings(filePath, list, tab)
+        : saveListToCsvSilent(filePath, list, fmt.dialect, fmt.delimiter);
+}
+
 bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list,
     CsvListFormat::Dialect dialect, bool withSettingsBlock, wchar_t delimiter) {
     // User-save of the active tab. The .mrl format also captures live UI
@@ -14848,7 +14879,10 @@ bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
         return false;
     }
 
-    showStatusMessage(LM.get(L"status_saved_items_to_csv", { std::to_wstring(list.size()) }), MessageStatus::Success);
+    const wchar_t* savedKey = (dialect == CsvListFormat::Dialect::Mr)
+        ? L"status_saved_items_to_mrl"
+        : L"status_saved_items_to_csv";
+    showStatusMessage(LM.get(savedKey, { std::to_wstring(list.size()) }), MessageStatus::Success);
 
     // Update the file path and original hash after a successful save
     listFilePath = filePath;
@@ -14924,7 +14958,7 @@ void MultiReplace::saveAllTabs()
             }
         }
 
-        if (!saveListToCsvWithSettings(targetPath, data, tab)) {
+        if (!saveTabToFile(targetPath, data, tab)) {
             ++errorCount;
             continue;
         }
@@ -15093,9 +15127,9 @@ int MultiReplace::checkForUnsavedChanges(int tabIndex) {
         return IDYES;
     }
 
-    // Named inactive tab: same pattern as saveAllTabs - write with
-    // settings block, mirror baseline/dirty state onto the tab.
-    if (saveListToCsvWithSettings(tab->filePath, tab->data, *tab)) {
+    // Named inactive tab: same pattern as saveAllTabs - format follows the
+    // file extension, mirror baseline/dirty state onto the tab.
+    if (saveTabToFile(tab->filePath, tab->data, *tab)) {
         tab->originalHash = computeListHash(tab->data);
         for (auto& item : tab->data) item.isDirty = false;
         clearTabDirty(tabIndex);
@@ -17731,7 +17765,7 @@ void MultiReplace::onTabSave(int tabIndex)
         ? replaceListData
         : tab.data;
 
-    if (!saveListToCsvWithSettings(tab.filePath, listToSave, tab)) {
+    if (!saveTabToFile(tab.filePath, listToSave, tab)) {
         showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
         return;
     }
@@ -17778,7 +17812,7 @@ void MultiReplace::onTabSaveAs(int tabIndex)
     std::wstring chosen = promptSaveListToCsv(_tabs[tabIndex].get());
     if (chosen.empty()) return;
 
-    if (!saveListToCsvWithSettings(chosen, listToSave, *_tabs[tabIndex])) {
+    if (!saveTabToFile(chosen, listToSave, *_tabs[tabIndex])) {
         showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
         return;
     }
@@ -18119,7 +18153,7 @@ void MultiReplace::renameTabFile(int tabIndex)
 
     const std::vector<ReplaceItemData>& listToSave = isActive ? replaceListData : tab.data;
 
-    if (!saveListToCsvWithSettings(chosen, listToSave, tab)) {
+    if (!saveTabToFile(chosen, listToSave, tab)) {
         showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
         return;
     }
