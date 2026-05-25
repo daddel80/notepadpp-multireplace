@@ -133,16 +133,6 @@ namespace {
         return ext;
     }
 
-    // The body dialect a file uses, decided by extension: .mrl is the
-    // internal escaped format, everything else (.csv, no extension) is the
-    // plain "CSV (Excel)" dialect. This is the single rule used by load,
-    // drag-and-drop, and double-click - no filter index needed.
-    CsvListFormat::Dialect dialectFromExtension(const std::wstring& path) {
-        return lowerExtension(path) == L"mrl"
-            ? CsvListFormat::Dialect::Mr
-            : CsvListFormat::Dialect::Rfc4180;
-    }
-
     // Ensure the path carries an extension consistent with the picked save
     // filter (1 = .mrl, 2 = CSV Excel .csv, 3 = All Files). A typed
     // extension is respected (user intent wins); only a missing one is
@@ -15118,7 +15108,7 @@ int MultiReplace::checkForUnsavedChanges(int tabIndex) {
     return IDCANCEL;
 }
 
-void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings, CsvListFormat::Dialect dialect) {
+void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings, LoadSource source) {
     // Open the CSV file
     std::ifstream inFile(std::filesystem::path(filePath), std::ios::binary);
     if (!inFile.is_open()) {
@@ -15151,22 +15141,20 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
     std::wstringstream contentStream(content);
 
-    // Optional per-list settings block at the top. If present and a
-    // tab is supplied, merge into that tab (missing keys = defaults).
-    // If no block is found, the stream is rewound and the CSV header
-    // row is read below - tab state stays untouched.
-    if (tabForSettings) {
-        std::map<std::wstring, std::wstring> blockMap;
-        if (tryReadSettingsBlock(contentStream, blockMap)) {
-            applySettingsMapToTab(blockMap, *tabForSettings);
-        }
+    // Read the optional [MultiReplace-Settings] preamble once. Its presence
+    // is the format signal: a preamble means the internal escaped dialect,
+    // its absence means plain CSV. Internal loads (snapshots/config written
+    // by MR) skip detection and use the internal dialect unconditionally.
+    std::map<std::wstring, std::wstring> blockMap;
+    const bool hasPreamble = tryReadSettingsBlock(contentStream, blockMap);
+    if (hasPreamble && tabForSettings) {
+        applySettingsMapToTab(blockMap, *tabForSettings);
     }
-    else {
-        // No tab to merge into, but we must still skip the block if
-        // present so the CSV header read below does not choke on it.
-        std::map<std::wstring, std::wstring> discard;
-        tryReadSettingsBlock(contentStream, discard);
-    }
+
+    const CsvListFormat::Dialect dialect =
+        (source == LoadSource::Internal || hasPreamble)
+        ? CsvListFormat::Dialect::Mr
+        : CsvListFormat::Dialect::Rfc4180;
 
     // Read the remaining CSV text (after the optional settings block)
     // and split it quote-aware so multi-line quoted fields stay intact.
@@ -15189,13 +15177,19 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     const CsvListFormat::HeaderIndex hdr = CsvListFormat::buildIndex(headerCells);
     const bool nameBased = hdr.looksLikeNames;
 
-    // A legacy MultiReplace list (old "Use Variables" header) read through
-    // the plain "CSV (Excel)" path would be silently mangled. Detect it and
-    // signal the caller to guide the user to rename the file to .mrl.
-    if (dialect == CsvListFormat::Dialect::Rfc4180 &&
+    // ---- Legacy guard (removable once legacy lists are dropped) -------
+    // An old MultiReplace list (the "Use Variables" header) carries no
+    // preamble, so content detection would read it as plain CSV and mangle
+    // the escaped cells. Only when the user opened it under a non-.mrl name
+    // do we stop and ask them to rename it to .mrl. A legacy list already
+    // named .mrl loads through the migration path below; background probes
+    // and internal loads never raise the dialog.
+    if (source == LoadSource::UserFile &&
+        lowerExtension(filePath) != L"mrl" &&
         ListCodec::hasLegacyUseVariablesHeader(headerCells)) {
         throw LegacyMrlCsvException();
     }
+    // -------------------------------------------------------------------
 
     // Legacy pre-V5 header: UseVariables column placed Regex before
     // Extended; swap the two flags on read. Kept as the migration path for
@@ -15247,12 +15241,6 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
 void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
 {
-    // The body dialect always follows the file extension: .mrl is the
-    // internal escaped format, anything else is plain "CSV (Excel)". This
-    // is the single rule for the load dialog, drag-and-drop, and any other
-    // entry point, so callers never need to pass a dialect.
-    const CsvListFormat::Dialect dialect = dialectFromExtension(filePath);
-
     // Commit an in-progress list cell edit before we move away, and
     // capture live UI state (column widths, search options, etc.)
     // into the outgoing tab so the incoming tab's layout inheritance
@@ -15272,7 +15260,7 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
 
     std::vector<ReplaceItemData> loaded;
     try {
-        loadListFromCsvSilent(filePath, loaded, tab.get(), dialect);
+        loadListFromCsvSilent(filePath, loaded, tab.get(), LoadSource::UserFile);
     }
     catch (const LegacyMrlCsvException&) {
         // Old MultiReplace list opened via the .csv (Excel) path. Guide the
@@ -16417,7 +16405,7 @@ void MultiReplace::loadTabsFromConfig()
                 try {
                     std::vector<ReplaceItemData> fileData;
                     loadListFromCsvSilent(tab->filePath, fileData, nullptr,
-                        dialectFromExtension(tab->filePath));
+                        LoadSource::Probe);
                     tab->originalHash = computeListHash(fileData);
                     haveBaseline = true;
                 }
@@ -16504,7 +16492,7 @@ void MultiReplace::checkSingleTabForFileChange(int tabIndex)
     try {
         std::vector<ReplaceItemData> tempListFromFile;
         loadListFromCsvSilent(tab.filePath, tempListFromFile, nullptr,
-            dialectFromExtension(tab.filePath));
+            LoadSource::Probe);
 
         std::size_t newFileHash = computeListHash(tempListFromFile);
         if (newFileHash != tab.originalHash) {
@@ -17426,11 +17414,11 @@ void MultiReplace::showTabContextMenu(int tabIndex, int screenX, int screenY)
 
     AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
 
-    AppendMenu(hMenu, MF_STRING, IDM_TAB_RENAME, LM.get(L"tab_menu_rename").c_str());
-    AppendMenu(hMenu, MF_STRING, IDM_TAB_DUPLICATE, LM.get(L"tab_menu_duplicate").c_str());
     AppendMenu(hMenu, MF_STRING | (canSave ? 0 : MF_GRAYED),
         IDM_TAB_SAVE, LM.get(L"tab_menu_save").c_str());
     AppendMenu(hMenu, MF_STRING, IDM_TAB_SAVE_AS, LM.get(L"tab_menu_save_as").c_str());
+    AppendMenu(hMenu, MF_STRING, IDM_TAB_DUPLICATE, LM.get(L"tab_menu_duplicate").c_str());
+    AppendMenu(hMenu, MF_STRING, IDM_TAB_RENAME, LM.get(L"tab_menu_rename").c_str());
     AppendMenu(hMenu, MF_STRING | (hasFile ? 0 : MF_GRAYED),
         IDM_TAB_RELOAD, LM.get(L"tab_menu_reload").c_str());
 
@@ -17860,7 +17848,7 @@ void MultiReplace::onTabReload(int tabIndex)
     std::vector<ReplaceItemData> fileList;
     try {
         loadListFromCsvSilent(tab.filePath, fileList, nullptr,
-            dialectFromExtension(tab.filePath));
+            LoadSource::Probe);
     }
     catch (const CsvLoadException& ex) {
         showStatusMessage(Encoding::utf8ToWString(ex.what()), MessageStatus::Error);

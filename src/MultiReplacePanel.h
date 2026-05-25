@@ -64,6 +64,13 @@ extern NppData nppData;
 enum class DelimiterOperation { LoadAll, Update };
 enum class Direction { Up, Down };
 
+// How a list file is being loaded, which decides format detection and
+// whether the legacy-list dialog may appear.
+//   UserFile - user opened it (dialog/drop): dialect from content, legacy dialog allowed
+//   Probe    - background read of a user file for hashing: dialect from content, no dialog
+//   Internal - MR's own snapshot/config file: fixed internal dialect, no detection
+enum class LoadSource { UserFile, Probe, Internal };
+
 struct UndoRedoAction {
     std::function<void()> undoAction;
     std::function<void()> redoAction;
@@ -1447,7 +1454,7 @@ private:
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr, wchar_t delimiter = L',');
     bool saveListToCsvWithSettings(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab);
     bool saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr, bool withSettingsBlock = true, wchar_t delimiter = L',');
-    void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings = nullptr, CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr);
+    void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings = nullptr, LoadSource source = LoadSource::Internal);
     void autoShowCommentsColumn();
     void checkForFileChangesAtStartup();
     void exportToBashScript(const std::wstring& fileName);
