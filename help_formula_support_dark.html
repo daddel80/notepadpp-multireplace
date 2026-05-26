@@ -2704,9 +2704,9 @@ end
     <p>Grammar:</p>
     <ul>
       <li><code>[ [fill]align ] d:strftime_pattern</code> &mdash; local time</li>
-      <li><code>[ [fill]align ] d:!strftime_pattern</code> &mdash; UTC</li>
+      <li><code>[ [fill]align ] d:utc:strftime_pattern</code> &mdash; UTC (opt-in)</li>
     </ul>
-    <p>Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through <code>strftime</code>. The optional <code>!</code> prefix forces UTC; without it the system's local time zone is used. This follows the same convention as Lua's <code>os.date()</code>. An optional frame may precede the marker (see "Frame before a marker" below).</p>
+    <p>Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through <code>strftime</code>. A bare <code>d:</code> renders in local time; the optional <code>utc:</code> keyword switches the output to UTC. Only the exact prefix <code>utc:</code> is the marker, so a pattern that itself contains colons (e.g. <code>%H:%M:%S</code>) is read correctly. An optional frame may precede the marker (see "Frame before a marker" below).</p>
     <p>The pattern accepts any standard strftime specifier. Literal text between specifiers is passed through verbatim. Common specifiers:</p>
     <table class="optionsTable">
       <tr><th>Specifier</th><th>Meaning</th></tr>
@@ -2731,12 +2731,12 @@ end
     <p>Weekday/month names follow the system locale. The full list of <code>strftime</code> specifiers is platform-defined and passes through verbatim &mdash; anything your C library supports works here.</p>
     <table class="optionsTable">
       <tr><th>Spec</th><th>Timestamp</th><th>Output (UTC)</th></tr>
-      <tr><td><code>d:!%Y-%m-%d</code></td><td><code>1700000000</code></td><td><code>2023-11-14</code></td></tr>
-      <tr><td><code>&gt;15 d:!%Y-%m-%d</code></td><td><code>1700000000</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2023-11-14</code></td></tr>
-      <tr><td><code>d:!%Y-%m-%dT%H:%M:%SZ</code></td><td><code>1700000000</code></td><td><code>2023-11-14T22:13:20Z</code></td></tr>
-      <tr><td><code>d:!%d.%m.%Y</code></td><td><code>1700000000</code></td><td><code>14.11.2023</code></td></tr>
-      <tr><td><code>d:!%A</code></td><td><code>0</code></td><td><code>Thursday</code> (epoch was Thursday)</td></tr>
-      <tr><td><code>d:!Year %Y, week %V</code></td><td><code>1700000000</code></td><td><code>Year 2023, week 46</code></td></tr>
+      <tr><td><code>d:utc:%Y-%m-%d</code></td><td><code>1700000000</code></td><td><code>2023-11-14</code></td></tr>
+      <tr><td><code>&gt;15 d:utc:%Y-%m-%d</code></td><td><code>1700000000</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2023-11-14</code></td></tr>
+      <tr><td><code>d:utc:%Y-%m-%dT%H:%M:%SZ</code></td><td><code>1700000000</code></td><td><code>2023-11-14T22:13:20Z</code></td></tr>
+      <tr><td><code>d:utc:%d.%m.%Y</code></td><td><code>1700000000</code></td><td><code>14.11.2023</code></td></tr>
+      <tr><td><code>d:utc:%A</code></td><td><code>0</code></td><td><code>Thursday</code> (epoch was Thursday)</td></tr>
+      <tr><td><code>d:utc:Year %Y, week %V</code></td><td><code>1700000000</code></td><td><code>Year 2023, week 46</code></td></tr>
     </table>
     <p><strong>Range:</strong> timestamps must be &ge; 0 (years 1970 onwards). Negative values produce empty output. Subseconds are truncated (<code>1700000000.7</code> is treated as <code>1700000000</code>).</p>
     <p><strong>Tilde in date patterns:</strong> <code>~</code> is the spec separator and therefore cannot appear inside the strftime pattern &mdash; use any other literal between specifiers (<code>-</code>, <code>/</code>, <code>:</code>, space, etc.). Standard date/time separators are unaffected.</p>
@@ -2747,7 +2747,7 @@ end
       <tr><th>Spec</th><th>Value</th><th>Output</th></tr>
       <tr><td><code>&gt;12 ts:hms</code></td><td><code>3725</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1:02:05</code></td></tr>
       <tr><td><code>&gt;12ts:hms</code></td><td><code>3725</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1:02:05</code></td></tr>
-      <tr><td><code>^15 d:!%Y-%m-%d</code></td><td><code>1700000000</code></td><td><code>&nbsp;&nbsp;2023-11-14&nbsp;&nbsp;&nbsp;</code></td></tr>
+      <tr><td><code>^15 d:utc:%Y-%m-%d</code></td><td><code>1700000000</code></td><td><code>&nbsp;&nbsp;2023-11-14&nbsp;&nbsp;&nbsp;</code></td></tr>
       <tr><td><code>&lt;8 n:.2f</code></td><td><code>3.14159</code></td><td><code>3.14&nbsp;&nbsp;&nbsp;&nbsp;</code></td></tr>
       <tr><td><code>&gt;8 t:.3</code></td><td><code>"hello"</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;hel</code></td></tr>
     </table>
@@ -2793,8 +2793,8 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
     <p><code>todate(text, fmt)  -&gt;  Unix timestamp</code></p>
     <p>Parses <code>text</code> against the strftime-style <code>fmt</code> pattern and returns the resulting time as seconds since 1970-01-01 UTC. As with <code>d:fmt</code>:</p>
     <ul>
-      <li>without <code>!</code> prefix &rarr; input is interpreted as <strong>local time</strong></li>
-      <li>with <code>!</code> prefix &rarr; input is interpreted as <strong>UTC</strong></li>
+      <li>without <code>utc:</code> keyword &rarr; input is interpreted as <strong>local time</strong></li>
+      <li>with <code>utc:</code> keyword &rarr; input is interpreted as <strong>UTC</strong></li>
     </ul>
     <p>On parse failure (malformed input, out-of-range fields, format mismatch) the function returns <code>NaN</code>, which flows through the standard recoverable-error dialog &mdash; the match stays untouched on Skip.</p>
 
@@ -2818,11 +2818,11 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
     <p>Whitespace in the format matches <strong>zero or more</strong> whitespace characters in the input. Literal characters must match exactly. Trailing characters in the input beyond what the format consumes are tolerated.</p>
 
     <h3>Quoting the format string in ExprTk</h3>
-    <p><strong>Use single quotes</strong> for <code>todate</code>'s format string. ExprTk's lexer treats <code>!</code> as a logical-NOT operator and <code>%</code> as the modulo operator; both are interpreted differently when they appear directly after a double quote. Single-quoted strings are taken verbatim:</p>
+    <p><strong>Use single quotes</strong> for <code>todate</code>'s format string. ExprTk's lexer treats <code>%</code> as the modulo operator, so a double-quoted pattern starting with <code>%</code> is misread; single-quoted strings are taken verbatim:</p>
     <table class="optionsTable">
       <tr><th>Form</th><th>Status</th></tr>
       <tr><td><code>todate(txt(0), '%Y-%m-%d')</code></td><td>&check; works</td></tr>
-      <tr><td><code>todate(txt(0), '!%Y-%m-%d')</code></td><td>&check; works (UTC)</td></tr>
+      <tr><td><code>todate(txt(0), 'utc:%Y-%m-%d')</code></td><td>&check; works (UTC)</td></tr>
       <tr><td><code>todate(txt(0), "%Y-%m-%d")</code></td><td>&times; token error</td></tr>
     </table>
     <p>The <code>d:fmt</code> output spec is not affected &mdash; the pattern follows after the <code>d:</code> marker and is consumed by the FormatSpec parser, not by the ExprTk lexer.</p>
@@ -2831,9 +2831,9 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
     <p>Mixing local and UTC across <code>todate</code> and <code>d:fmt</code> produces an offset of one time zone. For predictable round-trips, use the <strong>same</strong> UTC/local choice on both sides:</p>
     <table class="optionsTable">
       <tr><th>Form</th><th>Status</th></tr>
-      <tr><td><code>(?= todate(txt(0), '!%Y-%m-%d') ~ d:!%Y-%m-%d )</code></td><td>&check; pure UTC</td></tr>
+      <tr><td><code>(?= todate(txt(0), 'utc:%Y-%m-%d') ~ d:utc:%Y-%m-%d )</code></td><td>&check; pure UTC</td></tr>
       <tr><td><code>(?= todate(txt(0), '%Y-%m-%d') ~ d:%Y-%m-%d )</code></td><td>&check; pure local</td></tr>
-      <tr><td><code>(?= todate(txt(0), '%Y-%m-%d') ~ d:!%Y-%m-%d )</code></td><td>&#9888; offset by local TZ</td></tr>
+      <tr><td><code>(?= todate(txt(0), '%Y-%m-%d') ~ d:utc:%Y-%m-%d )</code></td><td>&#9888; offset by local TZ</td></tr>
     </table>
     <p>The third form is occasionally what you want (e.g. converting a wall-clock log time to a UTC timestamp for storage), but it should be a conscious choice.</p>
 
@@ -2841,10 +2841,10 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
     <p>Once a date is a Unix timestamp it's just a number, so all of ExprTk's math applies. A few patterns that come up often:</p>
     <table class="optionsTable">
       <tr><th>Goal</th><th>Snippet</th></tr>
-      <tr><td>Add one day</td><td><code>todate(txt(0), '!%Y-%m-%d') + 86400</code></td></tr>
-      <tr><td>Add one week</td><td><code>todate(txt(0), '!%Y-%m-%d') + 7 * 86400</code></td></tr>
-      <tr><td>Add one hour</td><td><code>todate(txt(0), '!%Y-%m-%dT%H:%M:%S') + 3600</code></td></tr>
-      <tr><td>Difference (days)</td><td><code>(todate(txt(2), '!%F') - todate(txt(1), '!%F')) / 86400</code></td></tr>
+      <tr><td>Add one day</td><td><code>todate(txt(0), 'utc:%Y-%m-%d') + 86400</code></td></tr>
+      <tr><td>Add one week</td><td><code>todate(txt(0), 'utc:%Y-%m-%d') + 7 * 86400</code></td></tr>
+      <tr><td>Add one hour</td><td><code>todate(txt(0), 'utc:%Y-%m-%dT%H:%M:%S') + 3600</code></td></tr>
+      <tr><td>Difference (days)</td><td><code>(todate(txt(2), 'utc:%F') - todate(txt(1), 'utc:%F')) / 86400</code></td></tr>
     </table>
     <p>There is no built-in "add one month" &mdash; months have variable length, so adding <code>30 * 86400</code> is the usual approximation. For exact month arithmetic, switch to the Lua engine which exposes the full <code>os.date</code> / <code>os.time</code> table API.</p>
   </section>
@@ -3009,12 +3009,12 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
         <th>Replace</th>
         <th>Description</th>
       </tr>
-      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ d:!%Y-%m-%d)</code></td><td>Unix timestamp &rarr; ISO date in UTC.</td></tr>
-      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ d:!%Y-%m-%dT%H:%M:%SZ)</code></td><td>Unix timestamp &rarr; ISO 8601 with Z suffix.</td></tr>
-      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), '!%Y-%m-%d') ~ d:!%d.%m.%Y)</code></td><td>Reformat ISO date &rarr; DD.MM.YYYY.</td></tr>
-      <tr><td><code>(\d{2})\.(\d{2})\.(\d{4})</code></td><td><code>(?=todate(txt(0), '!%d.%m.%Y') ~ d:!%Y-%m-%d)</code></td><td>Reformat DD.MM.YYYY &rarr; ISO date.</td></tr>
-      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), '!%Y-%m-%d') + 86400 ~ d:!%Y-%m-%d)</code></td><td>Shift every ISO date by +1 day.</td></tr>
-      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), '!%Y-%m-%d') ~ d:!%A)</code></td><td>Replace each ISO date with its weekday name.</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ d:utc:%Y-%m-%d)</code></td><td>Unix timestamp &rarr; ISO date in UTC.</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1) ~ d:utc:%Y-%m-%dT%H:%M:%SZ)</code></td><td>Unix timestamp &rarr; ISO 8601 with Z suffix.</td></tr>
+      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), 'utc:%Y-%m-%d') ~ d:utc:%d.%m.%Y)</code></td><td>Reformat ISO date &rarr; DD.MM.YYYY.</td></tr>
+      <tr><td><code>(\d{2})\.(\d{2})\.(\d{4})</code></td><td><code>(?=todate(txt(0), 'utc:%d.%m.%Y') ~ d:utc:%Y-%m-%d)</code></td><td>Reformat DD.MM.YYYY &rarr; ISO date.</td></tr>
+      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), 'utc:%Y-%m-%d') + 86400 ~ d:utc:%Y-%m-%d)</code></td><td>Shift every ISO date by +1 day.</td></tr>
+      <tr><td><code>(\d{4})-(\d{2})-(\d{2})</code></td><td><code>(?=todate(txt(0), 'utc:%Y-%m-%d') ~ d:utc:%A)</code></td><td>Replace each ISO date with its weekday name.</td></tr>
     </table>
 
     <h3>Counters</h3>

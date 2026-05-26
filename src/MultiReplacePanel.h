@@ -1333,6 +1333,7 @@ private:
     SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     void selectListItem(size_t matchIndex);
+    void focusListRow(size_t rowIndex);
     void updateSelectionScope();
     void captureCurrentSelectionAsScope();
     std::wstring getSelectionScopeSuffix();
@@ -1450,7 +1451,7 @@ private:
 
 #pragma region FileOperations
     std::wstring promptSaveListToCsv(const TabState* tabHint = nullptr, int* outFilterIndex = nullptr);
-    std::wstring openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath, int* outFilterIndex = nullptr);
+    std::wstring openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath, int initialFilterIndex = 1, int* outFilterIndex = nullptr);
     bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr, wchar_t delimiter = L',');
     bool saveListToCsvWithSettings(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab);
     bool saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr, bool withSettingsBlock = true, wchar_t delimiter = L',');
@@ -1521,6 +1522,7 @@ private:
     void onTabCloseAll();
     void onTabSave(int tabIndex);
     void onTabSaveAs(int tabIndex);
+    void onTabSaveACopy(int tabIndex);
     void onTabReload(int tabIndex);
     void onTabOpenFileLocation(int tabIndex);
     void onTabApplyLayoutToAll(int sourceTabIndex);

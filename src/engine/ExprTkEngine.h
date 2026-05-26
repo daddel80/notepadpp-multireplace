@@ -558,9 +558,9 @@ namespace MultiReplaceEngine {
         // ExprTk-callable: todate(str, fmt) -> Unix timestamp.
         //
         // Parses str against the strftime-style fmt and returns the
-        // resulting time as seconds-since-epoch. With a leading '!'
-        // in fmt the result is treated as UTC; otherwise as local
-        // time (Lua convention, matches our d: output spec).
+        // resulting time as seconds-since-epoch. With a leading 'utc:'
+        // keyword in fmt the result is treated as UTC; otherwise as
+        // local time (matches our d: output spec).
         //
         // Returns NaN on parse failure or out-of-range fields, so a
         // bad input flows through the same recoverable-error dialog

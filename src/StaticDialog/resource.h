@@ -95,6 +95,7 @@
 #define ID_SAVE_AS_OPTION               5035
 #define ID_DEBUG_MODE_OPTION            5034
 #define ID_SAVE_ALL_OPTION              5036
+#define ID_SAVE_A_COPY_OPTION           5039
 
 //  Stand-alone list toggle button
 #define IDC_USE_LIST_BUTTON             5040
@@ -266,6 +267,7 @@
 #define IDM_TAB_CLOSE_ALL               5907
 #define IDM_TAB_APPLY_LAYOUT_TO_ALL     5908
 #define IDM_TAB_RELOAD                  5909
+#define IDM_TAB_SAVE_A_COPY             5910
 
 // ===================================================================
 //  5950-5959 - Formula engine selector popup menu IDs

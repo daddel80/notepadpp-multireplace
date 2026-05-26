@@ -1309,11 +1309,12 @@ namespace MultiReplaceEngine {
         std::string input(sv0.begin(), sv0.end());
         std::string fmt(sv1.begin(), sv1.end());
 
-        // Lua-style '!' prefix in the format means "treat result as UTC".
+        // Optional "utc:" keyword in the format means "treat result as
+        // UTC"; bare format is local. Mirrors d:utc: on the output side.
         bool utc = false;
-        if (!fmt.empty() && fmt[0] == '!') {
+        if (fmt.compare(0, 4, "utc:") == 0) {
             utc = true;
-            fmt.erase(fmt.begin());
+            fmt.erase(0, 4);
         }
 
         // Run the parser. tm starts zeroed so unset fields contribute

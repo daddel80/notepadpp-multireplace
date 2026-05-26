@@ -5776,6 +5776,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             RECT rc; ::GetWindowRect(pnmh->hwndFrom, &rc);
             HMENU hMenu = CreatePopupMenu();
             AppendMenu(hMenu, MF_STRING, ID_SAVE_AS_OPTION, LM.getW(L"panel_save_as"));
+            AppendMenu(hMenu, MF_STRING, ID_SAVE_A_COPY_OPTION, LM.getW(L"panel_save_a_copy"));
             AppendMenu(hMenu, MF_STRING, ID_SAVE_ALL_OPTION, LM.getW(L"panel_save_all"));
             TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, rc.left, rc.bottom, 0, _hSelf, nullptr);
             DestroyMenu(hMenu);
@@ -6801,6 +6802,16 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
+        case ID_SAVE_A_COPY_OPTION:
+        {
+            // Save a Copy of the active tab: write to a chosen file without
+            // repointing the tab (see onTabSaveACopy).
+            if (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
+                onTabSaveACopy(_activeTabIndex);
+            }
+            return TRUE;
+        }
+
         case IDC_LOAD_LIST_BUTTON:
         case IDC_LOAD_FROM_CSV_BUTTON:
         {
@@ -7206,6 +7217,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         case IDM_TAB_SAVE_AS:
             onTabSaveAs(_tabMenuTargetIndex);
+            return TRUE;
+        case IDM_TAB_SAVE_A_COPY:
+            onTabSaveACopy(_tabMenuTargetIndex);
             return TRUE;
         case IDM_TAB_RELOAD:
             onTabReload(_tabMenuTargetIndex);
@@ -8275,6 +8289,11 @@ void MultiReplace::showErrorMessage(
         ? std::to_wstring(_currentRuleIndex + 1)
         : L"?";
 
+    // Jump to the offending rule so the user sees the row the dialog names
+    // (skipped when no dialog is shown - this is only reached with the
+    // error dialog enabled).
+    focusListRow(_currentRuleIndex);
+
     if (category == EC::CompileError) {
         std::wstring body = LM.get(L"msgbox_engine_error_body",
             { entryW, engineW, detailsW });
@@ -8310,6 +8329,9 @@ MultiReplace::showRecoverableErrorDialog(
     const std::wstring posW = (_currentMatchPos >= 0)
         ? std::to_wstring(_currentMatchPos)
         : L"?";
+
+    // Jump to the offending rule so the user sees the row the dialog names.
+    focusListRow(_currentRuleIndex);
 
     const std::wstring title = LM.get(
         L"msgbox_title_formula_support_execution_error");
@@ -10380,6 +10402,22 @@ void MultiReplace::selectListItem(size_t matchIndex) {
         // Ensure the item is visible, but only scroll if absolutely necessary
         ListView_EnsureVisible(hListView, static_cast<int>(matchIndex), TRUE);
     }
+}
+
+// Select, focus and scroll to a list row. Unlike selectListItem this is not
+// gated by the match-highlight toggle: it is used to jump to the offending
+// rule when a formula error dialog is shown, so the user sees the row the
+// dialog refers to without counting entries.
+void MultiReplace::focusListRow(size_t rowIndex) {
+    HWND hListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
+    if (!hListView) return;
+    if (rowIndex == SIZE_MAX) return;
+    if (rowIndex >= replaceListData.size()) return;
+
+    ListView_SetItemState(hListView, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+    ListView_SetItemState(hListView, static_cast<int>(rowIndex),
+        LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+    ListView_EnsureVisible(hListView, static_cast<int>(rowIndex), FALSE);
 }
 
 void MultiReplace::updateSelectionScope() {
@@ -14511,7 +14549,7 @@ void MultiReplace::forceWrapRecalculation() {
 
 #pragma region FileOperations
 
-std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath, int* outFilterIndex) {
+std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath, int initialFilterIndex, int* outFilterIndex) {
     flags |= OFN_NOCHANGEDIR;
     OPENFILENAME ofn = {};
     WCHAR szFile[MAX_PATH] = {};
@@ -14528,7 +14566,7 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::
     ofn.lpstrFile = szFile;
     ofn.nMaxFile = sizeof(szFile) / sizeof(WCHAR);
     ofn.lpstrFilter = filter.data();
-    ofn.nFilterIndex = 1;
+    ofn.nFilterIndex = initialFilterIndex >= 1 ? initialFilterIndex : 1;
     ofn.lpstrTitle = title;
     ofn.Flags = flags;
 
@@ -14598,6 +14636,17 @@ std::wstring MultiReplace::promptSaveListToCsv(const TabState* tabHint, int* out
     // later derived from the extension, not from this index).
     int localFilterIndex = 1;
     int* idxSink = outFilterIndex ? outFilterIndex : &localFilterIndex;
+
+    // Pre-select the filter that matches the current file's extension, so a
+    // Save As on an open .csv defaults to the CSV filter instead of .mrl
+    // (which, with the filter-wins rule below, would silently turn it into
+    // .mrl). Any other extension falls back to All Files, which keeps the
+    // typed extension untouched rather than forcing one.
+    int initialFilterIndex = 1;                              // .mrl
+    const std::wstring defExt = lowerExtension(defaultFileName);
+    if (defExt == L"csv")      initialFilterIndex = 2;       // CSV (Excel)
+    else if (defExt != L"mrl") initialFilterIndex = 3;       // All Files: keep extension
+
     // No OFN_OVERWRITEPROMPT: the dialog would confirm the typed name
     // before the filter-driven extension swap below and so could name the
     // wrong file. The overwrite is confirmed on the final path instead.
@@ -14608,6 +14657,7 @@ std::wstring MultiReplace::promptSaveListToCsv(const TabState* tabHint, int* out
         OFN_PATHMUSTEXIST,
         L"mrl",
         defaultFileName,
+        initialFilterIndex,
         idxSink
     );
     if (filePath.empty()) return filePath;
@@ -17451,6 +17501,7 @@ void MultiReplace::showTabContextMenu(int tabIndex, int screenX, int screenY)
     AppendMenu(hMenu, MF_STRING | (canSave ? 0 : MF_GRAYED),
         IDM_TAB_SAVE, LM.get(L"tab_menu_save").c_str());
     AppendMenu(hMenu, MF_STRING, IDM_TAB_SAVE_AS, LM.get(L"tab_menu_save_as").c_str());
+    AppendMenu(hMenu, MF_STRING, IDM_TAB_SAVE_A_COPY, LM.get(L"tab_menu_save_a_copy").c_str());
     AppendMenu(hMenu, MF_STRING, IDM_TAB_DUPLICATE, LM.get(L"tab_menu_duplicate").c_str());
     AppendMenu(hMenu, MF_STRING, IDM_TAB_RENAME, LM.get(L"tab_menu_rename").c_str());
     AppendMenu(hMenu, MF_STRING | (hasFile ? 0 : MF_GRAYED),
@@ -17853,6 +17904,41 @@ void MultiReplace::onTabSaveAs(int tabIndex)
     // clearTabDirty's fast-path would otherwise skip the rebuild.
     clearTabDirty(tabIndex);
     rebuildTabControl();
+}
+
+void MultiReplace::onTabSaveACopy(int tabIndex)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+
+    // Save a Copy is Save As without the repoint: write the current
+    // content to a chosen file, but leave the tab's identity (path, name,
+    // hash, dirty markers) untouched. Handy for backups or a one-off CSV
+    // export while the tab keeps working on its .mrl.
+    const bool isActive = (tabIndex == _activeTabIndex);
+
+    // Refresh the tab snapshot so an .mrl copy's settings block reflects
+    // the live UI. This only updates the in-memory snapshot; it does not
+    // repoint the tab.
+    if (isActive) {
+        captureStateIntoTab(*_tabs[tabIndex]);
+    }
+
+    const std::vector<ReplaceItemData>& listToSave = isActive
+        ? replaceListData
+        : _tabs[tabIndex]->data;
+
+    std::wstring chosen = promptSaveListToCsv(_tabs[tabIndex].get());
+    if (chosen.empty()) return;
+
+    if (!saveTabToFile(chosen, listToSave, *_tabs[tabIndex])) {
+        showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
+        return;
+    }
+
+    const wchar_t* savedKey = (formatFromChoice(chosen).dialect == CsvListFormat::Dialect::Mr)
+        ? L"status_saved_items_to_mrl"
+        : L"status_saved_items_to_csv";
+    showStatusMessage(LM.get(savedKey, { std::to_wstring(listToSave.size()) }), MessageStatus::Success);
 }
 
 void MultiReplace::onTabReload(int tabIndex)

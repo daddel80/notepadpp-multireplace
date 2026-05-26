@@ -48,10 +48,10 @@
 //              modes: ms hm hms dh dhm dhms
 //              examples: ts:hms   >12 ts:hms   td:dhms   ^10tm:hm
 //
-//   date:      [ [fill]align ] d:<strftime fmt>  or  d:!<strftime fmt>
+//   date:      [ [fill]align ] d:<strftime fmt>  or  d:utc:<strftime fmt>
 //              Value is a Unix timestamp (seconds since 1970-01-01 UTC).
-//              Without '!': local time. With '!': UTC (Lua convention).
-//              examples: d:%Y-%m-%d   >12 d:!%Y-%m-%dT%H:%M:%SZ
+//              Without 'utc:': local time. With 'utc:': UTC.
+//              examples: d:%Y-%m-%d   >12 d:utc:%Y-%m-%dT%H:%M:%SZ
 //
 //              For every marker the frame is written BEFORE it (see the
 //              top-level note above); one optional space may separate them
@@ -131,9 +131,9 @@ namespace FormatSpec {
         DurationMode durationMode = DurationMode::Hms;
 
         // Date subfields. dateFormat holds the strftime pattern that
-        // follows 'd:', without the leading '!' (which is captured by
-        // dateUtc). UTF-8 storage so it can be passed straight to
-        // strftime() in the renderer.
+        // follows 'd:', without the leading 'utc:' keyword (which is
+        // captured by dateUtc). UTF-8 storage so it can be passed straight
+        // to strftime() in the renderer.
         bool dateUtc = false;
         std::string dateFormat;
 

@@ -652,7 +652,7 @@ namespace FormatSpec {
             return applyFrame(spec, body, codepointCount, eff);
         }
 
-        // Form: d:<strftime fmt> or d:!<strftime fmt>
+        // Form: d:<strftime fmt> or d:utc:<strftime fmt>
         // Caller has already verified that s starts with "d:".
         Spec parseDate(const std::wstring& s) {
             Spec out;
@@ -661,10 +661,12 @@ namespace FormatSpec {
             // Strip the "d:" prefix.
             std::wstring body = s.substr(2);
 
-            // Lua-style '!' prefix forces UTC.
-            if (!body.empty() && body[0] == L'!') {
+            // Optional "utc:" keyword forces UTC; bare d: is local. Closed
+            // set: only the exact prefix is the marker, so a pattern can
+            // still contain ':' (e.g. %H:%M:%S) without being misread.
+            if (body.compare(0, 4, L"utc:") == 0) {
                 out.dateUtc = true;
-                body.erase(body.begin());
+                body.erase(0, 4);
             }
 
             if (body.empty()) {

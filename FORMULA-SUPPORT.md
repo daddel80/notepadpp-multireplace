@@ -1368,10 +1368,10 @@ The mode is **mandatory** — `ts:` alone is not enough, you must pick a mode. F
 
 Grammar:
 
-- `[ [fill]align ] d:strftime_pattern`  — **local time** (the everyday form)
-- `[ [fill]align ] d:!strftime_pattern` — **UTC** (opt-in)
+- `[ [fill]align ] d:strftime_pattern`      — **local time** (the everyday form)
+- `[ [fill]align ] d:utc:strftime_pattern`  — **UTC** (opt-in)
 
-Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through `strftime`. A bare `d:` is all you need — it renders in the machine's local time zone. The `!` prefix is **optional** and only switches the output to UTC; it is not required for `d:` to work and follows Lua's `os.date()` convention. An optional frame may precede the marker (see [Frame before a marker](#frame-before-a-marker)).
+Treats the value as a Unix timestamp (seconds since 1970-01-01 UTC) and formats it through `strftime`. A bare `d:` is all you need — it renders in the machine's local time zone. The `utc:` keyword is **optional** and only switches the output to UTC; it is not required for `d:` to work. Only the exact prefix `utc:` is the marker, so a pattern that itself contains colons (e.g. `%H:%M:%S`) is read correctly. An optional frame may precede the marker (see [Frame before a marker](#frame-before-a-marker)).
 
 The pattern accepts any standard strftime specifier. Literal text between specifiers is passed through verbatim. Common specifiers:
 
@@ -1397,23 +1397,23 @@ The pattern accepts any standard strftime specifier. Literal text between specif
 
 Weekday/month names follow the system locale. The full list of `strftime` specifiers is platform-defined and passes through verbatim — anything your C library supports works here.
 
-**Local vs. UTC.** The same timestamp formatted both ways differs by your UTC offset. `d:` is the normal, local form; add `!` only when you specifically want UTC:
+**Local vs. UTC.** The same timestamp formatted both ways differs by your UTC offset. `d:` is the normal, local form; add `utc:` only when you specifically want UTC:
 
-| Spec                     | Timestamp     | Output                                |
-|--------------------------|---------------|---------------------------------------|
-| `d:%Y-%m-%d %H:%M:%S`    | `1700000000`  | `2023-11-14 23:13:20` (local, CET)    |
-| `d:!%Y-%m-%d %H:%M:%S`   | `1700000000`  | `2023-11-14 22:13:20` (UTC)           |
+| Spec                       | Timestamp     | Output                                |
+|----------------------------|---------------|---------------------------------------|
+| `d:%Y-%m-%d %H:%M:%S`      | `1700000000`  | `2023-11-14 23:13:20` (local, CET)    |
+| `d:utc:%Y-%m-%d %H:%M:%S`  | `1700000000`  | `2023-11-14 22:13:20` (UTC)           |
 
-The examples below use `!` only so the output is reproducible here regardless of your time zone — drop the `!` for local time.
+The examples below use `utc:` only so the output is reproducible here regardless of your time zone — drop it for local time.
 
-| Spec                       | Timestamp     | Output                             |
-|----------------------------|---------------|------------------------------------|
-| `d:!%Y-%m-%d`              | `1700000000`  | `2023-11-14`                       |
-| `>15 d:!%Y-%m-%d`          | `1700000000`  | `     2023-11-14`                  |
-| `d:!%Y-%m-%dT%H:%M:%SZ`    | `1700000000`  | `2023-11-14T22:13:20Z`             |
-| `d:!%d.%m.%Y`              | `1700000000`  | `14.11.2023`                       |
-| `d:!%A`                    | `0`           | `Thursday` (epoch was Thursday)    |
-| `d:!Year %Y, week %V`      | `1700000000`  | `Year 2023, week 46`               |
+| Spec                          | Timestamp     | Output                             |
+|-------------------------------|---------------|------------------------------------|
+| `d:utc:%Y-%m-%d`              | `1700000000`  | `2023-11-14`                       |
+| `>15 d:utc:%Y-%m-%d`          | `1700000000`  | `     2023-11-14`                  |
+| `d:utc:%Y-%m-%dT%H:%M:%SZ`    | `1700000000`  | `2023-11-14T22:13:20Z`             |
+| `d:utc:%d.%m.%Y`              | `1700000000`  | `14.11.2023`                       |
+| `d:utc:%A`                    | `0`           | `Thursday` (epoch was Thursday)    |
+| `d:utc:Year %Y, week %V`      | `1700000000`  | `Year 2023, week 46`               |
 
 **Range:** timestamps must be ≥ 0 (years 1970 onwards). Negative values produce empty output. Subseconds are truncated (`1700000000.7` is treated as `1700000000`).
 
@@ -1429,7 +1429,7 @@ The rule is uniform across every marker: the frame (fill/align/width) leads, the
 |--------------------|---------------|-------------------|
 | `>12 ts:hms`       | `3725`        | `     1:02:05`    |
 | `>12ts:hms`        | `3725`        | `     1:02:05`    |
-| `^15 d:!%Y-%m-%d`  | `1700000000`  | `  2023-11-14   ` |
+| `^15 d:utc:%Y-%m-%d`  | `1700000000`  | `  2023-11-14   ` |
 | `<8 n:.2f`         | `3.14159`     | `3.14    `        |
 | `>8 t:.3`          | `"hello"`     | `     hel`        |
 
@@ -1489,8 +1489,8 @@ todate(text, fmt)  ->  Unix timestamp
 
 Parses `text` against the strftime-style `fmt` pattern and returns the resulting time as seconds since 1970-01-01 UTC. As with `d:fmt`:
 
-- without `!` prefix → input is interpreted as **local time**
-- with `!` prefix → input is interpreted as **UTC**
+- without `utc:` keyword → input is interpreted as **local time**
+- with `utc:` keyword → input is interpreted as **UTC**
 
 On parse failure (malformed input, out-of-range fields, format mismatch) the function returns `NaN`, which flows through the standard recoverable-error dialog — the match stays untouched on Skip.
 
@@ -1521,12 +1521,12 @@ Whitespace in the format matches **zero or more** whitespace characters in the i
 
 #### Quoting the format string in ExprTk
 
-**Use single quotes** for `todate`'s format string. ExprTk's lexer treats `!` as a logical-NOT operator and `%` as the modulo operator; both are interpreted differently when they appear directly after a double quote. Single-quoted strings are taken verbatim:
+**Use single quotes** for `todate`'s format string. ExprTk's lexer treats `%` as the modulo operator, so a double-quoted pattern starting with `%` is misread; single-quoted strings are taken verbatim:
 
 | Form                                       | Status              |
 |--------------------------------------------|---------------------|
 | `todate(txt(0), '%Y-%m-%d')`            | ✓ works             |
-| `todate(txt(0), '!%Y-%m-%d')`           | ✓ works (UTC)       |
+| `todate(txt(0), 'utc:%Y-%m-%d')`        | ✓ works (UTC)       |
 | `todate(txt(0), "%Y-%m-%d")`            | ✗ token error       |
 
 The `d:fmt` output spec is not affected — the pattern follows after the `d:` marker and is consumed by the FormatSpec parser, not by the ExprTk lexer.
@@ -1539,9 +1539,9 @@ Mixing local and UTC across `todate` and `d:fmt` produces an offset of one time 
 
 | Form                                                          | Status              |
 |---------------------------------------------------------------|---------------------|
-| `(?= todate(txt(0), '!%Y-%m-%d') ~ d:!%Y-%m-%d )`             | ✓ pure UTC          |
+| `(?= todate(txt(0), 'utc:%Y-%m-%d') ~ d:utc:%Y-%m-%d )`             | ✓ pure UTC          |
 | `(?= todate(txt(0), '%Y-%m-%d') ~ d:%Y-%m-%d )`               | ✓ pure local        |
-| `(?= todate(txt(0), '%Y-%m-%d') ~ d:!%Y-%m-%d )`              | ⚠ offset by local TZ|
+| `(?= todate(txt(0), '%Y-%m-%d') ~ d:utc:%Y-%m-%d )`              | ⚠ offset by local TZ|
 
 The third form is occasionally what you want (e.g. converting a wall-clock log time to a UTC timestamp for storage), but it should be a conscious choice.
 
@@ -1553,10 +1553,10 @@ Once a date is a Unix timestamp it's just a number, so all of ExprTk's math appl
 
 | Goal              | Snippet                                                                       |
 |-------------------|-------------------------------------------------------------------------------|
-| Add one day       | `todate(txt(0), '!%Y-%m-%d') + 86400`                                      |
-| Add one week      | `todate(txt(0), '!%Y-%m-%d') + 7 * 86400`                                  |
-| Add one hour      | `todate(txt(0), '!%Y-%m-%dT%H:%M:%S') + 3600`                              |
-| Difference (days) | `(todate(txt(2), '!%F') - todate(txt(1), '!%F')) / 86400`               |
+| Add one day       | `todate(txt(0), 'utc:%Y-%m-%d') + 86400`                                      |
+| Add one week      | `todate(txt(0), 'utc:%Y-%m-%d') + 7 * 86400`                                  |
+| Add one hour      | `todate(txt(0), 'utc:%Y-%m-%dT%H:%M:%S') + 3600`                              |
+| Difference (days) | `(todate(txt(2), 'utc:%F') - todate(txt(1), 'utc:%F')) / 86400`               |
 
 There is no built-in "add one month" — months have variable length, so adding `30 * 86400` is the usual approximation. For exact month arithmetic, switch to the Lua engine which exposes the full `os.date` / `os.time` table API.
 
