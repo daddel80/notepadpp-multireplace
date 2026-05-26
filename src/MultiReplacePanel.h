@@ -641,7 +641,6 @@ public:
     struct Settings
     {
         bool tooltipsEnabled;
-        bool exportToBashEnabled;
         bool muteSounds;
         bool doubleClickEditsEnabled;
         bool highlightMatchEnabled;
@@ -1026,7 +1025,6 @@ private:
     inline static bool muteSounds = false;                // Status for Bell if String hasn't been found
     inline static bool doubleClickEditsEnabled = true;    // Double click to Edit List entries
     inline static bool highlightMatchEnabled = true;      // HighlightMatch during Find in List
-    inline static bool exportToBashEnabled = false;       // shows/hides the "Export to Bash" button
     inline static bool isHoverTextEnabled = true;         // Important to set on false as TIMER will be triggered at startup.
     inline static int  editFieldSize = 5;                 // Size of the edit field for find/replace input
     inline static bool stayAfterReplaceEnabled = false;   // Status for keeping panel open after replace
@@ -1159,7 +1157,7 @@ private:
     bool moveItemsInReplaceList(std::vector<size_t>& indices, Direction direction);
     void sortItemsInReplaceList(const std::vector<size_t>& originalOrder, const std::vector<size_t>& newOrder, const std::map<int, SortDirection>& previousColumnSortOrder, int columnID, SortDirection direction);
     void scrollToIndices(size_t firstIndex, size_t lastIndex);
-    void exportDataToClipboard();
+    void copyReportToClipboard();
 
 #pragma endregion
 
@@ -1462,7 +1460,6 @@ private:
     void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings = nullptr, LoadSource source = LoadSource::Internal);
     void autoShowCommentsColumn();
     void checkForFileChangesAtStartup();
-    void exportToBashScript(const std::wstring& fileName);
     void saveAllTabs();
 
 #pragma endregion

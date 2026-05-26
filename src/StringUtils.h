@@ -76,7 +76,7 @@ namespace StringUtils {
     std::string escapeSpecialChars(const std::string& input, bool extended);
 
     // Translate escape sequences (\n, \r, \t, \xHH, \oOOO, \dDDD, \bBBBBBBBB, \uHHHH) to their values.
-    // \n and \r become __NEWLINE__ and __CARRIAGERETURN__ placeholders for bash export.
+    // \n and \r become __NEWLINE__ and __CARRIAGERETURN__ placeholders.
     std::string translateEscapes(const std::string& input);
 
     // Replace '\n' / '\r' according to the active mode (Normal / Extended / Regex)

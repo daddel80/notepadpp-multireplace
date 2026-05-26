@@ -39,7 +39,7 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
   - [1. Search and Replace](#1-search-and-replace)
   - [2. List View and Layout](#2-list-view-and-layout)
   - [3. CSV Options](#3-csv-options)
-  - [4. Export](#4-export)
+  - [4. Copy Report](#4-copy-report)
   - [5. Appearance](#5-appearance)
   - [INI-Only Settings](#ini-only-settings)
 - [Multilingual UI Support](#multilingual-ui-support)
@@ -393,8 +393,8 @@ Settings specific to the CSV column manipulation and alignment features.
 - **CSV: Header lines to exclude** — Number of header rows protected from sort, duplicate detection, and find/replace. Set to `0` to disable.
 - **Mark duplicate rows with bookmarks** — Places Notepad++ bookmarks on duplicate lines for navigation (F2 / Shift+F2). Clears existing bookmarks when active.
 
-### 4. Export
-Configure how list data is exported to the clipboard via **Export Data** from the context menu.
+### 4. Copy Report
+Copies a report of the whole list to the clipboard via **Copy Report** from the context menu. The report always covers the entire list (selection is ignored) and is meant for spreadsheets; to copy entries back into MultiReplace use **Copy** instead.
 
 - **Template** — Defines the output format using placeholders. Available placeholders:
   - `%FIND%` — Find pattern
@@ -404,11 +404,12 @@ Configure how list data is exported to the clipboard via **Export Data** from th
   - `%RCOUNT%` — Replace count
   - `%MODIFIED%` — Last modified timestamp
   - `%ROW%` — Row number
-  - `%SEL%` — Selected state (1/0)
+  - `%SEL%` — Enabled state (1/0)
   - `%REGEX%`, `%CASE%`, `%WORD%`, `%EXT%`, `%VAR%` — Option flags (1/0)
   - Use `\t` for tab delimiter (e.g., `%FIND%\t%REPLACE%\t%COMMENT%` for TSV format).
-- **Escape special characters** — When checked, converts newlines, tabs, and backslashes in field values to their escape sequences (`\n`, `\t`, `\\`). Useful for single-line formats.
-- **Include header row** — When checked, adds a header line with column names before the data rows.
+- **Include header row** — Adds a header line with column names before the data rows. Enabled by default.
+
+Fields are always quoted in Excel-compatible CSV style (embedded `"` doubled, real newlines kept inside the quoted field), so the report pastes straight into a spreadsheet. This is a one-way report for spreadsheets; to copy entries back into MultiReplace use the context-menu **Copy** instead.
 
 ### 5. Appearance
 Customize the look and feel of the plugin window.

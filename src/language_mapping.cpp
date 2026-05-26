@@ -53,7 +53,6 @@ const LangKV kEnglishPairs[] = {
 { L"panel_save_as", L"Save As..." },
 { L"panel_save_a_copy", L"Save a Copy..." },
 { L"panel_save_all", L"Save All" },
-{ L"panel_export_to_bash", L"Export to Bash" },
 { L"panel_help", L"?" },
 { L"panel_replace_in_files", L"Replace in Files" },
 { L"panel_find_in_files", L"Find in Files" },
@@ -72,7 +71,6 @@ const LangKV kEnglishPairs[] = {
 { L"filetype_all_files", L"All Files (*.*)" },
 { L"filetype_mrl", L"MultiReplace List (*.mrl)" },
 { L"filetype_csv_excel", L"CSV (Excel) (*.csv)" },
-{ L"filetype_bash", L"Bash Files (*.sh)" },
 
 // Legacy .csv list migration
 { L"legacy_csv_title", L"MultiReplace - List Format Changed" },
@@ -97,7 +95,7 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_enable_list", L"Enable list (Ctrl+L)" },
 { L"tooltip_disable_list", L"Disable list (Ctrl+L)" },
 { L"tooltip_filter_help", L"Separate patterns with semicolons (;)\n\nFind in specific file types:\n*.cpp; *.h; *.txt\n\nExclude file patterns:\n*.*; !*.exe; !*.obj; !*.log\n\nMatch a specific filename:\nmy report.txt\n\nExclude folders (in Files mode):\n*.*; !\\tests\\; !\\bin*\n\nExclude folders recursively:\n*.*; !+\\log*" },
-{ L"tooltip_export_template_help", L"Available placeholders:\n\nData fields:\n  %FIND%              - Find pattern\n  %REPLACE%       - Replace text\n  %COMMENT%    - Comment\n  %FCOUNT%        - Find count\n  %RCOUNT%        - Replace count\n  %MODIFIED%      - Modified\n\nRow info:\n  %ROW%              - Row number\n  %SEL%                 - Selected (1/0)\n\nOptions:\n  %REGEX%           - Regex enabled (1/0)\n  %CASE%             - Match case (1/0)\n  %WORD%           - Whole word (1/0)\n  %EXT%                - Extended (1/0)\n  %VAR%               - Formula Support (1/0)\n\nUse \\t for tab delimiter" },
+{ L"tooltip_report_template_help", L"Available placeholders:\n\nData fields:\n  %FIND%              - Find pattern\n  %REPLACE%       - Replace text\n  %COMMENT%    - Comment\n  %FCOUNT%        - Find count\n  %RCOUNT%        - Replace count\n  %MODIFIED%      - Modified\n\nRow info:\n  %ROW%              - Row number\n  %SEL%                 - Enabled (1/0)\n\nOptions:\n  %REGEX%           - Regex enabled (1/0)\n  %CASE%             - Match case (1/0)\n  %WORD%           - Whole word (1/0)\n  %EXT%                - Extended (1/0)\n  %VAR%               - Formula Support (1/0)\n\nUse \\t for tab delimiter" },
 { L"tooltip_move_up", L"Move selected lines up (Ctrl+Up)" },
 { L"tooltip_move_down", L"Move selected lines down (Ctrl+Down)" },
 { L"tooltip_bookmark_matches", L"Bookmark matched lines" },
@@ -173,7 +171,6 @@ const LangKV kEnglishPairs[] = {
 { L"status_save_all_errors", L"$REPLACE_STRING list(s) saved, $REPLACE_STRING failed." },
 { L"status_save_all_nothing", L"No unsaved changes." },
 { L"status_no_valid_items_in_csv", L"No valid items found in the CSV file." },
-{ L"status_list_exported_to_bash", L"List exported to BASH script." },
 { L"status_invalid_column_count", L"File not loaded! Invalid number of columns in CSV file." },
 { L"status_invalid_data_in_columns", L"File not loaded! Invalid data found in CSV columns." },
 { L"status_found_in_list", L"Entry found in the list." },
@@ -203,7 +200,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_nothing_to_align", L"Flow Tabs: nothing to align." },
 { L"status_no_selection", L"No text selected." },
 { L"status_select_area_first", L"Please select an area first." },
-{ L"status_export_failed", L"Export to clipboard failed." },
+{ L"status_report_failed", L"Copy Report to clipboard failed." },
 { L"status_no_results_linked", L"No results linked to this entry – run Find All." },
 { L"status_match_position", L"Match $REPLACE_STRING1/$REPLACE_STRING2" },
 { L"status_wrapped_to_first", L"Wrapped to first match" },
@@ -268,7 +265,6 @@ const LangKV kEnglishPairs[] = {
 { L"msgbox_unsaved_changes", L"You have unsaved changes.<br/>Would you like to save them?" },
 { L"msgbox_file_modified_prompt", L"'$REPLACE_STRING'<br/><br/>The file has been modified by another program.<br/>Do you want to load the changes and lose unsaved modifications?" },
 { L"msgbox_reload_discard_prompt", L"'$REPLACE_STRING'<br/><br/>This list has unsaved changes.<br/>Reload from disk and lose them?" },
-{ L"msgbox_formula_support_not_exported", L"Some items with 'Formula Support' enabled were not exported." },
 { L"msgbox_no_files", L"No files matched the specified filter." },
 { L"msgbox_confirm_replace_in_files", L"Do you want to perform replacements in $REPLACE_STRING1 files?<br/><br/>In the directory:<br/>  $REPLACE_STRING2<br/><br/>For file type:<br/>  $REPLACE_STRING3" },
 { L"msgbox_flowtabs_intro_body",
@@ -342,7 +338,7 @@ const LangKV kEnglishPairs[] = {
 { L"config_cat_search_replace", L"Search and Replace" },
 { L"config_cat_list_view", L"List View and Layout" },
 { L"config_cat_csv", L"CSV Options" },
-{ L"config_cat_export", L"Export" },
+{ L"config_cat_report", L"Report" },
 { L"config_cat_appearance", L"Appearance" },
 
 // Search & Replace Settings
@@ -380,13 +376,12 @@ const LangKV kEnglishPairs[] = {
 { L"config_lbl_csv_sort", L"CSV Sort: Header lines to exclude:" },
 
 // Export
-{ L"config_grp_export_data", L"Copy List Data" },
-{ L"config_lbl_export_template", L"Template:" },
-{ L"config_chk_export_escape", L"Escape special characters" },
-{ L"config_chk_export_header", L"Add header row" },
-{ L"ctxmenu_export_data", L"Copy List Data" },
-{ L"status_exported_to_clipboard", L"Exported $REPLACE_STRING entries to clipboard" },
-{ L"status_no_items_to_export", L"No items to export" },
+{ L"config_grp_report", L"Copy Report" },
+{ L"config_lbl_report_template", L"Template:" },
+{ L"config_chk_report_header", L"Add header row" },
+{ L"ctxmenu_copy_report", L"Copy Report" },
+{ L"status_report_copied", L"Copied report of $REPLACE_STRING entries to clipboard" },
+{ L"status_no_items_to_report", L"No items to report" },
 { L"status_list_already_open", L"List already open: switched to existing tab." },
 
 // Appearance Settings
@@ -492,7 +487,6 @@ const UITextMapping kControlTextMappings[] = {
     { IDC_LOAD_LIST_BUTTON,            L"panel_load_list" },
     { IDC_SAVE_TO_CSV_BUTTON,          L"panel_save_list" },
     { IDC_SAVE_AS_BUTTON,              L"panel_save_as" },
-    { IDC_EXPORT_BASH_BUTTON,          L"panel_export_to_bash" },
     // Replace in Files Panel - NEU HINZUGEFÜGT
     { IDC_DIR_STATIC,                  L"panel_directory" },
     { IDC_FILTER_STATIC,               L"panel_filter" },

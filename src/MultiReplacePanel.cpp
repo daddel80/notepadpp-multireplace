@@ -631,7 +631,6 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_LOAD_LIST_BUTTON] = { buttonX + sx(26), statusRowY, sx(24), sy(24), WC_BUTTON, L"📂", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"panel_load_list"), false, FontRole::Standard };
     ctrlMap[IDC_SAVE_BUTTON] = { buttonX + sx(52), statusRowY, sx(24), sy(24), WC_BUTTON, L"💾", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save"), false, FontRole::Normal3 };
     ctrlMap[IDC_SAVE_AS_BUTTON] = { buttonX + sx(52), statusRowY, sx(24), sy(24), WC_BUTTON, LM.getLPCW(L"panel_save_as"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_EXPORT_BASH_BUTTON] = { buttonX, statusRowY, sx(24), sy(24), WC_BUTTON, L"", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
     // List (full width)
     ctrlMap[IDC_REPLACE_LIST] = { sx(14), listStartY, listWidth, listHeight, WC_LISTVIEW, nullptr, LVS_REPORT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP | WS_VSCROLL | LVS_SHOWSELALWAYS, nullptr, false, FontRole::Standard };
@@ -726,9 +725,6 @@ void MultiReplace::initializeCtrlMap() {
     if (!createAndShowWindows()) {
         return;
     }
-
-    // Show or hide the "Export to Bash" button - deprecated, always hidden
-    ShowWindow(GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON), SW_HIDE);
 
     // Legacy buttons: always hidden (replaced by icon buttons in status row)
     ShowWindow(GetDlgItem(_hSelf, IDC_LOAD_LIST_BUTTON), SW_HIDE);
@@ -1066,7 +1062,7 @@ void MultiReplace::updateTwoButtonsVisibility() {
     setVisibility({ IDC_MARK_BUTTON }, !twoButtonsMode);
 
     // Legacy buttons: always hidden (Load/Save are now icon buttons in status row)
-    setVisibility({ IDC_LOAD_LIST_BUTTON, IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON, IDC_EXPORT_BASH_BUTTON }, false);
+    setVisibility({ IDC_LOAD_LIST_BUTTON, IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON }, false);
 
     updateFilesPanel();
 }
@@ -1320,7 +1316,7 @@ void MultiReplace::updateFilesPanel()
                 IDC_LOAD_FROM_CSV_BUTTON, IDC_LOAD_LIST_BUTTON, IDC_NEW_LIST_BUTTON,
                 IDC_TAB_LIST_DROPDOWN, IDC_TAB_SCROLL_LEFT, IDC_TAB_SCROLL_RIGHT,
                 IDC_SAVE_TO_CSV_BUTTON,  IDC_SAVE_BUTTON, IDC_SAVE_AS_BUTTON,
-                IDC_EXPORT_BASH_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON
+                IDC_UP_BUTTON, IDC_DOWN_BUTTON
             };
             for (int id : idsShiftedUp) {
                 HWND hCtrl = GetDlgItem(_hSelf, id);
@@ -2193,38 +2189,31 @@ void MultiReplace::scrollToIndices(size_t firstIndex, size_t lastIndex) {
     }
 }
 
-void MultiReplace::exportDataToClipboard() {
-    // Get selected items (or all if none selected)
+void MultiReplace::copyReportToClipboard() {
+    // Copy Report always covers the whole list: it is a report of the run
+    // over the entire list, not a selection-bound copy (that is the Copy
+    // command). So selection is intentionally ignored here.
     std::vector<size_t> selectedIndices;
 
     int itemCount = ListView_GetItemCount(_replaceListView);
-    int selCount = ListView_GetSelectedCount(_replaceListView);
-
-    if (selCount > 0) {
-        // Get selected items
-        int idx = -1;
-        while ((idx = ListView_GetNextItem(_replaceListView, idx, LVNI_SELECTED)) != -1) {
-            selectedIndices.push_back(static_cast<size_t>(idx));
-        }
-    }
-    else {
-        // No selection - use all items
-        for (int i = 0; i < itemCount; ++i) {
-            selectedIndices.push_back(static_cast<size_t>(i));
-        }
+    for (int i = 0; i < itemCount; ++i) {
+        selectedIndices.push_back(static_cast<size_t>(i));
     }
 
     if (selectedIndices.empty()) {
-        showStatusMessage(LM.get(L"status_no_items_to_export"), MessageStatus::Error);
+        showStatusMessage(LM.get(L"status_no_items_to_report"), MessageStatus::Error);
         return;
     }
 
-    // Load settings from config
+    // Load settings from config. Same [Report] section the config dialog
+    // writes (via optSec), so the dialog's template/header settings take
+    // effect. Quoting is always Excel-style (quoteField): this is a one-way
+    // report for spreadsheets, not a round-trip back into MR (that is what
+    // the clipboard Copy does, with the internal escaped dialect).
     const auto& cfg = ConfigManager::instance();
-    std::wstring templateStr = cfg.readString(L"ExportData", L"Template",
-        L"%FIND%\\t%REPLACE%\\t%FCOUNT%\\t%RCOUNT%\\t%COMMENT%");
-    bool escapeChars = cfg.readBool(L"ExportData", L"Escape", false);
-    bool includeHeader = cfg.readBool(L"ExportData", L"Header", false);
+    std::wstring templateStr = cfg.readString(optSec(L"ReportTemplate"), L"ReportTemplate",
+        L"%FIND%\\t%REPLACE%\\t%FCOUNT%\\t%RCOUNT%\\t%COMMENT%\\t%MODIFIED%");
+    bool includeHeader = cfg.readBool(optSec(L"ReportHeader"), L"ReportHeader", true);
 
     // This converts \t to real tabs in the TEMPLATE, not in the data
     std::wstring processedTemplate = StringUtils::processTemplateEscapes(templateStr);
@@ -2242,14 +2231,14 @@ void MultiReplace::exportDataToClipboard() {
         headerLine = StringUtils::replaceTemplateVar(headerLine, L"%FCOUNT%", L"FindCount");
         headerLine = StringUtils::replaceTemplateVar(headerLine, L"%RCOUNT%", L"ReplaceCount");
         headerLine = StringUtils::replaceTemplateVar(headerLine, L"%COMMENT%", L"Comment");
-        headerLine = StringUtils::replaceTemplateVar(headerLine, L"%SEL%", L"Selected");
+        headerLine = StringUtils::replaceTemplateVar(headerLine, L"%SEL%", L"Enabled");
         headerLine = StringUtils::replaceTemplateVar(headerLine, L"%ROW%", L"Row");
         // Option flags
         headerLine = StringUtils::replaceTemplateVar(headerLine, L"%REGEX%", L"Regex");
         headerLine = StringUtils::replaceTemplateVar(headerLine, L"%CASE%", L"MatchCase");
         headerLine = StringUtils::replaceTemplateVar(headerLine, L"%WORD%", L"WholeWord");
         headerLine = StringUtils::replaceTemplateVar(headerLine, L"%EXT%", L"Extended");
-        headerLine = StringUtils::replaceTemplateVar(headerLine, L"%VAR%", L"Variables");
+        headerLine = StringUtils::replaceTemplateVar(headerLine, L"%VAR%", L"FormulaSupport");
         headerLine = StringUtils::replaceTemplateVar(headerLine, L"%MODIFIED%", L"Modified");
 
         // NO processTemplateEscapes here - already done above
@@ -2266,23 +2255,12 @@ void MultiReplace::exportDataToClipboard() {
         const ReplaceItemData& item = replaceListData[idx];
         std::wstring line = processedTemplate;  // Use already-processed template
 
-        // Get field values
-        std::wstring findText = item.findText;
-        std::wstring replaceText = item.replaceText;
-        std::wstring comment = item.comments;
-
-        // Escape if checkbox is enabled
-        // This converts real newlines to \n (two chars), tabs to \t, etc.
-        if (escapeChars) {
-            findText = StringUtils::escapeQuoted(item.findText);
-            replaceText = StringUtils::escapeQuoted(item.replaceText);
-            comment = StringUtils::escapeQuoted(item.comments);
-        }
-        else {
-            findText = StringUtils::quoteField(item.findText);
-            replaceText = StringUtils::quoteField(item.replaceText);
-            comment = StringUtils::quoteField(item.comments);
-        }
+        // Excel-style quoting: doubles embedded quotes, keeps real
+        // newlines/tabs inside the quoted field (RFC 4180), so spreadsheets
+        // parse the report correctly.
+        std::wstring findText = StringUtils::quoteField(item.findText);
+        std::wstring replaceText = StringUtils::quoteField(item.replaceText);
+        std::wstring comment = StringUtils::quoteField(item.comments);
 
         // Replace template variables - Main data
         line = StringUtils::replaceTemplateVar(line, L"%FIND%", findText);
@@ -2322,7 +2300,7 @@ void MultiReplace::exportDataToClipboard() {
                 GlobalUnlock(hMem);
                 if (SetClipboardData(CF_UNICODETEXT, hMem)) {
                     CloseClipboard();
-                    showStatusMessage(LM.get(L"status_exported_to_clipboard",
+                    showStatusMessage(LM.get(L"status_report_copied",
                         { std::to_wstring(selectedIndices.size()) }),
                         MessageStatus::Info);
                     return;
@@ -2332,7 +2310,7 @@ void MultiReplace::exportDataToClipboard() {
         }
         CloseClipboard();
     }
-    showStatusMessage(LM.get(L"status_export_failed"), MessageStatus::Error);
+    showStatusMessage(LM.get(L"status_report_failed"), MessageStatus::Error);
 }
 
 #pragma endregion
@@ -4493,6 +4471,7 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
         AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, LM.get(L"ctxmenu_copy").c_str());
         AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_LINES_FROM_CLIPBOARD, LM.get(L"ctxmenu_paste").c_str());
         AppendMenu(hMenu, MF_STRING, IDM_SELECT_ALL, LM.get(L"ctxmenu_select_all").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_COPY_REPORT, LM.get(L"ctxmenu_copy_report").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, LM.get(L"ctxmenu_edit").c_str());
         AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, LM.get(L"ctxmenu_delete").c_str());
@@ -4500,7 +4479,6 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, LM.get(L"ctxmenu_transfer_to_input_fields").c_str());
         AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_UPDATE_FROM_FIELDS, LM.get(L"ctxmenu_update_from_input_fields").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_EXPORT_DATA, LM.get(L"ctxmenu_export_data").c_str());
         AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_SEARCH_IN_LIST, LM.get(L"ctxmenu_search_in_list").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, LM.get(L"ctxmenu_enable").c_str());
@@ -6902,30 +6880,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDC_EXPORT_BASH_BUTTON:
-        {
-            std::wstring bashDescription = LM.get(L"filetype_bash");  // "Bash Scripts (*.sh)"
-            std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
-
-            std::vector<std::pair<std::wstring, std::wstring>> filters = {
-                {bashDescription, L"*.sh"},
-                {allFilesDescription, L"*.*"}
-            };
-
-            std::wstring dialogTitle = LM.get(L"panel_export_to_bash");
-
-            // Set a default filename if none is provided
-            static int scriptCounter = 1;
-            std::wstring defaultFileName = L"Replace_Script_" + std::to_wstring(++scriptCounter) + L".sh";
-
-            // Open the file dialog with the default filename for bash scripts
-            std::wstring filePath = openFileDialog(true, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT, L"sh", defaultFileName);
-
-            if (!filePath.empty()) {
-                exportToBashScript(filePath);
-            }
-            return TRUE;
-        }
 
         case ID_REPLACE_ALL_OPTION:
         {
@@ -7039,9 +6993,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDM_EXPORT_DATA:
+        case IDM_COPY_REPORT:
         {
-            exportDataToClipboard();
+            copyReportToClipboard();
             return TRUE;
         }
 
@@ -15467,113 +15421,6 @@ void MultiReplace::checkForFileChangesAtStartup() {
     // user-initiated load. Success/error messages would be noise.
 }
 
-void MultiReplace::exportToBashScript(const std::wstring& fileName) {
-    std::ofstream file(fileName);
-    if (!file.is_open()) {
-        showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
-        return;
-    }
-
-    // Create date
-    time_t currentTime = time(nullptr);
-    struct tm* localTime = localtime(&currentTime);
-    char dateBuffer[80];
-    strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", localTime);
-
-    file << "#!/bin/bash\n";
-    file << "# Auto-generated by MultiReplace Notepad++\n";
-    file << "# Created on: " << dateBuffer << "\n\n";
-    file << "inputFile=\"$1\"\n";
-    file << "outputFile=\"$2\"\n\n";
-
-    file << "processLine() {\n";
-    file << "    local findString=\"$1\"\n";
-    file << "    local replaceString=\"$2\"\n";
-    file << "    local wholeWord=\"$3\"\n";
-    file << "    local matchCase=\"$4\"\n";
-    file << "    local normal=\"$5\"\n";
-    file << "    local extended=\"$6\"\n";
-    file << "    local regex=\"$7\"\n";
-    file << R"(
-    if [[ "$wholeWord" -eq 1 ]]; then
-        findString='\b'${findString}'\b'
-    fi
-    if [[ "$matchCase" -eq 1 ]]; then
-        template='s|'${findString}'|'${replaceString}'|g'
-    else
-        template='s|'${findString}'|'${replaceString}'|gi'
-    fi
-    case 1 in
-        $normal)
-            sed -i "${template}" "$outputFile"
-            ;;
-        $extended)
-            sed -i -e ':a' -e 'N' -e '$!ba' -e 's/\n/__NEWLINE__/g' -e 's/\r/__CARRIAGERETURN__/g' "$outputFile"
-            sed -i "${template}" "$outputFile"
-            sed -i 's/__NEWLINE__/\n/g; s/__CARRIAGERETURN__/\r/g' "$outputFile"
-            ;;
-        $regex)
-            sed -i -r "${template}" "$outputFile"
-            ;;
-    esac
-)";
-    file << "}\n\n";
-
-    file << "cp $inputFile $outputFile\n\n";
-
-    file << "# processLine arguments: \"findString\" \"replaceString\" wholeWord matchCase normal extended regex\n";
-
-    bool hasExcludedItems = false;
-    for (const auto& itemData : replaceListData) {
-        if (!itemData.isEnabled) continue; // Skip if this item is not selected
-        if (itemData.formulaSupport) {
-            hasExcludedItems = true; // Mark as excluded
-            continue;
-        }
-
-        std::string find;
-        std::string replace;
-        if (itemData.extended) {
-            find = SU::replaceNewline(SU::translateEscapes(SU::escapeSpecialChars(Encoding::wstringToUtf8(itemData.findText), true)), SU::ReplaceMode::Extended);
-            replace = SU::replaceNewline(SU::translateEscapes(SU::escapeSpecialChars(Encoding::wstringToUtf8(itemData.replaceText), true)), SU::ReplaceMode::Extended);
-        }
-        else if (itemData.regex) {
-            find = SU::replaceNewline(Encoding::wstringToUtf8(itemData.findText), SU::ReplaceMode::Regex);
-            replace = SU::replaceNewline(Encoding::wstringToUtf8(itemData.replaceText), SU::ReplaceMode::Regex);
-        }
-        else {
-            find = SU::replaceNewline(SU::escapeSpecialChars(Encoding::wstringToUtf8(itemData.findText), false), SU::ReplaceMode::Normal);
-            replace = SU::replaceNewline(SU::escapeSpecialChars(Encoding::wstringToUtf8(itemData.replaceText), false), SU::ReplaceMode::Normal);
-        }
-
-        std::string wholeWord = itemData.wholeWord ? "1" : "0";
-        std::string matchCase = itemData.matchCase ? "1" : "0";
-        std::string normal = (!itemData.regex && !itemData.extended) ? "1" : "0";
-        std::string extended = itemData.extended ? "1" : "0";
-        std::string regex = itemData.regex ? "1" : "0";
-
-        file << "processLine \"" << find << "\" \"" << replace << "\" " << wholeWord << " " << matchCase << " " << normal << " " << extended << " " << regex << "\n";
-    }
-
-    file.close();
-
-    if (file.fail()) {
-        showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
-        return;
-    }
-
-    showStatusMessage(LM.get(L"status_list_exported_to_bash"), MessageStatus::Success);
-
-    // Show message box if excluded items were found
-    if (hasExcludedItems) {
-        MessageBox(_hSelf,
-            LM.get(L"msgbox_formula_support_not_exported").c_str(),
-            LM.get(L"msgbox_title_warning").c_str(),
-            MB_OK | MB_ICONWARNING);
-    }
-
-}
-
 #pragma endregion
 
 #pragma region INI
@@ -15757,7 +15604,6 @@ void MultiReplace::loadSettingsToPanelUI() {
     flowTabsIntroDontShowEnabled = CFG.readBool(optSec(L"FlowTabsIntroDontShow"), L"FlowTabsIntroDontShow", false);
     flowTabsNumericAlignEnabled = CFG.readBool(optSec(L"FlowTabsNumericAlign"), L"FlowTabsNumericAlign", true);
 
-    exportToBashEnabled = CFG.readBool(optSec(L"ExportToBash"), L"ExportToBash", false);
     muteSounds = CFG.readBool(optSec(L"MuteSounds"), L"MuteSounds", false);
     doubleClickEditsEnabled = CFG.readBool(optSec(L"DoubleClickEdits"), L"DoubleClickEdits", true);
 
@@ -15882,10 +15728,6 @@ void MultiReplace::loadSettingsToPanelUI() {
                 ShowWindow(GetDlgItem(instance->_hSelf, IDC_TAB_SCROLL_RIGHT), SW_HIDE);
             }
         }
-
-        // 3. Export Button - deprecated, always hidden
-        HWND hBash = GetDlgItem(instance->_hSelf, IDC_EXPORT_BASH_BUTTON);
-        if (hBash) ShowWindow(hBash, SW_HIDE);
 
         // 4. Rebuild ListView columns to reflect visibility changes
         if (instance->_replaceListView) {
@@ -18639,10 +18481,8 @@ const wchar_t* MultiReplace::optSec(const std::wstring& key)
         { L"FlowTabsNumericAlign",     L"Csv" },
         { L"FlowTabsIntroDontShow",    L"Csv" },
         { L"DuplicateBookmarks",       L"Csv" },
-        { L"ExportTemplate",           L"Export" },
-        { L"ExportEscape",             L"Export" },
-        { L"ExportHeader",             L"Export" },
-        { L"ExportToBash",             L"Export" },
+        { L"ReportTemplate",           L"Report" },
+        { L"ReportHeader",             L"Report" },
         { L"Tooltips",                 L"Appearance" },
         { L"UseListColorsForMarking",  L"Appearance" },
         { L"ButtonsMode",              L"Interface" },
@@ -18658,7 +18498,6 @@ MultiReplace::Settings MultiReplace::getSettings()
     // Always read from INI cache (single source of truth)
     Settings s{};
     s.tooltipsEnabled = CFG.readBool(optSec(L"Tooltips"), L"Tooltips", true);
-    s.exportToBashEnabled = CFG.readBool(optSec(L"ExportToBash"), L"ExportToBash", false);
     s.muteSounds = CFG.readBool(optSec(L"MuteSounds"), L"MuteSounds", false);
     s.doubleClickEditsEnabled = CFG.readBool(optSec(L"DoubleClickEdits"), L"DoubleClickEdits", true);
     s.highlightMatchEnabled = CFG.readBool(optSec(L"HighlightMatch"), L"HighlightMatch", true);
@@ -18687,7 +18526,6 @@ void MultiReplace::writeStructToConfig(const Settings& s)
 {
     // Write all logic options to ConfigManager
     CFG.writeBool(optSec(L"Tooltips"), L"Tooltips", s.tooltipsEnabled);
-    CFG.writeBool(optSec(L"ExportToBash"), L"ExportToBash", s.exportToBashEnabled);
     CFG.writeBool(optSec(L"MuteSounds"), L"MuteSounds", s.muteSounds);
     CFG.writeBool(optSec(L"DoubleClickEdits"), L"DoubleClickEdits", s.doubleClickEditsEnabled);
     CFG.writeBool(optSec(L"HighlightMatch"), L"HighlightMatch", s.highlightMatchEnabled);
@@ -18768,7 +18606,7 @@ void MultiReplace::migrateOptionsLayout()
         L"EditFieldSize", L"UseList", L"DimIntensity",
         L"GroupResults", L"ResultDockPerEntryColors", L"DockWrap", L"DockPurge",
         L"FlowTabsNumericAlign", L"FlowTabsIntroDontShow", L"DuplicateBookmarks",
-        L"ExportTemplate", L"ExportEscape", L"ExportHeader", L"ExportToBash",
+        L"ReportTemplate", L"ReportHeader",
         L"Tooltips", L"UseListColorsForMarking",
         L"ButtonsMode", L"BookmarkMatches", L"TabMaxLength",
     };
@@ -18837,7 +18675,6 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(optSec(L"HighlightMatch"), L"HighlightMatch", highlightMatchEnabled);
     CFG.writeBool(optSec(L"FlowTabsIntroDontShow"), L"FlowTabsIntroDontShow", flowTabsIntroDontShowEnabled);
     CFG.writeBool(optSec(L"FlowTabsNumericAlign"), L"FlowTabsNumericAlign", flowTabsNumericAlignEnabled);
-    CFG.writeBool(optSec(L"ExportToBash"), L"ExportToBash", exportToBashEnabled);
     CFG.writeBool(optSec(L"MuteSounds"), L"MuteSounds", muteSounds);
     CFG.writeBool(optSec(L"DoubleClickEdits"), L"DoubleClickEdits", doubleClickEditsEnabled);
     CFG.writeBool(optSec(L"HoverText"), L"HoverText", isHoverTextEnabled);
@@ -18921,7 +18758,6 @@ void MultiReplace::applyConfigSettingsOnly()
     groupResultsEnabled = CFG.readBool(optSec(L"GroupResults"), L"GroupResults", false);
     flowTabsIntroDontShowEnabled = CFG.readBool(optSec(L"FlowTabsIntroDontShow"), L"FlowTabsIntroDontShow", false);
     flowTabsNumericAlignEnabled = CFG.readBool(optSec(L"FlowTabsNumericAlign"), L"FlowTabsNumericAlign", true);
-    exportToBashEnabled = CFG.readBool(optSec(L"ExportToBash"), L"ExportToBash", false);
     _luaSafeModeEnabled = CFG.readBool(L"Lua", L"SafeMode", false);
     _formulaErrorDialogEnabled = CFG.readBool(L"Engines", L"ShowErrorDialogs", true);
     limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
@@ -19009,10 +18845,6 @@ void MultiReplace::applyConfigSettingsOnly()
     foregroundTransparency = static_cast<BYTE>(fg);
     backgroundTransparency = static_cast<BYTE>(bg);
     if (_hSelf) SetWindowTransparency(_hSelf, foregroundTransparency);
-
-    // UI Updates - Export Bash deprecated, always hidden
-    HWND hBash = GetDlgItem(_hSelf, IDC_EXPORT_BASH_BUTTON);
-    if (hBash) ShowWindow(hBash, SW_HIDE);
 
     updateUseListState(false);
 

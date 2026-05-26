@@ -115,7 +115,7 @@ bool ConfigManager::save(const std::wstring& file) const
         L"General",
         L"SearchAndReplace", L"Interface", L"ReplaceInFiles", L"Engines", L"Lua",
         L"Scope", L"Csv", L"List", L"ListView", L"ResultDock",
-        L"Export", L"Appearance", L"Tandem",
+        L"Report", L"Appearance", L"Tandem",
         L"Window", L"Tabs", L"History",
     };
 

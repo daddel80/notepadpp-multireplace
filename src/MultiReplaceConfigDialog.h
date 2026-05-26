@@ -108,7 +108,7 @@ private:
     HWND _hListViewLayoutPanel = nullptr;
     HWND _hAppearancePanel = nullptr;
     HWND _hCsvFlowTabsPanel = nullptr;
-    HWND _hExportPanel = nullptr;
+    HWND _hReportPanel = nullptr;
 
     HWND _hTooltip = nullptr;
     COLORREF _helpColor = RGB(0, 0, 255);  // Default light mode blue

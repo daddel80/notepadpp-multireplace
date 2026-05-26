@@ -74,7 +74,6 @@
 #define IDC_SAVE_TO_CSV_BUTTON          5023
 #define IDC_SAVE_BUTTON                 5024
 #define IDC_SAVE_AS_BUTTON              5025
-#define IDC_EXPORT_BASH_BUTTON          5026
 
 #define IDC_UP_BUTTON                   5027
 #define IDC_DOWN_BUTTON                 5028
@@ -215,7 +214,7 @@
 #define IDM_DELETE_LINES                5708
 #define IDM_ADD_NEW_LINE                5709
 #define IDM_COPY_DATA_TO_FIELDS         5710
-#define IDM_EXPORT_DATA                 5711
+#define IDM_COPY_REPORT                 5711
 #define IDM_SEARCH_IN_LIST              5712
 #define IDM_ENABLE_LINES                5713
 #define IDM_DISABLE_LINES               5714
@@ -364,14 +363,11 @@
 // -------------------------------------------------------------------
 //  Export Data Panel (7950-7959)
 // -------------------------------------------------------------------
-#define IDC_CFG_GRP_EXPORT_DATA           7950
-#define IDC_CFG_EXPORT_FORMAT_LABEL       7951
-#define IDC_CFG_EXPORT_FORMAT_COMBO       7952
-#define IDC_CFG_EXPORT_TEMPLATE_LABEL     7953
-#define IDC_CFG_EXPORT_TEMPLATE_EDIT      7954
-#define IDC_CFG_EXPORT_ESCAPE_CHECK       7955
-#define IDC_CFG_EXPORT_HEADER_CHECK       7956
-#define IDC_CFG_EXPORT_TEMPLATE_HELP      7957
+#define IDC_CFG_GRP_REPORT                7950
+#define IDC_CFG_REPORT_TEMPLATE_LABEL     7953
+#define IDC_CFG_REPORT_TEMPLATE_EDIT      7954
+#define IDC_CFG_REPORT_HEADER_CHECK       7956
+#define IDC_CFG_REPORT_TEMPLATE_HELP      7957
 
 // -------------------------------------------------------------------
 //  Appearance Panel - Interface Group (7960-7969)
