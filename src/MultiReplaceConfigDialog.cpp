@@ -833,18 +833,18 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     const int left = 70;
     const int groupW = 460;
     const int topY = 20;
-    const int topGroupH = 175;
+    const int topGroupH = 186;
     const int gapBetween = 14;
-    const int bottomGroupH = 90;
+    const int bottomGroupH = 94;
 
     createGroupBox(_hListViewLayoutPanel, left, topY, groupW, topGroupH,
         IDC_CFG_GRP_LIST_BEHAVIOR, LM.getLPCW(L"config_grp_list_behavior"));
     {
         const int innerLeft = left + 22;
-        const int innerTop = topY + 30;
+        const int innerTop = topY + 35;
         const int innerWidth = groupW - 44;
 
-        LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, innerTop, innerWidth, 24);
+        LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, innerTop, innerWidth, 26);
         lb.AddCheckbox(IDC_CFG_DOUBLECLICK_EDITS, LM.getLPCW(L"config_chk_doubleclick"));
         lb.AddCheckbox(IDC_CFG_HOVER_TEXT_ENABLED, LM.getLPCW(L"config_chk_hover_text"));
         lb.AddCheckbox(IDC_CFG_HIGHLIGHT_MATCH, LM.getLPCW(L"config_chk_highlight_match"));
@@ -863,7 +863,7 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
         const int innerTop = bottomY + 30;
         const int innerWidth = groupW - 44;
 
-        LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, innerTop, innerWidth, 24);
+        LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, innerTop, innerWidth, 26);
         lb.AddCheckbox(IDC_CFG_GROUPRESULTS_ENABLED, LM.getLPCW(L"config_chk_group_results"));
         lb.AddCheckbox(IDC_CFG_RESULT_DOCK_ENTRY_COLORS, LM.getLPCW(L"config_chk_result_dock_entry_colors"));
     }

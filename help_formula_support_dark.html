@@ -552,7 +552,7 @@ nav.pagenav .nav-group.collapsible {
       <tr>
         <td><strong>Best for</strong></td>
         <td>Text and string work, conditional logic, lookups, external file loading</td>
-        <td>High-speed numeric work, running totals, concise inline math</td>
+        <td>High-speed numeric work, running totals, concise inline math, plus string slicing/splitting and date/duration formatting</td>
       </tr>
       <tr>
         <td><strong>Captures</strong></td>
@@ -562,7 +562,7 @@ nav.pagenav .nav-group.collapsible {
       <tr>
         <td><strong>Strings</strong></td>
         <td>Full string library (substitute, slice, format, upper/lower, etc.)</td>
-        <td>Passthrough only &mdash; no string manipulation functions; output composed from literals and captures</td>
+        <td>Real string toolkit: <code>slice</code>/<code>split</code>/<code>trim</code>/<code>find</code>/<code>len</code>/<code>replace</code>/<code>reptxt</code>, concatenation, slicing <code>[a:b]</code>, <code>totxt</code>/<code>num2chr</code>/<code>chr2num</code> &mdash; ASCII-only in literals (document text and captures are full UTF-8)</td>
       </tr>
       <tr>
         <td><strong>Math</strong></td>
@@ -587,7 +587,7 @@ nav.pagenav .nav-group.collapsible {
       <tr>
         <td><strong>External I/O</strong></td>
         <td><code>lvars</code>, <code>lkp</code>, <code>lcmd</code> (file access, external scripts)</td>
-        <td>None &mdash; numeric work only</td>
+        <td>None &mdash; no file or external access</td>
       </tr>
     </table>
 

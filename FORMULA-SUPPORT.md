@@ -439,7 +439,7 @@ The **Debug Mode** provides a safe environment to test complex logic involving c
 
 ## ExprTk Reference
 
-ExprTk is a numeric expression engine. Its design goal is concise inline math: where Lua wraps every formula in `set(...)`, ExprTk drops the formula directly into the replace string via `(?=...)` markers. This makes it the better choice when the work is mostly arithmetic, statistics, or value transformation on captured numbers. Strings are supported too — see [String Output](#string-output).
+ExprTk is a numeric expression engine. Its design goal is concise inline math: where Lua wraps every formula in `set(...)`, ExprTk drops the formula directly into the replace string via `(?=...)` markers. This makes it the better choice when the work is mostly arithmetic, statistics, or value transformation on captured numbers. It also carries a real string toolkit — slice, split, trim, find, replace, concatenation, and number/character conversions — so light-to-moderate text shaping stays inside ExprTk; see [String Output](#string-output) and the string helper functions below.
 
 ---
 
