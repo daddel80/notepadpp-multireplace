@@ -15998,6 +15998,17 @@ void MultiReplace::restoreStateFromTab(const TabState& tab)
     //    flag below; the user-driven auto-flip still works as before
     //    when the flag isn't set.
     {
+        // If the outgoing tab was in CSV scope and the incoming tab is not,
+        // tear down the CSV-only state (column highlight, flow tabs, delimiter
+        // model) - exactly as a manual CSV->AllText switch does. The document
+        // stays the same across MR list-tab switches, so _hScintilla already
+        // points at the right buffer.
+        const bool wasColumnScope = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+        const bool willBeColumnScope = (tab.scope == 2);
+        if (wasColumnScope && !willBeColumnScope) {
+            handleClearDelimiterState();
+        }
+
         const int scopeRadio = (tab.scope == 2) ? IDC_COLUMN_MODE_RADIO
             : (tab.scope == 1) ? IDC_SELECTION_RADIO
             : IDC_ALL_TEXT_RADIO;
