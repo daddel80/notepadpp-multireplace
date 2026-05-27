@@ -116,9 +116,11 @@ namespace {
     }
 
     // The concrete on-disk format a save should produce.
-    struct SaveFormat {
+    // Format derived from a path's extension by resolveFormat().
+    struct FileFormat {
         CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr;
-        bool   withSettingsBlock = true;   // only the .mrl format carries it
+        bool    hasSettingsBlock = true;
+        bool    isInternalSnapshot = false;
         wchar_t delimiter = L',';
     };
 
@@ -156,17 +158,19 @@ namespace {
         return path + L"." + *wanted;
     }
 
-    // Decide the save format from the chosen path. The extension is the
-    // single source of truth: .mrl is the internal escaped format with the
-    // settings block; anything else is the plain "CSV (Excel)" dialect
-    // (no block, configurable delimiter).
-    SaveFormat formatFromChoice(const std::wstring& path) {
-        SaveFormat fmt;
-        if (lowerExtension(path) == L"mrl") {
-            return fmt;  // defaults: Mr, with block, comma
+    FileFormat resolveFormat(const std::wstring& path) {
+        const std::wstring ext = lowerExtension(path);
+        FileFormat fmt;
+        if (ext == L"mrl") {
+            return fmt;
+        }
+        if (ext == L"mrtab") {
+            fmt.hasSettingsBlock = false;
+            fmt.isInternalSnapshot = true;
+            return fmt;
         }
         fmt.dialect = CsvListFormat::Dialect::Rfc4180;
-        fmt.withSettingsBlock = false;
+        fmt.hasSettingsBlock = false;
         fmt.delimiter = resolvePlainCsvDelimiter();
         return fmt;
     }
@@ -6819,8 +6823,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             std::wstring filePath = promptSaveListToCsv();
 
             if (!filePath.empty()) {
-                const SaveFormat fmt = formatFromChoice(filePath);
-                saveListToCsv(filePath, replaceListData, fmt.dialect, fmt.withSettingsBlock, fmt.delimiter);
+                saveListToCsv(filePath, replaceListData);
             }
 
             return TRUE;
@@ -6833,16 +6836,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // always follows the extension: .mrl = internal escaped + block,
             // .csv (or other) = plain Excel dialect.
             if (!listFilePath.empty()) {
-                const SaveFormat fmt = formatFromChoice(listFilePath);
-                saveListToCsv(listFilePath, replaceListData, fmt.dialect, fmt.withSettingsBlock, fmt.delimiter);
+                saveListToCsv(listFilePath, replaceListData);
             }
             else {
                 // If no file path is set, prompt the user to select a file path
                 std::wstring filePath = promptSaveListToCsv();
 
                 if (!filePath.empty()) {
-                    const SaveFormat fmt = formatFromChoice(filePath);
-                    saveListToCsv(filePath, replaceListData, fmt.dialect, fmt.withSettingsBlock, fmt.delimiter);
+                    saveListToCsv(filePath, replaceListData);
                 }
             }
             return TRUE;
@@ -6871,10 +6872,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             std::wstring csvExcelDescription = LM.get(L"filetype_csv_excel");  // "CSV (Excel) (*.csv)"
             std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
 
-            // Two formats plus All Files, matching Save. The dialect is not
-            // taken from the picked filter but from the chosen file's
-            // extension (.mrl = internal escaped, else plain "CSV Excel"),
-            // so double-click and drag-and-drop resolve the same way.
+            // Picked filter is informational; extension drives the dialect.
             std::vector<std::pair<std::wstring, std::wstring>> filters = {
                 {mrlDescription, L"*.mrl"},
                 {csvExcelDescription, L"*.csv"},
@@ -14636,16 +14634,12 @@ std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::
 std::wstring MultiReplace::promptSaveListToCsv(const TabState* tabHint, int* outFilterIndex) {
     std::wstring mrlDescription = LM.get(L"filetype_mrl");        // "MultiReplace List (*.mrl)"
     std::wstring csvExcelDescription = LM.get(L"filetype_csv_excel");  // "CSV (Excel) (*.csv)"
-    std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
 
-    // Two list formats plus All Files. Filter 1 = .mrl (internal escaped
-    // body with the settings block, the default); 2 = plain "CSV (Excel)"
-    // .csv (no escaping, no block, configurable delimiter). The extension
-    // is the single source of truth for the format (see formatFromChoice).
+    // Filter 1 = .mrl (internal, with settings block); 2 = plain Excel .csv.
+    // The picked extension drives the format (see resolveFormat).
     std::vector<std::pair<std::wstring, std::wstring>> filters = {
         {mrlDescription, L"*.mrl"},
-        {csvExcelDescription, L"*.csv"},
-        {allFilesDescription, L"*.*"}
+        {csvExcelDescription, L"*.csv"}
     };
 
     std::wstring dialogTitle = LM.get(L"panel_save_list");
@@ -14888,90 +14882,52 @@ namespace {
     }
 } // namespace
 
-bool MultiReplace::saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list,
-    CsvListFormat::Dialect dialect, wchar_t delimiter) {
-    std::ofstream outFile(std::filesystem::path(filePath), std::ios::binary);
-
-    if (!outFile.is_open()) {
-        return false;
-    }
-
-    // [BOM] Write UTF-8 BOM for CSV
-    outFile.write("\xEF\xBB\xBF", 3);
-
-    // Convert and Write CSV header (delimiter-aware for plain CSV)
-    std::string utf8Header = Encoding::wstringToUtf8(ListCodec::headerLine(delimiter) + L"\n");
-    outFile << utf8Header;
-
-    // Write list items to CSV file
-    for (const ReplaceItemData& item : list) {
-        std::wstring line = ListCodec::itemToRow(item, true, dialect, delimiter) + L"\n";
-        std::string utf8Line = Encoding::wstringToUtf8(line);
-        outFile << utf8Line;
-    }
-
-    outFile.close();
-
-    return !outFile.fail();
-}
-
-bool MultiReplace::saveListToCsvWithSettings(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab) {
-    std::ofstream outFile(std::filesystem::path(filePath), std::ios::binary);
-
-    if (!outFile.is_open()) {
-        return false;
-    }
-
-    // UTF-8 BOM
-    outFile.write("\xEF\xBB\xBF", 3);
-
-    // Per-list settings block precedes the CSV header row.
-    writeSettingsBlock(outFile, tab);
-
-    // CSV header
-    std::string utf8Header = Encoding::wstringToUtf8(ListCodec::headerLine() + L"\n");
-    outFile << utf8Header;
-
-    for (const ReplaceItemData& item : list) {
-        std::wstring line = ListCodec::itemToRow(item, true) + L"\n";
-        std::string utf8Line = Encoding::wstringToUtf8(line);
-        outFile << utf8Line;
-    }
-
-    outFile.close();
-
-    return !outFile.fail();
-}
-
 bool MultiReplace::saveTabToFile(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab) {
-    const SaveFormat fmt = formatFromChoice(filePath);
-    return fmt.withSettingsBlock
-        ? saveListToCsvWithSettings(filePath, list, tab)
-        : saveListToCsvSilent(filePath, list, fmt.dialect, fmt.delimiter);
+    const FileFormat fmt = resolveFormat(filePath);
+
+    std::ofstream outFile(std::filesystem::path(filePath), std::ios::binary);
+    if (!outFile.is_open()) {
+        return false;
+    }
+
+    outFile.write("\xEF\xBB\xBF", 3);
+
+    if (fmt.hasSettingsBlock) {
+        writeSettingsBlock(outFile, tab);
+    }
+
+    std::string utf8Header = Encoding::wstringToUtf8(ListCodec::headerLine(fmt.delimiter) + L"\n");
+    outFile << utf8Header;
+
+    for (const ReplaceItemData& item : list) {
+        std::wstring line = ListCodec::itemToRow(item, true, fmt.dialect, fmt.delimiter) + L"\n";
+        std::string utf8Line = Encoding::wstringToUtf8(line);
+        outFile << utf8Line;
+    }
+
+    outFile.close();
+    return !outFile.fail();
 }
 
-bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list,
-    CsvListFormat::Dialect dialect, bool withSettingsBlock, wchar_t delimiter) {
-    // User-save of the active tab. The .mrl format also captures live UI
-    // state into the settings block; the plain CSV formats are a portable
-    // body only. Either way the save is authoritative: it clears dirty and
-    // adopts the file as the tab's backing path (see below).
-    bool ok = false;
-    if (withSettingsBlock && _activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
+bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {
+    const FileFormat fmt = resolveFormat(filePath);
+    const bool active = (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size()));
+
+    if (fmt.hasSettingsBlock && active) {
         captureStateIntoTab(*_tabs[_activeTabIndex]);
-        ok = saveListToCsvWithSettings(filePath, list, *_tabs[_activeTabIndex]);
     }
-    else {
-        // Plain CSV body (escaped or Excel dialect), no settings block.
-        ok = saveListToCsvSilent(filePath, list, dialect, delimiter);
-    }
+
+    // emptyTab is only consumed by saveTabToFile when no active tab exists.
+    static const TabState emptyTab;
+    const TabState* tabForBlock = active ? _tabs[_activeTabIndex].get() : nullptr;
+    const bool ok = saveTabToFile(filePath, list, tabForBlock ? *tabForBlock : emptyTab);
 
     if (!ok) {
         showStatusMessage(LM.get(L"status_unable_to_save_file"), MessageStatus::Error);
         return false;
     }
 
-    const wchar_t* savedKey = (dialect == CsvListFormat::Dialect::Mr)
+    const wchar_t* savedKey = (fmt.dialect == CsvListFormat::Dialect::Mr)
         ? L"status_saved_items_to_mrl"
         : L"status_saved_items_to_csv";
     showStatusMessage(LM.get(savedKey, { std::to_wstring(list.size()) }), MessageStatus::Success);
@@ -14991,7 +14947,7 @@ bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
     // Mirror the clean state onto the active tab's snapshot so it
     // stays coherent with the live list, even before a tab-switch
     // capture.
-    if (_activeTabIndex >= 0 && _activeTabIndex < static_cast<int>(_tabs.size())) {
+    if (active) {
         TabState& tab = *_tabs[_activeTabIndex];
         tab.filePath = filePath;
         tab.originalHash = originalListHash;
@@ -15141,8 +15097,7 @@ int MultiReplace::checkForUnsavedChanges(int tabIndex) {
                     std::wstring filePath = promptSaveListToCsv();
 
                     if (!filePath.empty()) {
-                        const SaveFormat fmt = formatFromChoice(filePath);
-                        if (!saveListToCsv(filePath, replaceListData, fmt.dialect, fmt.withSettingsBlock, fmt.delimiter)) return IDCANCEL;
+                        if (!saveListToCsv(filePath, replaceListData)) return IDCANCEL;
                         return IDYES;  // Proceed with clear after save
                     }
                     else {
@@ -15203,8 +15158,7 @@ int MultiReplace::checkForUnsavedChanges(int tabIndex) {
         }
         std::wstring filePath = promptSaveListToCsv();
         if (filePath.empty()) return IDCANCEL;
-        const SaveFormat fmt = formatFromChoice(filePath);
-        if (!saveListToCsv(filePath, replaceListData, fmt.dialect, fmt.withSettingsBlock, fmt.delimiter)) return IDCANCEL;
+        if (!saveListToCsv(filePath, replaceListData)) return IDCANCEL;
         return IDYES;
     }
 
@@ -15214,8 +15168,7 @@ int MultiReplace::checkForUnsavedChanges(int tabIndex) {
         switchToTab(tabIndex);
         std::wstring filePath = promptSaveListToCsv();
         if (filePath.empty()) return IDCANCEL;
-        const SaveFormat fmt = formatFromChoice(filePath);
-        if (!saveListToCsv(filePath, replaceListData, fmt.dialect, fmt.withSettingsBlock, fmt.delimiter)) return IDCANCEL;
+        if (!saveListToCsv(filePath, replaceListData)) return IDCANCEL;
         return IDYES;
     }
 
@@ -15234,7 +15187,7 @@ int MultiReplace::checkForUnsavedChanges(int tabIndex) {
     return IDCANCEL;
 }
 
-void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings, LoadSource source) {
+void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings, bool raiseLegacyDialog) {
     // Open the CSV file
     std::ifstream inFile(std::filesystem::path(filePath), std::ios::binary);
     if (!inFile.is_open()) {
@@ -15267,20 +15220,17 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
 
     std::wstringstream contentStream(content);
 
-    // Read the optional [MultiReplace-Settings] preamble once. Its presence
-    // is the format signal: a preamble means the internal escaped dialect,
-    // its absence means plain CSV. Internal loads (snapshots/config written
-    // by MR) skip detection and use the internal dialect unconditionally.
-    std::map<std::wstring, std::wstring> blockMap;
-    const bool hasPreamble = tryReadSettingsBlock(contentStream, blockMap);
-    if (hasPreamble && tabForSettings) {
-        applySettingsMapToTab(blockMap, *tabForSettings);
+    // Settings block only for .mrl; .mrtab and plain CSV start with data.
+    const FileFormat fmt = resolveFormat(filePath);
+
+    if (fmt.hasSettingsBlock) {
+        std::map<std::wstring, std::wstring> blockMap;
+        if (tryReadSettingsBlock(contentStream, blockMap) && tabForSettings) {
+            applySettingsMapToTab(blockMap, *tabForSettings);
+        }
     }
 
-    const CsvListFormat::Dialect dialect =
-        (source == LoadSource::Internal || hasPreamble)
-        ? CsvListFormat::Dialect::Mr
-        : CsvListFormat::Dialect::Rfc4180;
+    const CsvListFormat::Dialect dialect = fmt.dialect;
 
     // Read the remaining CSV text (after the optional settings block)
     // and split it quote-aware so multi-line quoted fields stay intact.
@@ -15303,19 +15253,12 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
     const CsvListFormat::HeaderIndex hdr = CsvListFormat::buildIndex(headerCells);
     const bool nameBased = hdr.looksLikeNames;
 
-    // ---- Legacy guard (removable once legacy lists are dropped) -------
-    // An old MultiReplace list (the "Use Variables" header) carries no
-    // preamble, so content detection would read it as plain CSV and mangle
-    // the escaped cells. Only when the user opened it under a non-.mrl name
-    // do we stop and ask them to rename it to .mrl. A legacy list already
-    // named .mrl loads through the migration path below; background probes
-    // and internal loads never raise the dialog.
-    if (source == LoadSource::UserFile &&
+    // Legacy v5 list under non-.mrl name: prompt rename instead of mangling.
+    if (raiseLegacyDialog &&
         lowerExtension(filePath) != L"mrl" &&
         ListCodec::hasLegacyUseVariablesHeader(headerCells)) {
         throw LegacyMrlCsvException();
     }
-    // -------------------------------------------------------------------
 
     // Legacy pre-V5 header: UseVariables column placed Regex before
     // Extended; swap the two flags on read. Kept as the migration path for
@@ -15386,7 +15329,7 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
 
     std::vector<ReplaceItemData> loaded;
     try {
-        loadListFromCsvSilent(filePath, loaded, tab.get(), LoadSource::UserFile);
+        loadListFromCsvSilent(filePath, loaded, tab.get(), /*raiseLegacyDialog=*/true);
     }
     catch (const LegacyMrlCsvException&) {
         // Old MultiReplace list opened via the .csv (Excel) path. Guide the
@@ -15460,7 +15403,10 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
         showStatusMessage(LM.get(L"status_no_valid_items_in_csv"), MessageStatus::Error);
     }
     else {
-        showStatusMessage(LM.get(L"status_items_loaded_from_csv",
+        const wchar_t* loadedKey = (resolveFormat(filePath).dialect == CsvListFormat::Dialect::Mr)
+            ? L"status_items_loaded_from_mrl"
+            : L"status_items_loaded_from_csv";
+        showStatusMessage(LM.get(loadedKey,
             { std::to_wstring(replaceListData.size()) }), MessageStatus::Success);
     }
 }
@@ -15513,18 +15459,14 @@ void MultiReplace::checkForFileChangesAtStartup() {
 
 #pragma region INI
 
-std::pair<std::wstring, std::wstring> MultiReplace::generateConfigFilePaths() {
+std::wstring MultiReplace::generateConfigFilePaths() {
     wchar_t configDir[MAX_PATH] = {};
     ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, reinterpret_cast<LPARAM>(configDir));
     configDir[MAX_PATH - 1] = '\0'; // Ensure null-termination
-
-    std::wstring settingsPath = std::wstring(configDir) + L"\\MultiReplace.ini";
-    std::wstring configListPath = std::wstring(configDir) + L"\\MultiReplaceList.ini";
-    return { settingsPath, configListPath };
+    return std::wstring(configDir) + L"\\MultiReplace.ini";
 }
 
-// Snapshot directory holds per-tab CSV shutdown caches (one file per tab).
-// User-chosen CSVs stay at the user's own paths and are never moved here.
+// Snapshot directory holds per-tab .mrtab caches.
 std::wstring MultiReplace::getSnapshotsDir()
 {
     wchar_t configDir[MAX_PATH] = {};
@@ -15584,8 +15526,7 @@ void MultiReplace::saveSettings() {
         return;
     }
 
-    auto configPaths = generateConfigFilePaths();
-    const auto& settingsPath = configPaths.first;
+    const auto settingsPath = generateConfigFilePaths();
 
     try {
         syncUIToCache();
@@ -15895,14 +15836,7 @@ void MultiReplace::loadSettings() {
         }
     }
     else {
-        // Legacy layout: old MultiReplaceList.ini + [File]/ListFilePath.
-        const auto configListPath = generateConfigFilePaths().second;
-        try {
-            loadListFromCsvSilent(configListPath, replaceListData);
-        }
-        catch (const CsvLoadException&) {
-            // silently start empty
-        }
+        // Pre-v6 list (MultiReplaceList.ini): user must rename to .mrl and load manually.
         migrateLegacyList();
     }
 
@@ -16189,7 +16123,7 @@ void MultiReplace::writeTabsToConfig()
         CFG.writeString(L"Tabs", prefix + L"_Name", t.name);
         CFG.writeString(L"Tabs", prefix + L"_Path", t.filePath);
         // Snapshot is stored as a filename relative to the snapshots dir.
-        std::wstring snapshotName = L"tab" + std::to_wstring(i) + L".csv";
+        std::wstring snapshotName = L"tab" + std::to_wstring(i) + L".mrtab";
         CFG.writeString(L"Tabs", prefix + L"_Snapshot", snapshotName);
 
         // Persisted baseline hash so dirty state survives a restart.
@@ -16268,11 +16202,11 @@ void MultiReplace::saveAllTabSnapshots()
     const std::wstring dir = getSnapshotsDir();
 
     // Active tab was already captured in writeTabsToConfig(); no need
-    // to do it again here. Just write each tab's snapshot file.
+    // to do it again here.
     for (size_t i = 0; i < _tabs.size(); ++i) {
         TabState& t = *_tabs[i];
-        t.snapshotPath = dir + L"\\tab" + std::to_wstring(i) + L".csv";
-        saveListToCsvSilent(t.snapshotPath, t.data);
+        t.snapshotPath = dir + L"\\tab" + std::to_wstring(i) + L".mrtab";
+        saveTabToFile(t.snapshotPath, t.data, t);
     }
 }
 
@@ -16294,7 +16228,12 @@ void MultiReplace::cleanupOrphanSnapshots()
         if (ec) break;
         if (!entry.is_regular_file()) continue;
         auto p = entry.path();
-        if (p.extension() != L".csv") continue;
+        // Non-.mrtab files (e.g. stray pre-release .csv) are removed.
+        if (p.extension() != L".mrtab") {
+            std::error_code dummy;
+            std::filesystem::remove(p, dummy);
+            continue;
+        }
 
         std::error_code ec2;
         auto canon = std::filesystem::weakly_canonical(p, ec2);
@@ -16331,7 +16270,26 @@ void MultiReplace::loadTabsFromConfig()
 
         std::wstring snapshotName = CFG.readString(L"Tabs", prefix + L"_Snapshot", L"");
         if (snapshotName.empty()) {
-            snapshotName = L"tab" + std::to_wstring(i) + L".csv";
+            snapshotName = L"tab" + std::to_wstring(i) + L".mrtab";
+        }
+        else {
+            // TODO(post-dsanalytics-release): remove this .csv->.mrtab migration block.
+            const size_t dot = snapshotName.find_last_of(L'.');
+            if (dot != std::wstring::npos) {
+                std::wstring ext = snapshotName.substr(dot + 1);
+                for (wchar_t& c : ext) if (c >= L'A' && c <= L'Z') c = c + (L'a' - L'A');
+                if (ext == L"csv") {
+                    const std::wstring oldName = snapshotName;
+                    snapshotName = snapshotName.substr(0, dot) + L".mrtab";
+                    const std::wstring oldPath = dir + L"\\" + oldName;
+                    const std::wstring newPath = dir + L"\\" + snapshotName;
+                    std::error_code ec;
+                    if (std::filesystem::exists(oldPath, ec) &&
+                        !std::filesystem::exists(newPath, ec)) {
+                        std::filesystem::rename(oldPath, newPath, ec);
+                    }
+                }
+            }
         }
         tab->snapshotPath = dir + L"\\" + snapshotName;
 
@@ -16429,8 +16387,7 @@ void MultiReplace::loadTabsFromConfig()
             if (!haveBaseline && !tab->filePath.empty()) {
                 try {
                     std::vector<ReplaceItemData> fileData;
-                    loadListFromCsvSilent(tab->filePath, fileData, nullptr,
-                        LoadSource::Probe);
+                    loadListFromCsvSilent(tab->filePath, fileData, nullptr);
                     tab->originalHash = computeListHash(fileData);
                     haveBaseline = true;
                 }
@@ -16516,8 +16473,7 @@ void MultiReplace::checkSingleTabForFileChange(int tabIndex)
 
     try {
         std::vector<ReplaceItemData> tempListFromFile;
-        loadListFromCsvSilent(tab.filePath, tempListFromFile, nullptr,
-            LoadSource::Probe);
+        loadListFromCsvSilent(tab.filePath, tempListFromFile, nullptr);
 
         std::size_t newFileHash = computeListHash(tempListFromFile);
         if (newFileHash != tab.originalHash) {
@@ -16699,7 +16655,7 @@ void MultiReplace::toggleTandemMode()
         // Persist immediately. Without this, signalShutdown's
         // panel-closed branch would forceReload the INI before saving
         // and clobber the toggle. Mirrors toggleReopenOnStartup.
-        const auto settingsPath = generateConfigFilePaths().first;
+        const auto settingsPath = generateConfigFilePaths();
         CFG.save(settingsPath);
         showStatusMessage(L"Tandem mode disabled.", MessageStatus::Info);
         return;
@@ -16710,7 +16666,7 @@ void MultiReplace::toggleTandemMode()
     // session.
     _tandemEnabled = true;
     CFG.writeBool(kTandemIniSection, kTandemIniKeyEnabled, true);
-    const auto settingsPath = generateConfigFilePaths().first;
+    const auto settingsPath = generateConfigFilePaths();
     CFG.save(settingsPath);
 
     // Live actions only when the panel and host actually exist.
@@ -17876,7 +17832,7 @@ void MultiReplace::onTabSaveACopy(int tabIndex)
         return;
     }
 
-    const wchar_t* savedKey = (formatFromChoice(chosen).dialect == CsvListFormat::Dialect::Mr)
+    const wchar_t* savedKey = (resolveFormat(chosen).dialect == CsvListFormat::Dialect::Mr)
         ? L"status_saved_items_to_mrl"
         : L"status_saved_items_to_csv";
     showStatusMessage(LM.get(savedKey, { std::to_wstring(listToSave.size()) }), MessageStatus::Success);
@@ -17908,8 +17864,7 @@ void MultiReplace::onTabReload(int tabIndex)
     // Read the saved file. On failure, leave the list untouched.
     std::vector<ReplaceItemData> fileList;
     try {
-        loadListFromCsvSilent(tab.filePath, fileList, nullptr,
-            LoadSource::Probe);
+        loadListFromCsvSilent(tab.filePath, fileList, nullptr);
     }
     catch (const CsvLoadException& ex) {
         showStatusMessage(Encoding::utf8ToWString(ex.what()), MessageStatus::Error);
@@ -18146,7 +18101,7 @@ void MultiReplace::cancelInlineTabRename()
     _tabRenameIndex = -1;
 }
 
-// File-backed tabs rename their .mrl on disk via Save-As + delete.
+// File-backed tabs rename on disk via Save-As + delete (mrl or csv).
 void MultiReplace::renameTabFile(int tabIndex)
 {
     if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
@@ -18164,19 +18119,37 @@ void MultiReplace::renameTabFile(int tabIndex)
     }
 
     const std::wstring oldPath = tab.filePath;
+    const bool oldIsCsv = (lowerExtension(oldPath) == L"csv");
 
     std::vector<std::pair<std::wstring, std::wstring>> filters = {
-        { LM.get(L"filetype_mrl"),       L"*.mrl" },
-        { LM.get(L"filetype_all_files"), L"*.*" }
+        { LM.get(L"filetype_mrl"),        L"*.mrl" },
+        { LM.get(L"filetype_csv_excel"),  L"*.csv" }
     };
 
+    // Pre-select the filter and default extension matching the current path.
+    const int defaultFilterIdx = oldIsCsv ? 2 : 1;
+    const std::wstring defaultExt = oldIsCsv ? std::wstring(L"csv") : std::wstring(L"mrl");
+
+    int pickedFilter = 0;
     std::wstring chosen = openFileDialog(
         true, filters, LM.get(L"panel_save_list").c_str(),
-        OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT,
-        L"mrl", oldPath);
+        OFN_PATHMUSTEXIST,
+        defaultExt, oldPath, defaultFilterIdx, &pickedFilter);
 
     if (chosen.empty()) return;
+    chosen = applyExtensionForFilter(chosen, pickedFilter);
     if (_wcsicmp(chosen.c_str(), oldPath.c_str()) == 0) return;  // no change
+
+    // Overwrite-confirm against the final path (after extension swap).
+    std::error_code ecExists;
+    if (std::filesystem::exists(chosen, ecExists)) {
+        std::wstring shortPath = getShortenedFilePath(chosen, 500);
+        int answer = MessageBox(nppData._nppHandle,
+            LM.get(L"msgbox_confirm_overwrite_file", { shortPath }).c_str(),
+            LM.get(L"msgbox_title_confirm").c_str(),
+            MB_ICONWARNING | MB_YESNO);
+        if (answer != IDYES) return;
+    }
 
     const std::vector<ReplaceItemData>& listToSave = isActive ? replaceListData : tab.data;
 
@@ -18718,7 +18691,7 @@ void MultiReplace::migrateOptionsLayout()
 
 void MultiReplace::loadConfigOnce()
 {
-    const auto settingsPath = generateConfigFilePaths().first;
+    const auto settingsPath = generateConfigFilePaths();
     CFG.load(settingsPath);
 
     // One-shot: migrate legacy INI keys that predate the current
@@ -19344,7 +19317,7 @@ void MultiReplace::signalShutdown() {
         CFG.writeBool(kGeneralIniSection, kGeneralIniKeyPanelWasVisible, true);
     }
     else {
-        const auto settingsPath = generateConfigFilePaths().first;
+        const auto settingsPath = generateConfigFilePaths();
         CFG.forceReload(settingsPath);
         // forceReload pulls the on-disk INI back into the cache, which
         // also revives dead legacy entries. Once the workspace is on the
@@ -19384,7 +19357,7 @@ void MultiReplace::toggleReopenOnStartup() {
     const bool newValue = !isReopenOnStartupEnabled();
     CFG.writeBool(kGeneralIniSection, kGeneralIniKeyReopenOnStartup, newValue);
 
-    const auto settingsPath = generateConfigFilePaths().first;
+    const auto settingsPath = generateConfigFilePaths();
     CFG.save(settingsPath);
 }
 

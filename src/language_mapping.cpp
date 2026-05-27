@@ -216,6 +216,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_no_matches_found_for", L"No matches found for '$REPLACE_STRING'." },
 { L"status_actual_position", L"Actual Position $REPLACE_STRING" },
 { L"status_items_loaded_from_csv", L"$REPLACE_STRING items loaded from CSV." },
+{ L"status_items_loaded_from_mrl", L"$REPLACE_STRING items loaded from MRL." },
 { L"status_occurrences_marked", L"$REPLACE_STRING occurrences were marked." },
 { L"status_items_copied_to_clipboard", L"$REPLACE_STRING items copied to Clipboard." },
 { L"status_deleted_fields_count", L"Deleted $REPLACE_STRING fields." },

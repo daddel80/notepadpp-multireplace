@@ -284,8 +284,8 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
 
         // Load custom scale
         {
-            auto paths = MultiReplace::generateConfigFilePaths();
-            ConfigManager::instance().load(paths.first);
+            const auto iniPath = MultiReplace::generateConfigFilePaths();
+            ConfigManager::instance().load(iniPath);
             std::wstring sScale = ConfigManager::instance().readString(L"Window", L"ScaleFactor", L"1.0");
             try { _userScaleFactor = std::stod(sScale); }
             catch (...) { _userScaleFactor = 1.0; }
@@ -1076,7 +1076,7 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
 {
     ::ShowWindow(_hSelf, SW_HIDE);
 
-    auto [iniFilePath, _] = MultiReplace::generateConfigFilePaths();
+    const std::wstring iniFilePath = MultiReplace::generateConfigFilePaths();
 
     // Sync or reload to get latest state
     if (MultiReplace::instance && ::IsWindow(MultiReplace::instance->getDialogHandle())) {
@@ -1183,7 +1183,7 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
 
 void MultiReplaceConfigDialog::resetToDefaults()
 {
-    auto [iniFilePath, _] = MultiReplace::generateConfigFilePaths();
+    const std::wstring iniFilePath = MultiReplace::generateConfigFilePaths();
 
     // Sync or reload to preserve session state
     if (MultiReplace::instance && ::IsWindow(MultiReplace::instance->getDialogHandle())) {

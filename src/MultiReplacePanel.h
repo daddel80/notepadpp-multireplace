@@ -64,13 +64,6 @@ extern NppData nppData;
 enum class DelimiterOperation { LoadAll, Update };
 enum class Direction { Up, Down };
 
-// How a list file is being loaded, which decides format detection and
-// whether the legacy-list dialog may appear.
-//   UserFile - user opened it (dialog/drop): dialect from content, legacy dialog allowed
-//   Probe    - background read of a user file for hashing: dialect from content, no dialog
-//   Internal - MR's own snapshot/config file: fixed internal dialect, no detection
-enum class LoadSource { UserFile, Probe, Internal };
-
 struct UndoRedoAction {
     std::function<void()> undoAction;
     std::function<void()> redoAction;
@@ -692,7 +685,7 @@ public:
     void loadSettingsToPanelUI();
     void syncUIToCache();
     void applyConfigSettingsOnly();
-    static  std::pair<std::wstring, std::wstring> generateConfigFilePaths();
+    static  std::wstring generateConfigFilePaths();
     static std::wstring getSnapshotsDir();
     static bool         snapshotsDirExists();
     static bool         ensureSnapshotsDir();  // returns false only on filesystem error
@@ -1479,14 +1472,9 @@ private:
 #pragma region FileOperations
     std::wstring promptSaveListToCsv(const TabState* tabHint = nullptr, int* outFilterIndex = nullptr);
     std::wstring openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath, int initialFilterIndex = 1, int* outFilterIndex = nullptr);
-    bool saveListToCsvSilent(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr, wchar_t delimiter = L',');
-    bool saveListToCsvWithSettings(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab);
-    bool saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, CsvListFormat::Dialect dialect = CsvListFormat::Dialect::Mr, bool withSettingsBlock = true, wchar_t delimiter = L',');
-    // Save one tab's data to a path, picking the format from its extension
-    // (.mrl = internal + settings block, else plain CSV). Used by the tab
-    // context-menu save paths so they follow the extension like the main save.
+    bool saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     bool saveTabToFile(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab);
-    void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings = nullptr, LoadSource source = LoadSource::Internal);
+    void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings = nullptr, bool raiseLegacyDialog = false);
     void autoShowCommentsColumn();
     void checkForFileChangesAtStartup();
     void saveAllTabs();
