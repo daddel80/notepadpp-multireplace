@@ -873,7 +873,7 @@ Built-in functions for parsing hexadecimal, binary, octal, or Roman numerals bac
 - For Roman, only the range 1..3999 is meaningful; out of range returns an empty string.
 
 **Parser conventions:**
-- `hex2num`, `bin2num`, `oct2num` accept input **case-insensitively**, with or without the matching prefix, and trim surrounding whitespace. Invalid characters for the target base yield `NaN`.
+- `hex2num`, `bin2num`, `oct2num` accept input **case-insensitively**, with or without the matching prefix, and trim surrounding Unicode whitespace. Invalid characters for the target base yield `NaN`.
 - `rom2num` is lenient: accepts both case and tolerates non-canonical forms like `"IIII"` for 4. Invalid characters yield `NaN`.
 - Numeric overflow (values beyond double's safe-integer ceiling 2^53) yields `NaN` rather than silently losing precision.
 
@@ -913,7 +913,7 @@ String helpers for measuring, slicing, splitting, cleaning, and converting text.
 - `find` returns `0` when the needle is absent; an empty needle returns `1`.
 - `slice` clamps `n` to the available remainder; a `start` below 1 or past the end yields `""`.
 - `split` returns `""` for an out-of-range field; consecutive or trailing separators produce empty fields; an empty separator returns `s` for `i==1`.
-- `trim`/`ltrim`/`rtrim` strip ASCII whitespace (space, tab, CR, LF).
+- `trim`/`ltrim`/`rtrim` strip ASCII and Unicode whitespace (NBSP, BOM, ideographic space, line/paragraph separators, and other Unicode whitespace codepoints).
 - `replace` substitutes every occurrence; an empty `from` returns `s` unchanged.
 - `reptxt` returns `""` for `n < 1`; very large output is capped to protect memory.
 - `tonum` accepts both `.` and `,` as the decimal separator and is the value-returning counterpart of `isnum`.
@@ -1636,7 +1636,7 @@ See the [Match History](#match-history) section for the full reader catalogue an
 ExprTk is deliberately scoped. Things it does **not** do:
 
 - **String manipulation inside `(?=...)`.** The String Pack covers the common cases codepoint-correctly: length (`len`), search (`find`), slicing (`slice`), splitting (`split`), trimming, replacement, repetition, and codepoint conversion (see [String Pack](#string-pack)). The low-level byte primitives `s[i:j]` and `s[]` remain for ASCII/byte work. For anything beyond the built-ins — formatted assembly, custom encodings, multi-step parsing — write helper functions in a `.elib` library (see [Library Loading via loadlib](#library-loading-via-loadlib)).
-- **UTF-8 inside string literals fails to compile.** A literal like `'Größe'` between `'...'` produces an `Invalid string token` error. This applies to both inline expressions and `.elib` bodies. The restriction is on **literals only** — non-ASCII text from a capture works fully. Source non-ASCII needles and content from `txt(N)` rather than typing them as literals (`find(txt(1), txt(2))` instead of `find(txt(1), 'ä')`), and process them with the codepoint-aware [String Pack](#string-pack) functions, which handle multi-byte content correctly.
+- **Byte-indexed slicing and wildcards in built-ins (`s[i:j]`, `like`, `ilike`).** ExprTk's built-in range slice and wildcard match operate on raw bytes, not codepoints, so they can split or mismatch multi-byte sequences. For codepoint-correct work use the [String Pack](#string-pack) — `slice()` for ranges, `find()` and `replace()` for substring search — and reserve the built-in operators for pure ASCII inputs. String literals themselves (`'Größe'`, `'café'`, `'日本語'`) compile and round-trip 1:1 byte-wise; the limitation is purely about the byte-indexed operators above.
 - **No general user-defined state across matches.** Each `(?=...)` evaluation starts fresh — you cannot create your own named variables that persist. The [Match History](#match-history) functions cover the common case (read earlier captures and block outputs), and `CNT` / `LCNT` are provided by the host. For arbitrary per-key state (a cumulative table keyed by string, a per-value tally), switch to the Lua engine and use `vars({...})`.
 - **No data file loading.** ExprTk has no equivalent to Lua's `lvars` (preload variables from disk) or `lkp` (key lookup from disk). `loadlib` loads **code**, not data.
 - **`todate` is intentionally minimal.** It accepts the common strftime specifiers (`%Y %y %m %d %H %M %S %I %p %F %T %%`) — enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (`%B`), weekday names (`%A`), or week numbers (`%V`) are **not** accepted on the input side. For richer date input parsing, use Lua's date handling instead.

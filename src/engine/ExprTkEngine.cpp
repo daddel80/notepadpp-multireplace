@@ -153,6 +153,50 @@ namespace MultiReplaceEngine {
             return true;
         }
 
+        // Decode the UTF-8 codepoint starting at s[idx]. Returns the sequence
+        // length in bytes (1-4) on success, 0 on malformed input or out-of-range.
+        inline int cpDecodeAt(const std::string& s, std::size_t idx, unsigned int& out)
+        {
+            if (idx >= s.size()) return 0;
+            const unsigned char b0 = static_cast<unsigned char>(s[idx]);
+            int extra; unsigned int cp;
+            if (b0 < 0x80) { out = b0; return 1; }
+            else if ((b0 & 0xE0) == 0xC0) { extra = 1; cp = b0 & 0x1F; }
+            else if ((b0 & 0xF0) == 0xE0) { extra = 2; cp = b0 & 0x0F; }
+            else if ((b0 & 0xF8) == 0xF0) { extra = 3; cp = b0 & 0x07; }
+            else return 0;
+
+            if (idx + static_cast<std::size_t>(extra + 1) > s.size()) return 0;
+            for (int i = 1; i <= extra; ++i) {
+                const unsigned char b = static_cast<unsigned char>(s[idx + i]);
+                if ((b & 0xC0) != 0x80) return 0;
+                cp = (cp << 6) | (b & 0x3F);
+            }
+            if (cp > 0x10FFFFu || (cp >= 0xD800u && cp <= 0xDFFFu)) return 0;
+            out = cp;
+            return extra + 1;
+        }
+
+        // Unicode White_Space property plus U+FEFF (stray BOM treated as
+        // whitespace when trimming). Covers ASCII whitespace, NBSP, the
+        // U+2000..U+200A space family, line/paragraph separators, ideographic
+        // space, and other locale-specific space characters that appear in
+        // copy-pasted text from web pages or word processors.
+        inline bool isUnicodeWhiteCp(unsigned int cp)
+        {
+            if (cp == 0x20 || (cp >= 0x09 && cp <= 0x0D)) return true;  // ASCII
+            if (cp < 0x80) return false;
+            if (cp >= 0x2000 && cp <= 0x200A) return true;
+            switch (cp) {
+            case 0x0085: case 0x00A0: case 0x1680:
+            case 0x2028: case 0x2029: case 0x202F:
+            case 0x205F: case 0x3000: case 0xFEFF:
+                return true;
+            default:
+                return false;
+            }
+        }
+
     } // anonymous namespace
 
     // ---------------------------------------------------------------------
@@ -1396,34 +1440,69 @@ namespace MultiReplaceEngine {
             return outValue < base;
         }
 
-        // ASCII whitespace predicate, shared by the trim helpers.
-        inline bool isAsciiSpace(unsigned char c)
+        // Strips Unicode whitespace from both ends. Whitespace is defined by
+        // isUnicodeWhiteCp (ASCII + NBSP + the U+2000..U+200A space family +
+        // line/paragraph separators + ideographic space + stray BOM). Used
+        // so hex2num(" ff" + U+00A0) still parses cleanly. Malformed UTF-8
+        // halts trimming and leaves the remaining bytes untouched.
+        std::string trimUnicode(const std::string& s)
         {
-            return c == ' ' || c == '\t' || c == '\r' || c == '\n';
-        }
-
-        // Strips ASCII whitespace from both ends. Used so hex2num(" ff ")
-        // still parses cleanly.
-        std::string trimAscii(const std::string& s)
-        {
+            // Leading: advance whole codepoints while they are whitespace.
             std::size_t first = 0;
-            while (first < s.size() && isAsciiSpace(static_cast<unsigned char>(s[first]))) ++first;
+            while (first < s.size()) {
+                unsigned int cp;
+                const int seqLen = cpDecodeAt(s, first, cp);
+                if (seqLen == 0 || !isUnicodeWhiteCp(cp)) break;
+                first += static_cast<std::size_t>(seqLen);
+            }
+            // Trailing: walk back to each lead byte, decode, drop if whitespace.
             std::size_t last = s.size();
-            while (last > first && isAsciiSpace(static_cast<unsigned char>(s[last - 1]))) --last;
+            while (last > first) {
+                std::size_t startOfLast = last - 1;
+                while (startOfLast > first && !isLeadByte(static_cast<unsigned char>(s[startOfLast]))) {
+                    --startOfLast;
+                }
+                unsigned int cp;
+                const int seqLen = cpDecodeAt(s, startOfLast, cp);
+                if (seqLen == 0 ||
+                    startOfLast + static_cast<std::size_t>(seqLen) != last ||
+                    !isUnicodeWhiteCp(cp)) {
+                    break;
+                }
+                last = startOfLast;
+            }
             return s.substr(first, last - first);
         }
 
-        std::string ltrimAscii(const std::string& s)
+        std::string ltrimUnicode(const std::string& s)
         {
             std::size_t first = 0;
-            while (first < s.size() && isAsciiSpace(static_cast<unsigned char>(s[first]))) ++first;
+            while (first < s.size()) {
+                unsigned int cp;
+                const int seqLen = cpDecodeAt(s, first, cp);
+                if (seqLen == 0 || !isUnicodeWhiteCp(cp)) break;
+                first += static_cast<std::size_t>(seqLen);
+            }
             return s.substr(first);
         }
 
-        std::string rtrimAscii(const std::string& s)
+        std::string rtrimUnicode(const std::string& s)
         {
             std::size_t last = s.size();
-            while (last > 0 && isAsciiSpace(static_cast<unsigned char>(s[last - 1]))) --last;
+            while (last > 0) {
+                std::size_t startOfLast = last - 1;
+                while (startOfLast > 0 && !isLeadByte(static_cast<unsigned char>(s[startOfLast]))) {
+                    --startOfLast;
+                }
+                unsigned int cp;
+                const int seqLen = cpDecodeAt(s, startOfLast, cp);
+                if (seqLen == 0 ||
+                    startOfLast + static_cast<std::size_t>(seqLen) != last ||
+                    !isUnicodeWhiteCp(cp)) {
+                    break;
+                }
+                last = startOfLast;
+            }
             return s.substr(0, last);
         }
 
@@ -1451,7 +1530,7 @@ namespace MultiReplaceEngine {
             return nanResult;
         }
         const string_t sv(parameters[0]);
-        const std::string raw = trimAscii(exprtk::to_str(sv));
+        const std::string raw = trimUnicode(exprtk::to_str(sv));
         if (raw.empty()) {
             return nanResult;
         }
@@ -1567,7 +1646,7 @@ namespace MultiReplaceEngine {
 
         if (parameters.size() != 1) return nanResult;
         const string_t sv(parameters[0]);
-        const std::string raw = trimAscii(exprtk::to_str(sv));
+        const std::string raw = trimUnicode(exprtk::to_str(sv));
         if (raw.empty()) return nanResult;
 
         // Left-to-right scan: when a glyph's value is smaller than the
@@ -1691,9 +1770,9 @@ namespace MultiReplaceEngine {
         if (parameters.size() != 1) return 0.0;
         const std::string s = exprtk::to_str(string_t(parameters[0]));
         switch (_mode) {
-        case 1:  result = ltrimAscii(s); break;
-        case 2:  result = rtrimAscii(s); break;
-        default: result = trimAscii(s);  break;
+        case 1:  result = ltrimUnicode(s); break;
+        case 2:  result = rtrimUnicode(s); break;
+        default: result = trimUnicode(s);  break;
         }
         return 0.0;
     }
