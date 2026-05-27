@@ -162,6 +162,7 @@
     <ClCompile Include="..\src\ListCodec.cpp" />
     <ClCompile Include="..\src\MultiReplacePanel_FlowTabs.cpp" />
     <ClCompile Include="..\src\MultiReplacePanel_FormulaDebug.cpp" />
+    <ClCompile Include="..\src\FileDialogUtil.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -320,6 +321,7 @@
     </ClInclude>
     <ClInclude Include="..\src\ListCodec.h" />
     <ClInclude Include="..\src\ReplaceItemData.h" />
+    <ClInclude Include="..\src\FileDialogUtil.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />

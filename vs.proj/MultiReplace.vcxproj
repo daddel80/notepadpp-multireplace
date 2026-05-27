@@ -49,6 +49,7 @@
     <ClInclude Include="..\src\exprtk\MatchHistoryAnalysis.h" />
     <ClInclude Include="..\src\exprtk\NumberParse.h" />
     <ClInclude Include="..\src\exprtk\third_party\exprtk.hpp" />
+    <ClInclude Include="..\src\FileDialogUtil.h" />
     <ClInclude Include="..\src\HiddenSciGuard.h" />
     <ClInclude Include="..\src\image_data.h" />
     <ClInclude Include="..\src\IniFileCache.h" />
@@ -122,6 +123,7 @@
     <ClCompile Include="..\src\exprtk\MatchHistory.cpp" />
     <ClCompile Include="..\src\exprtk\MatchHistoryAnalysis.cpp" />
     <ClCompile Include="..\src\exprtk\NumberParse.cpp" />
+    <ClCompile Include="..\src\FileDialogUtil.cpp" />
     <ClCompile Include="..\src\image_data.cpp" />
     <ClCompile Include="..\src\IniFileCache.cpp" />
     <ClCompile Include="..\src\LanguageManager.cpp" />

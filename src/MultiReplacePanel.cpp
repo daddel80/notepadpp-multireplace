@@ -27,6 +27,7 @@
 #include "ListCodec.h"
 #include "DPIManager.h"
 #include "Encoding.h"
+#include "FileDialogUtil.h"
 #include "HiddenSciGuard.h"
 #include "LanguageManager.h"
 #include "language_mapping.h"
@@ -6873,14 +6874,21 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             std::wstring allFilesDescription = LM.get(L"filetype_all_files");  // "All Files (*.*)"
 
             // Picked filter is informational; extension drives the dialect.
-            std::vector<std::pair<std::wstring, std::wstring>> filters = {
-                {mrlDescription, L"*.mrl"},
-                {csvExcelDescription, L"*.csv"},
-                {allFilesDescription, L"*.*"}
+            FileDialogUtil::Params dlg;
+            dlg.owner = _hSelf;
+            dlg.title = LM.get(L"panel_load_list");
+            dlg.filters = {
+                { mrlDescription,      L"*.mrl" },
+                { csvExcelDescription, L"*.csv" },
+                { allFilesDescription, L"*.*"  }
             };
+            dlg.initialFilterIndex = 0;          // .mrl
+            dlg.defaultExtension = L"mrl";
+            dlg.pathMustExist = true;
+            dlg.fileMustExist = true;
 
-            std::wstring dialogTitle = LM.get(L"panel_load_list");
-            std::wstring filePath = openFileDialog(false, filters, dialogTitle.c_str(), OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST, L"mrl", L"");
+            FileDialogUtil::Result picked = FileDialogUtil::showOpen(dlg);
+            const std::wstring filePath = picked.ok ? picked.path : std::wstring();
 
             if (!filePath.empty()) {
                 // If the file is already open in another tab, switch to
@@ -14428,33 +14436,6 @@ bool MultiReplace::normalizeAndValidateNumber(std::string& str) {
     return true;
 }
 
-std::vector<WCHAR> MultiReplace::createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters) {
-    // Calculate the required size for the filter string
-    size_t totalSize = 0;
-    for (const auto& filter : filters) {
-        totalSize += filter.first.size() + 1; // Description + null terminator
-        totalSize += filter.second.size() + 1; // Pattern + null terminator
-    }
-    totalSize += 1; // Double null terminator at the end
-
-    // Create the array
-    std::vector<WCHAR> filterString;
-    filterString.reserve(totalSize);
-
-    // Fill the array
-    for (const auto& filter : filters) {
-        filterString.insert(filterString.end(), filter.first.begin(), filter.first.end());
-        filterString.push_back(L'\0');
-        filterString.insert(filterString.end(), filter.second.begin(), filter.second.end());
-        filterString.push_back(L'\0');
-    }
-
-    // End with an additional null terminator
-    filterString.push_back(L'\0');
-
-    return filterString;
-}
-
 int MultiReplace::getFontHeight(HWND hwnd, HFONT hFont) {
     // Get the font size from the specified font and window
     TEXTMETRIC tm;
@@ -14589,61 +14570,19 @@ void MultiReplace::forceWrapRecalculation() {
 
 #pragma region FileOperations
 
-std::wstring MultiReplace::openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath, int initialFilterIndex, int* outFilterIndex) {
-    flags |= OFN_NOCHANGEDIR;
-    OPENFILENAME ofn = {};
-    WCHAR szFile[MAX_PATH] = {};
-
-    // Safely copy the default file path into the buffer and ensure null-termination
-    if (!defaultFilePath.empty()) {
-        wcsncpy_s(szFile, defaultFilePath.c_str(), MAX_PATH);
-    }
-
-    std::vector<WCHAR> filter = createFilterString(filters);
-
-    ofn.lStructSize = sizeof(OPENFILENAME);
-    ofn.hwndOwner = _hSelf;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = sizeof(szFile) / sizeof(WCHAR);
-    ofn.lpstrFilter = filter.data();
-    ofn.nFilterIndex = initialFilterIndex >= 1 ? initialFilterIndex : 1;
-    ofn.lpstrTitle = title;
-    ofn.Flags = flags;
-
-    if (saveFile ? GetSaveFileName(&ofn) : GetOpenFileName(&ofn)) {
-        std::wstring filePath(szFile);
-
-        // Report the 1-based filter the user picked. When the caller asks
-        // for it, the caller also owns extension handling (it knows which
-        // extension each filter maps to), so we do not force one here.
-        // Callers that pass nullptr keep the simple "append default" path.
-        if (outFilterIndex) {
-            *outFilterIndex = static_cast<int>(ofn.nFilterIndex);
-        }
-        else if (filePath.find_last_of(L".") == std::wstring::npos) {
-            filePath += L"." + fileExtension;
-        }
-
-        return filePath;
-    }
-    else {
-        return std::wstring();
-    }
-}
-
-std::wstring MultiReplace::promptSaveListToCsv(const TabState* tabHint, int* outFilterIndex) {
+std::wstring MultiReplace::promptSaveListToCsv(const TabState* tabHint) {
     std::wstring mrlDescription = LM.get(L"filetype_mrl");        // "MultiReplace List (*.mrl)"
     std::wstring csvExcelDescription = LM.get(L"filetype_csv_excel");  // "CSV (Excel) (*.csv)"
 
-    // Filter 1 = .mrl (internal, with settings block); 2 = plain Excel .csv.
+    // Filter 0 = .mrl (internal, with settings block); 1 = plain Excel .csv.
     // The picked extension drives the format (see resolveFormat).
-    std::vector<std::pair<std::wstring, std::wstring>> filters = {
-        {mrlDescription, L"*.mrl"},
-        {csvExcelDescription, L"*.csv"}
+    FileDialogUtil::Params dlg;
+    dlg.owner = _hSelf;
+    dlg.title = LM.get(L"panel_save_list");
+    dlg.filters = {
+        { mrlDescription,      L"*.mrl" },
+        { csvExcelDescription, L"*.csv" }
     };
-
-    std::wstring dialogTitle = LM.get(L"panel_save_list");
-    std::wstring defaultFileName;
 
     // Resolve which tab's identity drives the default filename.
     const TabState* tab = tabHint;
@@ -14651,56 +14590,45 @@ std::wstring MultiReplace::promptSaveListToCsv(const TabState* tabHint, int* out
         _activeTabIndex < static_cast<int>(_tabs.size())) {
         tab = _tabs[_activeTabIndex].get();
     }
-
     const std::wstring tabPath = tab ? tab->filePath : listFilePath;
 
     if (!tabPath.empty()) {
-        defaultFileName = tabPath;
+        dlg.defaultPath = tabPath;
     }
     else if (tab && !tab->name.empty()) {
         // Save filename mirrors the tab label so what the user sees in
         // the tab is what they get on disk.
-        defaultFileName = tab->name + L".mrl";
+        dlg.defaultPath = tab->name + L".mrl";
     }
     else {
-        defaultFileName = L"Untitled.mrl";
+        dlg.defaultPath = L"Untitled.mrl";
     }
-
-    // Call openFileDialog with the default file path and name. A local
-    // filter index is always captured so the extension can be normalized
-    // even when the caller passed no outFilterIndex (the format itself is
-    // later derived from the extension, not from this index).
-    int localFilterIndex = 1;
-    int* idxSink = outFilterIndex ? outFilterIndex : &localFilterIndex;
 
     // Pre-select the filter that matches the current file's extension, so a
     // Save As on an open .csv defaults to the CSV filter instead of .mrl
     // (which, with the filter-wins rule below, would silently turn it into
-    // .mrl). Any other extension falls back to All Files, which keeps the
-    // typed extension untouched rather than forcing one.
-    int initialFilterIndex = 1;                              // .mrl
-    const std::wstring defExt = lowerExtension(defaultFileName);
-    if (defExt == L"csv")      initialFilterIndex = 2;       // CSV (Excel)
-    else if (defExt != L"mrl") initialFilterIndex = 3;       // All Files: keep extension
+    // .mrl). defaultExtension follows the filter so a typed bare name picks
+    // up the right suffix; OnTypeChange keeps both in sync after that.
+    const std::wstring defExt = lowerExtension(dlg.defaultPath);
+    if (defExt == L"csv") {
+        dlg.initialFilterIndex = 1;        // CSV (Excel)
+        dlg.defaultExtension = L"csv";
+    }
+    else {
+        dlg.initialFilterIndex = 0;        // .mrl
+        dlg.defaultExtension = L"mrl";
+    }
+    dlg.pathMustExist = true;
 
-    // No OFN_OVERWRITEPROMPT: the dialog would confirm the typed name
-    // before the filter-driven extension swap below and so could name the
-    // wrong file. The overwrite is confirmed on the final path instead.
-    std::wstring filePath = openFileDialog(
-        true,
-        filters,
-        dialogTitle.c_str(),
-        OFN_PATHMUSTEXIST,
-        L"mrl",
-        defaultFileName,
-        initialFilterIndex,
-        idxSink
-    );
-    if (filePath.empty()) return filePath;
+    // OnTypeChange already follows the filter live in the edit box, but
+    // applyExtensionForFilter is still the source of truth after OK in
+    // case the user manually typed a mismatched extension.
+    FileDialogUtil::Result picked = FileDialogUtil::showSave(dlg);
+    if (!picked.ok) return std::wstring();
 
     // Force the extension to match the picked filter (Word-style): the
     // chosen file type wins over a mismatched typed extension.
-    filePath = applyExtensionForFilter(filePath, *idxSink);
+    std::wstring filePath = applyExtensionForFilter(picked.path, picked.filterIndex + 1);
 
     // Confirm overwrite against the FINAL path so the prompt always names
     // the file that is actually written.
@@ -18121,23 +18049,22 @@ void MultiReplace::renameTabFile(int tabIndex)
     const std::wstring oldPath = tab.filePath;
     const bool oldIsCsv = (lowerExtension(oldPath) == L"csv");
 
-    std::vector<std::pair<std::wstring, std::wstring>> filters = {
-        { LM.get(L"filetype_mrl"),        L"*.mrl" },
-        { LM.get(L"filetype_csv_excel"),  L"*.csv" }
+    FileDialogUtil::Params dlg;
+    dlg.owner = _hSelf;
+    dlg.title = LM.get(L"panel_save_list");
+    dlg.filters = {
+        { LM.get(L"filetype_mrl"),       L"*.mrl" },
+        { LM.get(L"filetype_csv_excel"), L"*.csv" }
     };
+    dlg.defaultPath = oldPath;
+    dlg.initialFilterIndex = oldIsCsv ? 1 : 0;
+    dlg.defaultExtension = oldIsCsv ? std::wstring(L"csv") : std::wstring(L"mrl");
+    dlg.pathMustExist = true;
 
-    // Pre-select the filter and default extension matching the current path.
-    const int defaultFilterIdx = oldIsCsv ? 2 : 1;
-    const std::wstring defaultExt = oldIsCsv ? std::wstring(L"csv") : std::wstring(L"mrl");
+    FileDialogUtil::Result picked = FileDialogUtil::showSave(dlg);
+    if (!picked.ok) return;
 
-    int pickedFilter = 0;
-    std::wstring chosen = openFileDialog(
-        true, filters, LM.get(L"panel_save_list").c_str(),
-        OFN_PATHMUSTEXIST,
-        defaultExt, oldPath, defaultFilterIdx, &pickedFilter);
-
-    if (chosen.empty()) return;
-    chosen = applyExtensionForFilter(chosen, pickedFilter);
+    std::wstring chosen = applyExtensionForFilter(picked.path, picked.filterIndex + 1);
     if (_wcsicmp(chosen.c_str(), oldPath.c_str()) == 0) return;  // no change
 
     // Overwrite-confirm against the final path (after extension swap).

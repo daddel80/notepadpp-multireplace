@@ -1458,7 +1458,6 @@ private:
     std::string getEOLStyle();
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true) const;
     bool normalizeAndValidateNumber(std::string& str);
-    std::vector<WCHAR> createFilterString(const std::vector<std::pair<std::wstring, std::wstring>>& filters);
     int getFontHeight(HWND hwnd, HFONT hFont);
     std::vector<int> parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
     UINT getCurrentDocCodePage();
@@ -1470,8 +1469,7 @@ private:
 #pragma endregion
 
 #pragma region FileOperations
-    std::wstring promptSaveListToCsv(const TabState* tabHint = nullptr, int* outFilterIndex = nullptr);
-    std::wstring openFileDialog(bool saveFile, const std::vector<std::pair<std::wstring, std::wstring>>& filters, const WCHAR* title, DWORD flags, const std::wstring& fileExtension, const std::wstring& defaultFilePath, int initialFilterIndex = 1, int* outFilterIndex = nullptr);
+    std::wstring promptSaveListToCsv(const TabState* tabHint = nullptr);
     bool saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list);
     bool saveTabToFile(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab);
     void loadListFromCsvSilent(const std::wstring& filePath, std::vector<ReplaceItemData>& list, TabState* tabForSettings = nullptr, bool raiseLegacyDialog = false);
