@@ -170,6 +170,9 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
             MultiReplace::processTextChange(notifyCode);
             MultiReplace::processLog();
         }
+        if (notifyCode->modificationType & SC_MOD_CONTAINER) {
+            MultiReplace::processContainerUndo(notifyCode);
+        }
     }
     break;
 

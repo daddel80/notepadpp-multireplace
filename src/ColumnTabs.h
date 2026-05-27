@@ -69,10 +69,11 @@ namespace ColumnTabs
     bool CT_InsertAlignedPadding(HWND hSci,
         const CT_ColumnModelView& model,
         const CT_AlignOptions& opt,
-        bool* outNothingToAlign = nullptr);
+        bool* outNothingToAlign = nullptr,
+        bool suppressUndoBufferClear = false);
 
     // Remove previously inserted aligned padding (by indicator).
-    bool CT_RemoveAlignedPadding(HWND hSci);
+    bool CT_RemoveAlignedPadding(HWND hSci, bool suppressUndoBufferClear = false);
 
     // Query whether the buffer currently contains aligned padding owned by us.
     bool CT_HasAlignedPadding(HWND hSci) noexcept;
@@ -81,7 +82,8 @@ namespace ColumnTabs
     bool CT_ApplyNumericPadding(HWND hSci,
         const CT_ColumnModelView& model,
         int firstLine,
-        int lastLine);
+        int lastLine,
+        bool suppressUndoBufferClear = false);
 
     // ------------------------------------------------------------------------
     // Visual API (does not edit text; manages Scintilla tab stops)

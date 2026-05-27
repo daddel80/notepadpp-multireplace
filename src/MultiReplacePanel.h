@@ -540,6 +540,21 @@ public:
         ScopedRedrawLock& operator=(const ScopedRedrawLock&) = delete;
     };
 
+    // RAII bool guard: sets a flag on construction, restores it on scope exit
+    // (also on early return or exception). Used to make the FlowTab undo-replay
+    // flag self-healing so the normal toggle path can never get stuck.
+    class ScopedFlag {
+        bool& _flag;
+        bool  _prev;
+    public:
+        explicit ScopedFlag(bool& flag, bool value) : _flag(flag), _prev(flag) {
+            _flag = value;
+        }
+        ~ScopedFlag() { _flag = _prev; }
+        ScopedFlag(const ScopedFlag&) = delete;
+        ScopedFlag& operator=(const ScopedFlag&) = delete;
+    };
+
     MultiReplace() :
         hInstance(nullptr),
         _hScintilla(nullptr),
@@ -721,6 +736,8 @@ public:
 
 #pragma region Event Handling
     static void processTextChange(SCNotification* notifyCode);
+    static void processContainerUndo(SCNotification* notifyCode);
+    static LRESULT CALLBACK GetMsgHookProc(int nCode, WPARAM wParam, LPARAM lParam);
     static void processLog();
     static void onDocumentSwitched();
     static void pointerToScintilla();
@@ -1073,6 +1090,16 @@ private:
     bool _flowTabsActive = false;   // current visual state (editor tabstops)
     int  _flowPaddingPx = 8;       // min pixel gap after each column
 
+    // FlowTab container-undo: undo/redo of our own marker drives the toggle.
+    // _containerUndoAvailable is verified at runtime (mod-event mask read-back);
+    // if false, MR falls back to clearing the undo buffer (no toggle-undo, but
+    // stable). _flowTabUndoPending serializes notify -> deferred handler;
+    // _inFlowTabUndoReplay guards against re-entrancy during the replay.
+    static bool _containerUndoAvailable;
+    static bool _flowTabUndoPending;
+    bool _inFlowTabUndoReplay = false;
+    static HHOOK _hGetMsgHook;
+
     enum class CsvOp {
         Sort,
         DeleteColumns,
@@ -1361,6 +1388,8 @@ private:
     bool buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const;
     bool applyFlowTabStops(const ColumnTabs::CT_ColumnModelView* existingModel = nullptr);
     void handleColumnGridTabsButton();
+    void flowTabsFinalizeUndo();
+    void ensureContainerUndoNotify();
     void handleDuplicatesButton();
     void findAndMarkDuplicates(bool showDialog = true);
     bool scanForDuplicates();

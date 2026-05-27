@@ -319,7 +319,8 @@ namespace ColumnTabs {
     bool ColumnTabs::CT_InsertAlignedPadding(HWND hSci,
         const CT_ColumnModelView& model,
         const CT_AlignOptions& opt,
-        bool* outNothingToAlign /*=nullptr*/)
+        bool* outNothingToAlign /*=nullptr*/,
+        bool suppressUndoBufferClear /*=false*/)
     {
         using namespace ColumnTabs::detail;
 
@@ -529,7 +530,7 @@ namespace ColumnTabs {
 
         if (undoWasOn) {
             Sci(SCI_SETUNDOCOLLECTION, 1);
-            if (madePads) Sci(SCI_EMPTYUNDOBUFFER);
+            if (madePads && !suppressUndoBufferClear) Sci(SCI_EMPTYUNDOBUFFER);
         }
 
         if (madePads) {
@@ -539,7 +540,7 @@ namespace ColumnTabs {
         return true;
     }
 
-    bool ColumnTabs::CT_RemoveAlignedPadding(HWND hSci)
+    bool ColumnTabs::CT_RemoveAlignedPadding(HWND hSci, bool suppressUndoBufferClear /*=false*/)
     {
         if (!ColumnTabs::CT_GetCurDocHasPads(hSci))
             return false;
@@ -636,7 +637,7 @@ namespace ColumnTabs {
 
         if (undoWasOn) {
             S(SCI_SETUNDOCOLLECTION, 1);
-            S(SCI_EMPTYUNDOBUFFER);
+            if (!suppressUndoBufferClear) S(SCI_EMPTYUNDOBUFFER);
         }
 
         // Safety: clear any leftover indicator fragments across entire doc
@@ -656,7 +657,8 @@ namespace ColumnTabs {
         HWND hSci,
         const CT_ColumnModelView& model,
         int firstLine,
-        int lastLine)
+        int lastLine,
+        bool suppressUndoBufferClear /*=false*/)
     {
         const HWND hwnd = hSci;
         auto S = [hwnd](UINT msg, WPARAM w = 0, LPARAM l = 0)->sptr_t { return (sptr_t)::S(hwnd, msg, w, l); };
@@ -867,7 +869,7 @@ namespace ColumnTabs {
         S(SCI_SETMODEVENTMASK, (uptr_t)savedEventMask);
         if (undoWasOn) {
             S(SCI_SETUNDOCOLLECTION, 1);
-            if (madeAny) S(SCI_EMPTYUNDOBUFFER);
+            if (madeAny && !suppressUndoBufferClear) S(SCI_EMPTYUNDOBUFFER);
         }
         if (madeAny) CT_SetCurDocHasPads(hSci, true);
         return true;

@@ -188,6 +188,14 @@ static std::unordered_set<BufferId> g_padBufs;
 // Static member: thread-local message filter hook for Alt+Up/Down
 HHOOK MultiReplace::_hMsgFilterHook = nullptr;
 
+// FlowTab container-undo statics. Token tags our own SCI_ADDUNDOACTION marker
+// in SC_MOD_CONTAINER so undo/redo can drive the toggle.
+static constexpr int FLOWTAB_UNDO_TOKEN = 0x4D52464C; // 'MRFL'
+static constexpr UINT WM_FLOWTAB_UNDO = WM_APP + 4;   // notify -> deferred toggle
+bool MultiReplace::_containerUndoAvailable = false;
+bool MultiReplace::_flowTabUndoPending = false;
+HHOOK MultiReplace::_hGetMsgHook = nullptr;
+
 LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode >= 0 && instance && instance->_hSelf) {
         MSG* pMsg = reinterpret_cast<MSG*>(lParam);
@@ -282,6 +290,34 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
         }
     }
     return CallNextHookEx(_hMsgFilterHook, nCode, wParam, lParam);
+}
+
+LRESULT CALLBACK MultiReplace::GetMsgHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode >= 0 && wParam == PM_REMOVE && instance && instance->_hSelf && instance->isWindowOpen) {
+        const MSG* pMsg = reinterpret_cast<const MSG*>(lParam);
+        if (pMsg && pMsg->message == WM_KEYDOWN) {
+            const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+            const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+            const bool isUndo = ctrl && pMsg->wParam == 'Z' && !shift;
+            const bool isRedo = (ctrl && pMsg->wParam == 'Y') || (ctrl && shift && pMsg->wParam == 'Z');
+            if ((isUndo || isRedo) && _flowTabUndoPending) {
+                // Flush the deferred toggle synchronously before this key
+                // reaches Scintilla, serializing rapid undo/redo presses.
+                ::SendMessage(instance->_hSelf, WM_FLOWTAB_UNDO, 0, 0);
+            }
+        }
+    }
+    return CallNextHookEx(_hGetMsgHook, nCode, wParam, lParam);
+}
+
+void MultiReplace::processContainerUndo(SCNotification* notifyCode) {
+    if (!notifyCode || notifyCode->token != FLOWTAB_UNDO_TOKEN)
+        return;
+    if (!instance || !instance->_hSelf)
+        return;
+
+    _flowTabUndoPending = true;
+    ::PostMessage(instance->_hSelf, WM_FLOWTAB_UNDO, 0, 0);
 }
 
 #pragma region Initialization
@@ -5271,6 +5307,14 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             _hMsgFilterHook = SetWindowsHookEx(WH_MSGFILTER, MsgFilterHookProc, nullptr, GetCurrentThreadId());
         }
 
+        // Install thread-local WH_GETMESSAGE hook to serialize FlowTab undo:
+        // it flushes a pending toggle before a rapid second Ctrl+Z/Y reaches
+        // Scintilla. Enable SC_MOD_CONTAINER so our undo markers notify back.
+        if (!_hGetMsgHook) {
+            _hGetMsgHook = SetWindowsHookEx(WH_GETMESSAGE, GetMsgHookProc, nullptr, GetCurrentThreadId());
+        }
+        ensureContainerUndoNotify();
+
         return TRUE;
     }
 
@@ -5296,6 +5340,30 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_TAB_RENAME_CANCEL:
     {
         cancelInlineTabRename();
+        return TRUE;
+    }
+
+    case WM_FLOWTAB_UNDO:
+    {
+        // Deferred FlowTab toggle, driven by a container-undo/redo marker.
+        // Runs after Scintilla's undo/redo step completed. handleColumnGridTabsButton
+        // is state-based, so it toggles correctly for both undo and redo (and the
+        // visual-only desync case). The replay flag suppresses the intro dialog and
+        // a fresh marker. Idempotent: the hook may flush this synchronously before
+        // the posted copy arrives; consume the pending flag first so the second
+        // call no-ops (prevents a double toggle).
+        if (!_flowTabUndoPending)
+            return TRUE;
+        _flowTabUndoPending = false;
+
+        // Only replay while the panel is alive; otherwise just drop it.
+        if (!isWindowOpen)
+            return TRUE;
+
+        // RAII guard: replay flag is always restored, even on early return or
+        // exception inside the toggle - the normal toggle path can never stick.
+        ScopedFlag replay(_inFlowTabUndoReplay, true);
+        handleColumnGridTabsButton();
         return TRUE;
     }
 
@@ -5419,6 +5487,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         if (_hMsgFilterHook) {
             UnhookWindowsHookEx(_hMsgFilterHook);
             _hMsgFilterHook = nullptr;
+        }
+
+        // Remove FlowTab undo serialization hook
+        if (_hGetMsgHook) {
+            UnhookWindowsHookEx(_hGetMsgHook);
+            _hGetMsgHook = nullptr;
         }
 
         // Shut down the tandem ticker. INI flags decide auto-restore
@@ -11403,9 +11477,14 @@ void MultiReplace::handleColumnGridTabsButton()
         {
             ScopedRedrawLock redrawLock(_hScintilla);
 
-            ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
+            ColumnTabs::CT_RemoveAlignedPadding(_hScintilla, /*suppressUndoBufferClear=*/true);
             ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
             ColumnTabs::CT_ResetFlowVisualState();
+
+            // Padding removed undo-invisibly; place the container-undo marker so
+            // turning off can be undone too (degrades gracefully on replay /
+            // when unavailable).
+            flowTabsFinalizeUndo();
 
             ColumnTabs::CT_SetCurDocHasPads(_hScintilla, false);
             g_padBufs.erase(bufId);
@@ -11433,7 +11512,8 @@ void MultiReplace::handleColumnGridTabsButton()
 
         forceWrapRecalculation();
 
-        showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
+        if (!_inFlowTabUndoReplay)
+            showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
         g_prevBufId = bufId;
         return;
     }
@@ -11442,7 +11522,7 @@ void MultiReplace::handleColumnGridTabsButton()
     // CASE B: Padding not present (and _flowTabsActive == false) -> TURN ON
     // ============================================================
 
-    if (!flowTabsIntroDontShowEnabled) {
+    if (!flowTabsIntroDontShowEnabled && !_inFlowTabUndoReplay) {
         bool dontShow = false;
         if (!showFlowTabsIntroDialog(dontShow))
             return; // user cancelled
@@ -11482,7 +11562,7 @@ void MultiReplace::handleColumnGridTabsButton()
 
             // Step 1: numeric alignment (optional; inserts numeric left padding)
             if (flowTabsNumericAlignEnabled) {
-                ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, static_cast<int>(model.Lines.size()) - 1);
+                ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, static_cast<int>(model.Lines.size()) - 1, /*suppressUndoBufferClear=*/true);
                 findAllDelimitersInDocument();
                 if (!buildCTModelFromMatrix(model)) {
                     isLoggingEnabled = wasLoggingEnabled;
@@ -11502,7 +11582,7 @@ void MultiReplace::handleColumnGridTabsButton()
             opt.oneFlowTabOnly = true;
 
             bool nothingToAlign = false;
-            if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt, &nothingToAlign)) {
+            if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt, &nothingToAlign, /*suppressUndoBufferClear=*/true)) {
                 if (ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
                     // Numeric padding ok, InsertAlignedPadding failed but pads exist
                     _flowTabsActive = true;
@@ -11574,12 +11654,19 @@ void MultiReplace::handleColumnGridTabsButton()
     // Restore logging
     isLoggingEnabled = wasLoggingEnabled;
 
+    // Place the container-undo marker once on success (covers early + normal
+    // path). On replay or when the mechanism is unavailable this degrades
+    // gracefully inside flowTabsFinalizeUndo.
+    if (operationSuccess)
+        flowTabsFinalizeUndo();
+
     // Handle early success path
     if (earlySuccessPath) {
         if (wasHighlighted) {
             handleHighlightColumnsInDocument();
         }
-        showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
+        if (!_inFlowTabUndoReplay)
+            showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
         return;
     }
 
@@ -11612,9 +11699,10 @@ void MultiReplace::handleColumnGridTabsButton()
         handleHighlightColumnsInDocument();
     }
 
-    showStatusMessage(LM.get(nowHasPads ? L"status_tabs_inserted"
-        : L"status_tabs_aligned"),
-        MessageStatus::Success);
+    if (!_inFlowTabUndoReplay)
+        showStatusMessage(LM.get(nowHasPads ? L"status_tabs_inserted"
+            : L"status_tabs_aligned"),
+            MessageStatus::Success);
 
     if (nowHasPads) g_padBufs.insert(bufId); else g_padBufs.erase(bufId);
     g_prevBufId = bufId;
@@ -18948,6 +19036,40 @@ void MultiReplace::processLog() {
     instance->handleDelimiterPositions(DelimiterOperation::Update);
 }
 
+void MultiReplace::ensureContainerUndoNotify() {
+    if (!_hScintilla) return;
+    // NPP's default mod-event mask omits SC_MOD_CONTAINER, so add it. Then
+    // read back: if the bit did not stick, the container-undo mechanism is not
+    // available on this build - record that so flowTabsFinalizeUndo falls back
+    // to clearing the undo buffer instead of placing an unreachable marker.
+    const LRESULT mask = ::SendMessage(_hScintilla, SCI_GETMODEVENTMASK, 0, 0);
+    if ((mask & SC_MOD_CONTAINER) == 0)
+        ::SendMessage(_hScintilla, SCI_SETMODEVENTMASK, (WPARAM)(mask | SC_MOD_CONTAINER), 0);
+    const LRESULT after = ::SendMessage(_hScintilla, SCI_GETMODEVENTMASK, 0, 0);
+    _containerUndoAvailable = (after & SC_MOD_CONTAINER) != 0;
+}
+
+void MultiReplace::flowTabsFinalizeUndo() {
+    if (_inFlowTabUndoReplay)
+        return;
+    if (!_hScintilla)
+        return;
+    // Arm the container-notify mask right now and refresh availability, so the
+    // decision below never depends on init / doc-switch timing or on another
+    // path having reset the mask in the meantime.
+    ensureContainerUndoNotify();
+    if (_containerUndoAvailable) {
+        // Place a marker on the visible undo stack; its undo/redo drives the
+        // toggle. Padding itself stays undo-invisible, history is preserved.
+        ::SendMessage(_hScintilla, SCI_ADDUNDOACTION, FLOWTAB_UNDO_TOKEN, 0);
+    }
+    else {
+        // Fallback: mechanism unavailable, clear the undo buffer as before.
+        // No toggle-undo, but stable - exactly the legacy behaviour.
+        ::SendMessage(_hScintilla, SCI_EMPTYUNDOBUFFER, 0, 0);
+    }
+}
+
 // Resolve (view, index) from BufferID. Returns false if not found in any view.
 static bool GetViewIndexFromBufferId(BufferId bufId, int& viewOut, int& indexOut)
 {
@@ -18980,6 +19102,9 @@ void MultiReplace::onDocumentSwitched()
     self->pointerToScintilla();
     if (!self->_hScintilla) return;
     HWND hSci = self->_hScintilla;
+
+    // Re-arm container-undo notify for the now-active view (mask is per view).
+    self->ensureContainerUndoNotify();
 
     const BufferId currBufId =
         (BufferId)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
