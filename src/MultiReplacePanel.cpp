@@ -15705,29 +15705,20 @@ void MultiReplace::loadSettingsToPanelUI() {
 // The next save() writes only the current multi-tab layout.
 void MultiReplace::dropLegacyConfigEntries()
 {
-    // Sections that no longer exist in the current schema: every key
-    // in them has a per-tab equivalent under [Tabs].
+    // Sections fully superseded by per-tab [Tabs] storage or, for
+    // [Options], by optSec() routing. Dropping [Options] also clears
+    // leftovers an accidental V5 downgrade may have re-pinned.
     static const wchar_t* const legacySections[] = {
-        L"File", L"Current", L"OpenDocs", L"ListColumns"
+        L"File", L"Current", L"OpenDocs", L"ListColumns", L"Options"
     };
     for (const wchar_t* sec : legacySections) {
         CFG.eraseSection(sec);
     }
 
-    // Individual keys that moved from [Options]/[Scope]/[ReplaceInFiles]
-    // into per-tab storage. The sections themselves stay because they
-    // still hold current globals (Tooltips, HeaderLines, LimitFileSize...).
+    // Keys moved from [Scope]/[ReplaceInFiles] into per-tab storage;
+    // those sections stay for their current globals.
     struct LegacyKey { const wchar_t* sec; const wchar_t* key; };
     static const LegacyKey legacyKeys[] = {
-        { L"Options",        L"WholeWord"        },
-        { L"Options",        L"MatchCase"        },
-        { L"Options",        L"UseVariables"     },
-        { L"Options",        L"WrapAround"       },
-        { L"Options",        L"ReplaceAtMatches" },
-        { L"Options",        L"EditAtMatches"    },
-        { L"Options",        L"Extended"         },
-        { L"Options",        L"Regex"            },
-        { L"Options",        L"ListStatistics"   },  // dead relic, never read in V6
         { L"Scope",          L"Selection"        },
         { L"Scope",          L"ColumnMode"       },
         { L"Scope",          L"ColumnNum"        },
@@ -18827,6 +18818,14 @@ void MultiReplace::applyConfigSettingsOnly()
     // Integer Options
     editFieldSize = CFG.readInt(optSec(L"EditFieldSize"), L"EditFieldSize", 5);
     editFieldSize = std::clamp(editFieldSize, MIN_EDIT_FIELD_SIZE, MAX_EDIT_FIELD_SIZE);
+
+    // Tab label length. On change, rebuild the tab strip so existing
+    // labels pick up the new truncation immediately.
+    int newTabMaxLength = std::clamp(CFG.readInt(optSec(L"TabMaxLength"), L"TabMaxLength", 15), 4, 60);
+    if (tabMaxLength != newTabMaxLength) {
+        tabMaxLength = newTabMaxLength;
+        rebuildTabControl();
+    }
 
     CSVheaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
 

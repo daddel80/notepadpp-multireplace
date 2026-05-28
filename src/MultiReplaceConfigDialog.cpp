@@ -1006,6 +1006,7 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
     s.editFieldSize = CFG.readInt(MultiReplace::optSec(L"EditFieldSize"), L"EditFieldSize", 5);
+    s.tabMaxLength = std::clamp(CFG.readInt(MultiReplace::optSec(L"TabMaxLength"), L"TabMaxLength", 15), 4, 60);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
     s.resultDockPerEntryColorsEnabled = CFG.readBool(MultiReplace::optSec(L"ResultDockPerEntryColors"), L"ResultDockPerEntryColors", true);
     s.useListColorsForMarking = CFG.readBool(MultiReplace::optSec(L"UseListColorsForMarking"), L"UseListColorsForMarking", true);
@@ -1213,6 +1214,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.resultDockPerEntryColorsEnabled = true;
     def.useListColorsForMarking = true;
     def.listDimIntensity = 50;
+    def.tabMaxLength = 15;
     def.pickupSelection = true;
     def.autoEscapeForFindInput = false;
 
