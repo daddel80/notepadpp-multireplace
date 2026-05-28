@@ -982,10 +982,11 @@ namespace MultiReplaceEngine {
             ++expressionIdx;
 
             // Format through spec, or fall back to shortest round-trip.
-            // Numeric/date/duration specs emit only ASCII (digits, sign,
-            // dot, letters, colon, space), so each wchar fits in a char.
-            // Text specs never reach this path - they are string-typed and
-            // handled in the isString branch above.
+            // apply() returns UTF-8 packed one byte per wchar (applyFrame's
+            // wstring(out.begin(),out.end())), so extracting the low byte of
+            // each wchar reconstructs the UTF-8 - including localized date
+            // names. Text specs never reach this path - they are string-typed
+            // and handled in the isString branch above.
             if (_segmentSpecs[i].hasSpec) {
                 std::wstring formatted = FormatSpec::apply(_segmentSpecs[i].spec, value);
                 out.reserve(out.size() + formatted.size());
@@ -1877,9 +1878,10 @@ namespace MultiReplaceEngine {
             return 0.0;
         }
 
-        // totxt(n, fmt): parse fmt per call and apply. Widen the ASCII
-        // spec to wstring for the parser. Invalid fmt or a text spec on a
-        // number yields "" (FormatSpec::apply returns empty for those).
+        // totxt(n, fmt): parse fmt per call and apply. Widen byte-per-wchar
+        // to match the main spec-parse path; FormatSpec works in this packed
+        // form throughout. Invalid fmt or a text spec on a number yields ""
+        // (FormatSpec::apply returns empty for those).
         const string_t fv(parameters[1]);
         const std::string fmt = exprtk::to_str(fv);
         const std::wstring wfmt(fmt.begin(), fmt.end());
@@ -1887,6 +1889,8 @@ namespace MultiReplaceEngine {
         const FormatSpec::Spec spec = FormatSpec::parse(wfmt);
         if (!spec.valid) return 0.0;
 
+        // apply() returns UTF-8 packed one byte per wchar; extract the low
+        // byte of each to rebuild the UTF-8 result.
         const std::wstring out = FormatSpec::apply(spec, v);
         result.reserve(out.size());
         for (wchar_t wc : out) result.push_back(static_cast<char>(wc));
@@ -2375,8 +2379,8 @@ namespace MultiReplaceEngine {
         long long n = 0;
         const bool indexOk = toIndex(indexD, n);
 
-        // Arity-1 default: P = 1 (previous match).
-        long long pLookback = 1;
+        // Arity-1 default: P = 0 (current match, earlier finished blocks).
+        long long pLookback = 0;
         if (arity >= 2) {
             const double pD = readScalar(parameters[1]);
             if (!toSigned(pD, pLookback) || pLookback < 0) {
@@ -2418,8 +2422,8 @@ namespace MultiReplaceEngine {
         long long n = 0;
         const bool indexOk = toIndex(indexD, n);
 
-        // Arity-1 default: P = 1 (previous match).
-        long long pLookback = 1;
+        // Arity-1 default: P = 0 (current match, earlier finished blocks).
+        long long pLookback = 0;
         if (arity >= 2) {
             const double pD = readScalar(parameters[1]);
             if (!toSigned(pD, pLookback) || pLookback < 0) {

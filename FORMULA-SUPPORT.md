@@ -618,18 +618,18 @@ A **block** is one `(?=...)` expression in the template, numbered `0, 1, 2, ...`
 
 | Function          | Default `p` | Default `v` | Description                                                                 |
 |-------------------|-------------|-------------|-----------------------------------------------------------------------------|
-| `numout(N)`       | **1**       | `NaN`       | Block N's numeric output from the previous match.                           |
+| `numout(N)`       | **0**       | `NaN`       | Block N's numeric output from the current match (earlier finished blocks).   |
 | `numout(N, P)`    | —           | `NaN`       | Block N's numeric output from match P ago. `P=0` reads earlier finished blocks of the same match. |
 | `numout(N, P, V)` | —           | `V`         | Same, with explicit fallback (also fires on type mismatch and non-finite).  |
-| `txtout(N)`       | **1**       | `""`        | Block N's string output from the previous match.                            |
+| `txtout(N)`       | **0**       | `""`        | Block N's string output from the current match (earlier finished blocks).    |
 | `txtout(N, P)`    | —           | `""`        | Block N's string output from match P ago.                                   |
 | `txtout(N, P, V)` | —           | `V`         | Same, with explicit fallback string.                                        |
 
-The arity-1 default `P=1` reflects the typical question — "what did block N emit last time?" — and saves a redundant `, 1`. Within the current match (`P=0`), a block can only read **earlier** finished blocks; reading the current block or any later one returns the fallback.
+The arity-1 default `P=0` reads within the **current** match — the typical question is "what did an earlier block on this line produce?". A block can only read **earlier** finished blocks; reading the current block or any later one returns the fallback. Use an explicit `P>=1` to reach back into previous matches.
 
 | Find            | Replace                                              | Description                                                                |
 |-----------------|------------------------------------------------------|----------------------------------------------------------------------------|
-| `^(\w+),(\d+)$` | `(?=num(2)) (?=numout(0, 0) * 2)`                    | Block 1 reads block 0's output of the same match (`P=0`) and doubles it.   |
+| `^(\w+),(\d+)$` | `(?=num(2)) (?=numout(0) * 2)`                       | Block 1 reads block 0's output of the same match (default `P=0`) and doubles it. |
 | `(\d+)`         | `(?=num(1)) prev:(?=numout(0, 1, 0))`                | First spec emits the value; second spec emits the previous match's block 0 (or 0 the first time). |
 
 <br>
@@ -652,6 +652,54 @@ The arity-1 default `P=1` reflects the typical question — "what did block N em
 | `(\d+)`   | `(?=num(1) + numprev())`                                   | Running total. First match emits its value alone (no previous, v=0); subsequent matches accumulate. |
 | `(\d+)`   | `(?=max(num(1), numprev(1, 0), numprev(2, 0)))`            | Per-match maximum over the current value and the two preceding ones. Missing history → 0. |
 | `^(\w+)$` | `(?=txtprev(1, 'first') + ' -> ' + txt(1))`                | Predecessor chain with explicit fallback for the first match.               |
+
+<br>
+
+#### Worked examples: `numout` vs `numprev`
+
+Both readers reach into history, but along different axes: `numout` reads
+**another block** (any match, via `P`), `numprev` reads the **same block** one or
+more matches back. Example 1 shows `numout` with an explicit lookback; example 2
+combines the same-match `numout` default with `numprev`.
+
+**Example 1 — `numout` with an explicit `P` (reading a previous match).**
+Block 0 passes the raw value through; block 1 subtracts the raw value of the
+*previous* line via `numout(0, 1, 0)` — block 0, one match back, fallback 0. This
+is the line-to-line delta.
+
+- **Find:** `(\d+)`
+- **Replace:** `(?=num(1)) (delta (?=num(1) - numout(0, 1, 0)))`
+
+| Input line | Block 0 `num(1)` | `numout(0, 1, 0)` (prev. raw) | Block 1 delta | Output |
+|------------|------------------|-------------------------------|---------------|--------|
+| `100`      | 100              | 0 (no previous)               | 100           | `100 (delta 100)` |
+| `105`      | 105              | 100                           | 5             | `105 (delta 5)` |
+| `103`      | 103              | 105                           | -2            | `103 (delta -2)` |
+| `110`      | 110              | 103                           | 7             | `110 (delta 7)` |
+
+The `1` in `numout(0, 1, 0)` is the lookback: one match back. Without it,
+`numout(0)` would read block 0 of the *same* match (the default `P=0`) — here you
+explicitly want the previous line, so `P=1` is required. The `0` is the fallback
+for the first line, which has no predecessor.
+
+**Example 2 — `numout` and `numprev` together (running total).**
+Block 0 is the line subtotal again; block 1 adds the subtotal of *this* line
+(`numout(0)`, sideways) to the running total carried from the *previous* line
+(`numprev()`, backwards in time).
+
+- **Find:** `^(\d+),(\d+)$`
+- **Replace:** `(?=num(1)*num(2)) running: (?=numout(0)+numprev())`
+
+| Input line | Block 0 | `numout(0)` (this line) | `numprev()` (prev. total) | Block 1 |
+|------------|---------|-------------------------|---------------------------|---------|
+| `10,2`     | 20      | 20                      | 0 (no previous, `v=0`)    | **20**  |
+| `5,3`      | 15      | 15                      | 20                        | **35**  |
+| `4,4`      | 16      | 16                      | 35                        | **51**  |
+
+The first match has no predecessor, so `numprev()` returns its `v=0` default and
+the chain starts cleanly at 20 instead of propagating `NaN`. `numout(0)` always
+points at this line's own block 0; `numprev()` always points at this block's own
+output one match back.
 
 <br>
 
@@ -1616,7 +1664,7 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 | `^(\d+)$`       | `(?=num(1) - num(1, 1, 0))`                          | Difference to the previous match. First match keeps its own value via the v=0 fallback. |
 | `^(\w+)$`       | `(?=txtprev(1, 'first') + ' -> ' + txt(1))`          | Predecessor chain: each line becomes `prev -> current`, with `first` standing in for the unavailable predecessor on match 1. |
 | `(\d+)`         | `(?=max(num(1), numprev(1, 0), numprev(2, 0)))`      | Per-match maximum over the current value and the two preceding ones. Missing history falls back to 0. |
-| `^(\w+),(\d+)$` | `(?=num(2)) (?=numout(0, 0) * 2)`                    | Block 1 reads block 0's output within the same match via `numout(0, 0)` and doubles it. |
+| `^(\w+),(\d+)$` | `(?=num(2)) (?=numout(0, 0) * 2)`                    | Block 1 reads block 0's output within the same match and doubles it. `numout(0)` is equivalent, since `P=0` is the default. |
 
 See the [Match History](#match-history) section for the full reader catalogue and buffer sizing rules.
 
