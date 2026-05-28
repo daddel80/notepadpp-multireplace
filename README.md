@@ -286,11 +286,15 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 **Note on 'Edit Field':** The edit field supports multiple lines, simplifying the management of complex 'Formula Support' statements.
 
 **Additional Interactions:**
-- **Space Key** — Toggles the activation state of selected entries.
-- **Double-Click** — Allows direct in-place editing (configurable in Settings).
-- **Ctrl+Up / Ctrl+Down** — Moves selected rows up or down in the list. Hold the keys for auto-repeat.
-- **Ctrl+L** — Toggles the list visibility (collapse/expand).
-- **Ctrl+Shift + Button Click** — Momentarily flips the list-vs-input mode for the clicked action. With an active list, the action uses the input fields (list dims); with a dimmed list (when **Keep list always visible** is enabled), the action uses the list. Release the keys to return.
+
+| Interaction                | Shortcut             | Description                                                 |
+|----------------------------|----------------------|-------------------------------------------------------------|
+| Toggle entry activation    | Space                | Toggles the activation state of the selected entries.       |
+| In-place editing           | Double-Click         | Opens the selected entry for direct in-place editing (configurable in Settings). |
+| Move rows up / down        | Ctrl+Up / Ctrl+Down  | Moves selected rows up or down in the list. Hold for auto-repeat. |
+| Toggle list visibility     | Ctrl+L               | Collapses or expands the list.                              |
+| Fill Find field with selection | Ctrl+Shift+H     | Copies the current Scintilla selection into the **Find what** field. Works as a global hotkey regardless of which window has focus, without opening or focusing MultiReplace. |
+| List/input mode bypass     | Ctrl+Shift + Button Click | Momentarily flips the list-vs-input mode for the clicked action. With an active list, the action uses the input fields (list dims); with a dimmed list (when **Keep list always visible** is enabled), the action uses the list. Release the keys to return. |
 
 ### List Columns
 - **Find** — The text or pattern to search for.
